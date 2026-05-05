@@ -55,7 +55,8 @@ COPY package.json ./
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+# 127.0.0.1 (não "localhost"): em alguns hosts localhost→::1 e o servidor pode só ouvir IPv4 → healthcheck falha.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
 
 CMD ["sh", "-c", "set -e && npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && if [ \"${RUN_DB_SEED:-false}\" = \"true\" ]; then npx tsx apps/api/prisma/seed.ts; fi && exec node apps/api/dist/server.js"]
