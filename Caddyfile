@@ -1,4 +1,7 @@
-{$PUBLIC_URL:localhost} {
+# Só HTTP na porta 80 dentro do contentor. Com o hostname público como endereço do site, o Caddy
+# tentava ACME (Let's Encrypt) e falhava atrás do proxy do EasyPanel → 429 rate limit e erros TLS.
+# Termina TLS no painel / Nginx e define PUBLIC_URL na API para webhooks (Compose).
+:80 {
     # API routes
     handle /api/* {
         reverse_proxy api:3000

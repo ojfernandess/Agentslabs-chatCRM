@@ -73,9 +73,9 @@ Start the stack:
 docker compose up -d
 ```
 
-By default, Caddy listens on host ports **8080** (HTTP) and **8443** (HTTPS) so it does not clash with another reverse proxy using 80/443 (common on panels such as EasyPanel). Open `http://localhost:8080` for local testing, or set `CADDY_HTTP_PORT=80` and `CADDY_HTTPS_PORT=443` in `.env` on a dedicated server. If a panel injects its own `docker-compose.override.yml` that still binds `:80`, edit or remove those port mappings in the panel.
+By default, Caddy is published on host **8080** (→ HTTP port 80 in the container). The bundled **Caddyfile uses HTTP only** (no Let's Encrypt) so a front proxy (e.g. EasyPanel) can terminate TLS; use `PUBLIC_URL` in `.env` for the real public URL (webhooks). Map **8443** only if you add TLS inside Caddy yourself. Open `http://localhost:8080` for local testing. If a panel injects `docker-compose.override.yml` that forces conflicting ports, edit it there.
 
-This brings up the API server, PostgreSQL database, Redis, the web frontend, and a Caddy reverse proxy with automatic TLS.
+This brings up the API server, PostgreSQL database, Redis, the web frontend, and Caddy as an HTTP reverse proxy.
 
 ### First Login
 
