@@ -77,6 +77,8 @@ By default, Caddy is published on host **8080** (→ HTTP port 80 in the contain
 
 This brings up the API server, PostgreSQL database, Redis, the web frontend, and Caddy as an HTTP reverse proxy.
 
+**EasyPanel:** domínio, porta do proxy (ex.: **8080** → serviço `caddy`) e `PUBLIC_URL` — ver [EASYPANEL.md](EASYPANEL.md).
+
 ### First Login
 
 Open `https://crm.yourdomain.com` in your browser.
