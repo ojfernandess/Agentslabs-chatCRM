@@ -352,6 +352,23 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
   }
 }
 
+function mimetypeFromFilename(fileName: string, fallback: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    webm: "audio/webm",
+    ogg: "audio/ogg",
+    opus: "audio/ogg",
+    mp3: "audio/mpeg",
+    mpeg: "audio/mpeg",
+    mp4: "audio/mp4",
+    m4a: "audio/mp4",
+    amr: "audio/amr",
+    wav: "audio/wav",
+    wave: "audio/wav",
+  };
+  return map[ext] ?? fallback;
+}
+
 function evolutionMediaMeta(
   type: string,
   mediaUrl: string,
@@ -371,7 +388,11 @@ function evolutionMediaMeta(
     case "VIDEO":
       return { mediatype: "video", mimetype: "video/mp4", fileName };
     case "AUDIO":
-      return { mediatype: "audio", mimetype: "audio/mpeg", fileName };
+      return {
+        mediatype: "audio",
+        mimetype: mimetypeFromFilename(fileName, "audio/mpeg"),
+        fileName,
+      };
     case "DOCUMENT":
     default:
       return { mediatype: "document", mimetype: "application/octet-stream", fileName };

@@ -1,22 +1,60 @@
 import type { Config } from "tailwindcss";
 
+/** HubSpot-inspired: coral primário #ff7a59, texto/cinzas #33475b, raio 3px, grelha 8px (escala Tailwind padrão). */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      borderRadius: {
+        none: "0",
+        DEFAULT: "3px",
+        sm: "3px",
+        md: "3px",
+        lg: "3px",
+        xl: "3px",
+        "2xl": "3px",
+        "3xl": "3px",
+        full: "9999px",
+      },
+      fontFamily: {
+        sans: [
+          '"Avenir Next"',
+          "Avenir",
+          '"Nunito Sans"',
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          "Roboto",
+          "system-ui",
+          "sans-serif",
+        ],
+      },
       colors: {
         brand: {
-          50: "#f0fdf4",
-          100: "#dcfce7",
-          200: "#bbf7d0",
-          300: "#86efac",
-          400: "#4ade80",
-          500: "#22c55e",
-          600: "#16a34a",
-          700: "#15803d",
-          800: "#166534",
-          900: "#14532d",
-          950: "#052e16",
+          50: "#fff4f0",
+          100: "#ffe3d9",
+          200: "#ffc9b8",
+          300: "#ffa48a",
+          400: "#ff8866",
+          500: "#ff7a59",
+          600: "#e86245",
+          700: "#c24a32",
+          800: "#9e3d2b",
+          900: "#7a3326",
+          950: "#42140f",
+        },
+        ink: {
+          DEFAULT: "#33475b",
+          50: "#f5f8fa",
+          100: "#eaf0f6",
+          200: "#cbd6e2",
+          300: "#99acc2",
+          400: "#7c98b6",
+          500: "#516f90",
+          600: "#425b76",
+          700: "#33475b",
+          800: "#2d3e50",
+          900: "#253342",
         },
       },
       keyframes: {

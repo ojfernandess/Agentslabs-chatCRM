@@ -26,4 +26,7 @@ if [ "${RUN_DB_SEED:-false}" = "true" ]; then
   npx tsx apps/api/prisma/seed.ts
 fi
 
+UPLOAD_DIR="${MEDIA_UPLOAD_DIR:-/app/uploads/message-media}"
+mkdir -p "$UPLOAD_DIR"
+
 exec node apps/api/dist/server.js

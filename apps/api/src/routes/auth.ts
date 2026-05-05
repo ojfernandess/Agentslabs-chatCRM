@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
+import { clientIp, recordAuditLog } from "../lib/audit.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -98,11 +99,69 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (org) actingOrganization = org;
     }
 
+    const superAdminActorId = request.user.superAdminActorId ?? null;
+    let superAdminActor: { id: string; email: string; name: string } | null = null;
+    if (superAdminActorId) {
+      const actor = await prisma.user.findUnique({
+        where: { id: superAdminActorId },
+        select: { id: true, email: true, name: true, role: true },
+      });
+      if (actor?.role === "SUPER_ADMIN") {
+        superAdminActor = { id: actor.id, email: actor.email, name: actor.name };
+      }
+    }
+
     return {
       ...user,
       role: user.role as string,
       actingOrganizationId: actingId,
       actingOrganization,
+      superAdminActorId,
+      superAdminActor,
     };
+  });
+
+  /** Termina impersonação de utilizador (JWT com `superAdminActorId`); emite token do super admin. */
+  app.post("/exit-user-impersonation", { preHandler: [authenticate] }, async (request, reply) => {
+    const actorId = request.user.superAdminActorId;
+    const impersonatedId = request.user.id;
+    if (!actorId) {
+      return reply
+        .status(400)
+        .send({ error: "Bad Request", message: "Not in user impersonation mode", statusCode: 400 });
+    }
+
+    const superUser = await prisma.user.findFirst({
+      where: { id: actorId, role: "SUPER_ADMIN" },
+    });
+    if (!superUser) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Invalid impersonation session",
+        statusCode: 403,
+      });
+    }
+
+    const token = app.jwt.sign({
+      id: superUser.id,
+      email: superUser.email,
+      role: superUser.role,
+      organizationId: superUser.organizationId,
+    });
+
+    try {
+      await recordAuditLog({
+        actorUserId: superUser.id,
+        organizationId: request.user.organizationId ?? null,
+        action: "super.user.impersonate.exit",
+        resourceType: "user",
+        resourceId: impersonatedId,
+        ip: clientIp(request),
+      });
+    } catch {
+      /* audit best-effort */
+    }
+
+    return { token };
   });
 }

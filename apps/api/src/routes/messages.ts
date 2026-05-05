@@ -1,21 +1,60 @@
+import { randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { FastifyInstance } from "fastify";
-import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { sendMessageSchema } from "../lib/messagePayload.js";
+import { config, getPublicOrigin } from "../config.js";
 
-const sendMessageSchema = z.object({
-  contactId: z.string().uuid(),
-  type: z.enum(["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "TEMPLATE"]),
-  body: z.string().max(4096).optional(),
-  templateId: z.string().uuid().optional(),
-  mediaUrl: z.string().url().optional(),
-});
+function extensionForMimetype(mimetype: string): string {
+  const m = mimetype.split(";")[0].trim().toLowerCase();
+  if (m === "audio/webm") return "webm";
+  if (m === "audio/ogg" || m === "audio/opus") return "ogg";
+  if (m === "audio/mpeg") return "mp3";
+  if (m === "audio/mp4" || m === "audio/x-m4a") return "m4a";
+  if (m === "audio/amr") return "amr";
+  if (m === "audio/wav" || m === "audio/x-wav") return "wav";
+  if (m === "video/webm") return "webm";
+  return "bin";
+}
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
+
+  /** Upload de áudio para obter URL HTTPS pública (requisito Cloud API / Evolution com link). */
+  app.post("/upload-audio", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
+    if (!file) {
+      return reply.status(400).send({ error: "Bad Request", message: "multipart file field required", statusCode: 400 });
+    }
+
+    const rawMime = file.mimetype ?? "";
+    const mime = rawMime.split(";")[0].trim().toLowerCase();
+    const allowed = mime.startsWith("audio/") || mime === "video/webm";
+    if (!allowed) {
+      return reply
+        .status(415)
+        .send({ error: "Unsupported Media Type", message: "Only audio/* (or video/webm voice) allowed", statusCode: 415 });
+    }
+
+    const buf = await file.toBuffer();
+    const ext = extensionForMimetype(rawMime);
+    const token = randomBytes(16).toString("hex");
+    const filename = `${token}.${ext}`;
+    const dir = config.mediaUploadDir;
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, filename), buf);
+
+    const mediaUrl = `${getPublicOrigin()}/api/v1/messages/media/${filename}`;
+    return reply.status(201).send({ mediaUrl });
+  });
 
   app.post("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
@@ -23,7 +62,9 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
 
     const parsed = sendMessageSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      const first = parsed.error.issues[0];
+      const msg = first?.message ?? parsed.error.message;
+      return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
     }
 
     const { contactId, type, body, templateId, mediaUrl } = parsed.data;
@@ -106,6 +147,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
         type,
         body: messageBody,
         mediaUrl,
+        mediaType: type === "AUDIO" ? "audio/*" : undefined,
         providerMsgId,
         status: providerMsgId ? "SENT" : "FAILED",
       },

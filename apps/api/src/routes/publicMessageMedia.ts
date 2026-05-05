@@ -1,0 +1,43 @@
+import type { FastifyInstance } from "fastify";
+import { createReadStream, existsSync } from "node:fs";
+import { join } from "node:path";
+import { config } from "../config.js";
+
+/** Nome: 32 hex + extensão (ex.: gravações WebM/OGG do browser). */
+const FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
+
+function contentTypeForFilename(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    webm: "audio/webm",
+    ogg: "audio/ogg",
+    opus: "audio/ogg",
+    mp3: "audio/mpeg",
+    mpeg: "audio/mpeg",
+    mp4: "audio/mp4",
+    m4a: "audio/mp4",
+    amr: "audio/amr",
+    wav: "audio/wav",
+    wave: "audio/wav",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
+
+/**
+ * Leitura pública para o WhatsApp (Cloud API / parceiros) obterem o ficheiro do `link` JSON.
+ * Não usar autenticação — os servidores da Meta fazem GET anónimo. O nome do ficheiro é um segredo de alta entropia.
+ */
+export async function publicMessageMediaRoutes(app: FastifyInstance): Promise<void> {
+  app.get<{ Params: { name: string } }>("/api/v1/messages/media/:name", async (request, reply) => {
+    const name = request.params.name;
+    if (!FILENAME_RE.test(name)) {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid media name", statusCode: 400 });
+    }
+    const filePath = join(config.mediaUploadDir, name);
+    if (!existsSync(filePath)) {
+      return reply.status(404).send({ error: "Not Found", message: "Media not found", statusCode: 404 });
+    }
+    reply.header("Cache-Control", "private, max-age=3600");
+    return reply.type(contentTypeForFilename(name)).send(createReadStream(filePath));
+  });
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomUUID, randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { prisma } from "../db.js";
+import { Prisma } from "@prisma/client";
 import { requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { config } from "../config.js";
@@ -34,6 +35,19 @@ const createOrgSchema = z.object({
 const patchOrgSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   isActive: z.boolean().optional(),
+  planTier: z.enum(["free", "growth", "enterprise"]).optional(),
+  billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  monthlyMessageQuota: z.union([z.number().int().positive(), z.null()]).optional(),
+});
+
+const superUserPatchSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  role: z.enum(["ADMIN", "AGENT"]).optional(),
+});
+
+const platformSettingUpsertSchema = z.object({
+  key: z.string().min(1).max(120),
+  value: z.unknown(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -393,9 +407,18 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     }
     let org;
     try {
+      const p = parsed.data;
+      const data: Prisma.OrganizationUpdateInput = {};
+      if (p.name !== undefined) data.name = p.name;
+      if (p.isActive !== undefined) data.isActive = p.isActive;
+      if (p.planTier !== undefined) data.planTier = p.planTier;
+      if (p.billingEmail !== undefined) {
+        data.billingEmail = p.billingEmail === "" ? null : p.billingEmail;
+      }
+      if (p.monthlyMessageQuota !== undefined) data.monthlyMessageQuota = p.monthlyMessageQuota;
       org = await prisma.organization.update({
         where: { id: request.params.id },
-        data: parsed.data,
+        data,
       });
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
@@ -410,5 +433,166 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return org;
+  });
+
+  app.get("/usage-metrics", async () => {
+    const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows7 = await prisma.$queryRaw<Array<{ organization_id: string; cnt: bigint }>>(
+      Prisma.sql`
+        SELECT c.organization_id AS organization_id, COUNT(m.id)::bigint AS cnt
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.created_at >= ${since7}
+        GROUP BY c.organization_id
+      `,
+    );
+    const rows30 = await prisma.$queryRaw<Array<{ organization_id: string; cnt: bigint }>>(
+      Prisma.sql`
+        SELECT c.organization_id AS organization_id, COUNT(m.id)::bigint AS cnt
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.created_at >= ${since30}
+        GROUP BY c.organization_id
+      `,
+    );
+    const map7 = new Map(rows7.map((r) => [r.organization_id, Number(r.cnt)]));
+    const map30 = new Map(rows30.map((r) => [r.organization_id, Number(r.cnt)]));
+    const orgList = await prisma.organization.findMany({
+      select: { id: true, name: true, slug: true, planTier: true, isActive: true },
+      orderBy: { name: "asc" },
+    });
+    return {
+      windows: { shortDays: 7, longDays: 30 },
+      organizations: orgList.map((o) => ({
+        ...o,
+        messagesLast7Days: map7.get(o.id) ?? 0,
+        messagesLast30Days: map30.get(o.id) ?? 0,
+      })),
+    };
+  });
+
+  app.get<{ Params: { id: string } }>("/organizations/:id/users", async (request, reply) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.id },
+      select: { id: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+    return prisma.user.findMany({
+      where: { organizationId: org.id },
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+  });
+
+  app.patch<{ Params: { orgId: string; userId: string } }>(
+    "/organizations/:orgId/users/:userId",
+    async (request, reply) => {
+      const parsed = superUserPatchSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const org = await prisma.organization.findUnique({
+        where: { id: request.params.orgId },
+        select: { id: true },
+      });
+      if (!org) {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+      const target = await prisma.user.findFirst({
+        where: {
+          id: request.params.userId,
+          organizationId: org.id,
+          role: { in: ["ADMIN", "AGENT"] },
+        },
+      });
+      if (!target) {
+        return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+      }
+      const data: { name?: string; role?: "ADMIN" | "AGENT" } = {};
+      if (parsed.data.name !== undefined) data.name = parsed.data.name;
+      if (parsed.data.role !== undefined) data.role = parsed.data.role;
+      if (Object.keys(data).length === 0) {
+        return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
+      }
+      const updated = await prisma.user.update({
+        where: { id: target.id },
+        data,
+        select: { id: true, name: true, email: true, role: true, createdAt: true },
+      });
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        organizationId: org.id,
+        action: "super.user.update",
+        resourceType: "user",
+        resourceId: updated.id,
+        metadata: { patch: parsed.data },
+        ip: clientIp(request),
+      });
+      return updated;
+    },
+  );
+
+  app.post<{ Params: { orgId: string; userId: string } }>(
+    "/organizations/:orgId/users/:userId/impersonate",
+    async (request, reply) => {
+      const org = await prisma.organization.findFirst({
+        where: { id: request.params.orgId, isActive: true },
+        select: { id: true, name: true },
+      });
+      if (!org) {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+      const target = await prisma.user.findFirst({
+        where: { id: request.params.userId, organizationId: org.id },
+      });
+      if (!target || target.role === "SUPER_ADMIN") {
+        return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+      }
+      const token = request.server.jwt.sign({
+        id: target.id,
+        email: target.email,
+        role: target.role,
+        organizationId: target.organizationId,
+        superAdminActorId: request.user.id,
+      });
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        organizationId: org.id,
+        action: "super.user.impersonate.enter",
+        resourceType: "user",
+        resourceId: target.id,
+        metadata: { targetEmail: target.email, organizationName: org.name },
+        ip: clientIp(request),
+      });
+      return { token };
+    },
+  );
+
+  app.get("/platform-settings", async () => {
+    return prisma.platformSetting.findMany({ orderBy: { key: "asc" } });
+  });
+
+  app.put("/platform-settings", async (request, reply) => {
+    const parsed = platformSettingUpsertSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const row = await prisma.platformSetting.upsert({
+      where: { key: parsed.data.key },
+      create: { key: parsed.data.key, value: parsed.data.value as Prisma.InputJsonValue },
+      update: { value: parsed.data.value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.platform_setting.upsert",
+      resourceType: "platform_setting",
+      resourceId: row.key,
+      metadata: { key: row.key },
+      ip: clientIp(request),
+    });
+    return row;
   });
 }

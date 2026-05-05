@@ -6,8 +6,10 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   organizationId?: string | null;
-  /** Super admin a agir no contexto de uma organização (impersonação). */
+  /** Super admin a agir no contexto de uma organização (impersonação de tenant). */
   actingOrganizationId?: string | null;
+  /** Quando preenchido, o JWT representa um utilizador impersonado por um super admin (`id` = utilizador impersonado). */
+  superAdminActorId?: string | null;
 }
 
 declare module "@fastify/jwt" {

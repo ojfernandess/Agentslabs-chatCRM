@@ -76,6 +76,8 @@ services:
       # Ouve IPv4+IPv6 no container (evita falhas com loopback IPv6-only).
       HOST: "::"
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
+      # Áudio/mídia enviada: ficheiros neste diretório; expostos como ${PUBLIC_URL}/api/v1/messages/media/…
+      MEDIA_UPLOAD_DIR: /app/data/message-media
       NODE_ENV: production
       # true apenas no primeiro arranque (ou ambientes controlados); depois definir false
       RUN_DB_SEED: ${RUN_DB_SEED:-false}
@@ -87,6 +89,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - api_message_media:/app/data/message-media
     healthcheck:
       test:
         [
@@ -124,6 +128,7 @@ services:
 
 volumes:
   pgdata:
+  api_message_media:
   redisdata:
   caddydata:
   caddyconfig:

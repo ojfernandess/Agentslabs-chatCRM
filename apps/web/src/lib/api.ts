@@ -75,6 +75,28 @@ class ApiClient {
   delete(path: string): Promise<void> {
     return this.request(path, { method: "DELETE" });
   }
+
+  /** Multipart upload — não define Content-Type (browser define boundary). */
+  async uploadMessageAudio(blob: Blob, filename = "voice.webm"): Promise<{ mediaUrl: string }> {
+    const form = new FormData();
+    form.append("file", blob, filename);
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(`${API_BASE}/messages/upload-audio`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        message: response.statusText,
+      }));
+      throw new ApiError(error.message || "Upload failed", response.status);
+    }
+    return response.json();
+  }
 }
 
 export class ApiError extends Error {

@@ -17,7 +17,8 @@
     "db:list-users": "tsx prisma/list-users.ts",
     "db:reset-password": "tsx prisma/reset-password.ts",
     "db:verify-password": "tsx prisma/verify-password.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "node --import tsx --test src/lib/messagePayload.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

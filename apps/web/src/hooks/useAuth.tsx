@@ -17,6 +17,8 @@ export interface AuthUser {
   organizationId?: string | null;
   actingOrganizationId?: string | null;
   actingOrganization?: { id: string; name: string; slug: string } | null;
+  superAdminActorId?: string | null;
+  superAdminActor?: { id: string; email: string; name: string } | null;
 }
 
 interface AuthContextValue {
@@ -28,6 +30,7 @@ interface AuthContextValue {
   applySessionToken: (token: string) => Promise<AuthUser>;
   enterOrganization: (organizationId: string) => Promise<AuthUser>;
   exitOrganization: () => Promise<AuthUser>;
+  exitUserImpersonation: () => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -99,6 +102,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return applySessionToken(token);
   };
 
+  const exitUserImpersonation = async (): Promise<AuthUser> => {
+    const { token } = await api.post<{ token: string }>("/auth/exit-user-impersonation");
+    return applySessionToken(token);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -110,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applySessionToken,
         enterOrganization,
         exitOrganization,
+        exitUserImpersonation,
       }}
     >
       {children}

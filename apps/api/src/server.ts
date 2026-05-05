@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
+import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import jwt from "@fastify/jwt";
 import { config } from "./config.js";
@@ -20,7 +21,7 @@ import { dashboardRoutes } from "./routes/dashboard.js";
 import { leadTypeRoutes } from "./routes/leadTypes.js";
 import { superRoutes } from "./routes/super.js";
 import { platformRoutes } from "./routes/platform.js";
-
+import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
 
 const app = Fastify({
   logger: {
@@ -41,8 +42,11 @@ await app.register(rateLimit, {
   timeWindow: "1 minute",
   allowList: (req) => {
     const path = (req.url ?? "").split("?")[0] ?? "";
-    return path.startsWith("/webhooks");
+    return path.startsWith("/webhooks") || path.startsWith("/api/v1/messages/media/");
   },
+});
+await app.register(multipart, {
+  limits: { fileSize: 16 * 1024 * 1024 },
 });
 await app.register(jwt, {
   secret: config.jwtSecret,
@@ -51,6 +55,9 @@ await app.register(jwt, {
 
 // Decorate with prisma
 app.decorate("prisma", prisma);
+
+// Leitura pública de áudio carregado (WhatsApp obtém o ficheiro antes de entregar ao cliente)
+await app.register(publicMessageMediaRoutes);
 
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });

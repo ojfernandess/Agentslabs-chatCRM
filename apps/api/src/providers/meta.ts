@@ -44,6 +44,12 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       payload.video = { link: params.mediaUrl };
     }
 
+    if (!("type" in payload) || typeof payload.type !== "string") {
+      throw new Error(
+        `Meta Cloud API: cannot build payload for type ${params.type} (check body, templateName, or mediaUrl)`,
+      );
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {

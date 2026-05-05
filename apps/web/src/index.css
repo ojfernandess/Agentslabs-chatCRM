@@ -7,13 +7,18 @@
     box-sizing: border-box;
   }
 
-  body {
-    @apply min-h-screen;
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Custom scrollbar */
+  body {
+    @apply min-h-screen bg-ink-50 font-sans text-ink-900;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
@@ -21,10 +26,57 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    @apply rounded-full bg-ink-200;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+    @apply bg-ink-300;
+  }
+}
+
+/**
+ * Design system — estados hover / active / disabled (primário HubSpot coral).
+ * Preferir estas classes em novos ecrãs; utilitários Tailwind herdados continuam válidos.
+ */
+@layer components {
+  .ds-focus {
+    @apply outline-none ring-2 ring-brand-500/35 ring-offset-2 ring-offset-white;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors;
+    @apply bg-brand-500 hover:bg-brand-600 active:bg-brand-700;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply focus-visible:ds-focus;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded border border-ink-200 bg-white px-4 py-2 text-sm font-semibold text-ink-700 shadow-sm transition-colors;
+    @apply hover:border-ink-300 hover:bg-ink-50 active:bg-ink-100;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply focus-visible:ds-focus;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded px-3 py-2 text-sm font-medium text-ink-600 transition-colors;
+    @apply hover:bg-ink-100 hover:text-ink-900 active:bg-ink-200;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply focus-visible:ds-focus;
+  }
+
+  .input-field {
+    @apply w-full rounded border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 shadow-sm transition-colors;
+    @apply placeholder:text-ink-400;
+    @apply hover:border-ink-300;
+    @apply focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
+    @apply disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400;
+  }
+
+  .card-surface {
+    @apply rounded border border-ink-200 bg-white shadow-sm;
+  }
+
+  .nav-link-active {
+    @apply bg-brand-50 text-brand-700 font-semibold;
   }
 }

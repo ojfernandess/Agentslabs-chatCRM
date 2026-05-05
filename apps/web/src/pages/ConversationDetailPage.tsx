@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Send, ArrowLeft, Clock, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw } from "lucide-react";
+import { Send, ArrowLeft, Clock, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw, Mic, Square } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
@@ -12,6 +12,7 @@ interface Message {
   direction: string;
   type: string;
   body: string | null;
+  mediaUrl?: string | null;
   status: string;
   sentAt: string;
   createdAt: string;
@@ -46,9 +47,13 @@ export function ConversationDetailPage() {
   const [resolveError, setResolveError] = useState("");
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const seenMessageIds = useRef(new Set<string>());
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
 
   const loadConversation = async () => {
     try {
@@ -88,6 +93,82 @@ export function ConversationDetailPage() {
   const isOutsideWindow = lastInbound
     ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
     : true;
+
+  useEffect(() => {
+    return () => {
+      const mr = mediaRecorderRef.current;
+      if (mr?.state === "recording") {
+        mr.stop();
+      }
+      mr?.stream.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  function pickRecorderMime(): string | undefined {
+    const opts = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+    for (const o of opts) {
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(o)) {
+        return o;
+      }
+    }
+    return undefined;
+  }
+
+  async function handleVoiceToggle() {
+    if (!conversation || isOutsideWindow || voiceBusy) return;
+
+    if (recording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      return;
+    }
+
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setFlowError(t("conversationDetail.voiceNotSupported"));
+      return;
+    }
+
+    const contactId = conversation.contact.id;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickRecorderMime();
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaChunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        setRecording(false);
+        const blobType = mr.mimeType || "audio/webm";
+        const ext = blobType.includes("mp4") ? "m4a" : "webm";
+        const blob = new Blob(mediaChunksRef.current, { type: blobType });
+        mediaChunksRef.current = [];
+        if (blob.size < 1) return;
+        setVoiceBusy(true);
+        setFlowError("");
+        try {
+          const { mediaUrl } = await api.uploadMessageAudio(blob, `voice.${ext}`);
+          await api.post("/messages", {
+            contactId,
+            type: "AUDIO",
+            mediaUrl,
+          });
+          await loadConversation();
+        } catch {
+          setFlowError(t("conversationDetail.voiceSendFailed"));
+        } finally {
+          setVoiceBusy(false);
+        }
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setRecording(true);
+    } catch {
+      setFlowError(t("conversationDetail.voiceNotSupported"));
+    }
+  }
 
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();
@@ -323,6 +404,17 @@ export function ConversationDetailPage() {
                   )}
                 >
                   {msg.body && <p className="text-sm">{msg.body}</p>}
+                  {msg.type === "AUDIO" && msg.mediaUrl && (
+                    <audio
+                      controls
+                      src={msg.mediaUrl}
+                      className={clsx(
+                        "mt-2 w-full min-w-[200px] max-w-[280px]",
+                        msg.direction === "OUTBOUND" && "opacity-95",
+                      )}
+                      preload="metadata"
+                    />
+                  )}
                   <div
                     className={clsx(
                       "mt-1 flex items-center gap-1 text-[10px]",
@@ -349,23 +441,46 @@ export function ConversationDetailPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1, ease: "easeOut" }}
       >
-        <form onSubmit={handleSend} className="mx-auto flex max-w-3xl items-center gap-3">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder={isOutsideWindow ? t("conversationDetail.placeholderTemplate") : t("conversationDetail.placeholderNormal")}
-            disabled={isOutsideWindow}
-            className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400"
-          />
-          <motion.button
-            type="submit"
-            disabled={sending || !newMessage.trim() || isOutsideWindow}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
-            whileTap={{ scale: 0.92 }}
-          >
-            <Send className="h-5 w-5" />
-          </motion.button>
+        <form onSubmit={handleSend} className="mx-auto flex max-w-3xl flex-col gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={isOutsideWindow ? t("conversationDetail.placeholderTemplate") : t("conversationDetail.placeholderNormal")}
+              disabled={isOutsideWindow || recording}
+              className="min-w-0 flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400"
+            />
+            <motion.button
+              type="button"
+              onClick={() => void handleVoiceToggle()}
+              disabled={isOutsideWindow || voiceBusy || sending}
+              title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
+              className={clsx(
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm disabled:opacity-50",
+                recording
+                  ? "border-red-200 bg-red-500 text-white hover:bg-red-600"
+                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+              )}
+              whileTap={{ scale: 0.92 }}
+              aria-pressed={recording}
+            >
+              {recording ? <Square className="h-5 w-5 fill-current" /> : <Mic className="h-5 w-5" />}
+            </motion.button>
+            <motion.button
+              type="submit"
+              disabled={sending || !newMessage.trim() || isOutsideWindow}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+              whileTap={{ scale: 0.92 }}
+            >
+              <Send className="h-5 w-5" />
+            </motion.button>
+          </div>
+          {(recording || voiceBusy) && (
+            <p className="text-center text-xs text-gray-500">
+              {voiceBusy ? t("conversationDetail.voiceSending") : t("conversationDetail.recording")}
+            </p>
+          )}
         </form>
       </motion.div>
 

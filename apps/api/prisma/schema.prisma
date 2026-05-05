@@ -47,6 +47,12 @@ model Organization {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
+  /// Plano comercial (free | growth | enterprise) — quotas e faturação são informativas até integração de pagamentos.
+  planTier             String  @default("free") @map("plan_tier") @db.VarChar(32)
+  billingEmail         String? @map("billing_email") @db.VarChar(255)
+  /// Limite mensal opcional de mensagens enviadas+recebidas (null = ilimitado na app).
+  monthlyMessageQuota  Int?    @map("monthly_message_quota")
+
   users            User[]
   contacts         Contact[]
   conversations    Conversation[]
@@ -328,4 +334,14 @@ model OrganizationFeatureFlag {
 
   @@unique([organizationId, key])
   @@map("organization_feature_flags")
+}
+
+/** Configuração global da plataforma (super admin). Valores em JSON para flexibilidade. */
+model PlatformSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(120)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
 }

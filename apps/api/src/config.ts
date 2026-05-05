@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { join } from "node:path";
 import { JWT_EXPIRY, BCRYPT_COST_FACTOR } from "@openconduit/shared";
 
 function requireEnv(name: string): string {
@@ -25,6 +26,8 @@ export function webhookUrlForOrganization(organizationId: string): string {
 export const config = {
   port: parseInt(optionalEnv("PORT", "3000"), 10),
   host: optionalEnv("HOST", "0.0.0.0"),
+  /** Ficheiros servidos em GET /api/v1/messages/media/:name (WhatsApp descarrega antes de entregar ao utilizador). */
+  mediaUploadDir: optionalEnv("MEDIA_UPLOAD_DIR", join(process.cwd(), "uploads", "message-media")),
   databaseUrl: requireEnv("DATABASE_URL"),
   jwtSecret: requireEnv("JWT_SECRET"),
   jwtExpiry: JWT_EXPIRY,

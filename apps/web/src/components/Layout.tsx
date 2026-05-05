@@ -26,7 +26,7 @@ const navItems = [
 ] as const;
 
 export function Layout() {
-  const { user, logout, exitOrganization } = useAuth();
+  const { user, logout, exitOrganization, exitUserImpersonation } = useAuth();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
 
@@ -37,10 +37,10 @@ export function Layout() {
 
   return (
     <div className="flex h-screen">
-      <aside className="flex w-64 flex-col border-r border-gray-200 bg-white">
-        <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-6">
+      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white">
+        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6">
           <img src="/logo.svg" alt="OpenConduit" className="h-7" />
-          <span className="text-lg font-bold text-gray-900">OpenConduit</span>
+          <span className="text-lg font-bold text-ink-900">OpenConduit</span>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -51,10 +51,8 @@ export function Layout() {
               end={item.to === "/"}
               className={({ isActive }) =>
                 clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                  "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
                 )
               }
             >
@@ -67,10 +65,8 @@ export function Layout() {
               to="/super"
               className={({ isActive }) =>
                 clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                  "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
                 )
               }
             >
@@ -82,9 +78,9 @@ export function Layout() {
 
         <ConversationNotifyBell />
 
-        <div className="border-t border-gray-200 p-4 space-y-3">
-          <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5">
-            <Languages className="h-4 w-4 shrink-0 text-gray-500" />
+        <div className="border-t border-ink-200 p-4 space-y-3">
+          <div className="flex items-center gap-2 rounded border border-ink-100 bg-ink-50 px-2 py-1.5">
+            <Languages className="h-4 w-4 shrink-0 text-ink-500" />
             <label htmlFor="locale" className="sr-only">
               {t("common.language")}
             </label>
@@ -92,7 +88,7 @@ export function Layout() {
               id="locale"
               value={locale}
               onChange={(e) => setLocale(e.target.value as LocaleCode)}
-              className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-gray-700 focus:ring-0"
+              className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-ink-700 focus:ring-0"
             >
               <option value="pt-BR">{t("common.ptBR")}</option>
               <option value="en">{t("common.en")}</option>
@@ -100,12 +96,12 @@ export function Layout() {
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-gray-900">{user?.name}</p>
-              <p className="truncate text-xs text-gray-500">{user?.email}</p>
+              <p className="truncate text-sm font-medium text-ink-900">{user?.name}</p>
+              <p className="truncate text-xs text-ink-500">{user?.email}</p>
             </div>
             <button
               onClick={handleLogout}
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className="rounded p-2 text-ink-400 hover:bg-ink-100 hover:text-ink-600"
               title={t("nav.logout")}
               type="button"
             >
@@ -116,7 +112,31 @@ export function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {isSuperAdminRole(user?.role) && user?.actingOrganizationId ? (
+        {user?.superAdminActorId ? (
+          <div
+            role="status"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-ink-900"
+          >
+            <span className="min-w-0">
+              <span className="font-semibold">{t("common.userImpersonationBanner")}</span>
+              <span className="text-ink-700">
+                {" "}
+                {user.name} ({user.email}) · {t("common.actor")}:{" "}
+                {user.superAdminActor?.name ?? user.superAdminActor?.email ?? "—"}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void exitUserImpersonation().then(() => navigate("/super"));
+              }}
+              className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
+            >
+              {t("common.exitUserImpersonation")}
+            </button>
+          </div>
+        ) : null}
+        {isSuperAdminRole(user?.role) && user?.actingOrganizationId && !user?.superAdminActorId ? (
           <div
             role="status"
             className="flex shrink-0 items-start gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 sm:items-center sm:justify-between"
@@ -130,13 +150,13 @@ export function Layout() {
               onClick={() => {
                 void exitOrganization().then(() => navigate("/super"));
               }}
-              className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm ring-1 ring-amber-200 hover:bg-amber-100"
+              className="shrink-0 rounded bg-white px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm ring-1 ring-amber-200 hover:bg-amber-100"
             >
               {t("common.backToSuperAdmin")}
             </button>
           </div>
         ) : null}
-        <main className="min-h-0 flex-1 overflow-auto bg-gray-50">
+        <main className="min-h-0 flex-1 overflow-auto bg-ink-50">
           <Outlet />
         </main>
       </div>
