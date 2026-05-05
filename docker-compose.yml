@@ -1,5 +1,7 @@
 # API (Dockerfile): ao arrancar corre `npx prisma migrate deploy --schema=$PRISMA_SCHEMA` contra o Postgres.
-# Migrações em apps/api/prisma/migrations (ex.: multi-tenant, SUPER_ADMIN enum, platform/audit/flags).
+# Migrações em apps/api/prisma/migrations: inclui 20260101000000_baseline_schema (BD vazia).
+# Bases já existentes sem essa entrada: prisma migrate resolve --applied 20260101000000_baseline_schema
+# (sem correr o SQL) se o esquema já existir; ver documentação Prisma "baseline".
 # A imagem inclui o CLI `prisma` e `tsx` nas dependencies da API para o container não depender de devDependencies.
 #
 # Postgres: 16 no serviço `db`. Garantir que a API só inicia após db healthy.
