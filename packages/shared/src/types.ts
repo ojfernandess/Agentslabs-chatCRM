@@ -34,6 +34,7 @@ export type MessageStatus =
   (typeof MessageStatus)[keyof typeof MessageStatus];
 
 export const UserRole = {
+  SUPER_ADMIN: "SUPER_ADMIN",
   ADMIN: "ADMIN",
   AGENT: "AGENT",
 } as const;
@@ -43,6 +44,7 @@ export const WhatsAppProvider = {
   META: "meta",
   DIALOG360: "360dialog",
   TWILIO: "twilio",
+  EVOLUTION: "evolution",
 } as const;
 export type WhatsAppProvider =
   (typeof WhatsAppProvider)[keyof typeof WhatsAppProvider];
@@ -60,6 +62,9 @@ export interface LoginResponse {
     name: string;
     email: string;
     role: UserRole;
+    organizationId?: string | null;
+    actingOrganizationId?: string | null;
+    actingOrganization?: { id: string; name: string; slug: string } | null;
   };
 }
 
@@ -108,6 +113,7 @@ export interface SettingsUpdateRequest {
   whatsappApiKey: string;
   whatsappPhoneNumberId: string;
   whatsappWebhookSecret: string;
+  evolutionApiBaseUrl?: string | null;
 }
 
 export interface PaginatedResponse<T> {

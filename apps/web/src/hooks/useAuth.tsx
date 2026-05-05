@@ -6,20 +6,28 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { LoginResponse } from "@openconduit/shared";
 
-interface User {
+export interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: string;
+  organizationId?: string | null;
+  actingOrganizationId?: string | null;
+  actingOrganization?: { id: string; name: string; slug: string } | null;
 }
 
 interface AuthContextValue {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  applySessionToken: (token: string) => Promise<AuthUser>;
+  enterOrganization: (organizationId: string) => Promise<AuthUser>;
+  exitOrganization: () => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,7 +35,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const TOKEN_KEY = "openconduit_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
@@ -35,6 +43,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.setToken(null);
     setUser(null);
   }, []);
+
+  const applySessionToken = useCallback(async (token: string): Promise<AuthUser> => {
+    localStorage.setItem(TOKEN_KEY, token);
+    api.setToken(token);
+    const me = await api.get<AuthUser>("/auth/me");
+    setUser(me);
+    return me;
+  }, []);
+
+  const refreshUser = useCallback(async (): Promise<void> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      setUser(null);
+      return;
+    }
+    api.setToken(token);
+    try {
+      const me = await api.get<AuthUser>("/auth/me");
+      setUser(me);
+    } catch {
+      logout();
+    }
+  }, [logout]);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -45,24 +76,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     api.setToken(token);
     api
-      .get<User>("/auth/me")
+      .get<AuthUser>("/auth/me")
       .then(setUser)
       .catch(() => logout())
       .finally(() => setLoading(false));
   }, [logout]);
 
-  const login = async (email: string, password: string) => {
-    const response = await api.post<{ token: string; user: User }>(
-      "/auth/login",
-      { email, password },
+  const login = async (email: string, password: string): Promise<AuthUser> => {
+    const response = await api.post<LoginResponse>("/auth/login", { email, password });
+    return applySessionToken(response.token);
+  };
+
+  const enterOrganization = async (organizationId: string): Promise<AuthUser> => {
+    const { token } = await api.post<{ token: string }>(
+      `/super/organizations/${organizationId}/enter`,
     );
-    localStorage.setItem(TOKEN_KEY, response.token);
-    api.setToken(response.token);
-    setUser(response.user);
+    return applySessionToken(token);
+  };
+
+  const exitOrganization = async (): Promise<AuthUser> => {
+    const { token } = await api.post<{ token: string }>("/super/session/exit-organization");
+    return applySessionToken(token);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        refreshUser,
+        applySessionToken,
+        enterOrganization,
+        exitOrganization,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

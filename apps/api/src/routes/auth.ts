@@ -53,6 +53,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       id: user.id,
       email: user.email,
       role: user.role,
+      organizationId: user.organizationId,
     });
 
     return {
@@ -61,7 +62,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role as string,
+        organizationId: user.organizationId,
       },
     };
   });
@@ -70,11 +72,37 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { message: "Logged out" };
   });
 
-  app.get("/me", { preHandler: [authenticate] }, async (request) => {
+  app.get("/me", { preHandler: [authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({
       where: { id: request.user.id },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        createdAt: true,
+      },
     });
-    return user;
+    if (!user) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+    }
+
+    const actingId = request.user.actingOrganizationId ?? null;
+    let actingOrganization: { id: string; name: string; slug: string } | null = null;
+    if (actingId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: actingId },
+        select: { id: true, name: true, slug: true },
+      });
+      if (org) actingOrganization = org;
+    }
+
+    return {
+      ...user,
+      role: user.role as string,
+      actingOrganizationId: actingId,
+      actingOrganization,
+    };
   });
 }

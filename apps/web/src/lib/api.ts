@@ -15,7 +15,9 @@ class ApiClient {
       ...((options.headers as Record<string, string>) ?? {}),
     };
 
-    if (options.method !== "DELETE") {
+    // Only declare JSON when there is a body; Fastify rejects POST with
+    // Content-Type: application/json and an empty body (FST_ERR_CTP_EMPTY_JSON_BODY).
+    if (options.method !== "DELETE" && options.body != null) {
       headers["Content-Type"] = "application/json";
     }
 
@@ -59,6 +61,13 @@ class ApiClient {
   put<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>(path, {
       method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, {
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     });
   }

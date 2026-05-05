@@ -1,19 +1,34 @@
 export const WHATSAPP_SESSION_WINDOW_HOURS = 24;
 
+/** ID da organização criada na migração multi-tenant (dados legados). */
+export const DEFAULT_ORGANIZATION_ID = "11111111-1111-1111-1111-111111111111";
+
 export const DEFAULT_PIPELINE_STAGES = [
-  { name: "New Lead", order: 1, color: "#6366f1" },
-  { name: "Contacted", order: 2, color: "#3b82f6" },
-  { name: "Proposal Sent", order: 3, color: "#f59e0b" },
-  { name: "Converted", order: 4, color: "#10b981" },
-  { name: "Closed", order: 5, color: "#6b7280" },
+  { name: "Novo lead", order: 1, color: "#6366f1" },
+  { name: "Em atendimento", order: 2, color: "#3b82f6" },
+  { name: "Proposta enviada", order: 3, color: "#f59e0b" },
+  { name: "Negociação", order: 4, color: "#8b5cf6" },
+  { name: "Convertido", order: 5, color: "#10b981" },
+  { name: "Aguardando retorno", order: 6, color: "#06b6d4" },
+  { name: "Encerrado", order: 7, color: "#6b7280" },
 ] as const;
 
 export const DEFAULT_TAGS = [
-  { name: "New Lead", color: "#6366f1" },
-  { name: "Interested", color: "#3b82f6" },
-  { name: "Trial Done", color: "#f59e0b" },
-  { name: "Converted", color: "#10b981" },
-  { name: "Churned", color: "#ef4444" },
+  { name: "Novo lead", color: "#6366f1" },
+  { name: "Interessado", color: "#3b82f6" },
+  { name: "Teste realizado", color: "#f59e0b" },
+  { name: "Convertido", color: "#10b981" },
+  { name: "Cancelado / churn", color: "#ef4444" },
+] as const;
+
+/** Tipos de lead padrão (pt-BR) — seed / migração. */
+export const DEFAULT_LEAD_TYPES = [
+  { name: "MQL — lead de marketing", color: "#6366f1", order: 0 },
+  { name: "SQL — lead de vendas", color: "#3b82f6", order: 1 },
+  { name: "Oportunidade", color: "#f59e0b", order: 2 },
+  { name: "Fechado — ganho", color: "#10b981", order: 3 },
+  { name: "Fechado — perdido", color: "#ef4444", order: 4 },
+  { name: "Suporte / relacionamento", color: "#8b5cf6", order: 5 },
 ] as const;
 
 export const BCRYPT_COST_FACTOR = 12;

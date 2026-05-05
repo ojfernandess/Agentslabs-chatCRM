@@ -17,6 +17,9 @@ import { userRoutes } from "./routes/users.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { leadTypeRoutes } from "./routes/leadTypes.js";
+import { superRoutes } from "./routes/super.js";
+import { platformRoutes } from "./routes/platform.js";
 
 
 const app = Fastify({
@@ -36,6 +39,10 @@ await app.register(cors, {
 await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute",
+  allowList: (req) => {
+    const path = (req.url ?? "").split("?")[0] ?? "";
+    return path.startsWith("/webhooks");
+  },
 });
 await app.register(jwt, {
   secret: config.jwtSecret,
@@ -53,10 +60,13 @@ await app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
 await app.register(messageRoutes, { prefix: "/api/v1/messages" });
 await app.register(tagRoutes, { prefix: "/api/v1/tags" });
 await app.register(pipelineRoutes, { prefix: "/api/v1/pipeline" });
+await app.register(leadTypeRoutes, { prefix: "/api/v1/lead-types" });
 await app.register(reminderRoutes, { prefix: "/api/v1/reminders" });
 await app.register(templateRoutes, { prefix: "/api/v1/templates" });
 await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
 await app.register(userRoutes, { prefix: "/api/v1/users" });
+await app.register(superRoutes, { prefix: "/api/v1/super" });
+await app.register(platformRoutes, { prefix: "/api/v1/platform" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check

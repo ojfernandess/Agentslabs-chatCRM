@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in OpenConduit, **please do not open a public GitHub issue.**
 
-Instead, report it privately using [GitHub's private vulnerability reporting](https://github.com/growvth/openconduit/security/advisories/new).
+Instead, report it privately using [GitHub's private vulnerability reporting](https://github.com/ojfernandess/Agentslabs-chatCRM/security/advisories/new).
 
 When filing a report, include as much detail as possible:
 

@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { isValidEmail } from "@openconduit/shared";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -23,14 +24,20 @@ const updateUserSchema = z.object({
 export async function userRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", requireAdmin);
 
-  app.get("/", async () => {
+  app.get("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
     return prisma.user.findMany({
+      where: { organizationId },
       select: { id: true, name: true, email: true, role: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });
   });
 
   app.post("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = createUserSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -49,6 +56,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
     const user = await prisma.user.create({
       data: {
+        organizationId,
         name: parsed.data.name,
         email: parsed.data.email,
         passwordHash,
@@ -61,9 +69,19 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = updateUserSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const target = await prisma.user.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!target) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
     }
 
     const data: Record<string, unknown> = {};
@@ -74,28 +92,28 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       data.passwordHash = await bcrypt.hash(parsed.data.password, config.bcryptCostFactor);
     }
 
-    try {
-      const user = await prisma.user.update({
-        where: { id: request.params.id },
-        data,
-        select: { id: true, name: true, email: true, role: true, createdAt: true },
-      });
-      return user;
-    } catch {
-      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
-    }
+    const user = await prisma.user.update({
+      where: { id: target.id },
+      data,
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+    });
+    return user;
   });
 
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     if (request.params.id === request.user.id) {
       return reply.status(400).send({ error: "Bad Request", message: "Cannot delete your own account", statusCode: 400 });
     }
 
-    try {
-      await prisma.user.delete({ where: { id: request.params.id } });
-      return reply.status(204).send();
-    } catch {
+    const res = await prisma.user.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
       return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
     }
+    return reply.status(204).send();
   });
 }

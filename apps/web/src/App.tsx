@@ -9,6 +9,9 @@ import { ContactsPage } from "@/pages/ContactsPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { RemindersPage } from "@/pages/RemindersPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { CrmKanbanPage } from "@/pages/CrmKanbanPage";
+import { SuperAdminPage } from "@/pages/SuperAdminPage";
+import { isSuperAdminRole } from "@/lib/authRole";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -28,28 +31,59 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function TenantOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (isSuperAdminRole(user?.role) && !user?.actingOrganizationId) {
+    return <Navigate to="/super" replace />;
+  }
+  return <>{children}</>;
+}
+
+function SuperAdminOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!isSuperAdminRole(user?.role)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * Rotas tenant: layout sem `path` (RR7), para nunca competir com `/super`.
+ * Filhos usam paths relativos → `/`, `/conversations`, …
+ */
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/*"
+        path="/super"
         element={
           <ProtectedRoute>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/conversations" element={<ConversationsPage />} />
-                <Route path="/conversations/:id" element={<ConversationDetailPage />} />
-                <Route path="/contacts" element={<ContactsPage />} />
-                <Route path="/contacts/:id" element={<ContactDetailPage />} />
-                <Route path="/reminders" element={<RemindersPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </Layout>
+            <SuperAdminOnly>
+              <SuperAdminPage />
+            </SuperAdminOnly>
           </ProtectedRoute>
         }
       />
+      <Route
+        element={
+          <ProtectedRoute>
+            <TenantOnly>
+              <Layout />
+            </TenantOnly>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="conversations" element={<ConversationsPage />} />
+        <Route path="conversations/:id" element={<ConversationDetailPage />} />
+        <Route path="contacts" element={<ContactsPage />} />
+        <Route path="contacts/:id" element={<ContactDetailPage />} />
+        <Route path="crm" element={<CrmKanbanPage />} />
+        <Route path="reminders" element={<RemindersPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

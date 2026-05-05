@@ -1,47 +1,61 @@
-FROM node:20-alpine AS base
+FROM node:20-alpine AS deps
+
 WORKDIR /app
 
-# Install dependencies
-FROM base AS deps
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
-RUN npm install --workspace=apps/api --workspace=packages/shared
 
-# Build shared package
+# Instalar API + shared (parte das deps fica em apps/api/node_modules com isolamento do lockfile).
+RUN npm ci --workspace=apps/api --workspace=packages/shared
+
+# Build shared first
 FROM deps AS build-shared
-COPY packages/shared/ packages/shared/
+
 COPY tsconfig.base.json ./
+COPY packages/shared/ packages/shared/
+
 RUN npm run build -w packages/shared
 
-# Generate Prisma client
-FROM build-shared AS prisma
+# Generate Prisma
+FROM build-shared AS prisma-gen
+
 COPY apps/api/prisma/ apps/api/prisma/
+
 RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build API
-FROM prisma AS build
+FROM prisma-gen AS api-build
+
 COPY apps/api/ apps/api/
+
 RUN npm run build -w apps/api
 
-# Production
-FROM base AS production
+# Production image
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache openssl wget
+
 ENV NODE_ENV=production
 
+# Raiz + node_modules aninhados do workspace (npm coloca ex. date-fns em apps/api/node_modules)
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=api-build /app/apps/api/dist ./apps/api/dist
 COPY --from=build-shared /app/packages/shared/dist ./packages/shared/dist
-COPY --from=prisma /app/node_modules/.prisma ./node_modules/.prisma
-COPY apps/api/prisma/ apps/api/prisma/
-COPY apps/api/package.json apps/api/
-COPY packages/shared/package.json packages/shared/
+COPY --from=prisma-gen /app/node_modules/.prisma ./node_modules/.prisma
+
+# Copy source files
+COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
 COPY package.json ./
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-CMD ["node", "apps/api/dist/server.js"]
+CMD ["sh", "-c", "set -e && npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && if [ \"${RUN_DB_SEED:-false}\" = \"true\" ]; then npx tsx apps/api/prisma/seed.ts; fi && exec node apps/api/dist/server.js"]

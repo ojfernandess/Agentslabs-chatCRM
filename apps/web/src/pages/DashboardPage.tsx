@@ -1,17 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Users, Bell, BarChart3, TrendingUp, PieChart, ArrowRight } from "lucide-react";
+import { MessageSquare, Users, Bell, BarChart3, TrendingUp, PieChart, ArrowRight, PauseCircle } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   AreaChart, Area, PieChart as RePieChart, Pie, Cell, Legend
 } from "recharts";
 import { formatDistanceToNow } from "date-fns";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface DashboardData {
   stats: {
     openConversations: number;
+    pendingConversations: number;
     totalContacts: number;
     remindersDueToday: number;
   };
@@ -32,6 +34,7 @@ const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { t, dateLocale } = useI18n();
 
   useEffect(() => {
     async function loadDashboard() {
@@ -57,24 +60,31 @@ export function DashboardPage() {
 
   const statCards = [
     {
-      label: "Open Conversations",
+      labelKey: "dashboard.openConversations",
       value: data?.stats.openConversations ?? 0,
       icon: MessageSquare,
       color: "text-blue-600 bg-blue-50",
-      link: "/conversations",
+      link: "/conversations?status=OPEN",
     },
     {
-      label: "Total Contacts",
+      labelKey: "dashboard.pendingConversations",
+      value: data?.stats.pendingConversations ?? 0,
+      icon: PauseCircle,
+      color: "text-amber-600 bg-amber-50",
+      link: "/conversations?status=PENDING",
+    },
+    {
+      labelKey: "dashboard.totalContacts",
       value: data?.stats.totalContacts ?? 0,
       icon: Users,
       color: "text-green-600 bg-green-50",
       link: "/contacts",
     },
     {
-      label: "Reminders Due Today",
+      labelKey: "dashboard.remindersToday",
       value: data?.stats.remindersDueToday ?? 0,
       icon: Bell,
-      color: "text-amber-600 bg-amber-50",
+      color: "text-violet-600 bg-violet-50",
       link: "/reminders",
     },
   ];
@@ -83,21 +93,19 @@ export function DashboardPage() {
     <PageTransition>
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Real-time insights into your WhatsApp CRM
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.title")}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t("dashboard.subtitle")}</p>
         </div>
 
         {/* Top Stats */}
         <motion.div
-          className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4"
           variants={staggerContainer}
           initial="hidden"
           animate="show"
         >
           {statCards.map((card) => (
-            <motion.div key={card.label} variants={staggerItem}>
+            <motion.div key={card.labelKey} variants={staggerItem}>
               <Link
                 to={card.link}
                 className="block rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1"
@@ -109,9 +117,7 @@ export function DashboardPage() {
                     <card.icon className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">
-                      {card.label}
-                    </p>
+                    <p className="text-sm font-medium text-gray-500">{t(card.labelKey)}</p>
                     <p className="text-2xl font-bold text-gray-900">
                       {card.value}
                     </p>
@@ -132,9 +138,11 @@ export function DashboardPage() {
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">Message Volume</h3>
+                <h3 className="font-semibold text-gray-900">{t("dashboard.messageVolume")}</h3>
               </div>
-              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Last 7 Days</span>
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                {t("dashboard.last7Days")}
+              </span>
             </div>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -172,7 +180,7 @@ export function DashboardPage() {
                     strokeWidth={2}
                     fillOpacity={1} 
                     fill="url(#colorInbound)" 
-                    name="Inbound"
+                    name={t("dashboard.inbound")}
                   />
                   <Area 
                     type="monotone" 
@@ -181,7 +189,7 @@ export function DashboardPage() {
                     strokeWidth={2}
                     fillOpacity={1} 
                     fill="url(#colorOutbound)" 
-                    name="Outbound"
+                    name={t("dashboard.outbound")}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -198,15 +206,17 @@ export function DashboardPage() {
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">Active Chats</h3>
+                <h3 className="font-semibold text-gray-900">{t("dashboard.activeChats")}</h3>
               </div>
-              <Link to="/conversations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">View All</Link>
+              <Link to="/conversations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                {t("dashboard.viewAll")}
+              </Link>
             </div>
             <div className="flex-1 space-y-4 overflow-hidden">
               {data?.recentConversations.map((chat) => (
                 <Link 
                   key={chat.id} 
-                  to={`/conversations?id=${chat.id}`}
+                  to={`/conversations/${chat.id}`}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors group"
                 >
                   <div className="h-10 w-10 flex-shrink-0 rounded-full bg-brand-100 flex items-center justify-center text-xs font-bold text-brand-700">
@@ -216,7 +226,10 @@ export function DashboardPage() {
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-gray-900 truncate">{chat.contactName}</p>
                       <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                        {formatDistanceToNow(new Date(chat.time), { addSuffix: true }).replace('about ', '')}
+                        {formatDistanceToNow(new Date(chat.time), {
+                          addSuffix: true,
+                          locale: dateLocale,
+                        })}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 truncate">{chat.lastMessage}</p>
@@ -225,7 +238,7 @@ export function DashboardPage() {
               ))}
               {data?.recentConversations.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full py-8 text-center">
-                  <p className="text-sm text-gray-400">No active conversations</p>
+                  <p className="text-sm text-gray-400">{t("dashboard.noActiveConversations")}</p>
                 </div>
               )}
             </div>
@@ -233,7 +246,7 @@ export function DashboardPage() {
               to="/contacts" 
               className="mt-6 flex items-center justify-center gap-2 rounded-lg bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 hover:bg-brand-50 hover:text-brand-600 transition-all"
             >
-              Start New Chat <ArrowRight className="h-3.5 w-3.5" />
+              {t("dashboard.startNewChat")} <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </motion.div>
         </div>
@@ -249,7 +262,7 @@ export function DashboardPage() {
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">Pipeline Funnel</h3>
+                <h3 className="font-semibold text-gray-900">{t("dashboard.pipelineFunnel")}</h3>
               </div>
             </div>
             <div className="h-72 w-full">
@@ -284,7 +297,7 @@ export function DashboardPage() {
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <PieChart className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">Top Tags</h3>
+                <h3 className="font-semibold text-gray-900">{t("dashboard.topTags")}</h3>
               </div>
             </div>
             <div className="h-72 w-full">

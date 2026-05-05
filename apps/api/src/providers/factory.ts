@@ -1,9 +1,10 @@
 import { prisma } from "../db.js";
 import { WhatsAppProviderInterface } from "./types.js";
 import { MetaCloudApiProvider } from "./meta.js";
+import { EvolutionApiProvider } from "./evolution.js";
 
-export async function getWhatsAppProvider(): Promise<WhatsAppProviderInterface | null> {
-  const settings = await prisma.settings.findFirst();
+export async function getWhatsAppProvider(organizationId: string): Promise<WhatsAppProviderInterface | null> {
+  const settings = await prisma.settings.findUnique({ where: { organizationId } });
   if (!settings?.whatsappProvider || !settings.whatsappApiKey) {
     return null;
   }
@@ -24,12 +25,20 @@ export async function getWhatsAppProvider(): Promise<WhatsAppProviderInterface |
     case "twilio":
       // Twilio provider - to be implemented in v2
       return null;
+    case "evolution": {
+      const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
+      const instance = settings.whatsappPhoneNumberId?.trim() ?? "";
+      if (!baseUrl || !instance || !settings.whatsappApiKey) {
+        return null;
+      }
+      return new EvolutionApiProvider(baseUrl, settings.whatsappApiKey, instance);
+    }
     default:
       return null;
   }
 }
 
-export async function getWebhookSecret(): Promise<string | null> {
-  const settings = await prisma.settings.findFirst();
+export async function getWebhookSecret(organizationId: string): Promise<string | null> {
+  const settings = await prisma.settings.findUnique({ where: { organizationId } });
   return settings?.whatsappWebhookSecret ?? null;
 }

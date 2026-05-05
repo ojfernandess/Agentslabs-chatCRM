@@ -13,6 +13,15 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] ?? defaultValue;
 }
 
+/** Base URL pública (sem barra final) — usada no webhook exibido em Configurações. */
+export function getPublicOrigin(): string {
+  return optionalEnv("PUBLIC_URL", "http://localhost:3000").replace(/\/+$/, "");
+}
+
+export function webhookUrlForOrganization(organizationId: string): string {
+  return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}`;
+}
+
 export const config = {
   port: parseInt(optionalEnv("PORT", "3000"), 10),
   host: optionalEnv("HOST", "0.0.0.0"),
@@ -20,7 +29,7 @@ export const config = {
   jwtSecret: requireEnv("JWT_SECRET"),
   jwtExpiry: JWT_EXPIRY,
   bcryptCostFactor: BCRYPT_COST_FACTOR,
-  publicUrl: optionalEnv("PUBLIC_URL", "http://localhost:3000"),
+  publicUrl: getPublicOrigin(),
   redisUrl: optionalEnv("REDIS_URL", "redis://localhost:6379"),
   nodeEnv: optionalEnv("NODE_ENV", "development"),
   isProduction: optionalEnv("NODE_ENV", "development") === "production",

@@ -5,6 +5,9 @@ export interface JwtPayload {
   id: string;
   email: string;
   role: UserRole;
+  organizationId?: string | null;
+  /** Super admin a agir no contexto de uma organização (impersonação). */
+  actingOrganizationId?: string | null;
 }
 
 declare module "@fastify/jwt" {
@@ -30,7 +33,19 @@ export async function requireAdmin(
   reply: FastifyReply,
 ): Promise<void> {
   await authenticate(request, reply);
-  if (request.user?.role !== "ADMIN") {
-    reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+  const u = request.user;
+  if (!u) return;
+  if (u.role === "ADMIN") return;
+  if (u.role === "SUPER_ADMIN" && u.actingOrganizationId) return;
+  reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+}
+
+export async function requireSuperAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  await authenticate(request, reply);
+  if (request.user?.role !== "SUPER_ADMIN") {
+    reply.status(403).send({ error: "Forbidden", message: "Super admin access required", statusCode: 403 });
   }
 }

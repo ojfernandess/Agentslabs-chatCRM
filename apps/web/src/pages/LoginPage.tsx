@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/i18n/I18nProvider";
 import { motion, AnimatePresence } from "@/components/Motion";
+import { isSuperAdminRole } from "@/lib/authRole";
 
 export function LoginPage() {
   const { user, login } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,7 +15,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isSuperAdminRole(user.role) && !user.actingOrganizationId ? "/super" : "/"} replace />;
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -24,13 +27,13 @@ export function LoginPage() {
     const trimmedPassword = password.trim();
 
     try {
-      await login(trimmedEmail, trimmedPassword);
-      navigate("/");
+      const u = await login(trimmedEmail, trimmedPassword);
+      navigate(isSuperAdminRole(u.role) && !u.actingOrganizationId ? "/super" : "/");
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Invalid email or password");
+        setError(t("login.errorGeneric"));
       }
     } finally {
       setLoading(false);
@@ -54,10 +57,8 @@ export function LoginPage() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
           />
-          <h1 className="text-2xl font-bold text-gray-900">OpenConduit</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Sign in to your account
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("login.title")}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t("login.subtitle")}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -80,7 +81,7 @@ export function LoginPage() {
               htmlFor="email"
               className="block text-sm font-medium text-gray-700"
             >
-              Email
+              {t("login.email")}
             </label>
             <input
               id="email"
@@ -99,7 +100,7 @@ export function LoginPage() {
               htmlFor="password"
               className="block text-sm font-medium text-gray-700"
             >
-              Password
+              {t("login.password")}
             </label>
             <input
               id="password"
@@ -119,7 +120,7 @@ export function LoginPage() {
             className="w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50"
             whileTap={{ scale: 0.98 }}
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? t("common.loading") : t("login.submit")}
           </motion.button>
         </form>
       </motion.div>

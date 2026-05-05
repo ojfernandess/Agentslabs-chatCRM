@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/growvth/openconduit/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
+  <a href="https://github.com/ojfernandess/Agentslabs-chatCRM/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
   <a href="https://openconduit.dev"><img src="https://img.shields.io/badge/website-openconduit.dev-brand" alt="Website" /></a>
   <img src="https://img.shields.io/badge/status-pre--release-orange" alt="Status" />
   <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node" />
@@ -54,8 +54,8 @@ Built for freelancers, agencies, and local businesses who already use WhatsApp a
 ### Deploy
 
 ```bash
-git clone https://github.com/growvth/openconduit.git
-cd openconduit
+git clone https://github.com/ojfernandess/Agentslabs-chatCRM.git
+cd Agentslabs-chatCRM
 cp .env.example .env
 ```
 
@@ -115,7 +115,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, 
 
 ## Security
 
-If you discover a security vulnerability, **please do not open a public issue.** Use [GitHub's private vulnerability reporting](https://github.com/growvth/openconduit/security/advisories/new) instead. See [SECURITY.md](SECURITY.md) for full details.
+If you discover a security vulnerability, **please do not open a public issue.** Use [GitHub's private vulnerability reporting](https://github.com/ojfernandess/Agentslabs-chatCRM/security/advisories/new) instead. See [SECURITY.md](SECURITY.md) for full details.
 
 ## License
 

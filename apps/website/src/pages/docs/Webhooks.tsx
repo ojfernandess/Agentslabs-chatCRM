@@ -10,7 +10,7 @@ export function WebhooksPage() {
 
       <h2 className="mt-10 text-xl font-semibold text-gray-900">How Webhooks Work</h2>
       <p className="mt-2 text-sm text-gray-600">
-        When someone sends a message to your WhatsApp Business number, your provider (Meta, 360dialog, or Twilio) forwards the message payload to a URL you configure. OpenConduit exposes two webhook endpoints:
+        When someone sends a message to your WhatsApp number, your provider (Meta Cloud API, 360dialog, Twilio, or Evolution API) forwards the payload to a URL you configure. OpenConduit exposes two webhook endpoints:
       </p>
       <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
         <table className="w-full text-sm">

@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProvider } from "../providers/factory.js";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 const sendMessageSchema = z.object({
   contactId: z.string().uuid(),
@@ -16,8 +17,10 @@ const sendMessageSchema = z.object({
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
-  // Send message
   app.post("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = sendMessageSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -25,16 +28,17 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
 
     const { contactId, type, body, templateId, mediaUrl } = parsed.data;
 
-    const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+    });
     if (!contact) {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
 
-    // Check 24-hour session window for non-template messages
     if (type !== "TEMPLATE") {
       const lastInbound = await prisma.message.findFirst({
         where: {
-          conversation: { contactId },
+          conversation: { contactId, organizationId },
           direction: "INBOUND",
         },
         orderBy: { createdAt: "desc" },
@@ -53,15 +57,15 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    // Find or create conversation
     let conversation = await prisma.conversation.findFirst({
-      where: { contactId, status: { not: "RESOLVED" } },
+      where: { organizationId, contactId, status: { not: "RESOLVED" } },
       orderBy: { updatedAt: "desc" },
     });
 
     if (!conversation) {
       conversation = await prisma.conversation.create({
         data: {
+          organizationId,
           contactId,
           status: "OPEN",
           assignedToId: request.user.id,
@@ -69,20 +73,20 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    // Resolve template body if needed
     let messageBody = body;
     if (type === "TEMPLATE" && templateId) {
-      const template = await prisma.messageTemplate.findUnique({ where: { id: templateId } });
+      const template = await prisma.messageTemplate.findFirst({
+        where: { id: templateId, organizationId },
+      });
       if (!template) {
         return reply.status(404).send({ error: "Not Found", message: "Template not found", statusCode: 404 });
       }
       messageBody = template.body;
     }
 
-    // Send via WhatsApp provider
     let providerMsgId: string | undefined;
     try {
-      const provider = await getWhatsAppProvider();
+      const provider = await getWhatsAppProvider(organizationId);
       if (provider) {
         providerMsgId = await provider.sendMessage({
           to: contact.phone,
@@ -107,7 +111,6 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    // Update conversation timestamp
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: { updatedAt: new Date() },
@@ -116,10 +119,15 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(message);
   });
 
-  // Get message by ID
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    const message = await prisma.message.findUnique({
-      where: { id: request.params.id },
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const message = await prisma.message.findFirst({
+      where: {
+        id: request.params.id,
+        conversation: { organizationId },
+      },
       include: { conversation: { include: { contact: true } } },
     });
 

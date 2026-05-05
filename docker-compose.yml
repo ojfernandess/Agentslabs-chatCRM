@@ -1,3 +1,17 @@
+# API (Dockerfile): ao arrancar corre `npx prisma migrate deploy --schema=$PRISMA_SCHEMA` contra o Postgres.
+# Migrações em apps/api/prisma/migrations (ex.: multi-tenant, SUPER_ADMIN enum, platform/audit/flags).
+# A imagem inclui o CLI `prisma` e `tsx` nas dependencies da API para o container não depender de devDependencies.
+#
+# Postgres: 16 no serviço `db`. Garantir que a API só inicia após db healthy.
+#
+# Subir: docker compose up -d --build
+# Só API após novo código/migrações: docker compose build api --no-cache && docker compose up -d api
+#
+# PUBLIC_URL = URL público (igual ao site no Caddyfile). Webhook: {PUBLIC_URL}/webhooks/whatsapp/{orgId}
+#
+# Variáveis ${...} vêm do ficheiro `.env` na raiz (Compose interpola automaticamente).
+# Primeiro deploy: RUN_DB_SEED=true (sem espaço antes do nome da variável). Depois repor false.
+# Super admin no seed: SEED_SUPER_ADMIN=1 e SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD
 services:
   db:
     image: postgres:16-alpine
@@ -30,6 +44,7 @@ services:
       retries: 5
 
   api:
+    image: openconduit-api:local
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -42,6 +57,11 @@ services:
       HOST: "0.0.0.0"
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
       NODE_ENV: production
+      # true apenas no primeiro arranque (ou ambientes controlados); depois definir false
+      RUN_DB_SEED: ${RUN_DB_SEED:-false}
+      SEED_SUPER_ADMIN: ${SEED_SUPER_ADMIN:-0}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-super@openconduit.dev}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-super123}
     depends_on:
       db:
         condition: service_healthy
@@ -54,11 +74,14 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-localhost}
     ports:
       - "80:80"
       - "443:443"

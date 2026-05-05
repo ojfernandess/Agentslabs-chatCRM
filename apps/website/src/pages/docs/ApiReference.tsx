@@ -295,6 +295,12 @@ export function ApiReferencePage() {
       <div className="mt-4 space-y-4">
         <Endpoint method="GET" path="/api/v1/pipeline/stages" description="List all pipeline stages in order." auth="JWT" />
         <Endpoint
+          method="GET"
+          path="/api/v1/pipeline/board"
+          description="Kanban payload: ordered stages plus up to 500 contacts visible to the user (same assignment rules as the contact list)."
+          auth="JWT"
+        />
+        <Endpoint
           method="POST"
           path="/api/v1/pipeline/stages"
           description="Create a new pipeline stage."
@@ -382,9 +388,11 @@ export function ApiReferencePage() {
   "whatsappProvider": "meta",
   "whatsappApiKey": "your-api-key",
   "whatsappPhoneNumberId": "phone-number-id",
+  "evolutionApiBaseUrl": "https://evolution.example.com",
   "whatsappWebhookSecret": "webhook-secret",
   "autoOptInOnFirstMessage": true
 }`}
+          notes='For Evolution API use whatsappProvider "evolution", evolutionApiBaseUrl (Evolution server root URL), whatsappApiKey (apikey header), whatsappPhoneNumberId (instance name). Optional webhook secret: set header x-openconduit-token on Evolution to the same value.'
         />
         <Endpoint
           method="POST"

@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 const reminderSchema = z.object({
   contactId: z.string().uuid(),
@@ -18,11 +19,17 @@ const updateReminderSchema = z.object({
 export async function reminderRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
-  app.get("/", async (request) => {
+  app.get("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const query = request.query as Record<string, string>;
     const filter = query.filter;
     const search = query.search?.trim();
-    const where: Record<string, unknown> = { userId: request.user.id };
+    const where: Record<string, unknown> = {
+      userId: request.user.id,
+      organizationId,
+    };
 
     const now = new Date();
     const endOfDay = new Date(now);
@@ -54,13 +61,24 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = reminderSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
+    const contact = await prisma.contact.findFirst({
+      where: { id: parsed.data.contactId, organizationId },
+    });
+    if (!contact) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
+    }
+
     const reminder = await prisma.reminder.create({
       data: {
+        organizationId,
         contactId: parsed.data.contactId,
         userId: request.user.id,
         note: parsed.data.note,
@@ -73,9 +91,19 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = updateReminderSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.reminder.findFirst({
+      where: { id: request.params.id, userId: request.user.id, organizationId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Reminder not found", statusCode: 404 });
     }
 
     const data: Record<string, unknown> = {};
@@ -83,26 +111,24 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.dueAt !== undefined) data.dueAt = new Date(parsed.data.dueAt);
     if (parsed.data.completed !== undefined) data.completed = parsed.data.completed;
 
-    try {
-      const reminder = await prisma.reminder.update({
-        where: { id: request.params.id, userId: request.user.id },
-        data,
-        include: { contact: { select: { id: true, name: true, phone: true } } },
-      });
-      return reminder;
-    } catch {
-      return reply.status(404).send({ error: "Not Found", message: "Reminder not found", statusCode: 404 });
-    }
+    const reminder = await prisma.reminder.update({
+      where: { id: existing.id },
+      data,
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+    });
+    return reminder;
   });
 
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    try {
-      await prisma.reminder.delete({
-        where: { id: request.params.id, userId: request.user.id },
-      });
-      return reply.status(204).send();
-    } catch {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const res = await prisma.reminder.deleteMany({
+      where: { id: request.params.id, userId: request.user.id, organizationId },
+    });
+    if (res.count === 0) {
       return reply.status(404).send({ error: "Not Found", message: "Reminder not found", statusCode: 404 });
     }
+    return reply.status(204).send();
   });
 }

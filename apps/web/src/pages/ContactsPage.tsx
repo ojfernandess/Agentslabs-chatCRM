@@ -13,6 +13,7 @@ import {
   modalVariants,
   dropdownVariants,
 } from "@/components/Motion";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface TagItem {
   id: string;
@@ -38,6 +39,7 @@ interface Contact {
 }
 
 export function ContactsPage() {
+  const { t } = useI18n();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -148,10 +150,8 @@ export function ContactsPage() {
       <div className="p-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Manage your WhatsApp contacts
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">{t("contacts.title")}</h1>
+            <p className="mt-1 text-sm text-gray-500">{t("contacts.subtitle")}</p>
           </div>
           <motion.button
             onClick={() => setShowCreate(true)}

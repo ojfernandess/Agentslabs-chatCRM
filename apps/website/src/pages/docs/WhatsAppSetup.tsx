@@ -5,7 +5,9 @@ export function WhatsAppSetupPage() {
     <div>
       <h1 className="text-3xl font-bold text-gray-900">WhatsApp Provider Setup</h1>
       <p className="mt-3 text-gray-600 leading-relaxed">
-        OpenConduit supports three WhatsApp Business API providers. Choose the one that fits your region and pricing needs, then follow the guide below.
+        OpenConduit supports the official WhatsApp Business API (Meta, 360dialog, Twilio) and{" "}
+        <strong>Evolution API</strong> for self-hosted Baileys-style gateways. Pick the option that fits your stack,
+        then follow the guide below.
       </p>
 
       <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -96,6 +98,85 @@ export function WhatsAppSetupPage() {
         <li><strong>2.</strong> Select <strong>360dialog</strong> as your provider.</li>
         <li><strong>3.</strong> Enter your API key.</li>
         <li><strong>4.</strong> Click <strong>Test Connection</strong> to verify.</li>
+      </ol>
+
+      {/* Evolution API */}
+      <h2 className="mt-12 text-xl font-semibold text-gray-900">Evolution API</h2>
+      <p className="mt-2 text-sm text-gray-600">
+        Open-source REST API for WhatsApp (v2). You run Evolution on your own infrastructure; OpenConduit calls
+        its HTTP routes and receives <code className="rounded bg-gray-100 px-1 py-0.5 text-xs font-mono">messages.upsert</code>{" "}
+        webhooks on the same URL as other providers.
+      </p>
+
+      <h3 className="mt-6 text-base font-semibold text-gray-900">1. Deploy Evolution API v2</h3>
+      <ol className="mt-2 space-y-2 text-sm text-gray-600">
+        <li>
+          <strong>1.</strong> Follow the{" "}
+          <a href="https://doc.evolution-api.com" className="font-medium text-brand-700 hover:underline" target="_blank" rel="noreferrer">
+            Evolution API documentation
+          </a>{" "}
+          to run the server and create an <strong>instance</strong> (remember the instance <strong>name</strong>, not only the id).
+        </li>
+        <li>
+          <strong>2.</strong> Note your global <strong>API key</strong> (sent as the <code className="rounded bg-gray-100 px-1 text-xs">apikey</code> header).
+        </li>
+        <li>
+          <strong>3.</strong> Ensure OpenConduit can reach the Evolution base URL over the network (same Docker network, reverse proxy, or public HTTPS).
+        </li>
+      </ol>
+
+      <h3 className="mt-6 text-base font-semibold text-gray-900">2. Point webhooks at OpenConduit</h3>
+      <ol className="mt-2 space-y-2 text-sm text-gray-600">
+        <li>
+          <strong>1.</strong> In Evolution, configure the instance webhook URL to your OpenConduit endpoint (POST):
+        </li>
+      </ol>
+      <div className="mt-3">
+        <CodeBlock language="text" code="https://crm.yourdomain.com/webhooks/whatsapp" />
+      </div>
+      <ol className="mt-3 space-y-2 text-sm text-gray-600" start={2}>
+        <li>
+          <strong>2.</strong> Subscribe at least to <code className="rounded bg-gray-100 px-1 text-xs">MESSAGES_UPSERT</code>{" "}
+          and optionally <code className="rounded bg-gray-100 px-1 text-xs">MESSAGES_UPDATE</code> for delivery/read receipts.
+        </li>
+        <li>
+          <strong>3.</strong> Optional: add a custom header <code className="rounded bg-gray-100 px-1 text-xs">x-openconduit-token</code> and
+          the same value in OpenConduit <strong>Webhook Secret</strong> so POST requests are authenticated.
+        </li>
+      </ol>
+      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="font-medium">Inbound messages not showing in OpenConduit?</p>
+        <p className="mt-1 text-amber-800">
+          <strong>Test connection</strong> only calls Evolution&apos;s REST API (session state). You still need this webhook URL reachable{" "}
+          <em>from the Evolution container</em> (use your public <code className="rounded bg-amber-100 px-1 text-xs">PUBLIC_URL</code>, the
+          Docker gateway host, or the Caddy/service hostname — not <code className="rounded bg-amber-100 px-1 text-xs">localhost</code> unless
+          Evolution shares that network namespace). Enable <code className="rounded bg-amber-100 px-1 text-xs">MESSAGES_UPSERT</code>.
+          If Evolution uses <strong>webhook by events</strong>, OpenConduit also listens on{" "}
+          <code className="rounded bg-amber-100 px-1 text-xs">/webhooks/whatsapp/messages-upsert</code> and{" "}
+          <code className="rounded bg-amber-100 px-1 text-xs">/webhooks/whatsapp/messages-update</code>.
+        </p>
+      </div>
+
+      <h3 className="mt-6 text-base font-semibold text-gray-900">3. Add credentials in OpenConduit</h3>
+      <ol className="mt-2 space-y-2 text-sm text-gray-600">
+        <li>
+          <strong>1.</strong> Go to <strong>Settings</strong> and select <strong>Evolution API</strong>.
+        </li>
+        <li>
+          <strong>2.</strong> <strong>Evolution API base URL</strong>: root URL of the Evolution server (e.g.{" "}
+          <code className="rounded bg-gray-100 px-1 text-xs">https://evolution.example.com</code>), no path suffix.
+        </li>
+        <li>
+          <strong>3.</strong> <strong>API key</strong>: your Evolution global API key.
+        </li>
+        <li>
+          <strong>4.</strong> <strong>Instance name</strong>: the instance name used in Evolution URLs (e.g.{" "}
+          <code className="rounded bg-gray-100 px-1 text-xs">/message/sendText/my-instance</code>).
+        </li>
+        <li>
+          <strong>5.</strong> Use <strong>Test Connection</strong>; it checks <code className="rounded bg-gray-100 px-1 text-xs">/instance/connectionState/…</code> for
+          state <code className="rounded bg-gray-100 px-1 text-xs">open</code>.
+        </li>
       </ol>
 
       {/* Twilio */}
@@ -190,7 +271,7 @@ export function WhatsAppSetupPage() {
         <div>
           <p className="text-sm font-medium text-gray-900">Test Connection fails?</p>
           <p className="mt-1 text-sm text-gray-600">
-            Double-check your API credentials. For Meta, ensure your access token has the required permissions. For 360dialog, verify the API key is active. For Twilio, confirm your Account SID and Auth Token are correct.
+            Double-check your API credentials. For Meta, ensure your access token has the required permissions. For 360dialog, verify the API key is active. For Twilio, confirm your Account SID and Auth Token are correct. For Evolution, confirm the base URL, instance name, and that the session is connected (state <code className="rounded bg-gray-100 px-1 py-0.5 text-xs font-mono">open</code>).
           </p>
         </div>
       </div>

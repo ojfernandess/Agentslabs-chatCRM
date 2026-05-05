@@ -30,8 +30,8 @@ This is an npm workspaces monorepo. The `packages/shared` package is consumed by
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/growvth/openconduit.git
-cd openconduit
+git clone https://github.com/ojfernandess/Agentslabs-chatCRM.git
+cd Agentslabs-chatCRM
 npm install
 ```
 

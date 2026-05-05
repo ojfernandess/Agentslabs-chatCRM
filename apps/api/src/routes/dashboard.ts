@@ -1,18 +1,26 @@
 import { FastifyInstance } from "fastify";
 import { startOfDay, subDays, format } from "date-fns";
+import { prisma } from "../db.js";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
     await request.jwtVerify();
   });
 
-  app.get("/", async () => {
+  app.get("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const now = new Date();
     const todayStart = startOfDay(now);
     const weekAgoStart = startOfDay(subDays(now, 7));
 
+    const orgWhere = { organizationId };
+
     const [
       openConversations,
+      pendingConversations,
       totalContacts,
       remindersDueToday,
       pipelineStats,
@@ -20,39 +28,37 @@ export async function dashboardRoutes(app: FastifyInstance) {
       messageStats,
       recentConversations,
     ] = await Promise.all([
-      // 1. Basic Stats
-      app.prisma.conversation.count({ where: { status: "OPEN" } }),
-      app.prisma.contact.count(),
-      app.prisma.reminder.count({
+      prisma.conversation.count({ where: { ...orgWhere, status: "OPEN" } }),
+      prisma.conversation.count({ where: { ...orgWhere, status: "PENDING" } }),
+      prisma.contact.count({ where: orgWhere }),
+      prisma.reminder.count({
         where: {
+          ...orgWhere,
           dueAt: { gte: todayStart, lt: startOfDay(subDays(todayStart, -1)) },
           completed: false,
         },
       }),
-
-      // 2. Pipeline Stats (Funnel)
-      app.prisma.pipelineStage.findMany({
+      prisma.pipelineStage.findMany({
+        where: orgWhere,
         include: { _count: { select: { contacts: true } } },
         orderBy: { order: "asc" },
       }),
-
-      // 3. Tag Stats (Top 5)
-      app.prisma.tag.findMany({
+      prisma.tag.findMany({
+        where: orgWhere,
         include: { _count: { select: { contacts: true } } },
         orderBy: { contacts: { _count: "desc" } },
         take: 5,
       }),
-
-      // 4. Message Volume (Last 7 Days)
-      app.prisma.message.groupBy({
+      prisma.message.groupBy({
         by: ["direction", "createdAt"],
-        where: { createdAt: { gte: weekAgoStart } },
+        where: {
+          createdAt: { gte: weekAgoStart },
+          conversation: orgWhere,
+        },
         _count: true,
       }),
-
-      // 5. Recent Conversations
-      app.prisma.conversation.findMany({
-        where: { status: "OPEN" },
+      prisma.conversation.findMany({
+        where: { ...orgWhere, status: "OPEN" },
         take: 5,
         orderBy: { updatedAt: "desc" },
         include: {
@@ -68,38 +74,42 @@ export async function dashboardRoutes(app: FastifyInstance) {
       }),
     ]);
 
-    // Process Message Stats for Charting
     const messageVolume = Array.from({ length: 7 }, (_, i) => {
       const date = subDays(todayStart, 6 - i);
       const dateStr = format(date, "MMM dd");
-      
-      const dayMessages = messageStats.filter(m => 
-        startOfDay(new Date(m.createdAt)).getTime() === date.getTime()
+
+      const dayMessages = messageStats.filter(
+        (m) => startOfDay(new Date(m.createdAt)).getTime() === date.getTime(),
       );
 
       return {
         name: dateStr,
-        inbound: dayMessages.filter(m => m.direction === "INBOUND").reduce((acc, m) => acc + m._count, 0),
-        outbound: dayMessages.filter(m => m.direction === "OUTBOUND").reduce((acc, m) => acc + m._count, 0),
+        inbound: dayMessages
+          .filter((m) => m.direction === "INBOUND")
+          .reduce((acc, m) => acc + m._count, 0),
+        outbound: dayMessages
+          .filter((m) => m.direction === "OUTBOUND")
+          .reduce((acc, m) => acc + m._count, 0),
       };
     });
 
     return {
       stats: {
         openConversations,
+        pendingConversations,
         totalContacts,
         remindersDueToday,
       },
-      pipeline: pipelineStats.map(s => ({
+      pipeline: pipelineStats.map((s) => ({
         name: s.name,
         value: s._count.contacts,
       })),
-      tags: tagStats.map(t => ({
+      tags: tagStats.map((t) => ({
         name: t.name,
         value: t._count.contacts,
       })),
       messageVolume,
-      recentConversations: recentConversations.map(c => ({
+      recentConversations: recentConversations.map((c) => ({
         id: c.id,
         contactName: c.contact.name,
         phone: c.contact.phone,

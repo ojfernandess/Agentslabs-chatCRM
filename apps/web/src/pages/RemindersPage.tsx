@@ -12,6 +12,7 @@ import {
   staggerItem,
   expandVariants,
 } from "@/components/Motion";
+import { useI18n } from "@/i18n/I18nProvider";
 
 interface Reminder {
   id: string;
@@ -28,6 +29,7 @@ interface ContactOption {
 }
 
 export function RemindersPage() {
+  const { t } = useI18n();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -131,10 +133,8 @@ export function RemindersPage() {
       <div className="p-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Reminders</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Keep track of follow-ups with your contacts
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">{t("reminders.title")}</h1>
+            <p className="mt-1 text-sm text-gray-500">{t("reminders.subtitle")}</p>
           </div>
           <motion.button
             onClick={openForm}

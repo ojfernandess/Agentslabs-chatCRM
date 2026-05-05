@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -32,10 +33,12 @@ const querySchema = z.object({
 export async function contactRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
-  // List contacts with filters
-  app.get("/", async (request) => {
+  app.get("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const query = querySchema.parse(request.query);
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { organizationId };
 
     if (query.search) {
       where.OR = [
@@ -53,7 +56,6 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       where.assignedToId = query.assignee;
     }
 
-    // Agent-level access: only see assigned contacts
     if (request.user.role === "AGENT") {
       where.assignedToId = request.user.id;
     }
@@ -76,10 +78,12 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     return { data, total, page: query.page, pageSize: query.pageSize };
   });
 
-  // Get single contact
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    const contact = await prisma.contact.findUnique({
-      where: { id: request.params.id },
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
       include: {
         tags: { include: { tag: true } },
         pipelineStage: true,
@@ -99,8 +103,10 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     return contact;
   });
 
-  // Create contact
   app.post("/", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = createContactSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -111,13 +117,16 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
     }
 
-    const existing = await prisma.contact.findUnique({ where: { phone } });
+    const existing = await prisma.contact.findFirst({ where: { organizationId, phone } });
     if (existing) {
-      return reply.status(409).send({ error: "Conflict", message: "Contact with this phone number already exists", statusCode: 409 });
+      return reply
+        .status(409)
+        .send({ error: "Conflict", message: "Contact with this phone number already exists", statusCode: 409 });
     }
 
     const contact = await prisma.contact.create({
       data: {
+        organizationId,
         phone,
         name: parsed.data.name,
         notes: parsed.data.notes,
@@ -131,11 +140,20 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(contact);
   });
 
-  // Update contact
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const parsed = updateContactSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const current = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!current) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
 
     const data: Record<string, unknown> = {};
@@ -149,11 +167,23 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (parsed.data.phone !== undefined) {
-      const phone = normalizePhoneE164(parsed.data.phone);
-      if (!phone) {
+      const normalized = normalizePhoneE164(parsed.data.phone);
+      if (!normalized) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
       }
-      data.phone = phone;
+      if (normalized !== current.phone) {
+        const conflict = await prisma.contact.findFirst({
+          where: { organizationId, phone: normalized, NOT: { id: current.id } },
+        });
+        if (conflict) {
+          return reply.status(409).send({
+            error: "Conflict",
+            message: "Contact with this phone number already exists",
+            statusCode: 409,
+          });
+        }
+      }
+      data.phone = normalized;
     }
 
     try {
@@ -168,20 +198,25 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // Delete contact
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    try {
-      await prisma.contact.delete({ where: { id: request.params.id } });
-      return reply.status(204).send();
-    } catch {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const res = await prisma.contact.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
+    return reply.status(204).send();
   });
 
-  // Get contact messages (conversation history)
   app.get<{ Params: { id: string } }>("/:id/messages", async (request, reply) => {
-    const contact = await prisma.contact.findUnique({
-      where: { id: request.params.id },
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
       include: {
         conversations: {
           include: {
@@ -201,12 +236,21 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     return messages;
   });
 
-  // Add tags to contact
   app.post<{ Params: { id: string } }>("/:id/tags", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const schema = z.object({ tagIds: z.array(z.string().uuid()) });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const contactExists = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!contactExists) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
 
     await prisma.contactTag.createMany({
@@ -217,24 +261,34 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       skipDuplicates: true,
     });
 
-    // Auto-remove "Unknown" tag when a real tag is added
-    const unknownTag = await prisma.tag.findUnique({ where: { name: "Unknown" } });
+    const unknownTag = await prisma.tag.findFirst({
+      where: { organizationId, name: "Desconhecido" },
+    });
     if (unknownTag && !parsed.data.tagIds.includes(unknownTag.id)) {
       await prisma.contactTag.deleteMany({
         where: { contactId: request.params.id, tagId: unknownTag.id },
       });
     }
 
-    const contact = await prisma.contact.findUnique({
-      where: { id: request.params.id },
+    const contact = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
       include: { tags: { include: { tag: true } } },
     });
 
     return contact;
   });
 
-  // Remove tag from contact
   app.delete<{ Params: { id: string; tagId: string } }>("/:id/tags/:tagId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const contactExists = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!contactExists) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
+    }
+
     try {
       await prisma.contactTag.delete({
         where: {
@@ -250,12 +304,30 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // Move contact to pipeline stage
   app.put<{ Params: { id: string } }>("/:id/stage", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
     const schema = z.object({ stageId: z.string().uuid().nullable() });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const current = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!current) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
+    }
+
+    if (parsed.data.stageId) {
+      const stage = await prisma.pipelineStage.findFirst({
+        where: { id: parsed.data.stageId, organizationId },
+      });
+      if (!stage) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid pipeline stage", statusCode: 400 });
+      }
     }
 
     try {
