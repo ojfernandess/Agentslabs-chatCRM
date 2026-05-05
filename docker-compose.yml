@@ -14,6 +14,9 @@
 # público, ex.: https://crm.teudominio.com), DB_PASSWORD. Sem JWT_SECRET o contentor da API
 # arranca em crash loop e fica unhealthy.
 #
+# web usa depends_on api: service_started (não service_healthy): o compose do EasyPanel completa
+# o deploy enquanto migrações/seed correm; até a API escutar na 3000 pode haver 502 em /api — normal.
+#
 # Primeiro deploy: RUN_DB_SEED=true (sem espaço antes do nome da variável). Depois repor false.
 # Super admin no seed: SEED_SUPER_ADMIN=1 e SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD
 services:
@@ -58,7 +61,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in environment (e.g. openssl rand -hex 32)}
       REDIS_URL: redis://redis:6379
       PORT: "3000"
-      HOST: "0.0.0.0"
+      # Ouve IPv4+IPv6 no container (evita falhas com loopback IPv6-only).
+      HOST: "::"
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
       NODE_ENV: production
       # true apenas no primeiro arranque (ou ambientes controlados); depois definir false
@@ -75,16 +79,14 @@ services:
       test:
         [
           "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:3000/health",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r&&r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 300s
+      timeout: 15s
+      retries: 8
+      start_period: 600s
 
   web:
     build:
@@ -93,7 +95,7 @@ services:
     restart: unless-stopped
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
 
   caddy:
     image: caddy:2-alpine

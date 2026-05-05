@@ -36,7 +36,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl wget
+RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 
@@ -55,8 +55,8 @@ COPY package.json ./
 
 EXPOSE 3000
 
-# 127.0.0.1 (não "localhost"): em alguns hosts localhost→::1 e o servidor pode só ouvir IPv4 → healthcheck falha.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=5 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
+# Node (fetch) evita depender de wget/busybox; HOST=:: no compose aceita IPv4+IPv6 no loopback.
+HEALTHCHECK --interval=30s --timeout=15s --start-period=600s --retries=8 \
+  CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r&&r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["sh", "-c", "set -e && npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && if [ \"${RUN_DB_SEED:-false}\" = \"true\" ]; then npx tsx apps/api/prisma/seed.ts; fi && exec node apps/api/dist/server.js"]
