@@ -17,6 +17,10 @@
 # web usa depends_on api: service_started (não service_healthy): o compose do EasyPanel completa
 # o deploy enquanto migrações/seed correm; até a API escutar na 3000 pode haver 502 em /api — normal.
 #
+# Portas do Caddy no host: em muitos VPS/paineis a 80/443 já estão ocupadas. Define no .env /
+# painel (ex.: EasyPanel) CADDY_HTTP_PORT=8080 e CADDY_HTTPS_PORT=8443 e aponta o proxy interno
+# para essas portas — ou usa o override do painel para não publicar 80/443 se o tráfego for interno.
+#
 # Primeiro deploy: RUN_DB_SEED=true (sem espaço antes do nome da variável). Depois repor false.
 # Super admin no seed: SEED_SUPER_ADMIN=1 e SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD
 services:
@@ -103,8 +107,8 @@ services:
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-localhost}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
