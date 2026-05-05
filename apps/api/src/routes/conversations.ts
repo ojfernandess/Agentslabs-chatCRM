@@ -176,6 +176,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: { id: true, name: true, phone: true } },
           assignedTo: { select: { id: true, name: true } },
           leadType: { select: { id: true, name: true, color: true } },
+          messages: { orderBy: { createdAt: "asc" } },
         },
       });
       return conversation;

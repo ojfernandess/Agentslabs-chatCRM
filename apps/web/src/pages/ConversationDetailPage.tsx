@@ -29,7 +29,7 @@ interface ConversationDetail {
   closureReason: string | null;
   leadType: LeadTypeRow | null;
   contact: { id: string; name: string; phone: string };
-  messages: Message[];
+  messages?: Message[];
 }
 
 export function ConversationDetailPage() {
@@ -83,7 +83,7 @@ export function ConversationDetailPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation?.messages]);
 
-  const lastInbound = conversation?.messages.filter((m) => m.direction === "INBOUND").at(-1);
+  const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
 
   const isOutsideWindow = lastInbound
     ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
@@ -299,7 +299,7 @@ export function ConversationDetailPage() {
 
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="mx-auto max-w-3xl space-y-3">
-          {conversation.messages.map((msg, i) => {
+          {(conversation.messages ?? []).map((msg, i) => {
             const isNew = !seenMessageIds.current.has(msg.id);
             if (isNew) seenMessageIds.current.add(msg.id);
             return (
