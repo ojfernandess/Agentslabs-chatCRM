@@ -49,6 +49,8 @@ COPY --from=prisma-gen /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy source files
 COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY apps/api/package.json ./apps/api/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY package.json ./
@@ -59,4 +61,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=15s --start-period=600s --retries=8 \
   CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r&&r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["sh", "-c", "set -e && npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma && if [ \"${RUN_DB_SEED:-false}\" = \"true\" ]; then npx tsx apps/api/prisma/seed.ts; fi && exec node apps/api/dist/server.js"]
+CMD ["/usr/local/bin/docker-entrypoint.sh"]
