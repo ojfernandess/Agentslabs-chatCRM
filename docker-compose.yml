@@ -17,9 +17,15 @@
 # web usa depends_on api: service_started (não service_healthy): o compose do EasyPanel completa
 # o deploy enquanto migrações/seed correm; até a API escutar na 3000 pode haver 502 em /api — normal.
 #
-# Portas do Caddy no host: em muitos VPS/paineis a 80/443 já estão ocupadas. Define no .env /
-# painel (ex.: EasyPanel) CADDY_HTTP_PORT=8080 e CADDY_HTTPS_PORT=8443 e aponta o proxy interno
-# para essas portas — ou usa o override do painel para não publicar 80/443 se o tráfego for interno.
+# Portas publicadas do Caddy no HOST (mapeadas para 80/443 dentro do contentor).
+# Por omissão usamos 8080/8443 para não colidir com o proxy do próprio servidor (ex.: EasyPanel
+# já ocupa 0.0.0.0:80). Para VPS dedicado com 80/443 livres: CADDY_HTTP_PORT=80 CADDY_HTTPS_PORT=443
+# no .env ou no painel.
+#
+# Se o deploy ainda falhar com "Bind for 0.0.0.0:80", o ficheiro docker-compose.override.yml do
+# painel está a forçar "80:80". Editar no EasyPanel (ou substituir por variáveis) e remover essa
+# publicação, ou usar as mesmas portas altas. Opcional: apontar o comando do painel para incluir,
+# por ÚLTIMO, docker-compose.easypanel.yml (ver ficheiro) para estas portas ganharem sobre o override.
 #
 # Primeiro deploy: RUN_DB_SEED=true (sem espaço antes do nome da variável). Depois repor false.
 # Super admin no seed: SEED_SUPER_ADMIN=1 e SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD
@@ -107,8 +113,8 @@ services:
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-localhost}
     ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTP_PORT:-8080}:80"
+      - "${CADDY_HTTPS_PORT:-8443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
