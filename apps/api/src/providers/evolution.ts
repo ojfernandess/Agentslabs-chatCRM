@@ -284,26 +284,57 @@ function parseUpdatesToStatus(raw: unknown): StatusUpdate[] {
 }
 
 function extractEvolutionSendMessageId(raw: unknown): string | undefined {
+  const keyId = (o: unknown): string | undefined => {
+    const k = asRecord(o);
+    if (!k) return undefined;
+    const id = k.id;
+    if (typeof id === "string" && id.length > 0) return id;
+    if (typeof id === "number" && Number.isFinite(id)) return String(Math.trunc(id));
+    return undefined;
+  };
+
+  const tryOrder = (obj: Record<string, unknown> | null): string | undefined => {
+    if (!obj) return undefined;
+    const a = keyId(obj.key);
+    if (a) return a;
+    const data = asRecord(obj.data);
+    if (data) {
+      const b = keyId(data.key);
+      if (b) return b;
+      const msg = asRecord(data.message);
+      if (msg) {
+        const c = keyId(msg.key);
+        if (c) return c;
+      }
+    }
+    const msgT = asRecord(obj.message);
+    if (msgT) {
+      const d0 = keyId(msgT.key);
+      if (d0) return d0;
+    }
+    for (const k of ["messageId", "whatsappMessageId"] as const) {
+      const v = obj[k];
+      if (typeof v === "string" && v.length > 0) return v;
+    }
+    return undefined;
+  };
+
   const d = asRecord(raw);
   if (!d) return undefined;
-  const fromKey = (o: unknown): string | undefined => {
-    const k = asRecord(o);
-    const id = k?.id;
-    return typeof id === "string" && id.length > 0 ? id : undefined;
-  };
-  const a = fromKey(d.key);
-  if (a) return a;
-  const data = asRecord(d.data);
-  if (data) {
-    const b = fromKey(data.key);
-    if (b) return b;
-    const message = asRecord(data.message);
-    if (message) {
-      const c = fromKey(message.key);
-      if (c) return c;
+  let id = tryOrder(d);
+  if (id) return id;
+  for (const nest of ["data", "result", "response", "value"] as const) {
+    const sub = asRecord(d[nest]);
+    if (sub) {
+      id = tryOrder(sub);
+      if (id) return id;
     }
-    const d2 = fromKey(data);
-    if (d2) return d2;
+  }
+  if (Array.isArray(raw)) {
+    for (const el of raw) {
+      id = extractEvolutionSendMessageId(el);
+      if (id) return id;
+    }
   }
   return undefined;
 }
@@ -405,21 +436,46 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
         throw new Error("Evolution API: mediaUrl required for audio messages");
       }
       const urlAudio = `${this.baseUrl}/message/sendWhatsAppAudio/${this.instanceName}`;
-      const responseAudio = await fetch(urlAudio, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify({
-          number,
-          audioMessage: { audio: params.mediaUrl },
-          options: { presence: "recording", encoding: true },
-        }),
-      });
+      /** Evolution v1: audioMessage + options. v2: root-level `audio`. */
+      const v1Body = {
+        number,
+        audioMessage: { audio: params.mediaUrl, ptt: true },
+        options: { presence: "recording", encoding: true },
+      };
+      const v2Body = { number, audio: params.mediaUrl };
+
+      const postAudio = async (body: Record<string, unknown>) => {
+        const res = await fetch(urlAudio, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        let json: unknown = null;
+        try {
+          json = await res.json();
+        } catch {
+          /* body may be empty */
+        }
+        return { res, json };
+      };
+
+      let { res: responseAudio, json: dataAudio } = await postAudio(v1Body);
+      let idA = extractEvolutionSendMessageId(dataAudio);
+
       if (!responseAudio.ok) {
-        const err = await responseAudio.text();
+        const second = await postAudio(v2Body);
+        responseAudio = second.res;
+        dataAudio = second.json;
+        idA = extractEvolutionSendMessageId(dataAudio);
+      }
+
+      if (!responseAudio.ok) {
+        const err =
+          dataAudio !== null && typeof dataAudio === "object"
+            ? JSON.stringify(dataAudio)
+            : await responseAudio.text().catch(() => "");
         throw new Error(`Evolution API error (audio): ${responseAudio.status} ${err}`);
       }
-      const dataAudio = (await responseAudio.json()) as unknown;
-      const idA = extractEvolutionSendMessageId(dataAudio);
       if (!idA) throw new Error("Evolution API: missing message id in audio response");
       return idA;
     }

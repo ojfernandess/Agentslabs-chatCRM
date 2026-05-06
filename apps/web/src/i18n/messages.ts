@@ -49,6 +49,7 @@ export const messages = {
       bots: "Bots",
       myAttendance: "Meu atendimento",
       conversationAudit: "Auditoria de conversas",
+      teamInboxes: "Times",
     },
     dealsPage: {
       subtitle: "Oportunidades e totais por estado (WON vs em negociação)",
@@ -274,6 +275,8 @@ export const messages = {
       internalNoteLabel: "Nota interna",
       team: "Time",
       noTeam: "Sem time",
+      conversationAssignee: "Atendente no atendimento",
+      noConversationAssignee: "Sem atribuição",
       assignTeam: "Atribuir a um time",
       saveTeam: "Guardar time",
       teamUpdated: "Time da conversa atualizado.",
@@ -558,6 +561,7 @@ export const messages = {
       bots: "Bots",
       myAttendance: "My attendance",
       conversationAudit: "Conversation audit",
+      teamInboxes: "Teams",
     },
     dealsPage: {
       subtitle: "Opportunities and totals by outcome (WON vs in negotiation)",
@@ -780,6 +784,8 @@ export const messages = {
       internalNoteLabel: "Internal note",
       team: "Team",
       noTeam: "No team",
+      conversationAssignee: "Assigned agent",
+      noConversationAssignee: "Unassigned",
       assignTeam: "Assign to a team",
       saveTeam: "Save team",
       teamUpdated: "Conversation team updated.",

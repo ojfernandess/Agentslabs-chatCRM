@@ -610,6 +610,12 @@ export function ConversationDetailPage() {
               </span>{" "}
               {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
             </p>
+            <p>
+              <span className="font-medium text-ink-600 dark:text-ink-300">
+                {t("conversationDetail.conversationAssignee")}:
+              </span>{" "}
+              {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
+            </p>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span

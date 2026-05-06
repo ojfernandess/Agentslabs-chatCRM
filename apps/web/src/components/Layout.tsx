@@ -1,6 +1,8 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Fragment, useState, useEffect } from "react";
+import { NavLink, Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
+import { api } from "@/lib/api";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -21,6 +23,9 @@ import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
+
+type SidebarTeam = { id: string; name: string };
+
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
   { to: "/conversations", icon: MessageSquare, labelKey: "nav.conversations" },
@@ -34,8 +39,48 @@ export function Layout() {
   const { user, logout, exitUserImpersonation } = useAuth();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
+  const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
+
+  const conversationTeamId =
+    location.pathname === "/conversations" ? new URLSearchParams(location.search).get("teamId") : null;
+
+  useEffect(() => {
+    if (!user) {
+      setSidebarTeams([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ data: SidebarTeam[] }>("/teams")
+      .then((res) => {
+        if (!cancelled) setSidebarTeams(res.data.map((x) => ({ id: x.id, name: x.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setSidebarTeams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const navItemClass = (active: boolean) =>
+    clsx(
+      "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+      active
+        ? "nav-link-active"
+        : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+    );
+
+  const teamNavItemClass = (active: boolean) =>
+    clsx(
+      "flex min-h-0 items-center gap-2 rounded py-2 pl-9 pr-3 text-sm font-medium transition-colors",
+      active
+        ? "nav-link-active"
+        : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+    );
 
   const handleLogout = () => {
     logout();
@@ -51,22 +96,54 @@ export function Layout() {
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                )
-              }
-            >
-              <item.icon className="h-5 w-5" />
-              {t(item.labelKey)}
-            </NavLink>
-          ))}
+          {navItems.map((item) =>
+            item.to === "/conversations" ? (
+              <Fragment key="conversations-tree">
+                <Link
+                  to="/conversations"
+                  className={navItemClass(
+                    location.pathname === "/conversations" && !conversationTeamId,
+                  )}
+                >
+                  <MessageSquare className="h-5 w-5 shrink-0" />
+                  {t("nav.conversations")}
+                </Link>
+                {sidebarTeams.length > 0 ? (
+                  <div className="mb-1 mt-0.5 space-y-0.5">
+                    <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
+                      {t("nav.teamInboxes")}
+                    </p>
+                    {sidebarTeams.map((team) => (
+                      <Link
+                        key={team.id}
+                        to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
+                        className={teamNavItemClass(conversationTeamId === team.id)}
+                        title={team.name}
+                      >
+                        <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
+                        <span className="min-w-0 truncate">{team.name}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </Fragment>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                className={({ isActive }) =>
+                  clsx(
+                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                  )
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                {t(item.labelKey)}
+              </NavLink>
+            ),
+          )}
           <NavLink
             to="/my-attendance"
             className={({ isActive }) =>

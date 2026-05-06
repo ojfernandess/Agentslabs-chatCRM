@@ -19,6 +19,7 @@ import {
   staggerItem,
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { filterTagsForDisplay } from "@/lib/tagDisplay";
 
 const UNASSIGNED_KEY = "__unassigned__";
 const DND_MIME = "application/x-openconduit-contact-id";
@@ -265,7 +266,9 @@ export function CrmKanbanPage() {
                     {cards.length === 0 ? (
                       <p className="py-8 text-center text-xs text-gray-400">{t("crm.dropHere")}</p>
                     ) : (
-                      cards.map((c) => (
+                      cards.map((c) => {
+                        const visibleTags = filterTagsForDisplay(c.tags);
+                        return (
                         <div
                           key={c.id}
                           draggable
@@ -295,9 +298,9 @@ export function CrmKanbanPage() {
                                   {c.assignedTo.name}
                                 </span>
                               )}
-                              {c.tags.length > 0 && (
+                              {visibleTags.length > 0 && (
                                 <div className="mt-2 flex flex-wrap gap-1">
-                                  {c.tags.slice(0, 3).map(({ tag }) => (
+                                  {visibleTags.slice(0, 3).map(({ tag }) => (
                                     <span
                                       key={tag.id}
                                       className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
@@ -306,9 +309,9 @@ export function CrmKanbanPage() {
                                       {tag.name}
                                     </span>
                                   ))}
-                                  {c.tags.length > 3 && (
+                                  {visibleTags.length > 3 && (
                                     <span className="text-[10px] text-gray-400">
-                                      +{c.tags.length - 3}
+                                      +{visibleTags.length - 3}
                                     </span>
                                   )}
                                 </div>
@@ -316,7 +319,8 @@ export function CrmKanbanPage() {
                             </div>
                           </div>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </motion.div>

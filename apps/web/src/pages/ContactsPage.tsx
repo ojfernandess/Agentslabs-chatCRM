@@ -14,6 +14,7 @@ import {
   dropdownVariants,
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { filterTagsForDisplay } from "@/lib/tagDisplay";
 
 interface TagItem {
   id: string;
@@ -317,7 +318,7 @@ export function ContactsPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1">
                           <AnimatePresence mode="popLayout">
-                            {contact.tags.map(({ tag }) => (
+                            {filterTagsForDisplay(contact.tags).map(({ tag }) => (
                               <motion.span
                                 key={tag.id}
                                 layout
