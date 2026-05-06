@@ -3,6 +3,10 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import {
+  ensurePipelineStageForLeadType,
+  syncPipelineStageFromLeadType,
+} from "../lib/pipelineLeadTypeSync.js";
 
 const bodySchema = z.object({
   name: z.string().min(1).max(120),
@@ -70,6 +74,7 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
         order,
       },
     });
+    await syncPipelineStageFromLeadType(prisma, organizationId, row.id);
     return row;
   });
 

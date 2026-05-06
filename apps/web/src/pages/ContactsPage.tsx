@@ -26,6 +26,7 @@ interface StageItem {
   name: string;
   color: string;
   order: number;
+  leadTypeId?: string | null;
 }
 
 interface Contact {
@@ -74,13 +75,13 @@ export function ContactsPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [, tags, stages] = await Promise.all([
+        const [, tags, leadTypes] = await Promise.all([
           loadContacts("", true),
           api.get<TagItem[]>("/tags"),
-          api.get<StageItem[]>("/pipeline/stages"),
+          api.get<StageItem[]>("/lead-types"),
         ]);
         setAllTags(tags);
-        setAllStages(stages);
+        setAllStages(leadTypes.sort((a, b) => a.order - b.order));
       } catch {
         // failed
       }
@@ -132,9 +133,9 @@ export function ContactsPage() {
     }
   };
 
-  const setStage = async (contactId: string, stageId: string | null) => {
+  const setStage = async (contactId: string, leadTypeId: string | null) => {
     try {
-      const updated = await api.put<Contact>(`/contacts/${contactId}/stage`, { stageId });
+      const updated = await api.put<Contact>(`/contacts/${contactId}/stage`, { leadTypeId });
       setContacts((prev) =>
         prev.map((c) =>
           c.id === contactId ? { ...c, pipelineStage: updated.pipelineStage } : c,
@@ -437,13 +438,14 @@ export function ContactsPage() {
                                   >
                                     No stage
                                   </button>
-                                  {allStages.map((stage) => (
+                                      {allStages.map((stage) => (
                                     <button
                                       key={stage.id}
                                       onClick={() => setStage(contact.id, stage.id)}
                                       className={clsx(
                                         "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-50",
-                                        contact.pipelineStage?.id === stage.id && "bg-gray-50 font-medium",
+                                        (contact.pipelineStage?.leadTypeId ?? contact.pipelineStage?.id) ===
+                                          stage.id && "bg-gray-50 font-medium",
                                       )}
                                     >
                                       <span

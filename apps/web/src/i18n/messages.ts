@@ -258,7 +258,7 @@ export const messages = {
       subtitle: "Provedor WhatsApp, equipe e tipos de lead",
       leadTypesTitle: "Tipos de lead",
       leadTypesHint:
-        "Usados ao finalizar uma conversa (obrigatório). Ex.: MQL, SQL, oportunidade, ganho/perdido.",
+        "Definem as colunas do funil CRM (Kanban) e são obrigatórios ao finalizar uma conversa. Ex.: MQL, SQL, oportunidade.",
       leadTypeName: "Nome",
       leadTypeColor: "Cor",
       addLeadType: "Adicionar tipo",
@@ -602,7 +602,7 @@ export const messages = {
       subtitle: "WhatsApp provider, team, and lead types",
       leadTypesTitle: "Lead types",
       leadTypesHint:
-        "Required when resolving a conversation. E.g. MQL, SQL, opportunity, won/lost.",
+        "These are your CRM Kanban columns and are required when resolving a conversation. E.g. MQL, SQL, opportunity.",
       leadTypeName: "Name",
       leadTypeColor: "Color",
       addLeadType: "Add type",

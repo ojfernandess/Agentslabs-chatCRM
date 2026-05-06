@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -333,10 +334,23 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const schema = z.object({ stageId: z.string().uuid().nullable() });
+    const schema = z.object({
+      stageId: z.string().uuid().nullable().optional(),
+      leadTypeId: z.string().uuid().nullable().optional(),
+    });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const hasLead = parsed.data.leadTypeId !== undefined;
+    const hasStage = parsed.data.stageId !== undefined;
+    if (hasLead === hasStage) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Provide exactly one of leadTypeId or stageId (legacy pipeline stage UUID).",
+        statusCode: 400,
+      });
     }
 
     const current = await prisma.contact.findFirst({
@@ -346,19 +360,34 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
 
-    if (parsed.data.stageId) {
+    let nextPipelineStageId: string | null = null;
+    if (hasLead) {
+      if (parsed.data.leadTypeId === null) {
+        nextPipelineStageId = null;
+      } else {
+        const ltId = parsed.data.leadTypeId;
+        if (ltId === undefined) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid leadTypeId", statusCode: 400 });
+        }
+        const stage = await ensurePipelineStageForLeadType(prisma, organizationId, ltId);
+        nextPipelineStageId = stage.id;
+      }
+    } else if (parsed.data.stageId === null) {
+      nextPipelineStageId = null;
+    } else {
       const stage = await prisma.pipelineStage.findFirst({
-        where: { id: parsed.data.stageId, pipeline: { organizationId, isDefault: true } },
+        where: { id: parsed.data.stageId!, pipeline: { organizationId, isDefault: true } },
       });
       if (!stage) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid pipeline stage", statusCode: 400 });
       }
+      nextPipelineStageId = stage.id;
     }
 
     try {
       const contact = await prisma.contact.update({
         where: { id: request.params.id },
-        data: { pipelineStageId: parsed.data.stageId },
+        data: { pipelineStageId: nextPipelineStageId },
         include: { pipelineStage: true },
       });
       return contact;

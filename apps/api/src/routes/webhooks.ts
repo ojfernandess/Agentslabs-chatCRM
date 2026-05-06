@@ -70,7 +70,7 @@ async function handleWhatsAppPost(
     }
   }
 
-  const { messages, statusUpdates } = provider.parseWebhook(
+  const { messages, statusUpdates, contactSync } = provider.parseWebhook(
     request.headers as Record<string, string | undefined>,
     body,
   );
@@ -78,6 +78,7 @@ async function handleWhatsAppPost(
   if (
     messages.length === 0 &&
     statusUpdates.length === 0 &&
+    (!contactSync || contactSync.length === 0) &&
     body &&
     typeof body === "object" &&
     !Array.isArray(body)
@@ -91,8 +92,42 @@ async function handleWhatsAppPost(
           url: request.url,
           organizationId,
         },
-        "Evolution webhook: no messages or status updates parsed — enable MESSAGES_UPSERT on the instance webhook URL",
+        "Evolution webhook: nothing parsed — enable MESSAGES_UPSERT, MESSAGES_UPDATE and CONTACTS_* on the instance webhook, and use POST base URL /api/v1/whatsapp/:orgId",
       );
+    }
+  }
+
+  for (const patch of contactSync ?? []) {
+    try {
+      const phone = normalizePhoneE164(patch.phone);
+      if (!phone) continue;
+      const existing = await prisma.contact.findFirst({
+        where: { organizationId, phone },
+      });
+      if (!existing) continue;
+      const data: {
+        profilePictureUrl?: string | null;
+        name?: string;
+      } = {};
+      if (patch.profilePictureUrl !== undefined && patch.profilePictureUrl !== null) {
+        data.profilePictureUrl = patch.profilePictureUrl;
+      } else if (patch.profilePictureUrl === null) {
+        data.profilePictureUrl = null;
+      }
+      const dn = patch.waDisplayName?.trim();
+      if (dn) {
+        const nameDigits = existing.name.replace(/\D/g, "");
+        const phoneDigits = phone.replace(/\D/g, "");
+        const nameLooksLikePhone = nameDigits.length >= 7 && nameDigits === phoneDigits;
+        if (nameLooksLikePhone || existing.name === phone || existing.name === "Desconhecido") {
+          data.name = dn;
+        }
+      }
+      if (Object.keys(data).length > 0) {
+        await prisma.contact.update({ where: { id: existing.id }, data });
+      }
+    } catch (err) {
+      app.log.error(err, "Error applying contact sync from webhook");
     }
   }
 
@@ -122,6 +157,7 @@ async function handleWhatsAppPost(
       let contact = await prisma.contact.findFirst({
         where: { organizationId, phone },
       });
+      let contactJustCreated = false;
       if (!contact) {
         contact = await prisma.contact.create({
           data: {
@@ -131,6 +167,7 @@ async function handleWhatsAppPost(
             waId: msg.from,
           },
         });
+        contactJustCreated = true;
 
         const unknownTag = await prisma.tag.findFirst({
           where: { organizationId, name: "Desconhecido" },
@@ -140,6 +177,30 @@ async function handleWhatsAppPost(
             data: { contactId: contact.id, tagId: unknownTag.id },
           });
         }
+
+        if (provider.fetchContactProfilePictureUrl) {
+          const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
+          if (pic) {
+            contact = await prisma.contact.update({
+              where: { id: contact.id },
+              data: { profilePictureUrl: pic },
+            });
+          }
+        }
+      }
+
+      if (
+        !contactJustCreated &&
+        provider.fetchContactProfilePictureUrl &&
+        !contact.profilePictureUrl
+      ) {
+        const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
+        if (pic) {
+          contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: { profilePictureUrl: pic },
+          });
+        }
       }
 
       if (channelSettings.autoOptInOnFirstMessage && !contact.optedIn) {
@@ -147,6 +208,19 @@ async function handleWhatsAppPost(
           where: { id: contact.id },
           data: { optedIn: true, optedInAt: new Date() },
         });
+      }
+
+      const push = msg.pushName?.trim();
+      if (push) {
+        const nameDigits = contact.name.replace(/\D/g, "");
+        const phoneDigits = phone.replace(/\D/g, "");
+        const nameLooksLikePhone = nameDigits.length >= 7 && nameDigits === phoneDigits;
+        if (nameLooksLikePhone || contact.name === phone || contact.name === "Desconhecido") {
+          contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: { name: push },
+          });
+        }
       }
 
       let conversation = await prisma.conversation.findFirst({

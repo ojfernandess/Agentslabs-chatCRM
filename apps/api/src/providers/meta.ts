@@ -4,6 +4,7 @@ import {
   SendMessageParams,
   IncomingMessage,
   StatusUpdate,
+  WebhookParseResult,
 } from "./types.js";
 
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
@@ -71,7 +72,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   parseWebhook(
     _headers: Record<string, string | undefined>,
     body: unknown,
-  ): { messages: IncomingMessage[]; statusUpdates: StatusUpdate[] } {
+  ): WebhookParseResult {
     const messages: IncomingMessage[] = [];
     const statusUpdates: StatusUpdate[] = [];
 

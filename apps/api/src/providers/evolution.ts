@@ -4,6 +4,7 @@ import {
   SendMessageParams,
   IncomingMessage,
   StatusUpdate,
+  ContactSyncPatch,
 } from "./types.js";
 
 function normalizeBaseUrl(url: string): string {
@@ -104,6 +105,8 @@ function parseUpsertToIncoming(
   if (!phone) return null;
   const waMessageId = String(key.id ?? "");
   if (!waMessageId) return null;
+  const pushName =
+    typeof key.pushName === "string" && key.pushName.trim() ? key.pushName.trim() : undefined;
 
   const message = unwrapInnerMessage(asRecord(rec.message) ?? {});
   let body: string | undefined;
@@ -159,17 +162,30 @@ function parseUpsertToIncoming(
     mediaUrl,
     mediaType,
     timestamp: parseTimestamp(rec.messageTimestamp),
+    pushName,
   };
 }
 
 function mapEvolutionReceiptStatus(
   s: string,
 ): StatusUpdate["status"] | null {
-  const v = s.toUpperCase();
-  if (v === "READ") return "READ";
-  if (v === "DELIVERY_ACK" || v === "DELIVERED") return "DELIVERED";
-  if (v === "SERVER_ACK" || v === "SENT") return "SENT";
-  if (v === "ERROR" || v === "FAILED" || v === "DELETED") return "FAILED";
+  const v = s.trim();
+  if (/^\d+$/.test(v)) {
+    const n = parseInt(v, 10);
+    if (n === 0) return "FAILED";
+    if (n === 1) return "SENT";
+    if (n === 2) return "SENT";
+    if (n === 3) return "DELIVERED";
+    if (n === 4) return "READ";
+    if (n === 5) return "READ";
+    return null;
+  }
+  const u = v.toUpperCase();
+  if (u === "READ") return "READ";
+  if (u === "DELIVERY_ACK" || u === "DELIVERED") return "DELIVERED";
+  if (u === "SERVER_ACK" || u === "SENT") return "SENT";
+  if (u === "ERROR" || u === "FAILED" || u === "DELETED") return "FAILED";
+  if (u === "PENDING") return "SENT";
   return null;
 }
 
@@ -188,19 +204,94 @@ function parseUpdatesToStatus(raw: unknown): StatusUpdate[] {
     const waMessageId = key ? String(key.id ?? "") : "";
     if (!waMessageId) continue;
     const update = asRecord(rec.update);
-    if (!update) continue;
-    const statusRaw =
-      typeof update.status === "string"
-        ? update.status
-        : typeof update.status === "number"
-          ? String(update.status)
-          : "";
+    let statusRaw = "";
+    if (update) {
+      if (typeof update.status === "string") statusRaw = update.status;
+      else if (typeof update.status === "number") statusRaw = String(update.status);
+    }
+    if (!statusRaw && typeof rec.status === "number") statusRaw = String(rec.status);
+    if (!statusRaw && typeof rec.status === "string") statusRaw = rec.status;
     const status = mapEvolutionReceiptStatus(statusRaw);
     if (!status) continue;
     out.push({
       waMessageId,
       status,
       timestamp: new Date(),
+    });
+  }
+  return out;
+}
+
+function extractEvolutionSendMessageId(raw: unknown): string | undefined {
+  const d = asRecord(raw);
+  if (!d) return undefined;
+  const fromKey = (o: unknown): string | undefined => {
+    const k = asRecord(o);
+    const id = k?.id;
+    return typeof id === "string" && id.length > 0 ? id : undefined;
+  };
+  const a = fromKey(d.key);
+  if (a) return a;
+  const data = asRecord(d.data);
+  if (data) {
+    const b = fromKey(data.key);
+    if (b) return b;
+    const message = asRecord(data.message);
+    if (message) {
+      const c = fromKey(message.key);
+      if (c) return c;
+    }
+    const d2 = fromKey(data);
+    if (d2) return d2;
+  }
+  return undefined;
+}
+
+function collectContactRecords(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) {
+    return raw.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
+  }
+  const one = asRecord(raw);
+  return one ? [one] : [];
+}
+
+function pickProfilePictureUrl(r: Record<string, unknown>): string | undefined {
+  const u =
+    (typeof r.profilePictureUrl === "string" && r.profilePictureUrl) ||
+    (typeof r.profilePicUrl === "string" && r.profilePicUrl) ||
+    (typeof r.imgUrl === "string" && r.imgUrl) ||
+    undefined;
+  if (u) return u;
+  const img = asRecord(r.imgUrl);
+  if (img && typeof img.url === "string") return img.url;
+  return undefined;
+}
+
+function parseEvolutionContactSync(body: unknown): ContactSyncPatch[] {
+  const env = asRecord(body);
+  if (!env) return [];
+  const event = normalizeEvolutionEvent(typeof env.event === "string" ? env.event : undefined);
+  if (event !== "contacts.update" && event !== "contacts.upsert" && event !== "contacts.set") {
+    return [];
+  }
+  const out: ContactSyncPatch[] = [];
+  for (const r of collectContactRecords(env.data)) {
+    const jidRaw =
+      (typeof r.id === "string" && r.id) ||
+      (typeof r.remoteJid === "string" && r.remoteJid) ||
+      "";
+    const phone = jidToE164(jidRaw);
+    if (!phone) continue;
+    const pic = pickProfilePictureUrl(r);
+    const waDisplayName =
+      (typeof r.notify === "string" && r.notify.trim()) ||
+      (typeof r.name === "string" && r.name.trim()) ||
+      (typeof r.verifiedName === "string" && r.verifiedName.trim()) ||
+      undefined;
+    out.push({
+      phone,
+      profilePictureUrl: pic ?? null,
+      waDisplayName: waDisplayName ?? null,
     });
   }
   return out;
@@ -245,8 +336,8 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
         const err = await response.text();
         throw new Error(`Evolution API error: ${response.status} ${err}`);
       }
-      const data = (await response.json()) as { key?: { id?: string } };
-      const id = data.key?.id;
+      const data = (await response.json()) as unknown;
+      const id = extractEvolutionSendMessageId(data);
       if (!id) throw new Error("Evolution API: missing message id in response");
       return id;
     }
@@ -279,8 +370,8 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
       const err = await response.text();
       throw new Error(`Evolution API error: ${response.status} ${err}`);
     }
-    const data = (await response.json()) as { key?: { id?: string } };
-    const id = data.key?.id;
+    const data = (await response.json()) as unknown;
+    const id = extractEvolutionSendMessageId(data);
     if (!id) throw new Error("Evolution API: missing message id in response");
     return id;
   }
@@ -288,7 +379,7 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
   parseWebhook(
     _headers: Record<string, string | undefined>,
     body: unknown,
-  ): { messages: IncomingMessage[]; statusUpdates: StatusUpdate[] } {
+  ) {
     const env = asRecord(body);
     let event = normalizeEvolutionEvent(
       typeof env?.event === "string" ? env.event : undefined,
@@ -309,14 +400,20 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
         const msg = parseUpsertToIncoming(rec, senderRaw);
         if (msg) messages.push(msg);
       }
-      return { messages, statusUpdates: [] };
+      return { messages, statusUpdates: [], contactSync: parseEvolutionContactSync(body) };
     }
 
     if (event === "messages.update") {
       return {
         messages: [],
         statusUpdates: parseUpdatesToStatus(env?.data),
+        contactSync: parseEvolutionContactSync(body),
       };
+    }
+
+    const contactSync = parseEvolutionContactSync(body);
+    if (contactSync.length > 0) {
+      return { messages: [], statusUpdates: [], contactSync };
     }
 
     return { messages: [], statusUpdates: [] };
@@ -350,6 +447,30 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
     };
     const state = (data.instance?.state ?? data.state)?.toLowerCase();
     return state === "open";
+  }
+
+  async fetchContactProfilePictureUrl(toE164: string): Promise<string | undefined> {
+    const number = digitsOnly(toE164);
+    if (!number) return undefined;
+    try {
+      const url = `${this.baseUrl}/chat/fetchProfilePictureUrl/${this.instanceName}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ number }),
+      });
+      if (!response.ok) return undefined;
+      const raw = (await response.json()) as unknown;
+      const d = asRecord(raw);
+      if (!d) return undefined;
+      const pic =
+        (typeof d.profilePictureUrl === "string" && d.profilePictureUrl) ||
+        (typeof d.url === "string" && d.url) ||
+        (typeof d.profilePicUrl === "string" && d.profilePicUrl);
+      return pic || undefined;
+    } catch {
+      return undefined;
+    }
   }
 }
 

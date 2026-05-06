@@ -7,6 +7,9 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 import type { Prisma } from "@prisma/client";
+import { appendTimelineEvent } from "../lib/timeline.js";
+import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
+import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -137,6 +140,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       id: true,
       name: true,
       phone: true,
+      profilePictureUrl: true,
       createdAt: true,
       assignedTo: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true } },
@@ -207,6 +211,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       id: true,
       name: true,
       phone: true,
+      profilePictureUrl: true,
       createdAt: true,
       assignedTo: { select: { id: true, name: true, email: true } },
       createdBy: { select: { id: true, name: true, email: true } },
@@ -360,6 +365,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.teamId = parsed.data.teamId;
     }
 
+    if (
+      nextStatus === "RESOLVED" &&
+      existing.status !== "RESOLVED" &&
+      existing.assignedToId == null &&
+      parsed.data.assignedToId === undefined
+    ) {
+      data.assignedToId = request.user.id;
+    }
+
     if (parsed.data.status === "OPEN" && existing.status === "RESOLVED") {
       data.closureReason = null;
       data.leadTypeId = null;
@@ -379,22 +393,93 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const prevTeamId = existing.teamId;
 
     try {
-      const conversation = await prisma.conversation.update({
-        where: { id: request.params.id },
-        data,
-        include: {
-          contact: {
-            include: {
-              assignedTo: { select: { id: true, name: true } },
-              createdBy: { select: { id: true, name: true } },
+      const { conversation, timelineDeal } = await prisma.$transaction(async (tx) => {
+        const conv = await tx.conversation.update({
+          where: { id: request.params.id },
+          data,
+          include: {
+            contact: {
+              include: {
+                assignedTo: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, name: true } },
+              },
             },
+            assignedTo: { select: { id: true, name: true } },
+            team: { select: { id: true, name: true } },
+            leadType: { select: { id: true, name: true, color: true } },
+            messages: { orderBy: { createdAt: "asc" } },
           },
-          assignedTo: { select: { id: true, name: true } },
-          team: { select: { id: true, name: true } },
-          leadType: { select: { id: true, name: true, color: true } },
-          messages: { orderBy: { createdAt: "asc" } },
-        },
+        });
+
+        let dealMeta: { id: string; name: string; primaryContactId: string | null } | null = null;
+
+        if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
+          const ltid = data.leadTypeId;
+          let stageForDeal: { id: string; probabilityPct: number } | null = null;
+          if (ltid) {
+            const stage = await ensurePipelineStageForLeadType(tx, organizationId, ltid);
+            stageForDeal = { id: stage.id, probabilityPct: stage.probabilityPct };
+            await tx.contact.update({
+              where: { id: existing.contactId },
+              data: { pipelineStageId: stage.id },
+            });
+          }
+          const val = data.closureValue;
+          if (val != null && val > 0 && ltid && stageForDeal) {
+            const pipeline = await getOrCreateDefaultPipeline(tx, organizationId);
+            const contactRow = await tx.contact.findFirst({
+              where: { id: existing.contactId, organizationId },
+              select: { name: true },
+            });
+            const deal = await tx.deal.create({
+              data: {
+                organizationId,
+                name: `Negócio — ${contactRow?.name ?? "Contacto"}`,
+                pipelineId: pipeline.id,
+                stageId: stageForDeal.id,
+                primaryContactId: existing.contactId,
+                ownerId: request.user.id,
+                amountCents: Math.round(val * 100),
+                currency: "EUR",
+                status: "OPEN",
+                probabilityPct: stageForDeal.probabilityPct,
+              },
+            });
+            dealMeta = {
+              id: deal.id,
+              name: deal.name,
+              primaryContactId: deal.primaryContactId,
+            };
+          }
+        }
+
+        return { conversation: conv, timelineDeal: dealMeta };
       });
+
+      if (timelineDeal) {
+        await appendTimelineEvent({
+          organizationId,
+          subjectType: "DEAL",
+          subjectId: timelineDeal.id,
+          eventType: "deal.created",
+          payload: {
+            dealId: timelineDeal.id,
+            name: timelineDeal.name,
+            source: "conversation_closure",
+          },
+          actorUserId: request.user.id,
+        });
+        if (timelineDeal.primaryContactId) {
+          await appendTimelineEvent({
+            organizationId,
+            subjectType: "CONTACT",
+            subjectId: timelineDeal.primaryContactId,
+            eventType: "deal.linked",
+            payload: { dealId: timelineDeal.id, name: timelineDeal.name },
+            actorUserId: request.user.id,
+          });
+        }
+      }
 
       if (parsed.data.teamId !== undefined && parsed.data.teamId !== prevTeamId) {
         broadcastToOrganization(organizationId, {

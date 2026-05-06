@@ -17,6 +17,7 @@ interface StageItem {
   name: string;
   color: string;
   order: number;
+  leadTypeId?: string | null;
   probabilityPct?: number;
 }
 
@@ -72,7 +73,7 @@ export function ContactDetailPage() {
         const [data, tags, stages, timelineRes] = await Promise.all([
           api.get<ContactDetail>(`/contacts/${id}`),
           api.get<TagItem[]>("/tags"),
-          api.get<StageItem[]>("/pipeline/stages"),
+          api.get<StageItem[]>("/lead-types"),
           api.get<{ data: TimelineEventApi[] }>(
             `/crm/timeline?subjectType=CONTACT&subjectId=${encodeURIComponent(id)}`,
           ).catch(() => ({ data: [] as TimelineEventApi[] })),
@@ -81,7 +82,7 @@ export function ContactDetailPage() {
         setEditName(data.name);
         setEditNotes(data.notes ?? "");
         setAllTags(tags);
-        setAllStages(stages);
+        setAllStages(stages.sort((a, b) => a.order - b.order));
         setTimeline(timelineRes.data ?? []);
       } catch {
         // failed
@@ -137,9 +138,9 @@ export function ContactDetailPage() {
     }
   };
 
-  const setStage = async (stageId: string | null) => {
+  const setStage = async (leadTypeId: string | null) => {
     try {
-      const updated = await api.put<ContactDetail>(`/contacts/${id}/stage`, { stageId });
+      const updated = await api.put<ContactDetail>(`/contacts/${id}/stage`, { leadTypeId });
       setContact({ ...contact!, pipelineStage: updated.pipelineStage });
       setShowStagePicker(false);
     } catch {
@@ -398,7 +399,7 @@ export function ContactDetailPage() {
                       onClick={() => setStage(stage.id)}
                       className={clsx(
                         "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
-                        contact.pipelineStage?.id === stage.id
+                        (contact.pipelineStage?.leadTypeId ?? contact.pipelineStage?.id) === stage.id
                           ? "bg-gray-50 font-medium"
                           : "",
                       )}

@@ -16,6 +16,7 @@ interface Conversation {
     id: string;
     name: string;
     phone: string;
+    profilePictureUrl?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
   };
@@ -188,8 +189,16 @@ export function ConversationsPage() {
                     to={`/conversations/${conv.id}`}
                     className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-                      {conv.contact.name.charAt(0).toUpperCase()}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                      {conv.contact.profilePictureUrl ? (
+                        <img
+                          src={conv.contact.profilePictureUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        conv.contact.name.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">

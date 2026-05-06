@@ -16,6 +16,8 @@ export interface IncomingMessage {
   mediaUrl?: string;
   mediaType?: string;
   timestamp: Date;
+  /** Nome push do WhatsApp (Baileys / Evolution), p.ex. em messages.upsert. */
+  pushName?: string;
 }
 
 export interface StatusUpdate {
@@ -25,6 +27,19 @@ export interface StatusUpdate {
   errorMessage?: string;
 }
 
+/** Evolution (Baileys) CONTACTS_* webhooks — outros provedores podem devolver vazio. */
+export interface ContactSyncPatch {
+  phone: string;
+  profilePictureUrl?: string | null;
+  waDisplayName?: string | null;
+}
+
+export type WebhookParseResult = {
+  messages: IncomingMessage[];
+  statusUpdates: StatusUpdate[];
+  contactSync?: ContactSyncPatch[];
+};
+
 export interface WhatsAppProviderInterface {
   /** Send a message and return the provider message ID */
   sendMessage(params: SendMessageParams): Promise<string>;
@@ -33,7 +48,7 @@ export interface WhatsAppProviderInterface {
   parseWebhook(
     headers: Record<string, string | undefined>,
     body: unknown,
-  ): { messages: IncomingMessage[]; statusUpdates: StatusUpdate[] };
+  ): WebhookParseResult;
 
   /** Validate webhook signature (HMAC) */
   validateWebhookSignature(
@@ -47,4 +62,6 @@ export interface WhatsAppProviderInterface {
 
   /** Check provider connectivity */
   healthCheck(): Promise<boolean>;
+  /** Opcional — só Evolution API: URL da foto de perfil WhatsApp. */
+  fetchContactProfilePictureUrl?(phone: string): Promise<string | undefined>;
 }

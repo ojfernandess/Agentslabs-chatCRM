@@ -212,6 +212,8 @@ model Contact {
   name      String
   email     String?
   notes     String?   @db.Text
+  /// URL da foto de perfil WhatsApp (Evolution API / webhooks CONTACTS_*).
+  profilePictureUrl String? @map("profile_picture_url") @db.VarChar(2048)
   waId      String?   @map("wa_id")
   optedIn   Boolean   @default(false) @map("opted_in")
   optedInAt DateTime? @map("opted_in_at")
@@ -301,11 +303,16 @@ model PipelineStage {
   pipelineId String   @map("pipeline_id") @db.Uuid
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 
+  /// When set, this stage is the CRM kanban column for that lead type (same as "Tipos de lead").
+  leadTypeId String?   @map("lead_type_id") @db.Uuid
+  leadType   LeadType? @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
+
   contacts Contact[]
   deals    Deal[]
 
   @@unique([pipelineId, name])
   @@index([pipelineId])
+  @@index([leadTypeId])
   @@map("pipeline_stages")
 }
 
@@ -435,7 +442,8 @@ model LeadType {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  conversations Conversation[]
+  conversations  Conversation[]
+  pipelineStages PipelineStage[]
 
   @@unique([organizationId, name])
   @@index([organizationId])

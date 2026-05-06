@@ -7,21 +7,16 @@ import {
   LayoutGrid,
   Search,
   Phone,
-  Plus,
-  Pencil,
-  Trash2,
   GripVertical,
   User,
+  Settings,
 } from "lucide-react";
 import clsx from "clsx";
 import {
   PageTransition,
   motion,
-  AnimatePresence,
   staggerContainer,
   staggerItem,
-  backdropVariants,
-  modalVariants,
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -41,7 +36,7 @@ interface BoardContact {
   phone: string;
   updatedAt: string;
   tags: { tag: { id: string; name: string; color: string } }[];
-  pipelineStage: StageItem | null;
+  pipelineStage: (StageItem & { leadTypeId?: string | null }) | null;
   assignedTo: { id: string; name: string } | null;
 }
 
@@ -54,7 +49,8 @@ interface ColumnDef {
   key: string;
   name: string;
   color: string;
-  stageId: string | null;
+  /** Lead type id (cols come from Tipos de lead). */
+  leadTypeId: string | null;
 }
 
 export function CrmKanbanPage() {
@@ -68,19 +64,6 @@ export function CrmKanbanPage() {
   const [search, setSearch] = useState("");
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
-
-  // Admin: stages
-  const [showAddStage, setShowAddStage] = useState(false);
-  const [newStageName, setNewStageName] = useState("");
-  const [newStageColor, setNewStageColor] = useState("#6366f1");
-  const [stageFormError, setStageFormError] = useState("");
-
-  const [editingStage, setEditingStage] = useState<StageItem | null>(null);
-  const [editStageName, setEditStageName] = useState("");
-  const [editStageColor, setEditStageColor] = useState("#6366f1");
-  const [editStageOrder, setEditStageOrder] = useState(0);
-
-  const [deletingStage, setDeletingStage] = useState<StageItem | null>(null);
 
   const loadBoard = useCallback(async () => {
     setLoadError("");
@@ -113,7 +96,7 @@ export function CrmKanbanPage() {
       key: UNASSIGNED_KEY,
       name: t("crm.noStage"),
       color: "#94a3b8",
-      stageId: null,
+      leadTypeId: null,
     };
     if (!board) return [unassigned];
     const stageCols = [...board.stages]
@@ -122,7 +105,7 @@ export function CrmKanbanPage() {
         key: s.id,
         name: s.name,
         color: s.color,
-        stageId: s.id,
+        leadTypeId: s.id,
       }));
     return [unassigned, ...stageCols];
   }, [board, t]);
@@ -141,67 +124,12 @@ export function CrmKanbanPage() {
   const contactsByColumn = useMemo(() => {
     const map = new Map<string, BoardContact[]>();
     for (const c of filteredContacts) {
-      const key = c.pipelineStage?.id ?? UNASSIGNED_KEY;
+      const key = c.pipelineStage?.leadTypeId ?? UNASSIGNED_KEY;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(c);
     }
     return map;
   }, [filteredContacts]);
-
-  const openEditStage = (s: StageItem) => {
-    setEditingStage(s);
-    setEditStageName(s.name);
-    setEditStageColor(s.color);
-    setEditStageOrder(s.order);
-  };
-
-  const handleAddStage = async () => {
-    setStageFormError("");
-    if (!board || !newStageName.trim()) return;
-    const nextOrder =
-      board.stages.length === 0
-        ? 0
-        : Math.max(...board.stages.map((s) => s.order)) + 1;
-    try {
-      await api.post<StageItem>("/pipeline/stages", {
-        name: newStageName.trim(),
-        order: nextOrder,
-        color: newStageColor,
-      });
-      setNewStageName("");
-      setNewStageColor("#6366f1");
-      setShowAddStage(false);
-      await loadBoard();
-    } catch (err) {
-      setStageFormError(err instanceof Error ? err.message : "Failed to create stage");
-    }
-  };
-
-  const handleSaveStage = async () => {
-    if (!editingStage) return;
-    try {
-      await api.put(`/pipeline/stages/${editingStage.id}`, {
-        name: editStageName.trim(),
-        order: editStageOrder,
-        color: editStageColor,
-      });
-      setEditingStage(null);
-      await loadBoard();
-    } catch (err) {
-      setStageFormError(err instanceof Error ? err.message : "Failed to update");
-    }
-  };
-
-  const handleDeleteStage = async () => {
-    if (!deletingStage) return;
-    try {
-      await api.delete(`/pipeline/stages/${deletingStage.id}`);
-      setDeletingStage(null);
-      await loadBoard();
-    } catch {
-      // failed
-    }
-  };
 
   const onCardDragStart = (e: DragEvent, contactId: string) => {
     e.dataTransfer.setData(DND_MIME, contactId);
@@ -215,7 +143,7 @@ export function CrmKanbanPage() {
     setDragOverColumn(columnKey);
   };
 
-  const onColumnDrop = async (e: DragEvent, stageId: string | null) => {
+  const onColumnDrop = async (e: DragEvent, leadTypeId: string | null) => {
     e.preventDefault();
     setDragOverColumn(null);
     const contactId =
@@ -223,14 +151,14 @@ export function CrmKanbanPage() {
     if (!contactId || !board) return;
 
     const contact = board.contacts.find((c) => c.id === contactId);
-    const currentStageId = contact?.pipelineStage?.id ?? null;
-    if (currentStageId === stageId) return;
+    const currentLeadTypeId = contact?.pipelineStage?.leadTypeId ?? null;
+    if (currentLeadTypeId === leadTypeId) return;
 
     setMovingId(contactId);
     try {
-      const updated = await api.put<{ pipelineStage: StageItem | null }>(
+      const updated = await api.put<{ pipelineStage: BoardContact["pipelineStage"] }>(
         `/contacts/${contactId}/stage`,
-        { stageId },
+        { leadTypeId },
       );
       setBoard((prev) => {
         if (!prev) return prev;
@@ -285,18 +213,13 @@ export function CrmKanbanPage() {
                 />
               </div>
               {isAdmin && (
-                <motion.button
-                  type="button"
-                  onClick={() => {
-                    setStageFormError("");
-                    setShowAddStage(true);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-600"
-                  whileTap={{ scale: 0.97 }}
+                <Link
+                  to="/settings"
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
                 >
-                  <Plus className="h-4 w-4" />
-                  {t("crm.addColumn")}
-                </motion.button>
+                  <Settings className="h-4 w-4" />
+                  {t("settings.leadTypesTitle")}
+                </Link>
               )}
             </div>
           </div>
@@ -324,7 +247,7 @@ export function CrmKanbanPage() {
                     isOver ? "border-brand-400 bg-brand-50/30" : "border-gray-200",
                   )}
                   onDragOver={(e) => onColumnDragOver(e, col.key)}
-                  onDrop={(e) => onColumnDrop(e, col.stageId)}
+                  onDrop={(e) => onColumnDrop(e, col.leadTypeId)}
                 >
                   <div
                     className="flex items-start justify-between gap-2 border-b border-gray-100 px-3 py-3"
@@ -336,33 +259,6 @@ export function CrmKanbanPage() {
                         {cards.length} {t("crm.contacts")}
                       </p>
                     </div>
-                    {isAdmin && col.stageId && (
-                      <div className="flex shrink-0 gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const s = board?.stages.find((x) => x.id === col.stageId);
-                            if (s) openEditStage(s);
-                          }}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                          title="Edit column"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDeletingStage(
-                              board!.stages.find((s) => s.id === col.stageId) ?? null,
-                            )
-                          }
-                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                          title="Delete column"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -428,186 +324,6 @@ export function CrmKanbanPage() {
             })}
           </motion.div>
         </div>
-
-        {/* Add stage modal */}
-        <AnimatePresence>
-          {showAddStage && (
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-              variants={backdropVariants}
-              initial="hidden"
-              animate="show"
-              exit="exit"
-            >
-              <motion.div
-                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
-                variants={modalVariants}
-                initial="hidden"
-                animate="show"
-                exit="exit"
-              >
-                <h2 className="text-lg font-semibold text-gray-900">{t("crm.newColumnTitle")}</h2>
-                {stageFormError && (
-                  <p className="mt-2 text-sm text-red-600">{stageFormError}</p>
-                )}
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t("crm.stageName")}</label>
-                    <input
-                      type="text"
-                      value={newStageName}
-                      onChange={(e) => setNewStageName(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t("crm.color")}</label>
-                    <input
-                      type="color"
-                      value={newStageColor}
-                      onChange={(e) => setNewStageColor(e.target.value)}
-                      className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-gray-300"
-                    />
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddStage(false);
-                      setStageFormError("");
-                    }}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddStage}
-                    disabled={!newStageName.trim()}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                  >
-                    {t("crm.create")}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Edit stage modal */}
-        <AnimatePresence>
-          {editingStage && (
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-              variants={backdropVariants}
-              initial="hidden"
-              animate="show"
-              exit="exit"
-            >
-              <motion.div
-                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
-                variants={modalVariants}
-                initial="hidden"
-                animate="show"
-                exit="exit"
-              >
-                <h2 className="text-lg font-semibold text-gray-900">{t("crm.editColumnTitle")}</h2>
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t("crm.stageName")}</label>
-                    <input
-                      type="text"
-                      value={editStageName}
-                      onChange={(e) => setEditStageName(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t("crm.order")}</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editStageOrder}
-                      onChange={(e) => setEditStageOrder(Number(e.target.value))}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">{t("crm.color")}</label>
-                    <input
-                      type="color"
-                      value={editStageColor}
-                      onChange={(e) => setEditStageColor(e.target.value)}
-                      className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-gray-300"
-                    />
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingStage(null)}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveStage}
-                    disabled={!editStageName.trim()}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                  >
-                    {t("crm.save")}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Delete confirm */}
-        <AnimatePresence>
-          {deletingStage && (
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-              variants={backdropVariants}
-              initial="hidden"
-              animate="show"
-              exit="exit"
-            >
-              <motion.div
-                className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
-                variants={modalVariants}
-                initial="hidden"
-                animate="show"
-                exit="exit"
-              >
-                <h2 className="text-lg font-semibold text-gray-900">{t("common.delete")}</h2>
-                <p className="mt-2 text-sm text-gray-600">
-                  <span className="font-medium">&quot;{deletingStage.name}&quot;</span>
-                  {" — "}
-                  {t("crm.deleteStageConfirm")}
-                </p>
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDeletingStage(null)}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteStage}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                  >
-                    {t("common.delete")}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </PageTransition>
   );

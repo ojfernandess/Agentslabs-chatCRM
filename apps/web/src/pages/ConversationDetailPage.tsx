@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Send, ArrowLeft, Clock, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw, Mic, Square, Paperclip, ImagePlus, Lock } from "lucide-react";
+import { Send, ArrowLeft, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw, Mic, Square, Paperclip, ImagePlus, Lock, Check, CheckCheck } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
@@ -34,10 +34,12 @@ interface ConversationDetail {
   closureReason: string | null;
   closureValue?: number | null;
   leadType: LeadTypeRow | null;
+  assignedTo?: { id: string; name: string } | null;
   contact: {
     id: string;
     name: string;
     phone: string;
+    profilePictureUrl?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
   };
@@ -76,6 +78,8 @@ export function ConversationDetailPage() {
   const seenMessageIds = useRef(new Set<string>());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
+
+  const autoAssignAttemptedRef = useRef<string | null>(null);
 
   const loadConversation = async () => {
     try {
@@ -131,6 +135,29 @@ export function ConversationDetailPage() {
     const interval = setInterval(loadConversation, 5000);
     return () => clearInterval(interval);
   }, [id]);
+
+  useEffect(() => {
+    autoAssignAttemptedRef.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    if (!conversation || !user?.id || !id || conversation.id !== id) return;
+    if (autoAssignAttemptedRef.current === id) return;
+    const open = conversation.status === "OPEN" || conversation.status === "PENDING";
+    if (!open) return;
+    if (conversation.assignedTo?.id === user.id) return;
+    autoAssignAttemptedRef.current = id;
+    void (async () => {
+      try {
+        const updated = await api.put<ConversationDetail>(`/conversations/${id}`, {
+          assignedToId: user.id,
+        });
+        setConversation(updated);
+      } catch {
+        /* single attempt per visit avoids repeated failures */
+      }
+    })();
+  }, [conversation, user?.id, id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -440,8 +467,16 @@ export function ConversationDetailPage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-brand-700 font-semibold">
-          {conversation.contact.name.charAt(0).toUpperCase()}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-brand-700 font-semibold">
+          {conversation.contact.profilePictureUrl ? (
+            <img
+              src={conversation.contact.profilePictureUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            conversation.contact.name.charAt(0).toUpperCase()
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-gray-900">{conversation.contact.name}</h2>
@@ -684,10 +719,19 @@ export function ConversationDetailPage() {
                           : "text-gray-400",
                     )}
                   >
-                    <Clock className="h-2.5 w-2.5" />
-                    {format(new Date(msg.sentAt), "HH:mm")}
-                    {msg.direction === "OUTBOUND" && (
-                      <span className="ml-1 capitalize">{msg.status.toLowerCase()}</span>
+                    <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
+                    {msg.direction === "OUTBOUND" && !msg.isPrivate && (
+                      <span className="inline-flex items-center" title={msg.status}>
+                        {msg.status === "FAILED" ? (
+                          <AlertTriangle className="h-3 w-3 text-red-200" aria-hidden />
+                        ) : msg.status === "READ" ? (
+                          <CheckCheck className="h-3 w-3 text-brand-100" aria-hidden />
+                        ) : msg.status === "DELIVERED" ? (
+                          <CheckCheck className="h-3 w-3 text-brand-100/70" aria-hidden />
+                        ) : (
+                          <Check className="h-3 w-3 text-brand-100/85" aria-hidden />
+                        )}
+                      </span>
                     )}
                   </div>
                 </div>
