@@ -14,7 +14,7 @@
 
   body {
     @apply min-h-screen bg-ink-50 font-sans text-ink-900;
-    @apply dark:bg-ink-900 dark:text-ink-100;
+    @apply dark:bg-ink-950 dark:text-ink-100;
   }
 
   html.font-size-comfortable body {
@@ -41,6 +41,14 @@
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-ink-300;
   }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-ink-700;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-600;
+  }
 }
 
 /**
@@ -50,11 +58,13 @@
 @layer components {
   .ds-focus {
     @apply outline-none ring-2 ring-brand-500/35 ring-offset-2 ring-offset-white;
+    @apply dark:ring-offset-ink-950;
   }
 
   .btn-primary {
     @apply inline-flex items-center justify-center rounded px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors;
     @apply bg-brand-500 hover:bg-brand-600 active:bg-brand-700;
+    @apply dark:bg-brand-600 dark:hover:bg-brand-500 dark:active:bg-brand-700;
     @apply disabled:pointer-events-none disabled:opacity-50;
     @apply focus-visible:ds-focus;
   }
@@ -62,6 +72,7 @@
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded border border-ink-200 bg-white px-4 py-2 text-sm font-semibold text-ink-700 shadow-sm transition-colors;
     @apply hover:border-ink-300 hover:bg-ink-50 active:bg-ink-100;
+    @apply dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:border-ink-500 dark:hover:bg-ink-700 dark:active:bg-ink-800;
     @apply disabled:pointer-events-none disabled:opacity-50;
     @apply focus-visible:ds-focus;
   }
@@ -69,6 +80,7 @@
   .btn-ghost {
     @apply inline-flex items-center justify-center rounded px-3 py-2 text-sm font-medium text-ink-600 transition-colors;
     @apply hover:bg-ink-100 hover:text-ink-900 active:bg-ink-200;
+    @apply dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50 dark:active:bg-ink-700;
     @apply disabled:pointer-events-none disabled:opacity-50;
     @apply focus-visible:ds-focus;
   }
@@ -79,10 +91,14 @@
     @apply hover:border-ink-300;
     @apply focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
     @apply disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400;
+    @apply dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500;
+    @apply dark:hover:border-ink-500 dark:focus:ring-brand-400/20;
+    @apply dark:disabled:bg-ink-900/60 dark:disabled:text-ink-500;
   }
 
   .card-surface {
     @apply rounded border border-ink-200 bg-white shadow-sm;
+    @apply dark:border-ink-700 dark:bg-ink-900;
   }
 
   .nav-link-active {

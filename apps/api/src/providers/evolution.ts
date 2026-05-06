@@ -53,6 +53,28 @@ function jidToE164(remoteJid: string): string | null {
   return `+${localPart}`;
 }
 
+/** E.164 sintético +888 + 12 dígitos — um contacto por grupo (Evolution @g.us). */
+function groupJidToSyntheticE164(remoteJid: string): string | null {
+  const local = remoteJid.split("@")[0]?.trim() ?? "";
+  const d = local.replace(/\D/g, "");
+  if (!d) return null;
+  const twelve = (d + "000000000000").slice(0, 12);
+  return `+888${twelve}`;
+}
+
+/** Destino Evolution: JID de grupo ou apenas dígitos para chat individual. */
+function evolutionDestinationForApi(to: string): string {
+  const t = to.trim();
+  if (t.includes("@g.us")) {
+    const local = t.split("@")[0]?.trim() ?? "";
+    if (!local) throw new Error("Evolution API: invalid group JID");
+    return `${local}@g.us`;
+  }
+  const number = digitsOnly(t);
+  if (!number) throw new Error("Evolution API: invalid destination number");
+  return number;
+}
+
 function normalizeEvolutionEvent(event: string | undefined): string {
   if (!event) return "";
   return event.trim().toLowerCase().replace(/_/g, ".");
@@ -95,18 +117,45 @@ function parseUpsertToIncoming(
   if (!key) return null;
   if (key.fromMe === true) return null;
   const remoteJid = String(key.remoteJid ?? "");
-  let phone = jidToE164(remoteJid);
-  if (!phone && fallbackDigits) {
-    const d = digitsOnly(fallbackDigits);
-    if (d.length >= 7 && d.length <= 15) {
-      phone = `+${d}`;
-    }
-  }
-  if (!phone) return null;
+  if (!remoteJid) return null;
+
   const waMessageId = String(key.id ?? "");
   if (!waMessageId) return null;
-  const pushName =
-    typeof key.pushName === "string" && key.pushName.trim() ? key.pushName.trim() : undefined;
+
+  const participantJid =
+    typeof key.participant === "string" && key.participant.trim()
+      ? String(key.participant).trim()
+      : "";
+  const pushFromEnvelope =
+    (typeof rec.pushName === "string" && rec.pushName.trim()) ||
+    (typeof key.pushName === "string" && key.pushName.trim()) ||
+    undefined;
+
+  let phone: string | null = null;
+  let isGroup = false;
+  let groupJid: string | undefined;
+  let participantE164: string | null | undefined;
+  let participantPushName: string | undefined;
+
+  if (remoteJid.includes("@g.us")) {
+    phone = groupJidToSyntheticE164(remoteJid);
+    if (!phone) return null;
+    isGroup = true;
+    groupJid = remoteJid;
+    participantE164 = participantJid ? jidToE164(participantJid) : null;
+    participantPushName = pushFromEnvelope;
+  } else {
+    phone = jidToE164(remoteJid);
+    if (!phone && fallbackDigits) {
+      const d = digitsOnly(fallbackDigits);
+      if (d.length >= 7 && d.length <= 15) {
+        phone = `+${d}`;
+      }
+    }
+    if (!phone) return null;
+  }
+
+  const pushName = isGroup ? undefined : pushFromEnvelope;
 
   const message = unwrapInnerMessage(asRecord(rec.message) ?? {});
   let body: string | undefined;
@@ -154,7 +203,7 @@ function parseUpsertToIncoming(
     if (typeof video.caption === "string") body = video.caption;
   }
 
-  return {
+  const base = {
     from: phone,
     waMessageId,
     type,
@@ -164,6 +213,18 @@ function parseUpsertToIncoming(
     timestamp: parseTimestamp(rec.messageTimestamp),
     pushName,
   };
+
+  if (isGroup) {
+    return {
+      ...base,
+      isGroup: true,
+      groupJid,
+      participantE164: participantE164 ?? null,
+      participantPushName: participantPushName ?? null,
+    };
+  }
+
+  return base;
 }
 
 function mapEvolutionReceiptStatus(
@@ -316,10 +377,7 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
   }
 
   async sendMessage(params: SendMessageParams): Promise<string> {
-    const number = digitsOnly(params.to);
-    if (!number) {
-      throw new Error("Evolution API: invalid destination number");
-    }
+    const number = evolutionDestinationForApi(params.to);
 
     if (params.type === "TEXT" || params.type === "TEMPLATE") {
       const text = params.body ?? (params.type === "TEMPLATE" ? "" : "");
@@ -342,6 +400,30 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
       return id;
     }
 
+    if (params.type === "AUDIO") {
+      if (!params.mediaUrl) {
+        throw new Error("Evolution API: mediaUrl required for audio messages");
+      }
+      const urlAudio = `${this.baseUrl}/message/sendWhatsAppAudio/${this.instanceName}`;
+      const responseAudio = await fetch(urlAudio, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({
+          number,
+          audioMessage: { audio: params.mediaUrl },
+          options: { presence: "recording", encoding: true },
+        }),
+      });
+      if (!responseAudio.ok) {
+        const err = await responseAudio.text();
+        throw new Error(`Evolution API error (audio): ${responseAudio.status} ${err}`);
+      }
+      const dataAudio = (await responseAudio.json()) as unknown;
+      const idA = extractEvolutionSendMessageId(dataAudio);
+      if (!idA) throw new Error("Evolution API: missing message id in audio response");
+      return idA;
+    }
+
     if (!params.mediaUrl) {
       throw new Error("Evolution API: mediaUrl required for media messages");
     }
@@ -352,17 +434,26 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
       params.mediaType,
     );
 
+    const mediaMessage: Record<string, unknown> = {
+      mediaType: mediatype,
+      media: params.mediaUrl,
+    };
+    if (mimetype) mediaMessage.mimetype = mimetype;
+    if (params.type === "DOCUMENT" && fileName) {
+      mediaMessage.fileName = fileName;
+    }
+    const cap = params.body?.trim();
+    if (params.type !== "AUDIO" && cap) {
+      mediaMessage.caption = cap;
+    }
+
     const url = `${this.baseUrl}/message/sendMedia/${this.instanceName}`;
     const response = await fetch(url, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({
         number,
-        mediatype,
-        mimetype,
-        caption: params.body ?? "",
-        media: params.mediaUrl,
-        fileName,
+        mediaMessage,
       }),
     });
 

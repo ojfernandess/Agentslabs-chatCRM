@@ -18,6 +18,11 @@ export interface IncomingMessage {
   timestamp: Date;
   /** Nome push do WhatsApp (Baileys / Evolution), p.ex. em messages.upsert. */
   pushName?: string;
+  /** Mensagem de grupo — `from` é telefone E.164 sintético; usar `groupJid` para enviar respostas. */
+  isGroup?: boolean;
+  groupJid?: string;
+  participantE164?: string | null;
+  participantPushName?: string | null;
 }
 
 export interface StatusUpdate {

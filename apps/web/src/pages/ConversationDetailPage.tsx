@@ -1,7 +1,23 @@
 import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Send, ArrowLeft, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw, Mic, Square, Paperclip, ImagePlus, Lock, Check, CheckCheck } from "lucide-react";
+import {
+  Send,
+  ArrowLeft,
+  User,
+  AlertTriangle,
+  CheckCircle,
+  PauseCircle,
+  RotateCcw,
+  Mic,
+  Square,
+  Paperclip,
+  ImagePlus,
+  Lock,
+  Check,
+  CheckCheck,
+  ArrowRightLeft,
+} from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
@@ -30,6 +46,26 @@ interface LeadTypeRow {
   color: string;
 }
 
+interface HandoffPayload {
+  conversationId?: string;
+  previousTeamId?: string | null;
+  previousTeamName?: string | null;
+  newTeamId?: string | null;
+  newTeamName?: string | null;
+  previousAssigneeId?: string | null;
+  previousAssigneeName?: string | null;
+  newAssigneeId?: string | null;
+  newAssigneeName?: string | null;
+}
+
+interface HandoffTimelineEvent {
+  id: string;
+  occurredAt: string;
+  eventType: string;
+  payload: HandoffPayload | null;
+  actorUser?: { id: string; name: string; email: string } | null;
+}
+
 interface ConversationDetail {
   id: string;
   status: string;
@@ -47,11 +83,12 @@ interface ConversationDetail {
   };
   team: { id: string; name: string } | null;
   messages?: Message[];
+  handoffLog?: HandoffTimelineEvent[];
 }
 
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useI18n();
+  const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
@@ -73,6 +110,10 @@ export function ConversationDetailPage() {
   const [evolutionRichChat, setEvolutionRichChat] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTeamId, setTransferTeamId] = useState("");
+  const [transferAssigneeId, setTransferAssigneeId] = useState("");
+  const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,7 +161,6 @@ export function ConversationDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!tenantAdmin) return;
     async function loadTeams() {
       try {
         const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
@@ -130,7 +170,39 @@ export function ConversationDetailPage() {
       }
     }
     void loadTeams();
-  }, [tenantAdmin]);
+  }, []);
+
+  useEffect(() => {
+    if (!transferOpen || !transferTeamId) {
+      setTransferMembers([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const team = await api.get<{
+          members: { userId: string; user: { id: string; name: string; email: string } }[];
+        }>(`/teams/${transferTeamId}`);
+        const rows = team.members.map((m) => ({
+          id: m.user.id,
+          name: m.user.name,
+        }));
+        if (!cancelled) setTransferMembers(rows);
+      } catch {
+        if (!cancelled) setTransferMembers([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transferOpen, transferTeamId]);
+
+  useEffect(() => {
+    if (!transferAssigneeId || transferMembers.length === 0) return;
+    if (!transferMembers.some((m) => m.id === transferAssigneeId)) {
+      setTransferAssigneeId("");
+    }
+  }, [transferMembers, transferAssigneeId]);
 
   useEffect(() => {
     loadConversation();
@@ -418,6 +490,26 @@ export function ConversationDetailPage() {
     }
   };
 
+  const submitTransfer = async () => {
+    if (!conversation || !id || !transferTeamId) return;
+    setActionLoading(true);
+    setFlowError("");
+    try {
+      const data = await api.put<ConversationDetail>(`/conversations/${id}`, {
+        teamId: transferTeamId,
+        assignedToId: transferAssigneeId || null,
+      });
+      setConversation(data);
+      setTeamPickerId(data.team?.id ?? "");
+      setTransferOpen(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setFlowError(msg || "Request failed");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const submitResolve = async (e: FormEvent) => {
     e.preventDefault();
     setResolveError("");
@@ -466,17 +558,21 @@ export function ConversationDetailPage() {
   if (!conversation) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-gray-500">{t("conversationDetail.notFound")}</p>
+        <p className="text-ink-500 dark:text-ink-400">{t("conversationDetail.notFound")}</p>
       </div>
     );
   }
 
   const canResolve = conversation.status === "OPEN" || conversation.status === "PENDING";
+  const canTransfer = canResolve && teamOptions.length > 0;
+  const transferUnchanged =
+    transferTeamId === (conversation.team?.id ?? "") &&
+    (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-slate-100/90 via-slate-50/80 to-white dark:from-ink-950 dark:via-ink-900 dark:to-ink-950">
+    <div className="flex h-full flex-col bg-slate-50 dark:bg-ink-950">
       <motion.div
-        className="flex flex-wrap items-center gap-3 border-b border-white/60 bg-white/85 px-5 py-4 shadow-sm backdrop-blur-md dark:border-ink-700/80 dark:bg-ink-900/90"
+        className="flex flex-wrap items-center gap-3 border-b border-ink-200/90 bg-white px-5 py-4 shadow-sm dark:border-ink-800 dark:bg-[#161f2c]"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
@@ -519,9 +615,12 @@ export function ConversationDetailPage() {
             <span
               className={clsx(
                 "rounded-full px-2 py-0.5 text-xs font-medium",
-                conversation.status === "OPEN" && "bg-green-100 text-green-800",
-                conversation.status === "PENDING" && "bg-amber-100 text-amber-800",
-                conversation.status === "RESOLVED" && "bg-gray-100 text-gray-600",
+                conversation.status === "OPEN" &&
+                  "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
+                conversation.status === "PENDING" &&
+                  "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
+                conversation.status === "RESOLVED" &&
+                  "bg-ink-200 text-ink-700 dark:bg-ink-800 dark:text-ink-300",
               )}
             >
               {statusLabel(conversation.status)}
@@ -534,7 +633,7 @@ export function ConversationDetailPage() {
                 {conversation.leadType.name}
               </span>
             )}
-            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950/60 dark:text-sky-200">
               {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
             </span>
           </div>
@@ -547,7 +646,7 @@ export function ConversationDetailPage() {
                 id="conv-team"
                 value={teamPickerId}
                 onChange={(e) => setTeamPickerId(e.target.value)}
-                className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+                className="rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
               >
                 <option value="">{t("conversationDetail.noTeam")}</option>
                 {teamOptions.map((opt) => (
@@ -560,7 +659,7 @@ export function ConversationDetailPage() {
                 type="button"
                 disabled={actionLoading || teamPickerId === (conversation.team?.id ?? "")}
                 onClick={() => void saveConversationTeam()}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
               >
                 {t("conversationDetail.saveTeam")}
               </button>
@@ -569,24 +668,40 @@ export function ConversationDetailPage() {
         </div>
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
           {isOutsideWindow && (
-            <div className="flex items-center gap-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
+            <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
               <AlertTriangle className="h-3.5 w-3.5" />
               {t("conversationDetail.outsideWindow")}
             </div>
           )}
           <Link
             to={`/contacts/${conversation.contact.id}`}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
           >
             <User className="mr-1 inline h-3.5 w-3.5" />
             {t("conversationDetail.viewContact")}
           </Link>
+          {canTransfer ? (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => {
+                setFlowError("");
+                setTransferTeamId(conversation.team?.id ?? teamOptions[0]?.id ?? "");
+                setTransferAssigneeId(conversation.assignedTo?.id ?? "");
+                setTransferOpen(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-sky-300/80 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-950 hover:bg-sky-100/80 disabled:opacity-50 dark:border-sky-700/50 dark:bg-sky-950/35 dark:text-sky-100 dark:hover:bg-sky-900/45"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              {t("conversationDetail.transferOpen")}
+            </button>
+          ) : null}
           {conversation.status === "OPEN" && (
             <button
               type="button"
               disabled={actionLoading}
               onClick={() => void applyStatus("PENDING")}
-              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-300/80 bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-200/80 disabled:opacity-50 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
             >
               <PauseCircle className="h-3.5 w-3.5" />
               {t("conversationDetail.setPending")}
@@ -601,7 +716,7 @@ export function ConversationDetailPage() {
                 setClosureAmount("");
                 setResolveOpen(true);
               }}
-              className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
             >
               <CheckCircle className="h-3.5 w-3.5" />
               {t("conversationDetail.finalize")}
@@ -612,7 +727,7 @@ export function ConversationDetailPage() {
               type="button"
               disabled={actionLoading}
               onClick={() => void applyStatus("OPEN")}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               {t("conversationDetail.reopen")}
@@ -627,13 +742,50 @@ export function ConversationDetailPage() {
         </div>
       )}
 
+      <div className="border-b border-ink-200/80 bg-white/90 px-5 py-3 dark:border-ink-800 dark:bg-[#161f2c]/95">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-600 dark:text-ink-400">
+          {t("conversationDetail.handoffHistoryTitle")}
+        </p>
+        {(conversation.handoffLog?.length ?? 0) === 0 ? (
+          <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffNoEntries")}</p>
+        ) : (
+          <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-xs text-ink-700 dark:text-ink-300">
+            {[...(conversation.handoffLog ?? [])].reverse().map((ev) => {
+              const p = ev.payload;
+              const prevTeam = p?.previousTeamName ?? t("conversationDetail.noTeam");
+              const nextTeam = p?.newTeamName ?? t("conversationDetail.noTeam");
+              const prevAsg = p?.previousAssigneeName ?? t("conversationDetail.handoffUnassigned");
+              const nextAsg = p?.newAssigneeName ?? t("conversationDetail.handoffUnassigned");
+              const arrow = t("conversationDetail.handoffArrow");
+              return (
+                <li key={ev.id} className="rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 dark:border-ink-700 dark:bg-ink-900/40">
+                  <p className="font-medium text-ink-800 dark:text-ink-200">
+                    {format(new Date(ev.occurredAt), "PPp", { locale: dateLocale })}
+                    {" · "}
+                    {ev.actorUser?.name ?? "—"}
+                  </p>
+                  <p className="mt-0.5 text-ink-600 dark:text-ink-400">
+                    <span className="text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffTeamLine")}:</span>{" "}
+                    {prevTeam} {arrow} {nextTeam}
+                  </p>
+                  <p className="mt-0.5 text-ink-600 dark:text-ink-400">
+                    <span className="text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffAssigneeLine")}:</span>{" "}
+                    {prevAsg} {arrow} {nextAsg}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       {conversation.status === "RESOLVED" && (conversation.closureReason || conversation.leadType) && (
-        <div className="border-b border-brand-200/60 bg-gradient-to-r from-brand-50/90 to-white/80 px-5 py-3 backdrop-blur-sm dark:border-brand-900/40 dark:from-brand-950/40 dark:to-ink-900/60">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-800">
+        <div className="border-b border-brand-200/70 bg-gradient-to-r from-brand-50/95 to-white/90 px-5 py-3 dark:border-brand-900/30 dark:bg-[#1a232e]">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-800 dark:text-brand-300">
             {t("conversationDetail.resolvedSummary")}
           </p>
           {conversation.leadType && (
-            <p className="mt-1 text-sm text-gray-800">
+            <p className="mt-1 text-sm text-ink-800 dark:text-ink-200">
               <span className="font-medium">{t("conversationDetail.leadLabel")}:</span>{" "}
               <span style={{ color: conversation.leadType.color }} className="font-semibold">
                 {conversation.leadType.name}
@@ -641,10 +793,10 @@ export function ConversationDetailPage() {
             </p>
           )}
           {conversation.closureReason && (
-            <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{conversation.closureReason}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-300">{conversation.closureReason}</p>
           )}
           {conversation.closureValue != null && conversation.closureValue > 0 && (
-            <p className="mt-2 text-sm text-gray-800">
+            <p className="mt-2 text-sm text-ink-800 dark:text-ink-200">
               <span className="font-medium">{t("conversationDetail.closureValueLabel")}:</span>{" "}
               {fmtMoney(conversation.closureValue)}
             </p>
@@ -653,7 +805,7 @@ export function ConversationDetailPage() {
       )}
 
       <div className="relative flex-1 overflow-auto px-4 py-5 sm:px-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.08)_0%,_transparent_50%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.1)_0%,_transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_48%_at_50%_0%,rgba(255,122,89,0.05),transparent_58%)]" />
         <div className="relative mx-auto max-w-3xl space-y-2.5">
           {(conversation.messages ?? []).map((msg, i) => {
             const isNew = !seenMessageIds.current.has(msg.id);
@@ -674,14 +826,14 @@ export function ConversationDetailPage() {
                   className={clsx(
                     "max-w-[min(85%,28rem)] rounded-2xl px-4 py-2.5 shadow-md",
                     msg.isPrivate
-                      ? "border-2 border-amber-300/80 bg-amber-50/95 text-amber-950 shadow-amber-100/50 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-100"
+                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
                       : msg.direction === "OUTBOUND"
-                        ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-brand-500/25"
-                        : "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-600 dark:bg-ink-800/90 dark:text-ink-50 dark:ring-white/5",
+                        ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:bg-none dark:bg-[#1e2a3a] dark:text-ink-50 dark:shadow-lg dark:shadow-black/25 dark:ring-1 dark:ring-brand-400/25"
+                        : "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:ring-white/5",
                   )}
                 >
                   {msg.isPrivate ? (
-                    <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                    <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
                       <Lock className="h-3 w-3" />
                       {t("conversationDetail.internalNoteLabel")}
                     </p>
@@ -707,8 +859,8 @@ export function ConversationDetailPage() {
                       className={clsx(
                         "mt-1 inline-block text-sm underline",
                         msg.direction === "OUTBOUND" && !msg.isPrivate
-                          ? "text-brand-100"
-                          : "text-brand-700",
+                          ? "text-brand-100 dark:text-brand-400"
+                          : "text-brand-700 dark:text-brand-400",
                       )}
                     >
                       {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
@@ -740,23 +892,23 @@ export function ConversationDetailPage() {
                     className={clsx(
                       "mt-1 flex items-center gap-1 text-[10px]",
                       msg.isPrivate
-                        ? "text-amber-800/80"
+                        ? "text-amber-800/80 dark:text-amber-300/80"
                         : msg.direction === "OUTBOUND"
-                          ? "text-brand-100"
-                          : "text-gray-400",
+                          ? "text-brand-100 dark:text-ink-400"
+                          : "text-gray-400 dark:text-ink-500",
                     )}
                   >
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (
-                          <AlertTriangle className="h-3 w-3 text-red-200" aria-hidden />
+                          <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
                         ) : msg.status === "READ" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100" aria-hidden />
+                          <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-500" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100/70" aria-hidden />
+                          <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-500/70" aria-hidden />
                         ) : (
-                          <Check className="h-3 w-3 text-brand-100/85" aria-hidden />
+                          <Check className="h-3 w-3 text-brand-100/85 dark:text-brand-400/90" aria-hidden />
                         )}
                       </span>
                     )}
@@ -770,25 +922,25 @@ export function ConversationDetailPage() {
       </div>
 
       <motion.div
-        className="border-t border-ink-200/80 bg-white/90 px-4 py-4 shadow-[0_-8px_32px_-8px_rgba(15,23,42,0.12)] backdrop-blur-lg dark:border-ink-700 dark:bg-ink-900/92 sm:px-6"
+        className="border-t border-ink-200 bg-white px-4 py-4 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)] dark:border-ink-800 dark:bg-[#161f2c] sm:px-6"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1, ease: "easeOut" }}
       >
         <form onSubmit={handleSend} className="mx-auto flex max-w-3xl flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-900/80 dark:text-ink-200 dark:hover:bg-ink-800">
               <input
                 type="checkbox"
                 checked={privateNote}
                 onChange={(e) => setPrivateNote(e.target.checked)}
-                className="rounded border-gray-300"
+                className="rounded border-ink-300 text-brand-600 dark:border-ink-500 dark:bg-ink-800"
               />
               <Lock className="h-3.5 w-3.5" />
               {t("conversationDetail.privateNote")}
             </label>
             {privateNote ? (
-              <span className="text-xs text-gray-500">{t("conversationDetail.privateNoteHint")}</span>
+              <span className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</span>
             ) : null}
           </div>
           <input
@@ -819,7 +971,7 @@ export function ConversationDetailPage() {
                     : t("conversationDetail.placeholderNormal")
               }
               disabled={(isOutsideWindow && !privateNote) || recording}
-              className="min-w-0 flex-1 rounded-2xl border border-ink-200/90 bg-white/95 px-5 py-3 text-sm shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-50 disabled:text-ink-400 dark:border-ink-600 dark:bg-ink-800/80 dark:text-ink-100 dark:placeholder:text-ink-500"
+              className="min-w-0 flex-1 rounded-2xl border border-ink-200 bg-white px-5 py-3 text-sm text-ink-900 shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-50 disabled:text-ink-400 dark:border-ink-500 dark:bg-[#2c3d4f] dark:text-ink-50 dark:placeholder:text-ink-400 dark:focus:border-brand-500 dark:focus:ring-brand-400/25 dark:disabled:bg-ink-900 dark:disabled:text-ink-500"
             />
             {evolutionRichChat ? (
               <>
@@ -830,7 +982,7 @@ export function ConversationDetailPage() {
                     attachBusy || (!privateNote && isOutsideWindow) || recording
                   }
                   title={t("conversationDetail.attachImage")}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                   whileTap={{ scale: 0.92 }}
                 >
                   <ImagePlus className="h-5 w-5" />
@@ -842,7 +994,7 @@ export function ConversationDetailPage() {
                     attachBusy || (!privateNote && isOutsideWindow) || recording
                   }
                   title={t("conversationDetail.attachFile")}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                   whileTap={{ scale: 0.92 }}
                 >
                   <Paperclip className="h-5 w-5" />
@@ -857,8 +1009,8 @@ export function ConversationDetailPage() {
               className={clsx(
                 "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm disabled:opacity-50",
                 recording
-                  ? "border-red-200 bg-red-500 text-white hover:bg-red-600"
-                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+                  ? "border-red-300 bg-red-500 text-white hover:bg-red-600 dark:border-red-800"
+                  : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
               )}
               whileTap={{ scale: 0.92 }}
               aria-pressed={recording}
@@ -868,14 +1020,14 @@ export function ConversationDetailPage() {
             <motion.button
               type="submit"
               disabled={sending || !newMessage.trim() || (isOutsideWindow && !privateNote) || attachBusy}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
               whileTap={{ scale: 0.92 }}
             >
               <Send className="h-5 w-5" />
             </motion.button>
           </div>
           {(recording || voiceBusy || attachBusy) && (
-            <p className="text-center text-xs text-gray-500">
+            <p className="text-center text-xs text-ink-500 dark:text-ink-400">
               {attachBusy
                 ? t("conversationDetail.sendingAttachment")
                 : voiceBusy
@@ -901,20 +1053,20 @@ export function ConversationDetailPage() {
               initial="hidden"
               animate="show"
               exit="hidden"
-              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl"
+              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-gray-900">{t("conversationDetail.finalizeTitle")}</h3>
-              <p className="mt-1 text-sm text-gray-500">{t("conversationDetail.finalizeSubtitle")}</p>
+              <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.finalizeTitle")}</h3>
+              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.finalizeSubtitle")}</p>
               <form onSubmit={submitResolve} className="mt-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                     {t("conversationDetail.leadType")} *
                   </label>
                   <select
                     value={leadTypeId}
                     onChange={(e) => setLeadTypeId(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                     required
                   >
                     <option value="">{t("conversationDetail.selectLeadType")}</option>
@@ -926,21 +1078,21 @@ export function ConversationDetailPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                     {t("conversationDetail.closureReason")} *
                   </label>
                   <textarea
                     value={closureReason}
                     onChange={(e) => setClosureReason(e.target.value)}
                     rows={4}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                     placeholder={t("conversationDetail.closureReasonHint")}
                     required
                     minLength={3}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                     {t("conversationDetail.closureValueOptional")}
                   </label>
                   <input
@@ -949,31 +1101,114 @@ export function ConversationDetailPage() {
                     value={closureAmount}
                     onChange={(e) => setClosureAmount(e.target.value)}
                     placeholder={t("conversationDetail.closureValuePlaceholder")}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                   />
-                  <p className="mt-1 text-xs text-gray-500">{t("conversationDetail.closureValueHint")}</p>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.closureValueHint")}</p>
                 </div>
                 {resolveError && (
-                  <p className="text-sm text-red-600">{resolveError}</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">{resolveError}</p>
                 )}
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
                     disabled={actionLoading}
                     onClick={() => setResolveOpen(false)}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                   >
                     {t("common.cancel")}
                   </button>
                   <button
                     type="submit"
                     disabled={actionLoading}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                   >
                     {t("common.confirm")}
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {transferOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            variants={backdropVariants}
+            initial="hidden"
+            animate="show"
+            exit="hidden"
+            onClick={() => !actionLoading && setTransferOpen(false)}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="show"
+              exit="hidden"
+              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                {t("conversationDetail.transferTitle")}
+              </h3>
+              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.transferSubtitle")}</p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                    {t("conversationDetail.transferTeamLabel")}
+                  </label>
+                  <select
+                    value={transferTeamId}
+                    onChange={(e) => {
+                      setTransferTeamId(e.target.value);
+                      setTransferAssigneeId("");
+                    }}
+                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                  >
+                    {teamOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                    {t("conversationDetail.transferAssigneeLabel")}
+                  </label>
+                  <select
+                    value={transferAssigneeId}
+                    onChange={(e) => setTransferAssigneeId(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                  >
+                    <option value="">{t("conversationDetail.transferAssigneeNone")}</option>
+                    {transferMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => setTransferOpen(false)}
+                    className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionLoading || !transferTeamId || transferUnchanged}
+                    onClick={() => void submitTransfer()}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  >
+                    {t("conversationDetail.transferConfirm")}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}

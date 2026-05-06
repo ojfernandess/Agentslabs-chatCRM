@@ -82,8 +82,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
     try {
       const provider = await getWhatsAppProvider(organizationId);
       if (provider) {
+        const to =
+          contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
         providerMsgId = await provider.sendMessage({
-          to: contact.phone,
+          to,
           type,
           body: messageBody,
           mediaUrl,

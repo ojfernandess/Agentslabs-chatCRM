@@ -10,7 +10,6 @@ import type { Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
-import { agentIsTeamScoped } from "../lib/agentScope.js";
 import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 
 const querySchema = z.object({
@@ -44,14 +43,15 @@ const updateSchema = z.object({
   closureValue: z.number().nonnegative().nullable().optional(),
 });
 
-async function agentHasConversationAccess(
+/** Sem equipa na conversa = visível para toda a organização. Com equipa = só membros dessa equipa (e admins). */
+async function agentCanViewConversation(
   userId: string,
-  conv: { assignedToId: string | null; teamId: string | null },
+  organizationId: string,
+  conv: { teamId: string | null },
 ): Promise<boolean> {
-  if (conv.assignedToId === userId) return true;
-  if (!conv.teamId) return false;
+  if (!conv.teamId) return true;
   const m = await prisma.teamMember.findFirst({
-    where: { userId, teamId: conv.teamId },
+    where: { userId, teamId: conv.teamId, team: { organizationId } },
   });
   return !!m;
 }
@@ -119,15 +119,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
         where.teamId = query.teamId;
       } else {
-        const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-        if (scoped) {
-          const myTeams = await prisma.teamMember.findMany({
-            where: { userId: request.user.id, team: { organizationId } },
-            select: { teamId: true },
-          });
-          const teamIds = myTeams.map((t) => t.teamId);
-          where.OR = [{ assignedToId: request.user.id }, { teamId: { in: teamIds } }];
-        }
+        const myTeams = await prisma.teamMember.findMany({
+          where: { userId: request.user.id, team: { organizationId } },
+          select: { teamId: true },
+        });
+        const teamIds = myTeams.map((t) => t.teamId);
+        where.OR = [
+          { teamId: null },
+          ...(teamIds.length > 0 ? [{ teamId: { in: teamIds } }] : []),
+        ];
       }
     } else {
       if (effectiveAssigneeId) {
@@ -263,16 +263,27 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-      if (scoped) {
-        const ok = await agentHasConversationAccess(request.user.id, conversation);
-        if (!ok) {
-          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
-        }
+      const ok = await agentCanViewConversation(request.user.id, organizationId, conversation);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
     }
 
-    return conversation;
+    const handoffLog = await prisma.timelineEvent.findMany({
+      where: {
+        organizationId,
+        subjectType: "CONTACT",
+        subjectId: conversation.contactId,
+        eventType: "conversation.handoff",
+      },
+      orderBy: { occurredAt: "desc" },
+      take: 40,
+      include: {
+        actorUser: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    return { ...conversation, handoffLog };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -293,29 +304,62 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-      if (scoped) {
-        const ok = await agentHasConversationAccess(request.user.id, existing);
-        if (!ok) {
-          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
-        }
+      const ok = await agentCanViewConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
     }
 
-    if (parsed.data.teamId !== undefined && !isTenantAdmin(request.user)) {
+    if (parsed.data.teamId === null && request.user.role === "AGENT") {
       return reply.status(403).send({
         error: "Forbidden",
-        message: "Only administrators can assign conversations to a team",
+        message: "Only administrators can return a conversation to the organization pool",
         statusCode: 403,
       });
     }
 
-    if (parsed.data.teamId) {
+    if (parsed.data.teamId && parsed.data.teamId !== existing.teamId) {
       const team = await prisma.team.findFirst({
         where: { id: parsed.data.teamId, organizationId },
       });
       if (!team) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid teamId", statusCode: 400 });
+      }
+      if (request.user.role === "AGENT") {
+        const member = await prisma.teamMember.findFirst({
+          where: { userId: request.user.id, teamId: parsed.data.teamId, team: { organizationId } },
+        });
+        if (!member) {
+          return reply.status(403).send({
+            error: "Forbidden",
+            message: "You can only transfer to teams you belong to",
+            statusCode: 403,
+          });
+        }
+      }
+    }
+
+    if (parsed.data.assignedToId !== undefined && parsed.data.assignedToId !== null) {
+      const assignee = await prisma.user.findFirst({
+        where: { id: parsed.data.assignedToId, organizationId },
+        select: { id: true },
+      });
+      if (!assignee) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedToId", statusCode: 400 });
+      }
+      const effectiveTeamAfter =
+        parsed.data.teamId !== undefined ? parsed.data.teamId : existing.teamId;
+      if (effectiveTeamAfter) {
+        const inTeam = await prisma.teamMember.findFirst({
+          where: { userId: parsed.data.assignedToId, teamId: effectiveTeamAfter },
+        });
+        if (!inTeam) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Assignee must be a member of the conversation team",
+            statusCode: 400,
+          });
+        }
       }
     }
 
@@ -399,6 +443,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const prevTeamId = existing.teamId;
+    const prevAssignedToId = existing.assignedToId;
 
     try {
       const { conversation, timelineDeal } = await prisma.$transaction(async (tx) => {
@@ -495,17 +540,73 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      if (parsed.data.teamId !== undefined && parsed.data.teamId !== prevTeamId) {
+      const teamChanged = conversation.teamId !== prevTeamId;
+      const assigneeChanged = conversation.assignedToId !== prevAssignedToId;
+      if (teamChanged || assigneeChanged) {
+        let previousTeamName: string | null = null;
+        if (prevTeamId) {
+          const pt = await prisma.team.findFirst({
+            where: { id: prevTeamId },
+            select: { name: true },
+          });
+          previousTeamName = pt?.name ?? null;
+        }
+        let previousAssigneeName: string | null = null;
+        if (prevAssignedToId) {
+          const pu = await prisma.user.findFirst({
+            where: { id: prevAssignedToId },
+            select: { name: true },
+          });
+          previousAssigneeName = pu?.name ?? null;
+        }
+
+        await appendTimelineEvent({
+          organizationId,
+          subjectType: "CONTACT",
+          subjectId: existing.contactId,
+          eventType: "conversation.handoff",
+          channel: "conversation",
+          payload: {
+            conversationId: conversation.id,
+            previousTeamId: prevTeamId,
+            previousTeamName,
+            newTeamId: conversation.teamId,
+            newTeamName: conversation.team?.name ?? null,
+            previousAssigneeId: prevAssignedToId,
+            previousAssigneeName,
+            newAssigneeId: conversation.assignedToId,
+            newAssigneeName: conversation.assignedTo?.name ?? null,
+          } as Prisma.InputJsonValue,
+          actorUserId: request.user.id,
+          sourceId: conversation.id,
+        });
+
         broadcastToOrganization(organizationId, {
           type: "conversation.transferred",
           conversationId: conversation.id,
           teamId: conversation.teamId,
           previousTeamId: prevTeamId,
+          assignedToId: conversation.assignedToId,
+          previousAssignedToId: prevAssignedToId,
           contact: conversation.contact,
         });
       }
 
-      return conversation;
+      const handoffLog = await prisma.timelineEvent.findMany({
+        where: {
+          organizationId,
+          subjectType: "CONTACT",
+          subjectId: conversation.contactId,
+          eventType: "conversation.handoff",
+        },
+        orderBy: { occurredAt: "desc" },
+        take: 40,
+        include: {
+          actorUser: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return { ...conversation, handoffLog };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }

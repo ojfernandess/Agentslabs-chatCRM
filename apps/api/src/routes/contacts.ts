@@ -4,7 +4,6 @@ import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { agentIsTeamScoped } from "../lib/agentScope.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 
@@ -62,13 +61,6 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       where.assignedToId = query.assignee;
     }
 
-    if (request.user.role === "AGENT") {
-      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-      if (scoped) {
-        where.assignedToId = request.user.id;
-      }
-    }
-
     const [data, total] = await Promise.all([
       prisma.contact.findMany({
         where,
@@ -103,13 +95,6 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     if (!contact) {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
-    }
-
-    if (request.user.role === "AGENT") {
-      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-      if (scoped && contact.assignedToId !== request.user.id) {
-        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
-      }
     }
 
     return contact;

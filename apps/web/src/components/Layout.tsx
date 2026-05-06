@@ -19,7 +19,7 @@ import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import type { LocaleCode } from "@/i18n/messages";
-import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
+import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
@@ -31,7 +31,7 @@ const navItems = [
 ] as const;
 
 export function Layout() {
-  const { user, logout, exitOrganization, exitUserImpersonation } = useAuth();
+  const { user, logout, exitUserImpersonation } = useAuth();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
@@ -44,8 +44,8 @@ export function Layout() {
 
   return (
     <div className="flex h-screen">
-      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900">
-        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-700">
+      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28]">
+        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
           <img src="/logo.svg" alt="OpenConduit" className="h-7" />
           <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenConduit</span>
         </div>
@@ -121,7 +121,7 @@ export function Layout() {
           ) : null}
         </nav>
 
-        <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-700">
+        <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-800">
           <div className="flex items-end gap-2">
             <ConversationNotifyBell
               badgeCount={badgeCount}
@@ -163,11 +163,11 @@ export function Layout() {
         {user?.superAdminActorId ? (
           <div
             role="status"
-            className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-ink-900"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-500/25 bg-brand-950/90 px-4 py-2.5 text-sm text-brand-100 backdrop-blur-sm"
           >
             <span className="min-w-0">
-              <span className="font-semibold">{t("common.userImpersonationBanner")}</span>
-              <span className="text-ink-700">
+              <span className="font-semibold text-brand-50">{t("common.userImpersonationBanner")}</span>
+              <span className="text-brand-200/90">
                 {" "}
                 {user.name} ({user.email}) · {t("common.actor")}:{" "}
                 {user.superAdminActor?.name ?? user.superAdminActor?.email ?? "—"}
@@ -181,26 +181,6 @@ export function Layout() {
               className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
             >
               {t("common.exitUserImpersonation")}
-            </button>
-          </div>
-        ) : null}
-        {isSuperAdminRole(user?.role) && user?.actingOrganizationId && !user?.superAdminActorId ? (
-          <div
-            role="status"
-            className="flex shrink-0 items-start gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 sm:items-center sm:justify-between"
-          >
-            <span className="min-w-0">
-              <span className="font-semibold">{user.actingOrganization?.name ?? "—"}</span>
-              <span className="text-amber-900/90"> — {t("common.impersonationBanner")}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                void exitOrganization().then(() => navigate("/super"));
-              }}
-              className="shrink-0 rounded bg-white px-3 py-1.5 text-xs font-medium text-amber-950 shadow-sm ring-1 ring-amber-200 hover:bg-amber-100"
-            >
-              {t("common.backToSuperAdmin")}
             </button>
           </div>
         ) : null}

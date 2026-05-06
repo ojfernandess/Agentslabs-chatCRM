@@ -4,7 +4,6 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
-import { agentIsTeamScoped } from "../lib/agentScope.js";
 
 const BOARD_CONTACT_LIMIT = 500;
 
@@ -33,12 +32,6 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     if (!(await requireCrmKanban(organizationId, reply))) return;
 
     const where: Record<string, unknown> = { organizationId };
-    if (request.user.role === "AGENT") {
-      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
-      if (scoped) {
-        where.assignedToId = request.user.id;
-      }
-    }
 
     const leadTypes = await prisma.leadType.findMany({
       where: { organizationId },

@@ -10,7 +10,7 @@ import {
   Building2,
 } from "lucide-react";
 import clsx from "clsx";
-import type { AuthUser } from "@/hooks/useAuth";
+import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { AnimatePresence, motion } from "@/components/Motion";
@@ -45,6 +45,7 @@ interface UserProfileMenuProps {
 
 export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuProps) {
   const { t } = useI18n();
+  const { exitOrganization } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [availability, setAvailability] = useState<Availability>(readAvailability);
@@ -222,7 +223,20 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                 <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
                 <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.organizationSettings")}</span>
               </button>
-              {superAdmin ? (
+              {superAdmin && user.actingOrganizationId ? (
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                  onClick={() => {
+                    setOpen(false);
+                    void exitOrganization().then(() => navigate("/super"));
+                  }}
+                >
+                  <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                  <span className="min-w-0 flex-1 leading-snug">{t("common.backToSuperAdmin")}</span>
+                </button>
+              ) : null}
+              {superAdmin && !user.actingOrganizationId ? (
                 <button
                   type="button"
                   className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"

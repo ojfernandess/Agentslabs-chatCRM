@@ -22,6 +22,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "conversation_alerts",
     defaultEnabled: true,
   },
+  {
+    key: "whatsapp_groups",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

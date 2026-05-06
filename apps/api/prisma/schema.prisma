@@ -229,6 +229,8 @@ model Contact {
   /// URL da foto de perfil WhatsApp (Evolution API / webhooks CONTACTS_*).
   profilePictureUrl String? @map("profile_picture_url") @db.VarChar(2048)
   waId      String?   @map("wa_id")
+  /// Conversa WhatsApp em grupo (@g.us) — destino de envio usa waId (JID do grupo).
+  isGroupChat Boolean @default(false) @map("is_group_chat")
   optedIn   Boolean   @default(false) @map("opted_in")
   optedInAt DateTime? @map("opted_in_at")
   lifecycleStage String? @map("lifecycle_stage") @db.VarChar(64)

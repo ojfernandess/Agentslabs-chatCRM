@@ -6,6 +6,7 @@ import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
+import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 
 // Fastify: raw body for signature verification (Evolution / Meta)
 const rawBodyPost = { config: { rawBody: true } } as any;
@@ -162,25 +163,58 @@ async function handleWhatsAppPost(
     Boolean(channelSettings.agentBot?.isActive) &&
     Boolean(channelSettings.agentBot?.webhookUrl?.trim());
 
+  const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");
+
   for (const msg of messages) {
     try {
+      if (msg.isGroup && !whatsappGroupsEnabled) {
+        app.log.info(
+          { organizationId, groupJid: msg.groupJid },
+          "Ignoring WhatsApp group message (feature whatsapp_groups disabled for organization)",
+        );
+        continue;
+      }
+
       const phone = normalizePhoneE164(msg.from);
       if (!phone) {
         app.log.warn(`Invalid phone number from webhook: ${msg.from}`);
         continue;
       }
 
+      let inboundBody = msg.body;
+      if (msg.isGroup && (msg.participantPushName || msg.participantE164)) {
+        const who = (msg.participantPushName || msg.participantE164 || "").trim();
+        if (who) {
+          inboundBody = inboundBody?.trim() ? `[${who}] ${inboundBody}` : `[${who}]`;
+        }
+      }
+
       let contact = await prisma.contact.findFirst({
         where: { organizationId, phone },
       });
       let contactJustCreated = false;
+
+      if (msg.isGroup && contact && (contact.waId !== msg.groupJid || !contact.isGroupChat)) {
+        contact = await prisma.contact.update({
+          where: { id: contact.id },
+          data: {
+            waId: msg.groupJid!,
+            isGroupChat: true,
+          },
+        });
+      }
+
       if (!contact) {
+        const gid = (msg.groupJid ?? "").split("@")[0]?.replace(/\D/g, "") ?? "";
+        const defaultGroupName =
+          gid.length >= 4 ? `Grupo · ${gid.slice(-8)}` : "Grupo WhatsApp";
         contact = await prisma.contact.create({
           data: {
             organizationId,
             phone,
-            name: phone,
-            waId: msg.from,
+            name: msg.isGroup ? defaultGroupName : phone,
+            waId: msg.isGroup ? msg.groupJid! : msg.from,
+            isGroupChat: Boolean(msg.isGroup),
           },
         });
         contactJustCreated = true;
@@ -188,13 +222,13 @@ async function handleWhatsAppPost(
         const unknownTag = await prisma.tag.findFirst({
           where: { organizationId, name: "Desconhecido" },
         });
-        if (unknownTag) {
+        if (unknownTag && !msg.isGroup) {
           await prisma.contactTag.create({
             data: { contactId: contact.id, tagId: unknownTag.id },
           });
         }
 
-        if (provider.fetchContactProfilePictureUrl) {
+        if (provider.fetchContactProfilePictureUrl && !msg.isGroup) {
           const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
           if (pic) {
             contact = await prisma.contact.update({
@@ -208,7 +242,8 @@ async function handleWhatsAppPost(
       if (
         !contactJustCreated &&
         provider.fetchContactProfilePictureUrl &&
-        !contact.profilePictureUrl
+        !contact.profilePictureUrl &&
+        !msg.isGroup
       ) {
         const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
         if (pic) {
@@ -227,7 +262,7 @@ async function handleWhatsAppPost(
       }
 
       const push = msg.pushName?.trim();
-      if (push) {
+      if (push && !msg.isGroup) {
         const nameDigits = contact.name.replace(/\D/g, "");
         const phoneDigits = phone.replace(/\D/g, "");
         const nameLooksLikePhone = nameDigits.length >= 7 && nameDigits === phoneDigits;
@@ -260,7 +295,7 @@ async function handleWhatsAppPost(
           conversationId: conversation.id,
           direction: "INBOUND",
           type: msg.type as "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO",
-          body: msg.body,
+          body: inboundBody,
           mediaUrl: msg.mediaUrl,
           mediaType: msg.mediaType,
           providerMsgId: msg.waMessageId,
@@ -279,7 +314,7 @@ async function handleWhatsAppPost(
           messageId: inbound.id,
           conversationId: conversation.id,
           type: msg.type,
-          body: msg.body ?? null,
+          body: inboundBody ?? null,
           mediaUrl: msg.mediaUrl ?? null,
           providerMsgId: msg.waMessageId ?? null,
         },
@@ -294,10 +329,10 @@ async function handleWhatsAppPost(
         data: { updatedAt: new Date() },
       });
 
-      if (msg.body) {
+      if (inboundBody) {
         const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
         for (const rule of rules) {
-          if (msg.body.toLowerCase().includes(rule.keyword.toLowerCase())) {
+          if (inboundBody.toLowerCase().includes(rule.keyword.toLowerCase())) {
             await prisma.contactTag.upsert({
               where: {
                 contactId_tagId: {
