@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Send, ArrowLeft, User, AlertTriangle, CheckCircle, PauseCircle, RotateCcw, Mic, Square, Paperclip, ImagePlus, Lock, Check, CheckCheck } from "lucide-react";
@@ -8,6 +8,7 @@ import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/comp
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
+import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
 
 interface Message {
@@ -168,6 +169,25 @@ export function ConversationDetailPage() {
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
+  /** Corpo enviado ao cliente: anexa assinatura do perfil só em mensagens públicas. */
+  const outboundBodyWithSignature = (text: string, isPrivate: boolean): string => {
+    const trimmed = text.trim();
+    if (isPrivate) return trimmed;
+    const sig = user?.messageSignature?.trim();
+    if (!sig) return trimmed;
+    return trimmed ? `${trimmed}\n\n${sig}` : sig;
+  };
+
+  const composerKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    const pref = readSendShortcutPref();
+    if (pref === "mod_enter") {
+      if (!(e.ctrlKey || e.metaKey)) e.preventDefault();
+    } else if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+    }
+  };
+
   const isOutsideWindow = lastInbound
     ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
     : true;
@@ -259,11 +279,13 @@ export function ConversationDetailPage() {
         setFlowError("");
         try {
           const { mediaUrl, mimeType } = await api.uploadMessageAudio(blob, `voice.${ext}`);
+          const voiceBody = outboundBodyWithSignature("", false);
           await api.post("/messages", {
             contactId,
             type: "AUDIO",
             mediaUrl,
             mediaType: mimeType,
+            ...(voiceBody ? { body: voiceBody } : {}),
           });
           await loadConversation();
         } catch {
@@ -294,12 +316,13 @@ export function ConversationDetailPage() {
     setFlowError("");
     try {
       const { mediaUrl, mimeType } = await api.uploadMessageMedia(file);
+      const caption = outboundBodyWithSignature(newMessage, privateNote);
       await api.post("/messages", {
         contactId: conversation.contact.id,
         type: kind,
         mediaUrl,
         mediaType: mimeType,
-        body: newMessage.trim() || undefined,
+        ...(caption ? { body: caption } : {}),
         isPrivate: privateNote || undefined,
       });
       setNewMessage("");
@@ -332,7 +355,7 @@ export function ConversationDetailPage() {
       await api.post("/messages", {
         contactId: conversation.contact.id,
         type: "TEXT",
-        body: newMessage.trim(),
+        body: outboundBodyWithSignature(newMessage, privateNote),
         isPrivate: privateNote || undefined,
       });
       setNewMessage("");
@@ -787,6 +810,7 @@ export function ConversationDetailPage() {
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={composerKeyDown}
               placeholder={
                 privateNote
                   ? t("conversationDetail.privateNotePlaceholder")

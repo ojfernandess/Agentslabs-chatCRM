@@ -5,10 +5,22 @@ import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import { config } from "../config.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+});
+
+const patchMeSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  displayName: z.string().max(200).nullable().optional(),
+  messageSignature: z.string().max(8000).nullable().optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(128),
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -79,9 +91,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       select: {
         id: true,
         name: true,
+        displayName: true,
         email: true,
         role: true,
         organizationId: true,
+        messageSignature: true,
         createdAt: true,
       },
     });
@@ -119,6 +133,53 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       superAdminActorId,
       superAdminActor,
     };
+  });
+
+  app.patch("/me", { preHandler: [authenticate] }, async (request, reply) => {
+    const parsed = patchMeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const data: { name?: string; displayName?: string | null; messageSignature?: string | null } = {};
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
+    if (parsed.data.messageSignature !== undefined) data.messageSignature = parsed.data.messageSignature;
+
+    if (Object.keys(data).length === 0) {
+      return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
+    }
+
+    await prisma.user.update({
+      where: { id: request.user.id },
+      data,
+    });
+
+    return { success: true };
+  });
+
+  app.post("/me/password", { preHandler: [authenticate] }, async (request, reply) => {
+    const parsed = changePasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const user = await prisma.user.findUnique({ where: { id: request.user.id } });
+    if (!user) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+    }
+    const ok = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+    if (!ok) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Current password is incorrect",
+        statusCode: 400,
+      });
+    }
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, config.bcryptCostFactor);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+    return { ok: true };
   });
 
   /** Termina impersonação de utilizador (JWT com `superAdminActorId`); emite token do super admin. */

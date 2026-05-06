@@ -79,6 +79,22 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
       notificationSettings: parsed.data.notificationSettings as Prisma.InputJsonValue | undefined,
     };
     const team = await prisma.team.create({ data });
+
+    const agents = await prisma.user.findMany({
+      where: { organizationId, role: "AGENT" },
+      select: { id: true },
+    });
+    if (agents.length > 0) {
+      await prisma.teamMember.createMany({
+        data: agents.map((u) => ({
+          teamId: team.id,
+          userId: u.id,
+          role: TeamMemberRole.MEMBER,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
     return reply.status(201).send(team);
   });
 

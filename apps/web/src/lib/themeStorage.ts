@@ -19,6 +19,15 @@ function applyDarkClass(pref: ThemePref) {
 /** Call once at startup (e.g. main.tsx) before paint. */
 export function initThemeFromStorage() {
   applyDarkClass(readThemePref());
+  if (typeof window === "undefined") return;
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const onScheme = () => {
+    if (readThemePref() === "system") applyDarkClass("system");
+  };
+  mq.addEventListener("change", onScheme);
+  window.addEventListener("storage", (e) => {
+    if (e.key === THEME_STORAGE_KEY) applyDarkClass(readThemePref());
+  });
 }
 
 export function setThemePreference(pref: ThemePref) {

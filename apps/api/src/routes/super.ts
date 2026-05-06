@@ -19,6 +19,7 @@ import {
   WHATSAPP_EMBEDDED_PLATFORM_KEY,
 } from "../lib/metaWhatsAppEmbedded.js";
 import { metaEmbeddedWebhookUrl } from "../config.js";
+import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 
 function slugify(name: string): string {
   const base = name
@@ -544,6 +545,9 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         data,
         select: { id: true, name: true, email: true, role: true, createdAt: true },
       });
+      if (updated.role === "AGENT") {
+        await addAgentToAllOrganizationTeams(org.id, updated.id);
+      }
       await safeAudit(request, {
         actorUserId: request.user.id,
         organizationId: org.id,

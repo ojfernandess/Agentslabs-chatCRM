@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
+import { agentIsTeamScoped } from "../lib/agentScope.js";
 import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 
 const querySchema = z.object({
@@ -118,15 +119,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
         where.teamId = query.teamId;
       } else {
-        const myTeams = await prisma.teamMember.findMany({
-          where: { userId: request.user.id, team: { organizationId } },
-          select: { teamId: true },
-        });
-        const teamIds = myTeams.map((t) => t.teamId);
-        where.OR = [
-          { assignedToId: request.user.id },
-          ...(teamIds.length > 0 ? [{ teamId: { in: teamIds } }] : []),
-        ];
+        const scoped = await agentIsTeamScoped(request.user.id, organizationId);
+        if (scoped) {
+          const myTeams = await prisma.teamMember.findMany({
+            where: { userId: request.user.id, team: { organizationId } },
+            select: { teamId: true },
+          });
+          const teamIds = myTeams.map((t) => t.teamId);
+          where.OR = [{ assignedToId: request.user.id }, { teamId: { in: teamIds } }];
+        }
       }
     } else {
       if (effectiveAssigneeId) {
@@ -262,9 +263,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const ok = await agentHasConversationAccess(request.user.id, conversation);
-      if (!ok) {
-        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
+      if (scoped) {
+        const ok = await agentHasConversationAccess(request.user.id, conversation);
+        if (!ok) {
+          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+        }
       }
     }
 
@@ -289,9 +293,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const ok = await agentHasConversationAccess(request.user.id, existing);
-      if (!ok) {
-        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      const scoped = await agentIsTeamScoped(request.user.id, organizationId);
+      if (scoped) {
+        const ok = await agentHasConversationAccess(request.user.id, existing);
+        if (!ok) {
+          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+        }
       }
     }
 

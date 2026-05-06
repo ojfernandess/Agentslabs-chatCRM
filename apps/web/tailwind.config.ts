@@ -2,6 +2,7 @@ import type { Config } from "tailwindcss";
 
 /** HubSpot-inspired: coral primário #ff7a59, texto/cinzas #33475b, raio 3px, grelha 8px (escala Tailwind padrão). */
 export default {
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {

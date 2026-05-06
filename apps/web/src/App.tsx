@@ -9,6 +9,7 @@ import { ContactsPage } from "@/pages/ContactsPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { RemindersPage } from "@/pages/RemindersPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { ProfilePage } from "@/pages/ProfilePage";
 import { CrmKanbanPage } from "@/pages/CrmKanbanPage";
 import { DealsPage } from "@/pages/DealsPage";
 import { SuperAdminPage } from "@/pages/SuperAdminPage";
@@ -89,6 +90,7 @@ export function App() {
         <Route path="crm" element={<CrmKanbanPage />} />
         <Route path="deals" element={<DealsPage />} />
         <Route path="reminders" element={<RemindersPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="bots" element={<BotsPage />} />

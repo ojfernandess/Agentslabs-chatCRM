@@ -9,9 +9,7 @@ import {
   LayoutGrid,
   Briefcase,
   Bell,
-  Settings,
   Languages,
-  Shield,
   Box,
   ClipboardCheck,
   FileSearch,
@@ -30,7 +28,6 @@ const navItems = [
   { to: "/crm", icon: LayoutGrid, labelKey: "nav.crm" },
   { to: "/deals", icon: Briefcase, labelKey: "nav.deals" },
   { to: "/reminders", icon: Bell, labelKey: "nav.reminders" },
-  { to: "/settings", icon: Settings, labelKey: "nav.settings" },
 ] as const;
 
 export function Layout() {
@@ -47,10 +44,10 @@ export function Layout() {
 
   return (
     <div className="flex h-screen">
-      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white">
-        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6">
+      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900">
+        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-700">
           <img src="/logo.svg" alt="OpenConduit" className="h-7" />
-          <span className="text-lg font-bold text-ink-900">OpenConduit</span>
+          <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenConduit</span>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -62,7 +59,7 @@ export function Layout() {
               className={({ isActive }) =>
                 clsx(
                   "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
                 )
               }
             >
@@ -75,7 +72,7 @@ export function Layout() {
             className={({ isActive }) =>
               clsx(
                 "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
               )
             }
           >
@@ -89,7 +86,7 @@ export function Layout() {
                 className={({ isActive }) =>
                   clsx(
                     "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
                   )
                 }
               >
@@ -101,7 +98,7 @@ export function Layout() {
                 className={({ isActive }) =>
                   clsx(
                     "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
                   )
                 }
               >
@@ -113,7 +110,7 @@ export function Layout() {
                 className={({ isActive }) =>
                   clsx(
                     "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
                   )
                 }
               >
@@ -122,20 +119,6 @@ export function Layout() {
               </NavLink>
             </>
           ) : null}
-          {isSuperAdminRole(user?.role) && (
-            <NavLink
-              to="/super"
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
-                )
-              }
-            >
-              <Shield className="h-5 w-5" />
-              {t("nav.superAdmin")}
-            </NavLink>
-          )}
         </nav>
 
         <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-700">
@@ -221,7 +204,7 @@ export function Layout() {
             </button>
           </div>
         ) : null}
-        <main className="min-h-0 flex-1 overflow-auto bg-ink-50">
+        <main className="min-h-0 flex-1 overflow-auto bg-ink-50 dark:bg-ink-950">
           <Outlet />
         </main>
       </div>

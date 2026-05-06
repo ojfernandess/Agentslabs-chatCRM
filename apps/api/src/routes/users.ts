@@ -6,6 +6,7 @@ import { requireAdmin } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { isValidEmail } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -65,6 +66,10 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, name: true, email: true, role: true, createdAt: true },
     });
 
+    if (user.role === "AGENT") {
+      await addAgentToAllOrganizationTeams(organizationId, user.id);
+    }
+
     return reply.status(201).send(user);
   });
 
@@ -97,6 +102,11 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       data,
       select: { id: true, name: true, email: true, role: true, createdAt: true },
     });
+
+    if (user.role === "AGENT") {
+      await addAgentToAllOrganizationTeams(organizationId, user.id);
+    }
+
     return user;
   });
 

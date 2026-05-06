@@ -12,9 +12,11 @@ import type { LoginResponse } from "@openconduit/shared";
 export interface AuthUser {
   id: string;
   name: string;
+  displayName?: string | null;
   email: string;
   role: string;
   organizationId?: string | null;
+  messageSignature?: string | null;
   actingOrganizationId?: string | null;
   actingOrganization?: { id: string; name: string; slug: string } | null;
   superAdminActorId?: string | null;

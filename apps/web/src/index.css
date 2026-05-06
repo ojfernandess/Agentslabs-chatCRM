@@ -14,6 +14,15 @@
 
   body {
     @apply min-h-screen bg-ink-50 font-sans text-ink-900;
+    @apply dark:bg-ink-900 dark:text-ink-100;
+  }
+
+  html.font-size-comfortable body {
+    font-size: 106.25%;
+  }
+
+  html.font-size-large body {
+    font-size: 112.5%;
   }
 
   ::-webkit-scrollbar {
@@ -78,5 +87,6 @@
 
   .nav-link-active {
     @apply bg-brand-50 text-brand-700 font-semibold;
+    @apply dark:bg-brand-950/50 dark:text-brand-300;
   }
 }

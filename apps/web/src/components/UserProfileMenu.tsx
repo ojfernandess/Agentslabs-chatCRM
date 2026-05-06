@@ -3,18 +3,17 @@ import { useNavigate } from "react-router-dom";
 import {
   Keyboard,
   UserRound,
-  Palette,
   Landmark,
   LogOut,
   Info,
   X,
+  Building2,
 } from "lucide-react";
 import clsx from "clsx";
 import type { AuthUser } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { AnimatePresence, motion } from "@/components/Motion";
-import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
 
 const AVAIL_STORAGE = "openconduit_availability";
 const AUTO_OFFLINE_STORAGE = "openconduit_auto_offline";
@@ -50,7 +49,6 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
   const [open, setOpen] = useState(false);
   const [availability, setAvailability] = useState<Availability>(readAvailability);
   const [autoOffline, setAutoOffline] = useState(readAutoOffline);
-  const [themePref, setThemePref] = useState<ThemePref>(getThemePreference);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const superAdmin = isSuperAdminRole(user.role);
@@ -82,14 +80,6 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [autoOffline]);
 
-  useEffect(() => {
-    if (themePref !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setThemePreference("system");
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [themePref]);
-
   const setAvail = useCallback((v: Availability) => {
     setAvailability(v);
     localStorage.setItem(AVAIL_STORAGE, v);
@@ -98,11 +88,6 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
   const setAutoOff = useCallback((on: boolean) => {
     setAutoOffline(on);
     localStorage.setItem(AUTO_OFFLINE_STORAGE, on ? "1" : "0");
-  }, []);
-
-  const setTheme = useCallback((pref: ThemePref) => {
-    setThemePref(pref);
-    setThemePreference(pref);
   }, []);
 
   const availDot =
@@ -220,27 +205,23 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                 className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
                 onClick={() => {
                   setOpen(false);
-                  navigate("/settings");
+                  navigate("/profile");
                 }}
               >
                 <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
                 <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.profileSettings")}</span>
               </button>
-              <div className="flex flex-col gap-2 px-3 py-2.5 text-sm text-ink-700 dark:text-ink-200 sm:flex-row sm:items-center sm:gap-3">
-                <span className="flex min-w-0 items-start gap-2 sm:flex-1">
-                  <Palette className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
-                  <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.changeTheme")}</span>
-                </span>
-                <select
-                  value={themePref}
-                  onChange={(e) => setTheme(e.target.value as ThemePref)}
-                  className="w-full shrink-0 rounded-md border border-ink-200 bg-white py-1.5 pl-2 pr-8 text-xs sm:max-w-[9.5rem] dark:border-ink-500 dark:bg-ink-900 dark:text-ink-100"
-                >
-                  <option value="light">{t("profileMenu.themeLight")}</option>
-                  <option value="dark">{t("profileMenu.themeDark")}</option>
-                  <option value="system">{t("profileMenu.themeSystem")}</option>
-                </select>
-              </div>
+              <button
+                type="button"
+                className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/settings");
+                }}
+              >
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.organizationSettings")}</span>
+              </button>
               {superAdmin ? (
                 <button
                   type="button"

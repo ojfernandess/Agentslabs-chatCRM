@@ -3,7 +3,12 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { App } from "@/App";
+import { initThemeFromStorage } from "@/lib/themeStorage";
+import { initFontSizeFromStorage } from "@/lib/profilePrefs";
 import "./index.css";
+
+initThemeFromStorage();
+initFontSizeFromStorage();
 
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter>
