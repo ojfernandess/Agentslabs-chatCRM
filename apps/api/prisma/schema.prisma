@@ -40,6 +40,30 @@ enum MessageStatus {
   FAILED
 }
 
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum TimelineSubjectType {
+  CONTACT
+  ACCOUNT
+  DEAL
+}
+
+enum TeamMemberRole {
+  TEAM_ADMIN
+  SUPERVISOR
+  MEMBER
+}
+
+enum BotType {
+  WEBHOOK
+  DIALOGFLOW
+  CUSTOM
+}
+
 model Organization {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -57,7 +81,11 @@ model Organization {
   contacts         Contact[]
   conversations    Conversation[]
   tags             Tag[]
-  pipelineStages   PipelineStage[]
+  pipelines        Pipeline[]
+  accounts         Account[]
+  products         Product[]
+  deals            Deal[]
+  timelineEvents   TimelineEvent[]
   leadTypes        LeadType[]
   reminders        Reminder[]
   messageTemplates MessageTemplate[]
@@ -65,8 +93,91 @@ model Organization {
   settings         Settings?
   auditLogs        AuditLog[]
   featureFlags     OrganizationFeatureFlag[]
+  teams            Team[]
+  bots             Bot[]
 
   @@map("organizations")
+}
+
+model Team {
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String
+  description          String?  @db.Text
+  avatarUrl            String?  @map("avatar_url") @db.VarChar(2048)
+  businessHours        Json?    @map("business_hours")
+  notificationSettings Json?    @map("notification_settings")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  members       TeamMember[]
+  conversations Conversation[]
+
+  @@index([organizationId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String         @id @default(uuid()) @db.Uuid
+  role      TeamMemberRole @default(MEMBER)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  teamId String @map("team_id") @db.Uuid
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Bot {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?  @db.Text
+  avatarUrl   String?  @map("avatar_url") @db.VarChar(2048)
+  type        BotType  @default(WEBHOOK)
+  webhookUrl  String?  @map("webhook_url") @db.VarChar(2048)
+  config      Json?
+  isActive    Boolean  @default(false) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  inboxTokenPrefix String? @map("inbox_token_prefix") @db.VarChar(16)
+  inboxTokenHash   String?  @map("inbox_token_hash") @db.Text
+  /// Segredo opcional: assinatura HMAC-SHA256 (cabeçalho X-OpenConduit-Signature) nos POST enviados ao webhookUrl.
+  webhookSecret    String?  @map("webhook_secret") @db.VarChar(512)
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  interactions    BotInteraction[]
+  settingsAsAgent Settings?    @relation("SettingsAgentBot")
+
+  @@unique([inboxTokenPrefix])
+  @@index([organizationId])
+  @@map("bots")
+}
+
+model BotInteraction {
+  id        String   @id @default(uuid()) @db.Uuid
+  direction String   @db.VarChar(32)
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  botId String @map("bot_id") @db.Uuid
+  bot   Bot    @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([botId, createdAt])
+  @@index([conversationId])
+  @@map("bot_interactions")
 }
 
 model User {
@@ -81,10 +192,15 @@ model User {
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   assignedContacts      Contact[]      @relation("AssignedContacts")
+  createdContacts       Contact[]      @relation("ContactCreator")
   assignedConversations Conversation[] @relation("AssignedConversations")
   reminders             Reminder[]
   auditLogs             AuditLog[]
   platformAppsCreated   PlatformApplication[]
+  ownedAccounts         Account[]      @relation("AccountOwner")
+  ownedDeals            Deal[]         @relation("DealOwner")
+  timelineEvents        TimelineEvent[]
+  teamMemberships       TeamMember[]
 
   @@index([organizationId])
   @@map("users")
@@ -94,18 +210,26 @@ model Contact {
   id        String    @id @default(uuid()) @db.Uuid
   phone     String
   name      String
+  email     String?
   notes     String?   @db.Text
   waId      String?   @map("wa_id")
   optedIn   Boolean   @default(false) @map("opted_in")
   optedInAt DateTime? @map("opted_in_at")
+  lifecycleStage String? @map("lifecycle_stage") @db.VarChar(64)
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
   assignedToId String? @map("assigned_to_id") @db.Uuid
   assignedTo   User?   @relation("AssignedContacts", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  createdById String? @map("created_by_id") @db.Uuid
+  createdBy   User?   @relation("ContactCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   pipelineStageId String?         @map("pipeline_stage_id") @db.Uuid
   pipelineStage   PipelineStage?  @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
@@ -113,11 +237,14 @@ model Contact {
   tags          ContactTag[]
   conversations Conversation[]
   reminders     Reminder[]
+  dealsPrimary  Deal[]         @relation("DealPrimaryContact")
 
   @@unique([organizationId, phone])
   @@index([organizationId])
   @@index([assignedToId])
+  @@index([createdById])
   @@index([pipelineStageId])
+  @@index([accountId])
   @@map("contacts")
 }
 
@@ -147,19 +274,157 @@ model ContactTag {
   @@map("contact_tags")
 }
 
-model PipelineStage {
+model Pipeline {
   id             String       @id @default(uuid()) @db.Uuid
   name           String
-  order          Int
-  color          String       @db.VarChar(7)
+  isDefault      Boolean      @default(false) @map("is_default")
+  sortOrder      Int          @default(0) @map("sort_order")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  contacts Contact[]
+  stages PipelineStage[]
+  deals  Deal[]
 
-  @@unique([organizationId, name])
   @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id             String @id @default(uuid()) @db.Uuid
+  name           String
+  order          Int
+  color          String @db.VarChar(7)
+  probabilityPct Int    @default(0) @map("probability_pct")
+
+  pipelineId String   @map("pipeline_id") @db.Uuid
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  contacts Contact[]
+  deals    Deal[]
+
+  @@unique([pipelineId, name])
+  @@index([pipelineId])
   @@map("pipeline_stages")
+}
+
+model Account {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  website        String?
+  industry       String?
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  ownerId String? @map("owner_id") @db.Uuid
+  owner   User?   @relation("AccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  contacts Contact[]
+  deals    Deal[]
+
+  @@index([organizationId])
+  @@map("accounts")
+}
+
+model Product {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  sku            String?
+  priceCents     Int          @default(0) @map("price_cents")
+  currency       String       @default("EUR") @db.VarChar(3)
+  isActive       Boolean      @default(true) @map("is_active")
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  lineItems DealLineItem[]
+
+  @@index([organizationId])
+  @@map("products")
+}
+
+model Deal {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  status         DealStatus   @default(OPEN)
+  amountCents    Int          @default(0) @map("amount_cents")
+  currency       String       @default("EUR") @db.VarChar(3)
+  probabilityPct Int?         @map("probability_pct")
+  closeDate      DateTime?    @map("close_date")
+  lostReason     String?      @map("lost_reason") @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  pipelineId String   @map("pipeline_id") @db.Uuid
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
+
+  stageId String         @map("stage_id") @db.Uuid
+  stage   PipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  primaryContactId String?  @map("primary_contact_id") @db.Uuid
+  primaryContact   Contact? @relation("DealPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+
+  ownerId String? @map("owner_id") @db.Uuid
+  owner   User?   @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  lineItems DealLineItem[]
+
+  @@index([organizationId])
+  @@index([pipelineId])
+  @@index([stageId])
+  @@map("deals")
+}
+
+model DealLineItem {
+  id             String @id @default(uuid()) @db.Uuid
+  description    String @db.Text
+  quantity       Int    @default(1)
+  unitPriceCents Int    @default(0) @map("unit_price_cents")
+  discountPct    Int    @default(0) @map("discount_pct")
+
+  dealId String @map("deal_id") @db.Uuid
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  productId String?  @map("product_id") @db.Uuid
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([dealId])
+  @@map("deal_line_items")
+}
+
+model TimelineEvent {
+  id             String               @id @default(uuid()) @db.Uuid
+  subjectType    TimelineSubjectType  @map("subject_type")
+  subjectId      String               @map("subject_id") @db.Uuid
+  eventType      String               @map("event_type") @db.VarChar(120)
+  channel        String?              @db.VarChar(32)
+  payload        Json
+  sourceId       String?              @map("source_id") @db.VarChar(120)
+  occurredAt     DateTime             @default(now()) @map("occurred_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, subjectType, subjectId, occurredAt])
+  @@map("timeline_events")
 }
 
 model LeadType {
@@ -195,14 +460,21 @@ model Conversation {
   leadTypeId    String?   @map("lead_type_id") @db.Uuid
   leadType      LeadType? @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
   closureReason String?   @map("closure_reason") @db.Text
+  /// Valor opcional associado ao lead quando a conversa é finalizada (acompanhamento comercial).
+  closureValue  Float?    @map("closure_value")
 
-  messages Message[]
+  teamId String? @map("team_id") @db.Uuid
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  messages         Message[]
+  botInteractions  BotInteraction[]
 
   @@index([organizationId])
   @@index([contactId])
   @@index([assignedToId])
   @@index([status])
   @@index([leadTypeId])
+  @@index([teamId])
   @@map("conversations")
 }
 
@@ -213,6 +485,8 @@ model Message {
   body          String?          @db.Text
   mediaUrl      String?          @map("media_url")
   mediaType     String?          @map("media_type")
+  /// Nota interna (estilo Chatwoot): não é enviada ao WhatsApp.
+  isPrivate     Boolean          @default(false) @map("is_private")
   providerMsgId String?          @map("provider_msg_id")
   status        MessageStatus    @default(SENT)
   sentAt        DateTime         @default(now()) @map("sent_at")
@@ -287,6 +561,10 @@ model Settings {
   autoOptInOnFirstMessage   Boolean      @default(false) @map("auto_opt_in_on_first_message")
   notifyConversationOpen    Boolean      @default(true) @map("notify_conversation_open")
   notifyConversationPending Boolean      @default(true) @map("notify_conversation_pending")
+
+  /// Bot estilo Chatwoot (AgentBot): novas conversas WhatsApp entram em PENDING e recebem webhook `message_created`.
+  agentBotId String? @unique @map("agent_bot_id") @db.Uuid
+  agentBot   Bot?    @relation("SettingsAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
 
   @@map("settings")
 }

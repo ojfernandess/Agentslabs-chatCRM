@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { getWhatsAppProvider, getWebhookSecret } from "../providers/factory.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
+import { appendTimelineEvent } from "../lib/timeline.js";
+import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 
 // Fastify: raw body for signature verification (Evolution / Meta)
 const rawBodyPost = { config: { rawBody: true } } as any;
@@ -94,6 +96,21 @@ async function handleWhatsAppPost(
     }
   }
 
+  let channelSettings = await prisma.settings.findUnique({
+    where: { organizationId },
+    include: { agentBot: true },
+  });
+  if (!channelSettings) {
+    channelSettings = await prisma.settings.create({
+      data: { organizationId },
+      include: { agentBot: true },
+    });
+  }
+  const useAgentBot =
+    Boolean(channelSettings.agentBotId) &&
+    Boolean(channelSettings.agentBot?.isActive) &&
+    Boolean(channelSettings.agentBot?.webhookUrl?.trim());
+
   for (const msg of messages) {
     try {
       const phone = normalizePhoneE164(msg.from);
@@ -125,8 +142,7 @@ async function handleWhatsAppPost(
         }
       }
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.autoOptInOnFirstMessage && !contact.optedIn) {
+      if (channelSettings.autoOptInOnFirstMessage && !contact.optedIn) {
         await prisma.contact.update({
           where: { id: contact.id },
           data: { optedIn: true, optedInAt: new Date() },
@@ -140,16 +156,16 @@ async function handleWhatsAppPost(
 
       if (!conversation) {
         conversation = await prisma.conversation.create({
-          data: { organizationId, contactId: contact.id, status: "OPEN" },
+          data: { organizationId, contactId: contact.id, status: useAgentBot ? "PENDING" : "OPEN" },
         });
-      } else if (conversation.status === "PENDING") {
+      } else if (conversation.status === "PENDING" && !useAgentBot) {
         await prisma.conversation.update({
           where: { id: conversation.id },
           data: { status: "OPEN" },
         });
       }
 
-      await prisma.message.create({
+      const inbound = await prisma.message.create({
         data: {
           conversationId: conversation.id,
           direction: "INBOUND",
@@ -161,6 +177,26 @@ async function handleWhatsAppPost(
           status: "DELIVERED",
           sentAt: msg.timestamp,
         },
+      });
+
+      await appendTimelineEvent({
+        organizationId,
+        subjectType: "CONTACT",
+        subjectId: contact.id,
+        eventType: "message.inbound",
+        channel: "whatsapp",
+        payload: {
+          messageId: inbound.id,
+          conversationId: conversation.id,
+          type: msg.type,
+          body: msg.body ?? null,
+          mediaUrl: msg.mediaUrl ?? null,
+          providerMsgId: msg.waMessageId ?? null,
+        },
+        sourceId: msg.waMessageId ?? inbound.id,
+        occurredAt: msg.timestamp ?? new Date(),
+      }).catch((err) => {
+        app.log.warn({ err }, "Failed to append contact timeline event");
       });
 
       await prisma.conversation.update({
@@ -183,6 +219,23 @@ async function handleWhatsAppPost(
               update: {},
             });
           }
+        }
+      }
+
+      if (useAgentBot && channelSettings.agentBot && channelSettings.agentBotId) {
+        const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
+        if (fresh) {
+          void dispatchAgentBotWebhook({
+            organizationId,
+            settings: {
+              agentBotId: channelSettings.agentBotId,
+              agentBot: channelSettings.agentBot,
+            },
+            conversation: fresh,
+            contact,
+            message: inbound,
+            log: app.log,
+          });
         }
       }
     } catch (err) {
@@ -235,7 +288,10 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     app.post<{ Params: { organizationId: string } }>(
       `/whatsapp/:organizationId${suffix}`,
       rawBodyPost,
-      async (request, reply) => {
+      async (
+        request: FastifyRequest<{ Params: { organizationId: string } }>,
+        reply: FastifyReply,
+      ) => {
         return handleWhatsAppPost(app, request, reply, request.params.organizationId);
       },
     );

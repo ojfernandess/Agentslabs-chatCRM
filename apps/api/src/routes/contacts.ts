@@ -16,6 +16,9 @@ const updateContactSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   phone: z.string().min(7).max(16).optional(),
   notes: z.string().max(5000).optional(),
+  email: z.string().max(255).nullable().optional(),
+  accountId: z.string().uuid().nullable().optional(),
+  lifecycleStage: z.string().max(64).nullable().optional(),
   pipelineStageId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   optedIn: z.boolean().optional(),
@@ -130,6 +133,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         phone,
         name: parsed.data.name,
         notes: parsed.data.notes,
+        createdById: request.user.id,
         tags: parsed.data.tags
           ? { create: parsed.data.tags.map((tagId) => ({ tagId })) }
           : undefined,
@@ -159,6 +163,9 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     const data: Record<string, unknown> = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.notes !== undefined) data.notes = parsed.data.notes;
+    if (parsed.data.email !== undefined) data.email = parsed.data.email;
+    if (parsed.data.accountId !== undefined) data.accountId = parsed.data.accountId;
+    if (parsed.data.lifecycleStage !== undefined) data.lifecycleStage = parsed.data.lifecycleStage;
     if (parsed.data.pipelineStageId !== undefined) data.pipelineStageId = parsed.data.pipelineStageId;
     if (parsed.data.assignedToId !== undefined) data.assignedToId = parsed.data.assignedToId;
     if (parsed.data.optedIn !== undefined) {
@@ -184,6 +191,24 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         }
       }
       data.phone = normalized;
+    }
+
+    if (parsed.data.pipelineStageId) {
+      const stage = await prisma.pipelineStage.findFirst({
+        where: { id: parsed.data.pipelineStageId, pipeline: { organizationId, isDefault: true } },
+      });
+      if (!stage) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid pipeline stage", statusCode: 400 });
+      }
+    }
+
+    if (parsed.data.accountId) {
+      const acc = await prisma.account.findFirst({
+        where: { id: parsed.data.accountId, organizationId },
+      });
+      if (!acc) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid account", statusCode: 400 });
+      }
     }
 
     try {
@@ -323,7 +348,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     if (parsed.data.stageId) {
       const stage = await prisma.pipelineStage.findFirst({
-        where: { id: parsed.data.stageId, organizationId },
+        where: { id: parsed.data.stageId, pipeline: { organizationId, isDefault: true } },
       });
       if (!stage) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid pipeline stage", statusCode: 400 });

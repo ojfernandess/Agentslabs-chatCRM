@@ -19,6 +19,12 @@ interface AppSettings {
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
   webhookUrl: string;
+  agentBotId?: string | null;
+}
+
+interface AgentBotOption {
+  id: string;
+  name: string;
 }
 
 interface LeadTypeRow {
@@ -72,14 +78,18 @@ export function SettingsPage() {
   const [ltError, setLtError] = useState("");
   const [ltSubmitting, setLtSubmitting] = useState(false);
 
+  const [agentBotOptions, setAgentBotOptions] = useState<AgentBotOption[]>([]);
+  const [agentBotId, setAgentBotId] = useState("");
+
   useEffect(() => {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, users, lt] = await Promise.all([
+        const [data, users, lt, botList] = await Promise.all([
           api.get<AppSettings>("/settings"),
           api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
+          api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
         ]);
         setSettings(data);
         setProvider(data.whatsappProvider ?? "");
@@ -88,6 +98,8 @@ export function SettingsPage() {
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
+        setAgentBotId(data.agentBotId ?? "");
+        setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setTeamUsers(users);
         setLeadTypes(lt);
       } catch {
@@ -189,12 +201,14 @@ export function SettingsPage() {
       } else if (provider) {
         body.evolutionApiBaseUrl = null;
       }
+      body.agentBotId = agentBotId.trim() ? agentBotId.trim() : null;
 
       const data = await api.put<AppSettings>("/settings", body);
       setSettings(data);
       setApiKey("");
       setWebhookSecret("");
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
+      setAgentBotId(data.agentBotId ?? "");
     } catch {
       // failed
     } finally {
@@ -428,6 +442,25 @@ export function SettingsPage() {
                             webhook.
                           </p>
                         )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.agentBotWhatsApp")}
+                        </label>
+                        <select
+                          value={agentBotId}
+                          onChange={(e) => setAgentBotId(e.target.value)}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="">{t("settings.agentBotNone")}</option>
+                          {agentBotOptions.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.agentBotWhatsAppHint")}</p>
                       </div>
 
                       <div className="flex items-center gap-3 border-t border-gray-100 pt-4">

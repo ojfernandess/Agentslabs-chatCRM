@@ -39,7 +39,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         },
       }),
       prisma.pipelineStage.findMany({
-        where: orgWhere,
+        where: { pipeline: { organizationId, isDefault: true } },
         include: { _count: { select: { contacts: true } } },
         orderBy: { order: "asc" },
       }),

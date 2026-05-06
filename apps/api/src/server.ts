@@ -21,6 +21,11 @@ import { dashboardRoutes } from "./routes/dashboard.js";
 import { leadTypeRoutes } from "./routes/leadTypes.js";
 import { superRoutes } from "./routes/super.js";
 import { platformRoutes } from "./routes/platform.js";
+import { crmRoutes } from "./routes/crm.js";
+import { teamRoutes } from "./routes/teams.js";
+import { agentBotInboxRoutes } from "./routes/agentBotInbox.js";
+import { botRoutes } from "./routes/bots.js";
+import { workspaceRoutes } from "./routes/workspace.js";
 import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
 
 const app = Fastify({
@@ -42,7 +47,11 @@ await app.register(rateLimit, {
   timeWindow: "1 minute",
   allowList: (req) => {
     const path = (req.url ?? "").split("?")[0] ?? "";
-    return path.startsWith("/webhooks") || path.startsWith("/api/v1/messages/media/");
+    return (
+      path.startsWith("/webhooks") ||
+      path.startsWith("/api/v1/messages/media/") ||
+      path.startsWith("/api/v1/ws")
+    );
   },
 });
 await app.register(multipart, {
@@ -67,6 +76,7 @@ await app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
 await app.register(messageRoutes, { prefix: "/api/v1/messages" });
 await app.register(tagRoutes, { prefix: "/api/v1/tags" });
 await app.register(pipelineRoutes, { prefix: "/api/v1/pipeline" });
+await app.register(crmRoutes, { prefix: "/api/v1/crm" });
 await app.register(leadTypeRoutes, { prefix: "/api/v1/lead-types" });
 await app.register(reminderRoutes, { prefix: "/api/v1/reminders" });
 await app.register(templateRoutes, { prefix: "/api/v1/templates" });
@@ -74,6 +84,10 @@ await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
 await app.register(userRoutes, { prefix: "/api/v1/users" });
 await app.register(superRoutes, { prefix: "/api/v1/super" });
 await app.register(platformRoutes, { prefix: "/api/v1/platform" });
+await app.register(workspaceRoutes, { prefix: "/api/v1" });
+await app.register(teamRoutes, { prefix: "/api/v1/teams" });
+await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
+await app.register(botRoutes, { prefix: "/api/v1/bots" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check

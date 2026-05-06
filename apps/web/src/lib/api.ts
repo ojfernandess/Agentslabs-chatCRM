@@ -77,7 +77,7 @@ class ApiClient {
   }
 
   /** Multipart upload — não define Content-Type (browser define boundary). */
-  async uploadMessageAudio(blob: Blob, filename = "voice.webm"): Promise<{ mediaUrl: string }> {
+  async uploadMessageAudio(blob: Blob, filename = "voice.webm"): Promise<{ mediaUrl: string; mimeType: string }> {
     const form = new FormData();
     form.append("file", blob, filename);
     const headers: Record<string, string> = {};
@@ -85,6 +85,27 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
     const response = await fetch(`${API_BASE}/messages/upload-audio`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        message: response.statusText,
+      }));
+      throw new ApiError(error.message || "Upload failed", response.status);
+    }
+    return response.json();
+  }
+
+  async uploadMessageMedia(file: Blob, filename?: string): Promise<{ mediaUrl: string; mimeType: string }> {
+    const form = new FormData();
+    form.append("file", file, filename ?? (file instanceof File ? file.name : "attachment"));
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(`${API_BASE}/messages/upload-media`, {
       method: "POST",
       headers,
       body: form,

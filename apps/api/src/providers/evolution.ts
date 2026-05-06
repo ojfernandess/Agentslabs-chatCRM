@@ -255,9 +255,10 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
       throw new Error("Evolution API: mediaUrl required for media messages");
     }
 
-    const { mediatype, mimetype, fileName } = evolutionMediaMeta(
+    const { mediatype, mimetype, fileName } = mergeEvolutionMeta(
       params.type,
       params.mediaUrl,
+      params.mediaType,
     );
 
     const url = `${this.baseUrl}/message/sendMedia/${this.instanceName}`;
@@ -367,6 +368,23 @@ function mimetypeFromFilename(fileName: string, fallback: string): string {
     wave: "audio/wav",
   };
   return map[ext] ?? fallback;
+}
+
+function mergeEvolutionMeta(
+  type: string,
+  mediaUrl: string,
+  explicitMime?: string,
+): { mediatype: string; mimetype: string; fileName: string } {
+  const base = evolutionMediaMeta(type, mediaUrl);
+  const raw = explicitMime?.trim();
+  if (!raw) return base;
+  const mimetype = raw.split(";")[0].trim().toLowerCase();
+  let mediatype = base.mediatype;
+  if (mimetype.startsWith("image/")) mediatype = "image";
+  else if (mimetype.startsWith("video/")) mediatype = "video";
+  else if (mimetype.startsWith("audio/")) mediatype = "audio";
+  else mediatype = "document";
+  return { ...base, mimetype, mediatype };
 }
 
 function evolutionMediaMeta(

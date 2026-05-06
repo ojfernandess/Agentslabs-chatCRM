@@ -15,6 +15,7 @@ const settingsSchema = z.object({
   autoOptInOnFirstMessage: z.boolean().optional(),
   notifyConversationOpen: z.boolean().optional(),
   notifyConversationPending: z.boolean().optional(),
+  agentBotId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
 });
 
 function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(
@@ -41,6 +42,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return {
       notifyConversationOpen: settings.notifyConversationOpen,
       notifyConversationPending: settings.notifyConversationPending,
+    };
+  });
+
+  /** Dados mínimos do canal para a UI (qualquer utilizador autenticado do tenant). */
+  app.get("/channel", { preHandler: [authenticate] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const settings = await prisma.settings.findUnique({ where: { organizationId } });
+    const p = settings?.whatsappProvider ?? null;
+    return {
+      whatsappProvider: p,
+      /** Anexos / imagens na conversa — solicitado para Evolution API. */
+      evolutionRichChat: p === "evolution",
     };
   });
 
@@ -71,6 +86,15 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       let settings = await prisma.settings.findUnique({ where: { organizationId } });
       const data = { ...parsed.data };
       if (data.evolutionApiBaseUrl === "") data.evolutionApiBaseUrl = null;
+      if (data.agentBotId === "") data.agentBotId = null;
+      if (data.agentBotId) {
+        const botOk = await prisma.bot.findFirst({
+          where: { id: data.agentBotId, organizationId },
+        });
+        if (!botOk) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid agentBotId for this organization", statusCode: 400 });
+        }
+      }
 
       if (!settings) {
         settings = await prisma.settings.create({ data: { organizationId, ...data } });

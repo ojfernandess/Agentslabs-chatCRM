@@ -14,11 +14,20 @@ function contentTypeForFilename(name: string): string {
     opus: "audio/ogg",
     mp3: "audio/mpeg",
     mpeg: "audio/mpeg",
-    mp4: "audio/mp4",
+    mp4: "video/mp4",
     m4a: "audio/mp4",
+    mov: "video/quicktime",
     amr: "audio/amr",
     wav: "audio/wav",
     wave: "audio/wav",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   };
   return map[ext] ?? "application/octet-stream";
 }

@@ -10,7 +10,12 @@ import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { RemindersPage } from "@/pages/RemindersPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { CrmKanbanPage } from "@/pages/CrmKanbanPage";
+import { DealsPage } from "@/pages/DealsPage";
 import { SuperAdminPage } from "@/pages/SuperAdminPage";
+import { TeamsPage } from "@/pages/TeamsPage";
+import { BotsPage } from "@/pages/BotsPage";
+import { MyAttendancePage } from "@/pages/MyAttendancePage";
+import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -77,11 +82,16 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="conversations" element={<ConversationsPage />} />
         <Route path="conversations/:id" element={<ConversationDetailPage />} />
+        <Route path="my-attendance" element={<MyAttendancePage />} />
+        <Route path="conversation-audit" element={<ConversationAuditPage />} />
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="contacts/:id" element={<ContactDetailPage />} />
         <Route path="crm" element={<CrmKanbanPage />} />
+        <Route path="deals" element={<DealsPage />} />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="teams" element={<TeamsPage />} />
+        <Route path="bots" element={<BotsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

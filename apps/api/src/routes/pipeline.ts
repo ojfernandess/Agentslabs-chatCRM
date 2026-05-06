@@ -4,11 +4,13 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 
 const stageSchema = z.object({
   name: z.string().min(1).max(100),
   order: z.number().int().min(0),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  probabilityPct: z.number().int().min(0).max(100).optional(),
 });
 
 const BOARD_CONTACT_LIMIT = 500;
@@ -29,6 +31,12 @@ async function requireCrmKanban(
   return true;
 }
 
+function defaultPipelineStageWhere(organizationId: string) {
+  return {
+    pipeline: { organizationId, isDefault: true },
+  };
+}
+
 export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -44,7 +52,7 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
 
     const [stages, contacts] = await Promise.all([
       prisma.pipelineStage.findMany({
-        where: { organizationId },
+        where: defaultPipelineStageWhere(organizationId),
         orderBy: { order: "asc" },
       }),
       prisma.contact.findMany({
@@ -66,8 +74,9 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireCrmKanban(organizationId, reply))) return;
+    await getOrCreateDefaultPipeline(prisma, organizationId);
     return prisma.pipelineStage.findMany({
-      where: { organizationId },
+      where: defaultPipelineStageWhere(organizationId),
       orderBy: { order: "asc" },
     });
   });
@@ -82,8 +91,15 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
+    const pipeline = await getOrCreateDefaultPipeline(prisma, organizationId);
     const stage = await prisma.pipelineStage.create({
-      data: { ...parsed.data, organizationId },
+      data: {
+        name: parsed.data.name,
+        order: parsed.data.order,
+        color: parsed.data.color,
+        probabilityPct: parsed.data.probabilityPct ?? 0,
+        pipelineId: pipeline.id,
+      },
     });
     return reply.status(201).send(stage);
   });
@@ -99,14 +115,19 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const res = await prisma.pipelineStage.updateMany({
-      where: { id: request.params.id, organizationId },
-      data: parsed.data,
+      where: { id: request.params.id, ...defaultPipelineStageWhere(organizationId) },
+      data: {
+        name: parsed.data.name,
+        order: parsed.data.order,
+        color: parsed.data.color,
+        ...(parsed.data.probabilityPct !== undefined ? { probabilityPct: parsed.data.probabilityPct } : {}),
+      },
     });
     if (res.count === 0) {
       return reply.status(404).send({ error: "Not Found", message: "Stage not found", statusCode: 404 });
     }
     const stage = await prisma.pipelineStage.findFirst({
-      where: { id: request.params.id, organizationId },
+      where: { id: request.params.id, ...defaultPipelineStageWhere(organizationId) },
     });
     return stage;
   });
@@ -117,7 +138,7 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     if (!(await requireCrmKanban(organizationId, reply))) return;
 
     const res = await prisma.pipelineStage.deleteMany({
-      where: { id: request.params.id, organizationId },
+      where: { id: request.params.id, ...defaultPipelineStageWhere(organizationId) },
     });
     if (res.count === 0) {
       return reply.status(404).send({ error: "Not Found", message: "Stage not found", statusCode: 404 });

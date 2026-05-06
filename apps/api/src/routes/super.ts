@@ -356,13 +356,22 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         data: { name: parsed.data.name.trim(), slug, isActive: true },
       });
       await tx.settings.create({ data: { organizationId: o.id } });
+      const pipeline = await tx.pipeline.create({
+        data: {
+          organizationId: o.id,
+          name: "Pipeline principal",
+          isDefault: true,
+          sortOrder: 0,
+        },
+      });
       for (const stage of DEFAULT_PIPELINE_STAGES) {
         await tx.pipelineStage.create({
           data: {
-            organizationId: o.id,
+            pipelineId: pipeline.id,
             name: stage.name,
             order: stage.order,
             color: stage.color,
+            probabilityPct: stage.probabilityPct,
           },
         });
       }

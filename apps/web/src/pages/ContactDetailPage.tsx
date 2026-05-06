@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { ArrowLeft, Phone, Tag, MessageSquare, Trash2, Edit, Plus, X, ChevronDown } from "lucide-react";
+import { ArrowLeft, Phone, Tag, MessageSquare, Trash2, Edit, Plus, X, ChevronDown, History } from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
 import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/components/Motion";
@@ -17,6 +17,16 @@ interface StageItem {
   name: string;
   color: string;
   order: number;
+  probabilityPct?: number;
+}
+
+interface TimelineEventApi {
+  id: string;
+  eventType: string;
+  channel: string | null;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  actorUser: { id: string; name: string } | null;
 }
 
 interface ContactDetail {
@@ -49,20 +59,30 @@ export function ContactDetailPage() {
   // Stage picker state
   const [allStages, setAllStages] = useState<StageItem[]>([]);
   const [showStagePicker, setShowStagePicker] = useState(false);
+  const [timeline, setTimeline] = useState<TimelineEventApi[]>([]);
 
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     async function load() {
+      if (!id) return;
       try {
-        const [data, tags, stages] = await Promise.all([
+        const [data, tags, stages, timelineRes] = await Promise.all([
           api.get<ContactDetail>(`/contacts/${id}`),
           api.get<TagItem[]>("/tags"),
           api.get<StageItem[]>("/pipeline/stages"),
+          api.get<{ data: TimelineEventApi[] }>(
+            `/crm/timeline?subjectType=CONTACT&subjectId=${encodeURIComponent(id)}`,
+          ).catch(() => ({ data: [] as TimelineEventApi[] })),
         ]);
         setContact(data);
         setEditName(data.name);
         setEditNotes(data.notes ?? "");
         setAllTags(tags);
         setAllStages(stages);
+        setTimeline(timelineRes.data ?? []);
       } catch {
         // failed
       } finally {
@@ -261,6 +281,49 @@ export function ContactDetailPage() {
                       </Link>
                     ))}
                   </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-6">
+                <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
+                  <History className="h-4 w-4 text-gray-400" />
+                  Atividade
+                </h2>
+                {timeline.length === 0 ? (
+                  <p className="text-sm text-gray-500">Sem eventos na linha do tempo.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {timeline.map((ev) => {
+                      const body =
+                        typeof ev.payload.body === "string"
+                          ? ev.payload.body
+                          : typeof ev.payload.messageId === "string"
+                            ? String(ev.eventType)
+                            : ev.eventType;
+                      return (
+                        <li
+                          key={ev.id}
+                          className="border-l-2 border-brand-200 py-0.5 pl-3 text-sm"
+                        >
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="font-medium text-gray-800">{ev.eventType}</span>
+                            {ev.channel && (
+                              <span className="text-xs text-gray-400">({ev.channel})</span>
+                            )}
+                            <span className="text-xs text-gray-400">
+                              {format(new Date(ev.occurredAt), "MMM d, yyyy HH:mm")}
+                            </span>
+                          </div>
+                          {body && body !== ev.eventType && (
+                            <p className="mt-1 line-clamp-2 text-gray-600">{body}</p>
+                          )}
+                          {ev.actorUser && (
+                            <p className="mt-0.5 text-xs text-gray-400">{ev.actorUser.name}</p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
             </>

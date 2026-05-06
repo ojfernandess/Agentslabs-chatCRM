@@ -32,15 +32,30 @@ async function main() {
     console.log("Default settings row created");
   }
 
-  const stageCount = await prisma.pipelineStage.count({ where: { organizationId: org.id } });
+  let pipeline = await prisma.pipeline.findFirst({
+    where: { organizationId: org.id, isDefault: true },
+  });
+  if (!pipeline) {
+    pipeline = await prisma.pipeline.create({
+      data: {
+        organizationId: org.id,
+        name: "Pipeline principal",
+        isDefault: true,
+        sortOrder: 0,
+      },
+    });
+  }
+
+  const stageCount = await prisma.pipelineStage.count({ where: { pipelineId: pipeline.id } });
   if (stageCount === 0) {
     for (const stage of DEFAULT_PIPELINE_STAGES) {
       await prisma.pipelineStage.create({
         data: {
-          organizationId: org.id,
+          pipelineId: pipeline.id,
           name: stage.name,
           order: stage.order,
           color: stage.color,
+          probabilityPct: stage.probabilityPct,
         },
       });
     }

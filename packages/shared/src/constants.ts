@@ -4,13 +4,13 @@ export const WHATSAPP_SESSION_WINDOW_HOURS = 24;
 export const DEFAULT_ORGANIZATION_ID = "11111111-1111-1111-1111-111111111111";
 
 export const DEFAULT_PIPELINE_STAGES = [
-  { name: "Novo lead", order: 1, color: "#6366f1" },
-  { name: "Em atendimento", order: 2, color: "#3b82f6" },
-  { name: "Proposta enviada", order: 3, color: "#f59e0b" },
-  { name: "Negociação", order: 4, color: "#8b5cf6" },
-  { name: "Convertido", order: 5, color: "#10b981" },
-  { name: "Aguardando retorno", order: 6, color: "#06b6d4" },
-  { name: "Encerrado", order: 7, color: "#6b7280" },
+  { name: "Novo lead", order: 1, color: "#6366f1", probabilityPct: 10 },
+  { name: "Em atendimento", order: 2, color: "#3b82f6", probabilityPct: 25 },
+  { name: "Proposta enviada", order: 3, color: "#f59e0b", probabilityPct: 50 },
+  { name: "Negociação", order: 4, color: "#8b5cf6", probabilityPct: 65 },
+  { name: "Convertido", order: 5, color: "#10b981", probabilityPct: 100 },
+  { name: "Aguardando retorno", order: 6, color: "#06b6d4", probabilityPct: 30 },
+  { name: "Encerrado", order: 7, color: "#6b7280", probabilityPct: 0 },
 ] as const;
 
 export const DEFAULT_TAGS = [

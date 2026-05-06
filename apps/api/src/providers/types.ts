@@ -3,6 +3,8 @@ export interface SendMessageParams {
   type: string;
   body?: string;
   mediaUrl?: string;
+  /** MIME explícito (upload) — Evolution usa para mimetype no sendMedia. */
+  mediaType?: string;
   templateName?: string;
 }
 

@@ -1,0 +1,98 @@
+import { useEffect, useCallback, useRef, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { isSuperAdminRole } from "@/lib/authRole";
+import { AnimatePresence, motion } from "@/components/Motion";
+import { useI18n } from "@/i18n/I18nProvider";
+import { translate } from "@/i18n/messages";
+
+const TOKEN_KEY = "openconduit_token";
+
+function playTransferChime(): void {
+  try {
+    const ctx = new AudioContext();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.08, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    o.start(ctx.currentTime);
+    o.stop(ctx.currentTime + 0.2);
+    setTimeout(() => void ctx.close(), 400);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function WorkspaceRealtime() {
+  const { user } = useAuth();
+  const { t, locale } = useI18n();
+  const [toasts, setToasts] = useState<{ id: string; text: string }[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const pushToast = useCallback((text: string) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, text }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((x) => x.id !== id));
+    }, 6000);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`;
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+
+    ws.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(String(ev.data)) as { type?: string; contact?: { name?: string }; teamId?: string | null };
+        if (data.type === "conversation.transferred") {
+          const name = data.contact?.name ?? "—";
+          pushToast(translate(locale, "workspace.transferToast").replace("{name}", name));
+          playTransferChime();
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-transferred", { detail: data }),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [user, pushToast, locale]);
+
+  return (
+    <div
+      className="pointer-events-none fixed bottom-4 right-4 z-[100] flex max-w-sm flex-col gap-2"
+      aria-live="polite"
+    >
+      <AnimatePresence>
+        {toasts.map((x) => (
+          <motion.div
+            key={x.id}
+            layout
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            className="pointer-events-auto rounded-lg border border-brand-200 bg-white px-4 py-3 text-sm shadow-lg ring-2 ring-brand-500/20"
+          >
+            <p className="font-medium text-ink-900">{t("workspace.transferTitle")}</p>
+            <p className="mt-1 text-ink-600">{x.text}</p>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}

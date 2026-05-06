@@ -26,3 +26,31 @@ test("AUDIO accepts public https mediaUrl", () => {
   });
   assert.equal(r.success, true);
 });
+
+test("private TEXT requires body", () => {
+  const r = sendMessageSchema.safeParse({
+    contactId: "550e8400-e29b-41d4-a716-446655440000",
+    type: "TEXT",
+    isPrivate: true,
+  });
+  assert.equal(r.success, false);
+});
+
+test("private TEXT with body succeeds", () => {
+  const r = sendMessageSchema.safeParse({
+    contactId: "550e8400-e29b-41d4-a716-446655440000",
+    type: "TEXT",
+    body: "internal",
+    isPrivate: true,
+  });
+  assert.equal(r.success, true);
+});
+
+test("private IMAGE requires mediaUrl", () => {
+  const r = sendMessageSchema.safeParse({
+    contactId: "550e8400-e29b-41d4-a716-446655440000",
+    type: "IMAGE",
+    isPrivate: true,
+  });
+  assert.equal(r.success, false);
+});

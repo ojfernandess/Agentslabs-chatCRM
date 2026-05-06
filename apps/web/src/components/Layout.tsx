@@ -5,22 +5,29 @@ import {
   LayoutDashboard,
   MessageSquare,
   Users,
+  UsersRound,
   LayoutGrid,
+  Briefcase,
   Bell,
   Settings,
   LogOut,
   Languages,
   Shield,
+  Box,
+  ClipboardCheck,
+  FileSearch,
 } from "lucide-react";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import type { LocaleCode } from "@/i18n/messages";
-import { isSuperAdminRole } from "@/lib/authRole";
+import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
+import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
   { to: "/conversations", icon: MessageSquare, labelKey: "nav.conversations" },
   { to: "/contacts", icon: Users, labelKey: "nav.contacts" },
   { to: "/crm", icon: LayoutGrid, labelKey: "nav.crm" },
+  { to: "/deals", icon: Briefcase, labelKey: "nav.deals" },
   { to: "/reminders", icon: Bell, labelKey: "nav.reminders" },
   { to: "/settings", icon: Settings, labelKey: "nav.settings" },
 ] as const;
@@ -29,6 +36,7 @@ export function Layout() {
   const { user, logout, exitOrganization, exitUserImpersonation } = useAuth();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
+  const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
 
   const handleLogout = () => {
     logout();
@@ -60,6 +68,58 @@ export function Layout() {
               {t(item.labelKey)}
             </NavLink>
           ))}
+          <NavLink
+            to="/my-attendance"
+            className={({ isActive }) =>
+              clsx(
+                "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+              )
+            }
+          >
+            <ClipboardCheck className="h-5 w-5" />
+            {t("nav.myAttendance")}
+          </NavLink>
+          {tenantAdmin ? (
+            <>
+              <NavLink
+                to="/conversation-audit"
+                className={({ isActive }) =>
+                  clsx(
+                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                  )
+                }
+              >
+                <FileSearch className="h-5 w-5" />
+                {t("nav.conversationAudit")}
+              </NavLink>
+              <NavLink
+                to="/teams"
+                className={({ isActive }) =>
+                  clsx(
+                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                  )
+                }
+              >
+                <UsersRound className="h-5 w-5" />
+                {t("nav.teams")}
+              </NavLink>
+              <NavLink
+                to="/bots"
+                className={({ isActive }) =>
+                  clsx(
+                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900",
+                  )
+                }
+              >
+                <Box className="h-5 w-5" />
+                {t("nav.bots")}
+              </NavLink>
+            </>
+          ) : null}
           {isSuperAdminRole(user?.role) && (
             <NavLink
               to="/super"
@@ -160,6 +220,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <WorkspaceRealtime />
     </div>
   );
 }
