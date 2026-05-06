@@ -5,6 +5,7 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
+import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
 
 export type OutboundActor =
   | { kind: "user"; userId: string }
@@ -50,21 +51,29 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
-  let conversation = await prisma.conversation.findFirst({
-    where: { organizationId, contactId, status: { not: "RESOLVED" } },
-    orderBy: { updatedAt: "desc" },
+  const channelSettings = await prisma.settings.findUnique({
+    where: { organizationId },
+    include: { agentBot: true },
   });
+  const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
+  const botTriageActive =
+    Boolean(channelSettings?.agentBotId) &&
+    Boolean(channelSettings?.agentBot?.isActive) &&
+    Boolean(channelSettings?.agentBot?.webhookUrl?.trim());
 
-  if (!conversation) {
-    conversation = await prisma.conversation.create({
-      data: {
-        organizationId,
-        contactId,
-        status: newConversation.status,
-        assignedToId: newConversation.assignedToId ?? undefined,
-      },
-    });
-  }
+  const activeConversationStatus: "OPEN" | "PENDING" =
+    actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+
+  const conversation = await ensureConversationForWhatsAppContact({
+    organizationId,
+    contactId,
+    lockSingleConversation,
+    activeConversationStatus,
+    createDefaults: {
+      status: newConversation.status,
+      assignedToId: newConversation.assignedToId ?? null,
+    },
+  });
 
   let messageBody = body;
   if (type === "TEMPLATE" && templateId) {

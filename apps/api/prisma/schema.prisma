@@ -594,6 +594,8 @@ model Settings {
   autoOptInOnFirstMessage   Boolean      @default(false) @map("auto_opt_in_on_first_message")
   notifyConversationOpen    Boolean      @default(true) @map("notify_conversation_open")
   notifyConversationPending Boolean      @default(true) @map("notify_conversation_pending")
+  /// Estilo Chatwoot «lock to single conversation»: uma única thread por contacto no canal (reabre a última ao receber mensagem).
+  lockSingleConversation    Boolean      @default(false) @map("lock_single_conversation")
 
   /// Bot estilo Chatwoot (AgentBot): novas conversas WhatsApp entram em PENDING e recebem webhook `message_created`.
   agentBotId String? @unique @map("agent_bot_id") @db.Uuid

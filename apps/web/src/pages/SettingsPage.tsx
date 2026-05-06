@@ -22,6 +22,7 @@ interface AppSettings {
   evolutionApiBaseUrl: string | null;
   whatsappWebhookSecret: string | null;
   autoOptInOnFirstMessage: boolean;
+  lockSingleConversation: boolean;
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
   webhookUrl: string;
@@ -84,6 +85,7 @@ export function SettingsPage() {
   const [evolutionBaseUrl, setEvolutionBaseUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [autoOptIn, setAutoOptIn] = useState(false);
+  const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(true);
   const [notifyPending, setNotifyPending] = useState(true);
 
@@ -214,6 +216,7 @@ export function SettingsPage() {
         setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
         setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
         setAutoOptIn(data.autoOptInOnFirstMessage);
+        setLockSingleConversation(data.lockSingleConversation ?? false);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
         setAgentBotId(data.agentBotId ?? "");
@@ -351,6 +354,7 @@ export function SettingsPage() {
     try {
       const body: Record<string, unknown> = {
         autoOptInOnFirstMessage: autoOptIn,
+        lockSingleConversation,
       };
       if (provider) body.whatsappProvider = provider;
       if (apiKey) body.whatsappApiKey = apiKey;
@@ -369,6 +373,7 @@ export function SettingsPage() {
       setWebhookSecret("");
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
       setAgentBotId(data.agentBotId ?? "");
+      setLockSingleConversation(data.lockSingleConversation ?? false);
     } catch {
       // failed
     } finally {
@@ -693,6 +698,21 @@ export function SettingsPage() {
                           ))}
                         </select>
                         <p className="mt-1 text-xs text-gray-500">{t("settings.agentBotWhatsAppHint")}</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.lockSingleConversation")}
+                        </label>
+                        <select
+                          value={lockSingleConversation ? "on" : "off"}
+                          onChange={(e) => setLockSingleConversation(e.target.value === "on")}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="on">{t("settings.lockSingleConversationOn")}</option>
+                          <option value="off">{t("settings.lockSingleConversationOff")}</option>
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.lockSingleConversationHint")}</p>
                       </div>
 
                       <div className="flex items-center gap-3 border-t border-gray-100 pt-4">

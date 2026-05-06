@@ -495,6 +495,11 @@ export const messages = {
       agentBotNone: "Nenhum (só agentes humanos)",
       agentBotWhatsAppHint:
         "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem (estilo Chatwoot). O bot responde pela API de inbox com o token gerado na página Bots.",
+      lockSingleConversation: "Bloquear para conversa única",
+      lockSingleConversationOn: "Ativado",
+      lockSingleConversationOff: "Desativado",
+      lockSingleConversationHint:
+        "Com ativado, todas as mensagens do mesmo contacto reutilizam uma única conversa (reabre a última se estiver finalizada). Com desativado, após resolver pode abrir-se uma conversa nova.",
       embeddedTitle: "Configuração rápida com Meta",
       embeddedDesc:
         "Use o fluxo de inscrição incorporada do WhatsApp para ligar o Cloud API sem colar token manualmente. Será redireccionado para a Meta para concluir o WhatsApp Business.",
@@ -1104,6 +1109,11 @@ export const messages = {
       agentBotNone: "None (human agents only)",
       agentBotWhatsAppHint:
         "When set, new conversations start pending and the bot webhook receives each message (Chatwoot-style). The bot replies via the inbox API using the token issued on the Bots page.",
+      lockSingleConversation: "Lock to single conversation",
+      lockSingleConversationOn: "Enabled",
+      lockSingleConversationOff: "Disabled",
+      lockSingleConversationHint:
+        "When enabled, all messages from the same contact reuse one thread (reopens the latest if it was resolved). When disabled, resolving allows a new conversation on the next message.",
       embeddedTitle: "Quick setup with Meta",
       embeddedDesc:
         "Use WhatsApp embedded signup to connect the Cloud API without pasting tokens manually. You will sign in with Meta to finish WhatsApp Business onboarding.",

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import {
@@ -205,12 +205,26 @@ export function ConversationDetailPage() {
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
 
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
+  const stickToBottomRef = useRef(true);
   const seenMessageIds = useRef(new Set<string>());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
   const autoAssignAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    stickToBottomRef.current = true;
+  }, [id]);
+
+  const onMessagesViewportScroll = useCallback(() => {
+    const el = messagesViewportRef.current;
+    if (!el) return;
+    const threshold = 120;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -369,7 +383,8 @@ export function ConversationDetailPage() {
   }, [conversation, user?.id, id]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!stickToBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [conversation?.messages]);
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
@@ -483,6 +498,7 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
       });
       setVoicePreview(null);
+      stickToBottomRef.current = true;
       await loadConversation();
     } catch {
       setFlowError(t("conversationDetail.voiceSendFailed"));
@@ -561,6 +577,7 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
       });
       setNewMessage("");
+      stickToBottomRef.current = true;
       await loadConversation();
     } catch {
       setFlowError(t("conversationDetail.attachFailed"));
@@ -594,6 +611,7 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
       });
       setNewMessage("");
+      stickToBottomRef.current = true;
       await loadConversation();
     } catch {
       /* send failed */
@@ -1389,7 +1407,11 @@ export function ConversationDetailPage() {
           </div>
         )}
 
-        <div className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5">
+        <div
+          ref={messagesViewportRef}
+          onScroll={onMessagesViewportScroll}
+          className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5"
+        >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
           <div className="relative w-full min-w-0 space-y-0">
             {(conversation.messages ?? []).map((msg, i) => {
@@ -1400,7 +1422,7 @@ export function ConversationDetailPage() {
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
               /* Espaço visível entre balões (estilo Chatwoot); grupo só afeta avatar e folga extra. */
-              const rowGap = groupedPrev ? "mt-2.5" : "mt-5";
+              const rowGap = groupedPrev ? "mt-4" : "mt-8";
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -1501,18 +1523,20 @@ export function ConversationDetailPage() {
                   )}
                   {msg.type === "AUDIO" && msg.mediaUrl && (
                     <audio
+                      key={`${msg.id}-${msg.mediaUrl}`}
                       controls
                       src={msg.mediaUrl}
                       className={clsx(
                         "mt-2 w-full min-w-[200px] max-w-[280px]",
                         msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
                       )}
-                      preload="metadata"
+                      preload="auto"
+                      playsInline
                     />
                   )}
                   <div
                     className={clsx(
-                      "mt-1 flex items-center gap-1 text-[10px] tabular-nums",
+                      "mt-2 flex items-center gap-1 text-[10px] tabular-nums",
                       msg.isPrivate
                         ? "text-amber-800/80 dark:text-amber-300/80"
                         : msg.direction === "OUTBOUND"
@@ -1566,7 +1590,7 @@ export function ConversationDetailPage() {
             })}
             {sending ? (
               <motion.div
-                className="mt-3 flex w-full justify-end gap-2"
+                className="mt-6 flex w-full justify-end gap-2"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >

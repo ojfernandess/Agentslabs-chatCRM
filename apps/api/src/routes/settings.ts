@@ -23,6 +23,7 @@ const settingsSchema = z.object({
   autoOptInOnFirstMessage: z.boolean().optional(),
   notifyConversationOpen: z.boolean().optional(),
   notifyConversationPending: z.boolean().optional(),
+  lockSingleConversation: z.boolean().optional(),
   agentBotId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
 });
 

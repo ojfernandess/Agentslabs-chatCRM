@@ -7,6 +7,8 @@ import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import { ensureConversationForWhatsAppContact } from "../lib/conversationRouting.js";
+import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
 
 // Fastify: raw body for signature verification (Evolution / Meta)
 const rawBodyPost = { config: { rawBody: true } } as any;
@@ -274,20 +276,43 @@ async function handleWhatsAppPost(
         }
       }
 
-      let conversation = await prisma.conversation.findFirst({
-        where: { organizationId, contactId: contact.id, status: { not: "RESOLVED" } },
-        orderBy: { updatedAt: "desc" },
+      let conversation = await ensureConversationForWhatsAppContact({
+        organizationId,
+        contactId: contact.id,
+        lockSingleConversation: channelSettings.lockSingleConversation,
+        activeConversationStatus: useAgentBot ? "PENDING" : "OPEN",
+        createDefaults: {
+          status: useAgentBot ? "PENDING" : "OPEN",
+          assignedToId: null,
+        },
       });
 
-      if (!conversation) {
-        conversation = await prisma.conversation.create({
-          data: { organizationId, contactId: contact.id, status: useAgentBot ? "PENDING" : "OPEN" },
-        });
-      } else if (conversation.status === "PENDING" && !useAgentBot) {
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { status: "OPEN" },
-        });
+      let resolvedMediaUrl: string | null = msg.mediaUrl ?? null;
+      let resolvedMediaType: string | null = msg.mediaType ?? null;
+      if (
+        channelSettings.whatsappProvider === "evolution" &&
+        msg.type === "AUDIO" &&
+        msg.evolutionWebMessage
+      ) {
+        const tryPersist = () =>
+          persistEvolutionInboundMediaAsLocalUrl({
+            organizationId,
+            evolutionWebMessage: msg.evolutionWebMessage!,
+          });
+        let local = await tryPersist();
+        if (!local) {
+          await new Promise((r) => setTimeout(r, 1200));
+          local = await tryPersist();
+        }
+        if (local) {
+          resolvedMediaUrl = local.mediaUrl;
+          resolvedMediaType = local.mediaType;
+        } else {
+          app.log.warn(
+            { organizationId, waMessageId: msg.waMessageId },
+            "Evolution inbound audio: getBase64FromMediaMessage failed — using original URL if any",
+          );
+        }
       }
 
       const inbound = await prisma.message.create({
@@ -296,8 +321,8 @@ async function handleWhatsAppPost(
           direction: "INBOUND",
           type: msg.type as "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "VIDEO",
           body: inboundBody,
-          mediaUrl: msg.mediaUrl,
-          mediaType: msg.mediaType,
+          mediaUrl: resolvedMediaUrl,
+          mediaType: resolvedMediaType,
           providerMsgId: msg.waMessageId,
           status: "DELIVERED",
           sentAt: msg.timestamp,
@@ -315,7 +340,7 @@ async function handleWhatsAppPost(
           conversationId: conversation.id,
           type: msg.type,
           body: inboundBody ?? null,
-          mediaUrl: msg.mediaUrl ?? null,
+          mediaUrl: resolvedMediaUrl ?? null,
           providerMsgId: msg.waMessageId ?? null,
         },
         sourceId: msg.waMessageId ?? inbound.id,

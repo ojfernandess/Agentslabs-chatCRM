@@ -172,38 +172,38 @@ function parseUpsertToIncoming(
   }
 
   const img = asRecord(message.imageMessage);
+  const doc = asRecord(message.documentMessage);
+  const audio = asRecord(message.audioMessage);
+  const video = asRecord(message.videoMessage);
+
   if (img?.url) {
     type = "IMAGE";
     mediaUrl = String(img.url);
     mediaType = typeof img.mimetype === "string" ? img.mimetype : "image/jpeg";
     if (typeof img.caption === "string") body = img.caption;
-  }
-
-  const doc = asRecord(message.documentMessage);
-  if (doc?.url) {
+  } else if (doc?.url) {
     type = "DOCUMENT";
     mediaUrl = String(doc.url);
     mediaType = typeof doc.mimetype === "string" ? doc.mimetype : "application/octet-stream";
     if (typeof doc.caption === "string") body = doc.caption;
     else if (typeof doc.fileName === "string") body = doc.fileName;
-  }
-
-  const audio = asRecord(message.audioMessage);
-  if (audio?.url) {
+  } else if (audio) {
     type = "AUDIO";
-    mediaUrl = String(audio.url);
-    mediaType = typeof audio.mimetype === "string" ? audio.mimetype : "audio/mpeg";
-  }
-
-  const video = asRecord(message.videoMessage);
-  if (video?.url) {
+    if (typeof audio.url === "string" && audio.url.trim()) {
+      mediaUrl = String(audio.url);
+    }
+    mediaType = typeof audio.mimetype === "string" ? audio.mimetype : "audio/ogg";
+  } else if (video?.url) {
     type = "VIDEO";
     mediaUrl = String(video.url);
     mediaType = typeof video.mimetype === "string" ? video.mimetype : "video/mp4";
     if (typeof video.caption === "string") body = video.caption;
   }
 
-  const base = {
+  const evolutionWebMessage =
+    type === "IMAGE" || type === "DOCUMENT" || type === "AUDIO" || type === "VIDEO" ? rec : undefined;
+
+  const base: IncomingMessage = {
     from: phone,
     waMessageId,
     type,
@@ -212,6 +212,7 @@ function parseUpsertToIncoming(
     mediaType,
     timestamp: parseTimestamp(rec.messageTimestamp),
     pushName,
+    ...(evolutionWebMessage ? { evolutionWebMessage } : {}),
   };
 
   if (isGroup) {

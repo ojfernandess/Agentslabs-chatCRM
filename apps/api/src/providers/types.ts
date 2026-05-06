@@ -23,6 +23,8 @@ export interface IncomingMessage {
   groupJid?: string;
   participantE164?: string | null;
   participantPushName?: string | null;
+  /** Evolution messages.upsert: registo completo para POST getBase64FromMediaMessage. */
+  evolutionWebMessage?: Record<string, unknown>;
 }
 
 export interface StatusUpdate {
