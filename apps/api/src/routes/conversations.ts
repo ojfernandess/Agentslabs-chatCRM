@@ -102,6 +102,23 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           });
         }
         where.assignedToId = request.user.id;
+        if (query.teamId) {
+          const member = await prisma.teamMember.findFirst({
+            where: {
+              userId: request.user.id,
+              teamId: query.teamId,
+              team: { organizationId },
+            },
+          });
+          if (!member) {
+            return reply.status(403).send({
+              error: "Forbidden",
+              message: "You are not a member of this team",
+              statusCode: 403,
+            });
+          }
+          where.teamId = query.teamId;
+        }
       } else if (query.teamId) {
         const member = await prisma.teamMember.findFirst({
           where: {
