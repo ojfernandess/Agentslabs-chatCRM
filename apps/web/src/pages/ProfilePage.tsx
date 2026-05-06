@@ -31,6 +31,7 @@ export function ProfilePage() {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [signature, setSignature] = useState("");
+  const [showAgentNameInChat, setShowAgentNameInChat] = useState(false);
   const [fontSize, setFontSize] = useState<FontSizePref>("default");
   const [theme, setTheme] = useState<ThemePref>("system");
   const [sendShortcut, setSendShortcut] = useState<SendShortcutPref>("enter");
@@ -49,6 +50,7 @@ export function ProfilePage() {
     setName(user.name ?? "");
     setDisplayName(user.displayName ?? "");
     setSignature(user.messageSignature ?? "");
+    setShowAgentNameInChat(!!user.showAgentNameInChat);
     setFontSize(readFontSizePref());
     setTheme(getThemePreference());
     setSendShortcut(readSendShortcutPref());
@@ -64,6 +66,7 @@ export function ProfilePage() {
         name: name.trim(),
         displayName: displayName.trim() || null,
         messageSignature: signature.trim() || null,
+        showAgentNameInChat,
       });
       await refreshUser();
       setProfileMsg(t("profilePage.profileSaved"));
@@ -238,6 +241,22 @@ export function ProfilePage() {
               maxLength={8000}
               placeholder="—"
             />
+            <label className="mt-4 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800"
+                checked={showAgentNameInChat}
+                onChange={(e) => setShowAgentNameInChat(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-ink-800 dark:text-ink-100">
+                  {t("profilePage.showAgentNameInChat")}
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-500 dark:text-ink-400">
+                  {t("profilePage.showAgentNameInChatHint")}
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="border-t border-ink-200 pt-6 dark:border-ink-600">

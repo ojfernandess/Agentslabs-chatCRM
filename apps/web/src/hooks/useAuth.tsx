@@ -17,6 +17,7 @@ export interface AuthUser {
   role: string;
   organizationId?: string | null;
   messageSignature?: string | null;
+  showAgentNameInChat?: boolean;
   actingOrganizationId?: string | null;
   actingOrganization?: { id: string; name: string; slug: string } | null;
   superAdminActorId?: string | null;

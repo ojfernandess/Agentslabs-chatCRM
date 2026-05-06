@@ -199,6 +199,8 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   messageSignature String? @map("message_signature") @db.Text
+  /// Na UI da conversa, mostrar o nome do atendente em cada mensagem enviada (equipa).
+  showAgentNameInChat Boolean @default(false) @map("show_agent_name_in_chat")
   role         UserRole @default(AGENT)
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -215,6 +217,7 @@ model User {
   ownedDeals            Deal[]         @relation("DealOwner")
   timelineEvents        TimelineEvent[]
   teamMemberships       TeamMember[]
+  messagesAsActor       Message[]      @relation("MessageActor")
 
   @@index([organizationId])
   @@map("users")
@@ -521,8 +524,12 @@ model Message {
   conversationId String       @map("conversation_id") @db.Uuid
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  actorUser   User?   @relation("MessageActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
   @@index([conversationId])
   @@index([providerMsgId])
+  @@index([actorUserId])
   @@map("messages")
 }
 

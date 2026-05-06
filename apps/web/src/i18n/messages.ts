@@ -114,6 +114,9 @@ export const messages = {
       theme: "Tema",
       signatureSection: "Assinatura em mensagens",
       signatureHint: "Texto opcional acrescentado ao fim das suas mensagens ao cliente (mensagens públicas).",
+      showAgentNameInChat: "Mostrar nome do atendente na conversa",
+      showAgentNameInChatHint:
+        "No painel da conversa, mostra quem enviou cada mensagem da equipa. Mensagens antigas podem não ter este dado.",
       saveSignature: "Guardar assinatura",
       signatureSaved: "Assinatura guardada com o perfil.",
       sendShortcutSection: "Atalho para enviar",
@@ -721,6 +724,9 @@ export const messages = {
       theme: "Theme",
       signatureSection: "Message signature",
       signatureHint: "Optional text appended to your public replies to customers.",
+      showAgentNameInChat: "Show agent name in conversation",
+      showAgentNameInChatHint:
+        "In the conversation panel, shows who sent each team message. Older messages may not include this data.",
       saveSignature: "Save signature",
       signatureSaved: "Signature saved with your profile.",
       sendShortcutSection: "Send message shortcut",

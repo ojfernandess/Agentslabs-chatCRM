@@ -54,6 +54,7 @@ interface Message {
   status: string;
   sentAt: string;
   createdAt: string;
+  actorUser?: { id: string; name: string; displayName: string | null } | null;
 }
 
 interface LeadTypeRow {
@@ -1439,6 +1440,18 @@ export function ConversationDetailPage() {
                         : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:bg-none dark:bg-[#1e2a3a] dark:text-ink-50 dark:shadow-lg dark:shadow-black/25 dark:ring-1 dark:ring-brand-400/25",
                   )}
                 >
+                  {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
+                    <p
+                      className={clsx(
+                        "mb-1 text-[11px] font-semibold leading-tight",
+                        msg.isPrivate
+                          ? "text-amber-900/90 dark:text-amber-100/95"
+                          : "text-white/95 dark:text-ink-100",
+                      )}
+                    >
+                      {msg.actorUser.displayName?.trim() || msg.actorUser.name}
+                    </p>
+                  ) : null}
                   {msg.isPrivate ? (
                     <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
                       <Lock className="h-3 w-3" />

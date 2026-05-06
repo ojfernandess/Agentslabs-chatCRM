@@ -280,7 +280,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         assignedTo: { select: { id: true, name: true } },
         team: { select: { id: true, name: true } },
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
-        messages: { orderBy: { createdAt: "asc" } },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+        },
       },
     });
 
@@ -486,7 +489,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             assignedTo: { select: { id: true, name: true } },
             team: { select: { id: true, name: true } },
             leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
-            messages: { orderBy: { createdAt: "asc" } },
+            messages: {
+              orderBy: { createdAt: "asc" },
+              include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+            },
           },
         });
 

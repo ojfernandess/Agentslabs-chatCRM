@@ -108,6 +108,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       isPrivate: Boolean(isPrivate),
       providerMsgId,
       status: isPrivate ? "SENT" : providerMsgId ? "SENT" : "FAILED",
+      actorUserId: actor.kind === "user" ? actor.userId : null,
     },
   });
 

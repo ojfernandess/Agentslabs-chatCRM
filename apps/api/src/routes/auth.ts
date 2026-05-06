@@ -16,6 +16,7 @@ const patchMeSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   displayName: z.string().max(200).nullable().optional(),
   messageSignature: z.string().max(8000).nullable().optional(),
+  showAgentNameInChat: z.boolean().optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -96,6 +97,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         role: true,
         organizationId: true,
         messageSignature: true,
+        showAgentNameInChat: true,
         createdAt: true,
       },
     });
@@ -140,10 +142,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
-    const data: { name?: string; displayName?: string | null; messageSignature?: string | null } = {};
+    const data: {
+      name?: string;
+      displayName?: string | null;
+      messageSignature?: string | null;
+      showAgentNameInChat?: boolean;
+    } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
     if (parsed.data.messageSignature !== undefined) data.messageSignature = parsed.data.messageSignature;
+    if (parsed.data.showAgentNameInChat !== undefined) data.showAgentNameInChat = parsed.data.showAgentNameInChat;
 
     if (Object.keys(data).length === 0) {
       return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });

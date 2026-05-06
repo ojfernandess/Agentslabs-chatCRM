@@ -242,7 +242,10 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       include: {
         conversations: {
           include: {
-            messages: { orderBy: { createdAt: "asc" } },
+            messages: {
+              orderBy: { createdAt: "asc" },
+              include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+            },
           },
         },
       },
