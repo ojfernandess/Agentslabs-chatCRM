@@ -1097,12 +1097,12 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "max-w-[min(calc(100%-2.5rem),26rem)] rounded-2xl px-3.5 py-2 shadow-sm",
+                    "max-w-[min(calc(100%-2.5rem),28rem)] rounded-2xl px-4 py-2.5",
                     msg.isPrivate
-                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
+                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
                       : inbound
-                        ? "border border-ink-200/80 bg-ink-100/95 text-ink-900 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-50"
-                        : "border border-brand-600/25 bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/10 dark:border-brand-500/30 dark:from-brand-600 dark:to-brand-700",
+                        ? "border border-ink-200/80 bg-ink-100/95 text-ink-900 shadow-sm dark:border-ink-600 dark:bg-ink-800 dark:text-ink-50"
+                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:bg-none dark:bg-[#1e2a3a] dark:text-ink-50 dark:shadow-lg dark:shadow-black/25 dark:ring-1 dark:ring-brand-400/25",
                   )}
                 >
                   {msg.isPrivate ? (
