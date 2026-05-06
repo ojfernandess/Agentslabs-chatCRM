@@ -23,12 +23,20 @@ interface ConversationRow {
   id: string;
   status: string;
   updatedAt: string;
-  contact: { name: string; phone: string };
+  contact: { name: string; phone: string; profilePictureUrl?: string | null };
   messages: LastMessage[];
 }
 
 interface ConversationListResponse {
   data: ConversationRow[];
+}
+
+export interface ConversationAlertPreview {
+  id: string;
+  contactName: string;
+  profilePictureUrl: string | null;
+  preview: string;
+  updatedAt: string;
 }
 
 function messagePreview(m: LastMessage | undefined): string {
@@ -61,9 +69,43 @@ function countBadge(
   return n;
 }
 
+function notificationIconUrl(profileUrl: string | null | undefined): string | undefined {
+  if (!profileUrl || !profileUrl.trim()) return undefined;
+  if (/^https?:\/\//i.test(profileUrl)) return profileUrl;
+  try {
+    return new URL(profileUrl, window.location.origin).href;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildAlertPreviews(
+  rows: ConversationRow[],
+  prefs: ConversationNotificationPrefs,
+  clearedAt: number,
+): ConversationAlertPreview[] {
+  const out: ConversationAlertPreview[] = [];
+  for (const c of rows) {
+    if (!qualifies(c, prefs)) continue;
+    const last = c.messages[0];
+    if (!last || last.direction !== "INBOUND") continue;
+    if (new Date(c.updatedAt).getTime() <= clearedAt) continue;
+    out.push({
+      id: c.id,
+      contactName: c.contact.name,
+      profilePictureUrl: c.contact.profilePictureUrl ?? null,
+      preview: messagePreview(last),
+      updatedAt: c.updatedAt,
+    });
+  }
+  out.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  return out.slice(0, 20);
+}
+
 export function useConversationAlerts() {
   const { user, loading: authLoading } = useAuth();
   const [badgeCount, setBadgeCount] = useState(0);
+  const [alertPreviews, setAlertPreviews] = useState<ConversationAlertPreview[]>([]);
   const lastSinceRef = useRef<string>(new Date().toISOString());
   const shownKeysRef = useRef(new Set<string>());
 
@@ -79,6 +121,7 @@ export function useConversationAlerts() {
 
     if (!prefs.notifyConversationOpen && !prefs.notifyConversationPending) {
       setBadgeCount(0);
+      setAlertPreviews([]);
       lastSinceRef.current = new Date().toISOString();
       return;
     }
@@ -104,6 +147,7 @@ export function useConversationAlerts() {
     const clearedRaw = localStorage.getItem(BELL_CLEARED_KEY);
     const clearedAt = clearedRaw ? new Date(clearedRaw).getTime() : 0;
     setBadgeCount(countBadge(full.data, prefs, clearedAt));
+    setAlertPreviews(buildAlertPreviews(full.data, prefs, clearedAt));
 
     for (const c of delta.data) {
       if (!qualifies(c, prefs)) continue;
@@ -122,10 +166,18 @@ export function useConversationAlerts() {
       if (Notification.permission !== "granted") continue;
 
       try {
-        new Notification(`OpenConduit — ${c.contact.name}`, {
+        const icon =
+          notificationIconUrl(c.contact.profilePictureUrl ?? null) ?? `${window.location.origin}/logo.svg`;
+        const n = new Notification(`${c.contact.name}`, {
           body: messagePreview(last),
           tag: key,
+          icon,
         });
+        n.onclick = () => {
+          n.close();
+          window.focus();
+          window.location.assign(`/conversations/${c.id}`);
+        };
       } catch {
         // ignore
       }
@@ -142,6 +194,7 @@ export function useConversationAlerts() {
   const clearBadge = useCallback(() => {
     localStorage.setItem(BELL_CLEARED_KEY, new Date().toISOString());
     setBadgeCount(0);
+    setAlertPreviews([]);
   }, []);
 
   const requestDesktopPermission = useCallback(async () => {
@@ -152,5 +205,5 @@ export function useConversationAlerts() {
     return p === "granted";
   }, []);
 
-  return { badgeCount, clearBadge, requestDesktopPermission };
+  return { badgeCount, alertPreviews, clearBadge, requestDesktopPermission };
 }

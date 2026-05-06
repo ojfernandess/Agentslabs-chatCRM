@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { FileSearch, Clock } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -7,7 +7,7 @@ import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
-import { Navigate } from "react-router-dom";
+import { formatCurrencyUnits } from "@/lib/currency";
 
 interface TeamUser {
   id: string;
@@ -42,7 +42,7 @@ interface AuditRow {
 }
 
 export function ConversationAuditPage() {
-  const { t, locale, dateLocale } = useI18n();
+  const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
 
@@ -61,11 +61,7 @@ export function ConversationAuditPage() {
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
-  const fmtMoney = (n: number) =>
-    new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: locale === "pt-BR" ? "BRL" : "USD",
-    }).format(n);
+  const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
   useEffect(() => {
     if (!tenantAdmin) return;

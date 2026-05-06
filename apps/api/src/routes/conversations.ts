@@ -447,7 +447,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
                 primaryContactId: existing.contactId,
                 ownerId: request.user.id,
                 amountCents: Math.round(val * 100),
-                currency: "EUR",
+                currency: "BRL",
                 status: dealStatus,
                 probabilityPct: stageForDeal.probabilityPct,
               },

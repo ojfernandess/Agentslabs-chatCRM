@@ -10,7 +10,6 @@ import {
   Briefcase,
   Bell,
   Settings,
-  LogOut,
   Languages,
   Shield,
   Box,
@@ -19,6 +18,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
+import { UserProfileMenu } from "@/components/UserProfileMenu";
+import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import type { LocaleCode } from "@/i18n/messages";
 import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -37,6 +38,7 @@ export function Layout() {
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
 
   const handleLogout = () => {
     logout();
@@ -136,10 +138,27 @@ export function Layout() {
           )}
         </nav>
 
-        <ConversationNotifyBell />
-
-        <div className="border-t border-ink-200 p-4 space-y-3">
-          <div className="flex items-center gap-2 rounded border border-ink-100 bg-ink-50 px-2 py-1.5">
+        <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-700">
+          <div className="flex items-end gap-2">
+            <ConversationNotifyBell
+              badgeCount={badgeCount}
+              alertPreviews={alertPreviews}
+              clearBadge={clearBadge}
+            />
+            {user ? (
+              <UserProfileMenu user={user} onLogout={() => handleLogout()} className="min-w-0 flex-1" />
+            ) : null}
+          </div>
+          {typeof Notification !== "undefined" && Notification.permission === "default" ? (
+            <button
+              type="button"
+              onClick={() => void requestDesktopPermission()}
+              className="w-full rounded-lg py-1 text-center text-[11px] text-brand-600 hover:text-brand-800 dark:text-brand-400"
+            >
+              {t("nav.enableDesktopNotifications")}
+            </button>
+          ) : null}
+          <div className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-900/50">
             <Languages className="h-4 w-4 shrink-0 text-ink-500" />
             <label htmlFor="locale" className="sr-only">
               {t("common.language")}
@@ -148,25 +167,11 @@ export function Layout() {
               id="locale"
               value={locale}
               onChange={(e) => setLocale(e.target.value as LocaleCode)}
-              className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-ink-700 focus:ring-0"
+              className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-ink-700 focus:ring-0 dark:text-ink-200"
             >
               <option value="pt-BR">{t("common.ptBR")}</option>
               <option value="en">{t("common.en")}</option>
             </select>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink-900">{user?.name}</p>
-              <p className="truncate text-xs text-ink-500">{user?.email}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="rounded p-2 text-ink-400 hover:bg-ink-100 hover:text-ink-600"
-              title={t("nav.logout")}
-              type="button"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
           </div>
         </div>
       </aside>

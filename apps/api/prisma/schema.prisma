@@ -355,7 +355,7 @@ model Product {
   name           String
   sku            String?
   priceCents     Int          @default(0) @map("price_cents")
-  currency       String       @default("EUR") @db.VarChar(3)
+  currency       String       @default("BRL") @db.VarChar(3)
   isActive       Boolean      @default(true) @map("is_active")
   metadata       Json?
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -375,7 +375,7 @@ model Deal {
   name           String
   status         DealStatus   @default(OPEN)
   amountCents    Int          @default(0) @map("amount_cents")
-  currency       String       @default("EUR") @db.VarChar(3)
+  currency       String       @default("BRL") @db.VarChar(3)
   probabilityPct Int?         @map("probability_pct")
   closeDate      DateTime?    @map("close_date")
   lostReason     String?      @map("lost_reason") @db.Text

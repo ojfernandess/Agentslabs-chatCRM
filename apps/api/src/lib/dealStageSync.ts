@@ -8,7 +8,7 @@ export function dealStatusFromLeadValueRollup(rollup: LeadValueRollup | null | u
   return "OPEN";
 }
 
-/** Atualiza negócios cuja contacto primária mudou de etapa no funil (mesmo pipeline). */
+/** Atualiza todos os negócios ligados à contacto primária para a etapa actual do funil (alinha pipeline do negócio). */
 export async function syncDealsForContactPipelineStage(
   db: Db,
   organizationId: string,
@@ -20,7 +20,7 @@ export async function syncDealsForContactPipelineStage(
   const stage = await db.pipelineStage.findFirst({
     where: {
       id: pipelineStageId,
-      pipeline: { organizationId, isDefault: true },
+      pipeline: { organizationId },
     },
     include: { leadType: { select: { valueRollup: true } } },
   });
@@ -28,16 +28,20 @@ export async function syncDealsForContactPipelineStage(
 
   const status = dealStatusFromLeadValueRollup(stage.leadType?.valueRollup);
 
-  await db.deal.updateMany({
-    where: {
-      organizationId,
-      primaryContactId: contactId,
-      pipelineId: stage.pipelineId,
-    },
-    data: {
-      stageId: stage.id,
-      status,
-      probabilityPct: stage.probabilityPct,
-    },
+  const deals = await db.deal.findMany({
+    where: { organizationId, primaryContactId: contactId },
+    select: { id: true },
   });
+
+  for (const d of deals) {
+    await db.deal.update({
+      where: { id: d.id },
+      data: {
+        pipeline: { connect: { id: stage.pipelineId } },
+        stage: { connect: { id: stage.id } },
+        status,
+        probabilityPct: stage.probabilityPct,
+      },
+    });
+  }
 }

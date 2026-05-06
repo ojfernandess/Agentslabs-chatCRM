@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { formatCurrencyUnits } from "@/lib/currency";
 
 interface Conversation {
   id: string;
@@ -33,7 +34,7 @@ const statusColors: Record<string, string> = {
 };
 
 export function ConversationsPage() {
-  const { t, locale, dateLocale } = useI18n();
+  const { t, dateLocale } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,11 +43,7 @@ export function ConversationsPage() {
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const hasAnimated = useRef(false);
 
-  const fmtMoney = (n: number) =>
-    new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: locale === "pt-BR" ? "BRL" : "USD",
-    }).format(n);
+  const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
   useEffect(() => {
     const s = searchParams.get("status");

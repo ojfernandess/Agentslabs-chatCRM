@@ -11,6 +11,7 @@ import {
 import { useI18n } from "@/i18n/I18nProvider";
 import { Briefcase, Plus, X, ListTree, Trash2 } from "lucide-react";
 import clsx from "clsx";
+import { APP_CURRENCY, formatCurrencyFromCents } from "@/lib/currency";
 
 interface StageItem {
   id: string;
@@ -50,7 +51,7 @@ interface ProductOption {
   currency: string;
 }
 
-function eurosToCents(raw: string): number {
+function moneyInputToCents(raw: string): number {
   const n = Number.parseFloat(raw.replace(",", "."));
   if (Number.isNaN(n) || n < 0) return 0;
   return Math.round(n * 100);
@@ -90,6 +91,11 @@ export function DealsPage() {
   const [detailStageId, setDetailStageId] = useState("");
   const [stageSaving, setStageSaving] = useState(false);
   const [stageMessage, setStageMessage] = useState("");
+
+  const [detailName, setDetailName] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameMessage, setNameMessage] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const loadDeals = useCallback(async () => {
     const res = await api.get<{ data: DealRow[] }>("/crm/deals");
@@ -149,6 +155,8 @@ export function DealsPage() {
     setLineProductId("");
     setStageMessage("");
     setDetailStageId("");
+    setDetailName("");
+    setNameMessage("");
   };
 
   const refreshDetailAndList = async (dealId: string) => {
@@ -175,7 +183,7 @@ export function DealsPage() {
     }
     setCreateSubmitting(true);
     try {
-      const amountCents = createAmount.trim() ? eurosToCents(createAmount) : 0;
+      const amountCents = createAmount.trim() ? moneyInputToCents(createAmount) : 0;
       await api.post("/crm/deals", {
         name: createName.trim(),
         stageId: createStageId,
@@ -196,6 +204,39 @@ export function DealsPage() {
     if (detail?.stage?.id) setDetailStageId(detail.stage.id);
   }, [detail?.id, detail?.stage?.id]);
 
+  useEffect(() => {
+    if (detail?.name !== undefined) setDetailName(detail.name);
+  }, [detail?.id, detail?.name]);
+
+  const handleSaveDealName = async () => {
+    if (!detailId || !detailName.trim()) return;
+    setNameMessage("");
+    setNameSaving(true);
+    try {
+      await api.patch(`/crm/deals/${detailId}`, { name: detailName.trim() });
+      await refreshDetailAndList(detailId);
+      setNameMessage(t("dealsPage.nameSaved"));
+    } catch (e) {
+      setNameMessage(e instanceof ApiError ? e.message : "Error");
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const handleDeleteDeal = async () => {
+    if (!detailId || !window.confirm(t("dealsPage.deleteDealConfirm"))) return;
+    setDeleteBusy(true);
+    try {
+      await api.delete(`/crm/deals/${detailId}`);
+      closeDetail();
+      await loadDeals();
+    } catch (e) {
+      window.alert(e instanceof ApiError ? e.message : "Error");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const handleAddLine = async () => {
     if (!detailId || !detail) return;
     setLineError("");
@@ -213,7 +254,7 @@ export function DealsPage() {
       await api.post(`/crm/deals/${detailId}/line-items`, {
         description: lineDesc.trim(),
         quantity: qty,
-        unitPriceCents: lineUnitEur.trim() ? eurosToCents(lineUnitEur) : 0,
+        unitPriceCents: lineUnitEur.trim() ? moneyInputToCents(lineUnitEur) : 0,
         discountPct: Number.parseInt(lineDisc, 10) || 0,
         productId: lineProductId || undefined,
       });
@@ -240,8 +281,7 @@ export function DealsPage() {
     }
   };
 
-  const fmtMoney = (cents: number, currency: string) =>
-    new Intl.NumberFormat(undefined, { style: "currency", currency }).format(cents / 100);
+  const fmtMoney = (cents: number, currency: string) => formatCurrencyFromCents(cents, currency);
 
   const lineTotal = (row: LineItemRow) => {
     const factor = Math.max(0, 1 - row.discountPct / 100);
@@ -283,13 +323,13 @@ export function DealsPage() {
                 <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
                   <p className="text-xs text-gray-500">{t("dealsPage.totalWon")}</p>
                   <p className="font-semibold text-gray-900">
-                    {fmtMoney(totalWonCents, deals[0]?.currency ?? "EUR")}
+                    {fmtMoney(totalWonCents, deals[0]?.currency ?? APP_CURRENCY)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
                   <p className="text-xs text-gray-500">{t("dealsPage.totalOpen")}</p>
                   <p className="font-semibold text-gray-900">
-                    {fmtMoney(totalOpenCents, deals[0]?.currency ?? "EUR")}
+                    {fmtMoney(totalOpenCents, deals[0]?.currency ?? APP_CURRENCY)}
                   </p>
                 </div>
               </div>
@@ -448,7 +488,7 @@ export function DealsPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600">
-                      Valor inicial (opcional, €)
+                      Valor inicial (opcional, R$)
                     </label>
                     <input
                       className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -504,24 +544,60 @@ export function DealsPage() {
                 variants={modalVariants}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold text-gray-900">
-                      {detail?.name ?? "Negócio"}
-                    </h2>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="sr-only">{detail?.name ?? "Negócio"}</h2>
+                    <label className="block text-xs font-medium text-gray-600">
+                      {t("dealsPage.dealName")}
+                    </label>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <input
+                        className="min-w-[12rem] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
+                        value={detailName}
+                        onChange={(e) => setDetailName(e.target.value)}
+                        disabled={detailLoading || !detail}
+                      />
+                      <button
+                        type="button"
+                        disabled={
+                          nameSaving ||
+                          !detail ||
+                          !detailName.trim() ||
+                          detailName.trim() === detail.name
+                        }
+                        onClick={() => void handleSaveDealName()}
+                        className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                      >
+                        {nameSaving ? t("dealsPage.savingName") : t("dealsPage.saveName")}
+                      </button>
+                    </div>
+                    {nameMessage ? (
+                      <p className="mt-1 text-xs text-gray-600">{nameMessage}</p>
+                    ) : null}
                     {detail && (
-                      <p className="text-sm text-gray-500">
+                      <p className="mt-2 text-sm text-gray-500">
                         Total: {fmtMoney(detail.amountCents, detail.currency)}
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100"
-                    onClick={closeDetail}
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  <div className="flex shrink-0 items-start gap-1">
+                    <button
+                      type="button"
+                      disabled={deleteBusy || detailLoading}
+                      onClick={() => void handleDeleteDeal()}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {deleteBusy ? t("dealsPage.deletingDeal") : t("dealsPage.deleteDeal")}
+                    </button>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100"
+                      onClick={closeDetail}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
 
                 {detailLoading || !detail ? (
@@ -612,7 +688,7 @@ export function DealsPage() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">Preço unit. (€)</label>
+                          <label className="text-xs text-gray-500">Preço unit. (R$)</label>
                           <input
                             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
                             value={lineUnitEur}

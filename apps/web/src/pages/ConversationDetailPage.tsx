@@ -8,6 +8,7 @@ import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/comp
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
+import { formatCurrencyUnits } from "@/lib/currency";
 
 interface Message {
   id: string;
@@ -49,7 +50,7 @@ interface ConversationDetail {
 
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
@@ -165,11 +166,7 @@ export function ConversationDetailPage() {
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
 
-  const fmtMoney = (n: number) =>
-    new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: locale === "pt-BR" ? "BRL" : "USD",
-    }).format(n);
+  const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
   const isOutsideWindow = lastInbound
     ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
@@ -454,20 +451,20 @@ export function ConversationDetailPage() {
   const canResolve = conversation.status === "OPEN" || conversation.status === "PENDING";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-gradient-to-b from-slate-100/90 via-slate-50/80 to-white dark:from-ink-950 dark:via-ink-900 dark:to-ink-950">
       <motion.div
-        className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-6 py-4"
+        className="flex flex-wrap items-center gap-3 border-b border-white/60 bg-white/85 px-5 py-4 shadow-sm backdrop-blur-md dark:border-ink-700/80 dark:bg-ink-900/90"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
         <Link
           to="/conversations"
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-brand-700 font-semibold">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-sm font-semibold text-brand-800 shadow-inner ring-2 ring-white dark:from-brand-900/50 dark:to-brand-800/40 dark:text-brand-100 dark:ring-ink-700">
           {conversation.contact.profilePictureUrl ? (
             <img
               src={conversation.contact.profilePictureUrl}
@@ -479,15 +476,19 @@ export function ConversationDetailPage() {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold text-gray-900">{conversation.contact.name}</h2>
-          <p className="text-xs text-gray-500">{conversation.contact.phone}</p>
-          <div className="mt-1 space-y-0.5 text-[11px] text-gray-500">
+          <h2 className="font-semibold tracking-tight text-ink-900 dark:text-ink-50">
+            {conversation.contact.name}
+          </h2>
+          <p className="text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
+          <div className="mt-1 space-y-0.5 text-[11px] text-ink-500 dark:text-ink-400">
             <p>
-              <span className="font-medium text-gray-600">{t("audit.contactOwner")}:</span>{" "}
+              <span className="font-medium text-ink-600 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
               {conversation.contact.assignedTo?.name ?? "—"}
             </p>
             <p>
-              <span className="font-medium text-gray-600">{t("audit.contactCreatedBy")}:</span>{" "}
+              <span className="font-medium text-ink-600 dark:text-ink-300">
+                {t("audit.contactCreatedBy")}:
+              </span>{" "}
               {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
             </p>
           </div>
@@ -598,11 +599,13 @@ export function ConversationDetailPage() {
       </motion.div>
 
       {flowError && (
-        <div className="border-b border-red-100 bg-red-50 px-6 py-2 text-center text-sm text-red-700">{flowError}</div>
+        <div className="border-b border-red-200/80 bg-red-50/95 px-5 py-2.5 text-center text-sm text-red-700 backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-300">
+          {flowError}
+        </div>
       )}
 
       {conversation.status === "RESOLVED" && (conversation.closureReason || conversation.leadType) && (
-        <div className="border-b border-gray-200 bg-brand-50/50 px-6 py-3">
+        <div className="border-b border-brand-200/60 bg-gradient-to-r from-brand-50/90 to-white/80 px-5 py-3 backdrop-blur-sm dark:border-brand-900/40 dark:from-brand-950/40 dark:to-ink-900/60">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-800">
             {t("conversationDetail.resolvedSummary")}
           </p>
@@ -626,8 +629,9 @@ export function ConversationDetailPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="mx-auto max-w-3xl space-y-3">
+      <div className="relative flex-1 overflow-auto px-4 py-5 sm:px-6">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.08)_0%,_transparent_50%)]" />
+        <div className="relative mx-auto max-w-3xl space-y-2.5">
           {(conversation.messages ?? []).map((msg, i) => {
             const isNew = !seenMessageIds.current.has(msg.id);
             if (isNew) seenMessageIds.current.add(msg.id);
@@ -645,12 +649,12 @@ export function ConversationDetailPage() {
               >
                 <div
                   className={clsx(
-                    "max-w-[70%] rounded-2xl px-4 py-2.5",
+                    "max-w-[min(85%,28rem)] rounded-2xl px-4 py-2.5 shadow-md",
                     msg.isPrivate
-                      ? "border-2 border-amber-300 bg-amber-50 text-amber-950"
+                      ? "border-2 border-amber-300/80 bg-amber-50/95 text-amber-950 shadow-amber-100/50 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-100"
                       : msg.direction === "OUTBOUND"
-                        ? "bg-brand-500 text-white"
-                        : "border border-gray-200 bg-white text-gray-900",
+                        ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-brand-500/25"
+                        : "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-600 dark:bg-ink-800/90 dark:text-ink-50 dark:ring-white/5",
                   )}
                 >
                   {msg.isPrivate ? (
@@ -743,7 +747,7 @@ export function ConversationDetailPage() {
       </div>
 
       <motion.div
-        className="border-t border-gray-200 bg-white px-6 py-4"
+        className="border-t border-ink-200/80 bg-white/90 px-4 py-4 shadow-[0_-8px_32px_-8px_rgba(15,23,42,0.12)] backdrop-blur-lg dark:border-ink-700 dark:bg-ink-900/92 sm:px-6"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.1, ease: "easeOut" }}
@@ -791,7 +795,7 @@ export function ConversationDetailPage() {
                     : t("conversationDetail.placeholderNormal")
               }
               disabled={(isOutsideWindow && !privateNote) || recording}
-              className="min-w-0 flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400"
+              className="min-w-0 flex-1 rounded-2xl border border-ink-200/90 bg-white/95 px-5 py-3 text-sm shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-50 disabled:text-ink-400 dark:border-ink-600 dark:bg-ink-800/80 dark:text-ink-100 dark:placeholder:text-ink-500"
             />
             {evolutionRichChat ? (
               <>

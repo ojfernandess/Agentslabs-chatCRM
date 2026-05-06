@@ -5,6 +5,7 @@ import { ClipboardCheck, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { formatCurrencyUnits } from "@/lib/currency";
 
 interface Row {
   id: string;
@@ -19,16 +20,12 @@ interface Row {
 }
 
 export function MyAttendancePage() {
-  const { t, locale, dateLocale } = useI18n();
+  const { t, dateLocale } = useI18n();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const hasAnimated = useRef(false);
 
-  const fmtMoney = (n: number) =>
-    new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
-      style: "currency",
-      currency: locale === "pt-BR" ? "BRL" : "USD",
-    }).format(n);
+  const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
   useEffect(() => {
     async function load() {

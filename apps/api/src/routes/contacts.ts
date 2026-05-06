@@ -219,6 +219,9 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         data,
         include: { tags: { include: { tag: true } }, pipelineStage: true },
       });
+      if (parsed.data.pipelineStageId !== undefined && contact.pipelineStageId) {
+        await syncDealsForContactPipelineStage(prisma, organizationId, contact.id, contact.pipelineStageId);
+      }
       return contact;
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });

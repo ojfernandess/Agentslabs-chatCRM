@@ -249,7 +249,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
         name: parsed.data.name,
         sku: parsed.data.sku ?? undefined,
         priceCents: parsed.data.priceCents ?? 0,
-        currency: parsed.data.currency ?? "EUR",
+        currency: parsed.data.currency ?? "BRL",
         isActive: parsed.data.isActive ?? true,
       },
     });
@@ -354,7 +354,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
         stageId: stage.id,
         status: initialStatus,
         amountCents: parsed.data.amountCents ?? 0,
-        currency: parsed.data.currency ?? "EUR",
+        currency: parsed.data.currency ?? "BRL",
         probabilityPct: prob,
         closeDate: parsed.data.closeDate ?? undefined,
         accountId: parsed.data.accountId ?? undefined,
@@ -528,6 +528,19 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return updated;
+  });
+
+  app.delete<{ Params: { id: string } }>("/deals/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const existing = await prisma.deal.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Deal not found", statusCode: 404 });
+    }
+    await prisma.deal.delete({ where: { id: existing.id } });
+    return reply.status(204).send();
   });
 
   app.post<{ Params: { id: string } }>("/deals/:id/line-items", async (request, reply) => {
