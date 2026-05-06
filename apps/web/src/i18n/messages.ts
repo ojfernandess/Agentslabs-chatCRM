@@ -328,6 +328,8 @@ export const messages = {
       timelineTitle: "Histórico",
       noDealValue: "—",
       dragDropKanbanHint: "Arraste o cartão no Kanban para mudar de etapa.",
+      crmPanelExpand: "Mostrar dados do cliente",
+      crmPanelCollapse: "Ocultar dados do cliente",
     },
     attendance: {
       title: "Meu atendimento",
@@ -872,6 +874,8 @@ export const messages = {
       timelineTitle: "Timeline",
       noDealValue: "—",
       dragDropKanbanHint: "Drag the card on the Kanban board to change stage.",
+      crmPanelExpand: "Show customer panel",
+      crmPanelCollapse: "Hide customer panel",
     },
     attendance: {
       title: "My attendance",

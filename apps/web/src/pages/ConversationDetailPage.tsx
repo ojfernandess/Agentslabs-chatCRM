@@ -22,6 +22,8 @@ import {
   LayoutGrid,
   Kanban,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -162,6 +164,7 @@ export function ConversationDetailPage() {
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
+  const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
@@ -956,6 +959,17 @@ export function ConversationDetailPage() {
             >
               <LayoutGrid className="h-5 w-5" />
             </button>
+            {!crmDesktopOpen ? (
+              <button
+                type="button"
+                className="ml-auto mt-1 hidden rounded-xl border border-ink-200 bg-ink-50 p-2 text-ink-600 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700 xl:inline-flex"
+                onClick={() => setCrmDesktopOpen(true)}
+                title={t("conversationDetail.crmPanelExpand")}
+                aria-label={t("conversationDetail.crmPanelExpand")}
+              >
+                <LayoutGrid className="h-5 w-5" />
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
@@ -1043,7 +1057,7 @@ export function ConversationDetailPage() {
 
         <div className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
-          <div className="relative mx-auto max-w-3xl space-y-0">
+          <div className="relative mx-auto w-full max-w-3xl space-y-0">
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -1053,14 +1067,134 @@ export function ConversationDetailPage() {
               const inbound = msg.direction === "INBOUND";
               const rowGap = groupedPrev ? "mt-0.5" : "mt-3";
 
+              const avatarCol = (
+                <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
+                  {showAvatar ? (
+                    inbound ? (
+                      <div className="flex h-8 w-8 overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold text-ink-700 dark:bg-ink-700 dark:text-ink-100">
+                        {conversation.contact.profilePictureUrl ? (
+                          <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center">
+                            {conversation.contact.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"
+                        title={user?.name ?? ""}
+                      >
+                        {(user?.name ?? "A").charAt(0).toUpperCase()}
+                      </div>
+                    )
+                  ) : (
+                    <span className="block h-8 w-8" aria-hidden />
+                  )}
+                </div>
+              );
+
+              const bubble = (
+                <div
+                  className={clsx(
+                    "max-w-[min(calc(100%-2.5rem),26rem)] rounded-2xl px-3.5 py-2 shadow-sm",
+                    msg.isPrivate
+                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
+                      : inbound
+                        ? "border border-ink-200/80 bg-ink-100/95 text-ink-900 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-50"
+                        : "border border-brand-600/25 bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/10 dark:border-brand-500/30 dark:from-brand-600 dark:to-brand-700",
+                  )}
+                >
+                  {msg.isPrivate ? (
+                    <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                      <Lock className="h-3 w-3" />
+                      {t("conversationDetail.internalNoteLabel")}
+                    </p>
+                  ) : null}
+                  {msg.type === "IMAGE" && msg.mediaUrl && (
+                    <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={msg.mediaUrl}
+                        alt=""
+                        className={clsx(
+                          "max-h-64 max-w-full rounded-lg object-contain",
+                          msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
+                        )}
+                      />
+                    </a>
+                  )}
+                  {msg.type === "DOCUMENT" && msg.mediaUrl && (
+                    <a
+                      href={msg.mediaUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      className={clsx(
+                        "mt-1 inline-block text-sm underline",
+                        msg.direction === "OUTBOUND" && !msg.isPrivate
+                          ? "text-brand-100 dark:text-brand-200"
+                          : "text-brand-700 dark:text-brand-400",
+                      )}
+                    >
+                      {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
+                    </a>
+                  )}
+                  {msg.body && msg.type !== "DOCUMENT" ? (
+                    <p className={clsx("whitespace-pre-wrap text-sm leading-snug", msg.type === "IMAGE" && msg.mediaUrl && "mt-2")}>
+                      {msg.body}
+                    </p>
+                  ) : null}
+                  {msg.type === "VIDEO" && msg.mediaUrl && (
+                    <video
+                      src={msg.mediaUrl}
+                      controls
+                      className="mt-1 max-h-64 w-full max-w-md rounded-lg"
+                      preload="metadata"
+                    />
+                  )}
+                  {msg.type === "AUDIO" && msg.mediaUrl && (
+                    <audio
+                      controls
+                      src={msg.mediaUrl}
+                      className={clsx(
+                        "mt-2 w-full min-w-[200px] max-w-[280px]",
+                        msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
+                      )}
+                      preload="metadata"
+                    />
+                  )}
+                  <div
+                    className={clsx(
+                      "mt-1 flex items-center gap-1 text-[10px] tabular-nums",
+                      msg.isPrivate
+                        ? "text-amber-800/80 dark:text-amber-300/80"
+                        : msg.direction === "OUTBOUND"
+                          ? "text-brand-100/90 dark:text-ink-300"
+                          : "text-ink-500 dark:text-ink-400",
+                    )}
+                  >
+                    <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
+                    {msg.direction === "OUTBOUND" && !msg.isPrivate && (
+                      <span className="inline-flex items-center" title={msg.status}>
+                        {msg.status === "FAILED" ? (
+                          <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
+                        ) : msg.status === "READ" ? (
+                          <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-300" aria-hidden />
+                        ) : msg.status === "DELIVERED" ? (
+                          <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-400/80" aria-hidden />
+                        ) : (
+                          <Check className="h-3 w-3 text-brand-100/90 dark:text-brand-300/90" aria-hidden />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+
               return (
                 <motion.div
                   key={msg.id}
-                  className={clsx(
-                    "flex gap-2",
-                    inbound ? "justify-start" : "justify-end flex-row-reverse",
-                    rowGap,
-                  )}
+                  className={clsx("flex w-full gap-2", inbound ? "justify-start" : "justify-end", rowGap)}
                   initial={isNew ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
@@ -1069,130 +1203,23 @@ export function ConversationDetailPage() {
                     ease: "easeOut",
                   }}
                 >
-                  <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
-                    {showAvatar ? (
-                      inbound ? (
-                        <div className="flex h-8 w-8 overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold text-ink-700 dark:bg-ink-700 dark:text-ink-100">
-                          {conversation.contact.profilePictureUrl ? (
-                            <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="flex h-full w-full items-center justify-center">
-                              {conversation.contact.name.charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <div
-                          className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"
-                          title={user?.name ?? ""}
-                        >
-                          {(user?.name ?? "A").charAt(0).toUpperCase()}
-                        </div>
-                      )
-                    ) : (
-                      <span className="block h-8 w-8" aria-hidden />
-                    )}
-                  </div>
-                  <div
-                    className={clsx(
-                      "max-w-[min(calc(100%-2.5rem),26rem)] rounded-2xl px-3.5 py-2 shadow-sm",
-                      msg.isPrivate
-                        ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
-                        : inbound
-                          ? "border border-ink-200/80 bg-ink-100/95 text-ink-900 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-50"
-                          : "border border-brand-600/25 bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/10 dark:border-brand-500/30 dark:from-brand-600 dark:to-brand-700",
-                    )}
-                  >
-                    {msg.isPrivate ? (
-                      <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                        <Lock className="h-3 w-3" />
-                        {t("conversationDetail.internalNoteLabel")}
-                      </p>
-                    ) : null}
-                    {msg.type === "IMAGE" && msg.mediaUrl && (
-                      <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="block">
-                        <img
-                          src={msg.mediaUrl}
-                          alt=""
-                          className={clsx(
-                            "max-h-64 max-w-full rounded-lg object-contain",
-                            msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                          )}
-                        />
-                      </a>
-                    )}
-                    {msg.type === "DOCUMENT" && msg.mediaUrl && (
-                      <a
-                        href={msg.mediaUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        download
-                        className={clsx(
-                          "mt-1 inline-block text-sm underline",
-                          msg.direction === "OUTBOUND" && !msg.isPrivate
-                            ? "text-brand-100 dark:text-brand-200"
-                            : "text-brand-700 dark:text-brand-400",
-                        )}
-                      >
-                        {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
-                      </a>
-                    )}
-                    {msg.body && msg.type !== "DOCUMENT" ? (
-                      <p className={clsx("whitespace-pre-wrap text-sm leading-snug", msg.type === "IMAGE" && msg.mediaUrl && "mt-2")}>
-                        {msg.body}
-                      </p>
-                    ) : null}
-                    {msg.type === "VIDEO" && msg.mediaUrl && (
-                      <video
-                        src={msg.mediaUrl}
-                        controls
-                        className="mt-1 max-h-64 w-full max-w-md rounded-lg"
-                        preload="metadata"
-                      />
-                    )}
-                    {msg.type === "AUDIO" && msg.mediaUrl && (
-                      <audio
-                        controls
-                        src={msg.mediaUrl}
-                        className={clsx(
-                          "mt-2 w-full min-w-[200px] max-w-[280px]",
-                          msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                        )}
-                        preload="metadata"
-                      />
-                    )}
-                    <div
-                      className={clsx(
-                        "mt-1 flex items-center gap-1 text-[10px] tabular-nums",
-                        msg.isPrivate
-                          ? "text-amber-800/80 dark:text-amber-300/80"
-                          : msg.direction === "OUTBOUND"
-                            ? "text-brand-100/90 dark:text-ink-300"
-                            : "text-ink-500 dark:text-ink-400",
-                      )}
-                    >
-                      <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
-                      {msg.direction === "OUTBOUND" && !msg.isPrivate && (
-                        <span className="inline-flex items-center" title={msg.status}>
-                          {msg.status === "FAILED" ? (
-                            <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
-                          ) : msg.status === "READ" ? (
-                            <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-300" aria-hidden />
-                          ) : msg.status === "DELIVERED" ? (
-                            <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-400/80" aria-hidden />
-                          ) : (
-                            <Check className="h-3 w-3 text-brand-100/90 dark:text-brand-300/90" aria-hidden />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  {inbound ? (
+                    <>
+                      {avatarCol}
+                      {bubble}
+                    </>
+                  ) : (
+                    <>
+                      {bubble}
+                      {avatarCol}
+                    </>
+                  )}
                 </motion.div>
               );
             })}
             {sending ? (
               <motion.div
-                className="mt-3 flex justify-end gap-2"
+                className="mt-3 flex w-full justify-end gap-2"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
@@ -1414,8 +1441,30 @@ export function ConversationDetailPage() {
         </motion.div>
       </div>
 
-      <aside className="hidden min-h-0 w-[min(100%,380px)] shrink-0 flex-col overflow-y-auto border-l border-ink-200/90 bg-white/95 dark:border-ink-800 dark:bg-ink-900/95 xl:flex">
-        <div className="p-4">{renderCrmPanel()}</div>
+      <aside
+        className={clsx(
+          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-ink-800 dark:bg-ink-900/95 xl:flex",
+          crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden",
+        )}
+      >
+        <div
+          className={clsx(
+            "flex shrink-0 items-center border-b border-ink-100 dark:border-ink-800",
+            crmDesktopOpen ? "justify-end px-1 py-2" : "justify-center border-0 py-2",
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => setCrmDesktopOpen((o) => !o)}
+            className="rounded-lg p-1.5 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+            title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+            aria-expanded={crmDesktopOpen}
+            aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+          >
+            {crmDesktopOpen ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+          </button>
+        </div>
+        {crmDesktopOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-4">{renderCrmPanel()}</div> : null}
       </aside>
 
       <AnimatePresence>
