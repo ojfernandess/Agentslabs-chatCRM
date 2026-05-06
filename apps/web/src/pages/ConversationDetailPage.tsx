@@ -24,6 +24,11 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  Tag,
+  Plus,
+  Pencil,
+  X,
+  Trash2,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -77,6 +82,12 @@ interface MessageTemplateRow {
   id: string;
   name: string;
   body: string;
+}
+
+interface OrgTagRow {
+  id: string;
+  name: string;
+  color: string;
 }
 
 interface ConversationDetail {
@@ -168,6 +179,16 @@ export function ConversationDetailPage() {
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
+  const [orgTags, setOrgTags] = useState<OrgTagRow[]>([]);
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagAddSelectId, setTagAddSelectId] = useState("");
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [tagModalPhase, setTagModalPhase] = useState<"list" | "form">("list");
+  const [tagModalFormEditingId, setTagModalFormEditingId] = useState<string | null>(null);
+  const [tagModalFormFromList, setTagModalFormFromList] = useState(false);
+  const [tagFormName, setTagFormName] = useState("");
+  const [tagFormColor, setTagFormColor] = useState("#6366f1");
+  const [tagFormError, setTagFormError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
@@ -227,6 +248,21 @@ export function ConversationDetailPage() {
     }
     void loadTeams();
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await api.get<OrgTagRow[]>("/tags");
+        setOrgTags(rows);
+      } catch {
+        setOrgTags([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setTagAddSelectId("");
+  }, [conversation?.contact.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -572,6 +608,174 @@ export function ConversationDetailPage() {
     }
   };
 
+  const refreshOrgTags = async () => {
+    try {
+      const rows = await api.get<OrgTagRow[]>("/tags");
+      setOrgTags(rows);
+    } catch {
+      setOrgTags([]);
+    }
+  };
+
+  const addContactTag = async (tagId: string) => {
+    if (!conversation || !tagId) return;
+    setTagBusy(true);
+    try {
+      const updated = await api.post<{ tags: NonNullable<ConversationDetail["contact"]["tags"]> }>(
+        `/contacts/${conversation.contact.id}/tags`,
+        { tagIds: [tagId] },
+      );
+      setConversation((c) => (c ? { ...c, contact: { ...c.contact, tags: updated.tags } } : c));
+      setTagAddSelectId("");
+    } catch {
+      /* ignore */
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  const removeContactTag = async (tagId: string) => {
+    if (!conversation) return;
+    setTagBusy(true);
+    try {
+      await api.delete(`/contacts/${conversation.contact.id}/tags/${tagId}`);
+      setConversation((c) => {
+        if (!c) return c;
+        return {
+          ...c,
+          contact: {
+            ...c.contact,
+            tags: (c.contact.tags ?? []).filter((x) => x.tag.id !== tagId),
+          },
+        };
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  const openTagModalCreate = (fromList: boolean) => {
+    setTagFormError("");
+    setTagFormName("");
+    setTagFormColor("#6366f1");
+    setTagModalFormEditingId(null);
+    setTagModalFormFromList(fromList);
+    setTagModalPhase("form");
+    setTagModalOpen(true);
+  };
+
+  const openTagModalManage = () => {
+    setTagFormError("");
+    setTagModalPhase("list");
+    setTagModalOpen(true);
+  };
+
+  const openTagModalEdit = (tag: OrgTagRow) => {
+    setTagFormError("");
+    setTagFormName(tag.name);
+    setTagFormColor(tag.color);
+    setTagModalFormEditingId(tag.id);
+    setTagModalFormFromList(true);
+    setTagModalPhase("form");
+    setTagModalOpen(true);
+  };
+
+  const closeTagModal = () => {
+    setTagModalOpen(false);
+    setTagFormError("");
+    setTagModalPhase("list");
+    setTagModalFormEditingId(null);
+    setTagModalFormFromList(false);
+  };
+
+  const tagFormGoBack = () => {
+    setTagFormError("");
+    if (tagModalFormFromList) {
+      setTagModalPhase("list");
+      setTagModalFormEditingId(null);
+    } else {
+      closeTagModal();
+    }
+  };
+
+  const submitTagForm = async (e: FormEvent) => {
+    e.preventDefault();
+    setTagFormError("");
+    const name = tagFormName.trim();
+    if (name.length < 1 || name.length > 50) {
+      setTagFormError(t("conversationDetail.tagNameInvalid"));
+      return;
+    }
+    const color = tagFormColor.trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+      setTagFormError(t("conversationDetail.tagColorInvalid"));
+      return;
+    }
+    setTagBusy(true);
+    try {
+      if (tagModalFormEditingId) {
+        const updated = await api.put<OrgTagRow>(`/tags/${tagModalFormEditingId}`, { name, color });
+        setOrgTags((prev) =>
+          [...prev.filter((x) => x.id !== updated.id), updated].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          ),
+        );
+        setConversation((c) => {
+          if (!c) return c;
+          return {
+            ...c,
+            contact: {
+              ...c.contact,
+              tags: (c.contact.tags ?? []).map((ct) =>
+                ct.tag.id === updated.id ? { tag: updated } : ct,
+              ),
+            },
+          };
+        });
+      } else {
+        const created = await api.post<OrgTagRow>("/tags", { name, color });
+        await refreshOrgTags();
+        void created;
+      }
+      if (tagModalFormFromList) {
+        setTagModalPhase("list");
+        setTagModalFormEditingId(null);
+      } else {
+        closeTagModal();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setTagFormError(msg || t("conversationDetail.tagSaveFailed"));
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  const deleteOrgTag = async (tag: OrgTagRow) => {
+    if (!window.confirm(t("conversationDetail.tagDeleteConfirm"))) return;
+    setTagBusy(true);
+    try {
+      await api.delete(`/tags/${tag.id}`);
+      await refreshOrgTags();
+      setConversation((c) => {
+        if (!c) return c;
+        return {
+          ...c,
+          contact: {
+            ...c.contact,
+            tags: (c.contact.tags ?? []).filter((x) => x.tag.id !== tag.id),
+          },
+        };
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
   const submitTransfer = async () => {
     if (!conversation || !id || !transferTeamId) return;
     setActionLoading(true);
@@ -695,17 +899,102 @@ export function ConversationDetailPage() {
             <span className="font-medium">{t("conversationDetail.email")}:</span> {t("conversationDetail.noDealValue")}
           </p>
         )}
-        <div className="mt-2 flex flex-wrap gap-1">
-          {conversation.contact.tags?.map((ct) => (
-            <span
-              key={ct.tag.id}
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-              style={{ backgroundColor: ct.tag.color }}
-            >
-              {ct.tag.name}
-            </span>
-          ))}
-        </div>
+        {(() => {
+          const assigned = conversation.contact.tags ?? [];
+          const assignedIds = new Set(assigned.map((x) => x.tag.id));
+          const availableToAdd = orgTags.filter((x) => !assignedIds.has(x.id));
+          return (
+            <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-ink-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                  {t("conversationDetail.tagsSection")}
+                </p>
+                {tenantAdmin ? (
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      disabled={tagBusy}
+                      onClick={() => {
+                        void refreshOrgTags();
+                        openTagModalCreate(false);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    >
+                      <Plus className="h-3 w-3" />
+                      {t("conversationDetail.tagNew")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={tagBusy}
+                      onClick={() => {
+                        void refreshOrgTags();
+                        openTagModalManage();
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      {t("conversationDetail.tagManage")}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {assigned.length === 0 ? (
+                  <p className="text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.tagsEmpty")}</p>
+                ) : (
+                  assigned.map((ct) => (
+                    <span
+                      key={ct.tag.id}
+                      className="group inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: ct.tag.color }}
+                    >
+                      <Tag className="h-2.5 w-2.5 shrink-0 opacity-90" />
+                      {ct.tag.name}
+                      <button
+                        type="button"
+                        disabled={tagBusy}
+                        title={t("conversationDetail.tagRemove")}
+                        className="rounded-full p-0.5 opacity-80 hover:bg-white/20 hover:opacity-100 disabled:opacity-40"
+                        onClick={() => void removeContactTag(ct.tag.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="mt-2 flex min-w-0 flex-wrap items-stretch gap-2">
+                <select
+                  value={tagAddSelectId}
+                  onChange={(e) => setTagAddSelectId(e.target.value)}
+                  disabled={tagBusy || availableToAdd.length === 0}
+                  className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                  aria-label={t("conversationDetail.tagSelectPlaceholder")}
+                >
+                  <option value="">{t("conversationDetail.tagSelectPlaceholder")}</option>
+                  {availableToAdd.map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={tagBusy || !tagAddSelectId}
+                  onClick={() => void addContactTag(tagAddSelectId)}
+                  className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                >
+                  {t("conversationDetail.tagAdd")}
+                </button>
+              </div>
+              {orgTags.length > 0 && availableToAdd.length === 0 && assigned.length > 0 ? (
+                <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-400">
+                  {t("conversationDetail.tagNoneAvailable")}
+                </p>
+              ) : null}
+            </div>
+          );
+        })()}
         <p className="mt-2 text-[11px] text-ink-600 dark:text-ink-400">
           <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.leadSource")}:</span>{" "}
           {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
@@ -1661,6 +1950,148 @@ export function ConversationDetailPage() {
                   </button>
                 </div>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {tagModalOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            variants={backdropVariants}
+            initial="hidden"
+            animate="show"
+            exit="hidden"
+            onClick={() => !tagBusy && closeTagModal()}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="show"
+              exit="hidden"
+              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {tagModalPhase === "list" ? (
+                <>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                    {t("conversationDetail.tagManageTitle")}
+                  </h3>
+                  <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
+                    {t("conversationDetail.tagManageSubtitle")}
+                  </p>
+                  <ul className="mt-4 max-h-64 space-y-2 overflow-auto">
+                    {orgTags.length === 0 ? (
+                      <li className="text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.tagsEmptyOrg")}</li>
+                    ) : (
+                      orgTags.map((tag) => (
+                        <li
+                          key={tag.id}
+                          className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 dark:border-ink-700 dark:bg-ink-800/50"
+                        >
+                          <span
+                            className="h-3 w-3 shrink-0 rounded-full ring-1 ring-ink-200 dark:ring-ink-600"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-800 dark:text-ink-100">
+                            {tag.name}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={tagBusy}
+                            onClick={() => openTagModalEdit(tag)}
+                            className="rounded-lg p-1.5 text-ink-600 hover:bg-ink-100 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-700"
+                            aria-label={t("conversationDetail.tagEdit")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={tagBusy}
+                            onClick={() => void deleteOrgTag(tag)}
+                            className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
+                            aria-label={t("conversationDetail.tagDelete")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={tagBusy}
+                      onClick={() => openTagModalCreate(true)}
+                      className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    >
+                      {t("conversationDetail.tagNew")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={tagBusy}
+                      onClick={() => closeTagModal()}
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
+                    >
+                      {t("common.close")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <form onSubmit={(e) => void submitTagForm(e)}>
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                    {tagModalFormEditingId
+                      ? t("conversationDetail.tagEditTitle")
+                      : t("conversationDetail.tagCreateTitle")}
+                  </h3>
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                        {t("conversationDetail.tagNameLabel")}
+                      </label>
+                      <input
+                        type="text"
+                        value={tagFormName}
+                        onChange={(e) => setTagFormName(e.target.value)}
+                        maxLength={50}
+                        className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                        {t("conversationDetail.tagColorLabel")}
+                      </label>
+                      <input
+                        type="color"
+                        value={tagFormColor}
+                        onChange={(e) => setTagFormColor(e.target.value)}
+                        className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-ink-300 bg-white dark:border-ink-600"
+                      />
+                    </div>
+                    {tagFormError ? (
+                      <p className="text-sm text-red-600 dark:text-red-400">{tagFormError}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-6 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={tagBusy}
+                      onClick={() => tagFormGoBack()}
+                      className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    >
+                      {tagModalFormFromList ? t("conversationDetail.tagBack") : t("common.cancel")}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={tagBusy}
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                    >
+                      {t("conversationDetail.tagSave")}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </motion.div>
         )}
