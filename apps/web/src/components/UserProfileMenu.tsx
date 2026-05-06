@@ -155,19 +155,21 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
             className={clsx(
-              "absolute bottom-full left-0 right-0 z-[100] mb-2 overflow-hidden rounded-lg border shadow-lg",
+              "absolute bottom-full left-0 z-[100] mb-2 w-[min(20rem,calc(100vw-1.25rem))] min-w-[17.5rem] overflow-hidden rounded-lg border shadow-lg",
               "border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-800",
             )}
           >
             <div className="space-y-3 border-b border-ink-100 px-3 py-3 dark:border-ink-600">
               <div>
-                <label className="flex items-center justify-between gap-2 text-xs font-medium text-ink-600 dark:text-ink-300">
-                  {t("profileMenu.availability")}
+                <label className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="shrink-0 text-xs font-medium text-ink-600 dark:text-ink-300">
+                    {t("profileMenu.availability")}
+                  </span>
                   <select
                     value={availability}
                     onChange={(e) => setAvail(e.target.value as Availability)}
                     className={clsx(
-                      "max-w-[140px] rounded border border-ink-200 bg-white py-1 pl-2 pr-7 text-xs font-medium text-ink-800 dark:border-ink-500 dark:bg-ink-900 dark:text-ink-100",
+                      "w-full min-w-0 rounded-md border border-ink-200 bg-white py-1.5 pl-2 pr-8 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-1 dark:border-ink-500 dark:bg-ink-900 dark:text-ink-100",
                     )}
                   >
                     <option value="online">{t("profileMenu.online")}</option>
@@ -176,10 +178,13 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                   </select>
                 </label>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1 text-xs text-ink-600 dark:text-ink-300">
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0 flex-1 text-xs leading-snug text-ink-600 dark:text-ink-300">
                   {t("profileMenu.autoOffline")}
-                  <span title={t("profileMenu.autoOfflineHint")} className="text-ink-400">
+                  <span
+                    title={t("profileMenu.autoOfflineHint")}
+                    className="ml-1 inline-block align-middle text-ink-400"
+                  >
                     <Info className="h-3.5 w-3.5" />
                   </span>
                 </span>
@@ -189,7 +194,7 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                   aria-checked={autoOffline}
                   onClick={() => setAutoOff(!autoOffline)}
                   className={clsx(
-                    "flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors",
+                    "mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors",
                     autoOffline ? "justify-end bg-brand-500" : "justify-start bg-ink-200 dark:bg-ink-600",
                   )}
                 >
@@ -201,33 +206,35 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
             <nav className="py-1">
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
                 onClick={() => {
                   setShortcutsOpen(true);
                   setOpen(false);
                 }}
               >
-                <Keyboard className="h-4 w-4 shrink-0 text-ink-500" />
-                {t("profileMenu.keyboardShortcuts")}
+                <Keyboard className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.keyboardShortcuts")}</span>
               </button>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
                 onClick={() => {
                   setOpen(false);
                   navigate("/settings");
                 }}
               >
-                <UserRound className="h-4 w-4 shrink-0 text-ink-500" />
-                {t("profileMenu.profileSettings")}
+                <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.profileSettings")}</span>
               </button>
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-ink-700 dark:text-ink-200">
-                <Palette className="h-4 w-4 shrink-0 text-ink-500" />
-                <span className="min-w-0 flex-1">{t("profileMenu.changeTheme")}</span>
+              <div className="flex flex-col gap-2 px-3 py-2.5 text-sm text-ink-700 dark:text-ink-200 sm:flex-row sm:items-center sm:gap-3">
+                <span className="flex min-w-0 items-start gap-2 sm:flex-1">
+                  <Palette className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                  <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.changeTheme")}</span>
+                </span>
                 <select
                   value={themePref}
                   onChange={(e) => setTheme(e.target.value as ThemePref)}
-                  className="max-w-[120px] rounded border border-ink-200 bg-white py-1 text-xs dark:border-ink-500 dark:bg-ink-900 dark:text-ink-100"
+                  className="w-full shrink-0 rounded-md border border-ink-200 bg-white py-1.5 pl-2 pr-8 text-xs sm:max-w-[9.5rem] dark:border-ink-500 dark:bg-ink-900 dark:text-ink-100"
                 >
                   <option value="light">{t("profileMenu.themeLight")}</option>
                   <option value="dark">{t("profileMenu.themeDark")}</option>
@@ -237,26 +244,26 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
               {superAdmin ? (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                  className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
                   onClick={() => {
                     setOpen(false);
                     navigate("/super");
                   }}
                 >
-                  <Landmark className="h-4 w-4 shrink-0 text-ink-500" />
-                  {t("profileMenu.superAdminConsole")}
+                  <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                  <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.superAdminConsole")}</span>
                 </button>
               ) : null}
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                 onClick={() => {
                   setOpen(false);
                   onLogout();
                 }}
               >
-                <LogOut className="h-4 w-4 shrink-0" />
-                {t("profileMenu.signOut")}
+                <LogOut className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.signOut")}</span>
               </button>
             </nav>
           </motion.div>
