@@ -58,6 +58,18 @@ enum TeamMemberRole {
   MEMBER
 }
 
+/// Como o valor à finalização (closure) entra nas somas e como negócios herdam o estado por etapa.
+enum LeadValueRollup {
+  /// Conta em «Em negociação» / pipeline; negócio fica OPEN.
+  PIPELINE
+  /// Conta em «Soma dos valores» (vendido); negócio WON.
+  WON
+  /// Negócio LOST; valor não entra nas somas principais.
+  LOST
+  /// Suporte etc.: valor e negócio não entram nas somas comerciais.
+  NONE
+}
+
 enum BotType {
   WEBHOOK
   DIALOGFLOW
@@ -439,6 +451,8 @@ model LeadType {
   name           String
   color          String       @db.VarChar(7)
   order          Int          @default(0) @map("sort_order")
+  /// Soma em auditoria / Meu atendimento e estado do negócio quando a etapa do funil corresponde a este tipo.
+  valueRollup    LeadValueRollup @default(PIPELINE) @map("value_roll_up")
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

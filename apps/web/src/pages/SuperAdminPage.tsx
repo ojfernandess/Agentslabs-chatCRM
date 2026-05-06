@@ -19,6 +19,7 @@ import {
   ToggleLeft,
   BarChart3,
   Settings2,
+  MessageCircle,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -160,11 +161,22 @@ interface OrgUserRow {
   createdAt: string;
 }
 
+interface SuperWhatsAppEmbeddedPayload {
+  configured: boolean;
+  appId: string;
+  configurationId: string;
+  apiVersion: string;
+  webhookVerifyToken: string;
+  appSecretMasked: string;
+  metaWebhookCallbackUrl: string;
+}
+
 type SuperSection =
   | "overview"
   | "usageMetrics"
   | "organizations"
   | "globalSettings"
+  | "whatsappEmbedded"
   | "monitoring"
   | "platformApps"
   | "auditLog"
@@ -219,6 +231,18 @@ export function SuperAdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userRoleBusy, setUserRoleBusy] = useState<string | null>(null);
   const [impersonateBusy, setImpersonateBusy] = useState<string | null>(null);
+
+  const [waEmbLoad, setWaEmbLoad] = useState(false);
+  const [waEmbLoadFailed, setWaEmbLoadFailed] = useState(false);
+  const [waEmbRefresh, setWaEmbRefresh] = useState(0);
+  const [waEmbSave, setWaEmbSave] = useState(false);
+  const [waEmbSnapshot, setWaEmbSnapshot] = useState<SuperWhatsAppEmbeddedPayload | null>(null);
+  const [waEmbAppId, setWaEmbAppId] = useState("");
+  const [waEmbAppSecret, setWaEmbAppSecret] = useState("");
+  const [waEmbConfigurationId, setWaEmbConfigurationId] = useState("");
+  const [waEmbApiVersion, setWaEmbApiVersion] = useState("v22.0");
+  const [waEmbVerifyToken, setWaEmbVerifyToken] = useState("");
+  const [waEmbCallbackCopied, setWaEmbCallbackCopied] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -370,6 +394,34 @@ export function SuperAdminPage() {
   useEffect(() => {
     if (section === "globalSettings") void fetchPlatformSettingsList();
   }, [section, fetchPlatformSettingsList]);
+
+  useEffect(() => {
+    if (section !== "whatsappEmbedded") return;
+    let cancelled = false;
+    setWaEmbLoad(true);
+    setWaEmbLoadFailed(false);
+    setError("");
+    void api
+      .get<SuperWhatsAppEmbeddedPayload>("/super/whatsapp-embedded")
+      .then((d) => {
+        if (cancelled) return;
+        setWaEmbSnapshot(d);
+        setWaEmbAppId(d.appId);
+        setWaEmbConfigurationId(d.configurationId);
+        setWaEmbApiVersion(d.apiVersion || "v22.0");
+        setWaEmbVerifyToken(d.webhookVerifyToken);
+        setWaEmbAppSecret("");
+      })
+      .catch(() => {
+        if (!cancelled) setWaEmbLoadFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setWaEmbLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section, waEmbRefresh]);
 
   useEffect(() => {
     if (!usersOrg) {
@@ -571,6 +623,47 @@ export function SuperAdminPage() {
     }
   };
 
+  const saveWhatsAppEmbedded = async (e: FormEvent) => {
+    e.preventDefault();
+    setWaEmbSave(true);
+    setError("");
+    try {
+      const body: {
+        appId: string;
+        configurationId: string;
+        apiVersion: string;
+        webhookVerifyToken: string;
+        appSecret?: string;
+      } = {
+        appId: waEmbAppId.trim(),
+        configurationId: waEmbConfigurationId.trim(),
+        apiVersion: waEmbApiVersion.trim() || "v22.0",
+        webhookVerifyToken: waEmbVerifyToken.trim(),
+      };
+      const secret = waEmbAppSecret.trim();
+      if (secret) body.appSecret = secret;
+      const d = await api.put<SuperWhatsAppEmbeddedPayload>("/super/whatsapp-embedded", body);
+      setWaEmbSnapshot(d);
+      setWaEmbAppSecret("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível guardar.");
+    } finally {
+      setWaEmbSave(false);
+    }
+  };
+
+  const copyWaEmbCallback = async () => {
+    const url = waEmbSnapshot?.metaWebhookCallbackUrl;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setWaEmbCallbackCopied(true);
+      window.setTimeout(() => setWaEmbCallbackCopied(false), 2000);
+    } catch {
+      setError("Não foi possível copiar o URL.");
+    }
+  };
+
   const flagTitle = (key: string) => t(`superAdmin.flag.${key}`);
 
   const navItem = (id: SuperSection, label: string, Icon: typeof LayoutDashboard) => (
@@ -605,6 +698,7 @@ export function SuperAdminPage() {
           {navItem("usageMetrics", t("superAdmin.usageMetrics"), BarChart3)}
           {navItem("organizations", t("superAdmin.organizations"), Building2)}
           {navItem("globalSettings", t("superAdmin.globalSettings"), Settings2)}
+          {navItem("whatsappEmbedded", t("superAdmin.whatsappEmbedded"), MessageCircle)}
           {navItem("monitoring", t("superAdmin.monitoring"), Activity)}
           {navItem("platformApps", t("superAdmin.platformApps"), Box)}
           {navItem("auditLog", t("superAdmin.auditLog"), ScrollText)}
@@ -773,6 +867,136 @@ export function SuperAdminPage() {
                   </ul>
                 )}
               </section>
+            </div>
+          )}
+
+          {section === "whatsappEmbedded" && (
+            <div className="mx-auto max-w-3xl space-y-8">
+              <div>
+                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.whatsappEmbedded")}</h1>
+                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.whatsappEmbeddedSubtitle")}</p>
+                <a
+                  href="https://developers.chatwoot.com/self-held/configuration/features/integrations/whatsapp-embedded-signup"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {t("superAdmin.whatsappEmbeddedDocLink")} →
+                </a>
+              </div>
+              {waEmbLoad ? (
+                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+              ) : waEmbLoadFailed || !waEmbSnapshot ? (
+                <div className="card-surface space-y-3 p-6">
+                  <p className="text-sm text-ink-700">{t("superAdmin.whatsappEmbeddedLoadError")}</p>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    onClick={() => setWaEmbRefresh((n) => n + 1)}
+                  >
+                    {t("superAdmin.whatsappEmbeddedRetry")}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={(e) => void saveWhatsAppEmbedded(e)} className="card-surface space-y-5 p-6">
+                  {waEmbSnapshot.configured ? (
+                    <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+                      {t("superAdmin.whatsappEmbeddedConfigured")}
+                    </p>
+                  ) : (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                      {t("superAdmin.whatsappEmbeddedIncomplete")}
+                    </p>
+                  )}
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.whatsappEmbeddedCallbackUrl")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedCallbackHint")}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="input-field flex-1 overflow-x-auto font-mono text-xs">
+                        {waEmbSnapshot.metaWebhookCallbackUrl}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void copyWaEmbCallback()}
+                        className="btn-secondary shrink-0 gap-2 py-2 text-sm"
+                        aria-label="Copy callback URL"
+                      >
+                        {waEmbCallbackCopied ? (
+                          <Check className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.whatsappEmbeddedAppId")}</label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedAppIdHint")}</p>
+                    <input
+                      value={waEmbAppId}
+                      onChange={(e) => setWaEmbAppId(e.target.value)}
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.whatsappEmbeddedAppSecret")}</label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedAppSecretHint")}</p>
+                    <input
+                      type="password"
+                      value={waEmbAppSecret}
+                      onChange={(e) => setWaEmbAppSecret(e.target.value)}
+                      placeholder={
+                        waEmbSnapshot.appSecretMasked
+                          ? `${t("superAdmin.whatsappEmbeddedSecretKeep")} (${waEmbSnapshot.appSecretMasked})`
+                          : undefined
+                      }
+                      className="input-field mt-2"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.whatsappEmbeddedConfigId")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedConfigIdHint")}</p>
+                    <input
+                      value={waEmbConfigurationId}
+                      onChange={(e) => setWaEmbConfigurationId(e.target.value)}
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.whatsappEmbeddedApiVersion")}</label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedApiVersionHint")}</p>
+                    <input
+                      value={waEmbApiVersion}
+                      onChange={(e) => setWaEmbApiVersion(e.target.value)}
+                      placeholder="v22.0"
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.whatsappEmbeddedVerifyToken")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.whatsappEmbeddedVerifyHint")}</p>
+                    <input
+                      value={waEmbVerifyToken}
+                      onChange={(e) => setWaEmbVerifyToken(e.target.value)}
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={waEmbSave}>
+                    {waEmbSave ? t("common.loading") : t("superAdmin.whatsappEmbeddedSave")}
+                  </button>
+                </form>
+              )}
             </div>
           )}
 

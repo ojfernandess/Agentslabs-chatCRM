@@ -15,6 +15,10 @@ import {
   DEFAULT_TAGS,
   DEFAULT_LEAD_TYPES,
 } from "@openconduit/shared";
+import {
+  WHATSAPP_EMBEDDED_PLATFORM_KEY,
+} from "../lib/metaWhatsAppEmbedded.js";
+import { metaEmbeddedWebhookUrl } from "../config.js";
 
 function slugify(name: string): string {
   const base = name
@@ -48,6 +52,14 @@ const superUserPatchSchema = z.object({
 const platformSettingUpsertSchema = z.object({
   key: z.string().min(1).max(120),
   value: z.unknown(),
+});
+
+const whatsappEmbeddedPutSchema = z.object({
+  appId: z.string().min(1).max(64),
+  appSecret: z.string().max(256).optional(),
+  configurationId: z.string().min(1).max(64),
+  apiVersion: z.string().max(16).default("v22.0"),
+  webhookVerifyToken: z.string().min(4).max(256),
 });
 
 const platformAppCreateSchema = z.object({
@@ -382,6 +394,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
             name: lt.name,
             color: lt.color,
             order: lt.order,
+            valueRollup: lt.valueRollup,
           },
         });
       }
@@ -603,5 +616,88 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return row;
+  });
+
+  app.get("/whatsapp-embedded", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: WHATSAPP_EMBEDDED_PLATFORM_KEY },
+    });
+    const callbackUrl = metaEmbeddedWebhookUrl();
+    if (!row?.value || typeof row.value !== "object" || row.value === null) {
+      return {
+        configured: false,
+        appId: "",
+        configurationId: "",
+        apiVersion: "v22.0",
+        webhookVerifyToken: "",
+        appSecretMasked: "",
+        metaWebhookCallbackUrl: callbackUrl,
+      };
+    }
+    const v = row.value as Record<string, unknown>;
+    const appId = String(v.appId ?? "").trim();
+    const appSecret = String(v.appSecret ?? "").trim();
+    const configurationId = String(v.configurationId ?? "").trim();
+    const apiVersion = String(v.apiVersion ?? "v22.0").trim();
+    const webhookVerifyToken = String(v.webhookVerifyToken ?? "").trim();
+    return {
+      configured: !!(appId && appSecret && configurationId && webhookVerifyToken),
+      appId,
+      configurationId,
+      apiVersion: apiVersion || "v22.0",
+      webhookVerifyToken,
+      appSecretMasked: appSecret ? "••••••••" : "",
+      metaWebhookCallbackUrl: callbackUrl,
+    };
+  });
+
+  app.put("/whatsapp-embedded", async (request, reply) => {
+    const parsed = whatsappEmbeddedPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: WHATSAPP_EMBEDDED_PLATFORM_KEY },
+    });
+    let appSecret = parsed.data.appSecret?.trim() ?? "";
+    if (!appSecret && existing?.value && typeof existing.value === "object" && existing.value !== null) {
+      appSecret = String((existing.value as Record<string, unknown>).appSecret ?? "").trim();
+    }
+    if (!appSecret) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "appSecret is required (omit only when updating and secret already stored)",
+        statusCode: 400,
+      });
+    }
+    const value = {
+      appId: parsed.data.appId.trim(),
+      appSecret,
+      configurationId: parsed.data.configurationId.trim(),
+      apiVersion: parsed.data.apiVersion.trim(),
+      webhookVerifyToken: parsed.data.webhookVerifyToken.trim(),
+    };
+    const row = await prisma.platformSetting.upsert({
+      where: { key: WHATSAPP_EMBEDDED_PLATFORM_KEY },
+      create: { key: WHATSAPP_EMBEDDED_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.whatsapp_embedded.upsert",
+      resourceType: "platform_setting",
+      resourceId: WHATSAPP_EMBEDDED_PLATFORM_KEY,
+      metadata: { appId: value.appId },
+      ip: clientIp(request),
+    });
+    return {
+      configured: true,
+      appId: value.appId,
+      configurationId: value.configurationId,
+      apiVersion: value.apiVersion,
+      webhookVerifyToken: value.webhookVerifyToken,
+      appSecretMasked: "••••••••",
+      metaWebhookCallbackUrl: metaEmbeddedWebhookUrl(),
+    };
   });
 }

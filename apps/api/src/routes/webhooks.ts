@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { getWhatsAppProvider, getWebhookSecret } from "../providers/factory.js";
+import { MetaCloudApiProvider } from "../providers/meta.js";
+import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
@@ -22,11 +24,25 @@ function normalizeJsonBody(body: unknown): unknown {
   return body;
 }
 
+function extractMetaWebhookPhoneNumberId(body: unknown): string | null {
+  const b = body as {
+    entry?: { changes?: { value?: { metadata?: { phone_number_id?: string } } }[] }[];
+  };
+  for (const entry of b.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const id = change.value?.metadata?.phone_number_id;
+      if (id && typeof id === "string") return id;
+    }
+  }
+  return null;
+}
+
 async function handleWhatsAppPost(
   app: FastifyInstance,
   request: FastifyRequest,
   reply: FastifyReply,
   organizationId: string,
+  options?: { skipWebhookSignature?: boolean },
 ): Promise<void> {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -54,7 +70,7 @@ async function handleWhatsAppPost(
   }
 
   const secret = await getWebhookSecret(organizationId);
-  if (secret) {
+  if (secret && !options?.skipWebhookSignature) {
     const rawBody =
       typeof request.body === "string" ? request.body : JSON.stringify(request.body);
 
@@ -335,6 +351,57 @@ async function handleWhatsAppPost(
 }
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/meta/whatsapp", async (request, reply) => {
+    const cfg = await getWhatsAppEmbeddedConfig();
+    if (!cfg) {
+      return reply.status(503).send({ error: "WhatsApp Embedded not configured" });
+    }
+    const q = request.query as Record<string, string | undefined>;
+    const mode = q["hub.mode"];
+    const token = q["hub.verify_token"];
+    const challenge = q["hub.challenge"];
+    if (mode === "subscribe" && token === cfg.webhookVerifyToken && challenge) {
+      return reply.type("text/plain").send(challenge);
+    }
+    return reply.status(403).send({ error: "Verification failed" });
+  });
+
+  app.post("/meta/whatsapp", rawBodyPost, async (request: FastifyRequest, reply: FastifyReply) => {
+    const cfg = await getWhatsAppEmbeddedConfig();
+    if (!cfg) {
+      return reply.status(503).send();
+    }
+    const body = normalizeJsonBody(request.body);
+    if (body === null) {
+      return reply.status(400).send({ error: "Invalid JSON body" });
+    }
+    const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
+    const metaVerifier = new MetaCloudApiProvider("unused", "unused");
+    const valid = metaVerifier.validateWebhookSignature(
+      request.headers as Record<string, string | undefined>,
+      rawBody,
+      cfg.appSecret,
+    );
+    if (!valid) {
+      app.log.warn("meta/whatsapp webhook signature validation failed");
+      return reply.status(401).send({ error: "Invalid signature" });
+    }
+    const phoneId = extractMetaWebhookPhoneNumberId(body);
+    if (!phoneId) {
+      app.log.info({ url: request.url }, "meta/whatsapp: no phone_number_id in payload");
+      return reply.status(200).send();
+    }
+    const row = await prisma.settings.findFirst({
+      where: { whatsappPhoneNumberId: phoneId },
+      select: { organizationId: true },
+    });
+    if (!row) {
+      app.log.warn({ phoneId }, "meta/whatsapp: no organization for phone_number_id");
+      return reply.status(200).send();
+    }
+    return handleWhatsAppPost(app, request, reply, row.organizationId, { skipWebhookSignature: true });
+  });
+
   app.get<{ Params: { organizationId: string } }>("/whatsapp/:organizationId", async (request, reply) => {
     const { organizationId } = request.params;
     const org = await prisma.organization.findUnique({

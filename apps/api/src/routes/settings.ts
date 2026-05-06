@@ -2,9 +2,17 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
-import { webhookUrlForOrganization } from "../config.js";
+import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import {
+  exchangeEmbeddedSignupCode,
+  exchangeForLongLivedToken,
+  fetchFirstPhoneNumberId,
+  getWhatsAppEmbeddedConfig,
+  getWhatsAppEmbeddedPublicConfig,
+  subscribeWabaToApp,
+} from "../lib/metaWhatsAppEmbedded.js";
 
 const settingsSchema = z.object({
   whatsappProvider: z.enum(["meta", "360dialog", "twilio", "evolution"]).optional(),
@@ -125,6 +133,85 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         return { connected: healthy };
       } catch {
         return { connected: false };
+      }
+    });
+
+    admin.get("/whatsapp-embedded", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const pub = await getWhatsAppEmbeddedPublicConfig();
+      return {
+        available: !!pub,
+        appId: pub?.appId ?? null,
+        configurationId: pub?.configurationId ?? null,
+        apiVersion: pub?.apiVersion ?? null,
+        metaWebhookCallbackUrl: metaEmbeddedWebhookUrl(),
+        orgWebhookUrl: webhookUrlForOrganization(organizationId),
+      };
+    });
+
+    const embeddedCompleteSchema = z.object({
+      code: z.string().min(1),
+      business_id: z.string().min(1),
+      waba_id: z.string().min(1),
+      phone_number_id: z.string().optional(),
+    });
+
+    admin.post("/whatsapp-embedded/complete", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const parsed = embeddedCompleteSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const cfg = await getWhatsAppEmbeddedConfig();
+      if (!cfg) {
+        return reply.status(503).send({
+          error: "Service Unavailable",
+          message: "WhatsApp Embedded is not configured by the platform administrator.",
+          statusCode: 503,
+        });
+      }
+      try {
+        let access = await exchangeEmbeddedSignupCode(parsed.data.code, cfg);
+        access = await exchangeForLongLivedToken(access, cfg);
+        await subscribeWabaToApp(parsed.data.waba_id, access, cfg);
+        let phoneId = parsed.data.phone_number_id?.trim() ?? "";
+        if (!phoneId) {
+          phoneId = (await fetchFirstPhoneNumberId(parsed.data.waba_id, access, cfg)) ?? "";
+        }
+        if (!phoneId) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message:
+              "Could not determine phone_number_id. Finish number setup in Meta or retry the embedded flow.",
+            statusCode: 400,
+          });
+        }
+        let settings = await prisma.settings.findUnique({ where: { organizationId } });
+        const data = {
+          whatsappProvider: "meta" as const,
+          whatsappApiKey: access,
+          whatsappPhoneNumberId: phoneId,
+          evolutionApiBaseUrl: null,
+        };
+        if (!settings) {
+          settings = await prisma.settings.create({ data: { organizationId, ...data } });
+        } else {
+          settings = await prisma.settings.update({
+            where: { id: settings.id },
+            data,
+          });
+        }
+        return {
+          ok: true,
+          whatsappProvider: settings.whatsappProvider,
+          whatsappPhoneNumberId: settings.whatsappPhoneNumberId,
+          metaWebhookCallbackUrl: metaEmbeddedWebhookUrl(),
+        };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Embedded signup failed";
+        return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
       }
     });
   });

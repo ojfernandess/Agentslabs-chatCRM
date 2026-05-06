@@ -21,14 +21,14 @@ export const DEFAULT_TAGS = [
   { name: "Cancelado / churn", color: "#ef4444" },
 ] as const;
 
-/** Tipos de lead padrão (pt-BR) — seed / migração. */
+/** Tipos de lead padrão (pt-BR) — seed / migração. `valueRollup` governa somas e estado do negócio. */
 export const DEFAULT_LEAD_TYPES = [
-  { name: "MQL — lead de marketing", color: "#6366f1", order: 0 },
-  { name: "SQL — lead de vendas", color: "#3b82f6", order: 1 },
-  { name: "Oportunidade", color: "#f59e0b", order: 2 },
-  { name: "Fechado — ganho", color: "#10b981", order: 3 },
-  { name: "Fechado — perdido", color: "#ef4444", order: 4 },
-  { name: "Suporte / relacionamento", color: "#8b5cf6", order: 5 },
+  { name: "MQL — lead de marketing", color: "#6366f1", order: 0, valueRollup: "PIPELINE" as const },
+  { name: "SQL — lead de vendas", color: "#3b82f6", order: 1, valueRollup: "PIPELINE" as const },
+  { name: "Oportunidade", color: "#f59e0b", order: 2, valueRollup: "PIPELINE" as const },
+  { name: "Fechado — ganho", color: "#10b981", order: 3, valueRollup: "WON" as const },
+  { name: "Fechado — perdido", color: "#ef4444", order: 4, valueRollup: "LOST" as const },
+  { name: "Suporte / relacionamento", color: "#8b5cf6", order: 5, valueRollup: "NONE" as const },
 ] as const;
 
 export const BCRYPT_COST_FACTOR = 12;

@@ -50,6 +50,15 @@ export const messages = {
       myAttendance: "Meu atendimento",
       conversationAudit: "Auditoria de conversas",
     },
+    dealsPage: {
+      subtitle: "Oportunidades e totais por estado (WON vs em negociação)",
+      totalWon: "Vendas fechadas (WON)",
+      totalOpen: "Em negociação (abertos)",
+      stageLabel: "Etapa do negócio",
+      saveStage: "Guardar etapa",
+      savingStage: "A guardar…",
+      stageSaved: "Etapa atualizada. O estado segue o tipo de lead da coluna.",
+    },
     teams: {
       title: "Times",
       subtitle: "Grupos de atendimento e permissões por papel",
@@ -196,7 +205,9 @@ export const messages = {
     attendance: {
       title: "Meu atendimento",
       subtitle: "Conversas finalizadas atribuídas a si — tipo de lead e valores",
-      totalValue: "Soma dos valores",
+      totalValue: "Soma dos valores (vendido)",
+      negotiationSubtotal: "Em negociação",
+      negotiationSubtotalHint: "Valores de tipos marcados como pipeline / cotação — configurável em Tipos de lead.",
       resolvedTotal: "Total finalizadas",
       empty: "Ainda não há conversas finalizadas a si.",
     },
@@ -210,6 +221,8 @@ export const messages = {
       resolvedTo: "Atualizado até",
       totalRows: "Registos",
       sumPage: "Soma nesta página",
+      sumPageWon: "Vendido (página)",
+      sumPagePipeline: "Em negociação (página)",
       empty: "Nenhum resultado com estes filtros.",
       colWhen: "Quando",
       colContact: "Contato",
@@ -261,6 +274,20 @@ export const messages = {
         "Definem as colunas do funil CRM (Kanban) e são obrigatórios ao finalizar uma conversa. Ex.: MQL, SQL, oportunidade.",
       leadTypeName: "Nome",
       leadTypeColor: "Cor",
+      leadTypeValueRollup: "Classificação do valor",
+      leadTypeRollupPipeline: "Em negociação (soma em «Negociação», não em vendas fechadas)",
+      leadTypeRollupWon: "Vendido — entra na «Soma dos valores» e negócio como ganho",
+      leadTypeRollupLost: "Perdido — não entra nas somas principais",
+      leadTypeRollupNone: "Não comercial — não entra nas somas",
+      leadTypeRollupWonHint:
+        "Só pode existir um tipo «Vendido» por organização. Os outros tipos deixam de usar essa classificação se marcar outro como vendido.",
+      leadTypeRollupLabel_PIPELINE: "Valor em negociação",
+      leadTypeRollupLabel_WON: "Valor contabilizado como venda",
+      leadTypeRollupLabel_LOST: "Perdido (fora das somas)",
+      leadTypeRollupLabel_NONE: "Fora das somas comerciais",
+      leadTypeEdit: "Editar",
+      leadTypeSave: "Guardar alterações",
+      leadTypeCancelEdit: "Cancelar",
       addLeadType: "Adicionar tipo",
       noLeadTypes: "Nenhum tipo cadastrado",
       saveLeadTypesNote: "Tipos novos ficam disponíveis imediatamente ao finalizar atendimentos.",
@@ -276,6 +303,24 @@ export const messages = {
       agentBotNone: "Nenhum (só agentes humanos)",
       agentBotWhatsAppHint:
         "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem (estilo Chatwoot). O bot responde pela API de inbox com o token gerado na página Bots.",
+      embeddedTitle: "Configuração rápida com Meta",
+      embeddedDesc:
+        "Use o fluxo de inscrição incorporada do WhatsApp para ligar o Cloud API sem colar token manualmente. Será redireccionado para a Meta para concluir o WhatsApp Business.",
+      embeddedBenefit1: "Menos configuração manual (token e phone number ID preenchidos automaticamente).",
+      embeddedBenefit2: "Autenticação OAuth com a Meta.",
+      embeddedBenefit3: "Mensagens recebidas via webhook partilhado da plataforma (ver URL abaixo no painel do super admin).",
+      embeddedMetaNote:
+        "No Facebook Developers → WhatsApp → Configuration, use este URL de callback e o mesmo verify token que o super admin configurou:",
+      embeddedCta: "Conectar com WhatsApp Business",
+      embeddedWorking: "A processar…",
+      embeddedSuccess: "Canal Meta guardado. Pode testar a ligação abaixo.",
+      embeddedSignupError: "Falha no fluxo incorporado.",
+      embeddedInvalidBusiness: "Dados de negócio inválidos devolvidos pela Meta.",
+      embeddedCompleteError: "Não foi possível concluir a ligação. Tente novamente.",
+      embeddedManualHint: "Se o número já estiver na Cloud API ou usar outro gateway, utilize a configuração manual (Meta Cloud API) mais abaixo.",
+      embeddedManualLink: "Configuração manual",
+      embeddedUnavailable:
+        "O administrador da plataforma ainda não configurou o WhatsApp Embedded. Contacte o suporte ou use a configuração manual abaixo.",
     },
     superAdmin: {
       consoleSubtitle: "Consola multi-tenant — organizações, integrações e políticas",
@@ -325,6 +370,33 @@ export const messages = {
       globalSettings: "Definições globais",
       globalSettingsSubtitle:
         "Armazenamento chave–valor (JSON) para políticas de plataforma. Ex.: maintenance_mode: {\"enabled\":false}.",
+      whatsappEmbedded: "WhatsApp Embedded (Meta)",
+      whatsappEmbeddedSubtitle:
+        "Credenciais da aplicação Facebook usadas pelo fluxo de inscrição incorporada (estilo Chatwoot). Os tenants ligam o Cloud API sem token manual.",
+      whatsappEmbeddedAppId: "WhatsApp App ID",
+      whatsappEmbeddedAppIdHint: "ID da aplicação Facebook para integração WhatsApp Business API.",
+      whatsappEmbeddedAppSecret: "WhatsApp App Secret",
+      whatsappEmbeddedAppSecretHint: "Segredo da app — necessário para trocar o código OAuth no servidor (nunca expor ao browser).",
+      whatsappEmbeddedConfigId: "WhatsApp Configuration ID",
+      whatsappEmbeddedConfigIdHint:
+        "ID da configuração em Facebook Login for Business → Configuration (variação WhatsApp Embedded Signup).",
+      whatsappEmbeddedApiVersion: "Versão da API WhatsApp",
+      whatsappEmbeddedApiVersionHint: "Prefixo com v (ex.: v22.0).",
+      whatsappEmbeddedVerifyToken: "Verify token (webhook)",
+      whatsappEmbeddedVerifyHint:
+        "Token de verificação GET do webhook — Meta deve enviar o mesmo valor. Use também como Verify token na configuração do webhook da app.",
+      whatsappEmbeddedCallbackUrl: "URL de callback (webhook único)",
+      whatsappEmbeddedCallbackHint:
+        "Configure este URL na app Meta (WhatsApp → Configuration). Todas as organizações que usam Embedded partilham este endpoint; o roteamento é por phone_number_id.",
+      whatsappEmbeddedSave: "Guardar",
+      whatsappEmbeddedDocLink: "Documentação Chatwoot (Embedded Signup)",
+      whatsappEmbeddedLoadError: "Não foi possível carregar as definições de WhatsApp Embedded.",
+      whatsappEmbeddedRetry: "Tentar novamente",
+      whatsappEmbeddedConfigured:
+        "WhatsApp Embedded está completo. Os tenants podem usar «Conectar com WhatsApp Business» nas definições do canal.",
+      whatsappEmbeddedIncomplete:
+        "Preencha App ID, Configuration ID, App Secret e verify token para ativar o fluxo incorporado.",
+      whatsappEmbeddedSecretKeep: "Deixe vazio para manter o segredo existente",
       tenantPermissions: "Permissões por tenant",
       tenantPermissionsSubtitle:
         "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular tipo Chatwoot). Ajuste funções na lista de utilizadores.",
@@ -395,6 +467,15 @@ export const messages = {
       bots: "Bots",
       myAttendance: "My attendance",
       conversationAudit: "Conversation audit",
+    },
+    dealsPage: {
+      subtitle: "Opportunities and totals by outcome (WON vs in negotiation)",
+      totalWon: "Closed-won (WON)",
+      totalOpen: "In negotiation (open)",
+      stageLabel: "Deal stage",
+      saveStage: "Save stage",
+      savingStage: "Saving…",
+      stageSaved: "Stage updated. Status follows the funnel column lead type.",
     },
     teams: {
       title: "Teams",
@@ -540,7 +621,9 @@ export const messages = {
     attendance: {
       title: "My attendance",
       subtitle: "Resolved conversations assigned to you — lead types and values",
-      totalValue: "Total value",
+      totalValue: "Total value (closed-won)",
+      negotiationSubtotal: "In negotiation",
+      negotiationSubtotalHint: "Values from lead types classified as pipeline — configurable under Lead types.",
       resolvedTotal: "Resolved count",
       empty: "No resolved conversations assigned to you yet.",
     },
@@ -554,6 +637,8 @@ export const messages = {
       resolvedTo: "Updated until",
       totalRows: "Records",
       sumPage: "Page sum",
+      sumPageWon: "Closed-won (page)",
+      sumPagePipeline: "In negotiation (page)",
       empty: "No rows match these filters.",
       colWhen: "When",
       colContact: "Contact",
@@ -605,6 +690,20 @@ export const messages = {
         "These are your CRM Kanban columns and are required when resolving a conversation. E.g. MQL, SQL, opportunity.",
       leadTypeName: "Name",
       leadTypeColor: "Color",
+      leadTypeValueRollup: "Value classification",
+      leadTypeRollupPipeline: "In negotiation (counts toward «Negotiation» subtotal, not closed-won)",
+      leadTypeRollupWon: "Won — counts toward «Total value» and marks deal as won",
+      leadTypeRollupLost: "Lost — excluded from main totals",
+      leadTypeRollupNone: "Non-revenue — excluded from sales totals",
+      leadTypeRollupWonHint:
+        "Only one lead type per organization can be «Won». Marking another as won demotes the previous one to pipeline.",
+      leadTypeRollupLabel_PIPELINE: "Pipeline / negotiation value",
+      leadTypeRollupLabel_WON: "Counted as closed-won revenue",
+      leadTypeRollupLabel_LOST: "Lost (excluded)",
+      leadTypeRollupLabel_NONE: "Outside commercial totals",
+      leadTypeEdit: "Edit",
+      leadTypeSave: "Save changes",
+      leadTypeCancelEdit: "Cancel",
       addLeadType: "Add type",
       noLeadTypes: "No lead types yet",
       saveLeadTypesNote: "New types are available immediately when resolving chats.",
@@ -620,6 +719,24 @@ export const messages = {
       agentBotNone: "None (human agents only)",
       agentBotWhatsAppHint:
         "When set, new conversations start pending and the bot webhook receives each message (Chatwoot-style). The bot replies via the inbox API using the token issued on the Bots page.",
+      embeddedTitle: "Quick setup with Meta",
+      embeddedDesc:
+        "Use WhatsApp embedded signup to connect the Cloud API without pasting tokens manually. You will sign in with Meta to finish WhatsApp Business onboarding.",
+      embeddedBenefit1: "Less manual setup (token and phone number ID filled in automatically).",
+      embeddedBenefit2: "OAuth authentication with Meta.",
+      embeddedBenefit3: "Inbound messages use the platform shared webhook URL (configure it in Meta as documented by your super admin).",
+      embeddedMetaNote:
+        "In Facebook Developers → WhatsApp → Configuration, set this callback URL and the same verify token the super admin saved:",
+      embeddedCta: "Connect with WhatsApp Business",
+      embeddedWorking: "Working…",
+      embeddedSuccess: "Meta channel saved. You can run Test connection below.",
+      embeddedSignupError: "Embedded signup failed.",
+      embeddedInvalidBusiness: "Invalid business data from Meta.",
+      embeddedCompleteError: "Could not finish linking. Please try again.",
+      embeddedManualHint: "If your number is already on the Cloud API or you use another gateway, use manual setup (Meta Cloud API) below.",
+      embeddedManualLink: "Manual setup",
+      embeddedUnavailable:
+        "WhatsApp Embedded has not been configured on this platform yet. Contact support or use manual setup below.",
     },
     superAdmin: {
       consoleSubtitle: "Multi-tenant console — organizations, integrations, and policy",
@@ -670,6 +787,33 @@ export const messages = {
       globalSettings: "Global settings",
       globalSettingsSubtitle:
         "Key–value JSON for platform policy. Example: maintenance_mode: {\"enabled\":false}.",
+      whatsappEmbedded: "WhatsApp Embedded (Meta)",
+      whatsappEmbeddedSubtitle:
+        "Facebook app credentials for the embedded signup flow (Chatwoot-style). Tenants connect Cloud API without manual tokens.",
+      whatsappEmbeddedAppId: "WhatsApp App ID",
+      whatsappEmbeddedAppIdHint: "Facebook App ID for WhatsApp Business API integration.",
+      whatsappEmbeddedAppSecret: "WhatsApp App Secret",
+      whatsappEmbeddedAppSecretHint: "App secret for server-side OAuth code exchange (never expose in the browser).",
+      whatsappEmbeddedConfigId: "WhatsApp Configuration ID",
+      whatsappEmbeddedConfigIdHint:
+        "Configuration ID from Facebook Login for Business → Configuration (WhatsApp Embedded Signup variation).",
+      whatsappEmbeddedApiVersion: "WhatsApp API version",
+      whatsappEmbeddedApiVersionHint: "Include the v prefix (e.g. v22.0).",
+      whatsappEmbeddedVerifyToken: "Webhook verify token",
+      whatsappEmbeddedVerifyHint:
+        "GET verification token — Meta must send the same value. Use this as the app webhook verify token in the Meta dashboard.",
+      whatsappEmbeddedCallbackUrl: "Webhook callback URL (shared)",
+      whatsappEmbeddedCallbackHint:
+        "Set this URL on the Meta app (WhatsApp → Configuration). All organizations using Embedded share this endpoint; routing is by phone_number_id.",
+      whatsappEmbeddedSave: "Save",
+      whatsappEmbeddedDocLink: "Chatwoot docs (Embedded Signup)",
+      whatsappEmbeddedLoadError: "Could not load WhatsApp Embedded settings.",
+      whatsappEmbeddedRetry: "Try again",
+      whatsappEmbeddedConfigured:
+        "WhatsApp Embedded is fully configured. Tenants can use “Connect with WhatsApp Business” in channel settings.",
+      whatsappEmbeddedIncomplete:
+        "Fill in App ID, Configuration ID, App Secret, and verify token to enable the embedded flow.",
+      whatsappEmbeddedSecretKeep: "Leave blank to keep the existing secret",
       tenantPermissions: "Tenant permissions",
       tenantPermissionsSubtitle:
         "This product uses ADMIN and AGENT per organization (no Chatwoot-style granular matrix). Adjust roles from the user list.",

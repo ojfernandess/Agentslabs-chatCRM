@@ -1,10 +1,16 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone } from "lucide-react";
+import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
+import {
+  createEmbeddedSignupMessageHandler,
+  initWhatsAppEmbeddedSignup,
+  isValidEmbeddedBusinessData,
+  setupFacebookSdk,
+} from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
 
 type SettingsSection = "channel" | "notifications" | "crm" | "team";
@@ -27,12 +33,29 @@ interface AgentBotOption {
   name: string;
 }
 
+interface WhatsappEmbeddedTenantInfo {
+  available: boolean;
+  appId: string | null;
+  configurationId: string | null;
+  apiVersion: string | null;
+  metaWebhookCallbackUrl: string;
+  orgWebhookUrl: string;
+}
+
 interface LeadTypeRow {
   id: string;
   name: string;
   color: string;
   order: number;
+  valueRollup: "PIPELINE" | "WON" | "LOST" | "NONE";
 }
+
+const LEAD_ROLLUP_LABEL_KEY: Record<LeadTypeRow["valueRollup"], string> = {
+  PIPELINE: "settings.leadTypeRollupLabel_PIPELINE",
+  WON: "settings.leadTypeRollupLabel_WON",
+  LOST: "settings.leadTypeRollupLabel_LOST",
+  NONE: "settings.leadTypeRollupLabel_NONE",
+};
 
 interface TeamUser {
   id: string;
@@ -75,22 +98,117 @@ export function SettingsPage() {
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newLtName, setNewLtName] = useState("");
   const [newLtColor, setNewLtColor] = useState("#6366f1");
+  const [newLtRollup, setNewLtRollup] = useState<LeadTypeRow["valueRollup"]>("PIPELINE");
   const [ltError, setLtError] = useState("");
   const [ltSubmitting, setLtSubmitting] = useState(false);
+  const [editingLtId, setEditingLtId] = useState<string | null>(null);
+  const [editLtName, setEditLtName] = useState("");
+  const [editLtColor, setEditLtColor] = useState("#6366f1");
+  const [editLtRollup, setEditLtRollup] = useState<LeadTypeRow["valueRollup"]>("PIPELINE");
+  const [editLtSubmitting, setEditLtSubmitting] = useState(false);
 
   const [agentBotOptions, setAgentBotOptions] = useState<AgentBotOption[]>([]);
   const [agentBotId, setAgentBotId] = useState("");
+
+  const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
+  const [embeddedBusy, setEmbeddedBusy] = useState(false);
+  const [embeddedError, setEmbeddedError] = useState("");
+  const [embeddedSuccess, setEmbeddedSuccess] = useState(false);
+  const authCodeRef = useRef<string | null>(null);
+  const businessDataRef = useRef<{
+    business_id: string;
+    waba_id: string;
+    phone_number_id?: string;
+  } | null>(null);
+
+  const tryFinishEmbedded = useCallback(async () => {
+    const code = authCodeRef.current;
+    const bd = businessDataRef.current;
+    if (!code || !bd || !isValidEmbeddedBusinessData(bd)) return;
+    setEmbeddedBusy(true);
+    setEmbeddedError("");
+    try {
+      await api.post("/settings/whatsapp-embedded/complete", {
+        code,
+        business_id: bd.business_id,
+        waba_id: bd.waba_id,
+        phone_number_id: bd.phone_number_id || undefined,
+      });
+      authCodeRef.current = null;
+      businessDataRef.current = null;
+      setEmbeddedSuccess(true);
+      const data = await api.get<AppSettings>("/settings");
+      setSettings(data);
+      setProvider("meta");
+      setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
+      setApiKey("");
+    } catch (err) {
+      authCodeRef.current = null;
+      businessDataRef.current = null;
+      setEmbeddedError(err instanceof Error ? err.message : t("settings.embeddedCompleteError"));
+    } finally {
+      setEmbeddedBusy(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!isAdmin || !embeddedInfo?.available) return;
+    const handler = createEmbeddedSignupMessageHandler((data) => {
+      if (data.event === "FINISH" || data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
+        const bd = data.data;
+        if (!isValidEmbeddedBusinessData(bd)) {
+          setEmbeddedError(t("settings.embeddedInvalidBusiness"));
+          return;
+        }
+        businessDataRef.current = bd;
+        void tryFinishEmbedded();
+      } else if (data.event === "CANCEL") {
+        setEmbeddedBusy(false);
+      } else if (data.event === "error") {
+        setEmbeddedBusy(false);
+        setEmbeddedError(data.error_message ?? t("settings.embeddedSignupError"));
+      }
+    });
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [isAdmin, embeddedInfo?.available, tryFinishEmbedded, t]);
+
+  const launchEmbeddedSignup = async () => {
+    if (!embeddedInfo?.appId || !embeddedInfo.configurationId || !embeddedInfo.apiVersion) return;
+    setEmbeddedError("");
+    setEmbeddedSuccess(false);
+    setEmbeddedBusy(true);
+    authCodeRef.current = null;
+    businessDataRef.current = null;
+    try {
+      await setupFacebookSdk(embeddedInfo.appId, embeddedInfo.apiVersion);
+      const code = await initWhatsAppEmbeddedSignup(embeddedInfo.configurationId);
+      authCodeRef.current = code;
+      if (businessDataRef.current) {
+        await tryFinishEmbedded();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== "Login cancelled") {
+        setEmbeddedError(msg);
+      }
+    } finally {
+      setEmbeddedBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, users, lt, botList] = await Promise.all([
+        const [data, users, lt, botList, emb] = await Promise.all([
           api.get<AppSettings>("/settings"),
           api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
           api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
+          api.get<WhatsappEmbeddedTenantInfo>("/settings/whatsapp-embedded").catch(() => null),
         ]);
+        setEmbeddedInfo(emb ?? null);
         setSettings(data);
         setProvider(data.whatsappProvider ?? "");
         setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
@@ -101,7 +219,12 @@ export function SettingsPage() {
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setTeamUsers(users);
-        setLeadTypes(lt);
+        setLeadTypes(
+          lt.map((x) => ({
+            ...x,
+            valueRollup: (x as LeadTypeRow).valueRollup ?? "PIPELINE",
+          })),
+        );
       } catch {
         // failed
       } finally {
@@ -123,9 +246,11 @@ export function SettingsPage() {
         name: newLtName.trim(),
         color: newLtColor,
         order: nextOrder,
+        valueRollup: newLtRollup,
       });
       setNewLtName("");
       setNewLtColor("#6366f1");
+      setNewLtRollup("PIPELINE");
       setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
     } catch (err) {
       setLtError(err instanceof Error ? err.message : "Failed");
@@ -140,6 +265,41 @@ export function SettingsPage() {
       setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
     } catch {
       /* ignore */
+    }
+  };
+
+  const startEditLeadType = (lt: LeadTypeRow) => {
+    setEditingLtId(lt.id);
+    setEditLtName(lt.name);
+    setEditLtColor(lt.color);
+    setEditLtRollup(lt.valueRollup ?? "PIPELINE");
+    setLtError("");
+  };
+
+  const cancelEditLeadType = () => {
+    setEditingLtId(null);
+    setLtError("");
+  };
+
+  const handleSaveEditLeadType = async (e: FormEvent, id: string) => {
+    e.preventDefault();
+    setLtError("");
+    const row = leadTypes.find((l) => l.id === id);
+    if (!row || !editLtName.trim()) return;
+    setEditLtSubmitting(true);
+    try {
+      await api.put<LeadTypeRow>(`/lead-types/${id}`, {
+        name: editLtName.trim(),
+        color: editLtColor,
+        order: row.order,
+        valueRollup: editLtRollup,
+      });
+      setEditingLtId(null);
+      setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
+    } catch (err) {
+      setLtError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setEditLtSubmitting(false);
     }
   };
 
@@ -304,6 +464,77 @@ export function SettingsPage() {
             >
               {section === "channel" && (
                 <>
+                  {embeddedInfo?.available ? (
+                    <motion.div
+                      className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                      variants={staggerItem}
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                          <MessageCircle className="h-6 w-6 text-green-600" aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-3">
+                          <div>
+                            <h2 className="text-lg font-semibold text-gray-900">{t("settings.embeddedTitle")}</h2>
+                            <p className="mt-1 text-sm text-gray-600">{t("settings.embeddedDesc")}</p>
+                          </div>
+                          <ul className="space-y-2 text-sm text-gray-700">
+                            <li className="flex gap-2">
+                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+                              <span>{t("settings.embeddedBenefit1")}</span>
+                            </li>
+                            <li className="flex gap-2">
+                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+                              <span>{t("settings.embeddedBenefit2")}</span>
+                            </li>
+                            <li className="flex gap-2">
+                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+                              <span>{t("settings.embeddedBenefit3")}</span>
+                            </li>
+                          </ul>
+                          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                            <p>{t("settings.embeddedMetaNote")}</p>
+                            <code className="mt-1 block overflow-x-auto rounded bg-white px-2 py-1.5 text-[11px] text-gray-800">
+                              {embeddedInfo.metaWebhookCallbackUrl}
+                            </code>
+                          </div>
+                          {embeddedError ? (
+                            <p className="text-sm text-red-600" role="alert">
+                              {embeddedError}
+                            </p>
+                          ) : null}
+                          {embeddedSuccess ? (
+                            <p className="text-sm text-green-700">{t("settings.embeddedSuccess")}</p>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void launchEmbeddedSignup()}
+                            disabled={embeddedBusy}
+                            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:w-auto"
+                          >
+                            {embeddedBusy ? t("settings.embeddedWorking") : t("settings.embeddedCta")}
+                          </button>
+                          <p className="text-xs text-gray-500">
+                            {t("settings.embeddedManualHint")}{" "}
+                            <a
+                              href="#whatsapp-manual-setup"
+                              className="font-medium text-brand-600 underline hover:text-brand-700"
+                            >
+                              {t("settings.embeddedManualLink")}
+                            </a>
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : embeddedInfo && !embeddedInfo.available ? (
+                    <motion.div
+                      className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+                      variants={staggerItem}
+                    >
+                      {t("settings.embeddedUnavailable")}
+                    </motion.div>
+                  ) : null}
+
                   <motion.div
                     className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
                     variants={staggerItem}
@@ -333,6 +564,7 @@ export function SettingsPage() {
                   </motion.div>
 
                   <motion.form
+                    id="whatsapp-manual-setup"
                     onSubmit={handleSave}
                     className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
                     variants={staggerItem}
@@ -576,24 +808,103 @@ export function SettingsPage() {
                   {leadTypes.length > 0 && (
                     <ul className="mb-4 divide-y divide-gray-100 rounded-lg border border-gray-100">
                       {leadTypes.map((lt) => (
-                        <li
-                          key={lt.id}
-                          className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
-                        >
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="h-3 w-3 rounded-full"
-                              style={{ backgroundColor: lt.color }}
-                            />
-                            {lt.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteLeadType(lt.id)}
-                            className="text-xs font-medium text-red-600 hover:text-red-700"
-                          >
-                            {t("common.delete")}
-                          </button>
+                        <li key={lt.id} className="px-3 py-3 text-sm">
+                          {editingLtId === lt.id ? (
+                            <form
+                              onSubmit={(e) => void handleSaveEditLeadType(e, lt.id)}
+                              className="space-y-3"
+                            >
+                              <div className="flex flex-wrap items-end gap-3">
+                                <div className="min-w-[140px] flex-1">
+                                  <label className="block text-xs font-medium text-gray-600">
+                                    {t("settings.leadTypeName")}
+                                  </label>
+                                  <input
+                                    value={editLtName}
+                                    onChange={(e) => setEditLtName(e.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600">
+                                    {t("settings.leadTypeColor")}
+                                  </label>
+                                  <input
+                                    type="color"
+                                    value={editLtColor}
+                                    onChange={(e) => setEditLtColor(e.target.value)}
+                                    className="mt-1 h-9 w-14 cursor-pointer rounded border border-gray-200"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600">
+                                  {t("settings.leadTypeValueRollup")}
+                                </label>
+                                <select
+                                  value={editLtRollup}
+                                  onChange={(e) =>
+                                    setEditLtRollup(e.target.value as LeadTypeRow["valueRollup"])
+                                  }
+                                  className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                >
+                                  <option value="PIPELINE">{t("settings.leadTypeRollupPipeline")}</option>
+                                  <option value="WON">{t("settings.leadTypeRollupWon")}</option>
+                                  <option value="LOST">{t("settings.leadTypeRollupLost")}</option>
+                                  <option value="NONE">{t("settings.leadTypeRollupNone")}</option>
+                                </select>
+                                <p className="mt-1 text-xs text-gray-500">{t("settings.leadTypeRollupWonHint")}</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={editLtSubmitting || !editLtName.trim()}
+                                  className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                                >
+                                  {t("settings.leadTypeSave")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditLeadType}
+                                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  {t("settings.leadTypeCancelEdit")}
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="flex items-center gap-2 font-medium text-gray-900">
+                                  <span
+                                    className="h-3 w-3 shrink-0 rounded-full"
+                                    style={{ backgroundColor: lt.color }}
+                                  />
+                                  {lt.name}
+                                </span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  {t(LEAD_ROLLUP_LABEL_KEY[lt.valueRollup ?? "PIPELINE"])}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditLeadType(lt)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  {t("settings.leadTypeEdit")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteLeadType(lt.id)}
+                                  className="text-xs font-medium text-red-600 hover:text-red-700"
+                                >
+                                  {t("common.delete")}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -622,6 +933,23 @@ export function SettingsPage() {
                         onChange={(e) => setNewLtColor(e.target.value)}
                         className="mt-1 h-9 w-14 cursor-pointer rounded border border-gray-200"
                       />
+                    </div>
+                    <div className="min-w-[200px] flex-1">
+                      <label className="block text-xs font-medium text-gray-600">
+                        {t("settings.leadTypeValueRollup")}
+                      </label>
+                      <select
+                        value={newLtRollup}
+                        onChange={(e) =>
+                          setNewLtRollup(e.target.value as LeadTypeRow["valueRollup"])
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="PIPELINE">{t("settings.leadTypeRollupPipeline")}</option>
+                        <option value="WON">{t("settings.leadTypeRollupWon")}</option>
+                        <option value="LOST">{t("settings.leadTypeRollupLost")}</option>
+                        <option value="NONE">{t("settings.leadTypeRollupNone")}</option>
+                      </select>
                     </div>
                     <button
                       type="submit"

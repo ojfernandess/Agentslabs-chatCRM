@@ -38,7 +38,7 @@ interface AuditRow {
   };
   assignedTo: { id: string; name: string; email: string } | null;
   team: { id: string; name: string } | null;
-  leadType: { id: string; name: string; color: string } | null;
+  leadType: { id: string; name: string; color: string; valueRollup?: string } | null;
 }
 
 export function ConversationAuditPage() {
@@ -125,7 +125,23 @@ export function ConversationAuditPage() {
     return <Navigate to="/" replace />;
   }
 
-  const sumShown = rows.reduce((a, r) => a + (r.closureValue ?? 0), 0);
+  const auditContribution = (r: AuditRow): "WON" | "PIPELINE" | "IGNORE" => {
+    const v = r.closureValue ?? 0;
+    if (v <= 0) return "IGNORE";
+    const roll = r.leadType?.valueRollup ?? "PIPELINE";
+    if (roll === "WON") return "WON";
+    if (roll === "PIPELINE") return "PIPELINE";
+    return "IGNORE";
+  };
+
+  const sumPageWon = rows.reduce(
+    (a, r) => a + (auditContribution(r) === "WON" ? (r.closureValue ?? 0) : 0),
+    0,
+  );
+  const sumPagePipeline = rows.reduce(
+    (a, r) => a + (auditContribution(r) === "PIPELINE" ? (r.closureValue ?? 0) : 0),
+    0,
+  );
 
   return (
     <PageTransition>
@@ -221,7 +237,8 @@ export function ConversationAuditPage() {
             {t("audit.totalRows")}: {total}
             {rows.length > 0 ? (
               <span className="ml-2 text-gray-500">
-                ({t("audit.sumPage")}: {fmtMoney(sumShown)})
+                ({t("audit.sumPageWon")}: {fmtMoney(sumPageWon)} · {t("audit.sumPagePipeline")}:{" "}
+                {fmtMoney(sumPagePipeline)})
               </span>
             ) : null}
           </span>

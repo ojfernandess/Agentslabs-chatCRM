@@ -17,6 +17,7 @@ interface StageItem {
   name: string;
   order: number;
   color: string;
+  leadType: { id: string; valueRollup: string } | null;
 }
 
 interface DealRow {
@@ -25,7 +26,7 @@ interface DealRow {
   status: string;
   amountCents: number;
   currency: string;
-  stage: { name: string; color: string };
+  stage: { id: string; name: string; color: string };
   primaryContact: { id: string; name: string } | null;
 }
 
@@ -86,6 +87,10 @@ export function DealsPage() {
   const [lineError, setLineError] = useState("");
   const [lineSubmitting, setLineSubmitting] = useState(false);
 
+  const [detailStageId, setDetailStageId] = useState("");
+  const [stageSaving, setStageSaving] = useState(false);
+  const [stageMessage, setStageMessage] = useState("");
+
   const loadDeals = useCallback(async () => {
     const res = await api.get<{ data: DealRow[] }>("/crm/deals");
     setDeals(res.data);
@@ -142,6 +147,8 @@ export function DealsPage() {
     setLineUnitEur("");
     setLineDisc("0");
     setLineProductId("");
+    setStageMessage("");
+    setDetailStageId("");
   };
 
   const refreshDetailAndList = async (dealId: string) => {
@@ -184,6 +191,10 @@ export function DealsPage() {
       setCreateSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (detail?.stage?.id) setDetailStageId(detail.stage.id);
+  }, [detail?.id, detail?.stage?.id]);
 
   const handleAddLine = async () => {
     if (!detailId || !detail) return;
@@ -237,6 +248,24 @@ export function DealsPage() {
     return Math.round(row.quantity * row.unitPriceCents * factor);
   };
 
+  const totalWonCents = deals.filter((d) => d.status === "WON").reduce((a, d) => a + d.amountCents, 0);
+  const totalOpenCents = deals.filter((d) => d.status === "OPEN").reduce((a, d) => a + d.amountCents, 0);
+
+  const handleSaveDetailStage = async () => {
+    if (!detailId || !detailStageId) return;
+    setStageMessage("");
+    setStageSaving(true);
+    try {
+      await api.patch(`/crm/deals/${detailId}`, { stageId: detailStageId });
+      await refreshDetailAndList(detailId);
+      setStageMessage(t("dealsPage.stageSaved"));
+    } catch (e) {
+      setStageMessage(e instanceof ApiError ? e.message : "Error");
+    } finally {
+      setStageSaving(false);
+    }
+  };
+
   return (
     <PageTransition>
       <div className="p-8">
@@ -245,10 +274,27 @@ export function DealsPage() {
             <Briefcase className="h-8 w-8 text-brand-600" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{t("nav.deals")}</h1>
-              <p className="text-sm text-gray-500">Oportunidades, linhas de produto e totais</p>
+              <p className="text-sm text-gray-500">{t("dealsPage.subtitle")}</p>
             </div>
           </div>
-          <button
+          <div className="flex flex-wrap items-center gap-3">
+            {!loading && deals.length > 0 ? (
+              <div className="flex flex-wrap gap-3 text-sm">
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+                  <p className="text-xs text-gray-500">{t("dealsPage.totalWon")}</p>
+                  <p className="font-semibold text-gray-900">
+                    {fmtMoney(totalWonCents, deals[0]?.currency ?? "EUR")}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+                  <p className="text-xs text-gray-500">{t("dealsPage.totalOpen")}</p>
+                  <p className="font-semibold text-gray-900">
+                    {fmtMoney(totalOpenCents, deals[0]?.currency ?? "EUR")}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            <button
             type="button"
             onClick={() => {
               setCreateOpen(true);
@@ -265,6 +311,7 @@ export function DealsPage() {
             <Plus className="h-4 w-4" />
             Novo negócio
           </button>
+          </div>
         </div>
 
         {stages.length === 0 && !loading ? (
@@ -483,6 +530,36 @@ export function DealsPage() {
                   </div>
                 ) : (
                   <>
+                    <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                      <label className="block text-xs font-medium text-gray-600">
+                        {t("dealsPage.stageLabel")}
+                      </label>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select
+                          className="min-w-[180px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          value={detailStageId}
+                          onChange={(e) => setDetailStageId(e.target.value)}
+                        >
+                          {stages.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={stageSaving || !detailStageId || detailStageId === detail.stage.id}
+                          onClick={() => void handleSaveDetailStage()}
+                          className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {stageSaving ? t("dealsPage.savingStage") : t("dealsPage.saveStage")}
+                        </button>
+                      </div>
+                      {stageMessage ? (
+                        <p className="mt-2 text-xs text-gray-600">{stageMessage}</p>
+                      ) : null}
+                    </div>
+
                     <h3 className="mb-2 text-sm font-medium text-gray-700">Linhas</h3>
                     {detail.lineItems.length === 0 ? (
                       <p className="mb-4 text-sm text-gray-500">Sem linhas — o valor pode ser só o inicial.</p>

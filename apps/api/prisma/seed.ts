@@ -71,6 +71,7 @@ async function main() {
           name: lt.name,
           color: lt.color,
           order: lt.order,
+          valueRollup: lt.valueRollup,
         },
       });
     }

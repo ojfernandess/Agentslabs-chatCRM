@@ -23,6 +23,11 @@ export function webhookUrlForOrganization(organizationId: string): string {
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}`;
 }
 
+/** Callback único para todas as organizações quando se usa WhatsApp Embedded (Meta). */
+export function metaEmbeddedWebhookUrl(): string {
+  return `${getPublicOrigin()}/webhooks/meta/whatsapp`;
+}
+
 export const config = {
   port: parseInt(optionalEnv("PORT", "3000"), 10),
   host: optionalEnv("HOST", "0.0.0.0"),

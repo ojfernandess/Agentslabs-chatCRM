@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
+import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -153,7 +154,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactListSelect },
           assignedTo: { select: { id: true, name: true } },
           team: { select: { id: true, name: true } },
-          leadType: { select: { id: true, name: true, color: true } },
+          leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1 },
         },
         orderBy: { updatedAt: "desc" },
@@ -224,7 +225,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactAuditSelect },
           assignedTo: { select: { id: true, name: true, email: true } },
           team: { select: { id: true, name: true } },
-          leadType: { select: { id: true, name: true, color: true } },
+          leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         },
         orderBy: { updatedAt: "desc" },
         skip: (query.page - 1) * query.pageSize,
@@ -251,7 +252,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
         assignedTo: { select: { id: true, name: true } },
         team: { select: { id: true, name: true } },
-        leadType: { select: { id: true, name: true, color: true } },
+        leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         messages: { orderBy: { createdAt: "asc" } },
       },
     });
@@ -406,7 +407,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             },
             assignedTo: { select: { id: true, name: true } },
             team: { select: { id: true, name: true } },
-            leadType: { select: { id: true, name: true, color: true } },
+            leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
             messages: { orderBy: { createdAt: "asc" } },
           },
         });
@@ -423,6 +424,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               where: { id: existing.contactId },
               data: { pipelineStageId: stage.id },
             });
+            await syncDealsForContactPipelineStage(tx, organizationId, existing.contactId, stage.id);
           }
           const val = data.closureValue;
           if (val != null && val > 0 && ltid && stageForDeal) {
@@ -431,6 +433,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               where: { id: existing.contactId, organizationId },
               select: { name: true },
             });
+            const ltRow = await tx.leadType.findFirst({
+              where: { id: ltid, organizationId },
+              select: { valueRollup: true },
+            });
+            const dealStatus = dealStatusFromLeadValueRollup(ltRow?.valueRollup);
             const deal = await tx.deal.create({
               data: {
                 organizationId,
@@ -441,7 +448,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
                 ownerId: request.user.id,
                 amountCents: Math.round(val * 100),
                 currency: "EUR",
-                status: "OPEN",
+                status: dealStatus,
                 probabilityPct: stageForDeal.probabilityPct,
               },
             });

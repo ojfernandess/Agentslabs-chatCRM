@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { LeadValueRollup } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -12,7 +13,15 @@ const bodySchema = z.object({
   name: z.string().min(1).max(120),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   order: z.number().int().min(0).optional(),
+  valueRollup: z.nativeEnum(LeadValueRollup).optional(),
 });
+
+async function enforceSingleWonType(organizationId: string, keepId: string): Promise<void> {
+  await prisma.leadType.updateMany({
+    where: { organizationId, id: { not: keepId }, valueRollup: "WON" },
+    data: { valueRollup: "PIPELINE" },
+  });
+}
 
 export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -39,14 +48,19 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
       _max: { order: true },
     });
     const order = parsed.data.order ?? (maxOrder._max.order ?? -1) + 1;
+    const valueRollup = parsed.data.valueRollup ?? "PIPELINE";
     const row = await prisma.leadType.create({
       data: {
         organizationId,
         name: parsed.data.name.trim(),
         color: parsed.data.color,
         order,
+        valueRollup,
       },
     });
+    if (valueRollup === "WON") {
+      await enforceSingleWonType(organizationId, row.id);
+    }
     return reply.status(201).send(row);
   });
 
@@ -60,20 +74,24 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
     }
     const existing = await prisma.leadType.findFirst({
       where: { id: request.params.id, organizationId },
-      select: { order: true },
     });
     if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Lead type not found", statusCode: 404 });
     }
     const order = parsed.data.order ?? existing.order;
+    const valueRollup = parsed.data.valueRollup ?? existing.valueRollup;
     const row = await prisma.leadType.update({
       where: { id: request.params.id },
       data: {
         name: parsed.data.name.trim(),
         color: parsed.data.color,
         order,
+        valueRollup,
       },
     });
+    if (valueRollup === "WON") {
+      await enforceSingleWonType(organizationId, row.id);
+    }
     await syncPipelineStageFromLeadType(prisma, organizationId, row.id);
     return row;
   });

@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { appendTimelineEvent } from "../lib/timeline.js";
+import { dealStatusFromLeadValueRollup } from "../lib/dealStageSync.js";
 import { DealStatus, Prisma } from "@prisma/client";
 
 const timelineQuerySchema = z.object({
@@ -113,6 +114,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     return prisma.pipelineStage.findMany({
       where: { pipeline: { organizationId, isDefault: true } },
       orderBy: { order: "asc" },
+      include: { leadType: { select: { id: true, valueRollup: true } } },
     });
   });
 
@@ -338,13 +340,19 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
 
     const prob = parsed.data.probabilityPct ?? stage.probabilityPct;
 
+    const stageWithLt = await prisma.pipelineStage.findFirst({
+      where: { id: stage.id },
+      include: { leadType: { select: { valueRollup: true } } },
+    });
+    const initialStatus = dealStatusFromLeadValueRollup(stageWithLt?.leadType?.valueRollup);
+
     const deal = await prisma.deal.create({
       data: {
         organizationId,
         name: parsed.data.name,
         pipelineId,
         stageId: stage.id,
-        status: "OPEN",
+        status: initialStatus,
         amountCents: parsed.data.amountCents ?? 0,
         currency: parsed.data.currency ?? "EUR",
         probabilityPct: prob,
@@ -491,6 +499,12 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.stageId !== undefined) {
       data.pipeline = { connect: { id: nextPipelineId } };
       data.stage = { connect: { id: nextStageId } };
+      const stRow = await prisma.pipelineStage.findFirst({
+        where: { id: nextStageId, pipeline: { organizationId } },
+        include: { leadType: { select: { valueRollup: true } } },
+      });
+      data.status = dealStatusFromLeadValueRollup(stRow?.leadType?.valueRollup);
+      if (stRow) data.probabilityPct = stRow.probabilityPct;
     }
 
     const updated = await prisma.deal.update({

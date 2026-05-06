@@ -5,6 +5,7 @@ import { authenticate } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
+import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -390,6 +391,14 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         data: { pipelineStageId: nextPipelineStageId },
         include: { pipelineStage: true },
       });
+      if (contact.pipelineStageId) {
+        await syncDealsForContactPipelineStage(
+          prisma,
+          organizationId,
+          contact.id,
+          contact.pipelineStageId,
+        );
+      }
       return contact;
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
