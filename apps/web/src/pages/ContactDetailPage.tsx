@@ -5,6 +5,13 @@ import { ArrowLeft, Phone, Tag, MessageSquare, Trash2, Edit, Plus, X, ChevronDow
 import { format } from "date-fns";
 import clsx from "clsx";
 import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/components/Motion";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  timelineChannelLabel,
+  timelineEventSummary,
+  timelineEventTitle,
+  type TimelinePayload,
+} from "@/lib/contactTimeline";
 
 interface TagItem {
   id: string;
@@ -47,6 +54,7 @@ interface ContactDetail {
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t, dateLocale } = useI18n();
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -263,9 +271,9 @@ export function ContactDetailPage() {
 
               {/* Conversations */}
               <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 font-semibold text-gray-900">Conversations</h2>
+                <h2 className="mb-4 font-semibold text-gray-900">{t("contactDetail.conversationsTitle")}</h2>
                 {contact.conversations.length === 0 ? (
-                  <p className="text-sm text-gray-500">No conversations</p>
+                  <p className="text-sm text-gray-500">{t("contactDetail.noConversations")}</p>
                 ) : (
                   <div className="space-y-2">
                     {contact.conversations.map((conv) => (
@@ -275,9 +283,17 @@ export function ContactDetailPage() {
                         className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
                       >
                         <MessageSquare className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-700">{conv.status}</span>
+                        <span className="text-sm font-medium text-gray-700">
+                          {conv.status === "OPEN"
+                            ? t("contactDetail.conversationStatusOpen")
+                            : conv.status === "PENDING"
+                              ? t("contactDetail.conversationStatusPending")
+                              : conv.status === "RESOLVED"
+                                ? t("contactDetail.conversationStatusResolved")
+                                : conv.status}
+                        </span>
                         <span className="text-xs text-gray-400">
-                          {format(new Date(conv.updatedAt), "MMM d, yyyy")}
+                          {format(new Date(conv.updatedAt), "PP", { locale: dateLocale })}
                         </span>
                       </Link>
                     ))}
@@ -288,39 +304,46 @@ export function ContactDetailPage() {
               <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
                   <History className="h-4 w-4 text-gray-400" />
-                  Atividade
+                  {t("contactDetail.activityTitle")}
                 </h2>
                 {timeline.length === 0 ? (
-                  <p className="text-sm text-gray-500">Sem eventos na linha do tempo.</p>
+                  <p className="text-sm text-gray-500">{t("contactDetail.activityEmpty")}</p>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-4">
                     {timeline.map((ev) => {
-                      const body =
-                        typeof ev.payload.body === "string"
-                          ? ev.payload.body
-                          : typeof ev.payload.messageId === "string"
-                            ? String(ev.eventType)
-                            : ev.eventType;
+                      const title = timelineEventTitle(ev.eventType, t);
+                      const channel = timelineChannelLabel(ev.channel, t);
+                      const summary = timelineEventSummary(ev.eventType, ev.payload as TimelinePayload, t);
                       return (
                         <li
                           key={ev.id}
                           className="border-l-2 border-brand-200 py-0.5 pl-3 text-sm"
                         >
-                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="font-medium text-gray-800">{ev.eventType}</span>
-                            {ev.channel && (
-                              <span className="text-xs text-gray-400">({ev.channel})</span>
-                            )}
-                            <span className="text-xs text-gray-400">
-                              {format(new Date(ev.occurredAt), "MMM d, yyyy HH:mm")}
-                            </span>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-medium text-gray-900">{title}</span>
+                            {channel ? (
+                              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                                {channel}
+                              </span>
+                            ) : null}
+                            <time
+                              dateTime={ev.occurredAt}
+                              className="text-xs text-gray-400"
+                            >
+                              {format(new Date(ev.occurredAt), "PPp", { locale: dateLocale })}
+                            </time>
                           </div>
-                          {body && body !== ev.eventType && (
-                            <p className="mt-1 line-clamp-2 text-gray-600">{body}</p>
-                          )}
-                          {ev.actorUser && (
-                            <p className="mt-0.5 text-xs text-gray-400">{ev.actorUser.name}</p>
-                          )}
+                          {summary ? (
+                            <p className="mt-1.5 whitespace-pre-wrap text-gray-600">{summary}</p>
+                          ) : null}
+                          {ev.actorUser ? (
+                            <p className="mt-1 text-xs text-gray-500">
+                              <span className="font-medium text-gray-600">
+                                {t("contactDetail.timelineActor")}
+                              </span>
+                              : {ev.actorUser.name}
+                            </p>
+                          ) : null}
                         </li>
                       );
                     })}
