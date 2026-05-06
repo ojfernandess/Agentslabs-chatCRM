@@ -266,6 +266,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           include: {
             assignedTo: { select: { id: true, name: true } },
             createdBy: { select: { id: true, name: true } },
+            tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+            pipelineStage: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                pipeline: { select: { id: true, name: true } },
+              },
+            },
           },
         },
         assignedTo: { select: { id: true, name: true } },

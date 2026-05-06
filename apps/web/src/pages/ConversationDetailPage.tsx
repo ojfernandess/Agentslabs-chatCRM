@@ -17,9 +17,14 @@ import {
   Check,
   CheckCheck,
   ArrowRightLeft,
+  Smile,
+  Sparkles,
+  LayoutGrid,
+  Kanban,
+  Clock,
 } from "lucide-react";
 import clsx from "clsx";
-import { format, differenceInHours } from "date-fns";
+import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
@@ -66,6 +71,12 @@ interface HandoffTimelineEvent {
   actorUser?: { id: string; name: string; email: string } | null;
 }
 
+interface MessageTemplateRow {
+  id: string;
+  name: string;
+  body: string;
+}
+
 interface ConversationDetail {
   id: string;
   status: string;
@@ -77,13 +88,49 @@ interface ConversationDetail {
     id: string;
     name: string;
     phone: string;
+    email?: string | null;
+    notes?: string | null;
+    lifecycleStage?: string | null;
     profilePictureUrl?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
+    tags?: { tag: { id: string; name: string; color: string } }[];
+    pipelineStage?: {
+      id: string;
+      name: string;
+      color: string;
+      pipeline?: { id: string; name: string };
+    } | null;
   };
   team: { id: string; name: string } | null;
   messages?: Message[];
   handoffLog?: HandoffTimelineEvent[];
+}
+
+const MSG_GROUP_MINUTES = 5;
+const PRESENCE_RECENT_MINUTES = 15;
+
+const QUICK_EMOJIS = [
+  "👍",
+  "😊",
+  "🙏",
+  "✅",
+  "❤️",
+  "😂",
+  "🎉",
+  "👋",
+  "🤔",
+  "😅",
+  "📎",
+  "⭐",
+];
+
+function messageGroupedWithPrevious(messages: Message[], index: number): boolean {
+  if (index <= 0) return false;
+  const prev = messages[index - 1];
+  const cur = messages[index];
+  if (prev.direction !== cur.direction || !!prev.isPrivate !== !!cur.isPrivate) return false;
+  return differenceInMinutes(new Date(cur.createdAt), new Date(prev.createdAt)) <= MSG_GROUP_MINUTES;
 }
 
 export function ConversationDetailPage() {
@@ -114,8 +161,14 @@ export function ConversationDetailPage() {
   const [transferTeamId, setTransferTeamId] = useState("");
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
+  const [crmMobileOpen, setCrmMobileOpen] = useState(false);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiWrapRef = useRef<HTMLDivElement>(null);
+  const templateWrapRef = useRef<HTMLDivElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const seenMessageIds = useRef(new Set<string>());
@@ -171,6 +224,32 @@ export function ConversationDetailPage() {
     }
     void loadTeams();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await api.get<MessageTemplateRow[]>("/templates");
+        if (!cancelled) setMessageTemplates(rows);
+      } catch {
+        if (!cancelled) setMessageTemplates([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!emojiOpen && !templateMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const node = e.target as Node;
+      if (emojiOpen && emojiWrapRef.current && !emojiWrapRef.current.contains(node)) setEmojiOpen(false);
+      if (templateMenuOpen && templateWrapRef.current && !templateWrapRef.current.contains(node)) setTemplateMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [emojiOpen, templateMenuOpen]);
 
   useEffect(() => {
     if (!transferOpen || !transferTeamId) {
@@ -569,193 +648,187 @@ export function ConversationDetailPage() {
     transferTeamId === (conversation.team?.id ?? "") &&
     (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
 
-  return (
-    <div className="flex h-full flex-col bg-slate-50 dark:bg-ink-950">
-      <motion.div
-        className="flex flex-wrap items-center gap-3 border-b border-ink-200/90 bg-white px-5 py-4 shadow-sm dark:border-ink-800 dark:bg-[#161f2c]"
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
-      >
-        <Link
-          to="/conversations"
-          className="rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-sm font-semibold text-brand-800 shadow-inner ring-2 ring-white dark:from-brand-900/50 dark:to-brand-800/40 dark:text-brand-100 dark:ring-ink-700">
-          {conversation.contact.profilePictureUrl ? (
-            <img
-              src={conversation.contact.profilePictureUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            conversation.contact.name.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="font-semibold tracking-tight text-ink-900 dark:text-ink-50">
-            {conversation.contact.name}
-          </h2>
-          <p className="text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
-          <div className="mt-1 space-y-0.5 text-[11px] text-ink-500 dark:text-ink-400">
-            <p>
-              <span className="font-medium text-ink-600 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
-              {conversation.contact.assignedTo?.name ?? "—"}
-            </p>
-            <p>
-              <span className="font-medium text-ink-600 dark:text-ink-300">
-                {t("audit.contactCreatedBy")}:
-              </span>{" "}
-              {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
-            </p>
-            <p>
-              <span className="font-medium text-ink-600 dark:text-ink-300">
-                {t("conversationDetail.conversationAssignee")}:
-              </span>{" "}
-              {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
-            </p>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+  const messages = conversation.messages ?? [];
+  const lastMsg = messages.length ? messages[messages.length - 1] : null;
+  const minutesSinceActivity = lastMsg ? differenceInMinutes(new Date(), new Date(lastMsg.createdAt)) : 999;
+  const presenceRecent = minutesSinceActivity < PRESENCE_RECENT_MINUTES;
+  const clientWaiting =
+    (conversation.status === "OPEN" || conversation.status === "PENDING") &&
+    lastMsg &&
+    lastMsg.direction === "INBOUND" &&
+    !lastMsg.isPrivate;
+  const clientWaitLabel =
+    clientWaiting && lastInbound
+      ? formatDistanceToNow(new Date(lastInbound.createdAt), { locale: dateLocale, addSuffix: true })
+      : null;
+
+  const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
+        <p className="text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+          {t("conversationDetail.crmPanelTitle")}
+        </p>
+        {opts?.showMobileClose ? (
+          <button
+            type="button"
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
+            onClick={() => setCrmMobileOpen(false)}
+          >
+            {t("common.close")}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="rounded-xl border border-ink-200/80 bg-ink-50/60 p-3 dark:border-ink-700 dark:bg-ink-900/50">
+        <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
+        <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{conversation.contact.phone}</p>
+        {conversation.contact.email ? (
+          <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+            <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.email")}:</span>{" "}
+            {conversation.contact.email}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
+            <span className="font-medium">{t("conversationDetail.email")}:</span> {t("conversationDetail.noDealValue")}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {conversation.contact.tags?.map((ct) => (
             <span
-              className={clsx(
-                "rounded-full px-2 py-0.5 text-xs font-medium",
-                conversation.status === "OPEN" &&
-                  "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
-                conversation.status === "PENDING" &&
-                  "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
-                conversation.status === "RESOLVED" &&
-                  "bg-ink-200 text-ink-700 dark:bg-ink-800 dark:text-ink-300",
-              )}
+              key={ct.tag.id}
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+              style={{ backgroundColor: ct.tag.color }}
             >
-              {statusLabel(conversation.status)}
+              {ct.tag.name}
             </span>
-            {conversation.status === "RESOLVED" && conversation.leadType && (
-              <span
-                className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                style={{ backgroundColor: conversation.leadType.color }}
-              >
-                {conversation.leadType.name}
-              </span>
-            )}
-            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950/60 dark:text-sky-200">
-              {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
-            </span>
-          </div>
-          {tenantAdmin ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label htmlFor="conv-team" className="sr-only">
-                {t("conversationDetail.assignTeam")}
-              </label>
-              <select
-                id="conv-team"
-                value={teamPickerId}
-                onChange={(e) => setTeamPickerId(e.target.value)}
-                className="rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-              >
-                <option value="">{t("conversationDetail.noTeam")}</option>
-                {teamOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={actionLoading || teamPickerId === (conversation.team?.id ?? "")}
-                onClick={() => void saveConversationTeam()}
-                className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-              >
-                {t("conversationDetail.saveTeam")}
-              </button>
-            </div>
-          ) : null}
+          ))}
         </div>
-        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
-          {isOutsideWindow && (
-            <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {t("conversationDetail.outsideWindow")}
-            </div>
-          )}
+        <p className="mt-2 text-[11px] text-ink-600 dark:text-ink-400">
+          <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.leadSource")}:</span>{" "}
+          {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
+        </p>
+        <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">
+          <span className="font-medium text-ink-700 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
+          {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
+        </p>
+        {conversation.contact.notes ? (
+          <p className="mt-2 border-t border-ink-200/80 pt-2 text-[11px] text-ink-600 dark:border-ink-700 dark:text-ink-400">
+            <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.contactNotes")}:</span>{" "}
+            <span className="whitespace-pre-wrap">{conversation.contact.notes}</span>
+          </p>
+        ) : null}
+      </div>
+
+      <div className="rounded-xl border border-ink-200/80 bg-white p-3 shadow-sm dark:border-ink-700 dark:bg-ink-900/40">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+          {t("conversationDetail.dealValue")} / {t("conversationDetail.pipelineStage")}
+        </p>
+        {conversation.contact.pipelineStage ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className="inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold text-white"
+              style={{ backgroundColor: conversation.contact.pipelineStage.color }}
+            >
+              {conversation.contact.pipelineStage.name}
+            </span>
+            {conversation.contact.pipelineStage.pipeline?.name ? (
+              <span className="text-xs text-ink-500 dark:text-ink-400">
+                {t("conversationDetail.pipelineLabel")}: {conversation.contact.pipelineStage.pipeline.name}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-ink-500 dark:text-ink-500">{t("conversationDetail.noPipelineStage")}</p>
+        )}
+        <p className="mt-2 text-sm font-medium text-ink-800 dark:text-ink-200">
+          {conversation.status === "RESOLVED" && conversation.closureValue != null && conversation.closureValue > 0
+            ? fmtMoney(conversation.closureValue)
+            : t("conversationDetail.noDealValue")}
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">{t("conversationDetail.dragDropKanbanHint")}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
           <Link
             to={`/contacts/${conversation.contact.id}`}
-            className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+            onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
-            <User className="mr-1 inline h-3.5 w-3.5" />
-            {t("conversationDetail.viewContact")}
+            {t("conversationDetail.openContactCrm")}
           </Link>
-          {canTransfer ? (
+          <Link
+            to="/crm"
+            onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+          >
+            <Kanban className="h-3.5 w-3.5" />
+            {t("conversationDetail.openKanban")}
+          </Link>
+        </div>
+        <p className="mt-2 text-[11px] text-ink-500 dark:text-ink-500">{t("conversationDetail.actionMoveFunnelHint")}</p>
+      </div>
+
+      {tenantAdmin ? (
+        <div className="rounded-xl border border-ink-200/80 bg-ink-50/50 p-3 dark:border-ink-700 dark:bg-ink-900/35">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">{t("conversationDetail.team")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label htmlFor="conv-team-aside" className="sr-only">
+              {t("conversationDetail.assignTeam")}
+            </label>
+            <select
+              id="conv-team-aside"
+              value={teamPickerId}
+              onChange={(e) => setTeamPickerId(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+            >
+              <option value="">{t("conversationDetail.noTeam")}</option>
+              {teamOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
-              disabled={actionLoading}
-              onClick={() => {
-                setFlowError("");
-                setTransferTeamId(conversation.team?.id ?? teamOptions[0]?.id ?? "");
-                setTransferAssigneeId(conversation.assignedTo?.id ?? "");
-                setTransferOpen(true);
-              }}
-              className="inline-flex items-center gap-1 rounded-lg border border-sky-300/80 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-950 hover:bg-sky-100/80 disabled:opacity-50 dark:border-sky-700/50 dark:bg-sky-950/35 dark:text-sky-100 dark:hover:bg-sky-900/45"
+              disabled={actionLoading || teamPickerId === (conversation.team?.id ?? "")}
+              onClick={() => void saveConversationTeam()}
+              className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
             >
-              <ArrowRightLeft className="h-3.5 w-3.5" />
-              {t("conversationDetail.transferOpen")}
+              {t("conversationDetail.saveTeam")}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {conversation.status === "RESOLVED" && (conversation.closureReason || conversation.leadType) ? (
+        <div className="rounded-xl border border-brand-200/60 bg-brand-50/40 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
+            {t("conversationDetail.resolvedSummary")}
+          </p>
+          {conversation.leadType ? (
+            <p className="mt-1 text-sm text-ink-800 dark:text-ink-200">
+              <span className="font-medium">{t("conversationDetail.leadLabel")}:</span>{" "}
+              <span style={{ color: conversation.leadType.color }} className="font-semibold">
+                {conversation.leadType.name}
+              </span>
+            </p>
           ) : null}
-          {conversation.status === "OPEN" && (
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => void applyStatus("PENDING")}
-              className="inline-flex items-center gap-1 rounded-lg border border-amber-300/80 bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-200/80 disabled:opacity-50 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-900/50"
-            >
-              <PauseCircle className="h-3.5 w-3.5" />
-              {t("conversationDetail.setPending")}
-            </button>
-          )}
-          {canResolve && (
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => {
-                setResolveError("");
-                setClosureAmount("");
-                setResolveOpen(true);
-              }}
-              className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-            >
-              <CheckCircle className="h-3.5 w-3.5" />
-              {t("conversationDetail.finalize")}
-            </button>
-          )}
-          {conversation.status === "RESOLVED" && (
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => void applyStatus("OPEN")}
-              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              {t("conversationDetail.reopen")}
-            </button>
-          )}
+          {conversation.closureReason ? (
+            <p className="mt-1 whitespace-pre-wrap text-xs text-ink-700 dark:text-ink-300">{conversation.closureReason}</p>
+          ) : null}
+          {conversation.closureValue != null && conversation.closureValue > 0 ? (
+            <p className="mt-2 text-xs text-ink-800 dark:text-ink-200">
+              <span className="font-medium">{t("conversationDetail.closureValueLabel")}:</span> {fmtMoney(conversation.closureValue)}
+            </p>
+          ) : null}
         </div>
-      </motion.div>
+      ) : null}
 
-      {flowError && (
-        <div className="border-b border-red-200/80 bg-red-50/95 px-5 py-2.5 text-center text-sm text-red-700 backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-300">
-          {flowError}
-        </div>
-      )}
-
-      <div className="border-b border-ink-200/80 bg-white/90 px-5 py-3 dark:border-ink-800 dark:bg-[#161f2c]/95">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-600 dark:text-ink-400">
-          {t("conversationDetail.handoffHistoryTitle")}
-        </p>
+      <div className="rounded-xl border border-ink-200/80 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-900/40">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">{t("conversationDetail.timelineTitle")}</p>
+        <p className="mt-1 text-[10px] font-medium text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffHistoryTitle")}</p>
         {(conversation.handoffLog?.length ?? 0) === 0 ? (
-          <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffNoEntries")}</p>
+          <p className="mt-1 text-xs text-ink-500">{t("conversationDetail.handoffNoEntries")}</p>
         ) : (
-          <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-xs text-ink-700 dark:text-ink-300">
+          <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-xs text-ink-700 dark:text-ink-300">
             {[...(conversation.handoffLog ?? [])].reverse().map((ev) => {
               const p = ev.payload;
               const prevTeam = p?.previousTeamName ?? t("conversationDetail.noTeam");
@@ -764,19 +837,17 @@ export function ConversationDetailPage() {
               const nextAsg = p?.newAssigneeName ?? t("conversationDetail.handoffUnassigned");
               const arrow = t("conversationDetail.handoffArrow");
               return (
-                <li key={ev.id} className="rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 dark:border-ink-700 dark:bg-ink-900/40">
+                <li key={ev.id} className="rounded-lg border border-ink-100 bg-ink-50/80 px-2.5 py-2 dark:border-ink-700 dark:bg-ink-900/40">
                   <p className="font-medium text-ink-800 dark:text-ink-200">
                     {format(new Date(ev.occurredAt), "PPp", { locale: dateLocale })}
                     {" · "}
                     {ev.actorUser?.name ?? "—"}
                   </p>
                   <p className="mt-0.5 text-ink-600 dark:text-ink-400">
-                    <span className="text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffTeamLine")}:</span>{" "}
-                    {prevTeam} {arrow} {nextTeam}
+                    <span className="text-ink-500">{t("conversationDetail.handoffTeamLine")}:</span> {prevTeam} {arrow} {nextTeam}
                   </p>
                   <p className="mt-0.5 text-ink-600 dark:text-ink-400">
-                    <span className="text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffAssigneeLine")}:</span>{" "}
-                    {prevAsg} {arrow} {nextAsg}
+                    <span className="text-ink-500">{t("conversationDetail.handoffAssigneeLine")}:</span> {prevAsg} {arrow} {nextAsg}
                   </p>
                 </li>
               );
@@ -784,265 +855,591 @@ export function ConversationDetailPage() {
           </ul>
         )}
       </div>
+    </div>
+  );
 
-      {conversation.status === "RESOLVED" && (conversation.closureReason || conversation.leadType) && (
-        <div className="border-b border-brand-200/70 bg-gradient-to-r from-brand-50/95 to-white/90 px-5 py-3 dark:border-brand-900/30 dark:bg-[#1a232e]">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-800 dark:text-brand-300">
-            {t("conversationDetail.resolvedSummary")}
-          </p>
-          {conversation.leadType && (
-            <p className="mt-1 text-sm text-ink-800 dark:text-ink-200">
-              <span className="font-medium">{t("conversationDetail.leadLabel")}:</span>{" "}
-              <span style={{ color: conversation.leadType.color }} className="font-semibold">
-                {conversation.leadType.name}
-              </span>
-            </p>
-          )}
-          {conversation.closureReason && (
-            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-300">{conversation.closureReason}</p>
-          )}
-          {conversation.closureValue != null && conversation.closureValue > 0 && (
-            <p className="mt-2 text-sm text-ink-800 dark:text-ink-200">
-              <span className="font-medium">{t("conversationDetail.closureValueLabel")}:</span>{" "}
-              {fmtMoney(conversation.closureValue)}
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="relative flex-1 overflow-auto px-4 py-5 sm:px-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.1)_0%,_transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_48%_at_50%_0%,rgba(255,122,89,0.05),transparent_58%)]" />
-        <div className="relative mx-auto max-w-3xl space-y-2.5">
-          {(conversation.messages ?? []).map((msg, i) => {
-            const isNew = !seenMessageIds.current.has(msg.id);
-            if (isNew) seenMessageIds.current.add(msg.id);
-            return (
-              <motion.div
-                key={msg.id}
-                className={clsx("flex", msg.direction === "OUTBOUND" ? "justify-end" : "justify-start")}
-                initial={isNew ? { opacity: 0, y: 8 } : false}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  duration: 0.25,
-                  delay: isNew ? Math.min(i * 0.03, 0.3) : 0,
-                  ease: "easeOut",
-                }}
-              >
-                <div
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-ink-100/90 dark:bg-ink-950 lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <motion.div
+          className="shrink-0 border-b border-ink-200/80 bg-white/95 px-3 py-3 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 lg:px-5"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+        >
+          <div className="flex items-start gap-3">
+            <Link
+              to="/conversations"
+              className="mt-1 rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 text-sm font-semibold text-ink-700 dark:from-ink-700 dark:to-ink-800 dark:text-ink-100">
+              {conversation.contact.profilePictureUrl ? (
+                <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center">
+                  {conversation.contact.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span
+                className={clsx(
+                  "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
+                  presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+                )}
+                title={presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h2 className="truncate text-base font-semibold tracking-tight text-ink-900 dark:text-ink-50">
+                  {conversation.contact.name}
+                </h2>
+                <span
                   className={clsx(
-                    "max-w-[min(85%,28rem)] rounded-2xl px-4 py-2.5 shadow-md",
-                    msg.isPrivate
-                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
-                      : msg.direction === "OUTBOUND"
-                        ? "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:bg-none dark:bg-[#1e2a3a] dark:text-ink-50 dark:shadow-lg dark:shadow-black/25 dark:ring-1 dark:ring-brand-400/25"
-                        : "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:ring-white/5",
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    conversation.status === "OPEN" &&
+                      "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
+                    conversation.status === "PENDING" &&
+                      "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
+                    conversation.status === "RESOLVED" &&
+                      "bg-ink-200 text-ink-700 dark:bg-ink-800 dark:text-ink-300",
                   )}
                 >
-                  {msg.isPrivate ? (
-                    <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                      <Lock className="h-3 w-3" />
-                      {t("conversationDetail.internalNoteLabel")}
-                    </p>
-                  ) : null}
-                  {msg.type === "IMAGE" && msg.mediaUrl && (
-                    <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={msg.mediaUrl}
-                        alt=""
-                        className={clsx(
-                          "max-h-64 max-w-full rounded-lg object-contain",
-                          msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                        )}
-                      />
-                    </a>
+                  {statusLabel(conversation.status)}
+                </span>
+                <span className="text-[11px] text-ink-500 dark:text-ink-400">
+                  {presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
+              {clientWaitLabel ? (
+                <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-200/90">
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    {t("conversationDetail.waitingSince")} {clientWaitLabel}
+                  </span>
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {conversation.contact.tags?.map((ct) => (
+                  <span
+                    key={ct.tag.id}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                    style={{ backgroundColor: ct.tag.color }}
+                  >
+                    {ct.tag.name}
+                  </span>
+                ))}
+                {conversation.status === "RESOLVED" && conversation.leadType ? (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                    style={{ backgroundColor: conversation.leadType.color }}
+                  >
+                    {conversation.leadType.name}
+                  </span>
+                ) : null}
+                <span className="rounded-full bg-ink-200/90 px-2 py-0.5 text-[10px] font-medium text-ink-800 dark:bg-ink-700 dark:text-ink-200">
+                  {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
+                </span>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-600 dark:text-ink-400">
+                <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.conversationAssignee")}:</span>{" "}
+                {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="ml-auto mt-1 rounded-xl border border-ink-200 bg-ink-50 p-2 text-ink-600 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700 xl:hidden"
+              onClick={() => setCrmMobileOpen(true)}
+              aria-label={t("conversationDetail.crmDrawerToggle")}
+            >
+              <LayoutGrid className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
+            {isOutsideWindow ? (
+              <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {t("conversationDetail.outsideWindow")}
+              </div>
+            ) : null}
+            {canTransfer ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  setFlowError("");
+                  setTransferTeamId(conversation.team?.id ?? teamOptions[0]?.id ?? "");
+                  setTransferAssigneeId(conversation.assignedTo?.id ?? "");
+                  setTransferOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                {t("conversationDetail.transferOpen")}
+              </button>
+            ) : null}
+            <Link
+              to="/crm"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+            >
+              <Kanban className="h-3.5 w-3.5" />
+              {t("conversationDetail.actionMoveFunnel")}
+            </Link>
+            {conversation.status === "OPEN" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40"
+              >
+                <PauseCircle className="h-3.5 w-3.5" />
+                {t("conversationDetail.setPending")}
+              </button>
+            ) : null}
+            {canResolve ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  setResolveError("");
+                  setClosureAmount("");
+                  setResolveOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                {t("conversationDetail.finalize")}
+              </button>
+            ) : null}
+            {conversation.status === "RESOLVED" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("OPEN")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t("conversationDetail.reopen")}
+              </button>
+            ) : null}
+            <Link
+              to={`/contacts/${conversation.contact.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+            >
+              <User className="h-3.5 w-3.5" />
+              {t("conversationDetail.viewContact")}
+            </Link>
+          </div>
+        </motion.div>
+
+        {flowError && (
+          <div className="border-b border-red-200/80 bg-red-50/95 px-5 py-2.5 text-center text-sm text-red-700 backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-300">
+            {flowError}
+          </div>
+        )}
+
+        <div className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
+          <div className="relative mx-auto max-w-3xl space-y-0">
+            {(conversation.messages ?? []).map((msg, i) => {
+              const list = conversation.messages ?? [];
+              const groupedPrev = messageGroupedWithPrevious(list, i);
+              const isNew = !seenMessageIds.current.has(msg.id);
+              if (isNew) seenMessageIds.current.add(msg.id);
+              const showAvatar = !groupedPrev;
+              const inbound = msg.direction === "INBOUND";
+              const rowGap = groupedPrev ? "mt-0.5" : "mt-3";
+
+              return (
+                <motion.div
+                  key={msg.id}
+                  className={clsx(
+                    "flex gap-2",
+                    inbound ? "justify-start" : "justify-end flex-row-reverse",
+                    rowGap,
                   )}
-                  {msg.type === "DOCUMENT" && msg.mediaUrl && (
-                    <a
-                      href={msg.mediaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
-                      className={clsx(
-                        "mt-1 inline-block text-sm underline",
-                        msg.direction === "OUTBOUND" && !msg.isPrivate
-                          ? "text-brand-100 dark:text-brand-400"
-                          : "text-brand-700 dark:text-brand-400",
-                      )}
-                    >
-                      {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
-                    </a>
-                  )}
-                  {msg.body && msg.type !== "DOCUMENT" ? (
-                    <p className={clsx("text-sm", msg.type === "IMAGE" && msg.mediaUrl && "mt-2")}>{msg.body}</p>
-                  ) : null}
-                  {msg.type === "VIDEO" && msg.mediaUrl && (
-                    <video
-                      src={msg.mediaUrl}
-                      controls
-                      className="mt-1 max-h-64 w-full max-w-md rounded-lg"
-                      preload="metadata"
-                    />
-                  )}
-                  {msg.type === "AUDIO" && msg.mediaUrl && (
-                    <audio
-                      controls
-                      src={msg.mediaUrl}
-                      className={clsx(
-                        "mt-2 w-full min-w-[200px] max-w-[280px]",
-                        msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                      )}
-                      preload="metadata"
-                    />
-                  )}
+                  initial={isNew ? { opacity: 0, y: 6 } : false}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.22,
+                    delay: isNew ? Math.min(i * 0.02, 0.25) : 0,
+                    ease: "easeOut",
+                  }}
+                >
+                  <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
+                    {showAvatar ? (
+                      inbound ? (
+                        <div className="flex h-8 w-8 overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold text-ink-700 dark:bg-ink-700 dark:text-ink-100">
+                          {conversation.contact.profilePictureUrl ? (
+                            <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center">
+                              {conversation.contact.name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"
+                          title={user?.name ?? ""}
+                        >
+                          {(user?.name ?? "A").charAt(0).toUpperCase()}
+                        </div>
+                      )
+                    ) : (
+                      <span className="block h-8 w-8" aria-hidden />
+                    )}
+                  </div>
                   <div
                     className={clsx(
-                      "mt-1 flex items-center gap-1 text-[10px]",
+                      "max-w-[min(calc(100%-2.5rem),26rem)] rounded-2xl px-3.5 py-2 shadow-sm",
                       msg.isPrivate
-                        ? "text-amber-800/80 dark:text-amber-300/80"
-                        : msg.direction === "OUTBOUND"
-                          ? "text-brand-100 dark:text-ink-400"
-                          : "text-gray-400 dark:text-ink-500",
+                        ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
+                        : inbound
+                          ? "border border-ink-200/80 bg-ink-100/95 text-ink-900 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-50"
+                          : "border border-brand-600/25 bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/10 dark:border-brand-500/30 dark:from-brand-600 dark:to-brand-700",
                     )}
                   >
-                    <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
-                    {msg.direction === "OUTBOUND" && !msg.isPrivate && (
-                      <span className="inline-flex items-center" title={msg.status}>
-                        {msg.status === "FAILED" ? (
-                          <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
-                        ) : msg.status === "READ" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-500" aria-hidden />
-                        ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-500/70" aria-hidden />
-                        ) : (
-                          <Check className="h-3 w-3 text-brand-100/85 dark:text-brand-400/90" aria-hidden />
-                        )}
-                      </span>
+                    {msg.isPrivate ? (
+                      <p className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                        <Lock className="h-3 w-3" />
+                        {t("conversationDetail.internalNoteLabel")}
+                      </p>
+                    ) : null}
+                    {msg.type === "IMAGE" && msg.mediaUrl && (
+                      <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="block">
+                        <img
+                          src={msg.mediaUrl}
+                          alt=""
+                          className={clsx(
+                            "max-h-64 max-w-full rounded-lg object-contain",
+                            msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
+                          )}
+                        />
+                      </a>
                     )}
+                    {msg.type === "DOCUMENT" && msg.mediaUrl && (
+                      <a
+                        href={msg.mediaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        download
+                        className={clsx(
+                          "mt-1 inline-block text-sm underline",
+                          msg.direction === "OUTBOUND" && !msg.isPrivate
+                            ? "text-brand-100 dark:text-brand-200"
+                            : "text-brand-700 dark:text-brand-400",
+                        )}
+                      >
+                        {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
+                      </a>
+                    )}
+                    {msg.body && msg.type !== "DOCUMENT" ? (
+                      <p className={clsx("whitespace-pre-wrap text-sm leading-snug", msg.type === "IMAGE" && msg.mediaUrl && "mt-2")}>
+                        {msg.body}
+                      </p>
+                    ) : null}
+                    {msg.type === "VIDEO" && msg.mediaUrl && (
+                      <video
+                        src={msg.mediaUrl}
+                        controls
+                        className="mt-1 max-h-64 w-full max-w-md rounded-lg"
+                        preload="metadata"
+                      />
+                    )}
+                    {msg.type === "AUDIO" && msg.mediaUrl && (
+                      <audio
+                        controls
+                        src={msg.mediaUrl}
+                        className={clsx(
+                          "mt-2 w-full min-w-[200px] max-w-[280px]",
+                          msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
+                        )}
+                        preload="metadata"
+                      />
+                    )}
+                    <div
+                      className={clsx(
+                        "mt-1 flex items-center gap-1 text-[10px] tabular-nums",
+                        msg.isPrivate
+                          ? "text-amber-800/80 dark:text-amber-300/80"
+                          : msg.direction === "OUTBOUND"
+                            ? "text-brand-100/90 dark:text-ink-300"
+                            : "text-ink-500 dark:text-ink-400",
+                      )}
+                    >
+                      <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
+                      {msg.direction === "OUTBOUND" && !msg.isPrivate && (
+                        <span className="inline-flex items-center" title={msg.status}>
+                          {msg.status === "FAILED" ? (
+                            <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
+                          ) : msg.status === "READ" ? (
+                            <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-300" aria-hidden />
+                          ) : msg.status === "DELIVERED" ? (
+                            <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-400/80" aria-hidden />
+                          ) : (
+                            <Check className="h-3 w-3 text-brand-100/90 dark:text-brand-300/90" aria-hidden />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+            {sending ? (
+              <motion.div
+                className="mt-3 flex justify-end gap-2"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <div className="rounded-2xl border border-brand-500/30 bg-brand-500/15 px-4 py-3 dark:bg-brand-900/35">
+                  <div className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.2s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.1s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500" />
+                    <span className="ml-2 text-xs font-medium text-brand-800 dark:text-brand-200">
+                      {t("conversationDetail.sendingMessage")}
+                    </span>
                   </div>
                 </div>
               </motion.div>
-            );
-          })}
-          <div ref={messagesEndRef} />
+            ) : null}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
+
+        <motion.div
+          className="shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 sm:px-5"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
+        >
+          <form onSubmit={handleSend} className="mx-auto flex max-w-3xl flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-900/80 dark:text-ink-200 dark:hover:bg-ink-800">
+                <input
+                  type="checkbox"
+                  checked={privateNote}
+                  onChange={(e) => setPrivateNote(e.target.checked)}
+                  className="rounded border-ink-300 text-brand-600 dark:border-ink-500 dark:bg-ink-800"
+                />
+                <Lock className="h-3.5 w-3.5" />
+                {t("conversationDetail.privateNote")}
+              </label>
+              {privateNote ? (
+                <span className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {messageTemplates.length > 0 ? (
+                <div className="relative" ref={templateWrapRef}>
+                  <motion.button
+                    type="button"
+                    disabled={recording}
+                    onClick={() => {
+                      setTemplateMenuOpen((o) => !o);
+                      setEmojiOpen(false);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    {t("conversationDetail.templates")}
+                  </motion.button>
+                  {templateMenuOpen ? (
+                    <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
+                      {messageTemplates.map((tp) => (
+                        <button
+                          key={tp.id}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
+                          title={t("conversationDetail.pickTemplate")}
+                          onClick={() => {
+                            setNewMessage(tp.body);
+                            setTemplateMenuOpen(false);
+                          }}
+                        >
+                          <span className="font-semibold">{tp.name}</span>
+                          <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                            {tp.body}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="relative" ref={emojiWrapRef}>
+                <motion.button
+                  type="button"
+                  disabled={recording || (isOutsideWindow && !privateNote)}
+                  onClick={() => {
+                    setEmojiOpen((o) => !o);
+                    setTemplateMenuOpen(false);
+                  }}
+                  title={t("conversationDetail.emoji")}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"
+                  whileTap={{ scale: 0.94 }}
+                >
+                  <Smile className="h-5 w-5" />
+                </motion.button>
+                {emojiOpen ? (
+                  <div className="absolute bottom-full left-0 z-30 mb-2 grid w-48 grid-cols-6 gap-0.5 rounded-xl border border-ink-200 bg-white p-2 shadow-lg dark:border-ink-600 dark:bg-ink-900">
+                    {QUICK_EMOJIS.map((em) => (
+                      <button
+                        key={em}
+                        type="button"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
+                        onClick={() => {
+                          setNewMessage((prev) => prev + em);
+                          setEmojiOpen(false);
+                        }}
+                      >
+                        {em}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <motion.button
+                type="button"
+                disabled={(isOutsideWindow && !privateNote) || recording || sending}
+                onClick={() =>
+                  setNewMessage((prev) => (prev.trim() ? `${prev.trim()}\n` : "") + t("conversationDetail.aiDraftSnippet"))
+                }
+                title={t("conversationDetail.generateReply")}
+                className="inline-flex items-center gap-1 rounded-lg border border-violet-200/90 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-900 shadow-sm hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-200 dark:hover:bg-violet-900/40"
+                whileTap={{ scale: 0.97 }}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {t("conversationDetail.generateReply")}
+              </motion.button>
+            </div>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onImageInputChange}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              className="hidden"
+              onChange={onFileInputChange}
+            />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={composerKeyDown}
+                placeholder={
+                  privateNote
+                    ? t("conversationDetail.privateNotePlaceholder")
+                    : isOutsideWindow
+                      ? t("conversationDetail.placeholderTemplate")
+                      : t("conversationDetail.placeholderNormal")
+                }
+                disabled={(isOutsideWindow && !privateNote) || recording}
+                className="min-w-0 flex-1 rounded-2xl border border-ink-200 bg-ink-50/80 px-4 py-3 text-sm text-ink-900 shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-100 disabled:text-ink-400 dark:border-ink-600 dark:bg-ink-800/80 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:bg-ink-900 dark:focus:ring-brand-400/25 dark:disabled:bg-ink-900/60 dark:disabled:text-ink-500"
+              />
+              {evolutionRichChat ? (
+                <>
+                  <motion.button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={
+                      attachBusy || (!privateNote && isOutsideWindow) || recording
+                    }
+                    title={t("conversationDetail.attachImage")}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    whileTap={{ scale: 0.92 }}
+                  >
+                    <ImagePlus className="h-5 w-5" />
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={
+                      attachBusy || (!privateNote && isOutsideWindow) || recording
+                    }
+                    title={t("conversationDetail.attachFile")}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    whileTap={{ scale: 0.92 }}
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </motion.button>
+                </>
+              ) : null}
+              <motion.button
+                type="button"
+                onClick={() => void handleVoiceToggle()}
+                disabled={isOutsideWindow || voiceBusy || sending || attachBusy}
+                title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
+                className={clsx(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm disabled:opacity-50",
+                  recording
+                    ? "border-red-300 bg-red-500 text-white hover:bg-red-600 dark:border-red-800"
+                    : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                )}
+                whileTap={{ scale: 0.92 }}
+                aria-pressed={recording}
+              >
+                {recording ? <Square className="h-5 w-5 fill-current" /> : <Mic className="h-5 w-5" />}
+              </motion.button>
+              <motion.button
+                type="submit"
+                disabled={sending || !newMessage.trim() || (isOutsideWindow && !privateNote) || attachBusy}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                whileTap={{ scale: 0.92 }}
+              >
+                <Send className="h-5 w-5" />
+              </motion.button>
+            </div>
+            {(recording || voiceBusy || attachBusy) && (
+              <p className="text-center text-xs text-ink-500 dark:text-ink-400">
+                {attachBusy
+                  ? t("conversationDetail.sendingAttachment")
+                  : voiceBusy
+                    ? t("conversationDetail.voiceSending")
+                    : t("conversationDetail.recording")}
+              </p>
+            )}
+          </form>
+        </motion.div>
       </div>
 
-      <motion.div
-        className="border-t border-ink-200 bg-white px-4 py-4 shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)] dark:border-ink-800 dark:bg-[#161f2c] sm:px-6"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, delay: 0.1, ease: "easeOut" }}
-      >
-        <form onSubmit={handleSend} className="mx-auto flex max-w-3xl flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-900/80 dark:text-ink-200 dark:hover:bg-ink-800">
-              <input
-                type="checkbox"
-                checked={privateNote}
-                onChange={(e) => setPrivateNote(e.target.checked)}
-                className="rounded border-ink-300 text-brand-600 dark:border-ink-500 dark:bg-ink-800"
-              />
-              <Lock className="h-3.5 w-3.5" />
-              {t("conversationDetail.privateNote")}
-            </label>
-            {privateNote ? (
-              <span className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</span>
-            ) : null}
-          </div>
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={onImageInputChange}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            onChange={onFileInputChange}
-          />
-          <div className="flex items-center gap-2 sm:gap-3">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={composerKeyDown}
-              placeholder={
-                privateNote
-                  ? t("conversationDetail.privateNotePlaceholder")
-                  : isOutsideWindow
-                    ? t("conversationDetail.placeholderTemplate")
-                    : t("conversationDetail.placeholderNormal")
-              }
-              disabled={(isOutsideWindow && !privateNote) || recording}
-              className="min-w-0 flex-1 rounded-2xl border border-ink-200 bg-white px-5 py-3 text-sm text-ink-900 shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-50 disabled:text-ink-400 dark:border-ink-500 dark:bg-[#2c3d4f] dark:text-ink-50 dark:placeholder:text-ink-400 dark:focus:border-brand-500 dark:focus:ring-brand-400/25 dark:disabled:bg-ink-900 dark:disabled:text-ink-500"
-            />
-            {evolutionRichChat ? (
-              <>
-                <motion.button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={
-                    attachBusy || (!privateNote && isOutsideWindow) || recording
-                  }
-                  title={t("conversationDetail.attachImage")}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                  whileTap={{ scale: 0.92 }}
-                >
-                  <ImagePlus className="h-5 w-5" />
-                </motion.button>
-                <motion.button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={
-                    attachBusy || (!privateNote && isOutsideWindow) || recording
-                  }
-                  title={t("conversationDetail.attachFile")}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                  whileTap={{ scale: 0.92 }}
-                >
-                  <Paperclip className="h-5 w-5" />
-                </motion.button>
-              </>
-            ) : null}
-            <motion.button
-              type="button"
-              onClick={() => void handleVoiceToggle()}
-              disabled={isOutsideWindow || voiceBusy || sending || attachBusy}
-              title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
-              className={clsx(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm disabled:opacity-50",
-                recording
-                  ? "border-red-300 bg-red-500 text-white hover:bg-red-600 dark:border-red-800"
-                  : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-              )}
-              whileTap={{ scale: 0.92 }}
-              aria-pressed={recording}
+      <aside className="hidden min-h-0 w-[min(100%,380px)] shrink-0 flex-col overflow-y-auto border-l border-ink-200/90 bg-white/95 dark:border-ink-800 dark:bg-ink-900/95 xl:flex">
+        <div className="p-4">{renderCrmPanel()}</div>
+      </aside>
+
+      <AnimatePresence>
+        {crmMobileOpen ? (
+          <motion.div
+            className="fixed inset-0 z-40 flex justify-end bg-black/40 xl:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setCrmMobileOpen(false)}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.22 }}
+              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-900"
+              onClick={(e) => e.stopPropagation()}
             >
-              {recording ? <Square className="h-5 w-5 fill-current" /> : <Mic className="h-5 w-5" />}
-            </motion.button>
-            <motion.button
-              type="submit"
-              disabled={sending || !newMessage.trim() || (isOutsideWindow && !privateNote) || attachBusy}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-              whileTap={{ scale: 0.92 }}
-            >
-              <Send className="h-5 w-5" />
-            </motion.button>
-          </div>
-          {(recording || voiceBusy || attachBusy) && (
-            <p className="text-center text-xs text-ink-500 dark:text-ink-400">
-              {attachBusy
-                ? t("conversationDetail.sendingAttachment")
-                : voiceBusy
-                  ? t("conversationDetail.voiceSending")
-                  : t("conversationDetail.recording")}
-            </p>
-          )}
-        </form>
-      </motion.div>
+              <div className="p-4">{renderCrmPanel({ showMobileClose: true })}</div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {resolveOpen && (

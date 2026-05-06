@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
-import { UsersRound, ChevronDown, ChevronRight } from "lucide-react";
+import { UsersRound, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 
 type TeamMemberRole = "TEAM_ADMIN" | "SUPERVISOR" | "MEMBER";
 
@@ -43,6 +43,9 @@ export function TeamsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addUserId, setAddUserId] = useState<Record<string, string>>({});
   const [addRole, setAddRole] = useState<Record<string, TeamMemberRole>>({});
+  const [drafts, setDrafts] = useState<Record<string, { name: string; description: string }>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadTeams = async () => {
     try {
@@ -122,6 +125,69 @@ export function TeamsPage() {
     } catch {
       /* ignore */
     }
+  };
+
+  const getDraft = (team: AdminTeam) =>
+    drafts[team.id] ?? { name: team.name, description: team.description ?? "" };
+
+  const setDraftField = (teamId: string, team: AdminTeam, field: "name" | "description", value: string) => {
+    const cur = getDraft(team);
+    setDrafts((p) => ({ ...p, [teamId]: { ...cur, [field]: value } }));
+  };
+
+  const handleSaveTeamDetails = async (team: AdminTeam) => {
+    const d = getDraft(team);
+    const name = d.name.trim();
+    if (!name) return;
+    setSavingId(team.id);
+    try {
+      const desc = d.description.trim();
+      await api.patch(`/teams/${team.id}`, {
+        name,
+        description: desc === "" ? null : desc,
+      });
+      await loadTeams();
+      setDrafts((p) => {
+        const next = { ...p };
+        delete next[team.id];
+        return next;
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleDeleteTeam = async (team: AdminTeam) => {
+    const ok = window.confirm(
+      `${t("teams.deleteTeam")}: "${team.name}"?\n\n${t("teams.memberCount")}: ${team._count.members}\n${t("teams.conversations")}: ${team._count.conversations}\n\n${t("teams.deleteConfirmHint")}`,
+    );
+    if (!ok) return;
+    setDeletingId(team.id);
+    try {
+      await api.delete(`/teams/${team.id}`);
+      setExpanded((p) => {
+        const next = { ...p };
+        delete next[team.id];
+        return next;
+      });
+      setDrafts((p) => {
+        const next = { ...p };
+        delete next[team.id];
+        return next;
+      });
+      await loadTeams();
+    } catch {
+      /* ignore */
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const detailsDirty = (team: AdminTeam) => {
+    const d = getDraft(team);
+    return d.name.trim() !== team.name || (d.description.trim() || "") !== (team.description ?? "");
   };
 
   if (!isAdmin) {
@@ -210,7 +276,54 @@ export function TeamsPage() {
                     </div>
                   </button>
                   {open ? (
-                    <div className="border-t border-ink-100 px-4 py-3 space-y-4 bg-ink-50/50">
+                    <div className="border-t border-ink-100 space-y-4 bg-ink-50/50 px-4 py-3">
+                      <div className="rounded-lg border border-ink-200 bg-white p-3 shadow-sm">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+                          {t("teams.teamDetails")}
+                        </p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <input
+                              value={getDraft(team).name}
+                              onChange={(e) => setDraftField(team.id, team, "name", e.target.value)}
+                              className="input w-full text-sm font-medium"
+                              aria-label={t("teams.name")}
+                            />
+                            <textarea
+                              value={getDraft(team).description}
+                              onChange={(e) => setDraftField(team.id, team, "description", e.target.value)}
+                              placeholder={t("teams.descriptionPlaceholder")}
+                              rows={2}
+                              className="input w-full resize-y text-sm"
+                              aria-label={t("teams.description")}
+                            />
+                          </div>
+                          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                            <button
+                              type="button"
+                              disabled={
+                                savingId === team.id ||
+                                deletingId !== null ||
+                                !getDraft(team).name.trim() ||
+                                !detailsDirty(team)
+                              }
+                              onClick={() => void handleSaveTeamDetails(team)}
+                              className="btn-primary whitespace-nowrap text-sm disabled:opacity-50"
+                            >
+                              {savingId === team.id ? t("teams.saving") : t("teams.saveDetails")}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingId !== null || savingId !== null}
+                              onClick={() => void handleDeleteTeam(team)}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:opacity-50 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {deletingId === team.id ? t("teams.deleting") : t("teams.deleteTeam")}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap items-end gap-2">
                         <div className="min-w-[180px] flex-1">
                           <label className="mb-1 block text-xs text-ink-600">{t("teams.addMember")}</label>

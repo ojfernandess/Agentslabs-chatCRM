@@ -13,7 +13,9 @@ const createTeamSchema = z.object({
   notificationSettings: z.record(z.unknown()).optional(),
 });
 
-const patchTeamSchema = createTeamSchema.partial();
+const patchTeamSchema = createTeamSchema.partial().extend({
+  description: z.string().max(4000).nullable().optional(),
+});
 
 const addMemberSchema = z.object({
   userId: z.string().uuid(),
