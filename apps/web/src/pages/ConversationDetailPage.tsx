@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, useMemo, type FormEvent, type KeyboardEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import {
@@ -29,6 +29,10 @@ import {
   Pencil,
   X,
   Trash2,
+  Maximize2,
+  Minimize2,
+  PenLine,
+  FileText,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -179,6 +183,12 @@ export function ConversationDetailPage() {
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [voicePreview, setVoicePreview] = useState<{ blob: Blob; ext: string } | null>(null);
+  const voicePreviewUrl = useMemo(
+    () => (voicePreview ? URL.createObjectURL(voicePreview.blob) : null),
+    [voicePreview],
+  );
   const [orgTags, setOrgTags] = useState<OrgTagRow[]>([]);
   const [tagBusy, setTagBusy] = useState(false);
   const [tagAddSelectId, setTagAddSelectId] = useState("");
@@ -200,6 +210,12 @@ export function ConversationDetailPage() {
   const mediaChunksRef = useRef<Blob[]>([]);
 
   const autoAssignAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+    };
+  }, [voicePreviewUrl]);
 
   const loadConversation = async () => {
     try {
@@ -368,13 +384,27 @@ export function ConversationDetailPage() {
     return trimmed ? `${trimmed}\n\n${sig}` : sig;
   };
 
-  const composerKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const composerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter") return;
     const pref = readSendShortcutPref();
+    const canSend =
+      !!newMessage.trim() &&
+      !!conversation &&
+      !(isOutsideWindow && !privateNote) &&
+      !recording &&
+      !voicePreview &&
+      !sending &&
+      !attachBusy;
     if (pref === "mod_enter") {
-      if (!(e.ctrlKey || e.metaKey)) e.preventDefault();
-    } else if (e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        if (canSend) e.currentTarget.form?.requestSubmit();
+      }
+      return;
+    }
+    if (!e.shiftKey) {
       e.preventDefault();
+      if (canSend) e.currentTarget.form?.requestSubmit();
     }
   };
 
@@ -434,8 +464,35 @@ export function ConversationDetailPage() {
     return true;
   }
 
+  async function sendVoiceFromPreview() {
+    if (!conversation || !voicePreview) return;
+    if (isOutsideWindow && !privateNote) return;
+    setVoiceBusy(true);
+    setFlowError("");
+    const { blob, ext } = voicePreview;
+    try {
+      const { mediaUrl, mimeType } = await api.uploadMessageAudio(blob, `voice.${ext}`);
+      const voiceBody = outboundBodyWithSignature("", privateNote);
+      await api.post("/messages", {
+        contactId: conversation.contact.id,
+        type: "AUDIO",
+        mediaUrl,
+        mediaType: mimeType,
+        ...(voiceBody ? { body: voiceBody } : {}),
+        isPrivate: privateNote || undefined,
+      });
+      setVoicePreview(null);
+      await loadConversation();
+    } catch {
+      setFlowError(t("conversationDetail.voiceSendFailed"));
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
   async function handleVoiceToggle() {
-    if (!conversation || isOutsideWindow || voiceBusy) return;
+    if (!conversation || voiceBusy) return;
+    if (isOutsideWindow && !privateNote) return;
 
     if (recording && mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
@@ -447,6 +504,10 @@ export function ConversationDetailPage() {
       return;
     }
 
+    if (voicePreview) {
+      setVoicePreview(null);
+    }
+
     const contactId = conversation.contact.id;
 
     try {
@@ -456,7 +517,7 @@ export function ConversationDetailPage() {
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) mediaChunksRef.current.push(e.data);
       };
-      mr.onstop = async () => {
+      mr.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         mediaRecorderRef.current = null;
         setRecording(false);
@@ -465,24 +526,7 @@ export function ConversationDetailPage() {
         const blob = new Blob(mediaChunksRef.current, { type: blobType });
         mediaChunksRef.current = [];
         if (blob.size < 1) return;
-        setVoiceBusy(true);
-        setFlowError("");
-        try {
-          const { mediaUrl, mimeType } = await api.uploadMessageAudio(blob, `voice.${ext}`);
-          const voiceBody = outboundBodyWithSignature("", false);
-          await api.post("/messages", {
-            contactId,
-            type: "AUDIO",
-            mediaUrl,
-            mediaType: mimeType,
-            ...(voiceBody ? { body: voiceBody } : {}),
-          });
-          await loadConversation();
-        } catch {
-          setFlowError(t("conversationDetail.voiceSendFailed"));
-        } finally {
-          setVoiceBusy(false);
-        }
+        setVoicePreview({ blob, ext });
       };
       mediaRecorderRef.current = mr;
       mr.start();
@@ -1354,7 +1398,8 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              const rowGap = groupedPrev ? "mt-0.5" : "mt-3";
+              /* Espaço visível entre balões (estilo Chatwoot); grupo só afeta avatar e folga extra. */
+              const rowGap = groupedPrev ? "mt-2.5" : "mt-5";
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -1534,198 +1579,293 @@ export function ConversationDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
-          <form onSubmit={handleSend} className="mx-auto flex max-w-3xl flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-900/80 dark:text-ink-200 dark:hover:bg-ink-800">
-                <input
-                  type="checkbox"
-                  checked={privateNote}
-                  onChange={(e) => setPrivateNote(e.target.checked)}
-                  className="rounded border-ink-300 text-brand-600 dark:border-ink-500 dark:bg-ink-800"
-                />
-                <Lock className="h-3.5 w-3.5" />
-                {t("conversationDetail.privateNote")}
-              </label>
-              {privateNote ? (
-                <span className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</span>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {messageTemplates.length > 0 ? (
-                <div className="relative" ref={templateWrapRef}>
+          <form onSubmit={handleSend} className="mx-auto max-w-3xl">
+            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-950/90">
+              <div className="flex flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-ink-800">
+                <div className="flex min-w-0 flex-1 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPrivateNote(false)}
+                    className={clsx(
+                      "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                      !privateNote
+                        ? "bg-ink-200 text-ink-900 dark:bg-ink-700 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200",
+                    )}
+                  >
+                    {t("conversationDetail.composerReplyTab")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrivateNote(true)}
+                    className={clsx(
+                      "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                      privateNote
+                        ? "bg-ink-200 text-ink-900 dark:bg-ink-700 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200",
+                    )}
+                  >
+                    <Lock className="h-3 w-3 opacity-70" />
+                    {t("conversationDetail.composerPrivateTab")}
+                  </button>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 pb-0.5">
                   <motion.button
                     type="button"
-                    disabled={recording}
-                    onClick={() => {
-                      setTemplateMenuOpen((o) => !o);
-                      setEmojiOpen(false);
-                    }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                    whileTap={{ scale: 0.97 }}
+                    disabled={(isOutsideWindow && !privateNote) || recording || sending || !!voicePreview}
+                    onClick={() =>
+                      setNewMessage(
+                        (prev) => (prev.trim() ? `${prev.trim()}\n` : "") + t("conversationDetail.aiDraftSnippet"),
+                      )
+                    }
+                    title={t("conversationDetail.generateReply")}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200/80 bg-violet-50 text-violet-800 hover:bg-violet-100/90 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                    whileTap={{ scale: 0.94 }}
                   >
-                    {t("conversationDetail.templates")}
+                    <Sparkles className="h-4 w-4" />
                   </motion.button>
-                  {templateMenuOpen ? (
-                    <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
-                      {messageTemplates.map((tp) => (
-                        <button
-                          key={tp.id}
-                          type="button"
-                          className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
-                          title={t("conversationDetail.pickTemplate")}
-                          onClick={() => {
-                            setNewMessage(tp.body);
-                            setTemplateMenuOpen(false);
-                          }}
-                        >
-                          <span className="font-semibold">{tp.name}</span>
-                          <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
-                            {tp.body}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setComposerExpanded((e) => !e)}
+                    disabled={!!voicePreview || recording}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 disabled:opacity-40 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300 dark:hover:bg-ink-800"
+                    title={composerExpanded ? t("conversationDetail.composerCollapse") : t("conversationDetail.composerExpand")}
+                  >
+                    {composerExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </button>
                 </div>
-              ) : null}
-              <div className="relative" ref={emojiWrapRef}>
-                <motion.button
-                  type="button"
-                  disabled={recording || (isOutsideWindow && !privateNote)}
-                  onClick={() => {
-                    setEmojiOpen((o) => !o);
-                    setTemplateMenuOpen(false);
-                  }}
-                  title={t("conversationDetail.emoji")}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"
-                  whileTap={{ scale: 0.94 }}
-                >
-                  <Smile className="h-5 w-5" />
-                </motion.button>
-                {emojiOpen ? (
-                  <div className="absolute bottom-full left-0 z-30 mb-2 grid w-48 grid-cols-6 gap-0.5 rounded-xl border border-ink-200 bg-white p-2 shadow-lg dark:border-ink-600 dark:bg-ink-900">
-                    {QUICK_EMOJIS.map((em) => (
+              </div>
+
+              <div className="px-3 pb-1 pt-2">
+                {privateNote ? (
+                  <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
+                ) : null}
+                {!privateNote && !(user?.messageSignature?.trim()) ? (
+                  <p className="mb-2 rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-950 dark:border-sky-800/50 dark:bg-sky-950/40 dark:text-sky-100">
+                    {t("conversationDetail.composerSignatureBanner")}{" "}
+                    <Link to="/profile" className="font-semibold text-brand-600 underline hover:text-brand-500 dark:text-brand-400">
+                      {t("conversationDetail.composerSignatureLink")}
+                    </Link>
+                  </p>
+                ) : null}
+
+                {voicePreview && voicePreviewUrl ? (
+                  <div className="space-y-3 py-1">
+                    <p className="text-xs font-medium text-ink-600 dark:text-ink-300">{t("conversationDetail.voicePreviewHint")}</p>
+                    <audio key={voicePreviewUrl} controls src={voicePreviewUrl} className="h-10 w-full max-w-full" preload="metadata" />
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
-                        key={em}
                         type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
+                        disabled={voiceBusy}
+                        onClick={() => setVoicePreview(null)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs font-medium text-ink-800 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100 dark:hover:bg-ink-800"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {t("conversationDetail.voicePreviewDiscard")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={voiceBusy || (isOutsideWindow && !privateNote)}
+                        onClick={() => void sendVoiceFromPreview()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        {t("conversationDetail.voicePreviewSend")}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={composerKeyDown}
+                      rows={composerExpanded ? 7 : 3}
+                      placeholder={
+                        privateNote
+                          ? t("conversationDetail.privateNotePlaceholder")
+                          : isOutsideWindow
+                            ? t("conversationDetail.placeholderTemplate")
+                            : t("conversationDetail.placeholderNormal")
+                      }
+                      disabled={(isOutsideWindow && !privateNote) || recording}
+                      className={clsx(
+                        "w-full resize-y rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500",
+                        composerExpanded ? "min-h-[11rem]" : "min-h-[4.75rem]",
+                      )}
+                    />
+                    <p className="mt-1 text-[11px] leading-relaxed text-ink-400 dark:text-ink-500">
+                      {readSendShortcutPref() === "mod_enter"
+                        ? t("conversationDetail.composerShortcutModEnter")
+                        : t("conversationDetail.composerShortcutEnter")}
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onImageInputChange}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={onFileInputChange}
+              />
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-ink-50/60 px-2 py-2 dark:border-ink-800 dark:bg-ink-900/50">
+                <div className="flex flex-wrap items-center gap-0.5">
+                  {messageTemplates.length > 0 ? (
+                    <div className="relative" ref={templateWrapRef}>
+                      <motion.button
+                        type="button"
+                        disabled={recording || !!voicePreview}
                         onClick={() => {
-                          setNewMessage((prev) => prev + em);
+                          setTemplateMenuOpen((o) => !o);
                           setEmojiOpen(false);
                         }}
+                        title={t("conversationDetail.templates")}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                        whileTap={{ scale: 0.94 }}
                       >
-                        {em}
-                      </button>
-                    ))}
+                        <FileText className="h-4 w-4" />
+                      </motion.button>
+                      {templateMenuOpen ? (
+                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
+                          {messageTemplates.map((tp) => (
+                            <button
+                              key={tp.id}
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
+                              title={t("conversationDetail.pickTemplate")}
+                              onClick={() => {
+                                setNewMessage(tp.body);
+                                setTemplateMenuOpen(false);
+                              }}
+                            >
+                              <span className="font-semibold">{tp.name}</span>
+                              <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                                {tp.body}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="relative" ref={emojiWrapRef}>
+                    <motion.button
+                      type="button"
+                      disabled={recording || !!voicePreview || (isOutsideWindow && !privateNote)}
+                      onClick={() => {
+                        setEmojiOpen((o) => !o);
+                        setTemplateMenuOpen(false);
+                      }}
+                      title={t("conversationDetail.emoji")}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                      whileTap={{ scale: 0.94 }}
+                    >
+                      <Smile className="h-4 w-4" />
+                    </motion.button>
+                    {emojiOpen ? (
+                      <div className="absolute bottom-full left-0 z-30 mb-2 grid w-48 grid-cols-6 gap-0.5 rounded-xl border border-ink-200 bg-white p-2 shadow-lg dark:border-ink-600 dark:bg-ink-900">
+                        {QUICK_EMOJIS.map((em) => (
+                          <button
+                            key={em}
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
+                            onClick={() => {
+                              setNewMessage((prev) => prev + em);
+                              setEmojiOpen(false);
+                            }}
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                  {evolutionRichChat ? (
+                    <>
+                      <motion.button
+                        type="button"
+                        onClick={() => imageInputRef.current?.click()}
+                        disabled={attachBusy || (!privateNote && isOutsideWindow) || recording || !!voicePreview}
+                        title={t("conversationDetail.attachImage")}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                        whileTap={{ scale: 0.92 }}
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={attachBusy || (!privateNote && isOutsideWindow) || recording || !!voicePreview}
+                        title={t("conversationDetail.attachFile")}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                        whileTap={{ scale: 0.92 }}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </motion.button>
+                    </>
+                  ) : null}
+                  <motion.button
+                    type="button"
+                    onClick={() => void handleVoiceToggle()}
+                    disabled={(isOutsideWindow && !privateNote) || voiceBusy || sending || attachBusy}
+                    title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
+                    className={clsx(
+                      "flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-40",
+                      recording
+                        ? "bg-red-500 text-white hover:bg-red-600"
+                        : "text-ink-600 hover:bg-ink-200/80 dark:text-ink-300 dark:hover:bg-ink-800",
+                    )}
+                    whileTap={{ scale: 0.92 }}
+                    aria-pressed={recording}
+                  >
+                    {recording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-4 w-4" />}
+                  </motion.button>
+                  <Link
+                    to="/profile"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 dark:text-ink-300 dark:hover:bg-ink-800"
+                    title={t("conversationDetail.composerSignatureLink")}
+                  >
+                    <PenLine className="h-4 w-4" />
+                  </Link>
+                </div>
+                <motion.button
+                  type="submit"
+                  disabled={
+                    sending ||
+                    !newMessage.trim() ||
+                    (isOutsideWindow && !privateNote) ||
+                    attachBusy ||
+                    !!voicePreview ||
+                    recording
+                  }
+                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Send className="h-4 w-4" />
+                  {t("conversationDetail.composerSend")}
+                </motion.button>
               </div>
-              <motion.button
-                type="button"
-                disabled={(isOutsideWindow && !privateNote) || recording || sending}
-                onClick={() =>
-                  setNewMessage((prev) => (prev.trim() ? `${prev.trim()}\n` : "") + t("conversationDetail.aiDraftSnippet"))
-                }
-                title={t("conversationDetail.generateReply")}
-                className="inline-flex items-center gap-1 rounded-lg border border-violet-200/90 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-900 shadow-sm hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-200 dark:hover:bg-violet-900/40"
-                whileTap={{ scale: 0.97 }}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {t("conversationDetail.generateReply")}
-              </motion.button>
-            </div>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={onImageInputChange}
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="hidden"
-              onChange={onFileInputChange}
-            />
-            <div className="flex items-center gap-2 sm:gap-3">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={composerKeyDown}
-                placeholder={
-                  privateNote
-                    ? t("conversationDetail.privateNotePlaceholder")
-                    : isOutsideWindow
-                      ? t("conversationDetail.placeholderTemplate")
-                      : t("conversationDetail.placeholderNormal")
-                }
-                disabled={(isOutsideWindow && !privateNote) || recording}
-                className="min-w-0 flex-1 rounded-2xl border border-ink-200 bg-ink-50/80 px-4 py-3 text-sm text-ink-900 shadow-inner transition-shadow placeholder:text-ink-400 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/25 disabled:bg-ink-100 disabled:text-ink-400 dark:border-ink-600 dark:bg-ink-800/80 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:bg-ink-900 dark:focus:ring-brand-400/25 dark:disabled:bg-ink-900/60 dark:disabled:text-ink-500"
-              />
-              {evolutionRichChat ? (
-                <>
-                  <motion.button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    disabled={
-                      attachBusy || (!privateNote && isOutsideWindow) || recording
-                    }
-                    title={t("conversationDetail.attachImage")}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                    whileTap={{ scale: 0.92 }}
-                  >
-                    <ImagePlus className="h-5 w-5" />
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={
-                      attachBusy || (!privateNote && isOutsideWindow) || recording
-                    }
-                    title={t("conversationDetail.attachFile")}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                    whileTap={{ scale: 0.92 }}
-                  >
-                    <Paperclip className="h-5 w-5" />
-                  </motion.button>
-                </>
+
+              {(recording || voiceBusy || attachBusy) ? (
+                <p className="border-t border-ink-100 px-3 py-2 text-center text-xs text-ink-500 dark:border-ink-800 dark:text-ink-400">
+                  {attachBusy
+                    ? t("conversationDetail.sendingAttachment")
+                    : voiceBusy
+                      ? t("conversationDetail.voiceSending")
+                      : t("conversationDetail.recording")}
+                </p>
               ) : null}
-              <motion.button
-                type="button"
-                onClick={() => void handleVoiceToggle()}
-                disabled={isOutsideWindow || voiceBusy || sending || attachBusy}
-                title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
-                className={clsx(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm disabled:opacity-50",
-                  recording
-                    ? "border-red-300 bg-red-500 text-white hover:bg-red-600 dark:border-red-800"
-                    : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                )}
-                whileTap={{ scale: 0.92 }}
-                aria-pressed={recording}
-              >
-                {recording ? <Square className="h-5 w-5 fill-current" /> : <Mic className="h-5 w-5" />}
-              </motion.button>
-              <motion.button
-                type="submit"
-                disabled={sending || !newMessage.trim() || (isOutsideWindow && !privateNote) || attachBusy}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-                whileTap={{ scale: 0.92 }}
-              >
-                <Send className="h-5 w-5" />
-              </motion.button>
             </div>
-            {(recording || voiceBusy || attachBusy) && (
-              <p className="text-center text-xs text-ink-500 dark:text-ink-400">
-                {attachBusy
-                  ? t("conversationDetail.sendingAttachment")
-                  : voiceBusy
-                    ? t("conversationDetail.voiceSending")
-                    : t("conversationDetail.recording")}
-              </p>
-            )}
           </form>
         </motion.div>
       </div>
