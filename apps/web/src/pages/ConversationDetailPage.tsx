@@ -1390,7 +1390,7 @@ export function ConversationDetailPage() {
 
         <div className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
-          <div className="relative mx-auto w-full max-w-3xl space-y-0">
+          <div className="relative w-full min-w-0 space-y-0">
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -1574,14 +1574,14 @@ export function ConversationDetailPage() {
         </div>
 
         <motion.div
-          className="shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 sm:px-5"
+          className="w-full min-w-0 shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 sm:px-5"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
-          <form onSubmit={handleSend} className="mx-auto max-w-3xl">
-            <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-950/90">
-              <div className="flex flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-ink-800">
+          <form onSubmit={handleSend} className="w-full min-w-0">
+            <div className="w-full min-w-0 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-950/90">
+              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-ink-800">
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                   <button
                     type="button"
@@ -1636,7 +1636,7 @@ export function ConversationDetailPage() {
                 </div>
               </div>
 
-              <div className="px-3 pb-1 pt-2">
+              <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
                   <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
                 ) : null}
@@ -1718,8 +1718,8 @@ export function ConversationDetailPage() {
                 onChange={onFileInputChange}
               />
 
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-ink-50/60 px-2 py-2 dark:border-ink-800 dark:bg-ink-900/50">
-                <div className="flex flex-wrap items-center gap-0.5">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-ink-50/60 px-2 py-2 dark:border-ink-800 dark:bg-ink-900/50">
+                <div className="flex min-w-0 flex-wrap items-center gap-0.5">
                   {messageTemplates.length > 0 ? (
                     <div className="relative" ref={templateWrapRef}>
                       <motion.button
