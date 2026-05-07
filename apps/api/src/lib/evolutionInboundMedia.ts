@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { prisma } from "../db.js";
 import { config, getPublicOrigin } from "../config.js";
+import { resolveEvolutionApiCredentials } from "./evolutionPlatform.js";
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)
@@ -70,17 +71,15 @@ export async function persistEvolutionInboundMediaAsLocalUrl(options: {
     where: { organizationId: options.organizationId },
   });
   if (settings?.whatsappProvider !== "evolution") return null;
-  const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
-  const instance = settings.whatsappPhoneNumberId?.trim() ?? "";
-  const apiKey = settings.whatsappApiKey;
-  if (!baseUrl || !instance || !apiKey) return null;
+  const creds = await resolveEvolutionApiCredentials(settings);
+  if (!creds) return null;
 
-  const enc = encodeURIComponent(instance);
-  const url = `${baseUrl.replace(/\/+$/, "")}/chat/getBase64FromMediaMessage/${enc}`;
+  const enc = encodeURIComponent(creds.instanceName);
+  const url = `${creds.baseUrl.replace(/\/+$/, "")}/chat/getBase64FromMediaMessage/${enc}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      apikey: apiKey,
+      apikey: creds.apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

@@ -733,6 +733,18 @@ export const messages = {
       embeddedManualLink: "Configuração manual",
       embeddedUnavailable:
         "O administrador da plataforma ainda não configurou o WhatsApp Embedded. Contacte o suporte ou use a configuração manual abaixo.",
+      evolutionQrTitle: "Ligar WhatsApp (Evolution)",
+      evolutionQrSubtitle:
+        "A plataforma gere o Evolution. Crie a instância e leia o QR no telemóvel — não precisa de URL nem chave API neste formulário.",
+      evolutionQrCta: "Criar instância e mostrar QR",
+      evolutionQrRefresh: "Atualizar QR",
+      evolutionQrBusy: "A contactar o Evolution…",
+      evolutionQrError: "Não foi possível obter o QR. Tente novamente.",
+      evolutionQrPairing: "Código de emparelhamento",
+      evolutionQrInstance: "Instância",
+      evolutionQrState: "Estado",
+      evolutionQrConnected: "Ligado",
+      evolutionQrNotConnected: "Aguarda leitura do QR",
     },
     superAdmin: {
       consoleSubtitle: "Consola multi-tenant — organizações, integrações e políticas",
@@ -811,6 +823,25 @@ export const messages = {
       whatsappEmbeddedIncomplete:
         "Preencha App ID, Configuration ID, App Secret e verify token para ativar o fluxo incorporado.",
       whatsappEmbeddedSecretKeep: "Deixe vazio para manter o segredo existente",
+      evolutionPlatform: "Evolution API (plataforma)",
+      evolutionPlatformSubtitle:
+        "URL do servidor Evolution e chave global da API. Os tenants criam instâncias e ligam o WhatsApp só por QR, sem expor segredos no browser.",
+      evolutionPlatformDocLink: "Documentação Evolution API v2",
+      evolutionPlatformLoadError: "Não foi possível carregar as definições.",
+      evolutionPlatformRetry: "Tentar novamente",
+      evolutionPlatformConfigured: "Modo só-QR activo. Os tenants usam «Ligar com QR» nas definições do canal.",
+      evolutionPlatformIncomplete:
+        "Active a gestão Evolution, marque «só QR», preencha o URL base e a chave API global.",
+      evolutionPlatformEnabled: "Evolution gerida pela plataforma activa",
+      evolutionPlatformTenantQrOnly: "Clientes ligam apenas por QR (sem URL/chave manual no tenant)",
+      evolutionPlatformBaseUrl: "URL público do Evolution API",
+      evolutionPlatformBaseUrlHint:
+        "Raiz do servidor (v2), sem path. O backend chama /instance/create e /instance/connect.",
+      evolutionPlatformGlobalApiKey: "Chave API global (header apikey)",
+      evolutionPlatformGlobalApiKeyHint:
+        "A mesma do Evolution (ex.: AUTHENTICATION_API_KEY). Nunca é enviada ao browser do tenant.",
+      evolutionPlatformSecretKeep: "Deixe vazio para manter a chave existente",
+      evolutionPlatformSave: "Guardar",
       tenantPermissions: "Permissões por tenant",
       tenantPermissionsSubtitle:
         "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular de permissões por capacidade). Ajuste funções na lista de utilizadores.",
@@ -1562,6 +1593,18 @@ export const messages = {
       embeddedManualLink: "Manual setup",
       embeddedUnavailable:
         "WhatsApp Embedded has not been configured on this platform yet. Contact support or use manual setup below.",
+      evolutionQrTitle: "Connect WhatsApp (Evolution)",
+      evolutionQrSubtitle:
+        "The platform hosts Evolution. Create the instance and scan the QR on your phone — no URL or API key needed in this form.",
+      evolutionQrCta: "Create instance and show QR",
+      evolutionQrRefresh: "Refresh QR",
+      evolutionQrBusy: "Contacting Evolution…",
+      evolutionQrError: "Could not get the QR. Please try again.",
+      evolutionQrPairing: "Pairing code",
+      evolutionQrInstance: "Instance",
+      evolutionQrState: "State",
+      evolutionQrConnected: "Connected",
+      evolutionQrNotConnected: "Waiting for QR scan",
     },
     superAdmin: {
       consoleSubtitle: "Multi-tenant console — organizations, integrations, and policy",
@@ -1641,6 +1684,24 @@ export const messages = {
       whatsappEmbeddedIncomplete:
         "Fill in App ID, Configuration ID, App Secret, and verify token to enable the embedded flow.",
       whatsappEmbeddedSecretKeep: "Leave blank to keep the existing secret",
+      evolutionPlatform: "Evolution API (platform)",
+      evolutionPlatformSubtitle:
+        "Evolution server URL and global API key. Tenants create instances and link WhatsApp via QR only — secrets never go to the browser.",
+      evolutionPlatformDocLink: "Evolution API v2 documentation",
+      evolutionPlatformLoadError: "Could not load settings.",
+      evolutionPlatformRetry: "Try again",
+      evolutionPlatformConfigured: "QR-only mode is on. Tenants use “Connect with QR” in channel settings.",
+      evolutionPlatformIncomplete:
+        "Enable platform Evolution, check QR-only, and fill in the base URL and global API key.",
+      evolutionPlatformEnabled: "Platform-managed Evolution enabled",
+      evolutionPlatformTenantQrOnly: "Tenants connect via QR only (no manual URL/API key in tenant UI)",
+      evolutionPlatformBaseUrl: "Evolution API public URL",
+      evolutionPlatformBaseUrlHint: "Server root (v2), no path. The backend calls /instance/create and /instance/connect.",
+      evolutionPlatformGlobalApiKey: "Global API key (apikey header)",
+      evolutionPlatformGlobalApiKeyHint:
+        "Same as on the Evolution server (e.g. AUTHENTICATION_API_KEY). Never sent to the tenant browser.",
+      evolutionPlatformSecretKeep: "Leave blank to keep the existing key",
+      evolutionPlatformSave: "Save",
       tenantPermissions: "Tenant permissions",
       tenantPermissionsSubtitle:
         "This product uses ADMIN and AGENT per organization (no fine-grained capability matrix). Adjust roles from the user list.",

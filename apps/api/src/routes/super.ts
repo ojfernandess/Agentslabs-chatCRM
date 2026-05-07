@@ -19,6 +19,10 @@ import {
   WHATSAPP_EMBEDDED_PLATFORM_KEY,
 } from "../lib/metaWhatsAppEmbedded.js";
 import { metaEmbeddedWebhookUrl } from "../config.js";
+import {
+  EVOLUTION_PLATFORM_KEY,
+  parseEvolutionPlatformValue,
+} from "../lib/evolutionPlatform.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 
 function slugify(name: string): string {
@@ -61,6 +65,13 @@ const whatsappEmbeddedPutSchema = z.object({
   configurationId: z.string().min(1).max(64),
   apiVersion: z.string().max(16).default("v22.0"),
   webhookVerifyToken: z.string().min(4).max(256),
+});
+
+const evolutionPlatformPutSchema = z.object({
+  enabled: z.boolean(),
+  tenantQrOnly: z.boolean(),
+  baseUrl: z.string().max(512),
+  globalApiKey: z.string().max(512).optional(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -702,6 +713,85 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       webhookVerifyToken: value.webhookVerifyToken,
       appSecretMasked: "••••••••",
       metaWebhookCallbackUrl: metaEmbeddedWebhookUrl(),
+    };
+  });
+
+  app.get("/evolution-platform", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: EVOLUTION_PLATFORM_KEY },
+    });
+    const v = parseEvolutionPlatformValue(row?.value);
+    if (!v) {
+      return {
+        enabled: false,
+        tenantQrOnly: false,
+        baseUrl: "",
+        globalApiKeyMasked: "",
+        configured: false,
+      };
+    }
+    return {
+      enabled: v.enabled,
+      tenantQrOnly: v.tenantQrOnly,
+      baseUrl: v.baseUrl,
+      globalApiKeyMasked: v.globalApiKey ? "••••••••" : "",
+      configured: !!(v.enabled && v.tenantQrOnly && v.baseUrl && v.globalApiKey),
+    };
+  });
+
+  app.put("/evolution-platform", async (request, reply) => {
+    const parsed = evolutionPlatformPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: EVOLUTION_PLATFORM_KEY },
+    });
+    let globalApiKey = parsed.data.globalApiKey?.trim() ?? "";
+    if (!globalApiKey && existing?.value && typeof existing.value === "object" && existing.value !== null) {
+      globalApiKey = String((existing.value as Record<string, unknown>).globalApiKey ?? "").trim();
+    }
+
+    const baseUrl = parsed.data.baseUrl.trim();
+    if (parsed.data.enabled && parsed.data.tenantQrOnly) {
+      if (!baseUrl || !globalApiKey) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "When enabling QR-only managed Evolution, baseUrl and globalApiKey are required (omit globalApiKey only to keep the existing key).",
+          statusCode: 400,
+        });
+      }
+    }
+
+    const stored = {
+      enabled: parsed.data.enabled,
+      tenantQrOnly: parsed.data.tenantQrOnly,
+      baseUrl,
+      globalApiKey,
+    };
+
+    const row = await prisma.platformSetting.upsert({
+      where: { key: EVOLUTION_PLATFORM_KEY },
+      create: { key: EVOLUTION_PLATFORM_KEY, value: stored as Prisma.InputJsonValue },
+      update: { value: stored as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.evolution_platform.upsert",
+      resourceType: "platform_setting",
+      resourceId: EVOLUTION_PLATFORM_KEY,
+      metadata: { enabled: stored.enabled, tenantQrOnly: stored.tenantQrOnly },
+      ip: clientIp(request),
+    });
+    const v = parseEvolutionPlatformValue(row.value);
+    return {
+      enabled: v?.enabled ?? false,
+      tenantQrOnly: v?.tenantQrOnly ?? false,
+      baseUrl: v?.baseUrl ?? "",
+      globalApiKeyMasked: v?.globalApiKey ? "••••••••" : "",
+      configured: !!(v && v.enabled && v.tenantQrOnly && v.baseUrl && v.globalApiKey),
     };
   });
 }

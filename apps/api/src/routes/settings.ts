@@ -6,6 +6,20 @@ import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js"
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import {
+  evolutionPlatformQrModeActive,
+  getEvolutionPlatformConfig,
+  isEvolutionQrModeActive,
+  resolveEvolutionApiCredentials,
+} from "../lib/evolutionPlatform.js";
+import {
+  evolutionApiCreateInstance,
+  evolutionApiFetchConnect,
+  evolutionApiFetchConnectionState,
+  evolutionConnectJsonToQrPayload,
+  evolutionInstanceNameForOrg,
+  evolutionInstanceNameWithSuffix,
+} from "../lib/evolutionInstanceApi.js";
+import {
   exchangeEmbeddedSignupCode,
   exchangeForLongLivedToken,
   fetchFirstPhoneNumberId,
@@ -76,6 +90,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       evolutionRichChat: p === "evolution",
       /** Há bot de canal configurado e pronto a receber webhooks (fila PENDING). */
       agentBotTriageActive,
+      /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
+      evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
     };
   });
 
@@ -91,7 +107,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         settings = await prisma.settings.create({ data: { organizationId } });
       }
 
-      return maskSettings(settings, organizationId);
+      return {
+        ...maskSettings(settings, organizationId),
+        evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+      };
     });
 
     admin.put("/", async (request, reply) => {
@@ -104,13 +123,21 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       let settings = await prisma.settings.findUnique({ where: { organizationId } });
-      const data = { ...parsed.data };
+      const data = { ...parsed.data } as Record<string, unknown>;
       if (data.evolutionApiBaseUrl === "") data.evolutionApiBaseUrl = null;
       if (data.agentBotId === "") data.agentBotId = null;
       if (data.csatSurveyMessage === "") data.csatSurveyMessage = null;
+
+      const qrMode = await evolutionPlatformQrModeActive();
+      const effectiveProvider = (data.whatsappProvider ?? settings?.whatsappProvider) ?? null;
+      if (qrMode && effectiveProvider === "evolution") {
+        delete data.evolutionApiBaseUrl;
+        delete data.whatsappApiKey;
+      }
+
       if (data.agentBotId) {
         const botOk = await prisma.bot.findFirst({
-          where: { id: data.agentBotId, organizationId },
+          where: { id: data.agentBotId as string, organizationId },
         });
         if (!botOk) {
           return reply.status(400).send({ error: "Bad Request", message: "Invalid agentBotId for this organization", statusCode: 400 });
@@ -118,15 +145,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       if (!settings) {
-        settings = await prisma.settings.create({ data: { organizationId, ...data } });
+        settings = await prisma.settings.create({
+          data: { organizationId, ...(data as typeof parsed.data) },
+        });
       } else {
         settings = await prisma.settings.update({
           where: { id: settings.id },
-          data,
+          data: data as typeof parsed.data,
         });
       }
 
-      return maskSettings(settings, organizationId);
+      return {
+        ...maskSettings(settings, organizationId),
+        evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+      };
     });
 
     admin.post("/test-connection", async (request, reply) => {
@@ -226,6 +258,174 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         const msg = e instanceof Error ? e.message : "Embedded signup failed";
         return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
       }
+    });
+
+    admin.post("/evolution-qr/start", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const platform = await getEvolutionPlatformConfig();
+      if (!isEvolutionQrModeActive(platform)) {
+        return reply.status(503).send({
+          error: "Service Unavailable",
+          message: "Evolution QR-managed mode is not enabled on this platform.",
+          statusCode: 503,
+        });
+      }
+
+      let settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (!settings) {
+        settings = await prisma.settings.create({ data: { organizationId } });
+      }
+
+      const webhookUrl = webhookUrlForOrganization(organizationId);
+      const secret = settings.whatsappWebhookSecret?.trim();
+      const webhookHeaders = secret ? { "x-openconduit-token": secret } : undefined;
+
+      const apiKey = platform.globalApiKey.trim();
+      const baseUrl = platform.baseUrl.trim();
+
+      let instanceName = evolutionInstanceNameForOrg(organizationId);
+      let createRes = await evolutionApiCreateInstance({
+        baseUrl,
+        apiKey,
+        instanceName,
+        webhookUrl,
+        webhookHeaders,
+      });
+
+      if (!createRes.ok) {
+        if (createRes.status === 403 || createRes.status === 409) {
+          const connectExisting = await evolutionApiFetchConnect(baseUrl, apiKey, instanceName);
+          if (!connectExisting.ok) {
+            instanceName = evolutionInstanceNameWithSuffix(evolutionInstanceNameForOrg(organizationId));
+            createRes = await evolutionApiCreateInstance({
+              baseUrl,
+              apiKey,
+              instanceName,
+              webhookUrl,
+              webhookHeaders,
+            });
+            if (!createRes.ok) {
+              return reply.status(502).send({
+                error: "Bad Gateway",
+                message: `Evolution instance/create: ${createRes.status} ${createRes.body.slice(0, 500)}`,
+                statusCode: 502,
+              });
+            }
+          }
+        } else {
+          return reply.status(502).send({
+            error: "Bad Gateway",
+            message: `Evolution instance/create: ${createRes.status} ${createRes.body.slice(0, 500)}`,
+            statusCode: 502,
+          });
+        }
+      }
+
+      await prisma.settings.update({
+        where: { organizationId },
+        data: {
+          whatsappProvider: "evolution",
+          whatsappPhoneNumberId: instanceName,
+          evolutionApiBaseUrl: null,
+          whatsappApiKey: null,
+        },
+      });
+
+      const conn = await evolutionApiFetchConnect(baseUrl, apiKey, instanceName);
+      if (!conn.ok) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: `Evolution instance/connect: ${conn.status} ${conn.body.slice(0, 500)}`,
+          statusCode: 502,
+        });
+      }
+
+      const qr = await evolutionConnectJsonToQrPayload(conn.raw);
+      const st = await evolutionApiFetchConnectionState(baseUrl, apiKey, instanceName);
+
+      return {
+        instanceName,
+        pairingCode: qr.pairingCode,
+        qrDataUrl: qr.qrDataUrl,
+        connectionState: st?.state ?? "",
+        connected: (st?.state ?? "").toLowerCase() === "open",
+      };
+    });
+
+    admin.get("/evolution-qr/qr", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const platform = await getEvolutionPlatformConfig();
+      if (!isEvolutionQrModeActive(platform)) {
+        return reply.status(503).send({
+          error: "Service Unavailable",
+          message: "Evolution QR-managed mode is not enabled on this platform.",
+          statusCode: 503,
+        });
+      }
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution" || !settings.whatsappPhoneNumberId?.trim()) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Start the Evolution QR flow first.",
+          statusCode: 400,
+        });
+      }
+
+      const creds = await resolveEvolutionApiCredentials(settings);
+      if (!creds) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Could not resolve Evolution credentials.",
+          statusCode: 400,
+        });
+      }
+
+      const conn = await evolutionApiFetchConnect(creds.baseUrl, creds.apiKey, creds.instanceName);
+      if (!conn.ok) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: `Evolution instance/connect: ${conn.status} ${conn.body.slice(0, 500)}`,
+          statusCode: 502,
+        });
+      }
+      const qr = await evolutionConnectJsonToQrPayload(conn.raw);
+      return {
+        instanceName: creds.instanceName,
+        pairingCode: qr.pairingCode,
+        qrDataUrl: qr.qrDataUrl,
+      };
+    });
+
+    admin.get("/evolution-qr/status", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution") {
+        return { connected: false, state: "", instanceName: settings?.whatsappPhoneNumberId ?? "" };
+      }
+
+      const creds = await resolveEvolutionApiCredentials(settings);
+      if (!creds) {
+        return {
+          connected: false,
+          state: "",
+          instanceName: settings.whatsappPhoneNumberId ?? "",
+        };
+      }
+
+      const st = await evolutionApiFetchConnectionState(creds.baseUrl, creds.apiKey, creds.instanceName);
+      const state = st?.state ?? "";
+      return {
+        connected: state.toLowerCase() === "open",
+        state,
+        instanceName: creds.instanceName,
+      };
     });
   });
 }

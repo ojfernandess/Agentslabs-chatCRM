@@ -9,6 +9,7 @@ import {
   listApprovedWabaMessageTemplates,
   metaTemplateToLocalFields,
 } from "../lib/metaWabaTemplates.js";
+import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
 
 async function syncWabaTemplatesForOrganization(organizationId: string, log: FastifyInstance["log"]): Promise<void> {
@@ -99,13 +100,11 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
-    const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
-    const instance = settings.whatsappPhoneNumberId?.trim() ?? "";
-    const apiKey = settings.whatsappApiKey?.trim() ?? "";
-    if (!baseUrl || !instance || !apiKey) {
+    const creds = await resolveEvolutionApiCredentials(settings);
+    if (!creds) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "Configure Evolution base URL, instance name and API key first",
+        message: "Configure Evolution (instance / URL & API key, or QR-managed mode) first",
         statusCode: 400,
       });
     }
@@ -121,9 +120,9 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       await evolutionCreateBusinessTemplate({
-        baseUrl,
-        apiKey,
-        instanceName: instance,
+        baseUrl: creds.baseUrl,
+        apiKey: creds.apiKey,
+        instanceName: creds.instanceName,
         name: parsed.data.name,
         category: parsed.data.category,
         language: parsed.data.language,

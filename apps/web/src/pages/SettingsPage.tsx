@@ -29,6 +29,7 @@ interface AppSettings {
   agentBotId?: string | null;
   csatEnabled: boolean;
   csatSurveyMessage: string | null;
+  evolutionPlatformQrMode?: boolean;
 }
 
 interface AgentBotOption {
@@ -130,6 +131,13 @@ export function SettingsPage() {
   const [embeddedError, setEmbeddedError] = useState("");
   const [embeddedSuccess, setEmbeddedSuccess] = useState(false);
   const authCodeRef = useRef<string | null>(null);
+
+  const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
+  const [evoQrBusy, setEvoQrBusy] = useState(false);
+  const [evoQrError, setEvoQrError] = useState("");
+  const [evoQrDataUrl, setEvoQrDataUrl] = useState<string | null>(null);
+  const [evoPairingCode, setEvoPairingCode] = useState<string | null>(null);
+  const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
   const businessDataRef = useRef<{
     business_id: string;
     waba_id: string;
@@ -188,6 +196,74 @@ export function SettingsPage() {
     return () => window.removeEventListener("message", handler);
   }, [isAdmin, embeddedInfo?.available, tryFinishEmbedded, t]);
 
+  useEffect(() => {
+    if (provider !== "evolution") {
+      setEvoQrDataUrl(null);
+      setEvoPairingCode(null);
+      setEvoQrError("");
+    }
+  }, [provider]);
+
+  useEffect(() => {
+    if (!isAdmin || !evolutionPlatformQrMode || provider !== "evolution") {
+      setEvoConnPoll(null);
+      return;
+    }
+    const tick = () => {
+      void api
+        .get<{ connected: boolean; state: string }>("/settings/evolution-qr/status")
+        .then((s) => setEvoConnPoll({ connected: s.connected, state: s.state }))
+        .catch(() => {});
+    };
+    tick();
+    const id = window.setInterval(tick, 4000);
+    return () => clearInterval(id);
+  }, [isAdmin, evolutionPlatformQrMode, provider]);
+
+  const startEvolutionQr = async () => {
+    setEvoQrBusy(true);
+    setEvoQrError("");
+    try {
+      const r = await api.post<{
+        instanceName: string;
+        pairingCode: string | null;
+        qrDataUrl: string | null;
+        connectionState: string;
+        connected: boolean;
+      }>("/settings/evolution-qr/start", {});
+      setPhoneNumberId(r.instanceName);
+      setProvider("evolution");
+      setEvoPairingCode(r.pairingCode);
+      setEvoQrDataUrl(r.qrDataUrl);
+      setEvoConnPoll({ connected: r.connected, state: r.connectionState });
+      const data = await api.get<AppSettings>("/settings");
+      setSettings(data);
+      setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+    } catch (err) {
+      setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
+    } finally {
+      setEvoQrBusy(false);
+    }
+  };
+
+  const refreshEvolutionQr = async () => {
+    setEvoQrBusy(true);
+    setEvoQrError("");
+    try {
+      const r = await api.get<{
+        instanceName: string;
+        pairingCode: string | null;
+        qrDataUrl: string | null;
+      }>("/settings/evolution-qr/qr");
+      setEvoPairingCode(r.pairingCode);
+      setEvoQrDataUrl(r.qrDataUrl);
+    } catch (err) {
+      setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
+    } finally {
+      setEvoQrBusy(false);
+    }
+  };
+
   const launchEmbeddedSignup = async () => {
     if (!embeddedInfo?.appId || !embeddedInfo.configurationId || !embeddedInfo.apiVersion) return;
     setEmbeddedError("");
@@ -227,6 +303,7 @@ export function SettingsPage() {
         setSettings(data);
         setProvider(data.whatsappProvider ?? "");
         setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
+        setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
         setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
@@ -390,18 +467,21 @@ export function SettingsPage() {
         lockSingleConversation,
       };
       if (provider) body.whatsappProvider = provider;
-      if (apiKey) body.whatsappApiKey = apiKey;
+      if (!(evolutionPlatformQrMode && provider === "evolution")) {
+        if (apiKey) body.whatsappApiKey = apiKey;
+      }
       if (phoneNumberId) body.whatsappPhoneNumberId = phoneNumberId;
       if (webhookSecret) body.whatsappWebhookSecret = webhookSecret;
-      if (provider === "evolution") {
+      if (provider === "evolution" && !evolutionPlatformQrMode) {
         body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
-      } else if (provider) {
+      } else if (provider && provider !== "evolution") {
         body.evolutionApiBaseUrl = null;
       }
       body.agentBotId = agentBotId.trim() ? agentBotId.trim() : null;
 
       const data = await api.put<AppSettings>("/settings", body);
       setSettings(data);
+      setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
       setApiKey("");
       setWebhookSecret("");
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
@@ -656,7 +736,70 @@ export function SettingsPage() {
                         </select>
                       </div>
 
-                      {provider === "evolution" && (
+                      {provider === "evolution" && evolutionPlatformQrMode ? (
+                        <div className="space-y-4 rounded-lg border border-brand-200 bg-brand-50/60 p-4">
+                          <div>
+                            <h3 className="text-sm font-semibold text-gray-900">{t("settings.evolutionQrTitle")}</h3>
+                            <p className="mt-1 text-xs text-gray-600">{t("settings.evolutionQrSubtitle")}</p>
+                          </div>
+                          {evoConnPoll ? (
+                            <p className="text-sm text-gray-800">
+                              <span className="font-medium">{t("settings.evolutionQrState")}:</span>{" "}
+                              {evoConnPoll.connected ? (
+                                <span className="text-green-700">{t("settings.evolutionQrConnected")}</span>
+                              ) : (
+                                <span className="text-amber-800">
+                                  {evoConnPoll.state || t("settings.evolutionQrNotConnected")}
+                                </span>
+                              )}
+                            </p>
+                          ) : null}
+                          {phoneNumberId ? (
+                            <p className="text-xs text-gray-600">
+                              <span className="font-medium text-gray-800">{t("settings.evolutionQrInstance")}:</span>{" "}
+                              <code className="rounded bg-white px-1.5 py-0.5">{phoneNumberId}</code>
+                            </p>
+                          ) : null}
+                          {evoPairingCode ? (
+                            <p className="text-xs text-gray-600">
+                              <span className="font-medium text-gray-800">{t("settings.evolutionQrPairing")}:</span>{" "}
+                              {evoPairingCode}
+                            </p>
+                          ) : null}
+                          {evoQrError ? (
+                            <p className="text-sm text-red-600" role="alert">
+                              {evoQrError}
+                            </p>
+                          ) : null}
+                          {evoQrDataUrl ? (
+                            <div className="flex justify-center">
+                              <img src={evoQrDataUrl} alt="WhatsApp QR" className="h-56 w-56 rounded-lg border border-gray-200 bg-white p-2" />
+                            </div>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={evoQrBusy}
+                              onClick={() => void startEvolutionQr()}
+                              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                            >
+                              {evoQrBusy ? t("settings.evolutionQrBusy") : t("settings.evolutionQrCta")}
+                            </button>
+                            {phoneNumberId ? (
+                              <button
+                                type="button"
+                                disabled={evoQrBusy}
+                                onClick={() => void refreshEvolutionQr()}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                {t("settings.evolutionQrRefresh")}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {provider === "evolution" && !evolutionPlatformQrMode && (
                         <div>
                           <label className="block text-sm font-medium text-gray-700">
                             Evolution API base URL
@@ -676,6 +819,7 @@ export function SettingsPage() {
                         </div>
                       )}
 
+                      {!(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           {provider === "evolution" ? "API key" : "API Key"}
@@ -687,7 +831,7 @@ export function SettingsPage() {
                           placeholder={settings?.whatsappApiKey ? "••••••••" : "Enter API key"}
                           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
-                        {provider === "evolution" && (
+                        {provider === "evolution" && !evolutionPlatformQrMode && (
                           <p className="mt-1 text-xs text-gray-500">
                             Same value as Evolution&apos;s global API key env (often{" "}
                             <code className="rounded bg-gray-100 px-1">AUTHENTICATION_API_KEY</code>); sent as the{" "}
@@ -695,7 +839,9 @@ export function SettingsPage() {
                           </p>
                         )}
                       </div>
+                      )}
 
+                      {!(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           {provider === "evolution" ? "Instance name" : "Phone Number ID"}
@@ -712,6 +858,7 @@ export function SettingsPage() {
                           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
+                      )}
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Webhook secret</label>

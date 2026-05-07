@@ -20,6 +20,7 @@ import {
   BarChart3,
   Settings2,
   MessageCircle,
+  QrCode,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -171,12 +172,21 @@ interface SuperWhatsAppEmbeddedPayload {
   metaWebhookCallbackUrl: string;
 }
 
+interface SuperEvolutionPlatformPayload {
+  enabled: boolean;
+  tenantQrOnly: boolean;
+  baseUrl: string;
+  globalApiKeyMasked: string;
+  configured: boolean;
+}
+
 type SuperSection =
   | "overview"
   | "usageMetrics"
   | "organizations"
   | "globalSettings"
   | "whatsappEmbedded"
+  | "evolutionPlatform"
   | "monitoring"
   | "platformApps"
   | "auditLog"
@@ -243,6 +253,16 @@ export function SuperAdminPage() {
   const [waEmbApiVersion, setWaEmbApiVersion] = useState("v22.0");
   const [waEmbVerifyToken, setWaEmbVerifyToken] = useState("");
   const [waEmbCallbackCopied, setWaEmbCallbackCopied] = useState(false);
+
+  const [evoPlLoad, setEvoPlLoad] = useState(false);
+  const [evoPlLoadFailed, setEvoPlLoadFailed] = useState(false);
+  const [evoPlRefresh, setEvoPlRefresh] = useState(0);
+  const [evoPlSave, setEvoPlSave] = useState(false);
+  const [evoPlSnapshot, setEvoPlSnapshot] = useState<SuperEvolutionPlatformPayload | null>(null);
+  const [evoPlEnabled, setEvoPlEnabled] = useState(false);
+  const [evoPlTenantQrOnly, setEvoPlTenantQrOnly] = useState(false);
+  const [evoPlBaseUrl, setEvoPlBaseUrl] = useState("");
+  const [evoPlGlobalApiKey, setEvoPlGlobalApiKey] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -422,6 +442,33 @@ export function SuperAdminPage() {
       cancelled = true;
     };
   }, [section, waEmbRefresh]);
+
+  useEffect(() => {
+    if (section !== "evolutionPlatform") return;
+    let cancelled = false;
+    setEvoPlLoad(true);
+    setEvoPlLoadFailed(false);
+    setError("");
+    void api
+      .get<SuperEvolutionPlatformPayload>("/super/evolution-platform")
+      .then((d) => {
+        if (cancelled) return;
+        setEvoPlSnapshot(d);
+        setEvoPlEnabled(d.enabled);
+        setEvoPlTenantQrOnly(d.tenantQrOnly);
+        setEvoPlBaseUrl(d.baseUrl);
+        setEvoPlGlobalApiKey("");
+      })
+      .catch(() => {
+        if (!cancelled) setEvoPlLoadFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setEvoPlLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section, evoPlRefresh]);
 
   useEffect(() => {
     if (!usersOrg) {
@@ -652,6 +699,33 @@ export function SuperAdminPage() {
     }
   };
 
+  const saveEvolutionPlatform = async (e: FormEvent) => {
+    e.preventDefault();
+    setEvoPlSave(true);
+    setError("");
+    try {
+      const body: {
+        enabled: boolean;
+        tenantQrOnly: boolean;
+        baseUrl: string;
+        globalApiKey?: string;
+      } = {
+        enabled: evoPlEnabled,
+        tenantQrOnly: evoPlTenantQrOnly,
+        baseUrl: evoPlBaseUrl.trim(),
+      };
+      const key = evoPlGlobalApiKey.trim();
+      if (key) body.globalApiKey = key;
+      const d = await api.put<SuperEvolutionPlatformPayload>("/super/evolution-platform", body);
+      setEvoPlSnapshot(d);
+      setEvoPlGlobalApiKey("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível guardar.");
+    } finally {
+      setEvoPlSave(false);
+    }
+  };
+
   const copyWaEmbCallback = async () => {
     const url = waEmbSnapshot?.metaWebhookCallbackUrl;
     if (!url) return;
@@ -699,6 +773,7 @@ export function SuperAdminPage() {
           {navItem("organizations", t("superAdmin.organizations"), Building2)}
           {navItem("globalSettings", t("superAdmin.globalSettings"), Settings2)}
           {navItem("whatsappEmbedded", t("superAdmin.whatsappEmbedded"), MessageCircle)}
+          {navItem("evolutionPlatform", t("superAdmin.evolutionPlatform"), QrCode)}
           {navItem("monitoring", t("superAdmin.monitoring"), Activity)}
           {navItem("platformApps", t("superAdmin.platformApps"), Box)}
           {navItem("auditLog", t("superAdmin.auditLog"), ScrollText)}
@@ -994,6 +1069,104 @@ export function SuperAdminPage() {
                   </div>
                   <button type="submit" className="btn-primary" disabled={waEmbSave}>
                     {waEmbSave ? t("common.loading") : t("superAdmin.whatsappEmbeddedSave")}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {section === "evolutionPlatform" && (
+            <div className="mx-auto max-w-3xl space-y-8">
+              <div>
+                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.evolutionPlatform")}</h1>
+                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.evolutionPlatformSubtitle")}</p>
+                <a
+                  href="https://doc.evolution-api.com/v2/en/get-started/introduction"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {t("superAdmin.evolutionPlatformDocLink")} →
+                </a>
+              </div>
+              {evoPlLoad ? (
+                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+              ) : evoPlLoadFailed || !evoPlSnapshot ? (
+                <div className="card-surface space-y-3 p-6">
+                  <p className="text-sm text-ink-700">{t("superAdmin.evolutionPlatformLoadError")}</p>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    onClick={() => setEvoPlRefresh((n) => n + 1)}
+                  >
+                    {t("superAdmin.evolutionPlatformRetry")}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={(e) => void saveEvolutionPlatform(e)} className="card-surface space-y-5 p-6">
+                  {evoPlSnapshot.configured ? (
+                    <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+                      {t("superAdmin.evolutionPlatformConfigured")}
+                    </p>
+                  ) : (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                      {t("superAdmin.evolutionPlatformIncomplete")}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <label className="flex items-center gap-2 text-sm text-ink-800">
+                      <input
+                        type="checkbox"
+                        checked={evoPlEnabled}
+                        onChange={(e) => setEvoPlEnabled(e.target.checked)}
+                        className="rounded border-ink-300"
+                      />
+                      {t("superAdmin.evolutionPlatformEnabled")}
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-ink-800">
+                      <input
+                        type="checkbox"
+                        checked={evoPlTenantQrOnly}
+                        onChange={(e) => setEvoPlTenantQrOnly(e.target.checked)}
+                        className="rounded border-ink-300"
+                      />
+                      {t("superAdmin.evolutionPlatformTenantQrOnly")}
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.evolutionPlatformBaseUrl")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.evolutionPlatformBaseUrlHint")}</p>
+                    <input
+                      type="url"
+                      value={evoPlBaseUrl}
+                      onChange={(e) => setEvoPlBaseUrl(e.target.value)}
+                      placeholder="https://evolution.example.com"
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.evolutionPlatformGlobalApiKey")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.evolutionPlatformGlobalApiKeyHint")}</p>
+                    <input
+                      type="password"
+                      value={evoPlGlobalApiKey}
+                      onChange={(e) => setEvoPlGlobalApiKey(e.target.value)}
+                      placeholder={
+                        evoPlSnapshot.globalApiKeyMasked
+                          ? `${t("superAdmin.evolutionPlatformSecretKeep")} (${evoPlSnapshot.globalApiKeyMasked})`
+                          : undefined
+                      }
+                      className="input-field mt-2"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={evoPlSave}>
+                    {evoPlSave ? t("common.loading") : t("superAdmin.evolutionPlatformSave")}
                   </button>
                 </form>
               )}
