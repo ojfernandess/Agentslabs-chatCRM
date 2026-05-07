@@ -12,6 +12,8 @@ export const sendMessageSchema = z
     mediaType: z.string().max(128).optional(),
     /** Nota interna: não contacta o cliente no WhatsApp. */
     isPrivate: z.boolean().optional(),
+    /** Valores para {{1}}, {{2}}, … no modelo WhatsApp Cloud API. */
+    templateBodyParameters: z.array(z.string().max(4096)).max(20).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "TEMPLATE") {

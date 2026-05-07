@@ -622,6 +622,47 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
   }
 }
 
+export async function evolutionCreateBusinessTemplate(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceName: string;
+  name: string;
+  category: string;
+  language: string;
+  body: string;
+  footer?: string;
+}): Promise<unknown> {
+  const base = normalizeBaseUrl(options.baseUrl);
+  const instance = encodeURIComponent(options.instanceName);
+  const url = `${base}/template/create/${instance}`;
+  const components: Array<Record<string, unknown>> = [{ type: "BODY", text: options.body }];
+  if (options.footer?.trim()) {
+    components.push({ type: "FOOTER", text: options.footer.trim() });
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: options.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: options.name,
+      category: options.category,
+      language: options.language,
+      components,
+    }),
+  });
+  const txt = await res.text();
+  if (!res.ok) {
+    throw new Error(`Evolution template/create: ${res.status} ${txt}`);
+  }
+  try {
+    return JSON.parse(txt) as unknown;
+  } catch {
+    return { raw: txt };
+  }
+}
+
 function mimetypeFromFilename(fileName: string, fallback: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
   const map: Record<string, string> = {

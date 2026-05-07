@@ -5,7 +5,12 @@ export interface SendMessageParams {
   mediaUrl?: string;
   /** MIME explícito (upload) — Evolution usa para mimetype no sendMedia. */
   mediaType?: string;
+  /** Nome do modelo na Meta (message template name). */
   templateName?: string;
+  /** Código de idioma do modelo (ex. pt_BR). */
+  templateLanguage?: string;
+  /** Valores {{1}}, {{2}}, … para o componente BODY (Cloud API). */
+  templateBodyParameters?: string[];
 }
 
 export interface IncomingMessage {

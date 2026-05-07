@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil, Star } from "lucide-react";
+import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil, Star, FileText } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -13,7 +13,7 @@ import {
 } from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
 
-type SettingsSection = "channel" | "notifications" | "csat" | "crm" | "team";
+type SettingsSection = "channel" | "notifications" | "csat" | "crm" | "templates" | "team";
 
 interface AppSettings {
   whatsappProvider: string | null;
@@ -115,6 +115,15 @@ export function SettingsPage() {
 
   const [agentBotOptions, setAgentBotOptions] = useState<AgentBotOption[]>([]);
   const [agentBotId, setAgentBotId] = useState("");
+
+  const [evoTplName, setEvoTplName] = useState("");
+  const [evoTplCategory, setEvoTplCategory] = useState<"MARKETING" | "UTILITY" | "AUTHENTICATION">("UTILITY");
+  const [evoTplLanguage, setEvoTplLanguage] = useState("pt_BR");
+  const [evoTplBody, setEvoTplBody] = useState("");
+  const [evoTplFooter, setEvoTplFooter] = useState("");
+  const [evoTplBusy, setEvoTplBusy] = useState(false);
+  const [evoTplError, setEvoTplError] = useState("");
+  const [evoTplSuccess, setEvoTplSuccess] = useState(false);
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
   const [embeddedBusy, setEmbeddedBusy] = useState(false);
@@ -418,6 +427,35 @@ export function SettingsPage() {
     }
   };
 
+  const submitEvolutionTemplate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (provider !== "evolution") {
+      setEvoTplError(t("settings.evoTplWrongProvider"));
+      return;
+    }
+    setEvoTplBusy(true);
+    setEvoTplError("");
+    setEvoTplSuccess(false);
+    try {
+      await api.post("/templates/evolution", {
+        name: evoTplName.trim(),
+        category: evoTplCategory,
+        language: evoTplLanguage.trim(),
+        body: evoTplBody.trim(),
+        ...(evoTplFooter.trim() ? { footer: evoTplFooter.trim() } : {}),
+      });
+      setEvoTplSuccess(true);
+      setEvoTplName("");
+      setEvoTplBody("");
+      setEvoTplFooter("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("settings.evoTplFailed");
+      setEvoTplError(msg);
+    } finally {
+      setEvoTplBusy(false);
+    }
+  };
+
   const webhookDisplay =
     settings?.webhookUrl ??
     (effectiveOrgId ? `${window.location.origin}/webhooks/whatsapp/${effectiveOrgId}` : "");
@@ -466,6 +504,7 @@ export function SettingsPage() {
                   ["notifications", t("settings.sectionNotifications"), Bell],
                   ["csat", t("settings.sectionCsat"), Star],
                   ["crm", t("settings.sectionCrm"), Tag],
+                  ["templates", t("settings.sectionTemplates"), FileText],
                   ["team", t("settings.sectionTeam"), UserPlus],
                 ] as const
               ).map(([id, label, Icon]) => (
@@ -1054,6 +1093,113 @@ export function SettingsPage() {
                   </form>
                   {ltError && <p className="mt-2 text-sm text-red-600">{ltError}</p>}
                   <p className="mt-3 text-xs text-gray-400">{t("settings.saveLeadTypesNote")}</p>
+                </motion.div>
+              )}
+
+              {section === "templates" && (
+                <motion.div
+                  className="space-y-6"
+                  variants={staggerItem}
+                >
+                  <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                      <FileText className="h-5 w-5" />
+                      {t("settings.templatesTitle")}
+                    </h2>
+                    <p className="text-sm text-gray-600">{t("settings.templatesMetaHint")}</p>
+                  </div>
+
+                  {provider === "evolution" ? (
+                    <motion.form
+                      className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                      variants={staggerItem}
+                      onSubmit={(e) => void submitEvolutionTemplate(e)}
+                    >
+                      <h3 className="mb-1 font-semibold text-gray-900">{t("settings.templatesEvolutionTitle")}</h3>
+                      <p className="mb-4 text-sm text-gray-500">{t("settings.templatesEvolutionHint")}</p>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600">{t("settings.evoTplName")}</label>
+                          <input
+                            value={evoTplName}
+                            onChange={(e) => setEvoTplName(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            required
+                            maxLength={512}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">
+                            {t("settings.evoTplCategory")}
+                          </label>
+                          <select
+                            value={evoTplCategory}
+                            onChange={(e) =>
+                              setEvoTplCategory(e.target.value as typeof evoTplCategory)
+                            }
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value="UTILITY">UTILITY</option>
+                            <option value="MARKETING">MARKETING</option>
+                            <option value="AUTHENTICATION">AUTHENTICATION</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">
+                            {t("settings.evoTplLanguage")}
+                          </label>
+                          <input
+                            value={evoTplLanguage}
+                            onChange={(e) => setEvoTplLanguage(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            placeholder="pt_BR"
+                            required
+                            maxLength={32}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600">{t("settings.evoTplBody")}</label>
+                          <textarea
+                            value={evoTplBody}
+                            onChange={(e) => setEvoTplBody(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            rows={5}
+                            required
+                            maxLength={4096}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600">
+                            {t("settings.evoTplFooter")}
+                          </label>
+                          <input
+                            value={evoTplFooter}
+                            onChange={(e) => setEvoTplFooter(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            maxLength={160}
+                          />
+                        </div>
+                      </div>
+                      {evoTplError ? <p className="mt-3 text-sm text-red-600">{evoTplError}</p> : null}
+                      {evoTplSuccess ? (
+                        <p className="mt-3 text-sm text-green-700">{t("settings.evoTplSuccess")}</p>
+                      ) : null}
+                      <button
+                        type="submit"
+                        disabled={evoTplBusy || !evoTplName.trim() || !evoTplBody.trim()}
+                        className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                      >
+                        {evoTplBusy ? t("common.loading") : t("settings.evoTplSubmit")}
+                      </button>
+                    </motion.form>
+                  ) : (
+                    <motion.div
+                      className="rounded-xl border border-amber-100 bg-amber-50/80 p-4 text-sm text-amber-950"
+                      variants={staggerItem}
+                    >
+                      {t("settings.templatesEvolutionOnly")}
+                    </motion.div>
+                  )}
                 </motion.div>
               )}
 

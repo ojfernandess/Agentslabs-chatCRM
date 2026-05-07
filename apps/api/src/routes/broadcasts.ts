@@ -137,6 +137,14 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
+      if (messageType === "TEMPLATE" && tpl.bodyVariableCount > 0) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "Campaigns only support templates without body variables. Send personalised templates from the conversation.",
+          statusCode: 400,
+        });
+      }
     }
 
     const audienceCount = await countBroadcastAudience(organizationId, tagIds);

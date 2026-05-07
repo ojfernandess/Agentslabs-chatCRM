@@ -58,7 +58,7 @@ export const messages = {
     broadcastPage: {
       title: "Campanhas e disparo",
       subtitle:
-        "Envio em massa para contactos com etiquetas (estilo campanhas Z-PRO). Use modelo aprovado (TEMPLATE) fora da janela de 24 h.",
+        "Envio em massa para contactos com etiquetas. Para WhatsApp Cloud API, use modelos (TEMPLATE) sem variáveis no corpo ou envie modelos com variáveis a partir da conversa.",
       newCampaign: "Nova campanha",
       formTitle: "Nova campanha (rascunho)",
       name: "Nome",
@@ -68,6 +68,7 @@ export const messages = {
       body: "Texto",
       template: "Modelo",
       selectTemplate: "Selecione…",
+      templatesCampaignHint: "Só aparecem modelos sem variáveis no corpo (os restantes devem ser enviados na conversa).",
       tags: "Etiquetas da audiência",
       tagsHint: "Contactos que tenham pelo menos uma destas etiquetas entram na campanha (exclui grupos).",
       previewLoading: "A calcular audiência…",
@@ -93,7 +94,21 @@ export const messages = {
       statusFailed: "Erro",
       statusCancelled: "Cancelada",
       footnote:
-        "Próximas evoluções (paridade Z-PRO): SMS, galeria de mídia, agendamento, filas distribuídas e variáveis por contacto.",
+        "Evoluções possíveis: SMS, galeria de mídia, agendamento, filas distribuídas e variáveis por contacto em campanhas.",
+    },
+    templateModal: {
+      title: "Modelo de mensagem",
+      fillHint: "Preencha os campos abaixo para enviar o modelo.",
+      preview: "Pré-visualização",
+      bodyVar: "Corpo {{n}}",
+      noVariables: "Este modelo não tem variáveis no corpo.",
+      fillAll: "Preencha todos os campos.",
+      send: "Enviar mensagem",
+      sending: "A enviar…",
+      sendFailed: "Não foi possível enviar o modelo.",
+      categoryUtility: "Utilitário",
+      categoryMarketing: "Marketing",
+      categoryAuthentication: "Autenticação",
     },
     dealsPage: {
       subtitle: "Oportunidades e totais por estado (WON vs em negociação)",
@@ -662,6 +677,24 @@ export const messages = {
       sectionCrm: "CRM e leads",
       sectionTeam: "Equipa",
       sectionCsat: "Satisfação (CSAT)",
+      sectionTemplates: "Modelos de mensagem",
+      templatesTitle: "Modelos de mensagem (WhatsApp)",
+      templatesMetaHint:
+        "Com Meta / WhatsApp Cloud API ou 360dialog, os modelos aprovados na conta comercial são sincronizados automaticamente quando alguém abre a lista de modelos (ex.: nesta página ou na conversa). Use variáveis na conversa, fora da janela de 24 h.",
+      templatesEvolutionTitle: "Criar modelo na Evolution API",
+      templatesEvolutionHint:
+        "Envia um pedido à instância Evolution (`POST /template/create`). O modelo é também guardado localmente para escolha rápida. Variáveis no texto: {{1}}, {{2}}, …",
+      templatesEvolutionOnly:
+        "A criação de modelos via Evolution só está disponível quando o canal está definido para Evolution API. Modelos Meta são geridos na Meta Business e sincronizados aqui.",
+      evoTplName: "Nome interno do modelo",
+      evoTplCategory: "Categoria",
+      evoTplLanguage: "Idioma (ex.: pt_BR)",
+      evoTplBody: "Texto do corpo",
+      evoTplFooter: "Rodapé (opcional)",
+      evoTplSubmit: "Criar modelo na Evolution",
+      evoTplSuccess: "Pedido enviado. O modelo foi adicionado à lista local.",
+      evoTplWrongProvider: "Selecione Evolution API no canal WhatsApp.",
+      evoTplFailed: "Não foi possível criar o modelo na Evolution.",
       csatIntro:
         "Após finalizar um atendimento, o cliente recebe por WhatsApp uma mensagem com link para avaliar de 1 a 5. Só funciona dentro da janela de sessão do WhatsApp (24h após a última mensagem do cliente), salvo uso de modelo aprovado.",
       csatEnable: "Activar inquérito CSAT ao finalizar",
@@ -857,7 +890,7 @@ export const messages = {
     broadcastPage: {
       title: "Campaigns & broadcasts",
       subtitle:
-        "Mass send to contacts matching tags (Z-PRO-style). Use an approved TEMPLATE outside the 24-hour session window.",
+        "Mass send to contacts matching tags. On WhatsApp Cloud API, use templates (TEMPLATE) without body variables in campaigns, or send variable templates from the conversation.",
       newCampaign: "New campaign",
       formTitle: "New campaign (draft)",
       name: "Name",
@@ -867,6 +900,7 @@ export const messages = {
       body: "Text",
       template: "Template",
       selectTemplate: "Select…",
+      templatesCampaignHint: "Only templates without body variables are listed (send variable templates from a conversation).",
       tags: "Audience tags",
       tagsHint: "Contacts with at least one of these tags are included (group chats excluded).",
       previewLoading: "Estimating audience…",
@@ -892,7 +926,21 @@ export const messages = {
       statusFailed: "Failed",
       statusCancelled: "Cancelled",
       footnote:
-        "Next steps toward Z-PRO parity: SMS, media gallery, scheduling, distributed queues, and per-contact variables.",
+        "Possible next steps: SMS, media gallery, scheduling, distributed queues, and per-contact variables in campaigns.",
+    },
+    templateModal: {
+      title: "Message template",
+      fillHint: "Fill in the fields below to send this template.",
+      preview: "Preview",
+      bodyVar: "Body {{n}}",
+      noVariables: "This template has no body variables.",
+      fillAll: "Fill in every field.",
+      send: "Send message",
+      sending: "Sending…",
+      sendFailed: "Could not send the template.",
+      categoryUtility: "Utility",
+      categoryMarketing: "Marketing",
+      categoryAuthentication: "Authentication",
     },
     dealsPage: {
       subtitle: "Opportunities and totals by outcome (WON vs in negotiation)",
@@ -1459,6 +1507,24 @@ export const messages = {
       sectionCrm: "CRM & lead types",
       sectionTeam: "Team",
       sectionCsat: "Satisfaction (CSAT)",
+      sectionTemplates: "Message templates",
+      templatesTitle: "Message templates (WhatsApp)",
+      templatesMetaHint:
+        "With Meta / WhatsApp Cloud API or 360dialog, approved templates sync automatically when someone loads the template list (e.g. here or in a conversation). Fill variables when sending outside the 24-hour session window.",
+      templatesEvolutionTitle: "Create template on Evolution API",
+      templatesEvolutionHint:
+        "Calls your Evolution instance (`POST /template/create`). The template is also saved locally for quick replies. Body variables: {{1}}, {{2}}, …",
+      templatesEvolutionOnly:
+        "Evolution template creation is only available when the channel provider is Evolution API. Meta templates are managed in Meta Business and synced here.",
+      evoTplName: "Template name",
+      evoTplCategory: "Category",
+      evoTplLanguage: "Language (e.g. en_US)",
+      evoTplBody: "Body text",
+      evoTplFooter: "Footer (optional)",
+      evoTplSubmit: "Create template on Evolution",
+      evoTplSuccess: "Request sent. Template added to the local list.",
+      evoTplWrongProvider: "Select Evolution API on the WhatsApp channel.",
+      evoTplFailed: "Could not create the template on Evolution.",
       csatIntro:
         "After you resolve a conversation, the customer gets a WhatsApp message with a link to rate 1–5. This works within the WhatsApp session window (24h after the customer’s last message) unless you use an approved template.",
       csatEnable: "Enable CSAT survey when resolving",

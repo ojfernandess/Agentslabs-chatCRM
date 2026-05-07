@@ -145,6 +145,31 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
     }
 
+    if (parsed.data.type === "TEMPLATE" && parsed.data.templateId) {
+      const tmpl = await prisma.messageTemplate.findFirst({
+        where: { id: parsed.data.templateId, organizationId },
+      });
+      if (!tmpl) {
+        return reply.status(404).send({ error: "Not Found", message: "Template not found", statusCode: 404 });
+      }
+      const n = tmpl.bodyVariableCount;
+      const p = parsed.data.templateBodyParameters ?? [];
+      if (n > 0 && p.length !== n) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: `This template requires ${n} variable value(s) in templateBodyParameters`,
+          statusCode: 400,
+        });
+      }
+      if (n === 0 && p.length > 0) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "This template has no body variables; omit templateBodyParameters",
+          statusCode: 400,
+        });
+      }
+    }
+
     try {
       const { message } = await deliverOutboundWhatsAppMessage({
         organizationId,

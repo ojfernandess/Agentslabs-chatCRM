@@ -44,6 +44,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
+import { TemplateSendModal } from "@/components/TemplateSendModal";
 
 interface Message {
   id: string;
@@ -89,6 +90,9 @@ interface MessageTemplateRow {
   id: string;
   name: string;
   body: string;
+  bodyVariableCount: number;
+  metaCategory?: string | null;
+  templateLanguage?: string;
 }
 
 interface OrgTagRow {
@@ -187,6 +191,8 @@ export function ConversationDetailPage() {
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const [teamPickerId, setTeamPickerId] = useState("");
   const [evolutionRichChat, setEvolutionRichChat] = useState(false);
+  const [whatsappProvider, setWhatsappProvider] = useState<string | null>(null);
+  const [templateModalTemplate, setTemplateModalTemplate] = useState<MessageTemplateRow | null>(null);
   const [agentBotTriageActive, setAgentBotTriageActive] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
@@ -262,11 +268,17 @@ export function ConversationDetailPage() {
   useEffect(() => {
     async function loadChannel() {
       try {
-        const ch = await api.get<{ evolutionRichChat: boolean; agentBotTriageActive?: boolean }>("/settings/channel");
+        const ch = await api.get<{
+          evolutionRichChat: boolean;
+          agentBotTriageActive?: boolean;
+          whatsappProvider?: string | null;
+        }>("/settings/channel");
         setEvolutionRichChat(ch.evolutionRichChat);
         setAgentBotTriageActive(ch.agentBotTriageActive ?? false);
+        setWhatsappProvider(ch.whatsappProvider ?? null);
       } catch {
         setEvolutionRichChat(false);
+        setWhatsappProvider(null);
       }
     }
     void loadChannel();
@@ -316,7 +328,13 @@ export function ConversationDetailPage() {
     void (async () => {
       try {
         const rows = await api.get<MessageTemplateRow[]>("/templates");
-        if (!cancelled) setMessageTemplates(rows);
+        if (!cancelled)
+          setMessageTemplates(
+            (Array.isArray(rows) ? rows : []).map((r) => ({
+              ...r,
+              bodyVariableCount: typeof r.bodyVariableCount === "number" ? r.bodyVariableCount : 0,
+            })),
+          );
       } catch {
         if (!cancelled) setMessageTemplates([]);
       }
@@ -443,6 +461,8 @@ export function ConversationDetailPage() {
   const isOutsideWindow = lastInbound
     ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
     : true;
+
+  const isWaba = whatsappProvider === "meta" || whatsappProvider === "360dialog";
 
   useEffect(() => {
     return () => {
@@ -1850,7 +1870,7 @@ export function ConversationDetailPage() {
                     <div className="relative" ref={templateWrapRef}>
                       <motion.button
                         type="button"
-                        disabled={recording || !!voicePreview}
+                        disabled={recording || !!voicePreview || ((isOutsideWindow && !privateNote) && !isWaba)}
                         onClick={() => {
                           setTemplateMenuOpen((o) => !o);
                           setEmojiOpen(false);
@@ -1870,8 +1890,12 @@ export function ConversationDetailPage() {
                               className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
                               title={t("conversationDetail.pickTemplate")}
                               onClick={() => {
-                                setNewMessage(tp.body);
                                 setTemplateMenuOpen(false);
+                                if (isWaba && isOutsideWindow && !privateNote) {
+                                  setTemplateModalTemplate(tp);
+                                  return;
+                                }
+                                setNewMessage(tp.body);
                               }}
                             >
                               <span className="font-semibold">{tp.name}</span>
@@ -2362,6 +2386,16 @@ export function ConversationDetailPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      <TemplateSendModal
+        open={templateModalTemplate !== null}
+        template={templateModalTemplate}
+        contactId={conversation?.contact.id ?? ""}
+        onClose={() => setTemplateModalTemplate(null)}
+        onSent={async () => {
+          stickToBottomRef.current = true;
+          await loadConversation();
+        }}
+      />
     </div>
   );
 }

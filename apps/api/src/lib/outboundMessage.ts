@@ -7,6 +7,9 @@ import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
 
+import type { MessageTemplate } from "@prisma/client";
+import { substituteBodyPlaceholders } from "./templateVariables.js";
+
 export type OutboundActor =
   | { kind: "user"; userId: string }
   | { kind: "agent_bot"; botId: string };
@@ -61,6 +64,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     include: { agentBot: true },
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
+  const providerKind = channelSettings?.whatsappProvider;
+  const isMetaProvider = providerKind === "meta" || providerKind === "360dialog";
   const botTriageActive =
     Boolean(channelSettings?.agentBotId) &&
     Boolean(channelSettings?.agentBot?.isActive) &&
@@ -91,15 +96,32 @@ export async function deliverOutboundWhatsAppMessage(options: {
     });
   }
 
+  let templateRow: MessageTemplate | null = null;
   let messageBody = body;
   if (type === "TEMPLATE" && templateId) {
-    const template = await prisma.messageTemplate.findFirst({
+    templateRow = await prisma.messageTemplate.findFirst({
       where: { id: templateId, organizationId },
     });
-    if (!template) {
+    if (!templateRow) {
       throw new Error("Template not found");
     }
-    messageBody = template.body;
+    const params = data.templateBodyParameters ?? [];
+    if (templateRow.bodyVariableCount > 0 && params.length !== templateRow.bodyVariableCount) {
+      throw new Error(
+        `Template requires exactly ${templateRow.bodyVariableCount} variable(s) for the message body`,
+      );
+    }
+    messageBody = substituteBodyPlaceholders(templateRow.body, params);
+  } else if (type === "TEMPLATE") {
+    throw new Error("Template not found");
+  }
+
+  if (type === "TEMPLATE" && !isPrivate && isMetaProvider && templateRow) {
+    if (!templateRow.providerTemplateId?.trim()) {
+      throw new Error(
+        "Template is missing the WhatsApp Business template name. Reload templates (sync runs when you open the list) or pick a synced model.",
+      );
+    }
   }
 
   let providerMsgId: string | undefined;
@@ -112,9 +134,17 @@ export async function deliverOutboundWhatsAppMessage(options: {
         providerMsgId = await provider.sendMessage({
           to,
           type,
-          body: messageBody,
+          body: messageBody ?? "",
           mediaUrl,
           mediaType,
+          ...(type === "TEMPLATE" && isMetaProvider && templateRow?.providerTemplateId
+            ? {
+                templateName: templateRow.providerTemplateId,
+                templateLanguage: templateRow.templateLanguage,
+                templateBodyParameters:
+                  templateRow.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
+              }
+            : {}),
         });
       }
     } catch (err) {

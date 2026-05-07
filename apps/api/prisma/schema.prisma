@@ -585,6 +585,11 @@ model MessageTemplate {
   body               String   @db.Text
   providerTemplateId String?  @map("provider_template_id")
   isApproved         Boolean  @default(false) @map("is_approved")
+  /// Código de idioma Meta / WhatsApp Cloud API (ex.: pt_BR, en_US).
+  templateLanguage   String   @default("en") @map("template_language") @db.VarChar(32)
+  /// Número de variáveis no corpo ({{1}} … {{n}}), derivado do texto ou da API Meta.
+  bodyVariableCount  Int      @default(0) @map("body_variable_count")
+  metaCategory       String?  @map("meta_category") @db.VarChar(64)
   createdAt          DateTime @default(now()) @map("created_at")
 
   organizationId String       @map("organization_id") @db.Uuid
@@ -592,6 +597,7 @@ model MessageTemplate {
   broadcastCampaigns BroadcastCampaign[]
 
   @@index([organizationId])
+  @@index([organizationId, providerTemplateId, templateLanguage])
   @@map("message_templates")
 }
 

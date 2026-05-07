@@ -32,6 +32,7 @@ interface TagOption {
 interface TemplateOption {
   id: string;
   name: string;
+  bodyVariableCount?: number;
 }
 
 export function BroadcastCampaignsPage() {
@@ -95,7 +96,9 @@ export function BroadcastCampaignsPage() {
         api.get<TemplateOption[]>("/templates"),
       ]);
       setTags(Array.isArray(tagList) ? tagList : []);
-      setTemplates(Array.isArray(tplList) ? tplList : []);
+      setTemplates(
+        (Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0),
+      );
     } catch {
       setTags([]);
       setTemplates([]);
@@ -267,6 +270,9 @@ export function BroadcastCampaignsPage() {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-500">
+                    {t("broadcastPage.templatesCampaignHint")}
+                  </p>
                 </>
               ) : (
                 <>
