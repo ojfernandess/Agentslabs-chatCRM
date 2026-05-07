@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { getOrganizationFeatureMap } from "../lib/featureFlags.js";
 import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
@@ -127,6 +128,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const orgIdForFeatures =
+      user.role === "SUPER_ADMIN" ? actingId : user.organizationId;
+    const organizationFeatures =
+      orgIdForFeatures !== null && orgIdForFeatures !== undefined
+        ? await getOrganizationFeatureMap(orgIdForFeatures)
+        : undefined;
+
     return {
       ...user,
       role: user.role as string,
@@ -134,6 +142,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       actingOrganization,
       superAdminActorId,
       superAdminActor,
+      organizationFeatures,
     };
   });
 

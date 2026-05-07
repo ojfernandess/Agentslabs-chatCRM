@@ -174,6 +174,7 @@ export function ConversationDetailPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -1122,47 +1123,68 @@ export function ConversationDetailPage() {
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
           {t("conversationDetail.dealValue")} / {t("conversationDetail.pipelineStage")}
         </p>
-        {conversation.contact.pipelineStage ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className="inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold text-white"
-              style={{ backgroundColor: conversation.contact.pipelineStage.color }}
-            >
-              {conversation.contact.pipelineStage.name}
-            </span>
-            {conversation.contact.pipelineStage.pipeline?.name ? (
-              <span className="text-xs text-ink-500 dark:text-ink-400">
-                {t("conversationDetail.pipelineLabel")}: {conversation.contact.pipelineStage.pipeline.name}
-              </span>
-            ) : null}
-          </div>
+        {funnelEnabled ? (
+          <>
+            {conversation.contact.pipelineStage ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold text-white"
+                  style={{ backgroundColor: conversation.contact.pipelineStage.color }}
+                >
+                  {conversation.contact.pipelineStage.name}
+                </span>
+                {conversation.contact.pipelineStage.pipeline?.name ? (
+                  <span className="text-xs text-ink-500 dark:text-ink-400">
+                    {t("conversationDetail.pipelineLabel")}: {conversation.contact.pipelineStage.pipeline.name}
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-ink-500 dark:text-ink-500">{t("conversationDetail.noPipelineStage")}</p>
+            )}
+            <p className="mt-2 text-sm font-medium text-ink-800 dark:text-ink-200">
+              {conversation.status === "RESOLVED" && conversation.closureValue != null && conversation.closureValue > 0
+                ? fmtMoney(conversation.closureValue)
+                : t("conversationDetail.noDealValue")}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">
+              {t("conversationDetail.dragDropKanbanHint")}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to={`/contacts/${conversation.contact.id}`}
+                onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+                className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+              >
+                {t("conversationDetail.openContactCrm")}
+              </Link>
+              <Link
+                to="/crm"
+                onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+              >
+                <Kanban className="h-3.5 w-3.5" />
+                {t("conversationDetail.openKanban")}
+              </Link>
+            </div>
+            <p className="mt-2 text-[11px] text-ink-500 dark:text-ink-500">{t("conversationDetail.actionMoveFunnelHint")}</p>
+          </>
         ) : (
-          <p className="mt-2 text-xs text-ink-500 dark:text-ink-500">{t("conversationDetail.noPipelineStage")}</p>
+          <>
+            <p className="mt-2 text-xs text-ink-600 dark:text-ink-400">
+              {t("conversationDetail.funnelDisabledHint")}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to={`/contacts/${conversation.contact.id}`}
+                onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+                className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+              >
+                {t("conversationDetail.openContactCrm")}
+              </Link>
+            </div>
+          </>
         )}
-        <p className="mt-2 text-sm font-medium text-ink-800 dark:text-ink-200">
-          {conversation.status === "RESOLVED" && conversation.closureValue != null && conversation.closureValue > 0
-            ? fmtMoney(conversation.closureValue)
-            : t("conversationDetail.noDealValue")}
-        </p>
-        <p className="mt-2 text-[11px] leading-relaxed text-ink-500 dark:text-ink-400">{t("conversationDetail.dragDropKanbanHint")}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Link
-            to={`/contacts/${conversation.contact.id}`}
-            onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
-            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
-          >
-            {t("conversationDetail.openContactCrm")}
-          </Link>
-          <Link
-            to="/crm"
-            onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
-            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
-          >
-            <Kanban className="h-3.5 w-3.5" />
-            {t("conversationDetail.openKanban")}
-          </Link>
-        </div>
-        <p className="mt-2 text-[11px] text-ink-500 dark:text-ink-500">{t("conversationDetail.actionMoveFunnelHint")}</p>
       </div>
 
       {tenantAdmin ? (
@@ -1429,13 +1451,15 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.transferOpen")}
               </button>
             ) : null}
-            <Link
-              to="/crm"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
-            >
-              <Kanban className="h-3.5 w-3.5" />
-              {t("conversationDetail.actionMoveFunnel")}
-            </Link>
+            {funnelEnabled ? (
+              <Link
+                to="/crm"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+              >
+                <Kanban className="h-3.5 w-3.5" />
+                {t("conversationDetail.actionMoveFunnel")}
+              </Link>
+            ) : null}
             {conversation.status === "OPEN" && agentBotTriageActive ? (
               <button
                 type="button"

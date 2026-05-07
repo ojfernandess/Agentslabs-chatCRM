@@ -22,6 +22,8 @@ export interface AuthUser {
   actingOrganization?: { id: string; name: string; slug: string } | null;
   superAdminActorId?: string | null;
   superAdminActor?: { id: string; email: string; name: string } | null;
+  /** Estado efectivo das feature flags do tenant (ausente fora de contexto org). */
+  organizationFeatures?: Record<string, boolean>;
 }
 
 interface AuthContextValue {

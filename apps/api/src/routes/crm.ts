@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
@@ -7,6 +7,20 @@ import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dealStatusFromLeadValueRollup } from "../lib/dealStageSync.js";
 import { DealStatus, Prisma } from "@prisma/client";
+import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+
+async function requireCrmDeals(organizationId: string, reply: FastifyReply): Promise<boolean> {
+  const enabled = await isOrganizationFeatureEnabled(organizationId, "crm_deals");
+  if (!enabled) {
+    reply.status(403).send({
+      error: "Forbidden",
+      message: "Negócios e produtos estão desativados para esta organização.",
+      statusCode: 403,
+    });
+    return false;
+  }
+  return true;
+}
 
 const timelineQuerySchema = z.object({
   subjectType: z.enum(["CONTACT", "ACCOUNT", "DEAL"]),
@@ -110,6 +124,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.get("/pipeline-stages", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     await getOrCreateDefaultPipeline(prisma, organizationId);
     return prisma.pipelineStage.findMany({
       where: { pipeline: { organizationId, isDefault: true } },
@@ -228,6 +243,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.get("/products", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     const rows = await prisma.product.findMany({
       where: { organizationId },
       orderBy: { name: "asc" },
@@ -239,6 +255,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.post("/products", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     const parsed = createProductSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -259,6 +276,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>("/products/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     const parsed = patchProductSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -284,6 +302,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.get("/deals", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
 
     const where: Prisma.DealWhereInput = { organizationId };
 
@@ -305,6 +324,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.post("/deals", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
 
     const parsed = createDealSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -395,6 +415,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>("/deals/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     const row = await prisma.deal.findFirst({
       where: { id: request.params.id, organizationId },
       include: {
@@ -415,6 +436,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>("/deals/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
 
     const parsed = patchDealSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -533,6 +555,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>("/deals/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
     const existing = await prisma.deal.findFirst({
       where: { id: request.params.id, organizationId },
     });
@@ -546,6 +569,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/deals/:id/line-items", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
 
     const deal = await prisma.deal.findFirst({
       where: { id: request.params.id, organizationId },
@@ -589,6 +613,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
+      if (!(await requireCrmDeals(organizationId, reply))) return;
 
       const existing = await prisma.dealLineItem.findFirst({
         where: {
@@ -640,6 +665,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
+      if (!(await requireCrmDeals(organizationId, reply))) return;
 
       const res = await prisma.dealLineItem.deleteMany({
         where: {

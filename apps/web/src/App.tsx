@@ -22,6 +22,28 @@ import { CsatPage } from "@/pages/CsatPage";
 import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
+function OrgFeatureRoute({
+  flagKey,
+  children,
+}: {
+  flagKey: "crm_kanban" | "crm_deals";
+  children: React.ReactNode;
+}) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+  const enabled = user?.organizationFeatures?.[flagKey] ?? true;
+  if (!enabled) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
@@ -92,8 +114,22 @@ export function App() {
         <Route path="conversation-audit" element={<ConversationAuditPage />} />
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="contacts/:id" element={<ContactDetailPage />} />
-        <Route path="crm" element={<CrmKanbanPage />} />
-        <Route path="deals" element={<DealsPage />} />
+        <Route
+          path="crm"
+          element={
+            <OrgFeatureRoute flagKey="crm_kanban">
+              <CrmKanbanPage />
+            </OrgFeatureRoute>
+          }
+        />
+        <Route
+          path="deals"
+          element={
+            <OrgFeatureRoute flagKey="crm_deals">
+              <DealsPage />
+            </OrgFeatureRoute>
+          }
+        />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />

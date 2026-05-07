@@ -7,6 +7,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: true,
   },
   {
+    key: "crm_deals",
+    defaultEnabled: true,
+  },
+  {
     key: "message_templates",
     defaultEnabled: true,
   },
@@ -47,4 +51,16 @@ export async function isOrganizationFeatureEnabled(
   });
   if (!row) return fallback;
   return row.enabled;
+}
+
+/** Mapa de todas as flags conhecidas para o tenant (valores efectivos após fallback). */
+export async function getOrganizationFeatureMap(
+  organizationId: string,
+): Promise<Record<FeatureFlagKey, boolean>> {
+  const entries = await Promise.all(
+    FEATURE_FLAG_DEFINITIONS.map(
+      async (d) => [d.key, await isOrganizationFeatureEnabled(organizationId, d.key)] as const,
+    ),
+  );
+  return Object.fromEntries(entries) as Record<FeatureFlagKey, boolean>;
 }

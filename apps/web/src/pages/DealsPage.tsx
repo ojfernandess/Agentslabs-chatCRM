@@ -9,6 +9,8 @@ import {
   modalVariants,
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/hooks/useAuth";
+import { isTenantAdmin } from "@/lib/authRole";
 import { Briefcase, Plus, X, ListTree, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { APP_CURRENCY, formatCurrencyFromCents } from "@/lib/currency";
@@ -63,6 +65,9 @@ function centsToEurosInput(cents: number): string {
 
 export function DealsPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const canManageProducts = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const funnelKanbanEnabled = user?.organizationFeatures?.crm_kanban ?? true;
   const [deals, setDeals] = useState<DealRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -87,6 +92,11 @@ export function DealsPage() {
   const [lineProductId, setLineProductId] = useState("");
   const [lineError, setLineError] = useState("");
   const [lineSubmitting, setLineSubmitting] = useState(false);
+
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductBusy, setNewProductBusy] = useState(false);
+  const [newProductError, setNewProductError] = useState("");
 
   const [detailStageId, setDetailStageId] = useState("");
   const [stageSaving, setStageSaving] = useState(false);
@@ -157,6 +167,33 @@ export function DealsPage() {
     setDetailStageId("");
     setDetailName("");
     setNameMessage("");
+    setNewProductName("");
+    setNewProductPrice("");
+    setNewProductError("");
+  };
+
+  const handleCreateProduct = async () => {
+    if (!detailId) return;
+    setNewProductError("");
+    if (!newProductName.trim()) {
+      setNewProductError(t("dealsPage.createProductName"));
+      return;
+    }
+    setNewProductBusy(true);
+    try {
+      await api.post("/crm/products", {
+        name: newProductName.trim(),
+        priceCents: newProductPrice.trim() ? moneyInputToCents(newProductPrice) : 0,
+      });
+      setNewProductName("");
+      setNewProductPrice("");
+      const prodRes = await api.get<{ data: ProductOption[] }>("/crm/products");
+      setProducts(prodRes.data);
+    } catch (e) {
+      setNewProductError(e instanceof ApiError ? e.message : t("dealsPage.createProductError"));
+    } finally {
+      setNewProductBusy(false);
+    }
   };
 
   const refreshDetailAndList = async (dealId: string) => {
@@ -356,11 +393,19 @@ export function DealsPage() {
 
         {stages.length === 0 && !loading ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Não foi possível carregar etapas do pipeline. Confirme permissões ou crie etapas em{" "}
-            <Link to="/crm" className="font-medium underline">
-              Funil CRM
-            </Link>
-            .
+            Não foi possível carregar etapas do pipeline.
+            {funnelKanbanEnabled ? (
+              <>
+                {" "}
+                Confirme permissões ou crie etapas em{" "}
+                <Link to="/crm" className="font-medium underline">
+                  Funil CRM
+                </Link>
+                .
+              </>
+            ) : (
+              <> Peça a um administrador da plataforma para rever as etapas do pipeline.</>
+            )}
           </div>
         ) : null}
 
@@ -671,6 +716,34 @@ export function DealsPage() {
                     )}
 
                     <h3 className="mb-2 text-sm font-medium text-gray-700">Adicionar linha</h3>
+                    {canManageProducts ? (
+                      <div className="mb-4 space-y-2 rounded-lg border border-dashed border-gray-200 bg-gray-50/90 p-3">
+                        <p className="text-xs font-medium text-gray-600">{t("dealsPage.createProduct")}</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            placeholder={t("dealsPage.createProductName")}
+                            value={newProductName}
+                            onChange={(e) => setNewProductName(e.target.value)}
+                          />
+                          <input
+                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            placeholder={t("dealsPage.createProductPrice")}
+                            value={newProductPrice}
+                            onChange={(e) => setNewProductPrice(e.target.value)}
+                          />
+                        </div>
+                        {newProductError ? <p className="text-xs text-red-600">{newProductError}</p> : null}
+                        <button
+                          type="button"
+                          disabled={newProductBusy}
+                          className="rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-ink-900 disabled:opacity-60"
+                          onClick={() => void handleCreateProduct()}
+                        >
+                          {newProductBusy ? t("dealsPage.createProductBusy") : t("dealsPage.createProductSubmit")}
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="space-y-3 rounded-lg border border-gray-200 p-3">
                       <input
                         className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"

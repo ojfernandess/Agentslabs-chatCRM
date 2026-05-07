@@ -1552,6 +1552,16 @@ export function SuperAdminPage() {
                               <div className="flex flex-col items-end gap-1">
                                 <button
                                   type="button"
+                                  onClick={() => {
+                                    setFlagsOrgId(o.id);
+                                    setSection("featureFlags");
+                                  }}
+                                  className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                                >
+                                  {t("superAdmin.orgOpenFeatures")}
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => openBillingModal(o)}
                                   className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
                                 >

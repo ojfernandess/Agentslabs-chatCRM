@@ -44,6 +44,8 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const showCrmKanban = user?.organizationFeatures?.crm_kanban ?? true;
+  const showDeals = user?.organizationFeatures?.crm_deals ?? true;
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
 
@@ -99,7 +101,13 @@ export function Layout() {
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map((item) =>
+          {navItems
+            .filter((item) => {
+              if (item.to === "/crm") return showCrmKanban;
+              if (item.to === "/deals") return showDeals;
+              return true;
+            })
+            .map((item) =>
             item.to === "/conversations" ? (
               <Fragment key="conversations-tree">
                 <Link
