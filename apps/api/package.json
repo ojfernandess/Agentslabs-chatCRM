@@ -13,6 +13,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:resolve:evolution-applied": "prisma migrate resolve --applied 20260202120000_add_evolution_api_base_url",
     "db:migrate:resolve:evolution-rolled-back": "prisma migrate resolve --rolled-back 20260202120000_add_evolution_api_base_url",
+    "db:migrate:resolve:inbox-ingest-rolled-back": "prisma migrate resolve --rolled-back 20260518140000_inbox_ingest",
     "db:seed": "tsx prisma/seed.ts",
     "db:list-users": "tsx prisma/list-users.ts",
     "db:reset-password": "tsx prisma/reset-password.ts",
