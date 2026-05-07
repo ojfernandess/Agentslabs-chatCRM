@@ -19,6 +19,7 @@ import { BotsPage } from "@/pages/BotsPage";
 import { MyAttendancePage } from "@/pages/MyAttendancePage";
 import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { CsatPage } from "@/pages/CsatPage";
+import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -98,6 +99,7 @@ export function App() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="bots" element={<BotsPage />} />
+        <Route path="broadcasts" element={<BroadcastCampaignsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

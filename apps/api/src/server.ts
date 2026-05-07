@@ -29,6 +29,7 @@ import { botRoutes } from "./routes/bots.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
 import { publicCsatRoutes } from "./routes/publicCsat.js";
+import { broadcastRoutes } from "./routes/broadcasts.js";
 
 const app = Fastify({
   logger: {
@@ -85,6 +86,7 @@ await app.register(crmRoutes, { prefix: "/api/v1/crm" });
 await app.register(leadTypeRoutes, { prefix: "/api/v1/lead-types" });
 await app.register(reminderRoutes, { prefix: "/api/v1/reminders" });
 await app.register(templateRoutes, { prefix: "/api/v1/templates" });
+await app.register(broadcastRoutes, { prefix: "/api/v1/broadcasts" });
 await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
 await app.register(userRoutes, { prefix: "/api/v1/users" });
 await app.register(superRoutes, { prefix: "/api/v1/super" });

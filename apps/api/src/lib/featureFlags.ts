@@ -26,6 +26,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "whatsapp_groups",
     defaultEnabled: false,
   },
+  {
+    key: "broadcast_campaigns",
+    defaultEnabled: true,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

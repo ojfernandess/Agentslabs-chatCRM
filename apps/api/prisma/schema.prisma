@@ -40,6 +40,20 @@ enum MessageStatus {
   FAILED
 }
 
+enum BroadcastCampaignStatus {
+  DRAFT
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum BroadcastRecipientStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum DealStatus {
   OPEN
   WON
@@ -107,6 +121,7 @@ model Organization {
   featureFlags     OrganizationFeatureFlag[]
   teams            Team[]
   bots             Bot[]
+  broadcastCampaigns BroadcastCampaign[]
 
   @@map("organizations")
 }
@@ -218,6 +233,7 @@ model User {
   timelineEvents        TimelineEvent[]
   teamMemberships       TeamMember[]
   messagesAsActor       Message[]      @relation("MessageActor")
+  broadcastCampaignsCreated BroadcastCampaign[] @relation("BroadcastCampaignCreator")
 
   @@index([organizationId])
   @@map("users")
@@ -259,6 +275,7 @@ model Contact {
   conversations Conversation[]
   reminders     Reminder[]
   dealsPrimary  Deal[]         @relation("DealPrimaryContact")
+  broadcastRecipients BroadcastCampaignRecipient[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -278,6 +295,7 @@ model Tag {
 
   contacts ContactTag[]
   rules    AutoTagRule[]
+  broadcastCampaignTags BroadcastCampaignTag[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -571,9 +589,73 @@ model MessageTemplate {
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  broadcastCampaigns BroadcastCampaign[]
 
   @@index([organizationId])
   @@map("message_templates")
+}
+
+model BroadcastCampaign {
+  id             String                 @id @default(uuid()) @db.Uuid
+  name           String                 @db.VarChar(200)
+  status         BroadcastCampaignStatus @default(DRAFT)
+  /// Apenas TEXT ou TEMPLATE são aceites na API de campanhas.
+  messageType    MessageType            @map("message_type")
+  body           String?                @db.Text
+  templateId     String?                @map("template_id") @db.Uuid
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("BroadcastCampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  template MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  totalRecipients Int       @default(0) @map("total_recipients")
+  sentCount       Int       @default(0) @map("sent_count")
+  failedCount     Int       @default(0) @map("failed_count")
+  lastError       String?   @map("last_error") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tags       BroadcastCampaignTag[]
+  recipients BroadcastCampaignRecipient[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("broadcast_campaigns")
+}
+
+model BroadcastCampaignTag {
+  campaignId String @map("campaign_id") @db.Uuid
+  tagId      String @map("tag_id") @db.Uuid
+
+  campaign BroadcastCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tag      Tag               @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, tagId])
+  @@map("broadcast_campaign_tags")
+}
+
+model BroadcastCampaignRecipient {
+  id         String                   @id @default(uuid()) @db.Uuid
+  campaignId String                   @map("campaign_id") @db.Uuid
+  contactId  String                   @map("contact_id") @db.Uuid
+  status     BroadcastRecipientStatus @default(PENDING)
+  error      String?                  @db.Text
+  sentAt     DateTime?                @map("sent_at")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  campaign BroadcastCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId])
+  @@map("broadcast_campaign_recipients")
 }
 
 model AutoTagRule {
