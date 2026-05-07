@@ -825,15 +825,16 @@ export const messages = {
       whatsappEmbeddedSecretKeep: "Deixe vazio para manter o segredo existente",
       evolutionPlatform: "Evolution API (plataforma)",
       evolutionPlatformSubtitle:
-        "URL do servidor Evolution e chave global da API. Os tenants criam instâncias e ligam o WhatsApp só por QR, sem expor segredos no browser.",
+        "URL do servidor Evolution e chave global da API. Com a opção activa, os tenants ligam o WhatsApp só por QR (sem repetir URL/chave nas definições do canal).",
       evolutionPlatformDocLink: "Documentação Evolution API v2",
       evolutionPlatformLoadError: "Não foi possível carregar as definições.",
       evolutionPlatformRetry: "Tentar novamente",
       evolutionPlatformConfigured: "Modo só-QR activo. Os tenants usam «Ligar com QR» nas definições do canal.",
       evolutionPlatformIncomplete:
-        "Active a gestão Evolution, marque «só QR», preencha o URL base e a chave API global.",
+        "Ligue a opção acima e preencha o URL base e a chave API global para activar o fluxo por QR nos tenants.",
       evolutionPlatformEnabled: "Evolution gerida pela plataforma activa",
-      evolutionPlatformTenantQrOnly: "Clientes ligam apenas por QR (sem URL/chave manual no tenant)",
+      evolutionPlatformEnabledHint:
+        "Com esta opção ligada, URL e chave abaixo aplicam-se a todos os tenants; nas definições do canal escolhem Evolution e ligam só por QR (sem URL/chave no formulário).",
       evolutionPlatformBaseUrl: "URL público do Evolution API",
       evolutionPlatformBaseUrlHint:
         "Raiz do servidor (v2), sem path. O backend chama /instance/create e /instance/connect.",
@@ -1686,15 +1687,16 @@ export const messages = {
       whatsappEmbeddedSecretKeep: "Leave blank to keep the existing secret",
       evolutionPlatform: "Evolution API (platform)",
       evolutionPlatformSubtitle:
-        "Evolution server URL and global API key. Tenants create instances and link WhatsApp via QR only — secrets never go to the browser.",
+        "Evolution server URL and global API key. When enabled, tenants connect WhatsApp via QR only (no duplicate URL/key in channel settings).",
       evolutionPlatformDocLink: "Evolution API v2 documentation",
       evolutionPlatformLoadError: "Could not load settings.",
       evolutionPlatformRetry: "Try again",
       evolutionPlatformConfigured: "QR-only mode is on. Tenants use “Connect with QR” in channel settings.",
       evolutionPlatformIncomplete:
-        "Enable platform Evolution, check QR-only, and fill in the base URL and global API key.",
+        "Turn on the option above and fill in the base URL and global API key to enable the tenant QR flow.",
       evolutionPlatformEnabled: "Platform-managed Evolution enabled",
-      evolutionPlatformTenantQrOnly: "Tenants connect via QR only (no manual URL/API key in tenant UI)",
+      evolutionPlatformEnabledHint:
+        "When on, the URL and key below apply to all tenants; in channel settings they pick Evolution and connect via QR only (no URL/key fields in the form).",
       evolutionPlatformBaseUrl: "Evolution API public URL",
       evolutionPlatformBaseUrlHint: "Server root (v2), no path. The backend calls /instance/create and /instance/connect.",
       evolutionPlatformGlobalApiKey: "Global API key (apikey header)",

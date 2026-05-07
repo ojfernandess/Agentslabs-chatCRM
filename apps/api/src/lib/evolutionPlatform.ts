@@ -16,12 +16,19 @@ function asRecord(v: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function coerceBool(v: unknown, defaultTrue = false): boolean {
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  return defaultTrue;
+}
+
 export function parseEvolutionPlatformValue(raw: unknown): EvolutionPlatformConfig | null {
   const r = asRecord(raw);
   if (!r) return null;
   return {
-    enabled: r.enabled === true,
-    tenantQrOnly: r.tenantQrOnly === true,
+    enabled: coerceBool(r.enabled, false),
+    /** Legacy field; tenant QR/UI uses platform credentials whenever enabled+URL+key (see isEvolutionQrModeActive). */
+    tenantQrOnly: coerceBool(r.tenantQrOnly, true),
     baseUrl: String(r.baseUrl ?? "").trim(),
     globalApiKey: String(r.globalApiKey ?? "").trim(),
   };
@@ -34,10 +41,10 @@ export async function getEvolutionPlatformConfig(): Promise<EvolutionPlatformCon
   return parseEvolutionPlatformValue(row?.value);
 }
 
+/** Evolution gerida: plataforma tem URL + chave; tenants criam instância e ligam por QR (sem pedir URL/chave no painel). */
 export function isEvolutionQrModeActive(cfg: EvolutionPlatformConfig | null): cfg is EvolutionPlatformConfig {
   return !!(
     cfg?.enabled &&
-    cfg.tenantQrOnly &&
     cfg.baseUrl.trim().length > 0 &&
     cfg.globalApiKey.trim().length > 0
   );

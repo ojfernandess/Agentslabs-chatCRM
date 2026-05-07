@@ -69,7 +69,7 @@ const whatsappEmbeddedPutSchema = z.object({
 
 const evolutionPlatformPutSchema = z.object({
   enabled: z.boolean(),
-  tenantQrOnly: z.boolean(),
+  tenantQrOnly: z.boolean().optional(),
   baseUrl: z.string().max(512),
   globalApiKey: z.string().max(512).optional(),
 });
@@ -735,7 +735,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       tenantQrOnly: v.tenantQrOnly,
       baseUrl: v.baseUrl,
       globalApiKeyMasked: v.globalApiKey ? "••••••••" : "",
-      configured: !!(v.enabled && v.tenantQrOnly && v.baseUrl && v.globalApiKey),
+      configured: !!(v.enabled && v.baseUrl && v.globalApiKey),
     };
   });
 
@@ -754,12 +754,12 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const baseUrl = parsed.data.baseUrl.trim();
-    if (parsed.data.enabled && parsed.data.tenantQrOnly) {
+    if (parsed.data.enabled) {
       if (!baseUrl || !globalApiKey) {
         return reply.status(400).send({
           error: "Bad Request",
           message:
-            "When enabling QR-only managed Evolution, baseUrl and globalApiKey are required (omit globalApiKey only to keep the existing key).",
+            "When enabling platform Evolution, baseUrl and globalApiKey are required (omit globalApiKey only to keep the existing key).",
           statusCode: 400,
         });
       }
@@ -767,7 +767,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
 
     const stored = {
       enabled: parsed.data.enabled,
-      tenantQrOnly: parsed.data.tenantQrOnly,
+      tenantQrOnly: parsed.data.enabled,
       baseUrl,
       globalApiKey,
     };
@@ -791,7 +791,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       tenantQrOnly: v?.tenantQrOnly ?? false,
       baseUrl: v?.baseUrl ?? "",
       globalApiKeyMasked: v?.globalApiKey ? "••••••••" : "",
-      configured: !!(v && v.enabled && v.tenantQrOnly && v.baseUrl && v.globalApiKey),
+      configured: !!(v && v.enabled && v.baseUrl && v.globalApiKey),
     };
   });
 }

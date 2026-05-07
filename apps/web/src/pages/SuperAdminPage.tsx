@@ -260,7 +260,6 @@ export function SuperAdminPage() {
   const [evoPlSave, setEvoPlSave] = useState(false);
   const [evoPlSnapshot, setEvoPlSnapshot] = useState<SuperEvolutionPlatformPayload | null>(null);
   const [evoPlEnabled, setEvoPlEnabled] = useState(false);
-  const [evoPlTenantQrOnly, setEvoPlTenantQrOnly] = useState(false);
   const [evoPlBaseUrl, setEvoPlBaseUrl] = useState("");
   const [evoPlGlobalApiKey, setEvoPlGlobalApiKey] = useState("");
 
@@ -455,7 +454,6 @@ export function SuperAdminPage() {
         if (cancelled) return;
         setEvoPlSnapshot(d);
         setEvoPlEnabled(d.enabled);
-        setEvoPlTenantQrOnly(d.tenantQrOnly);
         setEvoPlBaseUrl(d.baseUrl);
         setEvoPlGlobalApiKey("");
       })
@@ -706,12 +704,10 @@ export function SuperAdminPage() {
     try {
       const body: {
         enabled: boolean;
-        tenantQrOnly: boolean;
         baseUrl: string;
         globalApiKey?: string;
       } = {
         enabled: evoPlEnabled,
-        tenantQrOnly: evoPlTenantQrOnly,
         baseUrl: evoPlBaseUrl.trim(),
       };
       const key = evoPlGlobalApiKey.trim();
@@ -1113,26 +1109,16 @@ export function SuperAdminPage() {
                       {t("superAdmin.evolutionPlatformIncomplete")}
                     </p>
                   )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <label className="flex items-center gap-2 text-sm text-ink-800">
-                      <input
-                        type="checkbox"
-                        checked={evoPlEnabled}
-                        onChange={(e) => setEvoPlEnabled(e.target.checked)}
-                        className="rounded border-ink-300"
-                      />
-                      {t("superAdmin.evolutionPlatformEnabled")}
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-ink-800">
-                      <input
-                        type="checkbox"
-                        checked={evoPlTenantQrOnly}
-                        onChange={(e) => setEvoPlTenantQrOnly(e.target.checked)}
-                        className="rounded border-ink-300"
-                      />
-                      {t("superAdmin.evolutionPlatformTenantQrOnly")}
-                    </label>
-                  </div>
+                  <label className="flex items-center gap-2 text-sm text-ink-800">
+                    <input
+                      type="checkbox"
+                      checked={evoPlEnabled}
+                      onChange={(e) => setEvoPlEnabled(e.target.checked)}
+                      className="rounded border-ink-300"
+                    />
+                    {t("superAdmin.evolutionPlatformEnabled")}
+                  </label>
+                  <p className="text-xs text-ink-500">{t("superAdmin.evolutionPlatformEnabledHint")}</p>
                   <div>
                     <label className="block text-xs font-medium text-ink-600">
                       {t("superAdmin.evolutionPlatformBaseUrl")}
