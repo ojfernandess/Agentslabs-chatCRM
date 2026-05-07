@@ -371,11 +371,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (parsed.data.assignedToId !== undefined && parsed.data.assignedToId !== null) {
-      const assignee = await prisma.user.findFirst({
+      const assigneeInOrg = await prisma.user.findFirst({
         where: { id: parsed.data.assignedToId, organizationId },
         select: { id: true },
       });
-      if (!assignee) {
+      /** Super admin no tenant (`actingOrganizationId`) costuma ter `organizationId` null em `users`. */
+      const superAdminSelfInTenant =
+        request.user.role === "SUPER_ADMIN" &&
+        !!request.user.actingOrganizationId &&
+        parsed.data.assignedToId === request.user.id;
+      if (!assigneeInOrg && !superAdminSelfInTenant) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedToId", statusCode: 400 });
       }
       const effectiveTeamAfter =
@@ -384,7 +389,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         const inTeam = await prisma.teamMember.findFirst({
           where: { userId: parsed.data.assignedToId, teamId: effectiveTeamAfter },
         });
-        if (!inTeam) {
+        const adminGrabsForSelf =
+          isTenantAdmin(request.user) && parsed.data.assignedToId === request.user.id;
+        if (!inTeam && !adminGrabsForSelf) {
           return reply.status(400).send({
             error: "Bad Request",
             message: "Assignee must be a member of the conversation team",

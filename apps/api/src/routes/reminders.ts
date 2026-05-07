@@ -7,12 +7,19 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 const reminderSchema = z.object({
   contactId: z.string().uuid(),
   note: z.string().min(1).max(2000),
-  dueAt: z.string().datetime(),
+  dueAt: z
+    .string()
+    .min(1)
+    .refine((s) => !Number.isNaN(new Date(s).getTime()), { message: "Invalid dueAt" }),
 });
 
 const updateReminderSchema = z.object({
   note: z.string().min(1).max(2000).optional(),
-  dueAt: z.string().datetime().optional(),
+  dueAt: z
+    .string()
+    .min(1)
+    .refine((s) => !Number.isNaN(new Date(s).getTime()), { message: "Invalid dueAt" })
+    .optional(),
   completed: z.boolean().optional(),
 });
 
