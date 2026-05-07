@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,6 +23,7 @@ import {
   QrCode,
 } from "lucide-react";
 import clsx from "clsx";
+import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 
 interface OrgRow {
   id: string;
@@ -229,6 +230,7 @@ export function SuperAdminPage() {
   const [usageLoading, setUsageLoading] = useState(false);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingRow[]>([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [publicDocsBusy, setPublicDocsBusy] = useState(false);
   const [settingKeyInput, setSettingKeyInput] = useState("maintenance_mode");
   const [settingValueInput, setSettingValueInput] = useState('{"enabled":false}');
   const [billingOrg, setBillingOrg] = useState<OrgRow | null>(null);
@@ -405,6 +407,16 @@ export function SuperAdminPage() {
       setSettingsLoading(false);
     }
   }, []);
+
+  const publicDocsEnabled = useMemo(() => {
+    const row = platformSettings.find((s) => s.key === PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY);
+    if (!row) return false;
+    if (row.value === true) return true;
+    if (typeof row.value === "object" && row.value !== null && "enabled" in (row.value as object)) {
+      return Boolean((row.value as { enabled?: unknown }).enabled);
+    }
+    return false;
+  }, [platformSettings]);
 
   useEffect(() => {
     if (section === "usageMetrics") void fetchUsageMetrics();
@@ -633,6 +645,22 @@ export function SuperAdminPage() {
       await fetchPlatformSettingsList();
     } catch {
       setError("Não foi possível guardar a definição.");
+    }
+  };
+
+  const savePublicDocsVisibility = async (enabled: boolean) => {
+    setPublicDocsBusy(true);
+    setError("");
+    try {
+      await api.put("/super/platform-settings", {
+        key: PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY,
+        value: enabled,
+      });
+      await fetchPlatformSettingsList();
+    } catch {
+      setError(t("superAdmin.publicApiDocsSaveError"));
+    } finally {
+      setPublicDocsBusy(false);
     }
   };
 
@@ -892,6 +920,32 @@ export function SuperAdminPage() {
                 <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.globalSettings")}</h1>
                 <p className="mt-1 text-sm text-ink-600">{t("superAdmin.globalSettingsSubtitle")}</p>
               </div>
+              <section className="card-surface p-6">
+                <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.publicApiDocsTitle")}</h2>
+                <p className="mb-4 text-sm text-ink-600">{t("superAdmin.publicApiDocsSubtitle")}</p>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-800 dark:text-ink-200">
+                    <input
+                      type="checkbox"
+                      checked={publicDocsEnabled}
+                      disabled={settingsLoading || publicDocsBusy}
+                      onChange={(e) => void savePublicDocsVisibility(e.target.checked)}
+                      className="rounded border-ink-300 dark:border-ink-600"
+                    />
+                    {t("superAdmin.publicApiDocsToggle")}
+                  </label>
+                  {publicDocsEnabled ? (
+                    <a
+                      href="/docs"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      {t("superAdmin.publicApiDocsOpenPage")} →
+                    </a>
+                  ) : null}
+                </div>
+              </section>
               <section className="card-surface p-6">
                 <h2 className="mb-4 font-semibold text-ink-900">{t("superAdmin.tenantPermissions")}</h2>
                 <p className="text-sm text-ink-600">{t("superAdmin.tenantPermissionsSubtitle")}</p>

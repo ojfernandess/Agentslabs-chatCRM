@@ -21,6 +21,7 @@ import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { CsatPage } from "@/pages/CsatPage";
 import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { InboxesPage } from "@/pages/InboxesPage";
+import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
 function OrgFeatureRoute({
@@ -87,6 +88,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/csat/:token" element={<CsatPage />} />
+      <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"

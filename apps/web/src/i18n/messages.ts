@@ -35,6 +35,29 @@ export const messages = {
       transferTitle: "Conversa transferida",
       transferToast: "A conversa foi atribuída ao time {name}.",
     },
+    publicDocs: {
+      title: "Documentação da API",
+      subtitle:
+        "Referência dos caminhos HTTP do produto. Não inclui tokens, chaves nem identificadores reais — apenas padrões de URL e requisitos de autenticação.",
+      disabledTitle: "Documentação indisponível",
+      disabledBody:
+        "A documentação pública está desativada pelo administrador da plataforma. Peça o acesso ou consulte a equipa interna.",
+      loadError: "Não foi possível carregar a documentação.",
+      jsonLink: "JSON bruto",
+      authHeading: "Auth",
+      generatedAt: "Gerado em",
+      colMethod: "Método",
+      colPath: "Caminho",
+      colDescription: "Descrição",
+      auth: {
+        none: "Nenhuma",
+        session_jwt: "JWT de sessão (utilizador)",
+        super_admin_jwt: "JWT super admin",
+        agent_bot_bearer: "Bearer do bot (token da organização)",
+        platform_app_bearer: "Bearer app de plataforma",
+        path_ingest_token: "Token no path (ingestão)",
+      },
+    },
     nav: {
       dashboard: "Painel",
       reports: "Relatórios",
@@ -1025,6 +1048,12 @@ export const messages = {
       roleAgent: "Agente",
       msgs7d: "Msg 7d",
       msgs30d: "Msg 30d",
+      publicApiDocsTitle: "Documentação pública da API",
+      publicApiDocsSubtitle:
+        "Quando activa, qualquer visitante pode abrir /docs e ver a lista de rotas (sem segredos). O endpoint JSON público devolve 404 quando está desactiva.",
+      publicApiDocsToggle: "Expor documentação em /docs",
+      publicApiDocsOpenPage: "Abrir /docs",
+      publicApiDocsSaveError: "Não foi possível guardar esta definição.",
       settingKey: "Chave",
       settingValueJson: "Valor (JSON)",
       saveSetting: "Guardar definição",
@@ -1064,6 +1093,29 @@ export const messages = {
     workspace: {
       transferTitle: "Conversation transferred",
       transferToast: "The conversation was assigned to team {name}.",
+    },
+    publicDocs: {
+      title: "API documentation",
+      subtitle:
+        "HTTP route reference for this product. No tokens, keys, or real IDs — only URL patterns and authentication expectations.",
+      disabledTitle: "Documentation unavailable",
+      disabledBody:
+        "Public documentation is turned off by the platform administrator. Ask your team for access or internal docs.",
+      loadError: "Could not load documentation.",
+      jsonLink: "Raw JSON",
+      authHeading: "Auth",
+      generatedAt: "Generated at",
+      colMethod: "Method",
+      colPath: "Path",
+      colDescription: "Description",
+      auth: {
+        none: "None",
+        session_jwt: "Session JWT (user)",
+        super_admin_jwt: "Super admin JWT",
+        agent_bot_bearer: "Bot bearer (org-issued token)",
+        platform_app_bearer: "Platform application bearer",
+        path_ingest_token: "Secret token in path (ingest)",
+      },
     },
     nav: {
       dashboard: "Dashboard",
@@ -2050,6 +2102,12 @@ export const messages = {
       roleAgent: "Agent",
       msgs7d: "Msgs 7d",
       msgs30d: "Msgs 30d",
+      publicApiDocsTitle: "Public API documentation",
+      publicApiDocsSubtitle:
+        "When enabled, anyone can open /docs and see the route catalog (no secrets). The public JSON endpoint returns 404 when disabled.",
+      publicApiDocsToggle: "Expose documentation at /docs",
+      publicApiDocsOpenPage: "Open /docs",
+      publicApiDocsSaveError: "Could not save this setting.",
       settingKey: "Key",
       settingValueJson: "Value (JSON)",
       saveSetting: "Save setting",
