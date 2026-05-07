@@ -58,6 +58,10 @@ export async function dispatchAgentBotWebhook(input: {
   if (!settings.agentBotId || !bot?.webhookUrl?.trim() || !bot.isActive) {
     return;
   }
+  /** Só fila do bot: em atendimento humano (`OPEN` ou `PENDING` com atendente) o bot não deve responder. */
+  if (conversation.status !== "PENDING" || conversation.assignedToId != null) {
+    return;
+  }
 
   const bodyObj = buildAgentBotWebhookPayload({
     organizationId,

@@ -348,6 +348,7 @@ export const messages = {
       statusPending: "Pendente",
       statusResolved: "Finalizada",
       setPending: "Colocar em pendência",
+      transferToBot: "Transferir para o bot",
       reopen: "Reabrir conversa",
       finalize: "Finalizar atendimento",
       finalizeTitle: "Finalizar atendimento",
@@ -632,7 +633,7 @@ export const messages = {
       agentBotWhatsApp: "Bot de agente no canal",
       agentBotNone: "Nenhum (só agentes humanos)",
       agentBotWhatsAppHint:
-        "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem. O bot responde pela API de inbox com o token gerado na página Bots.",
+        "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem. O bot responde pela API de inbox com o token gerado na página Bots. Em atendimento humano (conversa aberta ou pendência ainda atribuída a um agente), o bot deixa de receber eventos.",
       lockSingleConversation: "Bloquear para conversa única",
       lockSingleConversationOn: "Ativado",
       lockSingleConversationOff: "Desativado",
@@ -1100,6 +1101,7 @@ export const messages = {
       statusPending: "Pending",
       statusResolved: "Resolved",
       setPending: "Mark as pending",
+      transferToBot: "Transfer to bot",
       reopen: "Reopen conversation",
       finalize: "Resolve conversation",
       finalizeTitle: "Resolve conversation",
@@ -1383,7 +1385,7 @@ export const messages = {
       agentBotWhatsApp: "Agent bot on this channel",
       agentBotNone: "None (human agents only)",
       agentBotWhatsAppHint:
-        "When set, new conversations start pending and the bot webhook receives each message. The bot replies via the inbox API using the token issued on the Bots page.",
+        "When set, new conversations start pending and the bot webhook receives each message. The bot replies via the inbox API using the token issued on the Bots page. During human handling (open conversation, or pending with an assignee), the bot stops receiving events.",
       lockSingleConversation: "Lock to single conversation",
       lockSingleConversationOn: "Enabled",
       lockSingleConversationOff: "Disabled",

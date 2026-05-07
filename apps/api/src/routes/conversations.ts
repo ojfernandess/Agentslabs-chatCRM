@@ -13,6 +13,7 @@ import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
+import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -651,6 +652,39 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           });
         } catch (err) {
           app.log.warn({ err }, "CSAT survey WhatsApp send failed");
+        }
+      }
+
+      if (
+        nextStatus === "PENDING" &&
+        existing.status === "OPEN" &&
+        conversation.status === "PENDING" &&
+        conversation.assignedToId == null
+      ) {
+        const ch = await prisma.settings.findUnique({
+          where: { organizationId },
+          include: { agentBot: true },
+        });
+        if (ch?.agentBotId && ch.agentBot?.isActive && ch.agentBot.webhookUrl?.trim()) {
+          const lastInbound = await prisma.message.findFirst({
+            where: { conversationId: conversation.id, direction: "INBOUND" },
+            orderBy: { createdAt: "desc" },
+          });
+          if (lastInbound) {
+            const contactRow = await prisma.contact.findFirst({
+              where: { id: conversation.contactId, organizationId },
+            });
+            if (contactRow) {
+              void dispatchAgentBotWebhook({
+                organizationId,
+                settings: { agentBotId: ch.agentBotId, agentBot: ch.agentBot },
+                conversation,
+                contact: contactRow,
+                message: lastInbound,
+                log: app.log,
+              });
+            }
+          }
         }
       }
 

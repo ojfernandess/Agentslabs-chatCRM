@@ -34,6 +34,7 @@ import {
   PenLine,
   FileText,
   Star,
+  Bot,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -186,6 +187,7 @@ export function ConversationDetailPage() {
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const [teamPickerId, setTeamPickerId] = useState("");
   const [evolutionRichChat, setEvolutionRichChat] = useState(false);
+  const [agentBotTriageActive, setAgentBotTriageActive] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -260,8 +262,9 @@ export function ConversationDetailPage() {
   useEffect(() => {
     async function loadChannel() {
       try {
-        const ch = await api.get<{ evolutionRichChat: boolean }>("/settings/channel");
+        const ch = await api.get<{ evolutionRichChat: boolean; agentBotTriageActive?: boolean }>("/settings/channel");
         setEvolutionRichChat(ch.evolutionRichChat);
+        setAgentBotTriageActive(ch.agentBotTriageActive ?? false);
       } catch {
         setEvolutionRichChat(false);
       }
@@ -639,6 +642,7 @@ export function ConversationDetailPage() {
       closureReason?: string;
       leadTypeId?: string;
       closureValue?: number | null;
+      assignedToId?: string | null;
     },
   ) => {
     if (!conversation || !id) return;
@@ -651,6 +655,9 @@ export function ConversationDetailPage() {
       if (extra?.leadTypeId) body.leadTypeId = extra.leadTypeId;
       if (extra && "closureValue" in extra) {
         body.closureValue = extra.closureValue;
+      }
+      if (extra && "assignedToId" in extra) {
+        body.assignedToId = extra.assignedToId;
       }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
       setConversation(data);
@@ -1409,7 +1416,18 @@ export function ConversationDetailPage() {
               <Kanban className="h-3.5 w-3.5" />
               {t("conversationDetail.actionMoveFunnel")}
             </Link>
-            {conversation.status === "OPEN" ? (
+            {conversation.status === "OPEN" && agentBotTriageActive ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING", { assignedToId: null })}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("conversationDetail.transferToBot")}
+              </button>
+            ) : null}
+            {conversation.status === "OPEN" && !agentBotTriageActive ? (
               <button
                 type="button"
                 disabled={actionLoading}

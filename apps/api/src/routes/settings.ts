@@ -61,12 +61,21 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const settings = await prisma.settings.findUnique({ where: { organizationId } });
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      include: { agentBot: true },
+    });
     const p = settings?.whatsappProvider ?? null;
+    const agentBotTriageActive =
+      Boolean(settings?.agentBotId) &&
+      Boolean(settings?.agentBot?.isActive) &&
+      Boolean(settings?.agentBot?.webhookUrl?.trim());
     return {
       whatsappProvider: p,
       /** Anexos / imagens na conversa — solicitado para Evolution API. */
       evolutionRichChat: p === "evolution",
+      /** Há bot de canal configurado e pronto a receber webhooks (fila PENDING). */
+      agentBotTriageActive,
     };
   });
 
