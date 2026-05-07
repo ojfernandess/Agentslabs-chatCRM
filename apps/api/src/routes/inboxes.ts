@@ -11,6 +11,8 @@ const createInboxSchema = z.object({
   description: z.string().max(4000).optional().nullable(),
   isDefault: z.boolean().optional(),
   channelType: z.nativeEnum(InboxChannelType).optional(),
+  /** Credenciais e opções por canal (Telegram token, Meta verify_token, Twilio, etc.). */
+  channelConfig: z.any().nullable().optional(),
 });
 
 const patchInboxSchema = z.object({
@@ -89,6 +91,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     let inbox;
 
     const channelType = body.channelType ?? InboxChannelType.WHATSAPP;
+    const channelConfig =
+      body.channelConfig != null && typeof body.channelConfig === "object"
+        ? (body.channelConfig as Prisma.InputJsonValue)
+        : undefined;
 
     if (body.isDefault) {
       inbox = await prisma.$transaction(async (tx) => {
@@ -101,6 +107,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             channelType,
             isDefault: true,
             ingestToken: newIngestToken(),
+            channelConfig,
           },
         });
       });
@@ -113,6 +120,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           channelType,
           isDefault: false,
           ingestToken: newIngestToken(),
+          channelConfig,
         },
       });
     }

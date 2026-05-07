@@ -52,6 +52,42 @@ export function channelInboxTwilioUrl(ingestToken: string): string {
   return `${getPublicOrigin()}/api/v1/public/inbox/${encodeURIComponent(t)}/twilio`;
 }
 
+/** Base das rotas públicas «nativas» (Client API + webhooks por plataforma), estilo Chatwoot. */
+export function channelNativePublicBaseUrl(): string {
+  return `${getPublicOrigin()}/api/v1/public/channels`;
+}
+
+export function channelNativeClientMessageUrl(ingestToken: string, contactIdentifier: string): string {
+  const t = ingestToken.trim();
+  const c = encodeURIComponent(contactIdentifier.trim());
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/contacts/${c}/messages`;
+}
+
+export function channelNativeFacebookUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/facebook`;
+}
+
+export function channelNativeInstagramUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/instagram`;
+}
+
+export function channelNativeTelegramUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/telegram`;
+}
+
+export function channelNativeLineUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/line`;
+}
+
+export function channelNativeTwilioUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/channels/inboxes/${encodeURIComponent(t)}/twilio`;
+}
+
 export const config = {
   port: parseInt(optionalEnv("PORT", "3000"), 10),
   host: optionalEnv("HOST", "0.0.0.0"),

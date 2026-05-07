@@ -9,6 +9,9 @@ import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
+import { sendTelegramNativeMessage } from "./telegramNativeSend.js";
+import type { ChannelNativeConfig } from "./channelNativeTypes.js";
+import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
 
 function outboundWebhookUrlFromConfig(config: unknown): string | null {
   if (config == null || typeof config !== "object") return null;
@@ -209,12 +212,24 @@ export async function deliverOutboundWhatsAppMessage(options: {
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");
     }
+  } else if (!isPrivate && inboxChannelType === "TELEGRAM" && type === "TEXT") {
+    const cfg = inboxChannelConfig as ChannelNativeConfig | null;
+    const token = cfg?.telegramBotToken?.trim();
+    const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
+    const text = (messageBody ?? "").trim();
+    if (token && chatId && text) {
+      const tgId = await sendTelegramNativeMessage({ botToken: token, chatId, text, log });
+      providerMsgId = tgId;
+    }
   }
 
-  const outboundStatus =
-    isPrivate
-      ? "SENT"
-      : inboxChannelType === "WHATSAPP"
+  const outboundStatus = isPrivate
+    ? "SENT"
+    : inboxChannelType === "WHATSAPP"
+      ? providerMsgId
+        ? "SENT"
+        : "FAILED"
+      : inboxChannelType === "TELEGRAM" && type === "TEXT"
         ? providerMsgId
           ? "SENT"
           : "FAILED"

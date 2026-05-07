@@ -33,6 +33,34 @@ type InboxRow = {
   _count: { members: number; conversations: number };
 };
 
+function nativeUrlsForChannel(channelType: string, token: string, baseNative: string): { key: string; labelKey: string; url: string }[] {
+  const b = `${baseNative}/${encodeURIComponent(token)}`;
+  switch (channelType) {
+    case "WEBSITE":
+    case "API":
+      return [
+        {
+          key: "client",
+          labelKey: "inboxesPage.wizard.ingestClientApiUrl",
+          url: `${b}/contacts/{visitor_uuid}/messages`,
+        },
+      ];
+    case "FACEBOOK":
+      return [{ key: "fb", labelKey: "inboxesPage.wizard.ingestFacebookUrl", url: `${b}/facebook` }];
+    case "INSTAGRAM":
+      return [{ key: "ig", labelKey: "inboxesPage.wizard.ingestInstagramUrl", url: `${b}/instagram` }];
+    case "TELEGRAM":
+      return [{ key: "tg", labelKey: "inboxesPage.wizard.ingestTelegramUrl", url: `${b}/telegram` }];
+    case "LINE":
+      return [{ key: "line", labelKey: "inboxesPage.wizard.ingestLineUrl", url: `${b}/line` }];
+    case "SMS":
+    case "VOICE":
+      return [{ key: "twilio", labelKey: "inboxesPage.wizard.ingestTwilioUrl", url: `${b}/twilio` }];
+    default:
+      return [];
+  }
+}
+
 export function InboxesPage() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -54,6 +82,8 @@ export function InboxesPage() {
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
+  const basePublicNative =
+    typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/channels/inboxes` : "";
 
   const copyUrl = async (url: string) => {
     try {
@@ -411,54 +441,94 @@ export function InboxesPage() {
                             {t("inboxesPage.wizard.ingestNoteWhatsApp")}
                           </p>
                         ) : null}
+                        {row.ingestToken && row.channelType !== "WHATSAPP" && basePublicNative ? (
+                          <>
+                            <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
+                              {t("inboxesPage.ingestNativeSection")}
+                            </h4>
+                            {row.channelType === "EMAIL" ? (
+                              <p className="mb-2 text-xs text-gray-600 dark:text-ink-400">
+                                {t("inboxesPage.wizard.ingestEmailHint")}
+                              </p>
+                            ) : (
+                              <ul className="mb-3 space-y-2 text-xs">
+                                {nativeUrlsForChannel(row.channelType, row.ingestToken, basePublicNative).map((item) => (
+                                  <li
+                                    key={item.key}
+                                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <span className="font-medium text-gray-700 dark:text-ink-200">{t(item.labelKey)}</span>
+                                    <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                      <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                        {item.url}
+                                      </code>
+                                      <button
+                                        type="button"
+                                        className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                        onClick={() => void copyUrl(item.url)}
+                                      >
+                                        {t("inboxesPage.wizard.ingestCopy")}
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        ) : null}
                         {row.ingestToken && basePublicInbox ? (
-                          <ul className="mb-2 space-y-2 text-xs">
-                            <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="font-medium text-gray-700 dark:text-ink-200">POST JSON</span>
-                              <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
-                                <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
-                                  {`${basePublicInbox}/${row.ingestToken}/inbound`}
-                                </code>
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
-                                  onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/inbound`)}
-                                >
-                                  {t("inboxesPage.wizard.ingestCopy")}
-                                </button>
-                              </div>
-                            </li>
-                            <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="font-medium text-gray-700 dark:text-ink-200">Telegram</span>
-                              <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
-                                <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
-                                  {`${basePublicInbox}/${row.ingestToken}/telegram`}
-                                </code>
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
-                                  onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/telegram`)}
-                                >
-                                  {t("inboxesPage.wizard.ingestCopy")}
-                                </button>
-                              </div>
-                            </li>
-                            <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <span className="font-medium text-gray-700 dark:text-ink-200">Twilio</span>
-                              <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
-                                <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
-                                  {`${basePublicInbox}/${row.ingestToken}/twilio`}
-                                </code>
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
-                                  onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/twilio`)}
-                                >
-                                  {t("inboxesPage.wizard.ingestCopy")}
-                                </button>
-                              </div>
-                            </li>
-                          </ul>
+                          <>
+                            <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
+                              {t("inboxesPage.ingestLegacySection")}
+                            </h4>
+                            <ul className="mb-2 space-y-2 text-xs">
+                              <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <span className="font-medium text-gray-700 dark:text-ink-200">POST JSON</span>
+                                <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                  <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                    {`${basePublicInbox}/${row.ingestToken}/inbound`}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                    onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/inbound`)}
+                                  >
+                                    {t("inboxesPage.wizard.ingestCopy")}
+                                  </button>
+                                </div>
+                              </li>
+                              <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <span className="font-medium text-gray-700 dark:text-ink-200">Telegram</span>
+                                <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                  <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                    {`${basePublicInbox}/${row.ingestToken}/telegram`}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                    onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/telegram`)}
+                                  >
+                                    {t("inboxesPage.wizard.ingestCopy")}
+                                  </button>
+                                </div>
+                              </li>
+                              <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <span className="font-medium text-gray-700 dark:text-ink-200">Twilio</span>
+                                <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                  <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                    {`${basePublicInbox}/${row.ingestToken}/twilio`}
+                                  </code>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                    onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/twilio`)}
+                                  >
+                                    {t("inboxesPage.wizard.ingestCopy")}
+                                  </button>
+                                </div>
+                              </li>
+                            </ul>
+                          </>
                         ) : (
                           <p className="mb-2 text-xs text-gray-500 dark:text-ink-500">—</p>
                         )}
