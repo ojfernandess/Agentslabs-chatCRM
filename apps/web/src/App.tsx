@@ -18,6 +18,7 @@ import { TeamsPage } from "@/pages/TeamsPage";
 import { BotsPage } from "@/pages/BotsPage";
 import { MyAttendancePage } from "@/pages/MyAttendancePage";
 import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
+import { CsatPage } from "@/pages/CsatPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -61,6 +62,7 @@ function SuperAdminOnly({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <Routes>
+      <Route path="/csat/:token" element={<CsatPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"

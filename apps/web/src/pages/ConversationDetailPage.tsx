@@ -104,6 +104,7 @@ interface ConversationDetail {
   csatScore?: number | null;
   csatComment?: string | null;
   csatRecordedAt?: string | null;
+  csatSurveyPending?: boolean;
   leadType: LeadTypeRow | null;
   assignedTo?: { id: string; name: string } | null;
   contact: {
@@ -177,11 +178,6 @@ export function ConversationDetailPage() {
   const [closureReason, setClosureReason] = useState("");
   const [closureAmount, setClosureAmount] = useState("");
   const [leadTypeId, setLeadTypeId] = useState("");
-  const [resolveCsatScore, setResolveCsatScore] = useState<number | null>(null);
-  const [resolveCsatComment, setResolveCsatComment] = useState("");
-  const [csatOnlyOpen, setCsatOnlyOpen] = useState(false);
-  const [csatOnlyScore, setCsatOnlyScore] = useState<number | null>(null);
-  const [csatOnlyComment, setCsatOnlyComment] = useState("");
   const [resolveError, setResolveError] = useState("");
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -643,8 +639,6 @@ export function ConversationDetailPage() {
       closureReason?: string;
       leadTypeId?: string;
       closureValue?: number | null;
-      csatScore?: number;
-      csatComment?: string;
     },
   ) => {
     if (!conversation || !id) return;
@@ -658,19 +652,12 @@ export function ConversationDetailPage() {
       if (extra && "closureValue" in extra) {
         body.closureValue = extra.closureValue;
       }
-      if (extra?.csatScore != null) {
-        body.csatScore = extra.csatScore;
-        const c = extra.csatComment?.trim();
-        if (c) body.csatComment = c;
-      }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
       setConversation(data);
       setResolveOpen(false);
       setClosureReason("");
       setClosureAmount("");
       setLeadTypeId("");
-      setResolveCsatScore(null);
-      setResolveCsatComment("");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (status === "RESOLVED") {
@@ -916,32 +903,7 @@ export function ConversationDetailPage() {
       closureReason: closureReason.trim(),
       leadTypeId,
       closureValue,
-      ...(resolveCsatScore != null
-        ? { csatScore: resolveCsatScore, csatComment: resolveCsatComment.trim() || undefined }
-        : {}),
     });
-  };
-
-  const submitCsatOnly = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!conversation || !id || csatOnlyScore == null) return;
-    setResolveError("");
-    setActionLoading(true);
-    try {
-      const data = await api.put<ConversationDetail>(`/conversations/${id}`, {
-        csatScore: csatOnlyScore,
-        csatComment: csatOnlyComment.trim() || null,
-      });
-      setConversation(data);
-      setCsatOnlyOpen(false);
-      setCsatOnlyScore(null);
-      setCsatOnlyComment("");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      setResolveError(msg || "Request failed");
-    } finally {
-      setActionLoading(false);
-    }
   };
 
   const statusLabel = (s: string) => {
@@ -1212,6 +1174,7 @@ export function ConversationDetailPage() {
       (conversation.closureReason ||
         conversation.leadType ||
         conversation.csatScore != null ||
+        conversation.csatSurveyPending ||
         (conversation.closureValue != null && conversation.closureValue > 0)) ? (
         <div className="rounded-xl border border-brand-200/60 bg-brand-50/40 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
           <p className="text-[11px] font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
@@ -1261,22 +1224,11 @@ export function ConversationDetailPage() {
                 <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink-700 dark:text-ink-300">{conversation.csatComment}</p>
               ) : null}
             </div>
-          ) : (
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() => {
-                setResolveError("");
-                setCsatOnlyScore(null);
-                setCsatOnlyComment("");
-                setCsatOnlyOpen(true);
-              }}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand-300/60 bg-white/80 px-3 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700/50 dark:bg-ink-900/60 dark:text-brand-200 dark:hover:bg-ink-800"
-            >
-              <Star className="h-3.5 w-3.5" />
-              {t("conversationDetail.csatAddLater")}
-            </button>
-          )}
+          ) : conversation.csatSurveyPending ? (
+            <p className="mt-3 border-t border-brand-200/50 pt-3 text-xs text-ink-600 dark:border-brand-900/35 dark:text-ink-400">
+              {t("conversationDetail.csatPendingCustomer")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -1475,8 +1427,6 @@ export function ConversationDetailPage() {
                 onClick={() => {
                   setResolveError("");
                   setClosureAmount("");
-                  setResolveCsatScore(null);
-                  setResolveCsatComment("");
                   setResolveOpen(true);
                 }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
@@ -2144,35 +2094,6 @@ export function ConversationDetailPage() {
                   />
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.closureValueHint")}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.csatOptional")}</label>
-                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.csatHint")}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {([1, 2, 3, 4, 5] as const).map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setResolveCsatScore((prev) => (prev === n ? null : n))}
-                        className={clsx(
-                          "flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
-                          resolveCsatScore === n
-                            ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100"
-                            : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                        )}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={resolveCsatComment}
-                    onChange={(e) => setResolveCsatComment(e.target.value)}
-                    rows={2}
-                    disabled={resolveCsatScore == null}
-                    placeholder={t("conversationDetail.csatCommentPlaceholder")}
-                    className="mt-2 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-                  />
-                </div>
                 {resolveError && (
                   <p className="text-sm text-red-600 dark:text-red-400">{resolveError}</p>
                 )}
@@ -2191,81 +2112,6 @@ export function ConversationDetailPage() {
                     className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                   >
                     {t("common.confirm")}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {csatOnlyOpen && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            variants={backdropVariants}
-            initial="hidden"
-            animate="show"
-            exit="hidden"
-            onClick={() => !actionLoading && setCsatOnlyOpen(false)}
-          >
-            <motion.div
-              variants={modalVariants}
-              initial="hidden"
-              animate="show"
-              exit="hidden"
-              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.csatOnlyTitle")}</h3>
-              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.csatHint")}</p>
-              <form onSubmit={submitCsatOnly} className="mt-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.csatOptional")}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {([1, 2, 3, 4, 5] as const).map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setCsatOnlyScore((prev) => (prev === n ? null : n))}
-                        className={clsx(
-                          "flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
-                          csatOnlyScore === n
-                            ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100"
-                            : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                        )}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={csatOnlyComment}
-                    onChange={(e) => setCsatOnlyComment(e.target.value)}
-                    rows={3}
-                    disabled={csatOnlyScore == null}
-                    placeholder={t("conversationDetail.csatCommentPlaceholder")}
-                    className="mt-2 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-                  />
-                </div>
-                {resolveError ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">{resolveError}</p>
-                ) : null}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => setCsatOnlyOpen(false)}
-                    className="rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading || csatOnlyScore == null}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-                  >
-                    {t("conversationDetail.csatSubmit")}
                   </button>
                 </div>
               </form>

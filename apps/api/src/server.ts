@@ -28,6 +28,7 @@ import { agentBotInboxRoutes } from "./routes/agentBotInbox.js";
 import { botRoutes } from "./routes/bots.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
+import { publicCsatRoutes } from "./routes/publicCsat.js";
 
 const app = Fastify({
   logger: {
@@ -46,14 +47,15 @@ await app.register(cors, {
 await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute",
-  allowList: (req) => {
-    const path = (req.url ?? "").split("?")[0] ?? "";
-    return (
-      path.startsWith("/webhooks") ||
-      path.startsWith("/api/v1/messages/media/") ||
-      path.startsWith("/api/v1/ws")
-    );
-  },
+      allowList: (req) => {
+        const path = (req.url ?? "").split("?")[0] ?? "";
+        return (
+          path.startsWith("/webhooks") ||
+          path.startsWith("/api/v1/messages/media/") ||
+          path.startsWith("/api/v1/ws") ||
+          path.startsWith("/api/v1/public/csat/")
+        );
+      },
 });
 await app.register(multipart, {
   limits: { fileSize: 16 * 1024 * 1024 },
@@ -68,6 +70,7 @@ app.decorate("prisma", prisma);
 
 // Leitura pública de áudio carregado (WhatsApp obtém o ficheiro antes de entregar ao cliente)
 await app.register(publicMessageMediaRoutes);
+await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
 
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });

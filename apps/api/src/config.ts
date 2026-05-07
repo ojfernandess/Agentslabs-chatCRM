@@ -19,6 +19,14 @@ export function getPublicOrigin(): string {
   return optionalEnv("PUBLIC_URL", "http://localhost:3000").replace(/\/+$/, "");
 }
 
+/**
+ * Origem da aplicação web onde o cliente abre o inquérito CSAT (ex.: https://app.seudominio.com).
+ * Em desenvolvimento costuma coincidir com CORS_ORIGIN (Vite). Em produção, defina explicitamente se o painel está noutro host que PUBLIC_URL.
+ */
+export function getWebAppPublicOrigin(): string {
+  return optionalEnv("WEB_APP_PUBLIC_URL", optionalEnv("CORS_ORIGIN", getPublicOrigin())).replace(/\/+$/, "");
+}
+
 export function webhookUrlForOrganization(organizationId: string): string {
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}`;
 }

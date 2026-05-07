@@ -11,6 +11,8 @@ import { appendTimelineEvent } from "../lib/timeline.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
+import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -41,8 +43,6 @@ const updateSchema = z.object({
   closureReason: z.string().min(3).max(4000).optional(),
   leadTypeId: z.string().uuid().optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
-  csatScore: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).nullable().optional(),
-  csatComment: z.string().max(2000).nullable().optional(),
 });
 
 /** Sem equipa na conversa = visível para toda a organização. Com equipa = só membros dessa equipa (e admins). */
@@ -64,6 +64,18 @@ function isTenantAdmin(user: JwtPayload): boolean {
 
 function isMineFlag(v: string | undefined): boolean {
   return v === "1" || v === "true";
+}
+
+/** Não expor `csatSurveyToken` ao painel; indicar se ainda falta resposta do cliente. */
+function stripCsatSurveyToken<C extends { csatSurveyToken?: string | null; csatScore?: number | null; status: string }>(
+  row: C,
+): Omit<C, "csatSurveyToken"> & { csatSurveyPending: boolean } {
+  const { csatSurveyToken, ...rest } = row;
+  return {
+    ...rest,
+    csatSurveyPending:
+      row.status === "RESOLVED" && csatSurveyToken != null && row.csatScore == null,
+  } as Omit<C, "csatSurveyToken"> & { csatSurveyPending: boolean };
 }
 
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
@@ -184,7 +196,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       prisma.conversation.count({ where }),
     ]);
 
-    return { data, total, page: query.page, pageSize: query.pageSize };
+    return {
+      data: data.map((row) => stripCsatSurveyToken(row)),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   });
 
   app.get("/audit", async (request, reply) => {
@@ -254,7 +271,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       prisma.conversation.count({ where }),
     ]);
 
-    return { data, total, page: query.page, pageSize: query.pageSize };
+    return {
+      data: data.map((row) => stripCsatSurveyToken(row)),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -314,7 +336,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    return { ...conversation, handoffLog };
+    return { ...stripCsatSurveyToken(conversation), handoffLog };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -433,17 +455,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             statusCode: 400,
           });
         }
-
-        const cc = parsed.data.csatComment?.trim() ?? "";
-        if (cc.length > 0 && parsed.data.csatScore == null) {
-          return reply.status(400).send({
-            error: "Bad Request",
-            message: "csatScore is required when csatComment is provided",
-            statusCode: 400,
-          });
-        }
       }
     }
+
+    const tenantSettings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { csatEnabled: true, csatSurveyMessage: true },
+    });
 
     const data: {
       status?: typeof nextStatus;
@@ -455,6 +473,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       csatScore?: number | null;
       csatComment?: string | null;
       csatRecordedAt?: Date | null;
+      csatSurveyToken?: string | null;
     } = {};
 
     if (parsed.data.status !== undefined) {
@@ -483,6 +502,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.csatScore = null;
       data.csatComment = null;
       data.csatRecordedAt = null;
+      data.csatSurveyToken = null;
     } else if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
         data.closureReason = parsed.data.closureReason!.trim();
@@ -492,35 +512,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         } else {
           data.closureValue = null;
         }
-        if (parsed.data.csatScore != null) {
-          data.csatScore = parsed.data.csatScore;
-          data.csatComment = parsed.data.csatComment?.trim() || null;
-          data.csatRecordedAt = new Date();
-        }
-      }
-    } else if (existing.status === "RESOLVED" && nextStatus === "RESOLVED") {
-      if (parsed.data.csatScore === null) {
-        data.csatScore = null;
-        data.csatComment = null;
-        data.csatRecordedAt = null;
-      } else if (parsed.data.csatScore !== undefined) {
-        data.csatScore = parsed.data.csatScore;
-        data.csatRecordedAt = new Date();
-        if (parsed.data.csatComment !== undefined) {
-          data.csatComment = parsed.data.csatComment?.trim() || null;
-        }
-      } else if (parsed.data.csatComment !== undefined) {
-        if (existing.csatScore == null) {
-          const trimmed = parsed.data.csatComment?.trim() ?? "";
-          if (trimmed.length > 0) {
-            return reply.status(400).send({
-              error: "Bad Request",
-              message: "csatScore is required when csatComment is provided",
-              statusCode: 400,
-            });
-          }
-        } else {
-          data.csatComment = parsed.data.csatComment?.trim() || null;
+        if (tenantSettings?.csatEnabled) {
+          data.csatSurveyToken = newCsatSurveyToken();
         }
       }
     }
@@ -634,6 +627,33 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      if (
+        nextStatus === "RESOLVED" &&
+        existing.status !== "RESOLVED" &&
+        (existing.status === "OPEN" || existing.status === "PENDING") &&
+        tenantSettings?.csatEnabled &&
+        conversation.csatSurveyToken
+      ) {
+        const intro = tenantSettings.csatSurveyMessage?.trim() ?? "";
+        const bodyText = buildCsatWhatsAppBody(intro, conversation.csatSurveyToken);
+        try {
+          await deliverOutboundWhatsAppMessage({
+            organizationId,
+            data: {
+              contactId: existing.contactId,
+              type: "TEXT",
+              body: bodyText,
+            },
+            actor: { kind: "user", userId: request.user.id },
+            log: app.log,
+            newConversation: { status: "OPEN", assignedToId: request.user.id },
+            pinnedConversationId: conversation.id,
+          });
+        } catch (err) {
+          app.log.warn({ err }, "CSAT survey WhatsApp send failed");
+        }
+      }
+
       const teamChanged = conversation.teamId !== prevTeamId;
       const assigneeChanged = conversation.assignedToId !== prevAssignedToId;
       if (teamChanged || assigneeChanged) {
@@ -700,7 +720,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      return { ...conversation, handoffLog };
+      return { ...stripCsatSurveyToken(conversation), handoffLog };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }

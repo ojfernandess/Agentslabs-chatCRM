@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil } from "lucide-react";
+import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil, Star } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -13,7 +13,7 @@ import {
 } from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
 
-type SettingsSection = "channel" | "notifications" | "crm" | "team";
+type SettingsSection = "channel" | "notifications" | "csat" | "crm" | "team";
 
 interface AppSettings {
   whatsappProvider: string | null;
@@ -27,6 +27,8 @@ interface AppSettings {
   notifyConversationPending: boolean;
   webhookUrl: string;
   agentBotId?: string | null;
+  csatEnabled: boolean;
+  csatSurveyMessage: string | null;
 }
 
 interface AgentBotOption {
@@ -88,6 +90,8 @@ export function SettingsPage() {
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(true);
   const [notifyPending, setNotifyPending] = useState(true);
+  const [csatEnabled, setCsatEnabled] = useState(false);
+  const [csatSurveyMessage, setCsatSurveyMessage] = useState("");
 
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
   const [newUserName, setNewUserName] = useState("");
@@ -219,6 +223,8 @@ export function SettingsPage() {
         setLockSingleConversation(data.lockSingleConversation ?? false);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
+        setCsatEnabled(data.csatEnabled ?? false);
+        setCsatSurveyMessage(data.csatSurveyMessage ?? "");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setTeamUsers(users);
@@ -327,6 +333,24 @@ export function SettingsPage() {
       setUserFormError(err instanceof Error ? err.message : "Failed to create user");
     } finally {
       setUserFormSubmitting(false);
+    }
+  };
+
+  const handleSaveCsat = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", {
+        csatEnabled,
+        csatSurveyMessage: csatSurveyMessage.trim() || null,
+      });
+      setSettings(data);
+      setCsatEnabled(data.csatEnabled ?? false);
+      setCsatSurveyMessage(data.csatSurveyMessage ?? "");
+    } catch {
+      /* failed */
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -440,6 +464,7 @@ export function SettingsPage() {
                 [
                   ["channel", t("settings.sectionChannel"), Smartphone],
                   ["notifications", t("settings.sectionNotifications"), Bell],
+                  ["csat", t("settings.sectionCsat"), Star],
                   ["crm", t("settings.sectionCrm"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
                 ] as const
@@ -811,6 +836,54 @@ export function SettingsPage() {
                     className="mt-6 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                   >
                     {saving ? "Saving..." : "Save notifications"}
+                  </button>
+                </motion.form>
+              )}
+
+              {section === "csat" && (
+                <motion.form
+                  onSubmit={(e) => void handleSaveCsat(e)}
+                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  variants={staggerItem}
+                >
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                    <Star className="h-5 w-5" />
+                    {t("settings.sectionCsat")}
+                  </h2>
+                  <p className="mb-6 text-sm text-gray-500">{t("settings.csatIntro")}</p>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="csatEnabled"
+                        type="checkbox"
+                        checked={csatEnabled}
+                        onChange={(e) => setCsatEnabled(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      <label htmlFor="csatEnabled" className="text-sm text-gray-700">
+                        {t("settings.csatEnable")}
+                      </label>
+                    </div>
+                    <div>
+                      <label htmlFor="csatSurveyMessage" className="block text-sm font-medium text-gray-700">
+                        {t("settings.csatMessageLabel")}
+                      </label>
+                      <textarea
+                        id="csatSurveyMessage"
+                        value={csatSurveyMessage}
+                        onChange={(e) => setCsatSurveyMessage(e.target.value)}
+                        rows={3}
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">{t("settings.csatMessageHint")}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="mt-6 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    {saving ? t("common.loading") : t("settings.csatSave")}
                   </button>
                 </motion.form>
               )}

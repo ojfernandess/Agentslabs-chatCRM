@@ -1,0 +1,187 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { useParams } from "react-router-dom";
+import { useI18n } from "@/i18n/I18nProvider";
+import clsx from "clsx";
+import { Star } from "lucide-react";
+
+type CsatGetOk =
+  | {
+      organizationName: string;
+      introText: string;
+      alreadySubmitted: true;
+      score: number;
+      comment: string | null;
+    }
+  | {
+      organizationName: string;
+      introText: string;
+      alreadySubmitted: false;
+    };
+
+export function CsatPage() {
+  const { token: rawToken } = useParams<{ token: string }>();
+  const token = rawToken?.trim() ?? "";
+  const { t } = useI18n();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<CsatGetOk | null>(null);
+  const [score, setScore] = useState<number | null>(null);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submittedScore, setSubmittedScore] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      setError("bad_link");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/v1/public/csat/${encodeURIComponent(token)}`);
+        if (!res.ok) {
+          if (!cancelled) {
+            setError(res.status === 410 ? "gone" : "bad_link");
+            setData(null);
+          }
+          return;
+        }
+        const json = (await res.json()) as CsatGetOk;
+        if (!cancelled) {
+          setData(json);
+          if (json.alreadySubmitted) {
+            setDone(true);
+            setSubmittedScore(json.score);
+          }
+          setError(null);
+        }
+      } catch {
+        if (!cancelled) setError("bad_link");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!token || score == null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/public/csat/${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          score,
+          comment: comment.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.message?.includes?.("Gone") ? "gone" : "bad_link");
+        return;
+      }
+      const json = (await res.json()) as { score: number };
+      setDone(true);
+      setSubmittedScore(json.score);
+    } catch {
+      setError("bad_link");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const errMsg =
+    error === "gone"
+      ? t("csatPage.errorGone")
+      : error === "bad_link"
+        ? t("csatPage.errorBadLink")
+        : null;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-brand-50/90 to-ink-100/90 px-4 py-10 dark:from-ink-950 dark:to-ink-900">
+      <div className="mx-auto max-w-md rounded-2xl border border-ink-200/80 bg-white/95 p-6 shadow-lg dark:border-ink-700 dark:bg-ink-900/95">
+        <h1 className="text-center text-lg font-semibold text-ink-900 dark:text-ink-50">
+          {t("csatPage.title")}
+        </h1>
+        {loading ? (
+          <p className="mt-6 text-center text-sm text-ink-500">{t("common.loading")}</p>
+        ) : errMsg && !data ? (
+          <p className="mt-6 text-center text-sm text-amber-800 dark:text-amber-200">{errMsg}</p>
+        ) : data && done ? (
+          <div className="mt-6 text-center">
+            <p className="text-sm font-medium text-ink-800 dark:text-ink-200">{data.organizationName}</p>
+            <p className="mt-4 text-sm text-ink-600 dark:text-ink-400">{t("csatPage.thankYou")}</p>
+            {submittedScore != null ? (
+              <div className="mt-3 flex justify-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Star
+                    key={i}
+                    className={clsx(
+                      "h-6 w-6",
+                      i <= submittedScore
+                        ? "fill-amber-400 text-amber-400"
+                        : "text-ink-300 dark:text-ink-600",
+                    )}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : data && !data.alreadySubmitted ? (
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <p className="text-center text-sm font-medium text-ink-800 dark:text-ink-200">{data.organizationName}</p>
+            <p className="text-sm text-ink-600 dark:text-ink-400">{data.introText}</p>
+            <div>
+              <p className="text-sm font-medium text-ink-700 dark:text-ink-300">{t("csatPage.rateLabel")}</p>
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {([1, 2, 3, 4, 5] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setScore((prev) => (prev === n ? null : n))}
+                    className={clsx(
+                      "flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
+                      score === n
+                        ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100"
+                        : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                {t("csatPage.commentLabel")}
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={3}
+                disabled={score == null}
+                className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                placeholder={t("csatPage.commentPlaceholder")}
+              />
+            </div>
+            {errMsg ? <p className="text-sm text-red-600 dark:text-red-400">{errMsg}</p> : null}
+            <button
+              type="submit"
+              disabled={submitting || score == null}
+              className="w-full rounded-lg bg-brand-500 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+            >
+              {t("csatPage.submit")}
+            </button>
+          </form>
+        ) : null}
+      </div>
+    </div>
+  );
+}

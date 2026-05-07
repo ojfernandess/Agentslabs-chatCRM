@@ -18,8 +18,13 @@ export async function deliverOutboundWhatsAppMessage(options: {
   log: FastifyBaseLogger;
   /** Conversa nova quando ainda não existe (painel humano). */
   newConversation: { status: "OPEN" | "PENDING"; assignedToId?: string | null };
+  /**
+   * Anexa a mensagem a esta conversa (ex.: inquérito CSAT após RESOLVED), sem passar pelo
+   * roteamento que poderia reabrir OUTRA conversa com `lockSingleConversation`.
+   */
+  pinnedConversationId?: string;
 }): Promise<{ message: Message; conversation: Conversation }> {
-  const { organizationId, data, actor, log, newConversation } = options;
+  const { organizationId, data, actor, log, newConversation, pinnedConversationId } = options;
   const { contactId, type, body, templateId, mediaUrl, mediaType, isPrivate } = data;
 
   if (actor.kind === "agent_bot" && isPrivate) {
@@ -64,16 +69,27 @@ export async function deliverOutboundWhatsAppMessage(options: {
   const activeConversationStatus: "OPEN" | "PENDING" =
     actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
 
-  const conversation = await ensureConversationForWhatsAppContact({
-    organizationId,
-    contactId,
-    lockSingleConversation,
-    activeConversationStatus,
-    createDefaults: {
-      status: newConversation.status,
-      assignedToId: newConversation.assignedToId ?? null,
-    },
-  });
+  let conversation: Conversation;
+  if (pinnedConversationId) {
+    const conv = await prisma.conversation.findFirst({
+      where: { id: pinnedConversationId, organizationId, contactId },
+    });
+    if (!conv) {
+      throw new Error("Conversation not found");
+    }
+    conversation = conv;
+  } else {
+    conversation = await ensureConversationForWhatsAppContact({
+      organizationId,
+      contactId,
+      lockSingleConversation,
+      activeConversationStatus,
+      createDefaults: {
+        status: newConversation.status,
+        assignedToId: newConversation.assignedToId ?? null,
+      },
+    });
+  }
 
   let messageBody = body;
   if (type === "TEMPLATE" && templateId) {

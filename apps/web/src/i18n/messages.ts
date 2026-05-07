@@ -310,7 +310,17 @@ export const messages = {
       csatRate: "% das resolvidas no período com CSAT",
       csatDistribution: "Distribuição (1–5)",
       csatFootnote:
-        "CSAT contabilizado pela data de registo da avaliação. Pode ser no fecho ou depois, na conversa finalizada.",
+        "CSAT contabilizado pela data em que o cliente submete a avaliação no link (após a conversa finalizada).",
+    },
+    csatPage: {
+      title: "Avaliação do atendimento",
+      rateLabel: "De 1 a 5, como foi a sua experiência?",
+      commentLabel: "Comentário (opcional)",
+      commentPlaceholder: "Conte-nos em poucas palavras…",
+      submit: "Enviar avaliação",
+      thankYou: "Obrigado pela sua avaliação.",
+      errorBadLink: "Este link não é válido ou já não está disponível.",
+      errorGone: "Este inquérito já não está activo.",
     },
     conversations: {
       title: "Conversas",
@@ -353,15 +363,17 @@ export const messages = {
       closureValueInvalid: "Use um número válido maior ou igual a zero.",
       closureValueLabel: "Valor registrado",
       closureSaved: "Dados salvos na conversa.",
-      csatOptional: "Satisfação do cliente — CSAT (opcional)",
+      csatOptional: "Satisfação do cliente (CSAT)",
       csatHint:
-        "Nota de 1 a 5 e comentário curto. Aparece nos relatórios e indicadores de satisfação (CSAT).",
+        "Se CSAT estiver activo nas definições da organização, o cliente recebe um link por WhatsApp após finalizar para avaliar (1 a 5).",
       csatCommentPlaceholder: "Comentário opcional sobre a experiência do cliente…",
-      csatAddLater: "Registar satisfação (CSAT)",
+      csatAddLater: "Inquérito enviado ao cliente",
       csatOnlyTitle: "Registar CSAT",
       csatSubmit: "Guardar avaliação",
-      csatRecordedPrefix: "Avaliação",
-      reopenHint: "Ao reabrir, o motivo, o tipo de lead, o valor e a avaliação CSAT anteriores serão limpos.",
+      csatRecordedPrefix: "Avaliação do cliente",
+      csatPendingCustomer: "À espera da avaliação do cliente (link enviado por WhatsApp).",
+      reopenHint:
+        "Ao reabrir, o motivo, o tipo de lead, o valor, a avaliação CSAT e o link de inquérito anteriores serão limpos.",
       resolvedSummary: "Encerramento",
       leadLabel: "Tipo de lead",
       recordVoice: "Gravar mensagem de áudio",
@@ -605,6 +617,14 @@ export const messages = {
       sectionNotifications: "Notificações",
       sectionCrm: "CRM e leads",
       sectionTeam: "Equipa",
+      sectionCsat: "Satisfação (CSAT)",
+      csatIntro:
+        "Após finalizar um atendimento, o cliente recebe por WhatsApp uma mensagem com link para avaliar de 1 a 5. Só funciona dentro da janela de sessão do WhatsApp (24h após a última mensagem do cliente), salvo uso de modelo aprovado.",
+      csatEnable: "Activar inquérito CSAT ao finalizar",
+      csatMessageLabel: "Mensagem antes do link (opcional)",
+      csatMessageHint:
+        "Se vazio, usamos um texto por omissão. O sistema acrescenta o link público na linha seguinte.",
+      csatSave: "Guardar CSAT",
       channelHint:
         "Configure o fornecedor, teste a ligação e copie o URL do webhook no painel do seu fornecedor WhatsApp.",
       webhookCopyHint:
@@ -1042,7 +1062,17 @@ export const messages = {
       csatRate: "% of resolved (in range) with CSAT",
       csatDistribution: "Distribution (1–5)",
       csatFootnote:
-        "CSAT is counted by rating recorded date — on resolve or later on the resolved conversation.",
+        "CSAT is counted by the date the customer submits the rating via the link after the conversation is resolved.",
+    },
+    csatPage: {
+      title: "Rate your experience",
+      rateLabel: "From 1 to 5, how was your experience?",
+      commentLabel: "Comment (optional)",
+      commentPlaceholder: "Tell us in a few words…",
+      submit: "Submit rating",
+      thankYou: "Thank you for your feedback.",
+      errorBadLink: "This link is invalid or no longer available.",
+      errorGone: "This survey is no longer active.",
     },
     conversations: {
       title: "Conversations",
@@ -1084,15 +1114,17 @@ export const messages = {
       closureValueInvalid: "Enter a valid number (≥ 0).",
       closureValueLabel: "Recorded value",
       closureSaved: "Saved on this conversation.",
-      csatOptional: "Customer satisfaction — CSAT (optional)",
+      csatOptional: "Customer satisfaction (CSAT)",
       csatHint:
-        "Score 1–5 and a short note. Shown in reports as CSAT-style service metrics.",
+        "If CSAT is enabled in organization settings, the customer receives a WhatsApp link after you resolve to rate 1–5.",
       csatCommentPlaceholder: "Optional note about the customer experience…",
-      csatAddLater: "Record satisfaction (CSAT)",
+      csatAddLater: "Survey sent to the customer",
       csatOnlyTitle: "Record CSAT",
       csatSubmit: "Save rating",
-      csatRecordedPrefix: "Rating",
-      reopenHint: "Reopening clears the previous reason, lead type, value, and CSAT rating.",
+      csatRecordedPrefix: "Customer rating",
+      csatPendingCustomer: "Waiting for the customer’s rating (link sent via WhatsApp).",
+      reopenHint:
+        "Reopening clears the previous reason, lead type, value, CSAT rating, and survey link state.",
       resolvedSummary: "Closure",
       leadLabel: "Lead type",
       recordVoice: "Record voice message",
@@ -1337,6 +1369,13 @@ export const messages = {
       sectionNotifications: "Notifications",
       sectionCrm: "CRM & lead types",
       sectionTeam: "Team",
+      sectionCsat: "Satisfaction (CSAT)",
+      csatIntro:
+        "After you resolve a conversation, the customer gets a WhatsApp message with a link to rate 1–5. This works within the WhatsApp session window (24h after the customer’s last message) unless you use an approved template.",
+      csatEnable: "Enable CSAT survey when resolving",
+      csatMessageLabel: "Message before the link (optional)",
+      csatMessageHint: "If empty, a default line is used. The public survey link is added on the next line.",
+      csatSave: "Save CSAT settings",
       channelHint:
         "Configure the provider, test connectivity, and copy the webhook URL from your WhatsApp provider dashboard.",
       webhookCopyHint:

@@ -25,6 +25,8 @@ const settingsSchema = z.object({
   notifyConversationPending: z.boolean().optional(),
   lockSingleConversation: z.boolean().optional(),
   agentBotId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
+  csatEnabled: z.boolean().optional(),
+  csatSurveyMessage: z.union([z.string().max(4000), z.literal(""), z.null()]).optional(),
 });
 
 function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(
@@ -96,6 +98,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const data = { ...parsed.data };
       if (data.evolutionApiBaseUrl === "") data.evolutionApiBaseUrl = null;
       if (data.agentBotId === "") data.agentBotId = null;
+      if (data.csatSurveyMessage === "") data.csatSurveyMessage = null;
       if (data.agentBotId) {
         const botOk = await prisma.bot.findFirst({
           where: { id: data.agentBotId, organizationId },
