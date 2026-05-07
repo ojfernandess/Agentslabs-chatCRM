@@ -42,7 +42,6 @@ interface WhatsappEmbeddedTenantInfo {
   appId: string | null;
   configurationId: string | null;
   apiVersion: string | null;
-  metaWebhookCallbackUrl: string;
   orgWebhookUrl: string;
 }
 
@@ -641,12 +640,6 @@ export function SettingsPage() {
                               <span>{t("settings.embeddedBenefit3")}</span>
                             </li>
                           </ul>
-                          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                            <p>{t("settings.embeddedMetaNote")}</p>
-                            <code className="mt-1 block overflow-x-auto rounded bg-white px-2 py-1.5 text-[11px] text-gray-800">
-                              {embeddedInfo.metaWebhookCallbackUrl}
-                            </code>
-                          </div>
                           {embeddedError ? (
                             <p className="text-sm text-red-600" role="alert">
                               {embeddedError}

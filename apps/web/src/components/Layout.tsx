@@ -17,6 +17,7 @@ import {
   FileSearch,
   BarChart3,
   Megaphone,
+  Inbox,
 } from "lucide-react";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
@@ -27,6 +28,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 
 type SidebarTeam = { id: string; name: string };
+type SidebarInbox = { id: string; name: string };
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
@@ -48,9 +50,12 @@ export function Layout() {
   const showDeals = user?.organizationFeatures?.crm_deals ?? true;
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
+  const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
 
   const conversationTeamId =
     location.pathname === "/conversations" ? new URLSearchParams(location.search).get("teamId") : null;
+  const conversationInboxId =
+    location.pathname === "/conversations" ? new URLSearchParams(location.search).get("inboxId") : null;
 
   useEffect(() => {
     if (!user) {
@@ -65,6 +70,25 @@ export function Layout() {
       })
       .catch(() => {
         if (!cancelled) setSidebarTeams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) {
+      setSidebarInboxes([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ data: { id: string; name: string }[] }>("/inboxes")
+      .then((res) => {
+        if (!cancelled) setSidebarInboxes(res.data.map((x) => ({ id: x.id, name: x.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setSidebarInboxes([]);
       });
     return () => {
       cancelled = true;
@@ -113,7 +137,7 @@ export function Layout() {
                 <Link
                   to="/conversations"
                   className={navItemClass(
-                    location.pathname === "/conversations" && !conversationTeamId,
+                    location.pathname === "/conversations" && !conversationTeamId && !conversationInboxId,
                   )}
                 >
                   <MessageSquare className="h-5 w-5 shrink-0" />
@@ -128,11 +152,31 @@ export function Layout() {
                       <Link
                         key={team.id}
                         to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
-                        className={teamNavItemClass(conversationTeamId === team.id)}
+                        className={teamNavItemClass(
+                          conversationTeamId === team.id && !conversationInboxId,
+                        )}
                         title={team.name}
                       >
                         <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
                         <span className="min-w-0 truncate">{team.name}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+                {sidebarInboxes.length > 0 ? (
+                  <div className="mb-1 mt-0.5 space-y-0.5">
+                    <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
+                      {t("nav.inboxShortcuts")}
+                    </p>
+                    {sidebarInboxes.map((inbox) => (
+                      <Link
+                        key={inbox.id}
+                        to={`/conversations?inboxId=${encodeURIComponent(inbox.id)}`}
+                        className={teamNavItemClass(conversationInboxId === inbox.id && !conversationTeamId)}
+                        title={inbox.name}
+                      >
+                        <Inbox className="h-4 w-4 shrink-0 opacity-70" />
+                        <span className="min-w-0 truncate">{inbox.name}</span>
                       </Link>
                     ))}
                   </div>
@@ -155,6 +199,18 @@ export function Layout() {
               </NavLink>
             ),
           )}
+          <NavLink
+            to="/inboxes"
+            className={({ isActive }) =>
+              clsx(
+                "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+              )
+            }
+          >
+            <Inbox className="h-5 w-5" />
+            {t("nav.inboxes")}
+          </NavLink>
           <NavLink
             to="/my-attendance"
             className={({ isActive }) =>

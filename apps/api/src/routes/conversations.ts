@@ -23,6 +23,7 @@ const querySchema = z.object({
   teamId: z.string().uuid().optional(),
   assignedToId: z.string().uuid().optional(),
   leadTypeId: z.string().uuid().optional(),
+  inboxId: z.string().uuid().optional(),
   mine: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
@@ -33,6 +34,7 @@ const auditQuerySchema = z.object({
   assignedToId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   leadTypeId: z.string().uuid().optional(),
+  inboxId: z.string().uuid().optional(),
   resolvedFrom: z.string().optional(),
   resolvedTo: z.string().optional(),
 });
@@ -46,6 +48,18 @@ const updateSchema = z.object({
   closureValue: z.number().nonnegative().nullable().optional(),
 });
 
+/** Agente tem de ser membro da caixa para ver ou alterar a conversa. */
+async function agentIsMemberOfInbox(
+  userId: string,
+  organizationId: string,
+  inboxId: string,
+): Promise<boolean> {
+  const m = await prisma.inboxMember.findFirst({
+    where: { userId, inboxId, inbox: { organizationId } },
+  });
+  return !!m;
+}
+
 /** Sem equipa na conversa = visível para toda a organização. Com equipa = só membros dessa equipa (e admins). */
 async function agentCanViewConversation(
   userId: string,
@@ -57,6 +71,15 @@ async function agentCanViewConversation(
     where: { userId, teamId: conv.teamId, team: { organizationId } },
   });
   return !!m;
+}
+
+async function agentCanAccessConversation(
+  userId: string,
+  organizationId: string,
+  conv: { teamId: string | null; inboxId: string },
+): Promise<boolean> {
+  if (!(await agentIsMemberOfInbox(userId, organizationId, conv.inboxId))) return false;
+  return agentCanViewConversation(userId, organizationId, { teamId: conv.teamId });
 }
 
 function isTenantAdmin(user: JwtPayload): boolean {
@@ -102,6 +125,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     if (query.leadTypeId) {
       where.leadTypeId = query.leadTypeId;
+    }
+
+    if (query.inboxId) {
+      const inbox = await prisma.inbox.findFirst({ where: { id: query.inboxId, organizationId } });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+      if (request.user.role === "AGENT") {
+        const ok = await agentIsMemberOfInbox(request.user.id, organizationId, query.inboxId);
+        if (!ok) {
+          return reply.status(403).send({
+            error: "Forbidden",
+            message: "You are not a member of this inbox",
+            statusCode: 403,
+          });
+        }
+      }
+      where.inboxId = query.inboxId;
+    } else if (request.user.role === "AGENT") {
+      const myInboxes = await prisma.inboxMember.findMany({
+        where: { userId: request.user.id, inbox: { organizationId } },
+        select: { inboxId: true },
+      });
+      const ids = myInboxes.map((x) => x.inboxId);
+      where.inboxId = ids.length > 0 ? { in: ids } : { in: [] };
     }
 
     const mine = isMineFlag(query.mine);
@@ -187,6 +235,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactListSelect },
           assignedTo: { select: { id: true, name: true } },
           team: { select: { id: true, name: true } },
+          inbox: { select: { id: true, name: true, isDefault: true } },
           leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1 },
         },
@@ -231,6 +280,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (query.leadTypeId) {
       where.leadTypeId = query.leadTypeId;
     }
+    if (query.inboxId) {
+      const inbox = await prisma.inbox.findFirst({ where: { id: query.inboxId, organizationId } });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+      where.inboxId = query.inboxId;
+    }
+
     if (query.resolvedFrom || query.resolvedTo) {
       const range: Prisma.DateTimeFilter = {};
       if (query.resolvedFrom) {
@@ -263,6 +320,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactAuditSelect },
           assignedTo: { select: { id: true, name: true, email: true } },
           team: { select: { id: true, name: true } },
+          inbox: { select: { id: true, name: true, isDefault: true } },
           leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         },
         orderBy: { updatedAt: "desc" },
@@ -304,6 +362,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
         assignedTo: { select: { id: true, name: true } },
         team: { select: { id: true, name: true } },
+        inbox: { select: { id: true, name: true, isDefault: true } },
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         messages: {
           orderBy: { createdAt: "asc" },
@@ -317,7 +376,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const ok = await agentCanViewConversation(request.user.id, organizationId, conversation);
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, conversation);
       if (!ok) {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
@@ -358,7 +417,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const ok = await agentCanViewConversation(request.user.id, organizationId, existing);
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
       if (!ok) {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
@@ -544,6 +603,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             },
             assignedTo: { select: { id: true, name: true } },
             team: { select: { id: true, name: true } },
+            inbox: { select: { id: true, name: true, isDefault: true } },
             leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
             messages: {
               orderBy: { createdAt: "asc" },

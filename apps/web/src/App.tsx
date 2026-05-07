@@ -20,6 +20,7 @@ import { MyAttendancePage } from "@/pages/MyAttendancePage";
 import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { CsatPage } from "@/pages/CsatPage";
 import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
+import { InboxesPage } from "@/pages/InboxesPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
 function OrgFeatureRoute({
@@ -134,6 +135,7 @@ export function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="teams" element={<TeamsPage />} />
+        <Route path="inboxes" element={<InboxesPage />} />
         <Route path="bots" element={<BotsPage />} />
         <Route path="broadcasts" element={<BroadcastCampaignsPage />} />
       </Route>

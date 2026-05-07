@@ -7,6 +7,7 @@ import {
   DEFAULT_LEAD_TYPES,
   BCRYPT_COST_FACTOR,
 } from "@openconduit/shared";
+import { ensureDefaultInboxForOrganization, addUserToDefaultInboxes } from "../src/lib/defaultInbox.js";
 
 const prisma = new PrismaClient();
 
@@ -132,6 +133,15 @@ async function main() {
       });
       console.log(`Super admin created (${superEmail}) — set SEED_SUPER_ADMIN only in controlled environments.`);
     }
+  }
+
+  await ensureDefaultInboxForOrganization(org.id);
+  const orgUsers = await prisma.user.findMany({
+    where: { organizationId: org.id },
+    select: { id: true },
+  });
+  for (const u of orgUsers) {
+    await addUserToDefaultInboxes(org.id, u.id);
   }
 
   console.log("Seeding complete!");

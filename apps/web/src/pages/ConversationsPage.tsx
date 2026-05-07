@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
@@ -23,6 +23,7 @@ interface Conversation {
   };
   assignedTo: { id: string; name: string } | null;
   team: { id: string; name: string } | null;
+  inbox?: { id: string; name: string; isDefault: boolean } | null;
   leadType: { id: string; name: string; color: string } | null;
   messages: { body: string | null; direction: string; createdAt: string }[];
 }
@@ -40,7 +41,9 @@ export function ConversationsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [teamFilter, setTeamFilter] = useState<string>(() => searchParams.get("teamId") ?? "");
+  const [inboxFilter, setInboxFilter] = useState<string>(() => searchParams.get("inboxId") ?? "");
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
+  const [inboxOptions, setInboxOptions] = useState<{ id: string; name: string }[]>([]);
   const hasAnimated = useRef(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
@@ -67,6 +70,8 @@ export function ConversationsPage() {
     }
     const tid = searchParams.get("teamId") ?? "";
     setTeamFilter(tid);
+    const iid = searchParams.get("inboxId") ?? "";
+    setInboxFilter(iid);
   }, [searchParams]);
 
   const setTeamFilterUrl = (teamId: string) => {
@@ -76,6 +81,19 @@ export function ConversationsPage() {
         const n = new URLSearchParams(prev);
         if (teamId) n.set("teamId", teamId);
         else n.delete("teamId");
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
+  const setInboxFilterUrl = (inboxId: string) => {
+    setInboxFilter(inboxId);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (inboxId) n.set("inboxId", inboxId);
+        else n.delete("inboxId");
         return n;
       },
       { replace: true },
@@ -95,12 +113,25 @@ export function ConversationsPage() {
   }, []);
 
   useEffect(() => {
+    async function loadInboxes() {
+      try {
+        const res = await api.get<{ data: { id: string; name: string }[] }>("/inboxes");
+        setInboxOptions(res.data.map((x) => ({ id: x.id, name: x.name })));
+      } catch {
+        setInboxOptions([]);
+      }
+    }
+    void loadInboxes();
+  }, []);
+
+  useEffect(() => {
     async function load() {
       if (!hasAnimated.current) setLoading(true);
       try {
         const params = new URLSearchParams({ pageSize: "50" });
         if (statusFilter) params.set("status", statusFilter);
         if (teamFilter) params.set("teamId", teamFilter);
+        if (inboxFilter) params.set("inboxId", inboxFilter);
         if (mineActive) params.set("mine", "1");
         const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
         setConversations(res.data);
@@ -112,7 +143,7 @@ export function ConversationsPage() {
       }
     }
     load();
-  }, [statusFilter, teamFilter, mineActive]);
+  }, [statusFilter, teamFilter, inboxFilter, mineActive]);
 
   const statusLabel = (s: string) => {
     if (s === "OPEN") return t("conversationDetail.statusOpen");
@@ -185,7 +216,7 @@ export function ConversationsPage() {
               </button>
             ))}
           </div>
-          <div className="flex min-w-[200px] flex-1 items-center gap-2 sm:max-w-xs sm:ml-auto">
+          <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-2 sm:max-w-xs sm:ml-auto">
             <UsersRound className="h-4 w-4 shrink-0 text-gray-400 dark:text-ink-500" />
             <label htmlFor="conv-team-filter" className="sr-only">
               {t("conversations.filterTeam")}
@@ -194,10 +225,27 @@ export function ConversationsPage() {
               id="conv-team-filter"
               value={teamFilter}
               onChange={(e) => setTeamFilterUrl(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+              className="min-w-[140px] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
             >
               <option value="">{t("conversations.allTeams")}</option>
               {teamOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            <Inbox className="h-4 w-4 shrink-0 text-gray-400 dark:text-ink-500" />
+            <label htmlFor="conv-inbox-filter" className="sr-only">
+              {t("conversations.filterInbox")}
+            </label>
+            <select
+              id="conv-inbox-filter"
+              value={inboxFilter}
+              onChange={(e) => setInboxFilterUrl(e.target.value)}
+              className="min-w-[140px] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+            >
+              <option value="">{t("conversations.allInboxes")}</option>
+              {inboxOptions.map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.name}
                 </option>
@@ -257,9 +305,9 @@ export function ConversationsPage() {
                         >
                           {statusLabel(conv.status)}
                         </span>
-                        {conv.team ? (
-                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950/55 dark:text-sky-200">
-                            {conv.team.name}
+                        {conv.inbox ? (
+                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200">
+                            {conv.inbox.name}
                           </span>
                         ) : null}
                         {conv.status === "RESOLVED" && conv.leadType && (

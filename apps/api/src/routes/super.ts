@@ -24,6 +24,7 @@ import {
   parseEvolutionPlatformValue,
 } from "../lib/evolutionPlatform.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
+import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 
 function slugify(name: string): string {
   const base = name
@@ -420,6 +421,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       });
       return o;
     });
+
+    await ensureDefaultInboxForOrganization(org.id);
 
     await safeAudit(request, {
       actorUserId: request.user.id,

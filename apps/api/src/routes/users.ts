@@ -7,6 +7,7 @@ import { config } from "../config.js";
 import { isValidEmail } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
+import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -69,6 +70,8 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     if (user.role === "AGENT") {
       await addAgentToAllOrganizationTeams(organizationId, user.id);
     }
+
+    await addUserToDefaultInboxes(organizationId, user.id);
 
     return reply.status(201).send(user);
   });

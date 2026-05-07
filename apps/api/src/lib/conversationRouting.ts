@@ -1,5 +1,6 @@
 import type { Conversation } from "@prisma/client";
 import { prisma } from "../db.js";
+import { getDefaultInboxId } from "./defaultInbox.js";
 
 /**
  * Escolhe ou cria a conversa WhatsApp do contacto.
@@ -43,9 +44,11 @@ export async function ensureConversationForWhatsAppContact(params: {
       }
       return conv;
     }
+    const inboxId = await getDefaultInboxId(organizationId);
     return prisma.conversation.create({
       data: {
         organizationId,
+        inboxId,
         contactId,
         status: createDefaults.status,
         assignedToId: createDefaults.assignedToId ?? undefined,
@@ -58,9 +61,11 @@ export async function ensureConversationForWhatsAppContact(params: {
     orderBy: { updatedAt: "desc" },
   });
   if (!conv) {
+    const inboxId = await getDefaultInboxId(organizationId);
     return prisma.conversation.create({
       data: {
         organizationId,
+        inboxId,
         contactId,
         status: createDefaults.status,
         assignedToId: createDefaults.assignedToId ?? undefined,

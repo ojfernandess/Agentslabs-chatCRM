@@ -122,8 +122,42 @@ model Organization {
   teams            Team[]
   bots             Bot[]
   broadcastCampaigns BroadcastCampaign[]
+  inboxes          Inbox[]
 
   @@map("organizations")
+}
+
+model Inbox {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?  @db.Text
+  isDefault      Boolean  @default(false) @map("is_default")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  members       InboxMember[]
+  conversations Conversation[]
+
+  @@index([organizationId])
+  @@map("inboxes")
+}
+
+model InboxMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  inboxId String @map("inbox_id") @db.Uuid
+  inbox   Inbox  @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([inboxId, userId])
+  @@index([userId])
+  @@map("inbox_members")
 }
 
 model Team {
@@ -232,6 +266,7 @@ model User {
   ownedDeals            Deal[]         @relation("DealOwner")
   timelineEvents        TimelineEvent[]
   teamMemberships       TeamMember[]
+  inboxMemberships      InboxMember[]
   messagesAsActor       Message[]      @relation("MessageActor")
   broadcastCampaignsCreated BroadcastCampaign[] @relation("BroadcastCampaignCreator")
 
@@ -498,6 +533,9 @@ model Conversation {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  inboxId String @map("inbox_id") @db.Uuid
+  inbox   Inbox  @relation(fields: [inboxId], references: [id], onDelete: Restrict)
+
   contactId String  @map("contact_id") @db.Uuid
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
@@ -528,6 +566,7 @@ model Conversation {
   @@index([status])
   @@index([leadTypeId])
   @@index([teamId])
+  @@index([inboxId])
   @@map("conversations")
 }
 
