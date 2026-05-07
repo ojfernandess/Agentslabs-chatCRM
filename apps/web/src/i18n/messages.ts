@@ -38,7 +38,7 @@ export const messages = {
     publicDocs: {
       title: "Documentação da API",
       subtitle:
-        "Referência dos caminhos HTTP do produto. Não inclui tokens, chaves nem identificadores reais — apenas padrões de URL e requisitos de autenticação.",
+        "Referência dos caminhos HTTP do produto. Não inclui tokens, chaves nem identificadores reais — apenas padrões de URL, autenticação e exemplos de payload.",
       disabledTitle: "Documentação indisponível",
       disabledBody:
         "A documentação pública está desativada pelo administrador da plataforma. Peça o acesso ou consulte a equipa interna.",
@@ -49,6 +49,7 @@ export const messages = {
       colMethod: "Método",
       colPath: "Caminho",
       colDescription: "Descrição",
+      colExample: "Exemplo (payload)",
       auth: {
         none: "Nenhuma",
         session_jwt: "JWT de sessão (utilizador)",
@@ -1097,7 +1098,7 @@ export const messages = {
     publicDocs: {
       title: "API documentation",
       subtitle:
-        "HTTP route reference for this product. No tokens, keys, or real IDs — only URL patterns and authentication expectations.",
+        "HTTP route reference for this product. No tokens, keys, or real IDs — URL patterns, authentication, and example payloads only.",
       disabledTitle: "Documentation unavailable",
       disabledBody:
         "Public documentation is turned off by the platform administrator. Ask your team for access or internal docs.",
@@ -1108,6 +1109,7 @@ export const messages = {
       colMethod: "Method",
       colPath: "Path",
       colDescription: "Description",
+      colExample: "Example (payload)",
       auth: {
         none: "None",
         session_jwt: "Session JWT (user)",

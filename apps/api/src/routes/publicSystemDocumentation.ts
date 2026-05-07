@@ -26,7 +26,7 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
     }
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       noticeEn:
         "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets.",

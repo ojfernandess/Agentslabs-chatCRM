@@ -3,6 +3,8 @@
  * Atualizar quando se adicionarem routers — a página pública só é servida se o super admin ativar.
  */
 
+import { PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentationTenantEndpoints.js";
+
 export type PublicApiDocAuth =
   | "none"
   | "session_jwt"
@@ -17,6 +19,8 @@ export type PublicApiDocEndpoint = {
   auth: PublicApiDocAuth;
   descriptionEn: string;
   descriptionPt: string;
+  /** Exemplo de corpo / query / form em PT-BR (sem segredos reais). */
+  examplePayloadPt: string;
 };
 
 export type PublicApiDocGroup = {
@@ -38,6 +42,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "none",
         descriptionEn: "Health check for load balancers and monitoring.",
         descriptionPt: "Verificação de estado para balanceadores e monitorização.",
+        examplePayloadPt: "Sem corpo. Exemplo: GET /health",
       },
     ],
   },
@@ -54,6 +59,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Download message media by opaque filename (high-entropy name acts as capability; used by WhatsApp providers).",
         descriptionPt:
           "Descarga de multimédia por nome opaco (ficheiro de alta entropia como capacidade; usado por fornecedores WhatsApp).",
+        examplePayloadPt:
+          "Sem corpo. GET com nome opaco no path (ex.: /api/v1/messages/media/a1b2c3d4e5f6789012345678abcdef12.webm).",
       },
       {
         method: "GET|POST",
@@ -61,6 +68,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Customer satisfaction survey page token flow (GET view, POST submit).",
         descriptionPt: "Fluxo do inquérito CSAT com token no URL (GET visualização, POST submissão).",
+        examplePayloadPt:
+          "GET: sem corpo (token no path).\n\nPOST application/json:\n{\n  \"score\": 5,\n  \"comment\": \"Atendimento ótimo (opcional)\"\n}\n(score inteiro de 1 a 5)",
       },
       {
         method: "POST|OPTIONS",
@@ -68,6 +77,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Legacy generic channel JSON ingest (participantId, body, etc.).",
         descriptionPt: "Ingestão JSON genérica legada por token (participantId, body, etc.).",
+        examplePayloadPt:
+          'POST application/json (exemplo ilustrativo):\n{\n  "participantId": "visitante-uuid-ou-id-externo",\n  "body": "Olá, preciso de ajuda",\n  "type": "TEXT"\n}\n(estrutura exata pode variar — token no path.)',
       },
       {
         method: "POST|OPTIONS",
@@ -75,6 +86,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Telegram Bot API update webhook (legacy path under /public/inbox).",
         descriptionPt: "Webhook de updates do Telegram (caminho legado sob /public/inbox).",
+        examplePayloadPt:
+          "POST application/json — corpo típico de update do Bot API, ex.:\n{\n  \"update_id\": 10001,\n  \"message\": {\n    \"message_id\": 1,\n    \"chat\": { \"id\": 123456789, \"type\": \"private\" },\n    \"text\": \"Olá\"\n  }\n}",
       },
       {
         method: "POST|OPTIONS",
@@ -82,6 +95,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Twilio SMS/voice callback (form body; legacy path).",
         descriptionPt: "Callback Twilio SMS/voz (form body; caminho legado).",
+        examplePayloadPt:
+          "POST application/x-www-form-urlencoded:\nFrom=%2B5511999990000&Body=Olá+equipe&MessageSid=SMxxxxxxxx",
       },
       {
         method: "POST|OPTIONS",
@@ -91,6 +106,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Native client-style message post for Website/API channel inboxes (JSON: content, optional name, email, echo_id).",
         descriptionPt:
           "Envio estilo Client API para caixas Website/API (JSON: content, name, email, echo_id opcionais).",
+        examplePayloadPt:
+          'POST application/json (contactIdentifier no path = id estável do visitante):\n{\n  "content": "Mensagem do widget",\n  "name": "Visitante (opcional)",\n  "email": "visitante@exemplo.com (opcional)",\n  "echo_id": "opcional-id-de-deduplicação"\n}',
       },
       {
         method: "GET|POST|OPTIONS",
@@ -98,6 +115,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Facebook Messenger Graph webhook verification (GET) and messaging events (POST).",
         descriptionPt: "Webhook Graph do Messenger — verificação (GET) e eventos (POST).",
+        examplePayloadPt:
+          "GET query (verificação): hub.mode=subscribe&hub.verify_token=<token-configurado-na-caixa>&hub.challenge=<string>\n\nPOST application/json — payload Graph Messenger (estrutura entry/messaging; ver documentação Meta).",
       },
       {
         method: "GET|POST|OPTIONS",
@@ -105,6 +124,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Instagram Messaging Graph webhook (GET verify, POST events).",
         descriptionPt: "Webhook Graph Instagram Messaging (GET verificação, POST eventos).",
+        examplePayloadPt:
+          "GET: idem Messenger (hub.mode, hub.verify_token, hub.challenge).\n\nPOST: payload Graph semelhante ao do Messenger para mensagens Instagram.",
       },
       {
         method: "POST|OPTIONS",
@@ -112,6 +133,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Telegram native webhook path (Bot updates JSON).",
         descriptionPt: "Webhook nativo Telegram (JSON de updates do bot).",
+        examplePayloadPt:
+          "POST application/json — update do Telegram Bot API (mesmo formato do exemplo acima para /public/inbox/.../telegram).",
       },
       {
         method: "POST|OPTIONS",
@@ -119,6 +142,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "LINE Messaging API webhook (events JSON).",
         descriptionPt: "Webhook LINE Messaging API (JSON de eventos).",
+        examplePayloadPt:
+          'POST application/json:\n{\n  "events": [\n    {\n      "type": "message",\n      "source": { "userId": "Uxxxxxxxx" },\n      "message": { "type": "text", "id": "...", "text": "Olá" }\n    }\n  ]\n}',
       },
       {
         method: "POST|OPTIONS",
@@ -126,6 +151,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "path_ingest_token",
         descriptionEn: "Twilio native callback URL for SMS/Voice channel inboxes.",
         descriptionPt: "URL nativa Twilio para caixas SMS/Voz.",
+        examplePayloadPt:
+          "POST application/x-www-form-urlencoded (igual ao webhook legado):\nFrom=...&Body=...&MessageSid=...",
       },
     ],
   },
@@ -142,6 +169,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Organization-scoped WhatsApp webhook (verify + inbound; configured per tenant in settings).",
         descriptionPt:
           "Webhook WhatsApp por organização (verificação + entrada; configurado por tenant nas definições).",
+        examplePayloadPt:
+          "GET (verificação Meta): query hub.mode, hub.verify_token, hub.challenge (valores definidos nas definições do canal).\n\nPOST: corpo JSON do webhook WhatsApp Cloud API / parceiro (estrutura Meta; sem segredos aqui).",
       },
       {
         method: "GET|POST",
@@ -149,6 +178,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "none",
         descriptionEn: "Shared Meta / Cloud API webhook for embedded WhatsApp signup flows.",
         descriptionPt: "Webhook partilhado Meta / Cloud API para fluxos embedded.",
+        examplePayloadPt:
+          "GET/POST: payloads conforme documentação Meta WhatsApp Business / Cloud API (verificação GET + eventos POST).",
       },
     ],
   },
@@ -163,6 +194,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "none",
         descriptionEn: "Sign in (returns JWT; do not log or expose tokens in client-side docs).",
         descriptionPt: "Início de sessão (devolve JWT; não documentar tokens em exemplos públicos).",
+        examplePayloadPt:
+          'POST application/json:\n{\n  "email": "usuario@exemplo.com",\n  "password": "<sua_senha>"\n}',
       },
       {
         method: "POST",
@@ -170,6 +203,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Sign out current session.",
         descriptionPt: "Terminar sessão atual.",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>",
       },
       {
         method: "GET",
@@ -177,6 +211,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Current user and organization context.",
         descriptionPt: "Utilizador atual e contexto da organização.",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>",
       },
       {
         method: "PATCH",
@@ -184,6 +219,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Update profile fields for current user.",
         descriptionPt: "Atualizar perfil do utilizador atual.",
+        examplePayloadPt:
+          'PATCH application/json (campos opcionais — alinhado à API):\n{\n  "name": "Novo nome",\n  "displayName": "Apelido no chat (ou null)",\n  "messageSignature": "Assinatura nas mensagens (ou null)",\n  "showAgentNameInChat": true\n}',
       },
       {
         method: "POST",
@@ -191,6 +228,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Change password.",
         descriptionPt: "Alterar palavra-passe.",
+        examplePayloadPt:
+          'POST application/json:\n{\n  "currentPassword": "<atual>",\n  "newPassword": "<nova_senha>"\n}',
       },
       {
         method: "POST",
@@ -198,6 +237,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Exit super-admin user impersonation when applicable.",
         descriptionPt: "Sair da impersonação de utilizador (super admin).",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>",
       },
     ],
   },
@@ -205,57 +245,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
     id: "tenant_api",
     titleEn: "Tenant API (authenticated agents/admins)",
     titlePt: "API do tenant (agentes/admins autenticados)",
-    endpoints: [
-      { method: "GET", path: "/api/v1/dashboard", auth: "session_jwt", descriptionEn: "Dashboard summary.", descriptionPt: "Resumo do painel." },
-      { method: "GET", path: "/api/v1/reports", auth: "session_jwt", descriptionEn: "Reporting and analytics.", descriptionPt: "Relatórios e análise." },
-      { method: "GET|POST", path: "/api/v1/contacts", auth: "session_jwt", descriptionEn: "List and create contacts.", descriptionPt: "Listar e criar contactos." },
-      { method: "GET|PUT|DELETE", path: "/api/v1/contacts/:id", auth: "session_jwt", descriptionEn: "Contact CRUD and related sub-resources.", descriptionPt: "CRUD de contacto e sub-recursos." },
-      { method: "GET", path: "/api/v1/contacts/:id/messages", auth: "session_jwt", descriptionEn: "Timeline messages for contact.", descriptionPt: "Mensagens na cronologia do contacto." },
-      { method: "POST|DELETE", path: "/api/v1/contacts/:id/tags", auth: "session_jwt", descriptionEn: "Tag assignments.", descriptionPt: "Atribuição de tags." },
-      { method: "PUT", path: "/api/v1/contacts/:id/stage", auth: "session_jwt", descriptionEn: "Pipeline stage update.", descriptionPt: "Atualizar etapa do pipeline." },
-      { method: "GET|PUT", path: "/api/v1/conversations", auth: "session_jwt", descriptionEn: "List/update conversations (see route file for query params).", descriptionPt: "Listar/atualizar conversas." },
-      { method: "GET", path: "/api/v1/conversations/audit", auth: "session_jwt", descriptionEn: "Conversation audit log.", descriptionPt: "Registo de auditoria de conversas." },
-      { method: "GET|PUT", path: "/api/v1/conversations/:id", auth: "session_jwt", descriptionEn: "Single conversation.", descriptionPt: "Conversa individual." },
-      { method: "POST", path: "/api/v1/messages", auth: "session_jwt", descriptionEn: "Send message / create draft.", descriptionPt: "Enviar mensagem / rascunho." },
-      { method: "POST", path: "/api/v1/messages/upload-audio", auth: "session_jwt", descriptionEn: "Upload audio for messages.", descriptionPt: "Carregar áudio para mensagens." },
-      { method: "POST", path: "/api/v1/messages/upload-media", auth: "session_jwt", descriptionEn: "Upload media attachment.", descriptionPt: "Carregar multimédia." },
-      { method: "GET", path: "/api/v1/messages/:id", auth: "session_jwt", descriptionEn: "Get message by id.", descriptionPt: "Obter mensagem por id." },
-      { method: "GET|POST|PUT|DELETE", path: "/api/v1/tags", auth: "session_jwt", descriptionEn: "Tags CRUD.", descriptionPt: "CRUD de tags." },
-      { method: "GET", path: "/api/v1/pipeline/board", auth: "session_jwt", descriptionEn: "Pipeline board data.", descriptionPt: "Dados do quadro do pipeline." },
-      { method: "GET", path: "/api/v1/pipeline/stages", auth: "session_jwt", descriptionEn: "List pipeline stages.", descriptionPt: "Listar etapas do pipeline." },
-      { method: "POST", path: "/api/v1/pipeline/stages", auth: "session_jwt", descriptionEn: "Create stage (admin).", descriptionPt: "Criar etapa (admin)." },
-      { method: "PUT|DELETE", path: "/api/v1/pipeline/stages/:id", auth: "session_jwt", descriptionEn: "Update or delete stage (admin).", descriptionPt: "Atualizar ou eliminar etapa (admin)." },
-      { method: "GET", path: "/api/v1/crm/pipeline-stages", auth: "session_jwt", descriptionEn: "CRM pipeline stages list.", descriptionPt: "Lista de etapas CRM." },
-      { method: "GET", path: "/api/v1/crm/timeline", auth: "session_jwt", descriptionEn: "CRM timeline feed.", descriptionPt: "Cronologia CRM." },
-      { method: "GET|POST", path: "/api/v1/crm/accounts", auth: "session_jwt", descriptionEn: "CRM accounts.", descriptionPt: "Contas CRM." },
-      { method: "GET|PATCH", path: "/api/v1/crm/accounts/:id", auth: "session_jwt", descriptionEn: "Single CRM account.", descriptionPt: "Conta CRM individual." },
-      { method: "GET|POST", path: "/api/v1/crm/products", auth: "session_jwt", descriptionEn: "CRM products.", descriptionPt: "Produtos CRM." },
-      { method: "PATCH", path: "/api/v1/crm/products/:id", auth: "session_jwt", descriptionEn: "Update product.", descriptionPt: "Atualizar produto." },
-      { method: "GET|POST", path: "/api/v1/crm/deals", auth: "session_jwt", descriptionEn: "CRM deals list and create.", descriptionPt: "Listar e criar negócios." },
-      { method: "GET|PATCH|DELETE", path: "/api/v1/crm/deals/:id", auth: "session_jwt", descriptionEn: "Deal detail, update, delete.", descriptionPt: "Detalhe, atualizar, eliminar negócio." },
-      { method: "POST", path: "/api/v1/crm/deals/:id/line-items", auth: "session_jwt", descriptionEn: "Add deal line item.", descriptionPt: "Adicionar linha ao negócio." },
-      { method: "PATCH|DELETE", path: "/api/v1/crm/deals/:id/line-items/:lineId", auth: "session_jwt", descriptionEn: "Update or remove line item.", descriptionPt: "Atualizar ou remover linha." },
-      { method: "GET|POST|PUT|DELETE", path: "/api/v1/lead-types", auth: "session_jwt", descriptionEn: "Lead types.", descriptionPt: "Tipos de lead." },
-      { method: "GET|POST|PUT|DELETE", path: "/api/v1/reminders", auth: "session_jwt", descriptionEn: "Reminders.", descriptionPt: "Lembretes." },
-      { method: "GET|POST|DELETE", path: "/api/v1/templates", auth: "session_jwt", descriptionEn: "Message templates.", descriptionPt: "Modelos de mensagem." },
-      { method: "POST", path: "/api/v1/templates/evolution", auth: "session_jwt", descriptionEn: "Sync templates from Evolution (admin).", descriptionPt: "Sincronizar modelos Evolution (admin)." },
-      { method: "POST", path: "/api/v1/broadcasts/audience-preview", auth: "session_jwt", descriptionEn: "Preview broadcast audience.", descriptionPt: "Pré-visualizar audiência de campanha." },
-      { method: "GET|POST|DELETE", path: "/api/v1/broadcasts", auth: "session_jwt", descriptionEn: "Broadcast campaigns CRUD.", descriptionPt: "CRUD de campanhas de difusão." },
-      { method: "POST", path: "/api/v1/broadcasts/:id/start", auth: "session_jwt", descriptionEn: "Start sending a campaign.", descriptionPt: "Iniciar envio da campanha." },
-      { method: "GET", path: "/api/v1/settings/notifications", auth: "session_jwt", descriptionEn: "Notification toggles.", descriptionPt: "Interruptores de notificação." },
-      { method: "GET", path: "/api/v1/settings/channel", auth: "session_jwt", descriptionEn: "Channel summary for UI.", descriptionPt: "Resumo do canal para a UI." },
-      { method: "GET|PUT", path: "/api/v1/settings", auth: "session_jwt", descriptionEn: "Organization settings (admin); masked secrets in responses.", descriptionPt: "Definições da organização (admin); segredos mascarados." },
-      { method: "POST", path: "/api/v1/settings/test-connection", auth: "session_jwt", descriptionEn: "Test WhatsApp/provider connectivity (admin).", descriptionPt: "Teste de conectividade do fornecedor (admin)." },
-      { method: "GET|POST", path: "/api/v1/settings/whatsapp-embedded", auth: "session_jwt", descriptionEn: "Embedded signup helpers (admin).", descriptionPt: "Auxiliares de embedded signup (admin)." },
-      { method: "POST", path: "/api/v1/settings/evolution-qr/start", auth: "session_jwt", descriptionEn: "Start Evolution QR session (admin).", descriptionPt: "Iniciar sessão QR Evolution (admin)." },
-      { method: "GET", path: "/api/v1/settings/evolution-qr/qr", auth: "session_jwt", descriptionEn: "Poll QR payload (admin).", descriptionPt: "Obter payload do QR (admin)." },
-      { method: "GET", path: "/api/v1/settings/evolution-qr/status", auth: "session_jwt", descriptionEn: "Connection status (admin).", descriptionPt: "Estado da ligação (admin)." },
-      { method: "GET|POST|PUT|DELETE", path: "/api/v1/users", auth: "session_jwt", descriptionEn: "Users management.", descriptionPt: "Gestão de utilizadores." },
-      { method: "GET|POST|PATCH|DELETE", path: "/api/v1/inboxes", auth: "session_jwt", descriptionEn: "Inboxes, members; admin to create/patch/delete.", descriptionPt: "Caixas e membros; admin para criar/editar." },
-      { method: "POST", path: "/api/v1/inboxes/:id/rotate-ingest-token", auth: "session_jwt", descriptionEn: "Rotate public ingest token for an inbox (admin).", descriptionPt: "Rodar token de ingestão público (admin)." },
-      { method: "GET|POST|PATCH|DELETE", path: "/api/v1/teams", auth: "session_jwt", descriptionEn: "Teams and memberships.", descriptionPt: "Equipas e membros." },
-      { method: "GET|POST|PATCH|DELETE", path: "/api/v1/bots", auth: "session_jwt", descriptionEn: "Bots, inbox tokens, interactions (admin for some).", descriptionPt: "Bots, tokens de inbox, interações." },
-    ],
+    endpoints: PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS,
   },
   {
     id: "websocket",
@@ -268,6 +258,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "session_jwt",
         descriptionEn: "Realtime workspace WebSocket (see server implementation for handshake).",
         descriptionPt: "WebSocket em tempo real do workspace (ver implementação do servidor).",
+        examplePayloadPt:
+          "Não é pedido HTTP com JSON. Abrir wss://<host>/api/v1/ws com cookie de sessão (ou credencial que o cliente use); handshake e mensagens conforme o servidor em workspaceHub.",
       },
     ],
   },
@@ -284,6 +276,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Outbound message from configured agent bot (Bearer token issued per bot; not a user JWT).",
         descriptionPt:
           "Mensagem de saída do bot configurado (Bearer do bot; não é JWT de utilizador).",
+        examplePayloadPt:
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (mesmo schema que /api/v1/messages, sem isPrivate):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Resposta automática do bot"\n}',
       },
       {
         method: "PATCH",
@@ -291,6 +285,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "agent_bot_bearer",
         descriptionEn: "Set conversation status OPEN or PENDING for handoff/triage.",
         descriptionPt: "Definir estado da conversa OPEN ou PENDING (handoff/triagem).",
+        examplePayloadPt: 'PATCH application/json:\n{\n  "status": "PENDING"\n}\n(OPEN ou PENDING)',
       },
     ],
   },
@@ -305,6 +300,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "platform_app_bearer",
         descriptionEn: "Verify platform app token and return identity metadata.",
         descriptionPt: "Validar token da aplicação de plataforma e metadados.",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <platform_app_token>",
       },
       {
         method: "GET",
@@ -312,6 +308,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "platform_app_bearer",
         descriptionEn: "Aggregated stats scoped to platform app credentials.",
         descriptionPt: "Estatísticas agregadas no âmbito da app de plataforma.",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <platform_app_token>",
       },
     ],
   },
@@ -328,6 +325,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Platform operations: orgs, users, audit, feature flags, platform settings, WhatsApp embedded, Evolution. Requires SUPER_ADMIN role.",
         descriptionPt:
           "Operações de plataforma: organizações, utilizadores, auditoria, feature flags, definições globais, WhatsApp embedded, Evolution. Requer papel SUPER_ADMIN.",
+        examplePayloadPt:
+          "Cabeçalho: Authorization: Bearer <jwt-super-admin>\n\nGET: sem corpo (ex.: /api/v1/super/organizations).\n\nPOST/PATCH: JSON conforme rota, ex. PATCH definição:\n{\n  \"publicSystemDocumentationEnabled\": true\n}\n(consultar rotas em apps/api/src/routes/super.ts ou documentação interna.)",
       },
     ],
   },
