@@ -13,8 +13,12 @@ const createTeamSchema = z.object({
   notificationSettings: z.record(z.unknown()).optional(),
 });
 
-const patchTeamSchema = createTeamSchema.partial().extend({
+const patchTeamSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
   description: z.string().max(4000).nullable().optional(),
+  avatarUrl: z.string().url().max(2048).optional(),
+  businessHours: z.union([z.record(z.unknown()), z.null()]).optional(),
+  notificationSettings: z.record(z.unknown()).optional(),
 });
 
 const addMemberSchema = z.object({
@@ -141,7 +145,12 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.description !== undefined) data.description = parsed.data.description;
     if (parsed.data.avatarUrl !== undefined) data.avatarUrl = parsed.data.avatarUrl;
-    if (parsed.data.businessHours !== undefined) data.businessHours = parsed.data.businessHours as object;
+    if (parsed.data.businessHours !== undefined) {
+      data.businessHours =
+        parsed.data.businessHours === null
+          ? Prisma.JsonNull
+          : (parsed.data.businessHours as Prisma.InputJsonValue);
+    }
     if (parsed.data.notificationSettings !== undefined) {
       data.notificationSettings = parsed.data.notificationSettings as object;
     }

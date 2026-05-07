@@ -32,11 +32,13 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
     };
 
     const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
 
     if (filter === "today") {
-      where.dueAt = { lte: endOfDay };
+      where.dueAt = { gte: startOfToday, lte: endOfDay };
       where.completed = false;
     } else if (filter === "overdue") {
       where.dueAt = { lt: now };

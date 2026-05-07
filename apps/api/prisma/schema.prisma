@@ -491,6 +491,10 @@ model Conversation {
   closureReason String?   @map("closure_reason") @db.Text
   /// Valor opcional associado ao lead quando a conversa é finalizada (acompanhamento comercial).
   closureValue  Float?    @map("closure_value")
+  /// CSAT 1–5 registado pelo atendente (estilo Chatwoot / HubSpot) ao fechar ou depois na mesma conversa resolvida.
+  csatScore     Int?      @map("csat_score")
+  csatComment   String?   @map("csat_comment") @db.Text
+  csatRecordedAt DateTime? @map("csat_recorded_at")
 
   teamId String? @map("team_id") @db.Uuid
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)

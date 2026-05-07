@@ -28,6 +28,18 @@ interface ContactOption {
   phone: string;
 }
 
+/** Converte data + hora local do <input type="date/time"> em ISO UTC sem duplicar `:00` quando o tempo já traz segundos. */
+function dueLocalInputsToIso(dueDate: string, dueTime: string): string {
+  const t = dueTime.trim();
+  const hasSeconds = /^\d{1,2}:\d{2}:\d{2}/.test(t);
+  const local = hasSeconds ? `${dueDate}T${t}` : `${dueDate}T${t}:00`;
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) {
+    throw new RangeError("invalid_due_at");
+  }
+  return d.toISOString();
+}
+
 export function RemindersPage() {
   const { t } = useI18n();
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -93,13 +105,14 @@ export function RemindersPage() {
   };
 
   const handleCreate = async () => {
-    if (!selectedContactId || !note || !dueDate) return;
+    const noteTrim = note.trim();
+    if (!selectedContactId || !noteTrim || !dueDate) return;
     setSubmitting(true);
     try {
-      const dueAt = new Date(`${dueDate}T${dueTime}:00`).toISOString();
+      const dueAt = dueLocalInputsToIso(dueDate, dueTime);
       await api.post("/reminders", {
         contactId: selectedContactId,
-        note,
+        note: noteTrim,
         dueAt,
       });
       setShowForm(false);
@@ -214,7 +227,7 @@ export function RemindersPage() {
                 <div className="flex gap-2">
                   <motion.button
                     onClick={handleCreate}
-                    disabled={!selectedContactId || !note || !dueDate || submitting}
+                    disabled={!selectedContactId || !note.trim() || !dueDate || submitting}
                     className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                     whileTap={{ scale: 0.97 }}
                   >

@@ -26,6 +26,7 @@ interface AdminTeam {
   id: string;
   name: string;
   description: string | null;
+  businessHours?: unknown;
   members: TeamMemberRow[];
   _count: { members: number; conversations: number };
 }
@@ -43,7 +44,9 @@ export function TeamsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addUserId, setAddUserId] = useState<Record<string, string>>({});
   const [addRole, setAddRole] = useState<Record<string, TeamMemberRole>>({});
-  const [drafts, setDrafts] = useState<Record<string, { name: string; description: string }>>({});
+  const [drafts, setDrafts] = useState<
+    Record<string, { name: string; description: string; businessHoursText: string }>
+  >({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -128,9 +131,29 @@ export function TeamsPage() {
   };
 
   const getDraft = (team: AdminTeam) =>
-    drafts[team.id] ?? { name: team.name, description: team.description ?? "" };
+    drafts[team.id] ?? {
+      name: team.name,
+      description: team.description ?? "",
+      businessHoursText:
+        team.businessHours != null ? JSON.stringify(team.businessHours as object, null, 2) : "",
+    };
 
-  const setDraftField = (teamId: string, team: AdminTeam, field: "name" | "description", value: string) => {
+  const canonBhText = (text: string): string => {
+    const trimmed = text.trim();
+    if (trimmed === "") return "";
+    try {
+      return JSON.stringify(JSON.parse(trimmed));
+    } catch {
+      return trimmed;
+    }
+  };
+
+  const setDraftField = (
+    teamId: string,
+    team: AdminTeam,
+    field: "name" | "description" | "businessHoursText",
+    value: string,
+  ) => {
     const cur = getDraft(team);
     setDrafts((p) => ({ ...p, [teamId]: { ...cur, [field]: value } }));
   };
@@ -142,10 +165,38 @@ export function TeamsPage() {
     setSavingId(team.id);
     try {
       const desc = d.description.trim();
-      await api.patch(`/teams/${team.id}`, {
+      const origBhCanon =
+        team.businessHours != null ? canonBhText(JSON.stringify(team.businessHours as object)) : "";
+      const body: Record<string, unknown> = {
         name,
         description: desc === "" ? null : desc,
-      });
+      };
+      if (canonBhText(d.businessHoursText) !== origBhCanon) {
+        const rawBh = d.businessHoursText.trim();
+        if (rawBh === "") {
+          body.businessHours = null;
+        } else {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(rawBh);
+          } catch {
+            window.alert(t("teams.businessHoursInvalid"));
+            setSavingId(null);
+            return;
+          }
+          if (
+            typeof parsed !== "object" ||
+            parsed === null ||
+            Array.isArray(parsed)
+          ) {
+            window.alert(t("teams.businessHoursInvalid"));
+            setSavingId(null);
+            return;
+          }
+          body.businessHours = parsed as Record<string, unknown>;
+        }
+      }
+      await api.patch(`/teams/${team.id}`, body);
       await loadTeams();
       setDrafts((p) => {
         const next = { ...p };
@@ -187,7 +238,13 @@ export function TeamsPage() {
 
   const detailsDirty = (team: AdminTeam) => {
     const d = getDraft(team);
-    return d.name.trim() !== team.name || (d.description.trim() || "") !== (team.description ?? "");
+    const origBhCanon =
+      team.businessHours != null ? canonBhText(JSON.stringify(team.businessHours as object)) : "";
+    return (
+      d.name.trim() !== team.name ||
+      (d.description.trim() || "") !== (team.description ?? "") ||
+      canonBhText(d.businessHoursText) !== origBhCanon
+    );
   };
 
   if (!isAdmin) {
@@ -297,6 +354,24 @@ export function TeamsPage() {
                               className="input w-full resize-y text-sm"
                               aria-label={t("teams.description")}
                             />
+                            <div>
+                              <label
+                                htmlFor={`bh-${team.id}`}
+                                className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-400"
+                              >
+                                {t("teams.businessHoursLabel")}
+                              </label>
+                              <p className="mb-1 text-[11px] leading-snug text-ink-500">{t("teams.businessHoursHint")}</p>
+                              <textarea
+                                id={`bh-${team.id}`}
+                                value={getDraft(team).businessHoursText}
+                                onChange={(e) => setDraftField(team.id, team, "businessHoursText", e.target.value)}
+                                placeholder={t("teams.businessHoursPlaceholder")}
+                                rows={6}
+                                spellCheck={false}
+                                className="input w-full resize-y font-mono text-xs"
+                              />
+                            </div>
                           </div>
                           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                             <button

@@ -18,6 +18,7 @@ import { userRoutes } from "./routes/users.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { reportsRoutes } from "./routes/reports.js";
 import { leadTypeRoutes } from "./routes/leadTypes.js";
 import { superRoutes } from "./routes/super.js";
 import { platformRoutes } from "./routes/platform.js";
@@ -71,6 +72,7 @@ await app.register(publicMessageMediaRoutes);
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });
 await app.register(dashboardRoutes, { prefix: "/api/v1/dashboard" });
+await app.register(reportsRoutes, { prefix: "/api/v1/reports" });
 await app.register(contactRoutes, { prefix: "/api/v1/contacts" });
 await app.register(conversationRoutes, { prefix: "/api/v1/conversations" });
 await app.register(messageRoutes, { prefix: "/api/v1/messages" });

@@ -15,6 +15,7 @@ import {
   Box,
   ClipboardCheck,
   FileSearch,
+  BarChart3,
 } from "lucide-react";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
@@ -28,6 +29,7 @@ type SidebarTeam = { id: string; name: string };
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
+  { to: "/reports", icon: BarChart3, labelKey: "nav.reports" },
   { to: "/conversations", icon: MessageSquare, labelKey: "nav.conversations" },
   { to: "/contacts", icon: Users, labelKey: "nav.contacts" },
   { to: "/crm", icon: LayoutGrid, labelKey: "nav.crm" },

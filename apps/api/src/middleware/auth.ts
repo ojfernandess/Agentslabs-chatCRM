@@ -26,7 +26,7 @@ export async function authenticate(
   try {
     await request.jwtVerify();
   } catch {
-    reply.status(401).send({ error: "Unauthorized", message: "Invalid or expired token", statusCode: 401 });
+    return reply.status(401).send({ error: "Unauthorized", message: "Invalid or expired token", statusCode: 401 });
   }
 }
 
@@ -35,6 +35,7 @@ export async function requireAdmin(
   reply: FastifyReply,
 ): Promise<void> {
   await authenticate(request, reply);
+  if (reply.sent) return;
   const u = request.user;
   if (!u) return;
   if (u.role === "ADMIN") return;
@@ -47,6 +48,7 @@ export async function requireSuperAdmin(
   reply: FastifyReply,
 ): Promise<void> {
   await authenticate(request, reply);
+  if (reply.sent) return;
   if (request.user?.role !== "SUPER_ADMIN") {
     reply.status(403).send({ error: "Forbidden", message: "Super admin access required", statusCode: 403 });
   }

@@ -34,6 +34,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       prisma.reminder.count({
         where: {
           ...orgWhere,
+          userId: request.user.id,
           dueAt: { gte: todayStart, lt: startOfDay(subDays(todayStart, -1)) },
           completed: false,
         },

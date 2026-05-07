@@ -41,6 +41,8 @@ const updateSchema = z.object({
   closureReason: z.string().min(3).max(4000).optional(),
   leadTypeId: z.string().uuid().optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
+  csatScore: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).nullable().optional(),
+  csatComment: z.string().max(2000).nullable().optional(),
 });
 
 /** Sem equipa na conversa = visível para toda a organização. Com equipa = só membros dessa equipa (e admins). */
@@ -424,6 +426,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             statusCode: 400,
           });
         }
+
+        const cc = parsed.data.csatComment?.trim() ?? "";
+        if (cc.length > 0 && parsed.data.csatScore == null) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "csatScore is required when csatComment is provided",
+            statusCode: 400,
+          });
+        }
       }
     }
 
@@ -434,6 +445,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       closureReason?: string | null;
       leadTypeId?: string | null;
       closureValue?: number | null;
+      csatScore?: number | null;
+      csatComment?: string | null;
+      csatRecordedAt?: Date | null;
     } = {};
 
     if (parsed.data.status !== undefined) {
@@ -459,6 +473,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.closureReason = null;
       data.leadTypeId = null;
       data.closureValue = null;
+      data.csatScore = null;
+      data.csatComment = null;
+      data.csatRecordedAt = null;
     } else if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
         data.closureReason = parsed.data.closureReason!.trim();
@@ -468,7 +485,45 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         } else {
           data.closureValue = null;
         }
+        if (parsed.data.csatScore != null) {
+          data.csatScore = parsed.data.csatScore;
+          data.csatComment = parsed.data.csatComment?.trim() || null;
+          data.csatRecordedAt = new Date();
+        }
       }
+    } else if (existing.status === "RESOLVED" && nextStatus === "RESOLVED") {
+      if (parsed.data.csatScore === null) {
+        data.csatScore = null;
+        data.csatComment = null;
+        data.csatRecordedAt = null;
+      } else if (parsed.data.csatScore !== undefined) {
+        data.csatScore = parsed.data.csatScore;
+        data.csatRecordedAt = new Date();
+        if (parsed.data.csatComment !== undefined) {
+          data.csatComment = parsed.data.csatComment?.trim() || null;
+        }
+      } else if (parsed.data.csatComment !== undefined) {
+        if (existing.csatScore == null) {
+          const trimmed = parsed.data.csatComment?.trim() ?? "";
+          if (trimmed.length > 0) {
+            return reply.status(400).send({
+              error: "Bad Request",
+              message: "csatScore is required when csatComment is provided",
+              statusCode: 400,
+            });
+          }
+        } else {
+          data.csatComment = parsed.data.csatComment?.trim() || null;
+        }
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "No fields to update",
+        statusCode: 400,
+      });
     }
 
     const prevTeamId = existing.teamId;
