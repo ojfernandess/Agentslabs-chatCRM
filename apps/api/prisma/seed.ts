@@ -7,9 +7,58 @@ import {
   DEFAULT_LEAD_TYPES,
   BCRYPT_COST_FACTOR,
 } from "@openconduit/shared";
-import { ensureDefaultInboxForOrganization, addUserToDefaultInboxes } from "../src/lib/defaultInbox.js";
 
 const prisma = new PrismaClient();
+
+/** Mesmo nome que `defaultInbox.ts` — seed não importa `src/lib` (imagens Docker podem não incluir `src`). */
+const DEFAULT_INBOX_NAME = "Caixa principal";
+
+async function seedEnsureDefaultInbox(organizationId: string): Promise<{ id: string }> {
+  const existing = await prisma.inbox.findFirst({
+    where: { organizationId, isDefault: true },
+    select: { id: true },
+  });
+  if (existing) return existing;
+
+  return prisma.$transaction(async (tx) => {
+    const inbox = await tx.inbox.create({
+      data: {
+        organizationId,
+        name: DEFAULT_INBOX_NAME,
+        isDefault: true,
+      },
+    });
+    const users = await tx.user.findMany({
+      where: { organizationId },
+      select: { id: true },
+    });
+    if (users.length > 0) {
+      await tx.inboxMember.createMany({
+        data: users.map((u) => ({ inboxId: inbox.id, userId: u.id })),
+        skipDuplicates: true,
+      });
+    }
+    return inbox;
+  });
+}
+
+async function seedAddUserToDefaultInboxes(organizationId: string, userId: string): Promise<void> {
+  let defaults = await prisma.inbox.findMany({
+    where: { organizationId, isDefault: true },
+    select: { id: true },
+  });
+  if (defaults.length === 0) {
+    await seedEnsureDefaultInbox(organizationId);
+    defaults = await prisma.inbox.findMany({
+      where: { organizationId, isDefault: true },
+      select: { id: true },
+    });
+  }
+  await prisma.inboxMember.createMany({
+    data: defaults.map((i) => ({ inboxId: i.id, userId })),
+    skipDuplicates: true,
+  });
+}
 
 async function main() {
   console.log("Seeding database...");
@@ -135,13 +184,13 @@ async function main() {
     }
   }
 
-  await ensureDefaultInboxForOrganization(org.id);
+  await seedEnsureDefaultInbox(org.id);
   const orgUsers = await prisma.user.findMany({
     where: { organizationId: org.id },
     select: { id: true },
   });
   for (const u of orgUsers) {
-    await addUserToDefaultInboxes(org.id, u.id);
+    await seedAddUserToDefaultInboxes(org.id, u.id);
   }
 
   console.log("Seeding complete!");
