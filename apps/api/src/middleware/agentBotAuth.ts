@@ -11,7 +11,7 @@ declare module "fastify" {
   }
 }
 
-/** Autenticação Bearer para o Agent Bot responder via HTTP (similar ao API token do Chatwoot). */
+/** Autenticação Bearer para o Agent Bot responder via HTTP (token `ocb_...`). */
 export async function authenticateAgentBot(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const header = request.headers.authorization;
   const raw = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7).trim() : "";

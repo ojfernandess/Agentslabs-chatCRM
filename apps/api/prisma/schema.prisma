@@ -491,7 +491,7 @@ model Conversation {
   closureReason String?   @map("closure_reason") @db.Text
   /// Valor opcional associado ao lead quando a conversa é finalizada (acompanhamento comercial).
   closureValue  Float?    @map("closure_value")
-  /// CSAT 1–5 registado pelo atendente (estilo Chatwoot / HubSpot) ao fechar ou depois na mesma conversa resolvida.
+  /// CSAT 1–5 registado pelo atendente ao fechar ou depois na mesma conversa resolvida.
   csatScore     Int?      @map("csat_score")
   csatComment   String?   @map("csat_comment") @db.Text
   csatRecordedAt DateTime? @map("csat_recorded_at")
@@ -518,7 +518,7 @@ model Message {
   body          String?          @db.Text
   mediaUrl      String?          @map("media_url")
   mediaType     String?          @map("media_type")
-  /// Nota interna (estilo Chatwoot): não é enviada ao WhatsApp.
+  /// Nota interna da equipa: não é enviada ao WhatsApp.
   isPrivate     Boolean          @default(false) @map("is_private")
   providerMsgId String?          @map("provider_msg_id")
   status        MessageStatus    @default(SENT)
@@ -598,10 +598,10 @@ model Settings {
   autoOptInOnFirstMessage   Boolean      @default(false) @map("auto_opt_in_on_first_message")
   notifyConversationOpen    Boolean      @default(true) @map("notify_conversation_open")
   notifyConversationPending Boolean      @default(true) @map("notify_conversation_pending")
-  /// Estilo Chatwoot «lock to single conversation»: uma única thread por contacto no canal (reabre a última ao receber mensagem).
+  /// Uma única thread por contacto no canal (reabre a última conversa ao receber mensagem).
   lockSingleConversation    Boolean      @default(false) @map("lock_single_conversation")
 
-  /// Bot estilo Chatwoot (AgentBot): novas conversas WhatsApp entram em PENDING e recebem webhook `message_created`.
+  /// Agent bot: novas conversas WhatsApp podem entrar em PENDING e receber webhook `message_created`.
   agentBotId String? @unique @map("agent_bot_id") @db.Uuid
   agentBot   Bot?    @relation("SettingsAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
 

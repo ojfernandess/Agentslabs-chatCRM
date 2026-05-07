@@ -233,7 +233,7 @@ export const messages = {
     reportsPage: {
       title: "Relatórios",
       subtitle:
-        "Volume de atendimento, SLA operacional, desempenho por agente e equipa — inspirado nas práticas do Chatwoot e HubSpot Service Analytics.",
+        "Volume de atendimento, SLA operacional, desempenho por agente e equipa — alinhado a boas práticas de analytics de suporte (estilo HubSpot Service Hub).",
       tabOverview: "Visão geral",
       tabConversations: "Conversas e mensagens",
       tabAgents: "Agentes",
@@ -266,7 +266,7 @@ export const messages = {
       seriesInbound: "Recebidas",
       seriesOutbound: "Enviadas",
       heatmapTitle: "Mapa de calor — mensagens recebidas",
-      heatmapSubtitle: "Por dia da semana e hora (UTC). Útil para planeamento de escala como no Chatwoot.",
+      heatmapSubtitle: "Por dia da semana e hora (UTC). Útil para planeamento de escala e pico de mensagens.",
       dowOff: "Dom",
       dowMon: "Seg",
       dowTue: "Ter",
@@ -355,7 +355,7 @@ export const messages = {
       closureSaved: "Dados salvos na conversa.",
       csatOptional: "Satisfação do cliente — CSAT (opcional)",
       csatHint:
-        "Nota de 1 a 5 e comentário curto. Aparece nos relatórios, no modelo de indicadores do Chatwoot e HubSpot Service.",
+        "Nota de 1 a 5 e comentário curto. Aparece nos relatórios e indicadores de satisfação (CSAT).",
       csatCommentPlaceholder: "Comentário opcional sobre a experiência do cliente…",
       csatAddLater: "Registar satisfação (CSAT)",
       csatOnlyTitle: "Registar CSAT",
@@ -612,7 +612,7 @@ export const messages = {
       agentBotWhatsApp: "Bot de agente no canal",
       agentBotNone: "Nenhum (só agentes humanos)",
       agentBotWhatsAppHint:
-        "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem (estilo Chatwoot). O bot responde pela API de inbox com o token gerado na página Bots.",
+        "Se ativo, conversas novas entram em pendência e o webhook do bot recebe cada mensagem. O bot responde pela API de inbox com o token gerado na página Bots.",
       lockSingleConversation: "Bloquear para conversa única",
       lockSingleConversationOn: "Ativado",
       lockSingleConversationOff: "Desativado",
@@ -688,7 +688,7 @@ export const messages = {
         "Armazenamento chave–valor (JSON) para políticas de plataforma. Ex.: maintenance_mode: {\"enabled\":false}.",
       whatsappEmbedded: "WhatsApp Embedded (Meta)",
       whatsappEmbeddedSubtitle:
-        "Credenciais da aplicação Facebook usadas pelo fluxo de inscrição incorporada (estilo Chatwoot). Os tenants ligam o Cloud API sem token manual.",
+        "Credenciais da aplicação Meta (Facebook) usadas pelo fluxo de inscrição incorporada do WhatsApp. Os tenants ligam o Cloud API sem token manual.",
       whatsappEmbeddedAppId: "WhatsApp App ID",
       whatsappEmbeddedAppIdHint: "ID da aplicação Facebook para integração WhatsApp Business API.",
       whatsappEmbeddedAppSecret: "WhatsApp App Secret",
@@ -705,7 +705,7 @@ export const messages = {
       whatsappEmbeddedCallbackHint:
         "Configure este URL na app Meta (WhatsApp → Configuration). Todas as organizações que usam Embedded partilham este endpoint; o roteamento é por phone_number_id.",
       whatsappEmbeddedSave: "Guardar",
-      whatsappEmbeddedDocLink: "Documentação Chatwoot (Embedded Signup)",
+      whatsappEmbeddedDocLink: "Documentação Meta — Embedded Signup (WhatsApp)",
       whatsappEmbeddedLoadError: "Não foi possível carregar as definições de WhatsApp Embedded.",
       whatsappEmbeddedRetry: "Tentar novamente",
       whatsappEmbeddedConfigured:
@@ -715,7 +715,7 @@ export const messages = {
       whatsappEmbeddedSecretKeep: "Deixe vazio para manter o segredo existente",
       tenantPermissions: "Permissões por tenant",
       tenantPermissionsSubtitle:
-        "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular tipo Chatwoot). Ajuste funções na lista de utilizadores.",
+        "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular de permissões por capacidade). Ajuste funções na lista de utilizadores.",
       billingPlan: "Plano e faturação",
       planFree: "free",
       planGrowth: "growth",
@@ -965,7 +965,7 @@ export const messages = {
     reportsPage: {
       title: "Reports",
       subtitle:
-        "Conversation volume, response and resolution metrics, agent and team performance — aligned with Chatwoot-style operations reporting and HubSpot Service analytics.",
+        "Conversation volume, response and resolution metrics, agent and team performance — aligned with common service operations reporting (e.g. HubSpot-style analytics).",
       tabOverview: "Overview",
       tabConversations: "Conversations & messages",
       tabAgents: "Agents",
@@ -998,7 +998,7 @@ export const messages = {
       seriesInbound: "Inbound",
       seriesOutbound: "Outbound",
       heatmapTitle: "Heatmap — inbound messages",
-      heatmapSubtitle: "By weekday and hour (UTC). Use for staffing like Chatwoot live reports.",
+      heatmapSubtitle: "By weekday and hour (UTC). Useful for staffing and peak-volume planning.",
       dowOff: "Sun",
       dowMon: "Mon",
       dowTue: "Tue",
@@ -1086,7 +1086,7 @@ export const messages = {
       closureSaved: "Saved on this conversation.",
       csatOptional: "Customer satisfaction — CSAT (optional)",
       csatHint:
-        "Score 1–5 and a short note. Shown in reports (Chatwoot / HubSpot–style service metrics).",
+        "Score 1–5 and a short note. Shown in reports as CSAT-style service metrics.",
       csatCommentPlaceholder: "Optional note about the customer experience…",
       csatAddLater: "Record satisfaction (CSAT)",
       csatOnlyTitle: "Record CSAT",
@@ -1344,7 +1344,7 @@ export const messages = {
       agentBotWhatsApp: "Agent bot on this channel",
       agentBotNone: "None (human agents only)",
       agentBotWhatsAppHint:
-        "When set, new conversations start pending and the bot webhook receives each message (Chatwoot-style). The bot replies via the inbox API using the token issued on the Bots page.",
+        "When set, new conversations start pending and the bot webhook receives each message. The bot replies via the inbox API using the token issued on the Bots page.",
       lockSingleConversation: "Lock to single conversation",
       lockSingleConversationOn: "Enabled",
       lockSingleConversationOff: "Disabled",
@@ -1421,7 +1421,7 @@ export const messages = {
         "Key–value JSON for platform policy. Example: maintenance_mode: {\"enabled\":false}.",
       whatsappEmbedded: "WhatsApp Embedded (Meta)",
       whatsappEmbeddedSubtitle:
-        "Facebook app credentials for the embedded signup flow (Chatwoot-style). Tenants connect Cloud API without manual tokens.",
+        "Facebook app credentials for the WhatsApp Embedded Signup flow. Tenants connect Cloud API without manual tokens.",
       whatsappEmbeddedAppId: "WhatsApp App ID",
       whatsappEmbeddedAppIdHint: "Facebook App ID for WhatsApp Business API integration.",
       whatsappEmbeddedAppSecret: "WhatsApp App Secret",
@@ -1438,7 +1438,7 @@ export const messages = {
       whatsappEmbeddedCallbackHint:
         "Set this URL on the Meta app (WhatsApp → Configuration). All organizations using Embedded share this endpoint; routing is by phone_number_id.",
       whatsappEmbeddedSave: "Save",
-      whatsappEmbeddedDocLink: "Chatwoot docs (Embedded Signup)",
+      whatsappEmbeddedDocLink: "Meta docs — WhatsApp Embedded Signup",
       whatsappEmbeddedLoadError: "Could not load WhatsApp Embedded settings.",
       whatsappEmbeddedRetry: "Try again",
       whatsappEmbeddedConfigured:
@@ -1448,7 +1448,7 @@ export const messages = {
       whatsappEmbeddedSecretKeep: "Leave blank to keep the existing secret",
       tenantPermissions: "Tenant permissions",
       tenantPermissionsSubtitle:
-        "This product uses ADMIN and AGENT per organization (no Chatwoot-style granular matrix). Adjust roles from the user list.",
+        "This product uses ADMIN and AGENT per organization (no fine-grained capability matrix). Adjust roles from the user list.",
       billingPlan: "Billing & plan",
       planFree: "free",
       planGrowth: "growth",

@@ -876,7 +876,7 @@ export function SuperAdminPage() {
                 <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.whatsappEmbedded")}</h1>
                 <p className="mt-1 text-sm text-ink-600">{t("superAdmin.whatsappEmbeddedSubtitle")}</p>
                 <a
-                  href="https://developers.chatwoot.com/self-held/configuration/features/integrations/whatsapp-embedded-signup"
+                  href="https://developers.facebook.com/docs/whatsapp/embedded-signup/overview"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"

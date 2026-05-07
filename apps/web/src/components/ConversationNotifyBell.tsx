@@ -22,14 +22,16 @@ function computePanelPosition(anchor: DOMRect): { top: number; left: number; wid
   const width = Math.min(PANEL_W, vw - MARGIN * 2);
   let left = anchor.right - width;
   left = Math.max(MARGIN, Math.min(left, vw - width - MARGIN));
+
   const estHeight = Math.min(72 * 4 + 80, vh - MARGIN * 2);
-  let top = anchor.top - estHeight - GAP;
-  if (top < MARGIN) {
-    top = anchor.bottom + GAP;
-  }
+
+  /** Preferir abaixo do ícone; se não couber na viewport, abrir por cima — nunca “colar” o painel ao fundo do ecrã solto do sino. */
+  let top = anchor.bottom + GAP;
   if (top + estHeight > vh - MARGIN) {
-    top = Math.max(MARGIN, vh - estHeight - MARGIN);
+    top = anchor.top - estHeight - GAP;
   }
+  top = Math.max(MARGIN, Math.min(top, vh - MARGIN - estHeight));
+
   return { top, left, width };
 }
 
@@ -37,18 +39,18 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   const navigate = useNavigate();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: PANEL_W });
 
   useLayoutEffect(() => {
-    if (!open || !rootRef.current) return;
-    setPos(computePanelPosition(rootRef.current.getBoundingClientRect()));
+    if (!open || !anchorRef.current) return;
+    setPos(computePanelPosition(anchorRef.current.getBoundingClientRect()));
   }, [open, alertPreviews.length]);
 
   useEffect(() => {
     if (!open) return;
     const on = () => {
-      const el = rootRef.current;
+      const el = anchorRef.current;
       if (!el) return;
       setPos(computePanelPosition(el.getBoundingClientRect()));
     };
@@ -63,7 +65,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       const node = e.target as Node;
-      if (rootRef.current?.contains(node)) return;
+      if (anchorRef.current?.contains(node)) return;
       if (document.getElementById("openconduit-notify-panel")?.contains(node)) return;
       setOpen(false);
     };
@@ -136,8 +138,9 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
 
   return (
     <>
-      <div ref={rootRef} className="relative shrink-0">
+      <div className="relative shrink-0">
         <button
+          ref={anchorRef}
           type="button"
           onClick={() => setOpen((o) => !o)}
           className={clsx(

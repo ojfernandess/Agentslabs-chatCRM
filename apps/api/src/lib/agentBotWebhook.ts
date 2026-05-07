@@ -3,7 +3,7 @@ import type { Prisma, Contact, Conversation, Message, Bot, Settings } from "@pri
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 
-/** Payload inspirado em Chatwoot (`message_created` / webhooks), com namespace OpenConduit. */
+/** Payload JSON para webhooks do Agent Bot (`message_created`), com namespace OpenConduit. */
 export function buildAgentBotWebhookPayload(input: {
   organizationId: string;
   conversation: Conversation;

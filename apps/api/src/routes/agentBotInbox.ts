@@ -10,7 +10,7 @@ const patchConversationSchema = z.object({
 });
 
 /**
- * API HTTP para Agent Bots (estilo Chatwoot): autenticação `Authorization: Bearer ocb_...`.
+ * API HTTP para Agent Bots: autenticação `Authorization: Bearer ocb_...`.
  * Base: `/api/v1/agent-bot`
  */
 export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
@@ -66,7 +66,7 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  /** Handoff humano (`OPEN`) ou devolver à fila do bot (`PENDING`), como no Chatwoot. */
+  /** Handoff humano (`OPEN`) ou devolver à fila do bot (`PENDING`). */
   app.patch<{ Params: { id: string } }>("/conversations/:id", async (request, reply) => {
     const bot = request.agentBot!;
     const parsed = patchConversationSchema.safeParse(request.body);

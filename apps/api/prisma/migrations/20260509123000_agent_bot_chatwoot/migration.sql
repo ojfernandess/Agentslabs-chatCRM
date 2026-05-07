@@ -1,4 +1,4 @@
--- AlterTable: bots — token de API p/ respostas (estilo Chatwoot) + segredo p/ assinar webhooks outbound
+-- AlterTable: bots — token de API para respostas + segredo para assinar webhooks outbound
 ALTER TABLE "bots" ADD COLUMN "inbox_token_prefix" VARCHAR(16);
 ALTER TABLE "bots" ADD COLUMN "inbox_token_hash" TEXT;
 ALTER TABLE "bots" ADD COLUMN "webhook_secret" VARCHAR(512);

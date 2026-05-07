@@ -1527,7 +1527,7 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              /* Chatwoot-style: ~4px até a próxima mensagem do mesmo grupo; ~24px ao fim do bloco. */
+              /* Agrupamento de mensagens: ~4px até a próxima do mesmo grupo; ~24px ao fim do bloco. */
               const rowSpacing = groupedNext ? "mb-1" : "mb-6";
               const bubbleRadius = clsx(
                 groupedPrev && groupedNext && "rounded-lg",

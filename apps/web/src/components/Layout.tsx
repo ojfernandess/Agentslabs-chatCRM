@@ -12,7 +12,7 @@ import {
   Briefcase,
   Bell,
   Languages,
-  Box,
+  Bot,
   ClipboardCheck,
   FileSearch,
   BarChart3,
@@ -193,7 +193,7 @@ export function Layout() {
                   )
                 }
               >
-                <Box className="h-5 w-5" />
+                <Bot className="h-5 w-5" />
                 {t("nav.bots")}
               </NavLink>
             </>

@@ -62,9 +62,9 @@ Esta API complementa a consola web em `/super`. Todas as rotas abaixo exigem JWT
 |--------|------|-----------|
 | GET | `/audit-logs` | Query: `page`, `limit`, `organizationId?`. |
 
-## Relação com Chatwoot
+## Comparativo com outros produtos
 
-O OpenConduit **não** expõe a API nem o modelo de dados do Chatwoot. A consola de super admin segue **padrões comuns** de SaaS multi-tenant (contas, métricas, auditoria, impersonação, chaves globais). Permissões granulares estilo matriz de capacidades do Chatwoot **não** estão modeladas: cada utilizador de tenant é `ADMIN` ou `AGENT`.
+A consola de super admin segue **padrões comuns** de SaaS multi-tenant (contas, métricas, auditoria, impersonação, chaves globais). Não há matriz granular de permissões por capacidade: em cada organização o utilizador é `ADMIN` ou `AGENT`.
 
 ## Migração de base de dados
 

@@ -3,7 +3,7 @@ import { prisma } from "../db.js";
 
 /**
  * Escolhe ou cria a conversa WhatsApp do contacto.
- * lockSingleConversation: reutiliza a conversa mais recente e reabre RESOLVED (estilo Chatwoot).
+ * lockSingleConversation: reutiliza a conversa mais recente e reabre RESOLVED (uma thread por contacto).
  */
 export async function ensureConversationForWhatsAppContact(params: {
   organizationId: string;

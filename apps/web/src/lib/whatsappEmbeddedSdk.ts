@@ -1,6 +1,6 @@
 /**
- * Facebook JS SDK + WhatsApp Embedded Signup (same flow as Chatwoot).
- * @see https://developers.chatwoot.com/self-hosted/configuration/features/integrations/whatsapp-embedded-signup
+ * Facebook JS SDK + WhatsApp Embedded Signup (official Meta flow).
+ * @see https://developers.facebook.com/docs/whatsapp/embedded-signup/overview
  */
 
 export function loadFacebookSdk(): Promise<void> {

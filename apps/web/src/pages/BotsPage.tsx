@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
-import { Box } from "lucide-react";
+import { Bot } from "lucide-react";
 
 type BotType = "WEBHOOK" | "DIALOGFLOW" | "CUSTOM";
 
@@ -185,7 +185,7 @@ export function BotsPage() {
           className="mb-8"
         >
           <div className="mb-2 flex items-center gap-2 text-brand-600">
-            <Box className="h-6 w-6" />
+            <Bot className="h-6 w-6" />
             <span className="text-sm font-medium uppercase tracking-wide">{t("nav.bots")}</span>
           </div>
           <h1 className="text-2xl font-bold text-ink-900">{t("bots.title")}</h1>
