@@ -528,6 +528,7 @@ export function ConversationDetailPage() {
       const voiceBody = outboundBodyWithSignature("", privateNote);
       await api.post("/messages", {
         contactId: conversation.contact.id,
+        conversationId: conversation.id,
         type: "AUDIO",
         mediaUrl,
         mediaType: mimeType,
@@ -607,6 +608,7 @@ export function ConversationDetailPage() {
       const caption = outboundBodyWithSignature(newMessage, privateNote);
       await api.post("/messages", {
         contactId: conversation.contact.id,
+        conversationId: conversation.id,
         type: kind,
         mediaUrl,
         mediaType: mimeType,
@@ -643,6 +645,7 @@ export function ConversationDetailPage() {
     try {
       await api.post("/messages", {
         contactId: conversation.contact.id,
+        conversationId: conversation.id,
         type: "TEXT",
         body: outboundBodyWithSignature(newMessage, privateNote),
         isPrivate: privateNote || undefined,
@@ -2414,6 +2417,7 @@ export function ConversationDetailPage() {
         open={templateModalTemplate !== null}
         template={templateModalTemplate}
         contactId={conversation?.contact.id ?? ""}
+        conversationId={conversation?.id}
         onClose={() => setTemplateModalTemplate(null)}
         onSent={async () => {
           stickToBottomRef.current = true;

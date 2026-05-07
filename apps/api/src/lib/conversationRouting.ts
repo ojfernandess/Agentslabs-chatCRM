@@ -80,3 +80,81 @@ export async function ensureConversationForWhatsAppContact(params: {
   }
   return conv;
 }
+
+/**
+ * Conversa numa caixa explícita (canais API / widget / SMS / Telegram / …).
+ * Escopo por `inboxId` para o mesmo contacto poder existir em várias caixas.
+ */
+export async function ensureConversationForChannelInbox(params: {
+  organizationId: string;
+  contactId: string;
+  inboxId: string;
+  lockSingleConversation: boolean;
+  activeConversationStatus: "OPEN" | "PENDING";
+  createDefaults: { status: "OPEN" | "PENDING"; assignedToId?: string | null };
+}): Promise<Conversation> {
+  const {
+    organizationId,
+    contactId,
+    inboxId,
+    lockSingleConversation,
+    activeConversationStatus,
+    createDefaults,
+  } = params;
+
+  const promotePendingToOpen = activeConversationStatus === "OPEN";
+
+  if (lockSingleConversation) {
+    let conv = await prisma.conversation.findFirst({
+      where: { organizationId, contactId, inboxId },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (conv) {
+      if (conv.status === "RESOLVED") {
+        return prisma.conversation.update({
+          where: { id: conv.id },
+          data: { status: activeConversationStatus, updatedAt: new Date() },
+        });
+      }
+      if (conv.status === "PENDING" && promotePendingToOpen) {
+        return prisma.conversation.update({
+          where: { id: conv.id },
+          data: { status: "OPEN", updatedAt: new Date() },
+        });
+      }
+      return conv;
+    }
+    return prisma.conversation.create({
+      data: {
+        organizationId,
+        inboxId,
+        contactId,
+        status: createDefaults.status,
+        assignedToId: createDefaults.assignedToId ?? undefined,
+      },
+    });
+  }
+
+  let conv = await prisma.conversation.findFirst({
+    where: { organizationId, contactId, inboxId, status: { not: "RESOLVED" } },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!conv) {
+    return prisma.conversation.create({
+      data: {
+        organizationId,
+        inboxId,
+        contactId,
+        status: createDefaults.status,
+        assignedToId: createDefaults.assignedToId ?? undefined,
+      },
+    });
+  }
+  if (conv.status === "PENDING" && promotePendingToOpen) {
+    return prisma.conversation.update({
+      where: { id: conv.id },
+      data: { status: "OPEN", updatedAt: new Date() },
+    });
+  }
+  return conv;
+}

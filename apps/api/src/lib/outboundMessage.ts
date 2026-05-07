@@ -1,4 +1,4 @@
-import type { Prisma, Message, Conversation } from "@prisma/client";
+import type { Prisma, Message, Conversation, InboxChannelType } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
@@ -9,6 +9,38 @@ import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
+
+function outboundWebhookUrlFromConfig(config: unknown): string | null {
+  if (config == null || typeof config !== "object") return null;
+  const u = (config as { outboundWebhookUrl?: unknown }).outboundWebhookUrl;
+  if (typeof u !== "string" || !u.trim()) return null;
+  try {
+    const parsed = new URL(u.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? u.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function notifyChannelOutboundWebhook(
+  url: string,
+  body: Record<string, unknown>,
+  log: FastifyBaseLogger,
+): void {
+  void (async () => {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) log.warn({ status: res.status, url }, "channel outbound webhook non-OK response");
+    } catch (err) {
+      log.warn({ err, url }, "channel outbound webhook request failed");
+    }
+  })();
+}
 
 export type OutboundActor =
   | { kind: "user"; userId: string }
@@ -28,7 +60,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
   pinnedConversationId?: string;
 }): Promise<{ message: Message; conversation: Conversation }> {
   const { organizationId, data, actor, log, newConversation, pinnedConversationId } = options;
-  const { contactId, type, body, templateId, mediaUrl, mediaType, isPrivate } = data;
+  const { contactId, type, body, templateId, mediaUrl, mediaType, isPrivate, conversationId: dataConversationId } =
+    data;
 
   if (actor.kind === "agent_bot" && isPrivate) {
     throw new Error("Agent bot cannot send private notes");
@@ -39,24 +72,6 @@ export async function deliverOutboundWhatsAppMessage(options: {
   });
   if (!contact) {
     throw new Error("Contact not found");
-  }
-
-  if (!isPrivate && type !== "TEMPLATE") {
-    const lastInbound = await prisma.message.findFirst({
-      where: {
-        conversation: { contactId, organizationId },
-        direction: "INBOUND",
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (lastInbound) {
-      const hoursSinceLastInbound =
-        (Date.now() - lastInbound.createdAt.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLastInbound > WHATSAPP_SESSION_WINDOW_HOURS) {
-        throw new Error("Outside 24-hour session window. Only template messages can be sent.");
-      }
-    }
   }
 
   const channelSettings = await prisma.settings.findUnique({
@@ -74,17 +89,26 @@ export async function deliverOutboundWhatsAppMessage(options: {
   const activeConversationStatus: "OPEN" | "PENDING" =
     actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
 
+  const targetConversationId = pinnedConversationId ?? dataConversationId;
+
   let conversation: Conversation;
-  if (pinnedConversationId) {
+  let inboxChannelType: InboxChannelType;
+  let inboxChannelConfig: Prisma.JsonValue | null;
+
+  if (targetConversationId) {
     const conv = await prisma.conversation.findFirst({
-      where: { id: pinnedConversationId, organizationId, contactId },
+      where: { id: targetConversationId, organizationId, contactId },
+      include: { inbox: { select: { channelType: true, channelConfig: true } } },
     });
     if (!conv) {
       throw new Error("Conversation not found");
     }
-    conversation = conv;
+    inboxChannelType = conv.inbox.channelType;
+    inboxChannelConfig = conv.inbox.channelConfig ?? null;
+    const { inbox: _inbox, ...rest } = conv;
+    conversation = rest;
   } else {
-    conversation = await ensureConversationForWhatsAppContact({
+    const base = await ensureConversationForWhatsAppContact({
       organizationId,
       contactId,
       lockSingleConversation,
@@ -94,6 +118,41 @@ export async function deliverOutboundWhatsAppMessage(options: {
         assignedToId: newConversation.assignedToId ?? null,
       },
     });
+    const conv = await prisma.conversation.findFirst({
+      where: { id: base.id },
+      include: { inbox: { select: { channelType: true, channelConfig: true } } },
+    });
+    if (!conv) {
+      throw new Error("Conversation not found");
+    }
+    inboxChannelType = conv.inbox.channelType;
+    inboxChannelConfig = conv.inbox.channelConfig ?? null;
+    const { inbox: _inbox, ...rest } = conv;
+    conversation = rest;
+  }
+
+  if (type === "TEMPLATE" && !isPrivate && inboxChannelType !== "WHATSAPP") {
+    throw new Error("WhatsApp message templates are only supported for WhatsApp inboxes");
+  }
+
+  if (!isPrivate && type !== "TEMPLATE" && inboxChannelType === "WHATSAPP") {
+    const lastInboundWhere =
+      targetConversationId != null
+        ? { conversationId: targetConversationId, direction: "INBOUND" as const }
+        : { conversation: { contactId, organizationId }, direction: "INBOUND" as const };
+
+    const lastInbound = await prisma.message.findFirst({
+      where: lastInboundWhere,
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (lastInbound) {
+      const hoursSinceLastInbound =
+        (Date.now() - lastInbound.createdAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLastInbound > WHATSAPP_SESSION_WINDOW_HOURS) {
+        throw new Error("Outside 24-hour session window. Only template messages can be sent.");
+      }
+    }
   }
 
   let templateRow: MessageTemplate | null = null;
@@ -116,7 +175,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     throw new Error("Template not found");
   }
 
-  if (type === "TEMPLATE" && !isPrivate && isMetaProvider && templateRow) {
+  if (type === "TEMPLATE" && !isPrivate && inboxChannelType === "WHATSAPP" && isMetaProvider && templateRow) {
     if (!templateRow.providerTemplateId?.trim()) {
       throw new Error(
         "Template is missing the WhatsApp Business template name. Reload templates (sync runs when you open the list) or pick a synced model.",
@@ -125,7 +184,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   }
 
   let providerMsgId: string | undefined;
-  if (!isPrivate) {
+  if (!isPrivate && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProvider(organizationId);
       if (provider) {
@@ -152,6 +211,15 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
+  const outboundStatus =
+    isPrivate
+      ? "SENT"
+      : inboxChannelType === "WHATSAPP"
+        ? providerMsgId
+          ? "SENT"
+          : "FAILED"
+        : "SENT";
+
   const message = await prisma.message.create({
     data: {
       conversationId: conversation.id,
@@ -162,7 +230,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
       isPrivate: Boolean(isPrivate),
       providerMsgId,
-      status: isPrivate ? "SENT" : providerMsgId ? "SENT" : "FAILED",
+      status: outboundStatus,
       actorUserId: actor.kind === "user" ? actor.userId : null,
     },
   });
@@ -181,18 +249,40 @@ export async function deliverOutboundWhatsAppMessage(options: {
     payload.agentBotId = actor.botId;
   }
 
+  const timelineChannel = inboxChannelType.toLowerCase();
+
   await appendTimelineEvent({
     organizationId,
     subjectType: "CONTACT",
     subjectId: contactId,
     eventType: "message.outbound",
-    channel: "whatsapp",
+    channel: timelineChannel,
     payload: payload as Prisma.InputJsonValue,
     actorUserId,
     sourceId: message.id,
   }).catch((err) => {
     log.warn({ err }, "Failed to append contact timeline event");
   });
+
+  const hookUrl = outboundWebhookUrlFromConfig(inboxChannelConfig);
+  if (hookUrl && !isPrivate && inboxChannelType !== "WHATSAPP") {
+    notifyChannelOutboundWebhook(
+      hookUrl,
+      {
+        event: "message.outbound",
+        organizationId,
+        conversationId: conversation.id,
+        contactId,
+        messageId: message.id,
+        inboxChannelType,
+        type,
+        body: messageBody ?? null,
+        mediaUrl: mediaUrl ?? null,
+        mediaType: mediaType ?? null,
+      },
+      log,
+    );
+  }
 
   await prisma.conversation.update({
     where: { id: conversation.id },

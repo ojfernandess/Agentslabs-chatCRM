@@ -31,6 +31,7 @@ import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
 import { publicCsatRoutes } from "./routes/publicCsat.js";
 import { broadcastRoutes } from "./routes/broadcasts.js";
 import { inboxRoutes } from "./routes/inboxes.js";
+import { channelInboxPublicRoutes } from "./routes/channelInboxPublic.js";
 
 const app = Fastify({
   logger: {
@@ -55,7 +56,8 @@ await app.register(rateLimit, {
           path.startsWith("/webhooks") ||
           path.startsWith("/api/v1/messages/media/") ||
           path.startsWith("/api/v1/ws") ||
-          path.startsWith("/api/v1/public/csat/")
+          path.startsWith("/api/v1/public/csat/") ||
+          path.startsWith("/api/v1/public/inbox/")
         );
       },
 });
@@ -73,6 +75,7 @@ app.decorate("prisma", prisma);
 // Leitura pública de áudio carregado (WhatsApp obtém o ficheiro antes de entregar ao cliente)
 await app.register(publicMessageMediaRoutes);
 await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
+await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" });
 
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });

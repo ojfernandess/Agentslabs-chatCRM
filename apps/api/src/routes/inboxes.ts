@@ -3,18 +3,23 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import type { Prisma } from "@prisma/client";
+import { InboxChannelType, Prisma } from "@prisma/client";
+import { newIngestToken } from "../lib/channelInboxIngest.js";
 
 const createInboxSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(4000).optional().nullable(),
   isDefault: z.boolean().optional(),
+  channelType: z.nativeEnum(InboxChannelType).optional(),
 });
 
 const patchInboxSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.string().max(4000).nullable().optional(),
   isDefault: z.boolean().optional(),
+  channelType: z.nativeEnum(InboxChannelType).optional(),
+  /** JSON: ex. `{ "outboundWebhookUrl": "https://..." }` para canais não-WhatsApp. */
+  channelConfig: z.any().nullable().optional(),
 });
 
 const addMemberSchema = z.object({
@@ -38,6 +43,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           id: true,
           name: true,
           description: true,
+          channelType: true,
           isDefault: true,
           createdAt: true,
           updatedAt: true,
@@ -50,18 +56,21 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
     const rows = await prisma.inbox.findMany({
       where: { organizationId },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        isDefault: true,
-        createdAt: true,
-        updatedAt: true,
-        members: {
-          include: { user: { select: { id: true, name: true, email: true, role: true } } },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          channelType: true,
+          isDefault: true,
+          createdAt: true,
+          updatedAt: true,
+          ingestToken: true,
+          channelConfig: true,
+          members: {
+            include: { user: { select: { id: true, name: true, email: true, role: true } } },
+          },
+          _count: { select: { members: true, conversations: true } },
         },
-        _count: { select: { members: true, conversations: true } },
-      },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     });
     return { data: rows };
@@ -79,6 +88,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     const body = parsed.data;
     let inbox;
 
+    const channelType = body.channelType ?? InboxChannelType.WHATSAPP;
+
     if (body.isDefault) {
       inbox = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
@@ -87,7 +98,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             organizationId,
             name: body.name.trim(),
             description: body.description ?? undefined,
+            channelType,
             isDefault: true,
+            ingestToken: newIngestToken(),
           },
         });
       });
@@ -97,7 +110,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           organizationId,
           name: body.name.trim(),
           description: body.description ?? undefined,
+          channelType,
           isDefault: false,
+          ingestToken: newIngestToken(),
         },
       });
     }
@@ -192,6 +207,31 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  app.post<{ Params: { id: string } }>(
+    "/:id/rotate-ingest-token",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: { id: true },
+      });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+
+      const next = newIngestToken();
+      const updated = await prisma.inbox.update({
+        where: { id: inbox.id },
+        data: { ingestToken: next },
+        select: { id: true, ingestToken: true },
+      });
+      return updated;
+    },
+  );
+
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -214,8 +254,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       if (!m) {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
-      // Agente: omitir lista de membros (detalhe obtido em GET …/members se for membro).
-      const { members: _m, ...rest } = inbox;
+      // Agente: omitir segredos e lista de membros.
+      const { members: _m, ingestToken: _t, channelConfig: _cfg, ...rest } = inbox;
       return rest;
     }
 
@@ -246,6 +286,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     const data: Prisma.InboxUpdateInput = {};
     if (p.name !== undefined) data.name = p.name.trim();
     if (p.description !== undefined) data.description = p.description;
+    if (p.channelType !== undefined) data.channelType = p.channelType;
+    if (p.channelConfig !== undefined) {
+      data.channelConfig =
+        p.channelConfig === null ? Prisma.JsonNull : (p.channelConfig as Prisma.InputJsonValue);
+    }
     if (p.isDefault === true) {
       const updated = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
@@ -262,5 +307,65 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return prisma.inbox.update({ where: { id: inbox.id }, data });
+  });
+
+  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const id = request.params.id;
+
+    const inbox = await prisma.inbox.findFirst({
+      where: { id, organizationId },
+      select: { id: true, isDefault: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+
+    const allInboxes = await prisma.inbox.findMany({
+      where: { organizationId },
+      select: { id: true, isDefault: true },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    });
+
+    if (allInboxes.length <= 1) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Cannot delete the only inbox in the organization",
+        statusCode: 400,
+      });
+    }
+
+    const fallback = allInboxes.find((x) => x.id !== id);
+    if (!fallback) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "No target inbox to reassign conversations",
+        statusCode: 400,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.conversation.updateMany({
+        where: { organizationId, inboxId: id },
+        data: { inboxId: fallback.id },
+      });
+
+      if (inbox.isDefault) {
+        await tx.inbox.updateMany({
+          where: { organizationId },
+          data: { isDefault: false },
+        });
+        await tx.inbox.update({
+          where: { id: fallback.id },
+          data: { isDefault: true },
+        });
+      }
+
+      await tx.inbox.delete({ where: { id } });
+    });
+
+    return reply.status(204).send();
   });
 }

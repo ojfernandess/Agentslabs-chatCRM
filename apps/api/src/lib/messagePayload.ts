@@ -4,6 +4,8 @@ import { z } from "zod";
 export const sendMessageSchema = z
   .object({
     contactId: z.string().uuid(),
+    /** Quando envia a partir de uma conversa aberta, fixa a caixa (WhatsApp vs API / widget / …). */
+    conversationId: z.string().uuid().optional(),
     type: z.enum(["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "TEMPLATE"]),
     body: z.string().max(4096).optional(),
     templateId: z.string().uuid().optional(),

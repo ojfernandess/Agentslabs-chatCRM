@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
+import { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
+import { newIngestToken } from "./channelInboxIngest.js";
 
 export const DEFAULT_INBOX_NAME = "Caixa principal";
 
@@ -19,7 +21,9 @@ export async function ensureDefaultInboxForOrganization(organizationId: string):
       data: {
         organizationId,
         name: DEFAULT_INBOX_NAME,
+        channelType: InboxChannelType.WHATSAPP,
         isDefault: true,
+        ingestToken: newIngestToken(),
       },
     });
     await syncOrgUsersToInboxTx(tx, organizationId, inbox.id);

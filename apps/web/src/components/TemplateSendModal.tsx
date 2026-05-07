@@ -34,10 +34,11 @@ export function TemplateSendModal(props: {
   open: boolean;
   template: TemplateSendModalTemplate | null;
   contactId: string;
+  conversationId?: string;
   onClose: () => void;
   onSent: () => void | Promise<void>;
 }) {
-  const { open, template, contactId, onClose, onSent } = props;
+  const { open, template, contactId, conversationId, onClose, onSent } = props;
   const { t } = useI18n();
   const [values, setValues] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -69,6 +70,7 @@ export function TemplateSendModal(props: {
     try {
       await api.post("/messages", {
         contactId,
+        ...(conversationId ? { conversationId } : {}),
         type: "TEMPLATE",
         templateId: template.id,
         ...(template.bodyVariableCount > 0 ? { templateBodyParameters: values.map((v) => v.trim()) } : {}),

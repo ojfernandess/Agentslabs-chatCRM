@@ -190,6 +190,9 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       if (msg.includes("session window")) {
         return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
       }
+      if (msg.includes("templates are only supported")) {
+        return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
+      }
       app.log.error(err, "deliverOutboundWhatsAppMessage failed");
       return reply.status(500).send({ error: "Internal Server Error", message: msg, statusCode: 500 });
     }

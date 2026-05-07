@@ -127,13 +127,32 @@ model Organization {
   @@map("organizations")
 }
 
+/// Canais de caixa de entrada no estilo [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings).
+/// Nem todos têm integração real na app; o valor persiste para organização e evolução futura.
+enum InboxChannelType {
+  WEBSITE
+  FACEBOOK
+  WHATSAPP
+  SMS
+  EMAIL
+  API
+  TELEGRAM
+  LINE
+  INSTAGRAM
+  VOICE
+}
+
 model Inbox {
-  id             String   @id @default(uuid()) @db.Uuid
+  id             String           @id @default(uuid()) @db.Uuid
   name           String
-  description    String?  @db.Text
-  isDefault      Boolean  @default(false) @map("is_default")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  description    String?          @db.Text
+  channelType    InboxChannelType @default(WHATSAPP) @map("channel_type")
+  /// Token secreto (URL) para webhooks e widget. Só mostrar a administradores.
+  ingestToken    String?            @unique @map("ingest_token") @db.VarChar(64)
+  channelConfig  Json?              @map("channel_config")
+  isDefault      Boolean            @default(false) @map("is_default")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

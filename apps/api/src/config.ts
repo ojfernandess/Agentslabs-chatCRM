@@ -36,6 +36,22 @@ export function metaEmbeddedWebhookUrl(): string {
   return `${getPublicOrigin()}/webhooks/meta/whatsapp`;
 }
 
+/** URL pública para ingerir mensagens numa caixa (token no path). */
+export function channelInboxInboundUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/inbox/${encodeURIComponent(t)}/inbound`;
+}
+
+export function channelInboxTelegramUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/inbox/${encodeURIComponent(t)}/telegram`;
+}
+
+export function channelInboxTwilioUrl(ingestToken: string): string {
+  const t = ingestToken.trim();
+  return `${getPublicOrigin()}/api/v1/public/inbox/${encodeURIComponent(t)}/twilio`;
+}
+
 export const config = {
   port: parseInt(optionalEnv("PORT", "3000"), 10),
   host: optionalEnv("HOST", "0.0.0.0"),

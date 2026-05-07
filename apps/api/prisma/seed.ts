@@ -1,4 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { randomBytes } from "node:crypto";
+import { PrismaClient, InboxChannelType } from "@prisma/client";
 import bcrypt from "bcrypt";
 import {
   DEFAULT_ORGANIZATION_ID,
@@ -13,6 +14,11 @@ const prisma = new PrismaClient();
 /** Mesmo nome que `defaultInbox.ts` — seed não importa `src/lib` (imagens Docker podem não incluir `src`). */
 const DEFAULT_INBOX_NAME = "Caixa principal";
 
+/** Gera token de ingestão (alinhado a `channelInboxIngest.newIngestToken`, sem importar `src`). */
+function seedNewIngestToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
 async function seedEnsureDefaultInbox(organizationId: string): Promise<{ id: string }> {
   const existing = await prisma.inbox.findFirst({
     where: { organizationId, isDefault: true },
@@ -25,7 +31,9 @@ async function seedEnsureDefaultInbox(organizationId: string): Promise<{ id: str
       data: {
         organizationId,
         name: DEFAULT_INBOX_NAME,
+        channelType: InboxChannelType.WHATSAPP,
         isDefault: true,
+        ingestToken: seedNewIngestToken(),
       },
     });
     const users = await tx.user.findMany({
