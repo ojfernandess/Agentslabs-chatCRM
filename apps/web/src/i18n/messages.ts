@@ -461,7 +461,7 @@ export const messages = {
       testWebhookFail: "Webhook sem sucesso.",
       testWebhookDetail: "{detail}",
       testWebhookHint:
-        "Envia um POST de prova (evento webhook_test) para o URL — o outro sistema deve responder 2xx.",
+        "Envia POST de prova (evento webhook_test) com a mesma estrutura que message_created — o destino deve responder 2xx e ignorar quando test for true.",
       botIdExplain:
         "Cada bot tem um UUID único (estilo Chatwoot). Com só o token ocb_: GET /api/v1/bots ou GET /api/v1/agent-bot/profile — não precisa de JWT. Para criar/editar bots use JWT de POST /api/v1/auth/login (ADMIN).",
     },
@@ -615,6 +615,8 @@ export const messages = {
       transferToBot: "Transferir para o bot",
       botTriageBanner:
         "O agente virtual (bot) está na primeira linha desta conversa: estado pendente, sem atendente humano atribuído. As mensagens do cliente são enviadas ao webhook do bot.",
+      startAttendance: "Iniciar atendimento",
+      startAttendanceHint: "Atribuir a conversa a si sem enviar mensagem (equivalente à aceitação manual).",
       reopen: "Reabrir conversa",
       finalize: "Finalizar atendimento",
       finalizeTitle: "Finalizar atendimento",
@@ -1545,7 +1547,7 @@ export const messages = {
       testWebhookFail: "Webhook test did not succeed.",
       testWebhookDetail: "{detail}",
       testWebhookHint:
-        "Sends a probe POST (webhook_test event) to the URL — the endpoint should return 2xx.",
+        "Sends a probe POST (webhook_test) with the same JSON shape as message_created — return 2xx; skip processing when test is true.",
       botIdExplain:
         "Each bot has a unique UUID (Chatwoot-style). With only the ocb_ token: GET /api/v1/bots or GET /api/v1/agent-bot/profile — no JWT needed. To create/edit bots use JWT from POST /api/v1/auth/login (ADMIN).",
     },
@@ -1699,6 +1701,8 @@ export const messages = {
       transferToBot: "Transfer to bot",
       botTriageBanner:
         "The virtual agent (bot) is handling this conversation: pending state with no human assignee. Customer messages are sent to the bot webhook.",
+      startAttendance: "Start handling",
+      startAttendanceHint: "Assign this conversation to yourself without sending a message (manual claim).",
       reopen: "Reopen conversation",
       finalize: "Resolve conversation",
       finalizeTitle: "Resolve conversation",

@@ -35,6 +35,7 @@ import {
   FileText,
   Star,
   Bot,
+  Headset,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -112,6 +113,9 @@ interface ConversationDetail {
   csatSurveyPending?: boolean;
   leadType: LeadTypeRow | null;
   assignedTo?: { id: string; name: string } | null;
+  /** Presente na API — caixa e flag do bot por canal. */
+  inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
+  agentBotTriageActive?: boolean;
   contact: {
     id: string;
     name: string;
@@ -257,6 +261,7 @@ export function ConversationDetailPage() {
       const data = await api.get<ConversationDetail>(`/conversations/${id}`);
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
+      setAgentBotTriageActive(data.agentBotTriageActive ?? false);
     } catch {
       /* failed */
     } finally {
@@ -267,13 +272,15 @@ export function ConversationDetailPage() {
   useEffect(() => {
     async function loadChannel() {
       try {
+        const inboxId = conversation?.inbox?.id;
+        const path = inboxId
+          ? `/settings/channel?inboxId=${encodeURIComponent(inboxId)}`
+          : "/settings/channel";
         const ch = await api.get<{
           evolutionRichChat: boolean;
-          agentBotTriageActive?: boolean;
           whatsappProvider?: string | null;
-        }>("/settings/channel");
+        }>(path);
         setEvolutionRichChat(ch.evolutionRichChat);
-        setAgentBotTriageActive(ch.agentBotTriageActive ?? false);
         setWhatsappProvider(ch.whatsappProvider ?? null);
       } catch {
         setEvolutionRichChat(false);
@@ -281,7 +288,7 @@ export function ConversationDetailPage() {
       }
     }
     void loadChannel();
-  }, []);
+  }, [conversation?.inbox?.id]);
 
   useEffect(() => {
     async function loadLeadTypes() {
@@ -952,6 +959,10 @@ export function ConversationDetailPage() {
     agentBotTriageActive &&
     conversation.status !== "RESOLVED" &&
     !inBotQueueOnly;
+  const canStartAttendance =
+    Boolean(user?.id) &&
+    !conversation.assignedTo?.id &&
+    (conversation.status === "OPEN" || conversation.status === "PENDING");
   const transferUnchanged =
     transferTeamId === (conversation.team?.id ?? "") &&
     (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
@@ -1427,6 +1438,20 @@ export function ConversationDetailPage() {
                 <AlertTriangle className="h-3.5 w-3.5" />
                 {t("conversationDetail.outsideWindow")}
               </div>
+            ) : null}
+            {canStartAttendance ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
+                }}
+                title={t("conversationDetail.startAttendanceHint")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40"
+              >
+                <Headset className="h-3.5 w-3.5" />
+                {t("conversationDetail.startAttendance")}
+              </button>
             ) : null}
             {canTransfer ? (
               <button

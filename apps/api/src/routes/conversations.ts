@@ -14,6 +14,7 @@ import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from 
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
+import { computeAgentBotTriageActive, getAgentBotDispatchContext } from "../lib/agentBotTriage.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -362,7 +363,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
         assignedTo: { select: { id: true, name: true } },
         team: { select: { id: true, name: true } },
-        inbox: { select: { id: true, name: true, isDefault: true } },
+        inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         messages: {
           orderBy: { createdAt: "asc" },
@@ -396,7 +397,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    return { ...stripCsatSurveyToken(conversation), handoffLog };
+    const agentCtx = await getAgentBotDispatchContext(organizationId);
+    const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, conversation.inbox.channelType);
+    return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -603,7 +606,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             },
             assignedTo: { select: { id: true, name: true } },
             team: { select: { id: true, name: true } },
-            inbox: { select: { id: true, name: true, isDefault: true } },
+            inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
             leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
             messages: {
               orderBy: { createdAt: "asc" },
@@ -718,11 +721,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
       const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
       if (nowBotQueue && !wasBotQueue) {
-        const ch = await prisma.settings.findUnique({
-          where: { organizationId },
-          include: { agentBot: true },
-        });
-        if (ch?.agentBotId && ch.agentBot?.isActive && ch.agentBot.webhookUrl?.trim()) {
+        const ch = await getAgentBotDispatchContext(organizationId);
+        if (ch) {
           const lastInbound = await prisma.message.findFirst({
             where: { conversationId: conversation.id, direction: "INBOUND" },
             orderBy: { createdAt: "desc" },
@@ -811,7 +811,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      return { ...stripCsatSurveyToken(conversation), handoffLog };
+      const agentCtxPut = await getAgentBotDispatchContext(organizationId);
+      const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
+      return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }

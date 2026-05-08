@@ -15,6 +15,12 @@ import { prisma } from "../db.js";
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
 
+/** IDs sintéticos no corpo de `webhook_test` (mesma forma que `message_created`). */
+export const AGENT_BOT_WEBHOOK_TEST_INBOX_ID = "00000000-0000-4000-8000-000000000010";
+export const AGENT_BOT_WEBHOOK_TEST_CONVERSATION_ID = "00000000-0000-4000-8000-000000000020";
+export const AGENT_BOT_WEBHOOK_TEST_CONTACT_ID = "00000000-0000-4000-8000-000000000030";
+export const AGENT_BOT_WEBHOOK_TEST_MESSAGE_ID = "00000000-0000-4000-8000-000000000040";
+
 function inboxChannelSlug(channelType: InboxChannelType): string {
   return channelType.toLowerCase();
 }
@@ -86,24 +92,51 @@ export function buildAgentBotWebhookPayload(input: {
   };
 }
 
-/** Payload de teste de conectividade — o integrador deve devolver 2xx e pode ignorar o corpo (`test: true`). */
+/** Payload de teste: mesma forma aninhada que `message_created` + `test: true` para o integrador ignorar. */
 export function buildAgentBotTestWebhookPayload(input: {
   organizationId: string;
   bot: Pick<Bot, "id" | "name" | "type">;
 }): Record<string, unknown> {
   const { organizationId, bot } = input;
+  const now = new Date().toISOString();
   return {
     event: "webhook_test",
     version: "openconduit-v1",
+    test: true,
     agent_bot_id: bot.id,
+    inbox_id: AGENT_BOT_WEBHOOK_TEST_INBOX_ID,
     account: { id: organizationId },
+    inbox: {
+      id: AGENT_BOT_WEBHOOK_TEST_INBOX_ID,
+      name: "OpenConduit connectivity test",
+      channel: "whatsapp",
+    },
+    conversation: {
+      id: AGENT_BOT_WEBHOOK_TEST_CONVERSATION_ID,
+      status: "PENDING",
+      contact_id: AGENT_BOT_WEBHOOK_TEST_CONTACT_ID,
+      inbox_id: AGENT_BOT_WEBHOOK_TEST_INBOX_ID,
+    },
+    contact: {
+      id: AGENT_BOT_WEBHOOK_TEST_CONTACT_ID,
+      name: "Connectivity test",
+      phone: "+00000000000",
+    },
+    message: {
+      id: AGENT_BOT_WEBHOOK_TEST_MESSAGE_ID,
+      direction: "INBOUND",
+      type: "TEXT",
+      body: "Synthetic inbound for webhook_test — ignore when test is true or event is webhook_test.",
+      media_url: null,
+      media_type: null,
+      provider_msg_id: null,
+      created_at: now,
+    },
     agent_bot: {
       id: bot.id,
       name: bot.name,
       type: bot.type,
     },
-    test: true,
-    message: "OpenConduit webhook connectivity test — return 2xx; do not treat as inbound traffic.",
   };
 }
 

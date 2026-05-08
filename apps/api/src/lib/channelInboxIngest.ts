@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
+import { resolveAgentBotFromOrgSettingsRow } from "./agentBotTriage.js";
 import { ensureConversationForChannelInbox } from "./conversationRouting.js";
 
 export function newIngestToken(): string {
@@ -102,10 +103,8 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     include: { agentBot: true },
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
-  const useAgentBot =
-    Boolean(channelSettings?.agentBotId) &&
-    Boolean(channelSettings?.agentBot?.isActive) &&
-    Boolean(channelSettings?.agentBot?.webhookUrl?.trim());
+  const agentCtx = await resolveAgentBotFromOrgSettingsRow(organizationId, channelSettings);
+  const useAgentBot = Boolean(agentCtx);
 
   const conversation = await ensureConversationForChannelInbox({
     organizationId,
@@ -176,14 +175,14 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     }
   }
 
-  if (useAgentBot && channelSettings?.agentBotId && channelSettings.agentBot) {
+  if (useAgentBot && agentCtx) {
     const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
     if (fresh) {
       void dispatchAgentBotWebhook({
         organizationId,
         settings: {
-          agentBotId: channelSettings.agentBotId,
-          agentBot: channelSettings.agentBot,
+          agentBotId: agentCtx.agentBotId,
+          agentBot: agentCtx.agentBot,
         },
         conversation: fresh,
         contact,

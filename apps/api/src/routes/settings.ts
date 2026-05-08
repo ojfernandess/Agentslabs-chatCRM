@@ -1,10 +1,12 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { computeAgentBotTriageActive, getAgentBotDispatchContext } from "../lib/agentBotTriage.js";
 import {
   evolutionPlatformQrModeActive,
   getEvolutionPlatformConfig,
@@ -112,13 +114,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
     const settings = await prisma.settings.findUnique({
       where: { organizationId },
-      include: { agentBot: true },
+      select: { whatsappProvider: true },
     });
     const p = settings?.whatsappProvider ?? null;
-    const agentBotTriageActive =
-      Boolean(settings?.agentBotId) &&
-      Boolean(settings?.agentBot?.isActive) &&
-      Boolean(settings?.agentBot?.webhookUrl?.trim());
+    const q = request.query as { inboxId?: string };
+    let inboxChannelType: InboxChannelType = "WHATSAPP";
+    if (q?.inboxId) {
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: q.inboxId, organizationId },
+        select: { channelType: true },
+      });
+      if (inbox) inboxChannelType = inbox.channelType;
+    }
+    const agentCtx = await getAgentBotDispatchContext(organizationId);
+    const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, inboxChannelType);
     return {
       whatsappProvider: p,
       /** Anexos / imagens na conversa — solicitado para Evolution API. */

@@ -49,7 +49,7 @@ No painel **Bots**, ou pela API:
 - **`POST /api/v1/bots/webhook-test`** (admin) — corpo: `{ "webhookUrl": "...", "webhookSecret"?: "...", "probeName"?: "..." }` (útil **antes** de criar o bot). O JSON usa `agent_bot_id` fixo `00000000-0000-0000-0000-000000000001` só para a prova.
 - **`POST /api/v1/bots/:id/test-webhook`** (admin) — corpo opcional para sobrepor URL/secret; sem corpo usa a configuração gravada.
 
-O servidor remoto recebe `event: "webhook_test"`, `test: true`, cabeçalho `X-OpenConduit-Event: webhook_test`, e os mesmos cabeçalhos de segredo/HMAC que nos envios reais **se** enviar `webhookSecret` no teste (ou o bot tiver segredo gravado). Deve responder **2xx** para o teste ser considerado OK.
+O servidor remoto recebe `event: "webhook_test"`, `test: true`, a **mesma estrutura aninhada** que `message_created` (`inbox`, `conversation`, `contact`, `message` como objetos — UUIDs e texto sintéticos, ver `buildAgentBotTestWebhookPayload`), cabeçalho `X-OpenConduit-Event: webhook_test`, e os mesmos cabeçalhos de segredo/HMAC que nos envios reais **se** enviar `webhookSecret` no teste (ou o bot tiver segredo gravado). Fluxos que validam extractors com o corpo real devem conseguir fazer parse; devem **ignorar** processamento quando `test === true` ou `event === "webhook_test"`. Deve responder **2xx** para o teste ser considerado OK.
 
 - **Identidade / validar token do bot:** `GET /api/v1/agent-bot/profile` **ou** `GET /api/v1/bots` com `Authorization: Bearer ocb_<token>` — resposta com um bot em `data` (integrações que só têm um campo “JWT”/API).
 - **Base:** `POST /api/v1/agent-bot/messages` — resposta `201` inclui `agent_bot_id` (UUID do bot que enviou).

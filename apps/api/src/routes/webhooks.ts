@@ -6,6 +6,7 @@ import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
+import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensureConversationForWhatsAppContact } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
@@ -160,10 +161,8 @@ async function handleWhatsAppPost(
       include: { agentBot: true },
     });
   }
-  const useAgentBot =
-    Boolean(channelSettings.agentBotId) &&
-    Boolean(channelSettings.agentBot?.isActive) &&
-    Boolean(channelSettings.agentBot?.webhookUrl?.trim());
+  const waAgentCtx = await resolveAgentBotFromOrgSettingsRow(organizationId, channelSettings);
+  const useAgentBot = Boolean(waAgentCtx);
 
   const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");
 
@@ -372,14 +371,14 @@ async function handleWhatsAppPost(
         }
       }
 
-      if (useAgentBot && channelSettings.agentBot && channelSettings.agentBotId) {
+      if (useAgentBot && waAgentCtx) {
         const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
         if (fresh) {
           void dispatchAgentBotWebhook({
             organizationId,
             settings: {
-              agentBotId: channelSettings.agentBotId,
-              agentBot: channelSettings.agentBot,
+              agentBotId: waAgentCtx.agentBotId,
+              agentBot: waAgentCtx.agentBot,
             },
             conversation: fresh,
             contact,
