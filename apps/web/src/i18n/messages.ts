@@ -442,7 +442,7 @@ export const messages = {
       },
       webhookSecret: "Secret do webhook (HMAC)",
       webhookSecretHint:
-        "Opcional. Se definido, o corpo das notificações é assinado (X-OpenConduit-Signature).",
+        "Opcional. Com segredo: assinatura HMAC (X-OpenConduit-Signature), cabeçalho X-OpenConduit-Webhook-Secret e Authorization Bearer com o mesmo valor — exigido por alguns gateways.",
       webhookSecretPlaceholder: "Deixe em branco para não alterar",
       inboxApi: "API do inbox",
       rotateInboxToken: "Gerar token da API",
@@ -1524,7 +1524,7 @@ export const messages = {
       },
       webhookSecret: "Webhook secret (HMAC)",
       webhookSecretHint:
-        "Optional. When set, notification bodies are signed (X-OpenConduit-Signature).",
+        "Optional. When set: HMAC body signature (X-OpenConduit-Signature), plus X-OpenConduit-Webhook-Secret and Authorization Bearer with the same value — required by some gateways.",
       webhookSecretPlaceholder: "Leave blank to keep unchanged",
       inboxApi: "Inbox API",
       rotateInboxToken: "Generate inbox token",

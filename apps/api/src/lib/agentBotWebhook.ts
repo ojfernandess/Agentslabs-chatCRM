@@ -19,6 +19,21 @@ function inboxChannelSlug(channelType: InboxChannelType): string {
   return channelType.toLowerCase();
 }
 
+/**
+ * Quando há `webhookSecret`, envia:
+ * - `X-OpenConduit-Signature` (HMAC sha256 do corpo, como já documentado)
+ * - `X-OpenConduit-Webhook-Secret` — valor em claro (gateways que validam cabeçalho em vez de HMAC)
+ * - `Authorization: Bearer <secret>` — alternativa comum a pedido de integradores ("Bearer ou x-openconduit-webhook-secret")
+ */
+export function applyAgentBotWebhookSecretHeaders(headers: Record<string, string>, rawBody: string, secretRaw: string): void {
+  const secret = secretRaw.trim();
+  if (!secret) return;
+  const sig = createHmac("sha256", secret).update(rawBody).digest("hex");
+  headers["X-OpenConduit-Signature"] = `sha256=${sig}`;
+  headers["X-OpenConduit-Webhook-Secret"] = secret;
+  headers.Authorization = `Bearer ${secret}`;
+}
+
 /** Payload JSON para webhooks do Agent Bot (`message_created`), com namespace OpenConduit. */
 export function buildAgentBotWebhookPayload(input: {
   organizationId: string;
@@ -134,8 +149,7 @@ export async function deliverAgentBotTestWebhook(input: {
         ? webhookSecret.trim()
         : "";
   if (secret) {
-    const sig = createHmac("sha256", secret).update(rawBody).digest("hex");
-    headers["X-OpenConduit-Signature"] = `sha256=${sig}`;
+    applyAgentBotWebhookSecretHeaders(headers, rawBody, secret);
   }
 
   const t0 = Date.now();
@@ -221,8 +235,7 @@ export async function dispatchAgentBotWebhook(input: {
   };
 
   if (bot.webhookSecret?.trim()) {
-    const sig = createHmac("sha256", bot.webhookSecret.trim()).update(rawBody).digest("hex");
-    headers["X-OpenConduit-Signature"] = `sha256=${sig}`;
+    applyAgentBotWebhookSecretHeaders(headers, rawBody, bot.webhookSecret);
   }
 
   try {

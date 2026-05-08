@@ -34,7 +34,7 @@ Após uma mensagem **recebida** (inbound) persistida, se o modo agent bot estive
 - `account`, `conversation`, `contact`, `message` (metadados e corpo; em `conversation` também consta `inbox_id`)
 - `agent_bot`: id, nome e tipo do bot
 
-Cabeçalhos úteis: `X-OpenConduit-Event`, `X-OpenConduit-Signature` (se houver `webhookSecret`).
+Cabeçalhos quando existe **`webhookSecret`** no bot: `X-OpenConduit-Event`, `X-OpenConduit-Signature` (HMAC sha256 do corpo), **`X-OpenConduit-Webhook-Secret`** (o mesmo segredo em claro, para gateways que o exigem) e **`Authorization: Bearer`** com esse mesmo segredo (alternativa aceite por alguns integradores). Sem segredo configurado, estes cabeçalhos de autenticação não são enviados.
 
 Implementação: `apps/api/src/lib/agentBotWebhook.ts`, chamada a partir de `apps/api/src/routes/webhooks.ts` após processar a mensagem do WhatsApp.
 
@@ -45,7 +45,7 @@ No painel **Bots**, ou pela API:
 - **`POST /api/v1/bots/webhook-test`** (admin) — corpo: `{ "webhookUrl": "...", "webhookSecret"?: "...", "probeName"?: "..." }` (útil **antes** de criar o bot). O JSON usa `agent_bot_id` fixo `00000000-0000-0000-0000-000000000001` só para a prova.
 - **`POST /api/v1/bots/:id/test-webhook`** (admin) — corpo opcional para sobrepor URL/secret; sem corpo usa a configuração gravada.
 
-O servidor remoto recebe `event: "webhook_test"`, `test: true`, cabeçalho `X-OpenConduit-Event: webhook_test`, e o mesmo formato de assinatura **`X-OpenConduit-Signature`** quando aplicável. Deve responder **2xx** para o teste ser considerado OK.
+O servidor remoto recebe `event: "webhook_test"`, `test: true`, cabeçalho `X-OpenConduit-Event: webhook_test`, e os mesmos cabeçalhos de segredo/HMAC que nos envios reais **se** enviar `webhookSecret` no teste (ou o bot tiver segredo gravado). Deve responder **2xx** para o teste ser considerado OK.
 
 - **Identidade / validar token do bot:** `GET /api/v1/agent-bot/profile` **ou** `GET /api/v1/bots` com `Authorization: Bearer ocb_<token>` — resposta com um bot em `data` (integrações que só têm um campo “JWT”/API).
 - **Base:** `POST /api/v1/agent-bot/messages` — resposta `201` inclui `agent_bot_id` (UUID do bot que enviou).
