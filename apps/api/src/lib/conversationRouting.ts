@@ -23,6 +23,22 @@ async function triageOpenUnassignedForAgentBot(
   });
 }
 
+/** Nova mensagem após RESOLVED: não herdar atendente nem dados de encerramento (igual à reabertura manual no painel). */
+function reopenResolvedConversationData(activeConversationStatus: "OPEN" | "PENDING") {
+  return {
+    status: activeConversationStatus,
+    updatedAt: new Date(),
+    assignedToId: null,
+    closureReason: null,
+    closureValue: null,
+    leadTypeId: null,
+    csatScore: null,
+    csatComment: null,
+    csatRecordedAt: null,
+    csatSurveyToken: null,
+  } as const;
+}
+
 /**
  * Escolhe ou cria a conversa WhatsApp do contacto.
  * lockSingleConversation: reutiliza a conversa mais recente e reabre RESOLVED (uma thread por contacto).
@@ -54,7 +70,7 @@ export async function ensureConversationForWhatsAppContact(params: {
       if (conv.status === "RESOLVED") {
         return prisma.conversation.update({
           where: { id: conv.id },
-          data: { status: activeConversationStatus, updatedAt: new Date() },
+          data: reopenResolvedConversationData(activeConversationStatus),
         });
       }
       if (conv.status === "PENDING" && promotePendingToOpen) {
@@ -134,7 +150,7 @@ export async function ensureConversationForChannelInbox(params: {
       if (conv.status === "RESOLVED") {
         return prisma.conversation.update({
           where: { id: conv.id },
-          data: { status: activeConversationStatus, updatedAt: new Date() },
+          data: reopenResolvedConversationData(activeConversationStatus),
         });
       }
       if (conv.status === "PENDING" && promotePendingToOpen) {
