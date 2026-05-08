@@ -6,7 +6,11 @@ Este documento descreve o fluxo **OpenConduit** para bots que respondem no Whats
 
 1. **Definir um bot** na página **Bots** (URL de webhook, opcionalmente segredo para assinatura HMAC).
 2. Em **Configurações**, associar esse bot como **Agent bot** quando existir webhook ativo: conversas novas no WhatsApp podem entrar em **PENDENTE** (`PENDING`) para o bot atuar antes do humano.
-3. O bot recebe um **token de inbox** (`ocb_...`) para chamar a API de resposta.
+3. O bot recebe um **token de inbox** (`ocb_...`) para chamar a API de resposta (**`POST /api/v1/agent-bot/messages`**, etc.). O outro sistema tem de **responder por esta API**; só receber o webhook não envia mensagem ao cliente.
+
+4. O agent bot está ligado à **organização** em **Configurações** (`agentBotId` na API), não por caixa individual. O WhatsApp usa a caixa por defeito da organização para novas conversas.
+
+5. O webhook **só é enviado** se a conversa estiver em **PENDENTE** (`PENDING`) **e** sem atendente atribuído (`assignedToId` vazio). Conversas já em **ABERTO** (`OPEN`) sem atendente são repostas em `PENDING` ao chegar mensagem quando o agent bot está ativo, para o fluxo do bot voltar a correr.
 
 ## Dois tipos de autenticação (como no Chatwoot: sessão vs token de integração)
 

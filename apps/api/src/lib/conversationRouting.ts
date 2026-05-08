@@ -3,6 +3,27 @@ import { prisma } from "../db.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 
 /**
+ * Com agent bot ativo pedimos `activeConversationStatus === "PENDING"`.
+ * Conversas antigas em `OPEN` sem atendente continuavam nesse estado — `dispatchAgentBotWebhook` só corre em `PENDING`,
+ * por isso o bot nunca era notificado. Reabre para a fila do bot quando ainda não há atribuição humana.
+ */
+async function triageOpenUnassignedForAgentBot(
+  conv: Conversation,
+  activeConversationStatus: "OPEN" | "PENDING",
+): Promise<Conversation> {
+  if (activeConversationStatus !== "PENDING") {
+    return conv;
+  }
+  if (conv.status !== "OPEN" || conv.assignedToId != null) {
+    return conv;
+  }
+  return prisma.conversation.update({
+    where: { id: conv.id },
+    data: { status: "PENDING", updatedAt: new Date() },
+  });
+}
+
+/**
  * Escolhe ou cria a conversa WhatsApp do contacto.
  * lockSingleConversation: reutiliza a conversa mais recente e reabre RESOLVED (uma thread por contacto).
  */
@@ -42,7 +63,7 @@ export async function ensureConversationForWhatsAppContact(params: {
           data: { status: "OPEN", updatedAt: new Date() },
         });
       }
-      return conv;
+      return triageOpenUnassignedForAgentBot(conv, activeConversationStatus);
     }
     const inboxId = await getDefaultInboxId(organizationId);
     return prisma.conversation.create({
@@ -78,7 +99,7 @@ export async function ensureConversationForWhatsAppContact(params: {
       data: { status: "OPEN", updatedAt: new Date() },
     });
   }
-  return conv;
+  return triageOpenUnassignedForAgentBot(conv, activeConversationStatus);
 }
 
 /**
@@ -122,7 +143,7 @@ export async function ensureConversationForChannelInbox(params: {
           data: { status: "OPEN", updatedAt: new Date() },
         });
       }
-      return conv;
+      return triageOpenUnassignedForAgentBot(conv, activeConversationStatus);
     }
     return prisma.conversation.create({
       data: {
@@ -156,5 +177,5 @@ export async function ensureConversationForChannelInbox(params: {
       data: { status: "OPEN", updatedAt: new Date() },
     });
   }
-  return conv;
+  return triageOpenUnassignedForAgentBot(conv, activeConversationStatus);
 }
