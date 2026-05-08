@@ -17,13 +17,21 @@ O token `ocu_...` deve ser o valor mostrado **uma vez** ao gerar em `POST /api/v
 
 ### SUPER_ADMIN e integrações (`ocu_`)
 
-Utilizadores **SUPER_ADMIN** não têm organização “actual” no JWT do token de perfil. Em **todas** as chamadas com `ocu_` a rotas de tenant (etiquetas, equipas, funil, etc.), envie também:
+Utilizadores **SUPER_ADMIN** não têm organização “actual” no JWT do token de perfil. Em **todas** as chamadas com `ocu_` a rotas de tenant (etiquetas, equipas, funil, etc.), envie também o **UUID da organização** alvo, por **qualquer** um dos meios abaixo (a API trata-os como equivalentes):
 
-`OpenConduit-Organization-Id: <uuid-da-organização>`
+**Cabeçalhos** (primeiro valor UUID válido ganha):
 
-(aceite também `X-OpenConduit-Organization-Id`). O UUID é o da organização no painel (ex.: após **Entrar na organização**). Sem este cabeçalho, respostas como **403** *Super admin: use Entrar na organização…* são esperadas.
+- `OpenConduit-Organization-Id`
+- `X-OpenConduit-Organization-Id`
+- `Organization-Id` ou `organization-id`
+- `X-Organization-Id` ou `x-organization-id`
+- `organization_id`
 
-**Recomendação:** para integrações de um único tenant, gere o `ocu_` com uma conta **ADMIN** desse tenant (sem cabeçalho extra).
+**Query** (útil em clientes que só permitem query string): `?organizationId=<uuid>` ou `?organization_id=<uuid>`
+
+Sem isto, respostas **403** *Super admin: use Entrar na organização…* são esperadas.
+
+**Recomendação:** para integrações de um único tenant, gere o `ocu_` com uma conta **ADMIN** desse tenant (sem cabeçalho extra). **Não partilhe** o token `ocu_` completo em chats ou tickets.
 
 ### O que **não** é `ocu_` (evitar 401)
 
@@ -114,10 +122,13 @@ curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
 curl "https://YOUR_DOMAIN/api/v1/lead-types" \
   -H "Authorization: Bearer ocu_xxxxxxxxxxxxxxxxx"
 
-# SUPER_ADMIN: incluir organização alvo
+# SUPER_ADMIN: incluir organização alvo (cabeçalho ou query)
 curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
   -H "api_access_token: ocu_xxxxxxxxxxxxxxxxx" \
   -H "OpenConduit-Organization-Id: <uuid-organizacao>"
+
+curl "https://YOUR_DOMAIN/api/v1/automations/teams?organization_id=<uuid-organizacao>" \
+  -H "api_access_token: ocu_xxxxxxxxxxxxxxxxx"
 ```
 
 ## 7) Notes
@@ -140,9 +151,10 @@ Autenticação OpenConduit (resumo):
    - Rotas: /api/v1/automations/*, GET /api/v1/lead-types, GET /api/v1/pipeline/board,
      GET /api/v1/pipeline/stages (entre outras que documentam "session_jwt_or_api_access_token").
 
-2) SUPER_ADMIN com ocu_: em todos os pedidos com ocu_ às rotas do tenant, enviar também:
-   OpenConduit-Organization-Id: <uuid-da-organização>
-   (ou X-OpenConduit-Organization-Id). Sem isto pode aparecer 403 sobre "Entrar na organização".
+2) SUPER_ADMIN com ocu_: em cada pedido às rotas do tenant, indicar o UUID da organização alvo
+   (um destes): cabeçalhos OpenConduit-Organization-Id, Organization-Id, organization_id, etc.,
+   OU query ?organizationId=<uuid> / ?organization_id=<uuid>.
+   Sem isto aparece 403 "Super admin: use Entrar na organização...".
 
 3) Bots (GET /api/v1/bots): NÃO use ocu_. Use JWT de admin OU Authorization: Bearer ocb_... (token de inbox do bot).
 

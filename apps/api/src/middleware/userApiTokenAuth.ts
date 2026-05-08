@@ -20,13 +20,28 @@ function rawApiAccessTokenHeader(request: FastifyRequest): string | null {
 }
 
 /** SUPER_ADMIN com token ocu_ não tem JWT com actingOrganizationId; integrações podem enviar o UUID do tenant. */
-function actingOrganizationIdFromHeaders(request: FastifyRequest): string | null {
-  const raw =
-    request.headers["openconduit-organization-id"] ??
-    request.headers["x-openconduit-organization-id"];
-  if (typeof raw !== "string") return null;
-  const id = raw.trim();
-  return z.string().uuid().safeParse(id).success ? id : null;
+function actingOrganizationIdFromRequest(request: FastifyRequest): string | null {
+  const headerCandidates = [
+    request.headers["openconduit-organization-id"],
+    request.headers["x-openconduit-organization-id"],
+    request.headers["organization-id"],
+    request.headers["x-organization-id"],
+    request.headers["organization_id"],
+  ];
+  for (const raw of headerCandidates) {
+    if (typeof raw !== "string") continue;
+    const id = raw.trim();
+    if (z.string().uuid().safeParse(id).success) return id;
+  }
+  const q = request.query as Record<string, unknown> | undefined;
+  if (q) {
+    const qv = q.organizationId ?? q.organization_id;
+    if (typeof qv === "string") {
+      const id = qv.trim();
+      if (z.string().uuid().safeParse(id).success) return id;
+    }
+  }
+  return null;
 }
 
 export async function authenticateUserApiToken(
@@ -56,7 +71,7 @@ export async function authenticateUserApiToken(
       data: { apiAccessTokenLastUsedAt: new Date() },
     });
 
-    const orgHeader = actingOrganizationIdFromHeaders(request);
+    const orgHeader = actingOrganizationIdFromRequest(request);
 
     if (c.role === "SUPER_ADMIN") {
       return {

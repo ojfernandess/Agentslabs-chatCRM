@@ -26,7 +26,7 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
     }
 
     return {
-      schemaVersion: 6,
+      schemaVersion: 7,
       generatedAt: new Date().toISOString(),
       noticeEn:
         "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets. Common credentials: (1) user JWT from POST /api/v1/auth/login; (2) profile API token (ocu_...) via `api_access_token` header or `Authorization: Bearer ocu_...` on automation-compatible routes; (3) bot inbox token (Bearer ocb_...) for /api/v1/agent-bot/* and read-only GET /api/v1/bots.",
