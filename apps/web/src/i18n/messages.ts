@@ -613,6 +613,8 @@ export const messages = {
       statusResolved: "Finalizada",
       setPending: "Colocar em pendência",
       transferToBot: "Transferir para o bot",
+      botTriageBanner:
+        "O agente virtual (bot) está na primeira linha desta conversa: estado pendente, sem atendente humano atribuído. As mensagens do cliente são enviadas ao webhook do bot.",
       reopen: "Reabrir conversa",
       finalize: "Finalizar atendimento",
       finalizeTitle: "Finalizar atendimento",
@@ -1695,6 +1697,8 @@ export const messages = {
       statusResolved: "Resolved",
       setPending: "Mark as pending",
       transferToBot: "Transfer to bot",
+      botTriageBanner:
+        "The virtual agent (bot) is handling this conversation: pending state with no human assignee. Customer messages are sent to the bot webhook.",
       reopen: "Reopen conversation",
       finalize: "Resolve conversation",
       finalizeTitle: "Resolve conversation",

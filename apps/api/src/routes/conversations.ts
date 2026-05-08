@@ -715,12 +715,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      if (
-        nextStatus === "PENDING" &&
-        existing.status === "OPEN" &&
-        conversation.status === "PENDING" &&
-        conversation.assignedToId == null
-      ) {
+      const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
+      const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
+      if (nowBotQueue && !wasBotQueue) {
         const ch = await prisma.settings.findUnique({
           where: { organizationId },
           include: { agentBot: true },

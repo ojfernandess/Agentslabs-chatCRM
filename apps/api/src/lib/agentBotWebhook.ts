@@ -195,12 +195,20 @@ export async function dispatchAgentBotWebhook(input: {
   message: Message;
   log: FastifyBaseLogger;
 }): Promise<void> {
-  const { organizationId, settings, conversation, contact, message, log } = input;
+  const { organizationId, settings, contact, message, log } = input;
+  let conversation = input.conversation;
   const bot = settings.agentBot;
   if (!settings.agentBotId || !bot?.webhookUrl?.trim() || !bot.isActive) {
     return;
   }
-  /** Só fila do bot: em atendimento humano (`OPEN` ou `PENDING` com atendente) o bot não deve responder. */
+  /** `OPEN` sem atendente com bot activo deve estar na fila como `PENDING` (reabertura manual, etc.). */
+  if (conversation.assignedToId == null && conversation.status === "OPEN") {
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { status: "PENDING", updatedAt: new Date() },
+    });
+  }
+  /** Só fila do bot: com atendente humano não enviamos. */
   if (conversation.status !== "PENDING" || conversation.assignedToId != null) {
     return;
   }

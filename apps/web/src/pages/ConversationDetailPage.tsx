@@ -942,8 +942,16 @@ export function ConversationDetailPage() {
     );
   }
 
-  const canResolve = conversation.status === "OPEN" || conversation.status === "PENDING";
+  const canResolve =
+    (conversation.status === "OPEN" || conversation.status === "PENDING") &&
+    Boolean(conversation.assignedTo?.id);
   const canTransfer = canResolve && teamOptions.length > 0;
+  const inBotQueueOnly =
+    conversation.status === "PENDING" && !conversation.assignedTo?.id;
+  const showTransferToBot =
+    agentBotTriageActive &&
+    conversation.status !== "RESOLVED" &&
+    !inBotQueueOnly;
   const transferUnchanged =
     transferTeamId === (conversation.team?.id ?? "") &&
     (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
@@ -1445,7 +1453,7 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.actionMoveFunnel")}
               </Link>
             ) : null}
-            {conversation.status === "OPEN" && agentBotTriageActive ? (
+            {showTransferToBot ? (
               <button
                 type="button"
                 disabled={actionLoading}
@@ -1516,6 +1524,15 @@ export function ConversationDetailPage() {
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
           <div className="relative w-full min-w-0 space-y-0">
+            {agentBotTriageActive && inBotQueueOnly ? (
+              <div
+                className="mb-4 flex items-start gap-2 rounded-xl border border-violet-200/80 bg-violet-50/90 px-3 py-2.5 text-xs text-violet-950 shadow-sm dark:border-violet-800/40 dark:bg-violet-950/40 dark:text-violet-100"
+                role="status"
+              >
+                <Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden />
+                <p className="leading-snug">{t("conversationDetail.botTriageBanner")}</p>
+              </div>
+            ) : null}
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
