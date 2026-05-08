@@ -305,10 +305,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
     );
   }
 
-  await prisma.conversation.update({
+  const convPatch: { updatedAt: Date; assignedToId?: string; status?: "OPEN" } = {
+    updatedAt: new Date(),
+  };
+  /** Só atribuir ao agente / passar a OPEN quando a mensagem **ao cliente** foi entregue com sucesso.
+   * Antes: QUALQUER tentativa (incl. WhatsApp FAILED) já punha `assignedToId`, bloqueando o webhook do agent bot. */
+  const deliveredToClient = !isPrivate && outboundStatus === "SENT";
+  if (actor.kind === "user" && deliveredToClient) {
+    convPatch.assignedToId = actor.userId;
+    if (conversation.status === "PENDING") {
+      convPatch.status = "OPEN";
+    }
+  }
+
+  const updatedConversation = await prisma.conversation.update({
     where: { id: conversation.id },
-    data: { updatedAt: new Date() },
+    data: convPatch,
   });
 
-  return { message, conversation };
+  return { message, conversation: updatedConversation };
 }

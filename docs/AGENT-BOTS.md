@@ -12,7 +12,7 @@ Este documento descreve o fluxo **OpenConduit** para bots que respondem no Whats
 
 5. O webhook **só é enviado** se a conversa estiver em **PENDENTE** (`PENDING`) **e** sem atendente atribuído (`assignedToId` vazio). Conversas já em **ABERTO** (`OPEN`) sem atendente são repostas em `PENDING` ao chegar mensagem quando o agent bot está ativo, para o fluxo do bot voltar a correr.
 
-## Dois tipos de autenticação (como no Chatwoot: sessão vs token de integração)
+6. A conversa **só passa a ter atendente** (`assignedToId`) quando o agente humano envia uma mensagem **entregue com sucesso** ao cliente (registo `SENT`). Tentativas falhadas (ex.: WhatsApp `FAILED`) **não** atribuem — caso contrário o webhook do bot deixava de disparar para novas mensagens do cliente. (como no Chatwoot: sessão vs token de integração)
 
 | Uso | Cabeçalho | Onde |
 |-----|-----------|------|

@@ -235,8 +235,6 @@ export function ConversationDetailPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
-  const autoAssignAttemptedRef = useRef<string | null>(null);
-
   useEffect(() => {
     stickToBottomRef.current = true;
   }, [id]);
@@ -393,29 +391,6 @@ export function ConversationDetailPage() {
     const interval = setInterval(loadConversation, 5000);
     return () => clearInterval(interval);
   }, [id]);
-
-  useEffect(() => {
-    autoAssignAttemptedRef.current = null;
-  }, [id]);
-
-  useEffect(() => {
-    if (!conversation || !user?.id || !id || conversation.id !== id) return;
-    if (autoAssignAttemptedRef.current === id) return;
-    const open = conversation.status === "OPEN" || conversation.status === "PENDING";
-    if (!open) return;
-    if (conversation.assignedTo?.id === user.id) return;
-    autoAssignAttemptedRef.current = id;
-    void (async () => {
-      try {
-        const updated = await api.put<ConversationDetail>(`/conversations/${id}`, {
-          assignedToId: user.id,
-        });
-        setConversation(updated);
-      } catch {
-        /* single attempt per visit avoids repeated failures */
-      }
-    })();
-  }, [conversation, user?.id, id]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
