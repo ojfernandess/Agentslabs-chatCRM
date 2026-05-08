@@ -29,7 +29,9 @@ Após uma mensagem **recebida** (inbound) persistida, se o modo agent bot estive
 - `event`: `"message_created"`
 - `version`: `"openconduit-v1"`
 - `agent_bot_id`: UUID do bot (mesmo valor que `agent_bot.id`; alias estilo Chatwoot no topo do JSON)
-- `account`, `conversation`, `contact`, `message` (metadados e corpo)
+- `inbox_id`: UUID estável da **caixa de entrada** (igual ao `id` em `GET /api/v1/inboxes`, no modelo Chatwoot)
+- `inbox`: `{ id, name, channel }` — `channel` é o tipo da caixa em minúsculas (ex.: `whatsapp`, `website`)
+- `account`, `conversation`, `contact`, `message` (metadados e corpo; em `conversation` também consta `inbox_id`)
 - `agent_bot`: id, nome e tipo do bot
 
 Cabeçalhos úteis: `X-OpenConduit-Event`, `X-OpenConduit-Signature` (se houver `webhookSecret`).

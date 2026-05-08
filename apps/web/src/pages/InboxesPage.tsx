@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
-import { Inbox, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Inbox, ChevronDown, ChevronRight, Pencil, Trash2, Check, Copy } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER } from "@/components/InboxCreateWizard";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
@@ -79,6 +79,7 @@ export function InboxesPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editChannel, setEditChannel] = useState<string>("WHATSAPP");
   const [editWebhook, setEditWebhook] = useState("");
+  const [copiedInboxId, setCopiedInboxId] = useState<string | null>(null);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -88,6 +89,16 @@ export function InboxesPage() {
   const copyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const copyInboxId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedInboxId(id);
+      window.setTimeout(() => setCopiedInboxId(null), 2000);
     } catch {
       /* ignore */
     }
@@ -328,6 +339,30 @@ export function InboxesPage() {
                           {t("inboxesPage.memberCount")}: {row._count.members} · {t("inboxesPage.conversations")}:{" "}
                           {row._count.conversations}
                         </p>
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-ink-500">
+                            {t("inboxesPage.inboxId")}
+                          </span>
+                          <code className="max-w-[min(100%,28rem)] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-800 dark:bg-ink-800/80 dark:text-ink-100 sm:max-w-md">
+                            {row.id}
+                          </code>
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 rounded p-1 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-ink-400 dark:hover:bg-ink-700 dark:hover:text-ink-50"
+                            title={t("inboxesPage.copyInboxId")}
+                            aria-label={t("inboxesPage.copyInboxId")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void copyInboxId(row.id);
+                            }}
+                          >
+                            {copiedInboxId === row.id ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </button>
                     {isAdmin ? (

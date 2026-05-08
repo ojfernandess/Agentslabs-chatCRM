@@ -1,28 +1,49 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { Prisma, Contact, Conversation, Message, Bot, Settings } from "@prisma/client";
+import type {
+  Prisma,
+  Contact,
+  Conversation,
+  Message,
+  Bot,
+  Settings,
+  Inbox,
+  InboxChannelType,
+} from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
+
+function inboxChannelSlug(channelType: InboxChannelType): string {
+  return channelType.toLowerCase();
+}
 
 /** Payload JSON para webhooks do Agent Bot (`message_created`), com namespace OpenConduit. */
 export function buildAgentBotWebhookPayload(input: {
   organizationId: string;
+  inbox: Pick<Inbox, "id" | "name" | "channelType">;
   conversation: Conversation;
   contact: Contact;
   message: Message;
   bot: Pick<Bot, "id" | "name" | "type" | "webhookUrl">;
 }): Record<string, unknown> {
-  const { organizationId, conversation, contact, message, bot } = input;
+  const { organizationId, inbox, conversation, contact, message, bot } = input;
   return {
     event: "message_created",
     version: "openconduit-v1",
     /** Alias Chatwoot-friendly (sempre igual a `agent_bot.id`). */
     agent_bot_id: bot.id,
+    /** ID estável da caixa de entrada (UUID), no modelo Chatwoot. */
+    inbox_id: inbox.id,
     account: { id: organizationId },
-    inbox: { id: organizationId, channel: "whatsapp" },
+    inbox: {
+      id: inbox.id,
+      name: inbox.name,
+      channel: inboxChannelSlug(inbox.channelType),
+    },
     conversation: {
       id: conversation.id,
       status: conversation.status,
       contact_id: contact.id,
+      inbox_id: conversation.inboxId,
     },
     contact: {
       id: contact.id,
@@ -65,8 +86,21 @@ export async function dispatchAgentBotWebhook(input: {
     return;
   }
 
+  const inbox = await prisma.inbox.findFirst({
+    where: { id: conversation.inboxId, organizationId },
+    select: { id: true, name: true, channelType: true },
+  });
+  if (!inbox) {
+    log.warn(
+      { conversationId: conversation.id, inboxId: conversation.inboxId },
+      "Agent bot webhook skipped: inbox not found for organization",
+    );
+    return;
+  }
+
   const bodyObj = buildAgentBotWebhookPayload({
     organizationId,
+    inbox,
     conversation,
     contact,
     message,

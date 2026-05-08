@@ -289,6 +289,8 @@ export const messages = {
       creating: "A criar…",
       saving: "A guardar…",
       channelLabel: "Canal",
+      inboxId: "ID da caixa",
+      copyInboxId: "Copiar ID",
       wizard: {
         pageTitle: "Caixas de Entrada",
         back: "Anterior",
@@ -1362,6 +1364,8 @@ export const messages = {
       creating: "Creating…",
       saving: "Saving…",
       channelLabel: "Channel",
+      inboxId: "Inbox ID",
+      copyInboxId: "Copy ID",
       wizard: {
         pageTitle: "Inboxes",
         back: "Back",

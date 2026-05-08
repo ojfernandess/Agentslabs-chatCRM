@@ -445,10 +445,12 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     method: "GET|POST|PATCH|DELETE",
     path: "/api/v1/inboxes",
     auth: "session_jwt",
-    descriptionEn: "Inboxes, members; admin to create/patch/delete.",
-    descriptionPt: "Caixas e membros; admin para criar/editar.",
+    descriptionEn:
+      "Inboxes (each inbox has a stable UUID id, Chatwoot-style), members; admin to create/patch/delete. Use `id` in conversation filters (`inboxId` query) and in agent-bot webhooks (`inbox_id`).",
+    descriptionPt:
+      "Caixas de entrada (cada uma tem `id` UUID estável, estilo Chatwoot), membros; admin para criar/editar. O `id` serve nos filtros de conversas (`inboxId`) e no webhook do agent bot (`inbox_id`).",
     examplePayloadPt:
-      'GET: sem corpo.\n\nPOST application/json:\n{\n  "name": "Suporte WhatsApp",\n  "channelType": "WHATSAPP",\n  "channelConfig": null,\n  "isDefault": false\n}\n\nPOST /api/v1/inboxes/:id/members — {\"userId\": \"<uuid>\"}\n\nPATCH /api/v1/inboxes/:id — nome, channelConfig, etc.',
+      'GET: sem corpo.\n\nResposta 200 (excerpt): `data` inclui objetos com `"id": "<uuid-da-caixa>"`, `name`, `channelType`, etc. Esse UUID é o identificador permanente da caixa (como no Chatwoot).\n\nPOST application/json:\n{\n  "name": "Suporte WhatsApp",\n  "channelType": "WHATSAPP",\n  "channelConfig": null,\n  "isDefault": false\n}\n\nPOST /api/v1/inboxes/:id/members — {\"userId\": \"<uuid>\"}\n\nPATCH /api/v1/inboxes/:id — nome, channelConfig, etc.',
   },
   {
     method: "POST",

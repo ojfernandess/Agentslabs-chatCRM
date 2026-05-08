@@ -276,9 +276,9 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         path: "/api/v1/agent-bot/profile",
         auth: "agent_bot_bearer",
         descriptionEn:
-          "Returns the bot for this inbox token — validate `ocb_...` and read `id` / `agent_bot_id`. Same data shape as GET /api/v1/bots/:id when using a user JWT. For read-only list with only `ocb_`, you may also call GET /api/v1/bots (response `data` has one entry). Creating or mutating bots still requires admin JWT.",
+          "Returns the bot for this inbox token — validate `ocb_...` and read `id` / `agent_bot_id`. Same data shape as GET /api/v1/bots/:id when using a user JWT. For read-only list with only `ocb_`, you may also call GET /api/v1/bots (response `data` has one entry). Creating or mutating bots still requires admin JWT. When OpenConduit POSTs inbound events to your bot `webhookUrl`, the JSON includes `inbox_id` and `inbox` with the stable inbox UUID (same as each inbox `id` from GET /api/v1/inboxes, Chatwoot-style).",
         descriptionPt:
-          "Devolve o bot deste token de inbox — validar `ocb_...` e ler `id` / `agent_bot_id`. Mesmo formato que GET /api/v1/bots/:id com JWT de utilizador. Só com `ocb_` também pode usar GET /api/v1/bots (lista com um elemento em `data`). Criar ou alterar bots continua a exigir JWT de admin.",
+          "Devolve o bot deste token de inbox — validar `ocb_...` e ler `id` / `agent_bot_id`. Mesmo formato que GET /api/v1/bots/:id com JWT de utilizador. Só com `ocb_` também pode usar GET /api/v1/bots (lista com um elemento em `data`). Criar ou alterar bots continua a exigir JWT de admin. Quando o OpenConduit faz POST de eventos recebidos para o `webhookUrl` do bot, o JSON inclui `inbox_id` e `inbox` com o UUID estável da caixa (o mesmo `id` de GET /api/v1/inboxes, estilo Chatwoot).",
         examplePayloadPt:
           "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: dados públicos do bot (como GET /api/v1/bots/:id), com `agent_bot_id` igual ao `id`.\n\nAlternativa só leitura: GET /api/v1/bots com o mesmo cabeçalho — `data` contém apenas este bot.",
       },
