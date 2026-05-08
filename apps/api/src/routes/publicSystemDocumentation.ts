@@ -29,9 +29,9 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
       schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       noticeEn:
-        "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets. Two common credentials: (1) user JWT from POST /api/v1/auth/login for tenant APIs; (2) bot inbox token (Bearer ocb_...) for /api/v1/agent-bot/* and read-only GET /api/v1/bots.",
+        "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets. Common credentials: (1) user JWT from POST /api/v1/auth/login; (2) profile API token via `api_access_token` header for automation routes; (3) bot inbox token (Bearer ocb_...) for /api/v1/agent-bot/* and read-only GET /api/v1/bots.",
       noticePt:
-        "Este catálogo lista rotas e autenticação. Nunca inclui tokens, IDs de organização nem segredos. Credenciais habituais: (1) JWT de utilizador (POST /api/v1/auth/login) para a API do painel; (2) token de inbox do bot (Bearer ocb_...) para /api/v1/agent-bot/* e GET /api/v1/bots (só leitura).",
+        "Este catálogo lista rotas e autenticação. Nunca inclui tokens, IDs de organização nem segredos. Credenciais habituais: (1) JWT de utilizador (POST /api/v1/auth/login); (2) token de API de perfil no cabeçalho `api_access_token` para rotas de automação; (3) token de inbox do bot (Bearer ocb_...) para /api/v1/agent-bot/* e GET /api/v1/bots (só leitura).",
       groups: PUBLIC_API_DOCUMENTATION_GROUPS,
     };
   });

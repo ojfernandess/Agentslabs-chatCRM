@@ -152,6 +152,7 @@ export function ProfilePage() {
   };
 
   if (!user) return null;
+  const canManageApiToken = user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
 
   return (
     <PageTransition>
@@ -360,6 +361,7 @@ export function ProfilePage() {
           <p className="text-sm text-ink-600 dark:text-ink-300">{t("profilePage.notificationsNote")}</p>
         </div>
 
+        {canManageApiToken ? (
         <div className="card-surface space-y-4 p-6 dark:border-ink-600 dark:bg-ink-900/80">
           <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("profilePage.apiTokenSection")}</h2>
           <p className="text-xs text-ink-500 dark:text-ink-400">{t("profilePage.apiTokenHint")}</p>
@@ -408,6 +410,7 @@ export function ProfilePage() {
             ) : null}
           </div>
         </div>
+        ) : null}
 
         <form onSubmit={onChangePassword} className="card-surface space-y-4 p-6 dark:border-ink-600 dark:bg-ink-900/80">
           <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("profilePage.passwordSection")}</h2>

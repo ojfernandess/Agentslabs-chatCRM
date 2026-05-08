@@ -29,6 +29,13 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8).max(128),
 });
 
+function canManageProfileApiToken(user: {
+  role: string;
+  actingOrganizationId?: string | null;
+}): boolean {
+  return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
+}
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/login", async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
@@ -157,6 +164,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {
+    if (!canManageProfileApiToken(request.user)) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required to manage profile API token",
+        statusCode: 403,
+      });
+    }
     const user = await prisma.user.findUnique({
       where: { id: request.user.id },
       select: {
@@ -177,6 +191,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {
+    if (!canManageProfileApiToken(request.user)) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required to manage profile API token",
+        statusCode: 403,
+      });
+    }
     const { token, prefix } = generateUserApiAccessTokenParts();
     const hash = await hashUserApiAccessToken(token);
     await prisma.user.update({
@@ -194,7 +215,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.delete("/me/access-token", { preHandler: [authenticate] }, async (request) => {
+  app.delete("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {
+    if (!canManageProfileApiToken(request.user)) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required to manage profile API token",
+        statusCode: 403,
+      });
+    }
     await prisma.user.update({
       where: { id: request.user.id },
       data: {

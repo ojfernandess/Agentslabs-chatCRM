@@ -13,11 +13,26 @@ function bearerRawToken(request: FastifyRequest): string | null {
   return m ? m[1]!.trim() : null;
 }
 
+function rawApiAccessTokenHeader(request: FastifyRequest): string | null {
+  const v = request.headers["api_access_token"];
+  return typeof v === "string" ? v.trim() : null;
+}
+
 export async function authenticateUserApiToken(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<JwtPayload | null> {
-  const raw = bearerRawToken(request);
+  const rawFromHeader = rawApiAccessTokenHeader(request);
+  const bearer = bearerRawToken(request);
+  if (bearer?.startsWith(TOKEN_PREFIX) && !rawFromHeader) {
+    reply.status(401).send({
+      error: "Unauthorized",
+      message: "Use 'api_access_token' header for profile API token authentication",
+      statusCode: 401,
+    });
+    return null;
+  }
+  const raw = rawFromHeader;
   if (!raw?.startsWith(TOKEN_PREFIX) || raw.length < TOKEN_PREFIX.length + 16) return null;
 
   const prefix = raw.slice(0, 12);

@@ -8,6 +8,7 @@ import { PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentat
 export type PublicApiDocAuth =
   | "none"
   | "session_jwt"
+  | "session_jwt_or_api_access_token"
   | "session_jwt_or_bot_bearer_readonly"
   | "super_admin_jwt"
   | "agent_bot_bearer"
@@ -241,6 +242,32 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         descriptionEn: "Exit super-admin user impersonation when applicable.",
         descriptionPt: "Sair da impersonação de utilizador (super admin).",
         examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>",
+      },
+      {
+        method: "GET",
+        path: "/api/v1/auth/me/access-token",
+        auth: "session_jwt",
+        descriptionEn: "Read profile API token status (admin in tenant).",
+        descriptionPt: "Ler estado do token de API no perfil (admin no tenant).",
+        examplePayloadPt:
+          "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>. Resposta: { configured, prefix, lastUsedAt }.",
+      },
+      {
+        method: "POST",
+        path: "/api/v1/auth/me/access-token",
+        auth: "session_jwt",
+        descriptionEn: "Generate/rotate profile API token (admin in tenant).",
+        descriptionPt: "Gerar/rodar token de API do perfil (admin no tenant).",
+        examplePayloadPt:
+          "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>. Resposta inclui `token` (mostrado apenas uma vez).",
+      },
+      {
+        method: "DELETE",
+        path: "/api/v1/auth/me/access-token",
+        auth: "session_jwt",
+        descriptionEn: "Revoke current profile API token (admin in tenant).",
+        descriptionPt: "Revogar token de API atual do perfil (admin no tenant).",
+        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>.",
       },
     ],
   },

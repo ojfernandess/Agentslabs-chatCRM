@@ -53,12 +53,6 @@ export async function authenticate(
     await request.jwtVerify();
     return;
   } catch {
-    const apiTokenUser = await authenticateUserApiToken(request, reply);
-    if (reply.sent) return;
-    if (apiTokenUser) {
-      request.user = apiTokenUser;
-      return;
-    }
     if (raw?.startsWith("ocb_")) {
       return reply.status(401).send({
         error: "Unauthorized",
@@ -71,6 +65,29 @@ export async function authenticate(
       });
     }
     return reply.status(401).send({ error: "Unauthorized", message: "Invalid or expired token", statusCode: 401 });
+  }
+}
+
+/** Application APIs (Chatwoot-like): accepts session JWT OR profile `api_access_token` / `Bearer ocu_...`. */
+export async function authenticateSessionOrUserApiTokenForApplicationApis(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  try {
+    await request.jwtVerify();
+    return;
+  } catch {
+    const apiTokenUser = await authenticateUserApiToken(request, reply);
+    if (reply.sent) return;
+    if (apiTokenUser) {
+      request.user = apiTokenUser;
+      return;
+    }
+    return reply.status(401).send({
+      error: "Unauthorized",
+      message: "Invalid or missing JWT/api_access_token",
+      statusCode: 401,
+    });
   }
 }
 

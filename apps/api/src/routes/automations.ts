@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticateSessionOrUserApiTokenForApplicationApis } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 
 const assignConversationTagsSchema = z.object({
@@ -19,7 +19,7 @@ function isTenantAdminLike(user: { role: string; actingOrganizationId?: string |
 }
 
 export async function automationRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
+  app.addHook("preHandler", authenticateSessionOrUserApiTokenForApplicationApis);
 
   app.get("/tags", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
