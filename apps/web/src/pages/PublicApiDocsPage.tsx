@@ -25,6 +25,7 @@ type PublicDocsPayload = {
 };
 
 const tDoc = (path: string) => translate(DOC_LOCALE, path);
+type PublicEndpoint = PublicDocsPayload["groups"][number]["endpoints"][number];
 
 /** Estilo tipo OpenAPI / documentação moderna: cor por verbo. */
 const METHOD_ACCENTS: Record<string, { bar: string; pill: string }> = {
@@ -112,6 +113,14 @@ function MethodPills({ methods }: { methods: string[] }) {
   );
 }
 
+function findEndpoint(groups: PublicDocsPayload["groups"], path: string): PublicEndpoint | null {
+  for (const g of groups) {
+    const hit = g.endpoints.find((e) => e.path === path);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function PublicApiDocsPage() {
   const [data, setData] = useState<PublicDocsPayload | null>(null);
   const [phase404, setPhase404] = useState(false);
@@ -150,6 +159,16 @@ export function PublicApiDocsPage() {
     };
   }, []);
 
+  const quickEndpoints = data
+    ? {
+        tokenGenerate: findEndpoint(data.groups, "/api/v1/auth/me/access-token"),
+        ticketTags: findEndpoint(data.groups, "/api/v1/automations/conversations/:id/tags"),
+        ticketTeam: findEndpoint(data.groups, "/api/v1/automations/conversations/:id/team"),
+        crmBoard: findEndpoint(data.groups, "/api/v1/pipeline/board"),
+        crmLeadTypes: findEndpoint(data.groups, "/api/v1/lead-types"),
+      }
+    : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100">
       <header className="sticky top-0 z-10 border-b border-ink-200/80 bg-white/80 shadow-sm backdrop-blur-md dark:border-ink-800/80 dark:bg-ink-900/75">
@@ -181,7 +200,7 @@ export function PublicApiDocsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-10 pb-16">
+      <main className="mx-auto max-w-6xl px-4 py-10 pb-16">
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-ink-600 dark:text-ink-400">
             <span
@@ -200,7 +219,7 @@ export function PublicApiDocsPage() {
             <p className="mt-2 text-sm leading-relaxed text-ink-600 dark:text-ink-400">{tDoc("publicDocs.disabledBody")}</p>
           </div>
         ) : data ? (
-          <div className="space-y-10 animate-fade-in">
+          <div className="animate-fade-in">
             <div className="space-y-4">
               <p className="rounded-lg border border-ink-200/80 bg-white/60 px-4 py-3 text-sm leading-relaxed text-ink-700 shadow-sm dark:border-ink-700/80 dark:bg-ink-900/40 dark:text-ink-300">
                 {data.noticePt}
@@ -230,60 +249,134 @@ export function PublicApiDocsPage() {
               </div>
             </div>
 
-            {data.groups.map((g) => (
-              <section
-                key={g.id}
-                className="overflow-hidden rounded-lg border border-ink-200/90 bg-white shadow-md dark:border-ink-700/90 dark:bg-ink-900/80 dark:shadow-none"
-              >
-                <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:from-ink-900 dark:to-ink-900/50">
-                  <h2 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">{g.titlePt}</h2>
-                  <p className="mt-0.5 text-xs font-medium text-ink-500 dark:text-ink-500">
-                    {g.endpoints.length} {g.endpoints.length === 1 ? "rota" : "rotas"}
-                  </p>
-                </div>
+            <div className="mt-8 grid gap-6 lg:grid-cols-[240px,minmax(0,1fr)]">
+              <aside className="h-fit rounded-lg border border-ink-200/90 bg-white p-4 shadow-sm dark:border-ink-700/90 dark:bg-ink-900/80">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-500">Navegação</p>
+                <nav className="space-y-1.5">
+                  <a className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-rapido">
+                    Guia rápido
+                  </a>
+                  {data.groups.map((g) => (
+                    <a
+                      key={`nav-${g.id}`}
+                      className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800"
+                      href={`#group-${g.id}`}
+                    >
+                      {g.titlePt}
+                    </a>
+                  ))}
+                </nav>
+              </aside>
 
-                <ul className="divide-y divide-ink-100 dark:divide-ink-800/80">
-                  {g.endpoints.map((row, idx) => {
-                    const methods = parseMethods(row.method);
-                    const { bar } = accentForMethods(methods);
-                    return (
-                      <li key={`${g.id}-${idx}-${row.path}`} className={`border-l-4 ${bar} bg-ink-50/20 dark:bg-ink-950/20`}>
-                        <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <MethodPills methods={methods} />
-                                <span
-                                  className="rounded-full bg-ink-200/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-700 dark:bg-ink-800 dark:text-ink-400"
-                                  title={tDoc("publicDocs.authHeading")}
-                                >
-                                  {authPillLabel(row.auth, tDoc)}
-                                </span>
+              <div className="space-y-10">
+                <section
+                  id="guia-rapido"
+                  className="rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/80 to-white p-5 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60"
+                >
+                  <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">Guia rápido para automação</h2>
+                  <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">
+                    Fluxo recomendado para integrações externas: gerar token de perfil, automatizar tickets e integrar funil CRM.
+                  </p>
+                  <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">1) Token do perfil</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Endpoint: <code>{quickEndpoints?.tokenGenerate?.path ?? "/api/v1/auth/me/access-token"}</code>
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl -X POST "https://SEU_DOMINIO/api/v1/auth/me/access-token" \\
+  -H "Authorization: Bearer <jwt-admin>"`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">2) Automatizar tickets</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Use <code>api_access_token</code> para marcar etiquetas e atribuir time.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl -X POST "https://SEU_DOMINIO/api/v1/automations/conversations/<id>/tags" \\
+  -H "api_access_token: ocu_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"tagIds":["<uuid-tag>"],"mode":"add"}'`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">3) Funil CRM</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Consulte colunas e board para pipelines comerciais.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl "https://SEU_DOMINIO/api/v1/pipeline/board" \\
+  -H "Authorization: Bearer <jwt>"`}
+                      </pre>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-ink-500 dark:text-ink-400">
+                    Endpoints-chave:{" "}
+                    <code>{quickEndpoints?.ticketTags?.path ?? "/api/v1/automations/conversations/:id/tags"}</code>,{" "}
+                    <code>{quickEndpoints?.ticketTeam?.path ?? "/api/v1/automations/conversations/:id/team"}</code>,{" "}
+                    <code>{quickEndpoints?.crmBoard?.path ?? "/api/v1/pipeline/board"}</code>,{" "}
+                    <code>{quickEndpoints?.crmLeadTypes?.path ?? "/api/v1/lead-types"}</code>.
+                  </p>
+                </section>
+
+                {data.groups.map((g) => (
+                  <section
+                    id={`group-${g.id}`}
+                    key={g.id}
+                    className="overflow-hidden rounded-lg border border-ink-200/90 bg-white shadow-md dark:border-ink-700/90 dark:bg-ink-900/80 dark:shadow-none"
+                  >
+                    <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:from-ink-900 dark:to-ink-900/50">
+                      <h2 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">{g.titlePt}</h2>
+                      <p className="mt-0.5 text-xs font-medium text-ink-500 dark:text-ink-500">
+                        {g.endpoints.length} {g.endpoints.length === 1 ? "rota" : "rotas"}
+                      </p>
+                    </div>
+
+                    <ul className="divide-y divide-ink-100 dark:divide-ink-800/80">
+                      {g.endpoints.map((row, idx) => {
+                        const methods = parseMethods(row.method);
+                        const { bar } = accentForMethods(methods);
+                        return (
+                          <li key={`${g.id}-${idx}-${row.path}`} className={`border-l-4 ${bar} bg-ink-50/20 dark:bg-ink-950/20`}>
+                            <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <MethodPills methods={methods} />
+                                    <span
+                                      className="rounded-full bg-ink-200/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-700 dark:bg-ink-800 dark:text-ink-400"
+                                      title={tDoc("publicDocs.authHeading")}
+                                    >
+                                      {authPillLabel(row.auth, tDoc)}
+                                    </span>
+                                  </div>
+                                  <code className="block break-all font-mono text-[13px] font-medium leading-snug text-ink-900 dark:text-ink-100">
+                                    {row.path}
+                                  </code>
+                                </div>
                               </div>
-                              <code className="block break-all font-mono text-[13px] font-medium leading-snug text-ink-900 dark:text-ink-100">
-                                {row.path}
-                              </code>
+                              <p className="text-sm leading-relaxed text-ink-700 dark:text-ink-300">{row.descriptionPt}</p>
+                              <div>
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-500">
+                                    {tDoc("publicDocs.colExample")}
+                                  </span>
+                                  <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" aria-hidden />
+                                </div>
+                                <pre className="max-h-80 overflow-auto rounded-md border border-ink-200/80 bg-ink-900/[0.03] p-3 font-mono text-[11px] leading-relaxed text-ink-800 dark:border-ink-700 dark:bg-black/25 dark:text-ink-300">
+                                  {row.examplePayloadPt?.trim() ? row.examplePayloadPt : "—"}
+                                </pre>
+                              </div>
                             </div>
-                          </div>
-                          <p className="text-sm leading-relaxed text-ink-700 dark:text-ink-300">{row.descriptionPt}</p>
-                          <div>
-                            <div className="mb-2 flex items-center gap-2">
-                              <span className="text-[11px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-500">
-                                {tDoc("publicDocs.colExample")}
-                              </span>
-                              <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" aria-hidden />
-                            </div>
-                            <pre className="max-h-80 overflow-auto rounded-md border border-ink-200/80 bg-ink-900/[0.03] p-3 font-mono text-[11px] leading-relaxed text-ink-800 dark:border-ink-700 dark:bg-black/25 dark:text-ink-300">
-                              {row.examplePayloadPt?.trim() ? row.examplePayloadPt : "—"}
-                            </pre>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
       </main>
