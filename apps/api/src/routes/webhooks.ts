@@ -111,7 +111,7 @@ async function handleWhatsAppPost(
           url: request.url,
           organizationId,
         },
-        "Evolution webhook: nothing parsed — enable MESSAGES_UPSERT, MESSAGES_UPDATE and CONTACTS_* on the instance webhook, and use POST base URL /api/v1/whatsapp/:orgId",
+        "Evolution webhook: nothing parsed — enable MESSAGES_UPSERT, MESSAGES_UPDATE and CONTACTS_* on the instance webhook; POST URL must be https://<seu-dominio>/webhooks/whatsapp/<uuid-da-organizacao> (Evolution may append /messages-upsert if webhook by events is enabled).",
       );
     }
   }

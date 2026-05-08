@@ -53,6 +53,11 @@ function jidToE164(remoteJid: string): string | null {
   return `+${localPart}`;
 }
 
+/** Tenta obter E.164 a partir do JID principal ou do alternativo (Baileys LID / `@lid`). */
+function jidOrAltToE164(remoteJid: string, remoteJidAlt: string): string | null {
+  return jidToE164(remoteJid) ?? (remoteJidAlt ? jidToE164(remoteJidAlt) : null);
+}
+
 /** E.164 sintético +888 + 12 dígitos — um contacto por grupo (Evolution @g.us). */
 function groupJidToSyntheticE164(remoteJid: string): string | null {
   const local = remoteJid.split("@")[0]?.trim() ?? "";
@@ -94,6 +99,11 @@ function collectUpsertRecords(raw: unknown): Record<string, unknown>[] {
   if (singleMsg !== null && (singleMsg.key !== undefined || singleMsg.message !== undefined)) {
     return [singleMsg];
   }
+  /* Evolution v2: por vezes a mensagem vem em `data.message` (objeto único). */
+  const nestedMsg = asRecord(dataObj.message);
+  if (nestedMsg !== null && (nestedMsg.key !== undefined || nestedMsg.message !== undefined)) {
+    return [nestedMsg];
+  }
   if (dataObj.key !== undefined || dataObj.message !== undefined) {
     return [dataObj];
   }
@@ -126,6 +136,14 @@ function parseUpsertToIncoming(
     typeof key.participant === "string" && key.participant.trim()
       ? String(key.participant).trim()
       : "";
+  const participantAlt =
+    typeof key.participantAlt === "string" && key.participantAlt.trim()
+      ? String(key.participantAlt).trim()
+      : "";
+  const remoteJidAlt =
+    typeof key.remoteJidAlt === "string" && key.remoteJidAlt.trim()
+      ? String(key.remoteJidAlt).trim()
+      : "";
   const pushFromEnvelope =
     (typeof rec.pushName === "string" && rec.pushName.trim()) ||
     (typeof key.pushName === "string" && key.pushName.trim()) ||
@@ -142,10 +160,14 @@ function parseUpsertToIncoming(
     if (!phone) return null;
     isGroup = true;
     groupJid = remoteJid;
-    participantE164 = participantJid ? jidToE164(participantJid) : null;
+    if (participantJid) {
+      participantE164 = jidOrAltToE164(participantJid, participantAlt);
+    } else {
+      participantE164 = null;
+    }
     participantPushName = pushFromEnvelope;
   } else {
-    phone = jidToE164(remoteJid);
+    phone = jidOrAltToE164(remoteJid, remoteJidAlt);
     if (!phone && fallbackDigits) {
       const d = digitsOnly(fallbackDigits);
       if (d.length >= 7 && d.length <= 15) {
@@ -532,6 +554,9 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
     let event = normalizeEvolutionEvent(
       typeof env?.event === "string" ? env.event : undefined,
     );
+    if (!event && typeof env?.type === "string") {
+      event = normalizeEvolutionEvent(env.type);
+    }
 
     const senderRaw =
       typeof env?.sender === "string"
@@ -540,7 +565,10 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
           ? String(env.sender)
           : null;
 
-    const upsertRecords = collectUpsertRecords(env?.data);
+    let upsertRecords = collectUpsertRecords(env?.data);
+    if (event === "messages.upsert" && upsertRecords.length === 0 && env) {
+      upsertRecords = collectUpsertRecords(env);
+    }
 
     if (event === "messages.upsert") {
       const messages: IncomingMessage[] = [];
