@@ -472,22 +472,22 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     path: "/api/v1/bots",
     auth: "session_jwt",
     descriptionEn:
-      "List all agent bots for the authenticated tenant organization. ADMIN and SUPER_ADMIN can call this endpoint; the AGENT role receives 403. Ordered by most recently updated. Sensitive fields (inbox token hash, webhook secret) are never returned — use inboxTokenConfigured and webhookSecretConfigured.",
+      "List all agent bots for the authenticated tenant organization. Requires user session JWT from POST /api/v1/auth/login (ADMIN or SUPER_ADMIN); do not use the Agent Bot Bearer ocb_ token here — use GET /api/v1/agent-bot/profile for that. The AGENT role receives 403. Ordered by most recently updated. Sensitive fields are never returned — use inboxTokenConfigured and webhookSecretConfigured.",
     descriptionPt:
-      "Lista todos os bots de agente da organização do tenant autenticado. ADMIN e SUPER_ADMIN podem chamar; o perfil AGENT recebe 403. Ordenado pelo mais recente. Campos sensíveis (hash do token de inbox, segredo do webhook) não são devolvidos — use inboxTokenConfigured e webhookSecretConfigured.",
+      "Lista todos os bots da organização. Exige JWT de POST /api/v1/auth/login (ADMIN ou SUPER_ADMIN); não use Bearer ocb_ aqui — para isso use GET /api/v1/agent-bot/profile. O perfil AGENT recebe 403. Ordenado pelo mais recente. Sem segredos em claro — inboxTokenConfigured e webhookSecretConfigured.",
     examplePayloadPt:
-      'Sem corpo.\n\nGET /api/v1/bots\n\nResposta 200 application/json:\n{\n  "data": [\n    {\n      "id": "<uuid>",\n      "organizationId": "<uuid>",\n      "name": "Bot FAQ",\n      "description": null,\n      "avatarUrl": null,\n      "type": "WEBHOOK",\n      "webhookUrl": "https://...",\n      "config": null,\n      "isActive": true,\n      "inboxTokenConfigured": true,\n      "webhookSecretConfigured": false,\n      "createdAt": "...",\n      "updatedAt": "...",\n      "_count": { "interactions": 0 }\n    }\n  ]\n}',
+      'Autenticação: JWT de utilizador (resposta `token` de POST /api/v1/auth/login), cabeçalho Authorization: Bearer <jwt>. Não use o token ocb_ do bot aqui — para validar o token do bot use GET /api/v1/agent-bot/profile.\n\nSem corpo.\n\nGET /api/v1/bots\n\nResposta 200 application/json:\n{\n  "data": [\n    {\n      "id": "<uuid>",\n      "organizationId": "<uuid>",\n      "name": "Bot FAQ",\n      "description": null,\n      "avatarUrl": null,\n      "type": "WEBHOOK",\n      "webhookUrl": "https://...",\n      "config": null,\n      "isActive": true,\n      "inboxTokenConfigured": true,\n      "webhookSecretConfigured": false,\n      "createdAt": "...",\n      "updatedAt": "...",\n      "_count": { "interactions": 0 }\n    }\n  ]\n}',
   },
   {
     method: "GET",
     path: "/api/v1/bots/:id",
     auth: "session_jwt",
     descriptionEn:
-      "Fetch one bot by id scoped to the organization. Same access rules as GET /api/v1/bots (ADMIN and SUPER_ADMIN; AGENT gets 403). Returns 404 if the id does not belong to this tenant.",
+      "Fetch one bot by id scoped to the organization. Same JWT session auth as GET /api/v1/bots (not ocb_). Returns 404 if the id does not belong to this tenant.",
     descriptionPt:
-      "Obter um bot pelo id, limitado à organização. Mesmas regras que GET /api/v1/bots (ADMIN e SUPER_ADMIN; AGENT recebe 403). 404 se o id não pertencer a este tenant.",
+      "Obter um bot pelo id no tenant. Mesmo JWT de sessão que GET /api/v1/bots (não use ocb_). 404 fora da organização.",
     examplePayloadPt:
-      'Sem corpo.\n\nGET /api/v1/bots/<uuid-do-bot>\n\nResposta 200: um objeto bot (mesma forma que cada elemento de GET /api/v1/bots, sem segredos). 404 se não existir.',
+      'Autenticação: JWT de POST /api/v1/auth/login (não use Bearer ocb_). Sem corpo.\n\nGET /api/v1/bots/<uuid-do-bot>\n\nResposta 200: um objeto bot (mesma forma que cada elemento de GET /api/v1/bots, sem segredos). 404 se não existir.',
   },
   {
     method: "POST|PATCH|DELETE",
@@ -496,6 +496,6 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionEn: "Create, update, or delete bots; inbox tokens and interactions (admin for most writes).",
     descriptionPt: "Criar, atualizar ou apagar bots; tokens de inbox e interações (admin na maior parte dos writes).",
     examplePayloadPt:
-      'POST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
+      'Autenticação nas operações acima: JWT de sessão (login ADMIN). O token ocb_ do bot não é aceite nestes paths — ver GET /api/v1/agent-bot/profile.\n\nPOST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nResposta 201: objeto do bot com `id` (UUID único e estável por bot, estilo Chatwoot).\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
   },
 ];

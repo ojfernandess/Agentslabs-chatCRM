@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
-import { Bot } from "lucide-react";
+import { Bot, Check, Copy } from "lucide-react";
 
 type BotType = "WEBHOOK" | "DIALOGFLOW" | "CUSTOM";
 
@@ -41,6 +41,7 @@ export function BotsPage() {
   const [editActive, setEditActive] = useState(false);
   const [revealedInboxToken, setRevealedInboxToken] = useState<string | null>(null);
   const [tokenBusyId, setTokenBusyId] = useState<string | null>(null);
+  const [copiedBotId, setCopiedBotId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -61,6 +62,16 @@ export function BotsPage() {
       setLoading(false);
     })();
   }, [isAdmin]);
+
+  const copyBotId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedBotId(id);
+      window.setTimeout(() => setCopiedBotId(null), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const typeLabel = (ty: BotType) => t(`bots.types.${ty}`);
 
@@ -91,7 +102,7 @@ export function BotsPage() {
       };
       if (webhookUrl.trim()) body.webhookUrl = webhookUrl.trim();
       if (newWebhookSecret.trim()) body.webhookSecret = newWebhookSecret.trim();
-      await api.post("/bots", body);
+      await api.post<BotRow>("/bots", body);
       setName("");
       setWebhookUrl("");
       setNewWebhookSecret("");
@@ -190,6 +201,7 @@ export function BotsPage() {
           </div>
           <h1 className="text-2xl font-bold text-ink-900">{t("bots.title")}</h1>
           <p className="mt-1 text-ink-600">{t("bots.subtitle")}</p>
+          <p className="mt-2 max-w-3xl text-sm text-ink-500">{t("bots.botIdExplain")}</p>
         </motion.header>
 
         <form onSubmit={handleCreate} className="mb-8 grid gap-3 rounded-lg border border-ink-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -276,6 +288,25 @@ export function BotsPage() {
               >
                 {editingId === b.id ? (
                   <div className="space-y-3">
+                    <div className="rounded-md border border-ink-100 bg-ink-50/80 px-3 py-2 sm:col-span-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-ink-600">{t("bots.botId")}</span>
+                        <code className="max-w-full break-all font-mono text-[11px] text-ink-800">{b.id}</code>
+                        <button
+                          type="button"
+                          className="inline-flex rounded p-1 text-ink-600 hover:bg-ink-100 hover:text-ink-900"
+                          title={t("bots.copyBotId")}
+                          aria-label={t("bots.copyBotId")}
+                          onClick={() => void copyBotId(b.id)}
+                        >
+                          {copiedBotId === b.id ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block text-xs text-ink-600">{t("bots.name")}</label>
@@ -350,6 +381,27 @@ export function BotsPage() {
                         {typeLabel(b.type)}
                         {b._count != null ? ` · ${t("bots.interactions")}: ${b._count.interactions}` : ""}
                       </p>
+                      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-ink-500">
+                          {t("bots.botId")}
+                        </span>
+                        <code className="max-w-[min(100%,28rem)] truncate rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] text-ink-800 sm:max-w-md">
+                          {b.id}
+                        </code>
+                        <button
+                          type="button"
+                          className="inline-flex shrink-0 rounded p-1 text-ink-600 hover:bg-ink-100 hover:text-ink-900"
+                          title={t("bots.copyBotId")}
+                          aria-label={t("bots.copyBotId")}
+                          onClick={() => void copyBotId(b.id)}
+                        >
+                          {copiedBotId === b.id ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {b.inboxTokenConfigured ? (
                           <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800">

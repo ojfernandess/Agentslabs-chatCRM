@@ -15,6 +15,8 @@ export function buildAgentBotWebhookPayload(input: {
   return {
     event: "message_created",
     version: "openconduit-v1",
+    /** Alias Chatwoot-friendly (sempre igual a `agent_bot.id`). */
+    agent_bot_id: bot.id,
     account: { id: organizationId },
     inbox: { id: organizationId, channel: "whatsapp" },
     conversation: {

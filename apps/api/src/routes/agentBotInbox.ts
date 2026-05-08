@@ -16,6 +16,28 @@ const patchConversationSchema = z.object({
 export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateAgentBot);
 
+  /**
+   * Identidade do bot com o mesmo Bearer `ocb_...` usado nas outras rotas do agent-bot
+   * (equivalente a validar o “access token” do bot noutras plataformas — não usar em /api/v1/bots).
+   */
+  app.get("/profile", async (request, reply) => {
+    const agent = request.agentBot!;
+    const row = await prisma.bot.findFirst({
+      where: { id: agent.id, organizationId: agent.organizationId },
+      include: { _count: { select: { interactions: true } } },
+    });
+    if (!row) {
+      return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+    }
+    const { inboxTokenHash, inboxTokenPrefix, webhookSecret, ...rest } = row;
+    return {
+      ...rest,
+      inboxTokenConfigured: Boolean(inboxTokenHash),
+      webhookSecretConfigured: Boolean(webhookSecret),
+      agent_bot_id: row.id,
+    };
+  });
+
   /** Envia mensagem outbound ao contacto (eco no WhatsApp). */
   app.post("/messages", async (request, reply) => {
     const bot = request.agentBot!;
@@ -52,7 +74,11 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      return reply.status(201).send({ message, conversationId: conversation.id });
+      return reply.status(201).send({
+        message,
+        conversationId: conversation.id,
+        agent_bot_id: bot.id,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed";
       if (msg.includes("not found") || msg.includes("Contact")) {

@@ -269,6 +269,17 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
     titlePt: "API HTTP do Agent Bot",
     endpoints: [
       {
+        method: "GET",
+        path: "/api/v1/agent-bot/profile",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "Returns the bot for this inbox token — validate `ocb_...` and read `id` / `agent_bot_id` (Chatwoot-style: bot access token is not a user session). Do not use this token on `/api/v1/bots`; tenant CRUD requires JWT from `POST /api/v1/auth/login` (ADMIN/SUPER_ADMIN).",
+        descriptionPt:
+          "Devolve o bot deste token de inbox — validar `ocb_...` e ler `id` / `agent_bot_id` (estilo Chatwoot: token do bot ≠ sessão de utilizador). Não use este token em `/api/v1/bots`; gestão de bots exige JWT de `POST /api/v1/auth/login` (ADMIN/SUPER_ADMIN).",
+        examplePayloadPt:
+          "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: dados públicos do bot (como GET /api/v1/bots/:id), com `agent_bot_id` igual ao `id`.\n\nSe o integrador chamar `/api/v1/bots` com Bearer ocb_, a API responde 401 com código `AGENT_BOT_TOKEN_NOT_ALLOWED` — use este GET /profile ou JWT de login para a operação certa.",
+      },
+      {
         method: "POST",
         path: "/api/v1/agent-bot/messages",
         auth: "agent_bot_bearer",
@@ -277,7 +288,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         descriptionPt:
           "Mensagem de saída do bot configurado (Bearer do bot; não é JWT de utilizador).",
         examplePayloadPt:
-          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (mesmo schema que /api/v1/messages, sem isPrivate):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Resposta automática do bot"\n}',
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (mesmo schema que /api/v1/messages, sem isPrivate):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Resposta automática do bot"\n}\n\nResposta 201: { "message": {...}, "conversationId": "<uuid>", "agent_bot_id": "<uuid-do-bot>" }',
       },
       {
         method: "PATCH",

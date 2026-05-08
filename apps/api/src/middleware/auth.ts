@@ -19,10 +19,30 @@ declare module "@fastify/jwt" {
   }
 }
 
+function bearerRawToken(request: FastifyRequest): string | null {
+  const h = request.headers.authorization;
+  if (typeof h !== "string") return null;
+  const m = /^Bearer\s+(.+)$/i.exec(h.trim());
+  return m ? m[1]!.trim() : null;
+}
+
 export async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  const raw = bearerRawToken(request);
+  /** Integradores às vezes usam o token do bot (`ocb_`) nas rotas tenant; mensagem explícita (padrão Chatwoot: API token ≠ user session). */
+  if (raw?.startsWith("ocb_")) {
+    return reply.status(401).send({
+      error: "Unauthorized",
+      statusCode: 401,
+      code: "AGENT_BOT_TOKEN_NOT_ALLOWED",
+      message:
+        "This route expects a user session JWT from POST /api/v1/auth/login (ADMIN or SUPER_ADMIN with tenant context). The Agent Bot inbox token (Bearer ocb_...) is only valid for /api/v1/agent-bot/* — e.g. GET /api/v1/agent-bot/profile, POST /api/v1/agent-bot/messages, PATCH /api/v1/agent-bot/conversations/:id.",
+      messagePt:
+        "Esta rota exige o JWT de sessão de utilizador obtido em POST /api/v1/auth/login (ADMIN ou SUPER_ADMIN no contexto do tenant). O token de inbox do bot (Bearer ocb_...) só é aceite em /api/v1/agent-bot/* — por exemplo GET /api/v1/agent-bot/profile, POST /api/v1/agent-bot/messages ou PATCH /api/v1/agent-bot/conversations/:id.",
+    });
+  }
   try {
     await request.jwtVerify();
   } catch {

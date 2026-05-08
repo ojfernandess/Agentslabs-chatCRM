@@ -445,6 +445,10 @@ export const messages = {
       secretConfigured: "Secret configurado",
       clearWebhookSecret: "Remover secret",
       webhookSecretCleared: "Secret removido.",
+      botId: "ID do bot",
+      copyBotId: "Copiar ID",
+      botIdExplain:
+        "Cada bot tem um UUID único e estável (como no Chatwoot). Com só o token ocb_, outro sistema deve usar GET /api/v1/agent-bot/profile; GET /api/v1/bots exige JWT de login (ADMIN). Webhook: `agent_bot.id` / `agent_bot_id`.",
     },
     login: {
       title: "OpenConduit",
@@ -1508,6 +1512,10 @@ export const messages = {
       secretConfigured: "Secret configured",
       clearWebhookSecret: "Remove secret",
       webhookSecretCleared: "Secret removed.",
+      botId: "Bot ID",
+      copyBotId: "Copy ID",
+      botIdExplain:
+        "Each bot has a unique stable UUID (Chatwoot-style). With only the ocb_ token, integrations should call GET /api/v1/agent-bot/profile; GET /api/v1/bots requires an admin login JWT. Webhooks expose `agent_bot.id` / `agent_bot_id`.",
     },
     login: {
       title: "OpenConduit",
