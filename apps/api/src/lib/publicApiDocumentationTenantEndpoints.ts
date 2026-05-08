@@ -468,12 +468,34 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
       'POST application/json:\n{\n  "name": "Comercial",\n  "description": "Equipa de vendas (opcional)"\n}\n\nPOST /api/v1/teams/:id/members:\n{\n  "userId": "<uuid>",\n  "role": "MEMBER"\n}\n(role: TEAM_ADMIN | SUPERVISOR | MEMBER)\n\nPATCH /api/v1/teams/:id — campos parciais.',
   },
   {
-    method: "GET|POST|PATCH|DELETE",
+    method: "GET",
     path: "/api/v1/bots",
     auth: "session_jwt",
-    descriptionEn: "Bots, inbox tokens, interactions (admin for some).",
-    descriptionPt: "Bots, tokens de inbox, interações.",
+    descriptionEn:
+      "List all agent bots for the authenticated tenant organization. ADMIN and SUPER_ADMIN can call this endpoint; the AGENT role receives 403. Ordered by most recently updated. Sensitive fields (inbox token hash, webhook secret) are never returned — use inboxTokenConfigured and webhookSecretConfigured.",
+    descriptionPt:
+      "Lista todos os bots de agente da organização do tenant autenticado. ADMIN e SUPER_ADMIN podem chamar; o perfil AGENT recebe 403. Ordenado pelo mais recente. Campos sensíveis (hash do token de inbox, segredo do webhook) não são devolvidos — use inboxTokenConfigured e webhookSecretConfigured.",
     examplePayloadPt:
-      'POST application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nPOST /api/v1/bots/:id/interactions — registo de interação:\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
+      'Sem corpo.\n\nGET /api/v1/bots\n\nResposta 200 application/json:\n{\n  "data": [\n    {\n      "id": "<uuid>",\n      "organizationId": "<uuid>",\n      "name": "Bot FAQ",\n      "description": null,\n      "avatarUrl": null,\n      "type": "WEBHOOK",\n      "webhookUrl": "https://...",\n      "config": null,\n      "isActive": true,\n      "inboxTokenConfigured": true,\n      "webhookSecretConfigured": false,\n      "createdAt": "...",\n      "updatedAt": "...",\n      "_count": { "interactions": 0 }\n    }\n  ]\n}',
+  },
+  {
+    method: "GET",
+    path: "/api/v1/bots/:id",
+    auth: "session_jwt",
+    descriptionEn:
+      "Fetch one bot by id scoped to the organization. Same access rules as GET /api/v1/bots (ADMIN and SUPER_ADMIN; AGENT gets 403). Returns 404 if the id does not belong to this tenant.",
+    descriptionPt:
+      "Obter um bot pelo id, limitado à organização. Mesmas regras que GET /api/v1/bots (ADMIN e SUPER_ADMIN; AGENT recebe 403). 404 se o id não pertencer a este tenant.",
+    examplePayloadPt:
+      'Sem corpo.\n\nGET /api/v1/bots/<uuid-do-bot>\n\nResposta 200: um objeto bot (mesma forma que cada elemento de GET /api/v1/bots, sem segredos). 404 se não existir.',
+  },
+  {
+    method: "POST|PATCH|DELETE",
+    path: "/api/v1/bots",
+    auth: "session_jwt",
+    descriptionEn: "Create, update, or delete bots; inbox tokens and interactions (admin for most writes).",
+    descriptionPt: "Criar, atualizar ou apagar bots; tokens de inbox e interações (admin na maior parte dos writes).",
+    examplePayloadPt:
+      'POST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
   },
 ];
