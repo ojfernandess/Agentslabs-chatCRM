@@ -301,10 +301,31 @@ function mapEvolutionReceiptStatus(
 
 function collectUpdateRecords(raw: unknown): Record<string, unknown>[] {
   if (Array.isArray(raw)) {
-    return raw.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
+    return raw.flatMap((x) => collectUpdateRecords(x));
   }
   const one = asRecord(raw);
-  return one ? [one] : [];
+  if (!one) return [];
+
+  const nested = asRecord(one.data);
+  if (nested && nested.key == null && nested.update == null && !Array.isArray(nested.messages)) {
+    const deep = asRecord(nested.data);
+    if (deep && (deep.key != null || deep.update != null || Array.isArray(deep.messages))) {
+      return collectUpdateRecords(deep);
+    }
+  }
+
+  const messages = one.messages;
+  if (Array.isArray(messages)) {
+    return messages.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
+  }
+  const singleMsg = asRecord(messages);
+  if (singleMsg !== null && (singleMsg.key !== undefined || singleMsg.update !== undefined)) {
+    return [singleMsg];
+  }
+  if (one.key !== undefined || one.update !== undefined || one.message !== undefined) {
+    return [one];
+  }
+  return [];
 }
 
 function parseUpdatesToStatus(raw: unknown): StatusUpdate[] {
@@ -607,8 +628,17 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
     }
 
     if (event === "messages.update") {
+      const fallbackMessages: IncomingMessage[] = [];
+      let updateRecords = collectUpsertRecords(env?.data);
+      if (updateRecords.length === 0 && env) {
+        updateRecords = collectUpsertRecords(env);
+      }
+      for (const rec of updateRecords) {
+        const msg = parseUpsertToIncoming(rec, senderRaw);
+        if (msg) fallbackMessages.push(msg);
+      }
       return {
-        messages: [],
+        messages: fallbackMessages,
         statusUpdates: parseUpdatesToStatus(env?.data),
         contactSync: parseEvolutionContactSync(decoded),
       };
