@@ -7,6 +7,10 @@ import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { config } from "../config.js";
+import {
+  generateUserApiAccessTokenParts,
+  hashUserApiAccessToken,
+} from "../middleware/userApiTokenAuth.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -99,6 +103,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         organizationId: true,
         messageSignature: true,
         showAgentNameInChat: true,
+        apiAccessTokenPrefix: true,
+        apiAccessTokenHash: true,
+        apiAccessTokenLastUsedAt: true,
         createdAt: true,
       },
     });
@@ -143,7 +150,60 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       superAdminActorId,
       superAdminActor,
       organizationFeatures,
+      hasApiAccessToken: !!user.apiAccessTokenHash,
+      apiAccessTokenLastUsedAt: user.apiAccessTokenLastUsedAt,
+      apiAccessTokenPrefix: user.apiAccessTokenPrefix,
     };
+  });
+
+  app.get("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: {
+        id: true,
+        apiAccessTokenPrefix: true,
+        apiAccessTokenLastUsedAt: true,
+        apiAccessTokenHash: true,
+      },
+    });
+    if (!user) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+    }
+    return {
+      configured: !!user.apiAccessTokenHash,
+      prefix: user.apiAccessTokenPrefix,
+      lastUsedAt: user.apiAccessTokenLastUsedAt,
+    };
+  });
+
+  app.post("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {
+    const { token, prefix } = generateUserApiAccessTokenParts();
+    const hash = await hashUserApiAccessToken(token);
+    await prisma.user.update({
+      where: { id: request.user.id },
+      data: {
+        apiAccessTokenPrefix: prefix,
+        apiAccessTokenHash: hash,
+        apiAccessTokenLastUsedAt: null,
+      },
+    });
+    return {
+      token,
+      prefix,
+      message: "Save this token now. It will not be shown again.",
+    };
+  });
+
+  app.delete("/me/access-token", { preHandler: [authenticate] }, async (request) => {
+    await prisma.user.update({
+      where: { id: request.user.id },
+      data: {
+        apiAccessTokenPrefix: null,
+        apiAccessTokenHash: null,
+        apiAccessTokenLastUsedAt: null,
+      },
+    });
+    return { ok: true };
   });
 
   app.patch("/me", { preHandler: [authenticate] }, async (request, reply) => {

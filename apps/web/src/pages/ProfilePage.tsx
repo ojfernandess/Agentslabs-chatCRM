@@ -44,6 +44,9 @@ export function ProfilePage() {
   const [confPwd, setConfPwd] = useState("");
   const [pwdBusy, setPwdBusy] = useState(false);
   const [pwdMsg, setPwdMsg] = useState("");
+  const [apiTokenBusy, setApiTokenBusy] = useState(false);
+  const [apiTokenMsg, setApiTokenMsg] = useState("");
+  const [apiTokenValue, setApiTokenValue] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -105,6 +108,46 @@ export function ProfilePage() {
       );
     } finally {
       setPwdBusy(false);
+    }
+  };
+
+  const onGenerateApiToken = async () => {
+    setApiTokenBusy(true);
+    setApiTokenMsg("");
+    try {
+      const res = await api.post<{ token: string; prefix: string; message: string }>("/auth/me/access-token");
+      setApiTokenValue(res.token);
+      setApiTokenMsg(t("profilePage.apiTokenGenerated"));
+      await refreshUser();
+    } catch (err) {
+      setApiTokenMsg(err instanceof ApiError ? err.message : "Error");
+    } finally {
+      setApiTokenBusy(false);
+    }
+  };
+
+  const onRevokeApiToken = async () => {
+    setApiTokenBusy(true);
+    setApiTokenMsg("");
+    try {
+      await api.delete("/auth/me/access-token");
+      setApiTokenValue(null);
+      setApiTokenMsg(t("profilePage.apiTokenRevoked"));
+      await refreshUser();
+    } catch (err) {
+      setApiTokenMsg(err instanceof ApiError ? err.message : "Error");
+    } finally {
+      setApiTokenBusy(false);
+    }
+  };
+
+  const onCopyApiToken = async () => {
+    if (!apiTokenValue) return;
+    try {
+      await navigator.clipboard.writeText(apiTokenValue);
+      setApiTokenMsg(t("profilePage.apiTokenCopied"));
+    } catch {
+      setApiTokenMsg(t("profilePage.apiTokenCopyFailed"));
     }
   };
 
@@ -315,6 +358,55 @@ export function ProfilePage() {
 
         <div className="card-surface p-6 dark:border-ink-600 dark:bg-ink-900/80">
           <p className="text-sm text-ink-600 dark:text-ink-300">{t("profilePage.notificationsNote")}</p>
+        </div>
+
+        <div className="card-surface space-y-4 p-6 dark:border-ink-600 dark:bg-ink-900/80">
+          <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("profilePage.apiTokenSection")}</h2>
+          <p className="text-xs text-ink-500 dark:text-ink-400">{t("profilePage.apiTokenHint")}</p>
+          <div className="rounded-lg border border-ink-200 bg-ink-50 p-3 text-xs dark:border-ink-600 dark:bg-ink-800/70">
+            <div>
+              {t("profilePage.apiTokenStatus")}{" "}
+              {user.hasApiAccessToken ? t("profilePage.apiTokenConfigured") : t("profilePage.apiTokenNotConfigured")}
+            </div>
+            {user.apiAccessTokenPrefix ? (
+              <div className="mt-1">
+                {t("profilePage.apiTokenPrefix")}: <code>{user.apiAccessTokenPrefix}...</code>
+              </div>
+            ) : null}
+            {user.apiAccessTokenLastUsedAt ? (
+              <div className="mt-1">
+                {t("profilePage.apiTokenLastUsed")}: {new Date(user.apiAccessTokenLastUsedAt).toLocaleString()}
+              </div>
+            ) : null}
+          </div>
+          {apiTokenValue ? (
+            <div>
+              <label className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+                {t("profilePage.apiTokenOneTime")}
+              </label>
+              <textarea
+                className="input-field mt-1 min-h-[90px] font-mono text-xs dark:border-ink-600 dark:bg-ink-800"
+                value={apiTokenValue}
+                readOnly
+              />
+            </div>
+          ) : null}
+          {apiTokenMsg ? <p className="text-sm text-ink-600 dark:text-ink-300">{apiTokenMsg}</p> : null}
+          <div className="flex flex-wrap gap-3">
+            <button type="button" disabled={apiTokenBusy} className="btn-primary" onClick={onGenerateApiToken}>
+              {apiTokenBusy ? "…" : t("profilePage.apiTokenGenerate")}
+            </button>
+            {apiTokenValue ? (
+              <button type="button" disabled={apiTokenBusy} className="btn-secondary" onClick={onCopyApiToken}>
+                {t("profilePage.apiTokenCopy")}
+              </button>
+            ) : null}
+            {user.hasApiAccessToken ? (
+              <button type="button" disabled={apiTokenBusy} className="btn-secondary" onClick={onRevokeApiToken}>
+                {t("profilePage.apiTokenRevoke")}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <form onSubmit={onChangePassword} className="card-surface space-y-4 p-6 dark:border-ink-600 dark:bg-ink-900/80">

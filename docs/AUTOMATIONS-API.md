@@ -1,6 +1,10 @@
 # Automations API (Tenant)
 
-These endpoints support CRM/chat automation flows with an authenticated tenant user (`Authorization: Bearer <jwt>`).
+These endpoints support CRM/chat automation flows with an authenticated tenant user.
+Authentication options:
+
+- `Authorization: Bearer <jwt>` (normal session token)
+- `Authorization: Bearer <ocu_...>` (API token generated in user profile, Chatwoot-like)
 
 Base prefix: `/api/v1/automations`
 

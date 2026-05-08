@@ -274,6 +274,10 @@ model User {
   messageSignature String? @map("message_signature") @db.Text
   /// Na UI da conversa, mostrar o nome do atendente em cada mensagem enviada (equipa).
   showAgentNameInChat Boolean @default(false) @map("show_agent_name_in_chat")
+  /// Token de API pessoal (estilo Chatwoot) para integrações por utilizador.
+  apiAccessTokenPrefix String? @map("api_access_token_prefix") @db.VarChar(16)
+  apiAccessTokenHash   String? @map("api_access_token_hash") @db.Text
+  apiAccessTokenLastUsedAt DateTime? @map("api_access_token_last_used_at")
   role         UserRole @default(AGENT)
   createdAt    DateTime @default(now()) @map("created_at")
 

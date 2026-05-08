@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { UserRole } from "@openconduit/shared";
 import { authenticateAgentBot } from "./agentBotAuth.js";
+import { authenticateUserApiToken } from "./userApiTokenAuth.js";
 
 export interface JwtPayload {
   id: string;
@@ -50,7 +51,14 @@ export async function authenticate(
   const raw = bearerRawToken(request);
   try {
     await request.jwtVerify();
+    return;
   } catch {
+    const apiTokenUser = await authenticateUserApiToken(request, reply);
+    if (reply.sent) return;
+    if (apiTokenUser) {
+      request.user = apiTokenUser;
+      return;
+    }
     if (raw?.startsWith("ocb_")) {
       return reply.status(401).send({
         error: "Unauthorized",

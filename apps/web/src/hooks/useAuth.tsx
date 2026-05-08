@@ -24,6 +24,9 @@ export interface AuthUser {
   superAdminActor?: { id: string; email: string; name: string } | null;
   /** Estado efectivo das feature flags do tenant (ausente fora de contexto org). */
   organizationFeatures?: Record<string, boolean>;
+  hasApiAccessToken?: boolean;
+  apiAccessTokenLastUsedAt?: string | null;
+  apiAccessTokenPrefix?: string | null;
 }
 
 interface AuthContextValue {
