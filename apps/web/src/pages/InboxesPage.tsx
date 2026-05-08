@@ -21,6 +21,8 @@ type InboxMemberRow = {
   user: OrgUser;
 };
 
+type InboxBotSummary = { id: string; name: string; type: string; isActive: boolean };
+
 type InboxRow = {
   id: string;
   name: string;
@@ -29,6 +31,8 @@ type InboxRow = {
   isDefault: boolean;
   ingestToken?: string | null;
   channelConfig?: unknown | null;
+  agentBotId?: string | null;
+  agentBot?: InboxBotSummary | null;
   members?: InboxMemberRow[];
   _count: { members: number; conversations: number };
 };
@@ -68,6 +72,7 @@ export function InboxesPage() {
 
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [agentBots, setAgentBots] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -79,6 +84,7 @@ export function InboxesPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editChannel, setEditChannel] = useState<string>("WHATSAPP");
   const [editWebhook, setEditWebhook] = useState("");
+  const [editAgentBotId, setEditAgentBotId] = useState("");
   const [copiedInboxId, setCopiedInboxId] = useState<string | null>(null);
 
   const basePublicInbox =
@@ -138,6 +144,8 @@ export function InboxesPage() {
       try {
         const users = await api.get<OrgUser[]>("/users");
         setOrgUsers(users);
+        const botsRes = await api.get<{ data: { id: string; name: string; isActive: boolean }[] }>("/bots");
+        setAgentBots(botsRes.data.map((b) => ({ id: b.id, name: b.name, isActive: b.isActive })));
         await load();
       } catch {
         /* ignore */
@@ -200,6 +208,7 @@ export function InboxesPage() {
     setEditDescription(row.description ?? "");
     setEditChannel(row.channelType);
     setEditWebhook(outboundWebhookFromConfig(row.channelConfig));
+    setEditAgentBotId(row.agentBotId ?? "");
   };
 
   const cancelEdit = () => {
@@ -229,6 +238,7 @@ export function InboxesPage() {
         description: editDescription.trim() || null,
         channelType: editChannel,
         channelConfig: channelConfigPayload,
+        agentBotId: editAgentBotId.trim() ? editAgentBotId.trim() : null,
       });
       setEditingId(null);
       await load();
@@ -294,6 +304,7 @@ export function InboxesPage() {
           onClose={() => setWizardOpen(false)}
           onCreated={() => void load()}
           orgUsers={orgUsers}
+          agentBots={agentBots}
         />
 
         {loading ? (
@@ -339,6 +350,18 @@ export function InboxesPage() {
                           {t("inboxesPage.memberCount")}: {row._count.members} · {t("inboxesPage.conversations")}:{" "}
                           {row._count.conversations}
                         </p>
+                        {row.agentBot ? (
+                          <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300/90">
+                            {t("inboxesPage.agentBotField")}: {row.agentBot.name}
+                            {!row.agentBot.isActive
+                              ? ` ${t("inboxesPage.wizard.agentBotInactive")}`
+                              : ""}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-[11px] text-gray-500 dark:text-ink-500">
+                            {t("inboxesPage.agentBotField")}: {t("inboxesPage.agentBotOrgDefault")}
+                          </p>
+                        )}
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
                           <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-ink-500">
                             {t("inboxesPage.inboxId")}
@@ -447,6 +470,23 @@ export function InboxesPage() {
                             placeholder="https://"
                             className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                           />
+                          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                            {t("inboxesPage.agentBotField")}
+                          </label>
+                          <select
+                            value={editAgentBotId}
+                            onChange={(e) => setEditAgentBotId(e.target.value)}
+                            className="mb-1 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                          >
+                            <option value="">{t("inboxesPage.agentBotOrgDefault")}</option>
+                            {agentBots.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                                {!b.isActive ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mb-3 text-[11px] text-gray-500 dark:text-ink-500">{t("inboxesPage.agentBotHint")}</p>
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"

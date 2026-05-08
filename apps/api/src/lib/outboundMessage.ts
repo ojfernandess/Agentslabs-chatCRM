@@ -6,6 +6,8 @@ import { getWhatsAppProvider } from "../providers/factory.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
+import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { getDefaultInboxId } from "./defaultInbox.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -79,18 +81,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
 
   const channelSettings = await prisma.settings.findUnique({
     where: { organizationId },
-    include: { agentBot: true },
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
   const providerKind = channelSettings?.whatsappProvider;
   const isMetaProvider = providerKind === "meta" || providerKind === "360dialog";
-  const botTriageActive =
-    Boolean(channelSettings?.agentBotId) &&
-    Boolean(channelSettings?.agentBot?.isActive) &&
-    Boolean(channelSettings?.agentBot?.webhookUrl?.trim());
-
-  const activeConversationStatus: "OPEN" | "PENDING" =
-    actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
 
   const targetConversationId = pinnedConversationId ?? dataConversationId;
 
@@ -111,6 +105,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const { inbox: _inbox, ...rest } = conv;
     conversation = rest;
   } else {
+    const defInbox = await getDefaultInboxId(organizationId);
+    const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, defInbox);
+    const botTriageActive = Boolean(agentCtxPre);
+    const activeConversationStatus: "OPEN" | "PENDING" =
+      actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
     const base = await ensureConversationForWhatsAppContact({
       organizationId,
       contactId,

@@ -151,6 +151,9 @@ model Inbox {
   ingestToken    String?            @unique @map("ingest_token") @db.VarChar(64)
   channelConfig  Json?              @map("channel_config")
   isDefault      Boolean            @default(false) @map("is_default")
+  /// Bot de triagem (primeira linha) só para esta caixa; se vazio, usa `Settings.agentBotId` da organização.
+  agentBotId     String?            @map("agent_bot_id") @db.Uuid
+  agentBot       Bot?               @relation("InboxAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
@@ -161,6 +164,7 @@ model Inbox {
   conversations Conversation[]
 
   @@index([organizationId])
+  @@index([agentBotId])
   @@map("inboxes")
 }
 
@@ -237,6 +241,7 @@ model Bot {
 
   interactions    BotInteraction[]
   settingsAsAgent Settings?    @relation("SettingsAgentBot")
+  inboxesAsAgent  Inbox[]      @relation("InboxAgentBot")
 
   @@unique([inboxTokenPrefix])
   @@index([organizationId])

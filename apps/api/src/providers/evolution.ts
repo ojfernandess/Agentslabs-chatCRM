@@ -85,12 +85,38 @@ function normalizeEvolutionEvent(event: string | undefined): string {
   return event.trim().toLowerCase().replace(/_/g, ".");
 }
 
+/** Evolution `webhook_base64: true`: campo `data` como string base64 com JSON interno. */
+function decodeEvolutionWebhookBodyIfNeeded(body: unknown): unknown {
+  const env = asRecord(body);
+  if (!env) return body;
+  const raw = env.data;
+  if (typeof raw !== "string" || raw.length < 24) return body;
+  const compact = raw.replace(/\s/g, "");
+  if (compact.length < 24 || !/^[A-Za-z0-9+/]+=*$/.test(compact)) return body;
+  try {
+    const decoded = Buffer.from(compact, "base64").toString("utf8");
+    const parsed = JSON.parse(decoded) as unknown;
+    return { ...env, data: parsed };
+  } catch {
+    return body;
+  }
+}
+
 function collectUpsertRecords(raw: unknown): Record<string, unknown>[] {
   if (Array.isArray(raw)) {
-    return raw.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
+    return raw.flatMap((x) => collectUpsertRecords(x));
   }
   const dataObj = asRecord(raw);
   if (!dataObj) return [];
+
+  const nestedOuter = asRecord(dataObj.data);
+  if (nestedOuter && nestedOuter.key == null && nestedOuter.message == null && !Array.isArray(nestedOuter.messages)) {
+    const deep = asRecord(nestedOuter.data);
+    if (deep && (deep.key != null || deep.message != null || Array.isArray(deep.messages))) {
+      return collectUpsertRecords(deep);
+    }
+  }
+
   const messages = dataObj.messages;
   if (Array.isArray(messages)) {
     return messages.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
@@ -129,7 +155,7 @@ function parseUpsertToIncoming(
   const remoteJid = String(key.remoteJid ?? "");
   if (!remoteJid) return null;
 
-  const waMessageId = String(key.id ?? "");
+  const waMessageId = key.id != null && key.id !== "" ? String(key.id) : "";
   if (!waMessageId) return null;
 
   const participantJid =
@@ -550,7 +576,8 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
     _headers: Record<string, string | undefined>,
     body: unknown,
   ) {
-    const env = asRecord(body);
+    const decoded = decodeEvolutionWebhookBodyIfNeeded(body);
+    const env = asRecord(decoded);
     let event = normalizeEvolutionEvent(
       typeof env?.event === "string" ? env.event : undefined,
     );
@@ -576,18 +603,18 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
         const msg = parseUpsertToIncoming(rec, senderRaw);
         if (msg) messages.push(msg);
       }
-      return { messages, statusUpdates: [], contactSync: parseEvolutionContactSync(body) };
+      return { messages, statusUpdates: [], contactSync: parseEvolutionContactSync(decoded) };
     }
 
     if (event === "messages.update") {
       return {
         messages: [],
         statusUpdates: parseUpdatesToStatus(env?.data),
-        contactSync: parseEvolutionContactSync(body),
+        contactSync: parseEvolutionContactSync(decoded),
       };
     }
 
-    const contactSync = parseEvolutionContactSync(body);
+    const contactSync = parseEvolutionContactSync(decoded);
     if (contactSync.length > 0) {
       return { messages: [], statusUpdates: [], contactSync };
     }

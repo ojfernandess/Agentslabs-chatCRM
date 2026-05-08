@@ -51,6 +51,8 @@ type Props = {
   onClose: () => void;
   onCreated: () => void;
   orgUsers: OrgUser[];
+  /** Agent bots (WEBHOOK etc.) for optional per-inbox triage; same source as /bots. */
+  agentBots?: { id: string; name: string; isActive?: boolean }[];
 };
 
 type NativeCfgForm = {
@@ -127,7 +129,7 @@ function buildChannelConfigPayload(
   return Object.keys(o).length ? o : undefined;
 }
 
-export function InboxCreateWizard({ open, onClose, onCreated, orgUsers }: Props) {
+export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBots = [] }: Props) {
   const { t } = useI18n();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [channel, setChannel] = useState<InboxChannelId | null>(null);
@@ -143,6 +145,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers }: Props)
     ingestToken: string | null;
     channelType: string;
   } | null>(null);
+  const [createAgentBotId, setCreateAgentBotId] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -156,6 +159,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers }: Props)
     setCreating(false);
     setError(null);
     setCreatedInbox(null);
+    setCreateAgentBotId("");
   }, [open]);
 
   if (!open) return null;
@@ -221,6 +225,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers }: Props)
         isDefault: isDefault || undefined,
         channelType: channel,
         ...(channelConfig ? { channelConfig } : {}),
+        ...(createAgentBotId ? { agentBotId: createAgentBotId } : {}),
       });
       const agentsToAdd = opts?.clearAgents ? [] : [...selectedAgentIds];
       for (const uid of agentsToAdd) {
@@ -538,6 +543,27 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers }: Props)
                   onChange={(e) => setDescription(e.target.value)}
                   className="input-field mb-4"
                 />
+                {agentBots.length > 0 ? (
+                  <div className="mb-4">
+                    <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-400">
+                      {t("inboxesPage.wizard.fieldAgentBot")}
+                    </label>
+                    <select
+                      value={createAgentBotId}
+                      onChange={(e) => setCreateAgentBotId(e.target.value)}
+                      className="input-field"
+                    >
+                      <option value="">{t("inboxesPage.agentBotOrgDefault")}</option>
+                      {agentBots.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                          {b.isActive === false ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("inboxesPage.agentBotHint")}</p>
+                  </div>
+                ) : null}
                 {channelConfigFields}
                 <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-ink-700 dark:text-ink-300">
                   <input

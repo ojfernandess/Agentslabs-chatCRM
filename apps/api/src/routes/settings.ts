@@ -6,7 +6,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { computeAgentBotTriageActive, getAgentBotDispatchContext } from "../lib/agentBotTriage.js";
+import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
   evolutionPlatformQrModeActive,
   getEvolutionPlatformConfig,
@@ -126,7 +126,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       });
       if (inbox) inboxChannelType = inbox.channelType;
     }
-    const agentCtx = await getAgentBotDispatchContext(organizationId);
+    const agentCtx = q?.inboxId
+      ? await getAgentBotDispatchContextForInbox(organizationId, q.inboxId)
+      : await getAgentBotDispatchContext(organizationId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, inboxChannelType);
     return {
       whatsappProvider: p,

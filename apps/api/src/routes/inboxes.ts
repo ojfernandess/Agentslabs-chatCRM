@@ -1,10 +1,12 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { InboxChannelType, Prisma } from "@prisma/client";
 import { newIngestToken } from "../lib/channelInboxIngest.js";
+
+const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
 
 const createInboxSchema = z.object({
   name: z.string().min(1).max(120),
@@ -13,6 +15,8 @@ const createInboxSchema = z.object({
   channelType: z.nativeEnum(InboxChannelType).optional(),
   /** Credenciais e opções por canal (Telegram token, Meta verify_token, Twilio, etc.). */
   channelConfig: z.any().nullable().optional(),
+  /** Bot de triagem só para esta caixa; se omitido, usa só o default da organização (`Settings.agentBotId`). */
+  agentBotId: z.string().uuid().optional(),
 });
 
 const patchInboxSchema = z.object({
@@ -22,7 +26,32 @@ const patchInboxSchema = z.object({
   channelType: z.nativeEnum(InboxChannelType).optional(),
   /** JSON: ex. `{ "outboundWebhookUrl": "https://..." }` para canais não-WhatsApp. */
   channelConfig: z.any().nullable().optional(),
+  /** `null` remove o vínculo e volta ao bot default da organização. */
+  agentBotId: agentBotIdField,
 });
+
+const inboxAgentBotSelect = {
+  id: true,
+  name: true,
+  type: true,
+  isActive: true,
+} as const;
+
+async function assertAgentBotBelongsToOrg(
+  organizationId: string,
+  botId: string,
+  reply: FastifyReply,
+): Promise<boolean> {
+  const bot = await prisma.bot.findFirst({
+    where: { id: botId, organizationId },
+    select: { id: true },
+  });
+  if (!bot) {
+    await reply.status(400).send({ error: "Bad Request", message: "Invalid agentBotId", statusCode: 400 });
+    return false;
+  }
+  return true;
+}
 
 const addMemberSchema = z.object({
   userId: z.string().uuid(),
@@ -49,6 +78,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           isDefault: true,
           createdAt: true,
           updatedAt: true,
+          agentBotId: true,
+          agentBot: { select: inboxAgentBotSelect },
           _count: { select: { members: true, conversations: true } },
         },
         orderBy: [{ isDefault: "desc" }, { name: "asc" }],
@@ -68,6 +99,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: true,
           ingestToken: true,
           channelConfig: true,
+          agentBotId: true,
+          agentBot: { select: inboxAgentBotSelect },
           members: {
             include: { user: { select: { id: true, name: true, email: true, role: true } } },
           },
@@ -90,6 +123,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     const body = parsed.data;
     let inbox;
 
+    if (body.agentBotId) {
+      const ok = await assertAgentBotBelongsToOrg(organizationId, body.agentBotId, reply);
+      if (!ok) return;
+    }
+
     const channelType = body.channelType ?? InboxChannelType.WHATSAPP;
     const channelConfig =
       body.channelConfig != null && typeof body.channelConfig === "object"
@@ -108,6 +146,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             isDefault: true,
             ingestToken: newIngestToken(),
             channelConfig,
+            agentBotId: body.agentBotId,
           },
         });
       });
@@ -121,6 +160,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           isDefault: false,
           ingestToken: newIngestToken(),
           channelConfig,
+          agentBotId: body.agentBotId,
         },
       });
     }
@@ -250,6 +290,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         members: {
           include: { user: { select: { id: true, name: true, email: true, role: true } } },
         },
+        agentBot: { select: inboxAgentBotSelect },
         _count: { select: { members: true, conversations: true } },
       },
     });
@@ -298,6 +339,15 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     if (p.channelConfig !== undefined) {
       data.channelConfig =
         p.channelConfig === null ? Prisma.JsonNull : (p.channelConfig as Prisma.InputJsonValue);
+    }
+    if (p.agentBotId !== undefined) {
+      if (p.agentBotId === null) {
+        data.agentBot = { disconnect: true };
+      } else {
+        const ok = await assertAgentBotBelongsToOrg(organizationId, p.agentBotId, reply);
+        if (!ok) return;
+        data.agentBot = { connect: { id: p.agentBotId } };
+      }
     }
     if (p.isDefault === true) {
       const updated = await prisma.$transaction(async (tx) => {

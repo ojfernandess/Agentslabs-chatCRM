@@ -351,6 +351,8 @@ export const messages = {
         ingestNoteWhatsApp:
           "O tráfego WhatsApp em produção continua a usar o webhook da organização nas Configurações. O URL abaixo é opcional (ingest por API).",
         errorCreate: "Não foi possível criar a caixa.",
+        fieldAgentBot: "Bot de triagem (opcional)",
+        agentBotInactive: "(inativo)",
         channels: {
           WEBSITE: {
             title: "Site",
@@ -414,8 +416,12 @@ export const messages = {
       outboundWebhookDoc:
         "Saída: opcional. PATCH /api/v1/inboxes/:id com JSON { channelConfig: { outboundWebhookUrl: \"https://...\" } } para receber mensagens enviadas do painel (canais não WhatsApp).",
       editSection: "Editar caixa",
-      editDetails: "Nome, canal e webhook de saída",
+      editDetails: "Nome, canal, bot de triagem e webhook de saída",
       outboundWebhookField: "Webhook de saída (https, opcional)",
+      agentBotField: "Bot de triagem (Agent Bot)",
+      agentBotHint:
+        "Opcional: responde primeiro nesta caixa. Vazio = usa o bot predefinido nas Configurações da organização.",
+      agentBotOrgDefault: "Predefinição da organização",
       deleteInbox: "Excluir caixa",
       deleteConfirm: 'Eliminar a caixa "{name}"? As conversas serão movidas para outra caixa da organização.',
       deleteOnlyInbox: "Não é possível excluir a única caixa da organização.",
@@ -1437,6 +1443,8 @@ export const messages = {
         ingestNoteWhatsApp:
           "Production WhatsApp traffic still uses your organization webhook in Settings. The URL below is optional (API ingest).",
         errorCreate: "Could not create the inbox.",
+        fieldAgentBot: "Triage bot (optional)",
+        agentBotInactive: "(inactive)",
         channels: {
           WEBSITE: {
             title: "Website",
@@ -1500,8 +1508,12 @@ export const messages = {
       outboundWebhookDoc:
         "Outbound (optional): PATCH /api/v1/inboxes/:id with { channelConfig: { outboundWebhookUrl: \"https://...\" } } to receive panel-sent messages (non-WhatsApp channels).",
       editSection: "Edit inbox",
-      editDetails: "Name, channel, and outbound webhook",
+      editDetails: "Name, channel, triage bot, and outbound webhook",
       outboundWebhookField: "Outbound webhook (https, optional)",
+      agentBotField: "Triage bot (Agent Bot)",
+      agentBotHint:
+        "Optional: first-line automation for this inbox only. Empty = use the organization default from Settings.",
+      agentBotOrgDefault: "Organization default",
       deleteInbox: "Delete inbox",
       deleteConfirm: 'Delete inbox "{name}"? Existing conversations will be moved to another inbox in this organization.',
       deleteOnlyInbox: "You cannot delete the only inbox in the organization.",

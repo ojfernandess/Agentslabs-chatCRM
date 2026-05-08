@@ -26,7 +26,39 @@ export async function resolveAgentBotFromOrgSettingsRow(
   return { agentBotId: row.agentBotId, agentBot: bot };
 }
 
-export async function getAgentBotDispatchContext(organizationId: string): Promise<AgentBotDispatchContext | null> {
+/** Caixa por defeito ou a mais antiga (sem importar `defaultInbox` para evitar ciclo com channelInboxIngest). */
+async function findPreferredInboxIdForOrgTriage(organizationId: string): Promise<string | null> {
+  const d = await prisma.inbox.findFirst({
+    where: { organizationId, isDefault: true },
+    select: { id: true },
+  });
+  if (d) return d.id;
+  const first = await prisma.inbox.findFirst({
+    where: { organizationId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return first?.id ?? null;
+}
+
+/**
+ * Bot da caixa (`Inbox.agentBotId`) tem prioridade; se não houver ou estiver inactivo, usa `Settings.agentBotId`.
+ */
+export async function getAgentBotDispatchContextForInbox(
+  organizationId: string,
+  inboxId: string,
+): Promise<AgentBotDispatchContext | null> {
+  const inbox = await prisma.inbox.findFirst({
+    where: { id: inboxId, organizationId },
+    include: { agentBot: true },
+  });
+  if (inbox?.agentBotId) {
+    const ctx = await resolveAgentBotFromOrgSettingsRow(organizationId, {
+      agentBotId: inbox.agentBotId,
+      agentBot: inbox.agentBot,
+    });
+    if (ctx) return ctx;
+  }
   const settings = await prisma.settings.findUnique({
     where: { organizationId },
     include: { agentBot: true },
@@ -34,7 +66,17 @@ export async function getAgentBotDispatchContext(organizationId: string): Promis
   return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
 }
 
-/** O mesmo bot org-wide aplica-se às caixas ligadas a ingest / WhatsApp na app. */
+/** Compat: usa a caixa preferida da org (defeito ou primeira) e aplica a mesma regra caixa → settings. */
+export async function getAgentBotDispatchContext(organizationId: string): Promise<AgentBotDispatchContext | null> {
+  const inboxId = await findPreferredInboxIdForOrgTriage(organizationId);
+  if (inboxId) return getAgentBotDispatchContextForInbox(organizationId, inboxId);
+  const settings = await prisma.settings.findUnique({
+    where: { organizationId },
+    include: { agentBot: true },
+  });
+  return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
+}
+
 export function inboxChannelSupportsAgentBotTriage(_channelType: InboxChannelType): boolean {
   return true;
 }

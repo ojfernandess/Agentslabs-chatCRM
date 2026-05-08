@@ -6,16 +6,39 @@ import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
-import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
+import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensureConversationForWhatsAppContact } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
+import { getDefaultInboxId } from "../lib/defaultInbox.js";
 
 // Fastify: raw body for signature verification (Evolution / Meta)
 const rawBodyPost = { config: { rawBody: true } } as any;
 
-/** Evolution may post to `/whatsapp/:orgId` ou subpaths como `.../messages-upsert`. */
-const WHATSAPP_POST_SUFFIXES = ["", "/messages-upsert", "/messages-update"] as const;
+/** Sufixos quando Evolution usa webhook_by_events: https://doc.evolution-api.com/v2/en/configuration/webhooks */
+const WHATSAPP_POST_SUFFIXES = [
+  "",
+  "/messages-upsert",
+  "/messages-update",
+  "/messages-delete",
+  "/messages-set",
+  "/send-message",
+  "/contacts-update",
+  "/contacts-upsert",
+  "/contacts-set",
+  "/chats-update",
+  "/chats-upsert",
+  "/chats-set",
+  "/chats-delete",
+  "/connection-update",
+  "/qrcode-updated",
+  "/presence-update",
+  "/groups-upsert",
+  "/groups-update",
+  "/group-participants-update",
+  "/application-startup",
+  "/new-jwt",
+] as const;
 
 function normalizeJsonBody(body: unknown): unknown {
   if (typeof body === "string") {
@@ -153,15 +176,14 @@ async function handleWhatsAppPost(
 
   let channelSettings = await prisma.settings.findUnique({
     where: { organizationId },
-    include: { agentBot: true },
   });
   if (!channelSettings) {
     channelSettings = await prisma.settings.create({
       data: { organizationId },
-      include: { agentBot: true },
     });
   }
-  const waAgentCtx = await resolveAgentBotFromOrgSettingsRow(organizationId, channelSettings);
+  const defaultInboxId = await getDefaultInboxId(organizationId);
+  const waAgentCtx = await getAgentBotDispatchContextForInbox(organizationId, defaultInboxId);
   const useAgentBot = Boolean(waAgentCtx);
 
   const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");

@@ -188,7 +188,7 @@ export async function deliverAgentBotTestWebhook(input: {
   const t0 = Date.now();
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12_000);
+    const t = setTimeout(() => ctrl.abort(), 28_000);
     const res = await fetch(url, {
       method: "POST",
       headers,
@@ -281,7 +281,7 @@ export async function dispatchAgentBotWebhook(input: {
 
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12_000);
+    const t = setTimeout(() => ctrl.abort(), 28_000);
     const res = await fetch(bot.webhookUrl.trim(), {
       method: "POST",
       headers,
@@ -294,7 +294,11 @@ export async function dispatchAgentBotWebhook(input: {
       log.warn({ status: res.status, body: txt.slice(0, 500), botId: bot.id }, "Agent bot webhook returned non-OK");
     }
   } catch (err) {
-    log.warn({ err, botId: bot.id }, "Agent bot webhook request failed");
+    const aborted = err instanceof Error && err.name === "AbortError";
+    log.warn(
+      { err, botId: bot.id, aborted, hint: aborted ? "webhook_url_timeout_28s" : undefined },
+      "Agent bot webhook request failed",
+    );
   }
 
   await prisma.botInteraction

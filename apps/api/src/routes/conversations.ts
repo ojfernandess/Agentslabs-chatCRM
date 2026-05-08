@@ -14,7 +14,7 @@ import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from 
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
-import { computeAgentBotTriageActive, getAgentBotDispatchContext } from "../lib/agentBotTriage.js";
+import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -397,7 +397,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    const agentCtx = await getAgentBotDispatchContext(organizationId);
+    const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, conversation.inbox.channelType);
     return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
   });
@@ -721,7 +721,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
       const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
       if (nowBotQueue && !wasBotQueue) {
-        const ch = await getAgentBotDispatchContext(organizationId);
+        const ch = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
         if (ch) {
           const lastInbound = await prisma.message.findFirst({
             where: { conversationId: conversation.id, direction: "INBOUND" },
@@ -811,7 +811,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      const agentCtxPut = await getAgentBotDispatchContext(organizationId);
+      const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
       return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
     } catch {
