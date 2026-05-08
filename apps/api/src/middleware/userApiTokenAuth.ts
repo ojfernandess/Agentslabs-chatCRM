@@ -19,26 +19,65 @@ function rawApiAccessTokenHeader(request: FastifyRequest): string | null {
   return typeof v === "string" ? v.trim() : null;
 }
 
+function headerValueAsString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && v.length > 0 && typeof v[0] === "string") return v[0];
+  return null;
+}
+
+function normalizeToUuid(raw: string): string | null {
+  const id = raw.trim().replace(/^["']|["']$/g, "").trim();
+  return z.string().uuid().safeParse(id).success ? id : null;
+}
+
 /** SUPER_ADMIN com token ocu_ não tem JWT com actingOrganizationId; integrações podem enviar o UUID do tenant. */
 function actingOrganizationIdFromRequest(request: FastifyRequest): string | null {
-  const headerCandidates = [
-    request.headers["openconduit-organization-id"],
-    request.headers["x-openconduit-organization-id"],
-    request.headers["organization-id"],
-    request.headers["x-organization-id"],
-    request.headers["organization_id"],
+  const explicitHeaderKeys = [
+    "openconduit-organization-id",
+    "x-openconduit-organization-id",
+    "organization-id",
+    "x-organization-id",
+    "organization_id",
+    "organizationid",
+    "x-organization",
+    "org-id",
+    "org_id",
+    "x-org-id",
+    "tenant-id",
+    "x-tenant-id",
+    "tenant_id",
   ];
-  for (const raw of headerCandidates) {
-    if (typeof raw !== "string") continue;
-    const id = raw.trim();
-    if (z.string().uuid().safeParse(id).success) return id;
+  for (const key of explicitHeaderKeys) {
+    const raw = headerValueAsString(request.headers[key]);
+    if (!raw) continue;
+    const id = normalizeToUuid(raw);
+    if (id) return id;
   }
+
+  for (const [key, val] of Object.entries(request.headers)) {
+    if (!/(organization|org[-_]id|tenant[-_]id)/i.test(key)) continue;
+    const raw = headerValueAsString(val);
+    if (!raw) continue;
+    const id = normalizeToUuid(raw);
+    if (id) return id;
+  }
+
   const q = request.query as Record<string, unknown> | undefined;
   if (q) {
-    const qv = q.organizationId ?? q.organization_id;
-    if (typeof qv === "string") {
-      const id = qv.trim();
-      if (z.string().uuid().safeParse(id).success) return id;
+    const queryKeys = [
+      "organizationId",
+      "organization_id",
+      "orgId",
+      "org_id",
+      "tenantId",
+      "tenant_id",
+      "openconduitOrganizationId",
+    ];
+    for (const k of queryKeys) {
+      const qv = q[k];
+      if (typeof qv !== "string") continue;
+      const id = normalizeToUuid(qv);
+      if (id) return id;
     }
   }
   return null;

@@ -13,7 +13,8 @@ export async function resolveTenantOrganizationId(
     if (!acting) {
       reply.status(403).send({
         error: "Forbidden",
-        message: "Super admin: use Entrar na organização ou o painel /super",
+        message:
+          "Super admin: entre na organização no painel ou envie o UUID do tenant em cada pedido. Integração com token ocu_: cabeçalho organization_id, OpenConduit-Organization-Id, Organization-Id, ou query ?organizationId=<uuid> (vários nomes aceites — ver documentação).",
         statusCode: 403,
       });
       return undefined;

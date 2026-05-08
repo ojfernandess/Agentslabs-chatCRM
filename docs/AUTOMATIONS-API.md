@@ -19,17 +19,20 @@ O token `ocu_...` deve ser o valor mostrado **uma vez** ao gerar em `POST /api/v
 
 Utilizadores **SUPER_ADMIN** não têm organização “actual” no JWT do token de perfil. Em **todas** as chamadas com `ocu_` a rotas de tenant (etiquetas, equipas, funil, etc.), envie também o **UUID da organização** alvo, por **qualquer** um dos meios abaixo (a API trata-os como equivalentes):
 
-**Cabeçalhos** (primeiro valor UUID válido ganha):
+**Cabeçalhos** (primeiro valor UUID válido ganha; aspas em volta do UUID são removidas):
 
-- `OpenConduit-Organization-Id`
-- `X-OpenConduit-Organization-Id`
-- `Organization-Id` ou `organization-id`
-- `X-Organization-Id` ou `x-organization-id`
-- `organization_id`
+- `OpenConduit-Organization-Id`, `X-OpenConduit-Organization-Id`
+- `Organization-Id`, `organization-id`, `OrganizationId` (chega como `organizationid` em Node)
+- `X-Organization-Id`, `organization_id`, `X-Organization`
+- `org-id`, `org_id`, `X-Org-Id`
+- `tenant-id`, `tenant_id`, `X-Tenant-Id`
+- Qualquer cabeçalho cujo nome contenha `organization`, `org_id` / `org-id` ou `tenant_id` / `tenant-id` com valor UUID
 
-**Query** (útil em clientes que só permitem query string): `?organizationId=<uuid>` ou `?organization_id=<uuid>`
+**Query**: `?organizationId=<uuid>`, `?organization_id=<uuid>`, `?orgId=`, `?tenantId=`, etc.
 
-Sem isto, respostas **403** *Super admin: use Entrar na organização…* são esperadas.
+O UUID tem de ir **no pedido HTTP** (cabeçalho ou query). Só mostrar texto de ajuda na UI do outro sistema **não** envia o valor à API — tem de existir campo de configuração “ID da organização” ligado ao cliente HTTP.
+
+Sem isto, respostas **403** *Super admin…* são esperadas.
 
 **Recomendação:** para integrações de um único tenant, gere o `ocu_` com uma conta **ADMIN** desse tenant (sem cabeçalho extra). **Não partilhe** o token `ocu_` completo em chats ou tickets.
 
