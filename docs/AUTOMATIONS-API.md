@@ -15,6 +15,24 @@ These endpoints support CRM/chat automation flows with tenant authentication.
 
 O token `ocu_...` deve ser o valor mostrado **uma vez** ao gerar em `POST /api/v1/auth/me/access-token` (sem espaços nem prefixo errado). A mesma **base URL** do ambiente onde o token foi criado.
 
+### SUPER_ADMIN e integrações (`ocu_`)
+
+Utilizadores **SUPER_ADMIN** não têm organização “actual” no JWT do token de perfil. Em **todas** as chamadas com `ocu_` a rotas de tenant (etiquetas, equipas, funil, etc.), envie também:
+
+`OpenConduit-Organization-Id: <uuid-da-organização>`
+
+(aceite também `X-OpenConduit-Organization-Id`). O UUID é o da organização no painel (ex.: após **Entrar na organização**). Sem este cabeçalho, respostas como **403** *Super admin: use Entrar na organização…* são esperadas.
+
+**Recomendação:** para integrações de um único tenant, gere o `ocu_` com uma conta **ADMIN** desse tenant (sem cabeçalho extra).
+
+### O que **não** é `ocu_` (evitar 401)
+
+| Recurso | Credencial |
+|---|---|
+| **Lista de bots** (`GET /api/v1/bots`) | JWT de admin **ou** `Authorization: Bearer ocb_...` (token de inbox do bot) — **não** use `ocu_` aqui. |
+| **Inboxes** (`GET /api/v1/inboxes`) | Apenas **JWT** de utilizador (idealmente ADMIN), campo `token` de `POST /api/v1/auth/login`. |
+| **Etiquetas / equipas / funil** (rotas acima) | **JWT** ou **`ocu_`** (`api_access_token` ou `Bearer ocu_...`), mais cabeçalho de org se for SUPER_ADMIN. |
+
 ### Common auth errors
 
 - `401 Unauthorized`: missing/invalid token
@@ -95,6 +113,11 @@ curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
 
 curl "https://YOUR_DOMAIN/api/v1/lead-types" \
   -H "Authorization: Bearer ocu_xxxxxxxxxxxxxxxxx"
+
+# SUPER_ADMIN: incluir organização alvo
+curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
+  -H "api_access_token: ocu_xxxxxxxxxxxxxxxxx" \
+  -H "OpenConduit-Organization-Id: <uuid-organizacao>"
 ```
 
 ## 7) Notes

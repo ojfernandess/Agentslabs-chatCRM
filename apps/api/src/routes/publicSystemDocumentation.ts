@@ -26,12 +26,12 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
     }
 
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       generatedAt: new Date().toISOString(),
       noticeEn:
         "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets. Common credentials: (1) user JWT from POST /api/v1/auth/login; (2) profile API token (ocu_...) via `api_access_token` header or `Authorization: Bearer ocu_...` on automation-compatible routes; (3) bot inbox token (Bearer ocb_...) for /api/v1/agent-bot/* and read-only GET /api/v1/bots.",
       noticePt:
-        "Este catálogo lista rotas e autenticação. Nunca inclui tokens, IDs de organização nem segredos. Credenciais habituais: (1) JWT (POST /api/v1/auth/login); (2) token de API de perfil (ocu_...) no cabeçalho `api_access_token` ou `Authorization: Bearer ocu_...` nas rotas que aceitam automação; (3) token de inbox do bot (Bearer ocb_...) para /api/v1/agent-bot/* e GET /api/v1/bots (só leitura).",
+        "Este catálogo lista rotas e autenticação. Nunca inclui tokens, IDs de organização nem segredos. Credenciais habituais: (1) JWT (POST /api/v1/auth/login); (2) token de API de perfil (ocu_...) em `api_access_token` ou `Authorization: Bearer ocu_...` nas rotas de automação — SUPER_ADMIN deve também enviar `OpenConduit-Organization-Id: <uuid>`; (3) Bearer ocb_... para /api/v1/agent-bot/* e GET /api/v1/bots (só leitura). Inboxes e gestão de bots (exceto leitura com ocb_) exigem JWT, não ocu_.",
       groups: PUBLIC_API_DOCUMENTATION_GROUPS,
     };
   });

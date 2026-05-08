@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import bcrypt from "bcrypt";
 import { randomBytes } from "node:crypto";
+import { z } from "zod";
 import { prisma } from "../db.js";
 import type { JwtPayload } from "./auth.js";
 
@@ -16,6 +17,16 @@ function bearerRawToken(request: FastifyRequest): string | null {
 function rawApiAccessTokenHeader(request: FastifyRequest): string | null {
   const v = request.headers["api_access_token"];
   return typeof v === "string" ? v.trim() : null;
+}
+
+/** SUPER_ADMIN com token ocu_ não tem JWT com actingOrganizationId; integrações podem enviar o UUID do tenant. */
+function actingOrganizationIdFromHeaders(request: FastifyRequest): string | null {
+  const raw =
+    request.headers["openconduit-organization-id"] ??
+    request.headers["x-openconduit-organization-id"];
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  return z.string().uuid().safeParse(id).success ? id : null;
 }
 
 export async function authenticateUserApiToken(
@@ -44,6 +55,29 @@ export async function authenticateUserApiToken(
       where: { id: c.id },
       data: { apiAccessTokenLastUsedAt: new Date() },
     });
+
+    const orgHeader = actingOrganizationIdFromHeaders(request);
+
+    if (c.role === "SUPER_ADMIN") {
+      return {
+        id: c.id,
+        email: c.email,
+        role: c.role,
+        organizationId: c.organizationId,
+        ...(orgHeader ? { actingOrganizationId: orgHeader } : {}),
+      };
+    }
+
+    if (orgHeader && orgHeader !== c.organizationId) {
+      reply.status(403).send({
+        error: "Forbidden",
+        message:
+          "openconduit-organization-id header does not match this user's organization",
+        statusCode: 403,
+      });
+      return null;
+    }
+
     return {
       id: c.id,
       email: c.email,
