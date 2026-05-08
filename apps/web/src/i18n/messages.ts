@@ -454,6 +454,14 @@ export const messages = {
       webhookSecretCleared: "Secret removido.",
       botId: "ID do bot",
       copyBotId: "Copiar ID",
+      testWebhook: "Testar webhook",
+      testWebhookRunning: "A testar…",
+      testWebhookNeedUrl: "Preencha o URL do webhook para testar.",
+      testWebhookOk: "Webhook OK: HTTP {status} em {ms} ms.",
+      testWebhookFail: "Webhook sem sucesso.",
+      testWebhookDetail: "{detail}",
+      testWebhookHint:
+        "Envia um POST de prova (evento webhook_test) para o URL — o outro sistema deve responder 2xx.",
       botIdExplain:
         "Cada bot tem um UUID único (estilo Chatwoot). Com só o token ocb_: GET /api/v1/bots ou GET /api/v1/agent-bot/profile — não precisa de JWT. Para criar/editar bots use JWT de POST /api/v1/auth/login (ADMIN).",
     },
@@ -1528,6 +1536,14 @@ export const messages = {
       webhookSecretCleared: "Secret removed.",
       botId: "Bot ID",
       copyBotId: "Copy ID",
+      testWebhook: "Test webhook",
+      testWebhookRunning: "Testing…",
+      testWebhookNeedUrl: "Enter a webhook URL to run the test.",
+      testWebhookOk: "Webhook OK: HTTP {status} in {ms} ms.",
+      testWebhookFail: "Webhook test did not succeed.",
+      testWebhookDetail: "{detail}",
+      testWebhookHint:
+        "Sends a probe POST (webhook_test event) to the URL — the endpoint should return 2xx.",
       botIdExplain:
         "Each bot has a unique UUID (Chatwoot-style). With only the ocb_ token: GET /api/v1/bots or GET /api/v1/agent-bot/profile — no JWT needed. To create/edit bots use JWT from POST /api/v1/auth/login (ADMIN).",
     },

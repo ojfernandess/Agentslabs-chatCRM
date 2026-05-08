@@ -5,6 +5,10 @@ import { authenticate, authenticateSessionOrBotInboxForBotsRead, requireAdmin } 
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { BotType, Prisma } from "@prisma/client";
 import { generateBotInboxTokenParts, hashBotInboxToken } from "../middleware/agentBotAuth.js";
+import {
+  deliverAgentBotTestWebhook,
+  AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID,
+} from "../lib/agentBotWebhook.js";
 
 const createBotSchema = z.object({
   name: z.string().min(1).max(120),
@@ -89,6 +93,38 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     return reply.status(201).send(sanitizeBot(row));
+  });
+
+  /** Teste de conectividade (URL ainda não gravada — ex.: formulário de criação). */
+  app.post("/webhook-test", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = z
+      .object({
+        webhookUrl: z.string().url().max(2048),
+        webhookSecret: z.union([z.string().max(512), z.literal(""), z.null()]).optional(),
+        probeName: z.string().min(1).max(120).optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const sr = parsed.data.webhookSecret;
+    const secret =
+      sr === "" || sr === null ? null : sr === undefined ? null : sr;
+
+    const result = await deliverAgentBotTestWebhook({
+      webhookUrl: parsed.data.webhookUrl,
+      webhookSecret: secret,
+      organizationId,
+      bot: {
+        id: AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID,
+        name: parsed.data.probeName ?? "Webhook test",
+        type: BotType.WEBHOOK,
+      },
+      log: app.log,
+    });
+    return reply.status(200).send(result);
   });
 
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [authenticateSessionOrBotInboxForBotsRead] }, async (request, reply) => {
@@ -184,6 +220,52 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
       data: { inboxTokenPrefix: prefix, inboxTokenHash },
     });
     return { inboxAccessToken: token };
+  });
+
+  /** POST opcional: `{ "webhookUrl"?: string, "webhookSecret"?: string | null }` — omite URL para usar a gravada no bot. */
+  app.post<{ Params: { id: string } }>("/:id/test-webhook", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const bot = await prisma.bot.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!bot) {
+      return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+    }
+    const parsed = z
+      .object({
+        webhookUrl: z.string().url().max(2048).optional(),
+        webhookSecret: z.union([z.string().max(512), z.literal(""), z.null()]).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const url = (parsed.data.webhookUrl?.trim() || bot.webhookUrl?.trim() || "").trim();
+    if (!url) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Set a webhook URL on the bot or include webhookUrl in the body.",
+        statusCode: 400,
+      });
+    }
+
+    let secret: string | null;
+    if (parsed.data.webhookSecret !== undefined) {
+      const ws = parsed.data.webhookSecret;
+      secret = ws === "" || ws === null ? null : ws;
+    } else {
+      secret = bot.webhookSecret;
+    }
+
+    const result = await deliverAgentBotTestWebhook({
+      webhookUrl: url,
+      webhookSecret: secret,
+      organizationId,
+      bot: { id: bot.id, name: bot.name, type: bot.type },
+      log: app.log,
+    });
+    return reply.status(200).send(result);
   });
 
   app.get<{ Params: { id: string } }>("/:id/interactions", { preHandler: [requireAdmin] }, async (request, reply) => {

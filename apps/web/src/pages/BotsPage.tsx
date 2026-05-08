@@ -4,9 +4,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
-import { Bot, Check, Copy } from "lucide-react";
+import { Bot, Check, Copy, Zap } from "lucide-react";
 
 type BotType = "WEBHOOK" | "DIALOGFLOW" | "CUSTOM";
+
+type WebhookTestResult = {
+  ok: boolean;
+  httpStatus?: number;
+  latencyMs: number;
+  error?: string;
+  responseBodySnippet?: string;
+};
 
 interface BotRow {
   id: string;
@@ -42,6 +50,9 @@ export function BotsPage() {
   const [revealedInboxToken, setRevealedInboxToken] = useState<string | null>(null);
   const [tokenBusyId, setTokenBusyId] = useState<string | null>(null);
   const [copiedBotId, setCopiedBotId] = useState<string | null>(null);
+  const [webhookTestBusy, setWebhookTestBusy] = useState<string | null>(null);
+  const [webhookTestMessage, setWebhookTestMessage] = useState<string | null>(null);
+  const [webhookTestTone, setWebhookTestTone] = useState<"ok" | "err" | null>(null);
 
   const load = async () => {
     try {
@@ -74,6 +85,81 @@ export function BotsPage() {
   };
 
   const typeLabel = (ty: BotType) => t(`bots.types.${ty}`);
+
+  const setTestOutcome = (tone: "ok" | "err", message: string) => {
+    setWebhookTestTone(tone);
+    setWebhookTestMessage(message);
+  };
+
+  const describeTestResult = (r: WebhookTestResult): { tone: "ok" | "err"; text: string } => {
+    if (r.ok) {
+      return {
+        tone: "ok",
+        text: t("bots.testWebhookOk")
+          .replace("{status}", String(r.httpStatus ?? "—"))
+          .replace("{ms}", String(r.latencyMs)),
+      };
+    }
+    const detail =
+      r.httpStatus != null
+        ? `HTTP ${r.httpStatus}${r.responseBodySnippet ? ` — ${r.responseBodySnippet.slice(0, 220)}` : ""}`
+        : (r.error ?? r.responseBodySnippet ?? "");
+    return {
+      tone: "err",
+      text: `${t("bots.testWebhookFail")} ${t("bots.testWebhookDetail").replace("{detail}", detail)}`.trim(),
+    };
+  };
+
+  const testWebhookCreate = async () => {
+    const url = webhookUrl.trim();
+    if (!url) {
+      setTestOutcome("err", t("bots.testWebhookNeedUrl"));
+      return;
+    }
+    setWebhookTestBusy("create");
+    setWebhookTestMessage(null);
+    setWebhookTestTone(null);
+    try {
+      const body: Record<string, string> = { webhookUrl: url };
+      const sec = newWebhookSecret.trim();
+      if (sec) body.webhookSecret = sec;
+      const probe = name.trim();
+      if (probe) body.probeName = probe;
+      const r = await api.post<WebhookTestResult>("/bots/webhook-test", body);
+      const { tone, text } = describeTestResult(r);
+      setTestOutcome(tone, text);
+    } catch (e: unknown) {
+      setTestOutcome("err", e instanceof Error ? e.message : t("bots.testWebhookFail"));
+    } finally {
+      setWebhookTestBusy(null);
+    }
+  };
+
+  const testWebhookForBot = async (
+    botId: string,
+    overrides?: { webhookUrl?: string; webhookSecret?: string },
+  ) => {
+    setWebhookTestBusy(botId);
+    setWebhookTestMessage(null);
+    setWebhookTestTone(null);
+    try {
+      const body: Record<string, string> = {};
+      const u = overrides?.webhookUrl?.trim();
+      if (u) body.webhookUrl = u;
+      const s = overrides?.webhookSecret?.trim();
+      if (s) body.webhookSecret = s;
+      const r = await api.post<WebhookTestResult>(
+        `/bots/${botId}/test-webhook`,
+        Object.keys(body).length ? body : undefined,
+      );
+      const { tone, text } = describeTestResult(r);
+      setTestOutcome(tone, text);
+    } catch (e: unknown) {
+      setTestOutcome("err", e instanceof Error ? e.message : t("bots.testWebhookFail"));
+    } finally {
+      setWebhookTestBusy(null);
+    }
+  };
 
   const startEdit = (b: BotRow) => {
     setEditingId(b.id);
@@ -246,6 +332,7 @@ export function BotsPage() {
             />
             <p className="mt-1 text-xs text-ink-500">{t("bots.webhookSecretHint")}</p>
           </div>
+          <p className="sm:col-span-2 text-xs text-ink-500">{t("bots.testWebhookHint")}</p>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 sm:col-span-2">
             <input
               type="checkbox"
@@ -255,9 +342,19 @@ export function BotsPage() {
             />
             {t("bots.active")}
           </label>
-          <div className="sm:col-span-2 lg:col-span-4">
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
             <button type="submit" disabled={creating || !name.trim()} className="btn-primary">
               {t("bots.create")}
+            </button>
+            <button
+              type="button"
+              disabled={!!webhookTestBusy || !webhookUrl.trim()}
+              onClick={() => void testWebhookCreate()}
+              className="btn-secondary inline-flex items-center gap-1.5"
+              title={t("bots.testWebhook")}
+            >
+              <Zap className="h-4 w-4" />
+              {webhookTestBusy === "create" ? t("bots.testWebhookRunning") : t("bots.testWebhook")}
             </button>
           </div>
         </form>
@@ -273,6 +370,19 @@ export function BotsPage() {
             >
               {t("common.close")}
             </button>
+          </div>
+        ) : null}
+
+        {webhookTestMessage && webhookTestTone ? (
+          <div
+            className={
+              webhookTestTone === "ok"
+                ? "mb-6 rounded-lg border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
+                : "mb-6 rounded-lg border border-red-200 bg-red-50/90 p-3 text-sm text-red-950 shadow-sm dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+            }
+            role="status"
+          >
+            {webhookTestMessage}
           </div>
         ) : null}
 
@@ -355,6 +465,7 @@ export function BotsPage() {
                         </div>
                       </div>
                     </div>
+                    <p className="text-xs text-ink-500">{t("bots.testWebhookHint")}</p>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -364,9 +475,24 @@ export function BotsPage() {
                       />
                       {t("bots.active")}
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => handleSaveEdit(b.id)} className="btn-primary text-sm">
                         {t("bots.save")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!webhookTestBusy}
+                        onClick={() =>
+                          void testWebhookForBot(b.id, {
+                            webhookUrl: editWebhook.trim() || undefined,
+                            webhookSecret: editWebhookSecret.trim() || undefined,
+                          })
+                        }
+                        className="btn-secondary inline-flex items-center gap-1.5 text-sm"
+                        title={t("bots.testWebhook")}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        {webhookTestBusy === b.id ? t("bots.testWebhookRunning") : t("bots.testWebhook")}
                       </button>
                       <button type="button" onClick={cancelEdit} className="btn-secondary text-sm">
                         {t("common.cancel")}
@@ -441,6 +567,18 @@ export function BotsPage() {
                       >
                         {tokenBusyId === b.id ? t("common.loading") : t("bots.rotateInboxToken")}
                       </button>
+                      {b.webhookUrl ? (
+                        <button
+                          type="button"
+                          disabled={!!webhookTestBusy}
+                          onClick={() => void testWebhookForBot(b.id)}
+                          className="btn-secondary inline-flex items-center gap-1.5 text-sm"
+                          title={t("bots.testWebhook")}
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                          {webhookTestBusy === b.id ? t("bots.testWebhookRunning") : t("bots.testWebhook")}
+                        </button>
+                      ) : null}
                       <button type="button" onClick={() => startEdit(b)} className="btn-secondary text-sm">
                         {t("common.edit")}
                       </button>

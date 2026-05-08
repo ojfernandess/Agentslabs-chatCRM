@@ -498,6 +498,28 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionEn: "Create, update, or delete bots; inbox tokens and interactions (admin for most writes).",
     descriptionPt: "Criar, atualizar ou apagar bots; tokens de inbox e interações (admin na maior parte dos writes).",
     examplePayloadPt:
-      'Autenticação: apenas JWT de sessão (login ADMIN). O token ocb_ não serve para POST/PATCH/DELETE aqui — só leitura em GET /api/v1/bots ou GET /api/v1/agent-bot/profile.\n\nPOST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nResposta 201: objeto do bot com `id` (UUID único e estável por bot, estilo Chatwoot).\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
+      'Autenticação: apenas JWT de sessão (login ADMIN). O token ocb_ não serve para POST/PATCH/DELETE aqui — só leitura em GET /api/v1/bots ou GET /api/v1/agent-bot/profile.\n\nPOST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nResposta 201: objeto do bot com `id` (UUID único e estável por bot, estilo Chatwoot).\n\nPOST /api/v1/bots/webhook-test — prova de URL antes de criar o bot (corpo: webhookUrl, webhookSecret opcional).\n\nPOST /api/v1/bots/:id/test-webhook — prova com URL/s Segredo gravados ou overrides no corpo JSON opcional.\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
+  },
+  {
+    method: "POST",
+    path: "/api/v1/bots/webhook-test",
+    auth: "session_jwt",
+    descriptionEn:
+      "Connectivity test: POST a sample `webhook_test` event to a URL (optional HMAC secret). Use before creating a bot. Admin JWT only.",
+    descriptionPt:
+      "Teste de conectividade: envia evento `webhook_test` para um URL (segredo HMAC opcional). Para usar antes de criar o bot. Só JWT admin.",
+    examplePayloadPt:
+      'POST application/json:\n{\n  "webhookUrl": "https://seu-servidor.com/agent-hook",\n  "webhookSecret": "opcional — mesma chave que validará X-OpenConduit-Signature",\n  "probeName": "Rótulo opcional no JSON (nome simulado do bot)"\n}\n\nResposta 200:\n{ "ok": true, "httpStatus": 200, "latencyMs": 42 }\nou { "ok": false, "httpStatus": 502, "latencyMs": 1200, "responseBodySnippet": "..." }\nou { "ok": false, "latencyMs": 300, "error": "fetch failed..." }.',
+  },
+  {
+    method: "POST",
+    path: "/api/v1/bots/:id/test-webhook",
+    auth: "session_jwt",
+    descriptionEn:
+      "Test the configured webhook URL for this bot (uses saved URL/secret unless body overrides `webhookUrl` / `webhookSecret`). Admin JWT.",
+    descriptionPt:
+      "Testar o webhook deste bot (usa URL e secret gravados, salvo overrides no corpo). JWT admin.",
+    examplePayloadPt:
+      "POST sem corpo — usa URL e secret do bot.\n\nOu POST application/json opcional:\n{\n  \"webhookUrl\": \"https://...\",\n  \"webhookSecret\": null\n}\n\n(`webhookSecret`: omitir para usar o secret gravado; `null` ou `\"\"` = sem assinatura HMAC neste envio.)",
   },
 ];
