@@ -183,8 +183,8 @@ async function handleWhatsAppPost(
     });
   }
   const defaultInboxId = await getDefaultInboxId(organizationId);
-  const waAgentCtx = await getAgentBotDispatchContextForInbox(organizationId, defaultInboxId);
-  const useAgentBot = Boolean(waAgentCtx);
+  const defaultInboxAgentCtx = await getAgentBotDispatchContextForInbox(organizationId, defaultInboxId);
+  const useAgentBotOnDefaultInbox = Boolean(defaultInboxAgentCtx);
 
   const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");
 
@@ -301,9 +301,9 @@ async function handleWhatsAppPost(
         organizationId,
         contactId: contact.id,
         lockSingleConversation: channelSettings.lockSingleConversation,
-        activeConversationStatus: useAgentBot ? "PENDING" : "OPEN",
+        activeConversationStatus: useAgentBotOnDefaultInbox ? "PENDING" : "OPEN",
         createDefaults: {
-          status: useAgentBot ? "PENDING" : "OPEN",
+          status: useAgentBotOnDefaultInbox ? "PENDING" : "OPEN",
           assignedToId: null,
         },
       });
@@ -393,14 +393,18 @@ async function handleWhatsAppPost(
         }
       }
 
-      if (useAgentBot && waAgentCtx) {
+      const conversationAgentCtx = await getAgentBotDispatchContextForInbox(
+        organizationId,
+        conversation.inboxId,
+      );
+      if (conversationAgentCtx) {
         const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
         if (fresh) {
           void dispatchAgentBotWebhook({
             organizationId,
             settings: {
-              agentBotId: waAgentCtx.agentBotId,
-              agentBot: waAgentCtx.agentBot,
+              agentBotId: conversationAgentCtx.agentBotId,
+              agentBot: conversationAgentCtx.agentBot,
             },
             conversation: fresh,
             contact,
