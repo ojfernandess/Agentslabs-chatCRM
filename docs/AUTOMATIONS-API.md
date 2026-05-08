@@ -126,3 +126,30 @@ curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
 - Read endpoints (`GET`) are available to authenticated tenant users.
 - Mutation endpoints (`POST`, `PATCH`) require admin-level tenant access.
 - `401 Invalid API access token`: confirme token completo, utilizador ainda com token ativo, e URL do mesmo servidor onde foi gerado.
+
+## 8) Texto para outros sistemas / assistentes (OpenConduit recente)
+
+Use este bloco **no sistema que mostra avisos ao utilizador**, para alinhar com a API actual (evite textos antigos que dizem que `ocu_` *nunca* pode ir em `Bearer` ou que o funil *só* aceita JWT).
+
+```
+Autenticação OpenConduit (resumo):
+
+1) Token de perfil para automação (prefixo ocu_):
+   - Cabeçalho: api_access_token: ocu_...
+   - OU: Authorization: Bearer ocu_...  (ambos são válidos na mesma API)
+   - Rotas: /api/v1/automations/*, GET /api/v1/lead-types, GET /api/v1/pipeline/board,
+     GET /api/v1/pipeline/stages (entre outras que documentam "session_jwt_or_api_access_token").
+
+2) SUPER_ADMIN com ocu_: em todos os pedidos com ocu_ às rotas do tenant, enviar também:
+   OpenConduit-Organization-Id: <uuid-da-organização>
+   (ou X-OpenConduit-Organization-Id). Sem isto pode aparecer 403 sobre "Entrar na organização".
+
+3) Bots (GET /api/v1/bots): NÃO use ocu_. Use JWT de admin OU Authorization: Bearer ocb_... (token de inbox do bot).
+
+4) Inboxes (GET /api/v1/inboxes): só JWT de sessão (token de POST /api/v1/auth/login), não ocu_.
+
+5) Se ainda aparecer 401 com ocu_: confirme que o servidor foi actualizado, token não revogado,
+   URL base correcta, e que não está a enviar ocb_ ou JWT no campo do ocu_ por engano.
+```
+
+**Nota:** avisos do tipo *«ocu_ não pode ser Bearer»* ou *«lead-types exige só JWT»* estão **errados** para instâncias OpenConduit com as alterações de 2026 descritas neste ficheiro — actualize o texto de ajuda nesse sistema ou faça deploy da versão mais recente da API.
