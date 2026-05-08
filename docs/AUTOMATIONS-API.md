@@ -11,8 +11,9 @@ These endpoints support CRM/chat automation flows with tenant authentication.
 
 - `Authorization: Bearer <jwt>` (session token)
 - `api_access_token: <ocu_...>` (profile token, Chatwoot-like)
+- `Authorization: Bearer <ocu_...>` (same token; útil quando a ferramenta só permite um cabeçalho Bearer)
 
-Profile token (`ocu_...`) is accepted only via `api_access_token` header.
+O token `ocu_...` deve ser o valor mostrado **uma vez** ao gerar em `POST /api/v1/auth/me/access-token` (sem espaços nem prefixo errado). A mesma **base URL** do ambiente onde o token foi criado.
 
 ### Common auth errors
 
@@ -74,15 +75,31 @@ curl -X POST "https://YOUR_DOMAIN/api/v1/auth/me/access-token" \
 - `assignedToId` is optional
 - If both are provided, `assignedToId` must belong to `teamId`
 
-## 5) End-to-end example
+## 5) Funil CRM (leitura com token de perfil)
+
+Estes `GET` aceitam **JWT** ou **ocu_** (`api_access_token` ou `Authorization: Bearer ocu_...`), desde que o utilizador do token tenha acesso ao tenant e o funil CRM esteja ativo (`crm_kanban`).
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/lead-types` | Colunas do funil (id, name, color, order, valueRollup) |
+| GET | `/api/v1/pipeline/stages` | Colunas espelhadas (requer funil ativo) |
+| GET | `/api/v1/pipeline/board` | Quadro com estágios e contactos (limite interno de contactos) |
+
+Para **Agent Bot** (`ocb_`), use apenas metadados das colunas: `GET /api/v1/agent-bot/lead-types` (sem board completo). O quadro com contactos exige `ocu_` ou JWT.
+
+## 6) End-to-end example
 
 ```bash
 curl "https://YOUR_DOMAIN/api/v1/automations/tags" \
   -H "api_access_token: ocu_xxxxxxxxxxxxxxxxx"
+
+curl "https://YOUR_DOMAIN/api/v1/lead-types" \
+  -H "Authorization: Bearer ocu_xxxxxxxxxxxxxxxxx"
 ```
 
-## 6) Notes
+## 7) Notes
 
 - These routes are intended for automation integrations and workflow engines.
 - Read endpoints (`GET`) are available to authenticated tenant users.
 - Mutation endpoints (`POST`, `PATCH`) require admin-level tenant access.
+- `401 Invalid API access token`: confirme token completo, utilizador ainda com token ativo, e URL do mesmo servidor onde foi gerado.

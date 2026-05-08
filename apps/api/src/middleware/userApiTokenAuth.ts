@@ -24,15 +24,9 @@ export async function authenticateUserApiToken(
 ): Promise<JwtPayload | null> {
   const rawFromHeader = rawApiAccessTokenHeader(request);
   const bearer = bearerRawToken(request);
-  if (bearer?.startsWith(TOKEN_PREFIX) && !rawFromHeader) {
-    reply.status(401).send({
-      error: "Unauthorized",
-      message: "Use 'api_access_token' header for profile API token authentication",
-      statusCode: 401,
-    });
-    return null;
-  }
-  const raw = rawFromHeader;
+  /** Suporta também `Authorization: Bearer ocu_...` (ferramentas que só expõem Bearer). */
+  const raw =
+    rawFromHeader ?? (bearer?.startsWith(TOKEN_PREFIX) ? bearer : null);
   if (!raw?.startsWith(TOKEN_PREFIX) || raw.length < TOKEN_PREFIX.length + 16) return null;
 
   const prefix = raw.slice(0, 12);

@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { LeadValueRollup } from "@prisma/client";
 import { prisma } from "../db.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { authenticateSessionOrUserApiTokenForApplicationApis, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import {
   ensurePipelineStageForLeadType,
@@ -24,9 +24,7 @@ async function enforceSingleWonType(organizationId: string, keepId: string): Pro
 }
 
 export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
-
-  app.get("/", async (request, reply) => {
+  app.get("/", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     return prisma.leadType.findMany({

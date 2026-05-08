@@ -311,6 +311,17 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
       },
       {
         method: "GET",
+        path: "/api/v1/agent-bot/lead-types",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "List funnel columns (lead types) for the organization — metadata only, no full board/contacts. For the complete kanban with contacts use JWT or profile token on GET /api/v1/pipeline/board.",
+        descriptionPt:
+          "Listar colunas do funil (tipos de lead) da organização — só metadados, sem board completo nem listagem de contactos. Para o quadro kanban com contactos use JWT ou token de perfil em GET /api/v1/pipeline/board.",
+        examplePayloadPt:
+          "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: { \"data\": [ { \"id\", \"name\", \"color\", \"order\", \"valueRollup\" } ] }",
+      },
+      {
+        method: "GET",
         path: "/api/v1/agent-bot/teams",
         auth: "agent_bot_bearer",
         descriptionEn:

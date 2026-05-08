@@ -161,19 +161,21 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
   {
     method: "GET",
     path: "/api/v1/pipeline/board",
-    auth: "session_jwt",
+    auth: "session_jwt_or_api_access_token",
     descriptionEn: "CRM funnel board: stages and contacts for kanban.",
     descriptionPt:
       "Listar funil CRM (quadro kanban): colunas correspondentes aos tipos de lead e contactos por etapa.",
-    examplePayloadPt: "Sem corpo. Requer funil CRM (`crm_kanban`) ativo na organização.",
+    examplePayloadPt:
+      "Sem corpo. JWT: Authorization: Bearer <jwt>. Automação: api_access_token: ocu_... ou Authorization: Bearer ocu_... . Requer funil CRM (`crm_kanban`) ativo na organização.",
   },
   {
     method: "GET",
     path: "/api/v1/pipeline/stages",
-    auth: "session_jwt",
+    auth: "session_jwt_or_api_access_token",
     descriptionEn: "List pipeline stages.",
     descriptionPt: "Listar colunas do funil (espelho dos tipos de lead; requer funil CRM).",
-    examplePayloadPt: "Sem corpo.",
+    examplePayloadPt:
+      "Sem corpo. JWT ou token de perfil (ocu_) como em GET /api/v1/pipeline/board.",
   },
   {
     method: "POST",
@@ -283,11 +285,11 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
   {
     method: "GET",
     path: "/api/v1/lead-types",
-    auth: "session_jwt",
+    auth: "session_jwt_or_api_access_token",
     descriptionEn: "List lead types (CRM funnel columns).",
     descriptionPt: "Listar tipos de lead (colunas do funil CRM).",
     examplePayloadPt:
-      "Sem corpo. Resposta: array com id, name, color, order, valueRollup por coluna do funil.",
+      "Sem corpo. JWT ou api_access_token / Bearer ocu_... (mesmo utilizador que gerou o token). Resposta: array com id, name, color, order, valueRollup por coluna do funil.",
   },
   {
     method: "POST",

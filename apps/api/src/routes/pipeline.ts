@@ -1,6 +1,9 @@
 import { FastifyInstance, FastifyReply } from "fastify";
 import { prisma } from "../db.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import {
+  authenticateSessionOrUserApiTokenForApplicationApis,
+  requireAdmin,
+} from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
@@ -24,9 +27,7 @@ async function requireCrmKanban(
 }
 
 export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
-
-  app.get("/board", async (request, reply) => {
+  app.get("/board", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireCrmKanban(organizationId, reply))) return;
@@ -62,7 +63,7 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     return { stages, contacts };
   });
 
-  app.get("/stages", async (request, reply) => {
+  app.get("/stages", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireCrmKanban(organizationId, reply))) return;

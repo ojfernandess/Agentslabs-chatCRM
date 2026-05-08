@@ -42,6 +42,17 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /** Colunas do funil (tipos de lead / estágios), sem listar contactos do board. */
+  app.get("/lead-types", async (request) => {
+    const bot = request.agentBot!;
+    const rows = await prisma.leadType.findMany({
+      where: { organizationId: bot.organizationId },
+      orderBy: { order: "asc" },
+      select: { id: true, name: true, color: true, order: true, valueRollup: true },
+    });
+    return { data: rows };
+  });
+
   /** Equipas da organização (roteamento a partir do fluxo do bot). */
   app.get("/teams", async (request) => {
     const bot = request.agentBot!;

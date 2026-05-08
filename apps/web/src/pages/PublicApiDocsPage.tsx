@@ -441,10 +441,13 @@ export function PublicApiDocsPage() {
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
                       <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">2) Automação (ocu_)</h3>
                       <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
-                        Listar equipas, etiquetas e atribuir equipa ao ticket (admin no tenant).
+                        Equipas, etiquetas, funil (GET lead-types / pipeline/board) e atribuir equipa (mutações: admin).
                       </p>
                       <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
-{`curl "https://SEU_DOMINIO/api/v1/automations/teams" \\
+{`curl "https://SEU_DOMINIO/api/v1/automations/tags" \\
+  -H "Authorization: Bearer ocu_xxx"
+
+curl "https://SEU_DOMINIO/api/v1/pipeline/board" \\
   -H "api_access_token: ocu_xxx"
 
 curl -X PATCH "https://SEU_DOMINIO/api/v1/automations/conversations/<id>/team" \\
@@ -455,10 +458,13 @@ curl -X PATCH "https://SEU_DOMINIO/api/v1/automations/conversations/<id>/team" \
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
                       <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">3) Agent Bot (ocb_)</h3>
                       <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
-                        Mesmas operações de equipa com o token de inbox do bot.
+                        Colunas do funil (só metadados), equipas e atribuir conversa ao time.
                       </p>
                       <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
-{`curl "https://SEU_DOMINIO/api/v1/agent-bot/teams" \\
+{`curl "https://SEU_DOMINIO/api/v1/agent-bot/lead-types" \\
+  -H "Authorization: Bearer ocb_xxx"
+
+curl "https://SEU_DOMINIO/api/v1/agent-bot/teams" \\
   -H "Authorization: Bearer ocb_xxx"
 
 curl -X PATCH "https://SEU_DOMINIO/api/v1/agent-bot/conversations/<id>/team" \\
