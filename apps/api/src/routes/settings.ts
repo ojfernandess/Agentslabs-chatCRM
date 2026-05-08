@@ -15,6 +15,7 @@ import {
   evolutionApiCreateInstance,
   evolutionApiFetchConnect,
   evolutionApiFetchConnectionState,
+  evolutionApiSetWebhook,
   evolutionConnectJsonToQrPayload,
   evolutionInstanceNameForOrg,
   evolutionInstanceNameWithSuffix,
@@ -27,6 +28,40 @@ import {
   getWhatsAppEmbeddedPublicConfig,
   subscribeWabaToApp,
 } from "../lib/metaWhatsAppEmbedded.js";
+
+const evolutionQrStartBodySchema = z
+  .object({
+    instanceName: z.string().optional(),
+  })
+  .transform((data) => {
+    const t = data.instanceName?.trim();
+    return { instanceName: t && t.length > 0 ? t : undefined };
+  })
+  .superRefine((data, ctx) => {
+    const s = data.instanceName;
+    if (!s) return;
+    if (s.length < 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Instance name must be at least 3 characters, or omit for automatic name",
+        path: ["instanceName"],
+      });
+    }
+    if (s.length > 80) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Instance name is too long (max 80)",
+        path: ["instanceName"],
+      });
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(s)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use only letters, numbers, ., _, or - (must start with letter or number)",
+        path: ["instanceName"],
+      });
+    }
+  });
 
 const settingsSchema = z.object({
   whatsappProvider: z.enum(["meta", "360dialog", "twilio", "evolution"]).optional(),
@@ -273,6 +308,16 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      const parsedStart = evolutionQrStartBodySchema.safeParse(request.body ?? {});
+      if (!parsedStart.success) {
+        const first = parsedStart.error.issues[0];
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: first?.message ?? parsedStart.error.message,
+          statusCode: 400,
+        });
+      }
+
       let settings = await prisma.settings.findUnique({ where: { organizationId } });
       if (!settings) {
         settings = await prisma.settings.create({ data: { organizationId } });
@@ -285,7 +330,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const apiKey = platform.globalApiKey.trim();
       const baseUrl = platform.baseUrl.trim();
 
-      let instanceName = evolutionInstanceNameForOrg(organizationId);
+      const requestedName = parsedStart.data.instanceName;
+      let instanceName = requestedName ?? evolutionInstanceNameForOrg(organizationId);
+
       let createRes = await evolutionApiCreateInstance({
         baseUrl,
         apiKey,
@@ -298,7 +345,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         if (createRes.status === 403 || createRes.status === 409) {
           const connectExisting = await evolutionApiFetchConnect(baseUrl, apiKey, instanceName);
           if (!connectExisting.ok) {
-            instanceName = evolutionInstanceNameWithSuffix(evolutionInstanceNameForOrg(organizationId));
+            instanceName = evolutionInstanceNameWithSuffix(instanceName);
             createRes = await evolutionApiCreateInstance({
               baseUrl,
               apiKey,
@@ -321,6 +368,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
             statusCode: 502,
           });
         }
+      }
+
+      const setWh = await evolutionApiSetWebhook({
+        baseUrl,
+        apiKey,
+        instanceName,
+        webhookUrl,
+        webhookHeaders,
+      });
+      if (!setWh.ok) {
+        request.log.warn(
+          { status: setWh.status, instanceName, body: setWh.body.slice(0, 400) },
+          "Evolution POST /webhook/set failed after instance/create",
+        );
       }
 
       await prisma.settings.update({
@@ -351,6 +412,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         qrDataUrl: qr.qrDataUrl,
         connectionState: st?.state ?? "",
         connected: (st?.state ?? "").toLowerCase() === "open",
+        webhookConfigured: setWh.ok,
       };
     });
 

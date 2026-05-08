@@ -70,6 +70,44 @@ export async function evolutionApiCreateInstance(options: {
   return { ok: true, raw };
 }
 
+/**
+ * Garante webhook na instância (algumas versões da Evolution ignoram o objeto `webhook` em `/instance/create`).
+ * POST /webhook/set/{instance} — Evolution API v2.
+ */
+export async function evolutionApiSetWebhook(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceName: string;
+  webhookUrl: string;
+  webhookHeaders?: Record<string, string>;
+}): Promise<{ ok: true } | { ok: false; status: number; body: string }> {
+  const base = normalizeEvolutionBaseUrl(options.baseUrl);
+  const enc = encodeURIComponent(options.instanceName);
+  const payload: Record<string, unknown> = {
+    enabled: true,
+    url: options.webhookUrl,
+    webhookByEvents: false,
+    webhookBase64: true,
+    events: [...DEFAULT_WEBHOOK_EVENTS],
+  };
+  if (options.webhookHeaders && Object.keys(options.webhookHeaders).length > 0) {
+    payload.headers = options.webhookHeaders;
+  }
+  const res = await fetch(`${base}/webhook/set/${enc}`, {
+    method: "POST",
+    headers: {
+      apikey: options.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    return { ok: false, status: res.status, body };
+  }
+  return { ok: true };
+}
+
 export async function evolutionApiFetchConnect(
   baseUrl: string,
   apiKey: string,

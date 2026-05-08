@@ -929,6 +929,12 @@ export const messages = {
       evolutionQrError: "Não foi possível obter o QR. Tente novamente.",
       evolutionQrPairing: "Código de emparelhamento",
       evolutionQrInstance: "Instância",
+      evolutionQrInstanceNameLabel: "Nome da instância (opcional)",
+      evolutionQrInstanceNamePlaceholder: "ex.: minha-loja (vazio = nome automático)",
+      evolutionQrInstanceNameHint:
+        "Só letras, números, ponto, traço e sublinhado; mínimo 3 caracteres se preencher. Deixe vazio para a plataforma gerar o nome.",
+      evolutionQrWebhookWarn:
+        "A instância foi criada, mas o webhook não foi confirmado na Evolution. Verifique os logs do servidor ou configure o webhook manualmente.",
       evolutionQrState: "Estado",
       evolutionQrConnected: "Ligado",
       evolutionQrNotConnected: "Aguarda leitura do QR",
@@ -1985,6 +1991,12 @@ export const messages = {
       evolutionQrError: "Could not get the QR. Please try again.",
       evolutionQrPairing: "Pairing code",
       evolutionQrInstance: "Instance",
+      evolutionQrInstanceNameLabel: "Instance name (optional)",
+      evolutionQrInstanceNamePlaceholder: "e.g. my-store (empty = automatic name)",
+      evolutionQrInstanceNameHint:
+        "Letters, numbers, dot, hyphen, underscore only; at least 3 characters if set. Leave empty for an auto-generated name.",
+      evolutionQrWebhookWarn:
+        "The instance was created, but the webhook could not be confirmed on Evolution. Check server logs or set the webhook manually.",
       evolutionQrState: "State",
       evolutionQrConnected: "Connected",
       evolutionQrNotConnected: "Waiting for QR scan",

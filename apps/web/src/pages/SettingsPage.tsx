@@ -134,6 +134,8 @@ export function SettingsPage() {
   const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
   const [evoQrBusy, setEvoQrBusy] = useState(false);
   const [evoQrError, setEvoQrError] = useState("");
+  const [evoQrNewInstanceName, setEvoQrNewInstanceName] = useState("");
+  const [evoQrWebhookWarn, setEvoQrWebhookWarn] = useState(false);
   const [evoQrDataUrl, setEvoQrDataUrl] = useState<string | null>(null);
   const [evoPairingCode, setEvoPairingCode] = useState<string | null>(null);
   const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
@@ -200,6 +202,8 @@ export function SettingsPage() {
       setEvoQrDataUrl(null);
       setEvoPairingCode(null);
       setEvoQrError("");
+      setEvoQrNewInstanceName("");
+      setEvoQrWebhookWarn(false);
     }
   }, [provider]);
 
@@ -303,6 +307,11 @@ export function SettingsPage() {
         setProvider(data.whatsappProvider ?? "");
         setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
         setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+        if (data.whatsappProvider === "evolution" && (data.evolutionPlatformQrMode ?? false)) {
+          setEvoQrNewInstanceName(data.whatsappPhoneNumberId ?? "");
+        } else {
+          setEvoQrNewInstanceName("");
+        }
         setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
@@ -735,6 +744,21 @@ export function SettingsPage() {
                             <h3 className="text-sm font-semibold text-gray-900">{t("settings.evolutionQrTitle")}</h3>
                             <p className="mt-1 text-xs text-gray-600">{t("settings.evolutionQrSubtitle")}</p>
                           </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-800">
+                              {t("settings.evolutionQrInstanceNameLabel")}
+                            </label>
+                            <input
+                              type="text"
+                              value={evoQrNewInstanceName}
+                              onChange={(e) => setEvoQrNewInstanceName(e.target.value)}
+                              disabled={evoQrBusy}
+                              placeholder={t("settings.evolutionQrInstanceNamePlaceholder")}
+                              autoComplete="off"
+                              className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                            />
+                            <p className="mt-1 text-xs text-gray-600">{t("settings.evolutionQrInstanceNameHint")}</p>
+                          </div>
                           {evoConnPoll ? (
                             <p className="text-sm text-gray-800">
                               <span className="font-medium">{t("settings.evolutionQrState")}:</span>{" "}
@@ -757,6 +781,11 @@ export function SettingsPage() {
                             <p className="text-xs text-gray-600">
                               <span className="font-medium text-gray-800">{t("settings.evolutionQrPairing")}:</span>{" "}
                               {evoPairingCode}
+                            </p>
+                          ) : null}
+                          {evoQrWebhookWarn ? (
+                            <p className="text-sm text-amber-800" role="status">
+                              {t("settings.evolutionQrWebhookWarn")}
                             </p>
                           ) : null}
                           {evoQrError ? (
