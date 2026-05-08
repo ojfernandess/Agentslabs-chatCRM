@@ -1433,6 +1433,15 @@ export function ConversationDetailPage() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
+            {agentBotTriageActive ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
+                title={t("conversationDetail.botTriageBanner")}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("conversationDetail.transferToBot")}
+              </span>
+            ) : null}
             {isOutsideWindow ? (
               <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
                 <AlertTriangle className="h-3.5 w-3.5" />

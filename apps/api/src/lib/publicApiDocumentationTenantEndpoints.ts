@@ -471,6 +471,40 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
   },
   {
     method: "GET",
+    path: "/api/v1/automations/tags",
+    auth: "session_jwt",
+    descriptionEn: "Automation helper endpoint: list tags for assigning labels by workflow.",
+    descriptionPt: "Endpoint auxiliar de automação: listar etiquetas para atribuição por workflow.",
+    examplePayloadPt: "Sem corpo. Resposta: { data: [{ id, name, color, ...}] }",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/automations/conversations/:id/tags",
+    auth: "session_jwt",
+    descriptionEn: "Automation endpoint to assign conversation labels (applies tags to the conversation contact).",
+    descriptionPt: "Endpoint de automação para atribuir etiquetas à conversa (aplica tags ao contacto da conversa).",
+    examplePayloadPt:
+      'POST application/json:\n{\n  "tagIds": ["<uuid-tag-1>", "<uuid-tag-2>"],\n  "mode": "replace"\n}\n(mode opcional: replace | add)',
+  },
+  {
+    method: "GET",
+    path: "/api/v1/automations/teams",
+    auth: "session_jwt",
+    descriptionEn: "Automation helper endpoint: list teams for routing workflows.",
+    descriptionPt: "Endpoint auxiliar de automação: listar equipas para workflows de roteamento.",
+    examplePayloadPt: "Sem corpo. Resposta: { data: [{ id, name, _count }] }",
+  },
+  {
+    method: "PATCH",
+    path: "/api/v1/automations/conversations/:id/team",
+    auth: "session_jwt",
+    descriptionEn: "Automation endpoint to assign/reassign conversation team and optional assignee.",
+    descriptionPt: "Endpoint de automação para atribuir/reatribuir equipa da conversa e atendente opcional.",
+    examplePayloadPt:
+      'PATCH application/json:\n{\n  "teamId": "<uuid-equipa-ou-null>",\n  "assignedToId": "<uuid-utilizador-ou-null-opcional>"\n}',
+  },
+  {
+    method: "GET",
     path: "/api/v1/bots",
     auth: "session_jwt_or_bot_bearer_readonly",
     descriptionEn:

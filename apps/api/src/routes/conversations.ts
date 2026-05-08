@@ -6,7 +6,7 @@ import type { JwtPayload } from "../middleware/auth.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
-import type { Prisma } from "@prisma/client";
+import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
@@ -101,6 +101,27 @@ function stripCsatSurveyToken<C extends { csatSurveyToken?: string | null; csatS
     csatSurveyPending:
       row.status === "RESOLVED" && csatSurveyToken != null && row.csatScore == null,
   } as Omit<C, "csatSurveyToken"> & { csatSurveyPending: boolean };
+}
+
+async function buildAgentBotTriageMapForInboxes(
+  organizationId: string,
+  rows: { inboxId: string; inbox?: { channelType?: string } | null }[],
+): Promise<Map<string, boolean>> {
+  const uniqueInboxIds = [...new Set(rows.map((r) => r.inboxId).filter(Boolean))];
+  const triageMap = new Map<string, boolean>();
+  for (const inboxId of uniqueInboxIds) {
+    const row = rows.find((r) => r.inboxId === inboxId);
+    const inboxChannelType =
+      row?.inbox?.channelType && typeof row.inbox.channelType === "string"
+        ? (row.inbox.channelType as InboxChannelType)
+        : ("WHATSAPP" as InboxChannelType);
+    const ctx = await getAgentBotDispatchContextForInbox(organizationId, inboxId);
+    triageMap.set(
+      inboxId,
+      computeAgentBotTriageActive(ctx, inboxChannelType),
+    );
+  }
+  return triageMap;
 }
 
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
@@ -236,7 +257,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactListSelect },
           assignedTo: { select: { id: true, name: true } },
           team: { select: { id: true, name: true } },
-          inbox: { select: { id: true, name: true, isDefault: true } },
+          inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
           leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1 },
         },
@@ -247,8 +268,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       prisma.conversation.count({ where }),
     ]);
 
+    const triageByInbox = await buildAgentBotTriageMapForInboxes(organizationId, data);
+
     return {
-      data: data.map((row) => stripCsatSurveyToken(row)),
+      data: data.map((row) => ({
+        ...stripCsatSurveyToken(row),
+        agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
+      })),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -321,7 +347,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactAuditSelect },
           assignedTo: { select: { id: true, name: true, email: true } },
           team: { select: { id: true, name: true } },
-          inbox: { select: { id: true, name: true, isDefault: true } },
+          inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
           leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         },
         orderBy: { updatedAt: "desc" },
@@ -331,8 +357,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       prisma.conversation.count({ where }),
     ]);
 
+    const triageByInbox = await buildAgentBotTriageMapForInboxes(organizationId, data);
+
     return {
-      data: data.map((row) => stripCsatSurveyToken(row)),
+      data: data.map((row) => ({
+        ...stripCsatSurveyToken(row),
+        agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
+      })),
       total,
       page: query.page,
       pageSize: query.pageSize,

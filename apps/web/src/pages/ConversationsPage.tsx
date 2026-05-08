@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
@@ -12,6 +12,7 @@ interface Conversation {
   id: string;
   status: string;
   updatedAt: string;
+  agentBotTriageActive?: boolean;
   closureValue?: number | null;
   contact: {
     id: string;
@@ -308,6 +309,15 @@ export function ConversationsPage() {
                         {conv.inbox ? (
                           <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200">
                             {conv.inbox.name}
+                          </span>
+                        ) : null}
+                        {conv.agentBotTriageActive ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200"
+                            title={t("conversationDetail.botTriageBanner")}
+                          >
+                            <Bot className="h-3 w-3" />
+                            {t("conversationDetail.transferToBot")}
                           </span>
                         ) : null}
                         {conv.status === "RESOLVED" && conv.leadType && (

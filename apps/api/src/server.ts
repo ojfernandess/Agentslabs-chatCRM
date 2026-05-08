@@ -34,6 +34,7 @@ import { inboxRoutes } from "./routes/inboxes.js";
 import { channelInboxPublicRoutes } from "./routes/channelInboxPublic.js";
 import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
+import { automationRoutes } from "./routes/automations.js";
 
 const app = Fastify({
   logger: {
@@ -106,6 +107,7 @@ await app.register(workspaceRoutes, { prefix: "/api/v1" });
 await app.register(teamRoutes, { prefix: "/api/v1/teams" });
 await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
 await app.register(botRoutes, { prefix: "/api/v1/bots" });
+await app.register(automationRoutes, { prefix: "/api/v1/automations" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check
