@@ -953,12 +953,13 @@ export function ConversationDetailPage() {
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
     Boolean(conversation.assignedTo?.id);
   const canTransfer = canResolve && teamOptions.length > 0;
+  const hasNoHumanAssignee = !conversation.assignedTo?.id;
   const inBotQueueOnly =
-    conversation.status === "PENDING" && !conversation.assignedTo?.id;
+    conversation.status === "PENDING" && hasNoHumanAssignee;
   const showTransferToBot =
     agentBotTriageActive &&
     conversation.status !== "RESOLVED" &&
-    !inBotQueueOnly;
+    !hasNoHumanAssignee;
   const canStartAttendance =
     Boolean(user?.id) &&
     !conversation.assignedTo?.id &&
@@ -1439,7 +1440,7 @@ export function ConversationDetailPage() {
                 title={t("conversationDetail.botTriageBanner")}
               >
                 <Bot className="h-3.5 w-3.5" />
-                {t("conversationDetail.transferToBot")}
+                {hasNoHumanAssignee ? t("conversationDetail.botInAttendance") : t("conversationDetail.transferToBot")}
               </span>
             ) : null}
             {isOutsideWindow ? (

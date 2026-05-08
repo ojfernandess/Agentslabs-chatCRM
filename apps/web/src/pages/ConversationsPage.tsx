@@ -317,7 +317,9 @@ export function ConversationsPage() {
                             title={t("conversationDetail.botTriageBanner")}
                           >
                             <Bot className="h-3 w-3" />
-                            {t("conversationDetail.transferToBot")}
+                            {!conv.assignedTo?.id
+                              ? t("conversationDetail.botInAttendance")
+                              : t("conversationDetail.transferToBot")}
                           </span>
                         ) : null}
                         {conv.status === "RESOLVED" && conv.leadType && (
