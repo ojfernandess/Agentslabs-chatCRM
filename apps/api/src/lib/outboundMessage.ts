@@ -138,7 +138,13 @@ export async function deliverOutboundWhatsAppMessage(options: {
     throw new Error("WhatsApp message templates are only supported for WhatsApp inboxes");
   }
 
-  if (!isPrivate && type !== "TEMPLATE" && inboxChannelType === "WHATSAPP") {
+  /** Janela de 24h é política da WhatsApp Cloud API (Meta / 360dialog / Twilio). Evolution API não aplica. */
+  const enforceWhatsapp24hSession =
+    inboxChannelType === "WHATSAPP" &&
+    providerKind !== "evolution" &&
+    (providerKind === "meta" || providerKind === "360dialog" || providerKind === "twilio" || providerKind == null);
+
+  if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession) {
     const lastInboundWhere =
       targetConversationId != null
         ? { conversationId: targetConversationId, direction: "INBOUND" as const }

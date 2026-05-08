@@ -459,9 +459,16 @@ export function ConversationDetailPage() {
     }
   };
 
-  const isOutsideWindow = lastInbound
-    ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24
-    : true;
+  /** Meta / 360dialog / Twilio seguem janela de sessão de 24h; Evolution API não. */
+  const applies24hSessionPolicy =
+    whatsappProvider === "meta" ||
+    whatsappProvider === "360dialog" ||
+    whatsappProvider === "twilio" ||
+    whatsappProvider == null;
+
+  const isOutsideWindow =
+    applies24hSessionPolicy &&
+    (lastInbound ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24 : true);
 
   const isWaba = whatsappProvider === "meta" || whatsappProvider === "360dialog";
 
