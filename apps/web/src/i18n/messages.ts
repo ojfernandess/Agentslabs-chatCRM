@@ -50,11 +50,16 @@ export const messages = {
       colPath: "Caminho",
       colDescription: "Descrição",
       colExample: "Exemplo (payload)",
+      authLegendTitle: "Guia rápido de autenticação",
+      authLegendBody:
+        "• JWT de sessão — POST /api/v1/auth/login com email e palavra-passe de utilizador ADMIN ou SUPER_ADMIN. Envie o campo `token` da resposta em Authorization: Bearer <jwt> nas rotas do painel (/api/v1/…).\n\n• Token do bot (ocb_) — gerado na página Bots («Gerar token da API»). Use Authorization: Bearer ocb_… em /api/v1/agent-bot/* (perfil, mensagens, conversas). Para só consultar o bot com esse token: GET /api/v1/bots (lista com um elemento) ou GET /api/v1/bots/<id deste bot>.\n\n• Criar, editar ou apagar bots, gerar novo ocb_ ou rotas administrativas de bot: apenas com JWT de admin, nunca só com ocb_.",
       auth: {
         none: "Nenhuma",
         session_jwt: "JWT de sessão (utilizador)",
+        session_jwt_or_bot_bearer_readonly:
+          "JWT ou ocb_ (só GET /api/v1/bots e GET /bots/:id)",
         super_admin_jwt: "JWT super admin",
-        agent_bot_bearer: "Bearer do bot (token da organização)",
+        agent_bot_bearer: "Bearer ocb_ (token de inbox do bot)",
         platform_app_bearer: "Bearer app de plataforma",
         path_ingest_token: "Token no path (ingestão)",
       },
@@ -448,7 +453,7 @@ export const messages = {
       botId: "ID do bot",
       copyBotId: "Copiar ID",
       botIdExplain:
-        "Cada bot tem um UUID único e estável (como no Chatwoot). Com só o token ocb_, outro sistema deve usar GET /api/v1/agent-bot/profile; GET /api/v1/bots exige JWT de login (ADMIN). Webhook: `agent_bot.id` / `agent_bot_id`.",
+        "Cada bot tem um UUID único (estilo Chatwoot). Com só o token ocb_: GET /api/v1/bots ou GET /api/v1/agent-bot/profile — não precisa de JWT. Para criar/editar bots use JWT de POST /api/v1/auth/login (ADMIN).",
     },
     login: {
       title: "OpenConduit",
@@ -1120,11 +1125,16 @@ export const messages = {
       colPath: "Path",
       colDescription: "Description",
       colExample: "Example (payload)",
+      authLegendTitle: "Authentication quick guide",
+      authLegendBody:
+        "• Session JWT — POST /api/v1/auth/login with an ADMIN or SUPER_ADMIN user email and password. Send the `token` field from the response as Authorization: Bearer <jwt> on /api/v1/… routes.\n\n• Bot token (ocb_) — issued from Settings → Bots («Generate inbox token»). Use Authorization: Bearer ocb_… on /api/v1/agent-bot/* (profile, messages, conversations). Read-only bot lookup with that token: GET /api/v1/bots (single item in `data`) or GET /api/v1/bots/<this bot’s id>.\n\n• Create/update/delete bots, mint a new ocb_, or admin bot routes: JWT only, not ocb_.",
       auth: {
         none: "None",
         session_jwt: "Session JWT (user)",
+        session_jwt_or_bot_bearer_readonly:
+          "JWT or ocb_ (GET /api/v1/bots and GET /bots/:id only)",
         super_admin_jwt: "Super admin JWT",
-        agent_bot_bearer: "Bot bearer (org-issued token)",
+        agent_bot_bearer: "Bearer ocb_ (bot inbox token)",
         platform_app_bearer: "Platform application bearer",
         path_ingest_token: "Secret token in path (ingest)",
       },
@@ -1515,7 +1525,7 @@ export const messages = {
       botId: "Bot ID",
       copyBotId: "Copy ID",
       botIdExplain:
-        "Each bot has a unique stable UUID (Chatwoot-style). With only the ocb_ token, integrations should call GET /api/v1/agent-bot/profile; GET /api/v1/bots requires an admin login JWT. Webhooks expose `agent_bot.id` / `agent_bot_id`.",
+        "Each bot has a unique UUID (Chatwoot-style). With only the ocb_ token: GET /api/v1/bots or GET /api/v1/agent-bot/profile — no JWT needed. To create/edit bots use JWT from POST /api/v1/auth/login (ADMIN).",
     },
     login: {
       title: "OpenConduit",

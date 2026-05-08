@@ -470,24 +470,24 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
   {
     method: "GET",
     path: "/api/v1/bots",
-    auth: "session_jwt",
+    auth: "session_jwt_or_bot_bearer_readonly",
     descriptionEn:
-      "List all agent bots for the authenticated tenant organization. Requires user session JWT from POST /api/v1/auth/login (ADMIN or SUPER_ADMIN); do not use the Agent Bot Bearer ocb_ token here — use GET /api/v1/agent-bot/profile for that. The AGENT role receives 403. Ordered by most recently updated. Sensitive fields are never returned — use inboxTokenConfigured and webhookSecretConfigured.",
+      "List agent bots. With user JWT (ADMIN/SUPER_ADMIN): all bots. With Bearer ocb_ (bot token): read-only, returns only that bot in `data` — use when an integrator has a single \"session/API\" field.",
     descriptionPt:
-      "Lista todos os bots da organização. Exige JWT de POST /api/v1/auth/login (ADMIN ou SUPER_ADMIN); não use Bearer ocb_ aqui — para isso use GET /api/v1/agent-bot/profile. O perfil AGENT recebe 403. Ordenado pelo mais recente. Sem segredos em claro — inboxTokenConfigured e webhookSecretConfigured.",
+      "Listar bots. Com JWT (ADMIN/SUPER_ADMIN): todos. Com Bearer ocb_: só leitura, devolve só esse bot em `data` — para integrações com um único campo de token/JWT.",
     examplePayloadPt:
-      'Autenticação: JWT de utilizador (resposta `token` de POST /api/v1/auth/login), cabeçalho Authorization: Bearer <jwt>. Não use o token ocb_ do bot aqui — para validar o token do bot use GET /api/v1/agent-bot/profile.\n\nSem corpo.\n\nGET /api/v1/bots\n\nResposta 200 application/json:\n{\n  "data": [\n    {\n      "id": "<uuid>",\n      "organizationId": "<uuid>",\n      "name": "Bot FAQ",\n      "description": null,\n      "avatarUrl": null,\n      "type": "WEBHOOK",\n      "webhookUrl": "https://...",\n      "config": null,\n      "isActive": true,\n      "inboxTokenConfigured": true,\n      "webhookSecretConfigured": false,\n      "createdAt": "...",\n      "updatedAt": "...",\n      "_count": { "interactions": 0 }\n    }\n  ]\n}',
+      'Opção A — JWT admin: Authorization: Bearer <token> de POST /api/v1/auth/login.\nOpção B — token do bot (só leitura): Authorization: Bearer ocb_... (resposta: `data` com um elemento).\n\nSem corpo.\n\nGET /api/v1/bots\n\nResposta 200 application/json:\n{\n  "data": [\n    {\n      "id": "<uuid>",\n      "organizationId": "<uuid>",\n      "name": "Bot FAQ",\n      "description": null,\n      "avatarUrl": null,\n      "type": "WEBHOOK",\n      "webhookUrl": "https://...",\n      "config": null,\n      "isActive": true,\n      "inboxTokenConfigured": true,\n      "webhookSecretConfigured": false,\n      "createdAt": "...",\n      "updatedAt": "...",\n      "_count": { "interactions": 0 }\n    }\n  ]\n}',
   },
   {
     method: "GET",
     path: "/api/v1/bots/:id",
-    auth: "session_jwt",
+    auth: "session_jwt_or_bot_bearer_readonly",
     descriptionEn:
-      "Fetch one bot by id scoped to the organization. Same JWT session auth as GET /api/v1/bots (not ocb_). Returns 404 if the id does not belong to this tenant.",
+      "Fetch one bot by id. JWT: admin/supervisor in tenant. Bearer ocb_: only if `id` is that bot's own id (read-only).",
     descriptionPt:
-      "Obter um bot pelo id no tenant. Mesmo JWT de sessão que GET /api/v1/bots (não use ocb_). 404 fora da organização.",
+      "Obter bot por id. JWT: admin no tenant. Bearer ocb_: só se o `id` no URL for o deste bot (leitura).",
     examplePayloadPt:
-      'Autenticação: JWT de POST /api/v1/auth/login (não use Bearer ocb_). Sem corpo.\n\nGET /api/v1/bots/<uuid-do-bot>\n\nResposta 200: um objeto bot (mesma forma que cada elemento de GET /api/v1/bots, sem segredos). 404 se não existir.',
+      'JWT: Authorization: Bearer <jwt de login>.\nOu só leitura: Authorization: Bearer ocb_... com GET /api/v1/bots/<uuid-deste-mesmo-bot>.\n\nSem corpo.\n\nGET /api/v1/bots/<uuid-do-bot>\n\nResposta 200: um objeto bot (mesma forma que cada elemento de GET /api/v1/bots, sem segredos). 404 se não existir.',
   },
   {
     method: "POST|PATCH|DELETE",
@@ -496,6 +496,6 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionEn: "Create, update, or delete bots; inbox tokens and interactions (admin for most writes).",
     descriptionPt: "Criar, atualizar ou apagar bots; tokens de inbox e interações (admin na maior parte dos writes).",
     examplePayloadPt:
-      'Autenticação nas operações acima: JWT de sessão (login ADMIN). O token ocb_ do bot não é aceite nestes paths — ver GET /api/v1/agent-bot/profile.\n\nPOST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nResposta 201: objeto do bot com `id` (UUID único e estável por bot, estilo Chatwoot).\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
+      'Autenticação: apenas JWT de sessão (login ADMIN). O token ocb_ não serve para POST/PATCH/DELETE aqui — só leitura em GET /api/v1/bots ou GET /api/v1/agent-bot/profile.\n\nPOST /api/v1/bots — application/json (admin):\n{\n  "name": "Bot FAQ",\n  "webhookUrl": "https://seu-servidor.com/agent-bot-webhook",\n  "type": "CUSTOM",\n  "isActive": true\n}\n\nResposta 201: objeto do bot com `id` (UUID único e estável por bot, estilo Chatwoot).\n\nPATCH /api/v1/bots/:id — campos parciais (admin).\n\nDELETE /api/v1/bots/:id — admin, 204.\n\nPOST /api/v1/bots/:id/inbox-token — gera token de inbox (admin).\n\nGET /api/v1/bots/:id/interactions — lista interações (admin).\n\nPOST /api/v1/bots/:id/interactions — registo de interação (admin):\n{\n  "direction": "INBOUND",\n  "payload": { "text": "..." },\n  "conversationId": "<uuid-opcional>"\n}',
   },
 ];

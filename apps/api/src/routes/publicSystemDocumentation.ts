@@ -26,12 +26,12 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
     }
 
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       noticeEn:
-        "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets.",
+        "This catalog lists routes and auth expectations only. It never includes tokens, organization IDs, or payloads with secrets. Two common credentials: (1) user JWT from POST /api/v1/auth/login for tenant APIs; (2) bot inbox token (Bearer ocb_...) for /api/v1/agent-bot/* and read-only GET /api/v1/bots.",
       noticePt:
-        "Este catálogo lista apenas rotas e requisitos de autenticação. Nunca inclui tokens, IDs de organização nem segredos.",
+        "Este catálogo lista rotas e autenticação. Nunca inclui tokens, IDs de organização nem segredos. Credenciais habituais: (1) JWT de utilizador (POST /api/v1/auth/login) para a API do painel; (2) token de inbox do bot (Bearer ocb_...) para /api/v1/agent-bot/* e GET /api/v1/bots (só leitura).",
       groups: PUBLIC_API_DOCUMENTATION_GROUPS,
     };
   });

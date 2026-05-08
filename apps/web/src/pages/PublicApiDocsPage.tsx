@@ -88,6 +88,12 @@ function accentForMethods(methods: string[]) {
   return (first && METHOD_ACCENTS[first]) || METHOD_FALLBACK;
 }
 
+function authPillLabel(authKey: string, t: (path: string) => string): string {
+  const full = `publicDocs.auth.${authKey}`;
+  const label = t(full);
+  return label === full ? authKey.replace(/_/g, " ") : label;
+}
+
 function MethodPills({ methods }: { methods: string[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -199,6 +205,12 @@ export function PublicApiDocsPage() {
               <p className="rounded-lg border border-ink-200/80 bg-white/60 px-4 py-3 text-sm leading-relaxed text-ink-700 shadow-sm dark:border-ink-700/80 dark:bg-ink-900/40 dark:text-ink-300">
                 {data.noticePt}
               </p>
+              <div className="rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-white px-4 py-4 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60">
+                <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.authLegendTitle")}</h2>
+                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-300">
+                  {tDoc("publicDocs.authLegendBody")}
+                </p>
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-ink-500 dark:text-ink-500">
                   {tDoc("publicDocs.generatedAt")}:{" "}
@@ -245,7 +257,7 @@ export function PublicApiDocsPage() {
                                   className="rounded-full bg-ink-200/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-700 dark:bg-ink-800 dark:text-ink-400"
                                   title={tDoc("publicDocs.authHeading")}
                                 >
-                                  {tDoc(`publicDocs.auth.${row.auth}`)}
+                                  {authPillLabel(row.auth, tDoc)}
                                 </span>
                               </div>
                               <code className="block break-all font-mono text-[13px] font-medium leading-snug text-ink-900 dark:text-ink-100">

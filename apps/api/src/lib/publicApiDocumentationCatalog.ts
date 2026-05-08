@@ -8,6 +8,7 @@ import { PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentat
 export type PublicApiDocAuth =
   | "none"
   | "session_jwt"
+  | "session_jwt_or_bot_bearer_readonly"
   | "super_admin_jwt"
   | "agent_bot_bearer"
   | "platform_app_bearer"
@@ -192,10 +193,12 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         method: "POST",
         path: "/api/v1/auth/login",
         auth: "none",
-        descriptionEn: "Sign in (returns JWT; do not log or expose tokens in client-side docs).",
-        descriptionPt: "Início de sessão (devolve JWT; não documentar tokens em exemplos públicos).",
+        descriptionEn:
+          "Sign in (returns `token` JWT in the body — use as Authorization: Bearer <token> on tenant routes; ADMIN/SUPER_ADMIN required for bot management).",
+        descriptionPt:
+          "Início de sessão (resposta com `token` — usar como Authorization: Bearer <token> nas rotas do tenant; gestão de bots exige ADMIN ou SUPER_ADMIN).",
         examplePayloadPt:
-          'POST application/json:\n{\n  "email": "usuario@exemplo.com",\n  "password": "<sua_senha>"\n}',
+          'POST application/json:\n{\n  "email": "usuario@exemplo.com",\n  "password": "<sua_senha>"\n}\n\nResposta 200: { "token": "<jwt>", "user": { ... } } — use o campo `token` em Authorization: Bearer <jwt> nas rotas autenticadas (utilizador ADMIN ou SUPER_ADMIN no tenant).',
       },
       {
         method: "POST",
@@ -266,18 +269,18 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
   {
     id: "agent_bot",
     titleEn: "Agent Bot HTTP API",
-    titlePt: "API HTTP do Agent Bot",
+      titlePt: "API HTTP do Agent Bot (Bearer ocb_)",
     endpoints: [
       {
         method: "GET",
         path: "/api/v1/agent-bot/profile",
         auth: "agent_bot_bearer",
         descriptionEn:
-          "Returns the bot for this inbox token — validate `ocb_...` and read `id` / `agent_bot_id` (Chatwoot-style: bot access token is not a user session). Do not use this token on `/api/v1/bots`; tenant CRUD requires JWT from `POST /api/v1/auth/login` (ADMIN/SUPER_ADMIN).",
+          "Returns the bot for this inbox token — validate `ocb_...` and read `id` / `agent_bot_id`. Same data shape as GET /api/v1/bots/:id when using a user JWT. For read-only list with only `ocb_`, you may also call GET /api/v1/bots (response `data` has one entry). Creating or mutating bots still requires admin JWT.",
         descriptionPt:
-          "Devolve o bot deste token de inbox — validar `ocb_...` e ler `id` / `agent_bot_id` (estilo Chatwoot: token do bot ≠ sessão de utilizador). Não use este token em `/api/v1/bots`; gestão de bots exige JWT de `POST /api/v1/auth/login` (ADMIN/SUPER_ADMIN).",
+          "Devolve o bot deste token de inbox — validar `ocb_...` e ler `id` / `agent_bot_id`. Mesmo formato que GET /api/v1/bots/:id com JWT de utilizador. Só com `ocb_` também pode usar GET /api/v1/bots (lista com um elemento em `data`). Criar ou alterar bots continua a exigir JWT de admin.",
         examplePayloadPt:
-          "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: dados públicos do bot (como GET /api/v1/bots/:id), com `agent_bot_id` igual ao `id`.\n\nSe o integrador chamar `/api/v1/bots` com Bearer ocb_, a API responde 401 com código `AGENT_BOT_TOKEN_NOT_ALLOWED` — use este GET /profile ou JWT de login para a operação certa.",
+          "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: dados públicos do bot (como GET /api/v1/bots/:id), com `agent_bot_id` igual ao `id`.\n\nAlternativa só leitura: GET /api/v1/bots com o mesmo cabeçalho — `data` contém apenas este bot.",
       },
       {
         method: "POST",

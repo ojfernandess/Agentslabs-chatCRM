@@ -12,12 +12,15 @@ Este documento descreve o fluxo **OpenConduit** para bots que respondem no Whats
 
 | Uso | Cabeçalho | Onde |
 |-----|-----------|------|
-| **Gestão de bots na API tenant** (listar, criar, `inbox-token`, etc.) | `Authorization: Bearer <JWT>` — campo `token` de **`POST /api/v1/auth/login`** com utilizador **ADMIN** ou **SUPER_ADMIN** no contexto da organização | `/api/v1/bots`, restantes rotas com `session_jwt` |
-| **Automação do bot** (respostas WhatsApp, handoff, validar token) | `Authorization: Bearer ocb_...` — token de inbox gerado na UI/API do bot | **`/api/v1/agent-bot/*`** apenas: `GET /profile`, `POST /messages`, `PATCH /conversations/:id` |
+| **Gestão de bots na API tenant** (criar, PATCH, apagar, `inbox-token`, interações) | `Authorization: Bearer <JWT>` — campo `token` de **`POST /api/v1/auth/login`** com utilizador **ADMIN** ou **SUPER_ADMIN** no contexto da organização | `POST/PATCH/DELETE /api/v1/bots`, etc. |
+| **Leitura do próprio bot na API `/bots`** (um único token no integrador) | `Authorization: Bearer ocb_...` | **`GET /api/v1/bots`** (resposta: um item na lista) ou **`GET /api/v1/bots/<uuid-do-bot>`** (o `uuid` tem de ser o deste bot) |
+| **Automação do bot** (respostas WhatsApp, handoff) | `Authorization: Bearer ocb_...` | **`/api/v1/agent-bot/*`**: `GET /profile`, `POST /messages`, `PATCH /conversations/:id` |
 
-Se um integrador enviar **`ocb_...`** em **`/api/v1/bots`** (ou noutra rota de sessão), a API responde **401** com `code: AGENT_BOT_TOKEN_NOT_ALLOWED` e mensagens em inglês e português (`message` / `messagePt`).
+Se um integrador enviar **`ocb_...`** num **POST/PATCH/DELETE** em **`/api/v1/bots`**, a API responde **401** com `code: AGENT_BOT_TOKEN_NOT_ALLOWED`.
 
-Para obter **`agent_bot_id`** e metadados **só com o token do bot**, use **`GET /api/v1/agent-bot/profile`** — não use `GET /api/v1/bots` com o mesmo Bearer.
+Para **listar todos os bots** ou **criar** bot, continue a usar **JWT** de login. O token **`ocb_`** em **GET** `/api/v1/bots` só devolve **o próprio** bot (compatível com sistemas que pedem “JWT” mas na prática aceitam o token gerado na UI do bot).
+
+Para obter **`agent_bot_id`** com o token do bot, pode usar **`GET /api/v1/agent-bot/profile`** ou **`GET /api/v1/bots`** com o mesmo Bearer.
 
 ## Entrada: webhook para o seu serviço
 
@@ -35,7 +38,7 @@ Implementação: `apps/api/src/lib/agentBotWebhook.ts`, chamada a partir de `app
 
 ## Saída: responder ao cliente
 
-- **Identidade / validar token do bot:** `GET /api/v1/agent-bot/profile` — mesmo `Authorization: Bearer ocb_<token>`; devolve `id`, `agent_bot_id`, nome, `organizationId`, etc. (use isto a partir de outro sistema em vez de `GET /api/v1/bots` com o mesmo Bearer).
+- **Identidade / validar token do bot:** `GET /api/v1/agent-bot/profile` **ou** `GET /api/v1/bots` com `Authorization: Bearer ocb_<token>` — resposta com um bot em `data` (integrações que só têm um campo “JWT”/API).
 - **Base:** `POST /api/v1/agent-bot/messages` — resposta `201` inclui `agent_bot_id` (UUID do bot que enviou).
 - **Autenticação:** `Authorization: Bearer ocb_<token>` (token mostrado na UI do bot).
 - **Corpo:** mesmo contrato de envio de mensagem que o painel usa (contacto/conversa, texto, anexos conforme `sendMessageSchema`).

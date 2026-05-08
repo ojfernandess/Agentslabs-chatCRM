@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { authenticate, authenticateSessionOrBotInboxForBotsRead, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { BotType, Prisma } from "@prisma/client";
 import { generateBotInboxTokenParts, hashBotInboxToken } from "../middleware/agentBotAuth.js";
@@ -40,9 +40,18 @@ const logInteractionSchema = z.object({
 });
 
 export async function botRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
+  app.get("/", { preHandler: [authenticateSessionOrBotInboxForBotsRead] }, async (request, reply) => {
+    if (request.agentBot) {
+      const row = await prisma.bot.findFirst({
+        where: { id: request.agentBot.id, organizationId: request.agentBot.organizationId },
+        include: { _count: { select: { interactions: true } } },
+      });
+      if (!row) {
+        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+      }
+      return { data: [sanitizeBot(row)] };
+    }
 
-  app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (request.user.role === "AGENT") {
@@ -82,7 +91,27 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(sanitizeBot(row));
   });
 
-  app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/:id", { preHandler: [authenticateSessionOrBotInboxForBotsRead] }, async (request, reply) => {
+    if (request.agentBot) {
+      if (request.params.id !== request.agentBot.id) {
+        return reply.status(403).send({
+          error: "Forbidden",
+          statusCode: 403,
+          message: "Agent bot token can only access GET /api/v1/bots/<own-bot-id>.",
+          messagePt:
+            "Com o token ocb_ só pode consultar o próprio bot: GET /api/v1/bots/<id-deste-bot> (o id deve coincidir com o do token).",
+        });
+      }
+      const row = await prisma.bot.findFirst({
+        where: { id: request.agentBot.id, organizationId: request.agentBot.organizationId },
+        include: { _count: { select: { interactions: true } } },
+      });
+      if (!row) {
+        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+      }
+      return sanitizeBot(row);
+    }
+
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (request.user.role === "AGENT") {
