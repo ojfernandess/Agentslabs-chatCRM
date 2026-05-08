@@ -310,6 +310,17 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: dados públicos do bot (como GET /api/v1/bots/:id), com `agent_bot_id` igual ao `id`.\n\nAlternativa só leitura: GET /api/v1/bots com o mesmo cabeçalho — `data` contém apenas este bot.",
       },
       {
+        method: "GET",
+        path: "/api/v1/agent-bot/teams",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "List organization teams for routing (same shape as GET /api/v1/automations/teams). Use team `id` when assigning a conversation via PATCH /api/v1/agent-bot/conversations/:id/team.",
+        descriptionPt:
+          "Listar equipas da organização para roteamento (mesmo formato que GET /api/v1/automations/teams). Use o `id` da equipa ao atribuir a conversa com PATCH /api/v1/agent-bot/conversations/:id/team.",
+        examplePayloadPt:
+          "Authorization: Bearer ocb_<token-do-bot>\n\nGET sem corpo.\n\nResposta 200: { \"data\": [ { \"id\": \"<uuid>\", \"name\": \"...\", \"description\": null, \"_count\": { \"members\": 3 } } ] }",
+      },
+      {
         method: "POST",
         path: "/api/v1/agent-bot/messages",
         auth: "agent_bot_bearer",
@@ -319,6 +330,17 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           "Mensagem de saída do bot configurado (Bearer do bot; não é JWT de utilizador).",
         examplePayloadPt:
           'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (mesmo schema que /api/v1/messages, sem isPrivate):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Resposta automática do bot"\n}\n\nResposta 201: { "message": {...}, "conversationId": "<uuid>", "agent_bot_id": "<uuid-do-bot>" }',
+      },
+      {
+        method: "PATCH",
+        path: "/api/v1/agent-bot/conversations/:id/team",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "Assign or clear the conversation team and optional assignee (same rules as PATCH /api/v1/automations/conversations/:id/team, but using the bot inbox token). `assignedToId` must be a member of `teamId` when both are set.",
+        descriptionPt:
+          "Atribuir ou limpar equipa da conversa e atendente opcional (mesmas regras que PATCH /api/v1/automations/conversations/:id/team, com token de inbox do bot). Se enviar ambos, `assignedToId` tem de pertencer a `teamId`.",
+        examplePayloadPt:
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPATCH application/json:\n{\n  "teamId": "<uuid-equipa-ou-null>",\n  "assignedToId": "<uuid-agente-opcional-ou-null>"\n}\n\n`assignedToId` pode ser omitido para não alterar o atendente.',
       },
       {
         method: "PATCH",

@@ -3,15 +3,14 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticateSessionOrUserApiTokenForApplicationApis } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import {
+  assignConversationTeamBodySchema,
+  assignConversationTeamForOrg,
+} from "../lib/conversationTeamAssignment.js";
 
 const assignConversationTagsSchema = z.object({
   tagIds: z.array(z.string().uuid()).min(1),
   mode: z.enum(["replace", "add"]).optional().default("replace"),
-});
-
-const assignConversationTeamSchema = z.object({
-  teamId: z.string().uuid().nullable(),
-  assignedToId: z.string().uuid().nullable().optional(),
 });
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -119,70 +118,23 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const parsed = assignConversationTeamSchema.safeParse(request.body);
+    const parsed = assignConversationTeamBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const conversation = await prisma.conversation.findFirst({
-      where: { id: request.params.id, organizationId },
-      select: { id: true, teamId: true },
+    const result = await assignConversationTeamForOrg(prisma, {
+      organizationId,
+      conversationId: request.params.id,
+      body: parsed.data,
     });
-    if (!conversation) {
-      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
-    }
-
-    if (parsed.data.teamId) {
-      const team = await prisma.team.findFirst({
-        where: { id: parsed.data.teamId, organizationId },
-        select: { id: true },
+    if (!result.ok) {
+      return reply.status(result.error.status).send({
+        error: result.error.status === 404 ? "Not Found" : "Bad Request",
+        message: result.error.message,
+        statusCode: result.error.status,
       });
-      if (!team) {
-        return reply.status(400).send({ error: "Bad Request", message: "Invalid teamId", statusCode: 400 });
-      }
     }
-
-    if (parsed.data.assignedToId) {
-      const assignee = await prisma.user.findFirst({
-        where: { id: parsed.data.assignedToId, organizationId },
-        select: { id: true },
-      });
-      if (!assignee) {
-        return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedToId", statusCode: 400 });
-      }
-      if (parsed.data.teamId) {
-        const member = await prisma.teamMember.findFirst({
-          where: { teamId: parsed.data.teamId, userId: parsed.data.assignedToId },
-          select: { userId: true },
-        });
-        if (!member) {
-          return reply.status(400).send({
-            error: "Bad Request",
-            message: "Assignee must be a member of teamId",
-            statusCode: 400,
-          });
-        }
-      }
-    }
-
-    const updated = await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: {
-        teamId: parsed.data.teamId,
-        ...(parsed.data.assignedToId !== undefined ? { assignedToId: parsed.data.assignedToId } : {}),
-      },
-      include: {
-        team: { select: { id: true, name: true } },
-        assignedTo: { select: { id: true, name: true } },
-      },
-    });
-
-    return {
-      id: updated.id,
-      teamId: updated.teamId,
-      assignedToId: updated.assignedToId,
-      team: updated.team,
-      assignedTo: updated.assignedTo,
-    };
+    return result.payload;
   });
 }

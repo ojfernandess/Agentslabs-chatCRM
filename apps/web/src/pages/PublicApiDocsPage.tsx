@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { translate } from "@/i18n/messages";
 
@@ -121,11 +121,127 @@ function findEndpoint(groups: PublicDocsPayload["groups"], path: string): Public
   return null;
 }
 
+function isAuthEndpointForBotAutomation(e: PublicEndpoint): boolean {
+  return e.path === "/api/v1/auth/login" || e.path === "/api/v1/auth/me/access-token";
+}
+
+function isTenantEndpointForBotAutomation(e: PublicEndpoint): boolean {
+  const p = e.path;
+  if (p.startsWith("/api/v1/automations")) return true;
+  if (p.startsWith("/api/v1/bots")) return true;
+  return (
+    p === "/api/v1/conversations" ||
+    p === "/api/v1/conversations/:id" ||
+    p === "/api/v1/messages" ||
+    p === "/api/v1/messages/upload-audio" ||
+    p === "/api/v1/messages/upload-media" ||
+    p === "/api/v1/tags" ||
+    p === "/api/v1/tags/:id" ||
+    p === "/api/v1/teams" ||
+    p === "/api/v1/inboxes" ||
+    p === "/api/v1/pipeline/board" ||
+    p === "/api/v1/pipeline/stages" ||
+    p === "/api/v1/pipeline/stages/:id" ||
+    p === "/api/v1/lead-types" ||
+    p === "/api/v1/lead-types/:id" ||
+    p === "/api/v1/contacts/:id/stage"
+  );
+}
+
+function buildBotAutomationGroups(data: PublicDocsPayload): PublicDocsPayload["groups"] {
+  const auth = data.groups.find((g) => g.id === "auth");
+  const tenant = data.groups.find((g) => g.id === "tenant_api");
+  const agentBot = data.groups.find((g) => g.id === "agent_bot");
+  const out: PublicDocsPayload["groups"] = [];
+  if (auth) {
+    const endpoints = auth.endpoints.filter(isAuthEndpointForBotAutomation);
+    if (endpoints.length)
+      out.push({
+        ...auth,
+        id: "auth_automation",
+        titlePt: "Login e token de perfil (integrações)",
+        endpoints,
+      });
+  }
+  if (agentBot?.endpoints.length) {
+    out.push(agentBot);
+  }
+  if (tenant) {
+    const endpoints = tenant.endpoints.filter(isTenantEndpointForBotAutomation);
+    if (endpoints.length)
+      out.push({
+        ...tenant,
+        id: "tenant_automation",
+        titlePt: "Tickets, gestão de bots, automação e funil CRM",
+        endpoints,
+      });
+  }
+  return out;
+}
+
+function DocsEndpointGroupSection({ g }: { g: PublicDocsPayload["groups"][number] }) {
+  return (
+    <section
+      id={`group-${g.id}`}
+      className="overflow-hidden rounded-lg border border-ink-200/90 bg-white shadow-md dark:border-ink-700/90 dark:bg-ink-900/80 dark:shadow-none"
+    >
+      <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:from-ink-900 dark:to-ink-900/50">
+        <h2 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">{g.titlePt}</h2>
+        <p className="mt-0.5 text-xs font-medium text-ink-500 dark:text-ink-500">
+          {g.endpoints.length} {g.endpoints.length === 1 ? "rota" : "rotas"}
+        </p>
+      </div>
+
+      <ul className="divide-y divide-ink-100 dark:divide-ink-800/80">
+        {g.endpoints.map((row, idx) => {
+          const methods = parseMethods(row.method);
+          const { bar } = accentForMethods(methods);
+          return (
+            <li key={`${g.id}-${idx}-${row.path}`} className={`border-l-4 ${bar} bg-ink-50/20 dark:bg-ink-950/20`}>
+              <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <MethodPills methods={methods} />
+                      <span
+                        className="rounded-full bg-ink-200/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-700 dark:bg-ink-800 dark:text-ink-400"
+                        title={tDoc("publicDocs.authHeading")}
+                      >
+                        {authPillLabel(row.auth, tDoc)}
+                      </span>
+                    </div>
+                    <code className="block break-all font-mono text-[13px] font-medium leading-snug text-ink-900 dark:text-ink-100">
+                      {row.path}
+                    </code>
+                  </div>
+                </div>
+                <p className="text-sm leading-relaxed text-ink-700 dark:text-ink-300">{row.descriptionPt}</p>
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-500">
+                      {tDoc("publicDocs.colExample")}
+                    </span>
+                    <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" aria-hidden />
+                  </div>
+                  <pre className="max-h-80 overflow-auto rounded-md border border-ink-200/80 bg-ink-900/[0.03] p-3 font-mono text-[11px] leading-relaxed text-ink-800 dark:border-ink-700 dark:bg-black/25 dark:text-ink-300">
+                    {row.examplePayloadPt?.trim() ? row.examplePayloadPt : "—"}
+                  </pre>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export function PublicApiDocsPage() {
   const [data, setData] = useState<PublicDocsPayload | null>(null);
   const [phase404, setPhase404] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [navMode, setNavMode] = useState<"bot_automation" | "full">("bot_automation");
 
   useEffect(() => {
     let cancelled = false;
@@ -163,11 +279,16 @@ export function PublicApiDocsPage() {
     ? {
         tokenGenerate: findEndpoint(data.groups, "/api/v1/auth/me/access-token"),
         ticketTags: findEndpoint(data.groups, "/api/v1/automations/conversations/:id/tags"),
+        automationTeams: findEndpoint(data.groups, "/api/v1/automations/teams"),
         ticketTeam: findEndpoint(data.groups, "/api/v1/automations/conversations/:id/team"),
+        agentBotTeams: findEndpoint(data.groups, "/api/v1/agent-bot/teams"),
+        agentBotConvTeam: findEndpoint(data.groups, "/api/v1/agent-bot/conversations/:id/team"),
         crmBoard: findEndpoint(data.groups, "/api/v1/pipeline/board"),
         crmLeadTypes: findEndpoint(data.groups, "/api/v1/lead-types"),
       }
     : null;
+
+  const botAutomationGroups = useMemo(() => (data ? buildBotAutomationGroups(data) : []), [data]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100">
@@ -249,14 +370,43 @@ export function PublicApiDocsPage() {
               </div>
             </div>
 
-            <div className="mt-8 grid gap-6 lg:grid-cols-[240px,minmax(0,1fr)]">
+            <div className="mt-8 grid gap-6 lg:grid-cols-[260px,minmax(0,1fr)]">
               <aside className="h-fit rounded-lg border border-ink-200/90 bg-white p-4 shadow-sm dark:border-ink-700/90 dark:bg-ink-900/80">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-500">Navegação</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Navegação</p>
+                <div className="mb-3 flex rounded-lg border border-ink-200/90 p-0.5 dark:border-ink-700">
+                  <button
+                    type="button"
+                    onClick={() => setNavMode("bot_automation")}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold leading-tight transition-colors ${
+                      navMode === "bot_automation"
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
+                    }`}
+                  >
+                    Bot &amp; automação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNavMode("full")}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold leading-tight transition-colors ${
+                      navMode === "full"
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
+                    }`}
+                  >
+                    Toda a API
+                  </button>
+                </div>
+                <p className="mb-2 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
+                  {navMode === "bot_automation"
+                    ? "Token de perfil, API do bot (perfil, equipas, mensagens, estado e equipa da conversa), automações /automations, bots admin, conversas, mensagens e funil."
+                    : "Todos os grupos publicados no JSON de sistema."}
+                </p>
                 <nav className="space-y-1.5">
                   <a className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-rapido">
                     Guia rápido
                   </a>
-                  {data.groups.map((g) => (
+                  {(navMode === "bot_automation" ? botAutomationGroups : data.groups).map((g) => (
                     <a
                       key={`nav-${g.id}`}
                       className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800"
@@ -275,9 +425,9 @@ export function PublicApiDocsPage() {
                 >
                   <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">Guia rápido para automação</h2>
                   <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">
-                    Fluxo recomendado para integrações externas: gerar token de perfil, automatizar tickets e integrar funil CRM.
+                    Fluxo recomendado: token de perfil ou bot (<code className="text-[11px]">ocb_</code>), listar equipas, atribuir conversa a equipa, etiquetas e funil CRM.
                   </p>
-                  <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
                       <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">1) Token do perfil</h3>
                       <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
@@ -289,19 +439,36 @@ export function PublicApiDocsPage() {
                       </pre>
                     </div>
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
-                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">2) Automatizar tickets</h3>
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">2) Automação (ocu_)</h3>
                       <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
-                        Use <code>api_access_token</code> para marcar etiquetas e atribuir time.
+                        Listar equipas, etiquetas e atribuir equipa ao ticket (admin no tenant).
                       </p>
                       <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
-{`curl -X POST "https://SEU_DOMINIO/api/v1/automations/conversations/<id>/tags" \\
-  -H "api_access_token: ocu_xxx" \\
-  -H "Content-Type: application/json" \\
-  -d '{"tagIds":["<uuid-tag>"],"mode":"add"}'`}
+{`curl "https://SEU_DOMINIO/api/v1/automations/teams" \\
+  -H "api_access_token: ocu_xxx"
+
+curl -X PATCH "https://SEU_DOMINIO/api/v1/automations/conversations/<id>/team" \\
+  -H "api_access_token: ocu_xxx" -H "Content-Type: application/json" \\
+  -d '{"teamId":"<uuid-equipa>"}'`}
                       </pre>
                     </div>
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
-                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">3) Funil CRM</h3>
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">3) Agent Bot (ocb_)</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Mesmas operações de equipa com o token de inbox do bot.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl "https://SEU_DOMINIO/api/v1/agent-bot/teams" \\
+  -H "Authorization: Bearer ocb_xxx"
+
+curl -X PATCH "https://SEU_DOMINIO/api/v1/agent-bot/conversations/<id>/team" \\
+  -H "Authorization: Bearer ocb_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"teamId":"<uuid-equipa>"}'`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">4) Funil CRM</h3>
                       <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
                         Consulte colunas e board para pipelines comerciais.
                       </p>
@@ -314,66 +481,17 @@ export function PublicApiDocsPage() {
                   <p className="mt-3 text-xs text-ink-500 dark:text-ink-400">
                     Endpoints-chave:{" "}
                     <code>{quickEndpoints?.ticketTags?.path ?? "/api/v1/automations/conversations/:id/tags"}</code>,{" "}
+                    <code>{quickEndpoints?.automationTeams?.path ?? "/api/v1/automations/teams"}</code>,{" "}
                     <code>{quickEndpoints?.ticketTeam?.path ?? "/api/v1/automations/conversations/:id/team"}</code>,{" "}
+                    <code>{quickEndpoints?.agentBotTeams?.path ?? "/api/v1/agent-bot/teams"}</code>,{" "}
+                    <code>{quickEndpoints?.agentBotConvTeam?.path ?? "/api/v1/agent-bot/conversations/:id/team"}</code>,{" "}
                     <code>{quickEndpoints?.crmBoard?.path ?? "/api/v1/pipeline/board"}</code>,{" "}
                     <code>{quickEndpoints?.crmLeadTypes?.path ?? "/api/v1/lead-types"}</code>.
                   </p>
                 </section>
 
-                {data.groups.map((g) => (
-                  <section
-                    id={`group-${g.id}`}
-                    key={g.id}
-                    className="overflow-hidden rounded-lg border border-ink-200/90 bg-white shadow-md dark:border-ink-700/90 dark:bg-ink-900/80 dark:shadow-none"
-                  >
-                    <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:from-ink-900 dark:to-ink-900/50">
-                      <h2 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">{g.titlePt}</h2>
-                      <p className="mt-0.5 text-xs font-medium text-ink-500 dark:text-ink-500">
-                        {g.endpoints.length} {g.endpoints.length === 1 ? "rota" : "rotas"}
-                      </p>
-                    </div>
-
-                    <ul className="divide-y divide-ink-100 dark:divide-ink-800/80">
-                      {g.endpoints.map((row, idx) => {
-                        const methods = parseMethods(row.method);
-                        const { bar } = accentForMethods(methods);
-                        return (
-                          <li key={`${g.id}-${idx}-${row.path}`} className={`border-l-4 ${bar} bg-ink-50/20 dark:bg-ink-950/20`}>
-                            <div className="flex flex-col gap-4 px-4 py-5 sm:px-5">
-                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-                                <div className="min-w-0 flex-1 space-y-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <MethodPills methods={methods} />
-                                    <span
-                                      className="rounded-full bg-ink-200/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-700 dark:bg-ink-800 dark:text-ink-400"
-                                      title={tDoc("publicDocs.authHeading")}
-                                    >
-                                      {authPillLabel(row.auth, tDoc)}
-                                    </span>
-                                  </div>
-                                  <code className="block break-all font-mono text-[13px] font-medium leading-snug text-ink-900 dark:text-ink-100">
-                                    {row.path}
-                                  </code>
-                                </div>
-                              </div>
-                              <p className="text-sm leading-relaxed text-ink-700 dark:text-ink-300">{row.descriptionPt}</p>
-                              <div>
-                                <div className="mb-2 flex items-center gap-2">
-                                  <span className="text-[11px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-500">
-                                    {tDoc("publicDocs.colExample")}
-                                  </span>
-                                  <span className="h-px flex-1 bg-ink-200 dark:bg-ink-800" aria-hidden />
-                                </div>
-                                <pre className="max-h-80 overflow-auto rounded-md border border-ink-200/80 bg-ink-900/[0.03] p-3 font-mono text-[11px] leading-relaxed text-ink-800 dark:border-ink-700 dark:bg-black/25 dark:text-ink-300">
-                                  {row.examplePayloadPt?.trim() ? row.examplePayloadPt : "—"}
-                                </pre>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </section>
+                {(navMode === "bot_automation" ? botAutomationGroups : data.groups).map((g) => (
+                  <DocsEndpointGroupSection key={g.id} g={g} />
                 ))}
               </div>
             </div>
