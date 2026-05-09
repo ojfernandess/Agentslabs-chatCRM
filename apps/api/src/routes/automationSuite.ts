@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
 import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
+import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -119,31 +120,7 @@ const customToolSchema = z.object({
 });
 
 function redactToolRow<T extends { config: unknown }>(row: T): T {
-  const cfg = row.config && typeof row.config === "object" ? { ...(row.config as Record<string, unknown>) } : {};
-  for (const k of [
-    "apiKey",
-    "api_key",
-    "accessToken",
-    "refreshToken",
-    "refresh_token",
-    "client_secret",
-    "password",
-    "smtpPassword",
-    "token",
-    "authToken",
-    "botToken",
-    "secretKey",
-    "bearerToken",
-    "apiKeyValue",
-    "basicPassword",
-    "customAuthValue",
-    "signingSecret",
-    "connectionString",
-    "credentialsJson",
-  ]) {
-    if (k in cfg && cfg[k]) (cfg as Record<string, unknown>)[k] = "***";
-  }
-  return { ...row, config: cfg } as T;
+  return { ...row, config: redactAutomationToolConfig(row.config) } as T;
 }
 
 function mergeToolConfig(existing: unknown, incoming: unknown): Record<string, unknown> {

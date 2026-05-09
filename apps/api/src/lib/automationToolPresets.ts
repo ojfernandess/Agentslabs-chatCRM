@@ -446,30 +446,11 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
     marketplace: { category: "MESSAGING", icon: "Phone", popularity: 85, accent: "from-red-500/20 to-rose-600/10" },
   },
   {
-    presetKey: "int_whatsapp_cloud",
-    category: "INTEGRATION_MARKETPLACE",
-    name: "WhatsApp",
-    description: "WhatsApp Cloud API (Meta). Token e Phone Number ID.",
-    toolType: "INTEGRATION",
-    parametersSchema: openAiObjectSchema({
-      to: { type: "string" },
-      message: { type: "string" },
-    }),
-    defaultConfig: {
-      presetKey: "int_whatsapp_cloud",
-      provider: "whatsapp_cloud",
-      accessToken: "",
-      phoneNumberId: "",
-      baseUrl: "https://graph.facebook.com",
-      executor: "openconduit_webhook",
-    },
-    marketplace: { category: "MESSAGING", icon: "MessageCircle", popularity: 96, accent: "from-green-500/25 to-emerald-700/10" },
-  },
-  {
     presetKey: "int_evolution_api",
     category: "INTEGRATION_MARKETPLACE",
     name: "Evolution API",
-    description: "Instância Evolution API (WhatsApp não oficial). URL da API e API key.",
+    description:
+      "Chamadas extra à API Evolution (ex.: envio programático). O canal WhatsApp da organização continua a ser configurado em Configurações — não duplique credenciais de canal aqui salvo necessidade de API auxiliar.",
     toolType: "INTEGRATION",
     parametersSchema: openAiObjectSchema({
       number: { type: "string" },

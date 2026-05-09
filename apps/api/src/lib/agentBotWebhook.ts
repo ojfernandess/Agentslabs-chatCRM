@@ -11,6 +11,7 @@ import type {
 } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
+import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -48,9 +49,11 @@ export function buildAgentBotWebhookPayload(input: {
   contact: Contact;
   message: Message;
   bot: Pick<Bot, "id" | "name" | "type" | "webhookUrl">;
+  /** Perfil de automação + ferramentas (config redigida) quando existe `AutomationAgentProfile` para o bot. */
+  automation?: Record<string, unknown> | null;
 }): Record<string, unknown> {
-  const { organizationId, inbox, conversation, contact, message, bot } = input;
-  return {
+  const { organizationId, inbox, conversation, contact, message, bot, automation } = input;
+  const base: Record<string, unknown> = {
     event: "message_created",
     version: "openconduit-v1",
     /** Alias Chatwoot-friendly (sempre igual a `agent_bot.id`). */
@@ -90,16 +93,21 @@ export function buildAgentBotWebhookPayload(input: {
       type: bot.type,
     },
   };
+  if (automation && typeof automation === "object" && Object.keys(automation).length > 0) {
+    base.automation = automation;
+  }
+  return base;
 }
 
 /** Payload de teste: mesma forma aninhada que `message_created` + `test: true` para o integrador ignorar. */
 export function buildAgentBotTestWebhookPayload(input: {
   organizationId: string;
   bot: Pick<Bot, "id" | "name" | "type">;
+  automation?: Record<string, unknown> | null;
 }): Record<string, unknown> {
-  const { organizationId, bot } = input;
+  const { organizationId, bot, automation } = input;
   const now = new Date().toISOString();
-  return {
+  const base: Record<string, unknown> = {
     event: "webhook_test",
     version: "openconduit-v1",
     test: true,
@@ -138,6 +146,10 @@ export function buildAgentBotTestWebhookPayload(input: {
       type: bot.type,
     },
   };
+  if (automation && typeof automation === "object" && Object.keys(automation).length > 0) {
+    base.automation = automation;
+  }
+  return base;
 }
 
 export type AgentBotTestWebhookResult = {
@@ -164,7 +176,8 @@ export async function deliverAgentBotTestWebhook(input: {
     return { ok: false, latencyMs: 0, error: "missing_webhook_url" };
   }
 
-  const bodyObj = buildAgentBotTestWebhookPayload({ organizationId, bot });
+  const automation = await loadAutomationWebhookBundle(organizationId, bot.id);
+  const bodyObj = buildAgentBotTestWebhookPayload({ organizationId, bot, automation });
   const rawBody = JSON.stringify(bodyObj);
   const deliveryId = randomUUID();
 
@@ -258,6 +271,7 @@ export async function dispatchAgentBotWebhook(input: {
     return;
   }
 
+  const automation = await loadAutomationWebhookBundle(organizationId, bot.id);
   const bodyObj = buildAgentBotWebhookPayload({
     organizationId,
     inbox,
@@ -265,6 +279,7 @@ export async function dispatchAgentBotWebhook(input: {
     contact,
     message,
     bot,
+    automation,
   });
   const rawBody = JSON.stringify(bodyObj);
 

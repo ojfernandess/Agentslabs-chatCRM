@@ -2394,7 +2394,6 @@ function IntegrationToolEditor({
       if (provider === "stripe") patch.secretKey = secret.trim();
       else if (provider === "slack") patch.botToken = secret.trim();
       else if (provider === "twilio") patch.authToken = secret.trim();
-      else if (provider === "whatsapp_cloud") patch.accessToken = secret.trim();
       else if (provider === "groq" || provider === "openai" || provider === "anthropic") patch.apiKey = secret.trim();
       else if (provider === "evolution_api") patch.apiKey = secret.trim();
       else if (provider === "chatwoot") patch.accessToken = secret.trim();
