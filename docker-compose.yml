@@ -33,7 +33,8 @@
 # Super admin no seed: SEED_SUPER_ADMIN=1 e SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD
 services:
   db:
-    image: postgres:16-alpine
+    # Imagem com extensão pgvector (busca semântica na KB). Ver migration 20260523140000_kb_chunks_pgvector.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: openconduit

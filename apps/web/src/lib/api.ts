@@ -118,6 +118,31 @@ class ApiClient {
     }
     return response.json();
   }
+
+  /** Multipart form (ex.: importar ficheiro na KB). Não enviar Content-Type — o browser define o boundary. */
+  async postMultipart<T>(path: string, form: FormData): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        message: response.statusText,
+      }));
+      throw new ApiError(
+        typeof (error as { message?: unknown }).message === "string"
+          ? (error as { message: string }).message
+          : "Request failed",
+        response.status,
+      );
+    }
+    return response.json() as Promise<T>;
+  }
 }
 
 export class ApiError extends Error {

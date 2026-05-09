@@ -15,6 +15,14 @@ import {
   callOpenAiCompatibleChat,
   type PreviewChatTurn,
 } from "../lib/promptModulePreviewLlm.js";
+import { queryTerms, rankArticles } from "../lib/knowledgeSearchRanking.js";
+import { rankedSemanticKnowledgeSearch } from "../lib/knowledgeSemanticSearch.js";
+import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
+import {
+  extractKnowledgeFileText,
+  titleFromFilename,
+  wrapIngestError,
+} from "../lib/knowledgeFileIngest.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -105,6 +113,49 @@ const knowledgeCreateSchema = z.object({
 });
 
 const knowledgePatchSchema = knowledgeCreateSchema.partial();
+
+function multipartBool(raw: string | undefined, defaultVal: boolean): boolean {
+  if (raw === undefined || raw === "") return defaultVal;
+  const s = raw.toLowerCase().trim();
+  if (s === "false" || s === "0" || s === "no") return false;
+  if (s === "true" || s === "1" || s === "yes") return true;
+  return defaultVal;
+}
+
+function parseMultipartUuidArray(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    throw new Error("botIds must be a JSON array of UUID strings");
+  }
+  if (!Array.isArray(v)) throw new Error("botIds must be a JSON array");
+  const ids: string[] = [];
+  for (const x of v) {
+    const id = String(x).trim();
+    if (!z.string().uuid().safeParse(id).success) {
+      throw new Error(`Invalid botId: ${id}`);
+    }
+    ids.push(id);
+  }
+  return ids;
+}
+
+function parseMultipartTags(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v
+      .map((x) => String(x).trim())
+      .filter(Boolean)
+      .map((s) => s.slice(0, 64))
+      .slice(0, 64);
+  } catch {
+    return [];
+  }
+}
 
 const promptModuleSchema = z.object({
   name: z.string().min(1).max(200),
@@ -217,6 +268,130 @@ const interactionCreateSchema = z.object({
 });
 
 const KB_CACHE_TTL_MS = 60 * 60 * 1000;
+
+type RankedKnowledgeRow = {
+  article: {
+    id: string;
+    title: string;
+    content: string;
+    category: string | null;
+    tags: string[];
+    isActive: boolean;
+    syncToAi: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    organizationId: string;
+  };
+  score: number;
+  excerpt: string;
+};
+
+async function rankedLexicalKnowledgeSearch(params: {
+  organizationId: string;
+  normalizedQuery: string;
+  botId: string | undefined;
+  limit: number;
+}): Promise<RankedKnowledgeRow[]> {
+  const { organizationId, normalizedQuery: norm, botId, limit } = params;
+  const terms = queryTerms(norm);
+  const orClause =
+    terms.length > 0
+      ? terms.flatMap((term) => [
+          { title: { contains: term, mode: "insensitive" as const } },
+          { content: { contains: term, mode: "insensitive" as const } },
+        ])
+      : [
+          { title: { contains: norm, mode: "insensitive" as const } },
+          { content: { contains: norm, mode: "insensitive" as const } },
+        ];
+
+  const whereBase = {
+    organizationId,
+    isActive: true,
+    syncToAi: true,
+    OR: orClause,
+  };
+  const where =
+    botId != null ? { ...whereBase, botLinks: { some: { botId } } } : whereBase;
+
+  let candidates = await prisma.automationKnowledgeArticle.findMany({
+    where,
+    take: 160,
+  });
+
+  if (candidates.length === 0 && terms.length > 1) {
+    const fbBase = {
+      organizationId,
+      isActive: true,
+      syncToAi: true,
+      OR: [
+        { title: { contains: norm, mode: "insensitive" as const } },
+        { content: { contains: norm, mode: "insensitive" as const } },
+      ],
+    };
+    const fbWhere = botId != null ? { ...fbBase, botLinks: { some: { botId } } } : fbBase;
+    candidates = await prisma.automationKnowledgeArticle.findMany({ where: fbWhere, take: 160 });
+  }
+
+  const ranked = rankArticles(candidates, norm);
+  return ranked.slice(0, limit).map((r) => ({
+    article: r.article,
+    score: r.score,
+    excerpt: r.excerpt,
+  }));
+}
+
+async function rankedKnowledgeSearch(params: {
+  organizationId: string;
+  normalizedQuery: string;
+  botId: string | undefined;
+  limit: number;
+}): Promise<{ ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" }> {
+  const { organizationId, normalizedQuery: norm, botId, limit } = params;
+  const hasKey = Boolean(config.openAiPromptPreviewKey);
+  const chunkCount = hasKey
+    ? await prisma.automationKnowledgeChunk.count({ where: { organizationId } })
+    : 0;
+
+  let semantic: RankedKnowledgeRow[] = [];
+  if (hasKey && chunkCount > 0) {
+    try {
+      semantic = await rankedSemanticKnowledgeSearch({
+        organizationId,
+        normalizedQuery: norm,
+        botId,
+        limit: Math.max(limit, 14),
+        apiKey: config.openAiPromptPreviewKey,
+        embeddingModel: config.openAiEmbeddingModel,
+      });
+    } catch {
+      semantic = [];
+    }
+  }
+
+  const lexical = await rankedLexicalKnowledgeSearch(params);
+
+  if (!semantic.length) {
+    return { ranked: lexical.slice(0, limit), mode: "lexical" };
+  }
+
+  const semTop = semantic.slice(0, limit);
+  const seen = new Set(semTop.map((r) => r.article.id));
+  const merged: RankedKnowledgeRow[] = [...semTop];
+  for (const r of lexical) {
+    if (merged.length >= limit) break;
+    if (!seen.has(r.article.id)) {
+      seen.add(r.article.id);
+      merged.push({
+        ...r,
+        score: Math.min(0.995, r.score * 0.42),
+      });
+    }
+  }
+
+  const mode: "semantic" | "hybrid" = merged.length > semTop.length ? "hybrid" : "semantic";
+  return { ranked: merged.slice(0, limit), mode };
+}
 
 export async function automationSuiteRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -338,7 +513,132 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       ip: clientIp(request),
     });
 
+    void reindexKnowledgeArticle(row.id).catch((err) => {
+      request.log.warn({ err, articleId: row.id }, "knowledge reindex failed");
+    });
+
     return { ...row, botIds: row.botLinks.map((l) => l.botId) };
+  });
+
+  app.post("/knowledge-articles/import-file", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    let fileBuf: Buffer | null = null;
+    let fileName = "upload";
+    let fileMime = "";
+    const fields: Record<string, string> = {};
+
+    try {
+      for await (const part of request.parts()) {
+        if (part.type === "file") {
+          fileBuf = await part.toBuffer();
+          fileName = part.filename || "upload";
+          fileMime = part.mimetype || "";
+        } else {
+          fields[part.fieldname] = String(part.value ?? "");
+        }
+      }
+    } catch (err) {
+      request.log.warn({ err }, "knowledge import multipart parse failed");
+      return reply.status(400).send({
+        error: "Bad Request",
+        code: "kb_import_multipart",
+        message: "Invalid multipart body",
+        statusCode: 400,
+      });
+    }
+
+    if (!fileBuf?.length) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        code: "kb_import_no_file",
+        message: "Expected one file field in multipart form",
+        statusCode: 400,
+      });
+    }
+
+    let extractedText: string;
+    let detectedMime: string;
+    try {
+      const ingested = await extractKnowledgeFileText({
+        buffer: fileBuf,
+        filename: fileName,
+        mimetype: fileMime,
+      });
+      extractedText = ingested.text;
+      detectedMime = ingested.mimeType;
+    } catch (e) {
+      const ke = wrapIngestError(e);
+      const status = ke.code === "unsupported_type" ? 415 : 400;
+      return reply.status(status).send({
+        error: status === 415 ? "Unsupported Media Type" : "Bad Request",
+        code: `kb_import_${ke.code}`,
+        message: ke.message,
+        statusCode: status,
+      });
+    }
+
+    let botIds: string[] = [];
+    try {
+      botIds = parseMultipartUuidArray(fields.botIds);
+    } catch (e) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: e instanceof Error ? e.message : "Invalid botIds",
+        statusCode: 400,
+      });
+    }
+
+    if (botIds.length > 0) {
+      const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
+      if (n !== botIds.length) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botIds", statusCode: 400 });
+      }
+    }
+
+    const titleRaw = fields.title?.trim();
+    const title = (titleRaw && titleRaw.length > 0 ? titleRaw : titleFromFilename(fileName)).slice(0, 500);
+    const category = fields.category?.trim() ? fields.category.trim().slice(0, 120) : null;
+    const tags = parseMultipartTags(fields.tags);
+    const isActive = multipartBool(fields.isActive, true);
+    const syncToAi = multipartBool(fields.syncToAi, true);
+
+    const row = await prisma.automationKnowledgeArticle.create({
+      data: {
+        organizationId,
+        title,
+        content: extractedText,
+        category,
+        tags,
+        isActive,
+        syncToAi,
+        sourceFileName: fileName.slice(0, 500),
+        sourceMimeType: (fileMime || detectedMime).slice(0, 160),
+        botLinks: botIds.length ? { create: botIds.map((botId) => ({ botId })) } : undefined,
+      },
+      include: { botLinks: { select: { botId: true } } },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge.import",
+      resourceType: "automation_knowledge_article",
+      resourceId: row.id,
+      ip: clientIp(request),
+    });
+
+    void reindexKnowledgeArticle(row.id).catch((err) => {
+      request.log.warn({ err, articleId: row.id }, "knowledge reindex failed");
+    });
+
+    const { botLinks, ...rest } = row;
+    return {
+      ...rest,
+      botIds: botLinks.map((l) => l.botId),
+      extractedChars: extractedText.length,
+    };
   });
 
   app.patch<{ Params: { id: string } }>("/knowledge-articles/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -423,6 +723,17 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       ip: clientIp(request),
     });
 
+    if (
+      parsed.data.content !== undefined ||
+      parsed.data.title !== undefined ||
+      parsed.data.syncToAi !== undefined ||
+      parsed.data.isActive !== undefined
+    ) {
+      void reindexKnowledgeArticle(row.id).catch((err) => {
+        request.log.warn({ err, articleId: row.id }, "knowledge reindex failed");
+      });
+    }
+
     return { ...row, botIds: row.botLinks.map((l) => l.botId) };
   });
 
@@ -468,6 +779,284 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     return { data: revs };
   });
 
+  app.post<{ Params: { id: string } }>("/knowledge-articles/:id/reindex", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const article = await prisma.automationKnowledgeArticle.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true },
+    });
+    if (!article) {
+      return reply.status(404).send({ error: "Not Found", message: "Article not found", statusCode: 404 });
+    }
+    try {
+      const result = await reindexKnowledgeArticle(article.id);
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "reindex failed";
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        code: "kb_reindex_failed",
+        message: msg.slice(0, 1500),
+        statusCode: 502,
+      });
+    }
+  });
+
+  app.post("/knowledge-articles/reindex-organization", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    try {
+      const summary = await reindexAllKnowledgeArticlesForOrg(organizationId);
+      return summary;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "reindex failed";
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        code: "kb_reindex_org_failed",
+        message: msg.slice(0, 1500),
+        statusCode: 502,
+      });
+    }
+  });
+
+  app.get("/knowledge-articles/hub-metrics", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+
+    const articles = await prisma.automationKnowledgeArticle.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        tags: true,
+        isActive: true,
+        syncToAi: true,
+        content: true,
+        updatedAt: true,
+        sourceFileName: true,
+      },
+    });
+
+    const totalDocuments = articles.length;
+    const activeDocuments = articles.filter((a) => a.isActive).length;
+    const syncEnabled = articles.filter((a) => a.syncToAi).length;
+    let totalChars = 0;
+    for (const a of articles) totalChars += a.content.length;
+    const estimatedTokens = Math.round(totalChars / 4);
+    const chunkSize = 1500;
+    let estimatedChunks = 0;
+    for (const a of articles) estimatedChunks += Math.max(1, Math.ceil(a.content.length / chunkSize));
+
+    const lastUpdatedAt =
+      articles.length === 0
+        ? null
+        : new Date(Math.max(...articles.map((a) => a.updatedAt.getTime()))).toISOString();
+
+    const weekAgo = new Date(Date.now() - 7 * 86400000);
+    const logs = await prisma.kbSearchLog.findMany({
+      where: { organizationId, createdAt: { gte: weekAgo } },
+      orderBy: { createdAt: "desc" },
+      take: 2500,
+    });
+
+    const queryAgg = new Map<string, { count: number; resultsSum: number; zeroHits: number }>();
+    for (const log of logs) {
+      const q = log.queryNormalized;
+      const cur = queryAgg.get(q) ?? { count: 0, resultsSum: 0, zeroHits: 0 };
+      cur.count += 1;
+      cur.resultsSum += log.resultsCount;
+      if (log.resultsCount === 0) cur.zeroHits += 1;
+      queryAgg.set(q, cur);
+    }
+
+    const topQueries = [...queryAgg.entries()]
+      .map(([query, v]) => ({
+        query,
+        count: v.count,
+        avgResults: v.count ? v.resultsSum / v.count : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const searchesWeek = logs.length;
+    const successfulSearches = logs.filter((l) => l.resultsCount > 0).length;
+    const searchSuccessRate = searchesWeek === 0 ? null : successfulSearches / searchesWeek;
+
+    const categories = [...new Set(articles.map((a) => a.category).filter((c): c is string => Boolean(c?.trim())))].sort();
+
+    const indexedChunks = await prisma.automationKnowledgeChunk.count({ where: { organizationId } });
+    const sampleChunk = await prisma.automationKnowledgeChunk.findFirst({
+      where: { organizationId },
+      select: { embeddingModel: true },
+    });
+
+    return {
+      totalDocuments,
+      activeDocuments,
+      syncEnabled,
+      estimatedTokens,
+      estimatedChunks,
+      indexedChunks,
+      embeddingModel: sampleChunk?.embeddingModel ?? null,
+      semanticSearchReady: indexedChunks > 0 && Boolean(config.openAiPromptPreviewKey),
+      lastUpdatedAt,
+      searchesWeek,
+      searchSuccessRate,
+      topQueries,
+      categories,
+      documentsPreview: articles
+        .slice()
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .slice(0, 8)
+        .map((a) => ({
+          id: a.id,
+          title: a.title,
+          category: a.category,
+          tags: a.tags,
+          isActive: a.isActive,
+          syncToAi: a.syncToAi,
+          updatedAt: a.updatedAt.toISOString(),
+          sourceFileName: a.sourceFileName,
+          estimatedChunks: Math.max(1, Math.ceil(a.content.length / chunkSize)),
+          estimatedTokens: Math.round(a.content.length / 4),
+        })),
+    };
+  });
+
+  const kbPlaygroundSchema = z.object({
+    query: z.string().min(1).max(500),
+    botId: z.string().uuid().optional().nullable(),
+    provider: z.enum(["openai", "google_gemini"]),
+    model: z.string().min(1).max(120),
+    temperature: z.number().min(0).max(2).optional().default(0.35),
+    maxTokens: z.number().int().min(64).max(4096).optional().default(900),
+    maxContextChars: z.number().int().min(800).max(48_000).optional().default(14_000),
+    apiBaseUrl: z.string().max(2000).optional().nullable(),
+    apiKey: z.string().max(4000).optional().nullable(),
+    topK: z.number().int().min(1).max(12).optional().default(6),
+  });
+
+  app.post("/knowledge-articles/playground", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = kbPlaygroundSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const body = parsed.data;
+    const norm = body.query.trim().toLowerCase().slice(0, 500);
+    const botId = body.botId ?? undefined;
+
+    let apiKey = body.apiKey?.trim() ?? "";
+    if (body.provider === "openai") {
+      if (!apiKey) apiKey = config.openAiPromptPreviewKey;
+    } else if (!apiKey) {
+      apiKey = config.geminiPromptPreviewKey;
+    }
+    if (!apiKey) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        code: "kb_playground_no_api_key",
+        message: "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY).",
+        statusCode: 400,
+      });
+    }
+
+    const { ranked, mode: retrievalMode } = await rankedKnowledgeSearch({
+      organizationId,
+      normalizedQuery: norm,
+      botId,
+      limit: body.topK,
+    });
+
+    const sources = ranked.map((r) => ({
+      id: r.article.id,
+      title: r.article.title,
+      score: Math.round(r.score * 1000) / 1000,
+      excerpt: r.excerpt,
+    }));
+
+    let contextChars = 0;
+    const blocks: string[] = [];
+    const maxCtx = body.maxContextChars;
+    for (const r of ranked) {
+      const header = `[${r.article.title}]\n`;
+      const chunk = `${header}${r.article.content.slice(0, 6000)}`;
+      if (contextChars + chunk.length > maxCtx) break;
+      blocks.push(chunk);
+      contextChars += chunk.length;
+    }
+
+    const systemPrompt = `És um assistente que responde APENAS com base nos trechos da base de conhecimento abaixo. Se não houver informação suficiente, diz-o claramente em uma frase. Cita o título do documento quando usares um trecho. Responde no mesmo idioma da pergunta do utilizador.\n\n---\n${blocks.join("\n\n---\n")}`;
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90_000);
+    const started = Date.now();
+    try {
+      let answer: string;
+      if (body.provider === "openai") {
+        const baseUrl = (body.apiBaseUrl?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+        try {
+          assertHttpUrlAllowed(baseUrl);
+        } catch (e) {
+          clearTimeout(timer);
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: e instanceof Error ? e.message : "Invalid API base URL",
+            statusCode: 400,
+          });
+        }
+        const res = await callOpenAiCompatibleChat({
+          baseUrl,
+          apiKey,
+          model: body.model,
+          temperature: body.temperature,
+          maxTokens: body.maxTokens,
+          system: systemPrompt,
+          history: [],
+          userMessage: body.query.trim(),
+          signal: ctrl.signal,
+        });
+        answer = res.text;
+      } else {
+        const res = await callGeminiGenerateContent({
+          apiKey,
+          model: body.model,
+          temperature: body.temperature,
+          maxTokens: body.maxTokens,
+          system: systemPrompt,
+          history: [],
+          userMessage: body.query.trim(),
+          signal: ctrl.signal,
+        });
+        answer = res.text;
+      }
+      clearTimeout(timer);
+      return {
+        answer,
+        sources,
+        retrievalMode,
+        latencyMs: Date.now() - started,
+        contextChars,
+      };
+    } catch (err) {
+      clearTimeout(timer);
+      const aborted = err instanceof Error && err.name === "AbortError";
+      const msg = err instanceof Error ? err.message : "LLM request failed";
+      return reply.status(aborted ? 504 : 502).send({
+        error: aborted ? "Gateway Timeout" : "Bad Gateway",
+        code: aborted ? "kb_playground_timeout" : "kb_playground_llm_error",
+        message: msg.slice(0, 1500),
+        statusCode: aborted ? 504 : 502,
+      });
+    }
+  });
+
   const searchBodySchema = z.object({
     query: z.string().min(1).max(500),
     botId: z.string().uuid().optional(),
@@ -486,7 +1075,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     }
 
     const norm = parsed.data.query.trim().toLowerCase().slice(0, 500);
-    const hash = createHash("sha256").update(`${organizationId}:${norm}`).digest("hex");
+    const botKey = parsed.data.botId ?? "";
+    const semanticActive =
+      Boolean(config.openAiPromptPreviewKey) &&
+      (await prisma.automationKnowledgeChunk.count({ where: { organizationId } })) > 0;
+    const hash = createHash("sha256")
+      .update(`${organizationId}:${norm}:${botKey}:${semanticActive ? "sem" : "lex"}`)
+      .digest("hex");
     const now = new Date();
 
     const cached = await prisma.kbSearchCache.findUnique({
@@ -501,39 +1096,37 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const articles = await prisma.automationKnowledgeArticle.findMany({
         where: { id: { in: ids }, organizationId },
       });
+      const byId = new Map(articles.map((a) => [a.id, a]));
+      const ordered = ids.map((id) => byId.get(id)).filter((a): a is NonNullable<typeof a> => Boolean(a));
+      const rankedRows = ordered.map((article) => rankArticles([article], norm)[0]);
       await prisma.kbSearchLog.create({
         data: {
           organizationId,
           queryNormalized: norm,
-          resultsCount: articles.length,
+          resultsCount: rankedRows.length,
           actorUserId: request.user.id,
         },
       });
-      return { cached: true, data: articles };
+      return {
+        cached: true,
+        searchMode: "cached" as const,
+        data: rankedRows.map((r) => r.article),
+        ranking: rankedRows.map((r) => ({
+          id: r.article.id,
+          score: Math.round(r.score * 1000) / 1000,
+          excerpt: r.excerpt,
+        })),
+      };
     }
 
-    const whereBase = {
+    const { ranked, mode: searchMode } = await rankedKnowledgeSearch({
       organizationId,
-      isActive: true,
-      syncToAi: true,
-      OR: [
-        { title: { contains: norm, mode: "insensitive" as const } },
-        { content: { contains: norm, mode: "insensitive" as const } },
-      ],
-    };
-
-    const where =
-      parsed.data.botId != null
-        ? { ...whereBase, botLinks: { some: { botId: parsed.data.botId } } }
-        : whereBase;
-
-    const articles = await prisma.automationKnowledgeArticle.findMany({
-      where,
-      take: 25,
-      orderBy: { updatedAt: "desc" },
+      normalizedQuery: norm,
+      botId: parsed.data.botId,
+      limit: 25,
     });
 
-    const articleIds = articles.map((a) => a.id);
+    const articleIds = ranked.map((r) => r.article.id);
     const exp = new Date(Date.now() + KB_CACHE_TTL_MS);
     await prisma.kbSearchCache.upsert({
       where: { organizationId_queryHash: { organizationId, queryHash: hash } },
@@ -554,12 +1147,21 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       data: {
         organizationId,
         queryNormalized: norm,
-        resultsCount: articles.length,
+        resultsCount: ranked.length,
         actorUserId: request.user.id,
       },
     });
 
-    return { cached: false, data: articles };
+    return {
+      cached: false,
+      searchMode,
+      data: ranked.map((r) => r.article),
+      ranking: ranked.map((r) => ({
+        id: r.article.id,
+        score: Math.round(r.score * 1000) / 1000,
+        excerpt: r.excerpt,
+      })),
+    };
   });
 
   app.get("/prompt-modules", async (request, reply) => {

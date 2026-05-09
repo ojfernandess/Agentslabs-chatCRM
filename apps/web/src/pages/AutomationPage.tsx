@@ -20,6 +20,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { api } from "@/lib/api";
 import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
+import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import type { PromptModuleRow } from "@/pages/automation/promptHubTypes";
 
@@ -117,6 +118,10 @@ interface KnowledgeArticle {
   isActive: boolean;
   syncToAi: boolean;
   botIds?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  sourceFileName?: string | null;
+  sourceMimeType?: string | null;
 }
 
 interface DashboardPayload {
@@ -420,8 +425,6 @@ export function AutomationPage() {
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [bots, setBots] = useState<BotRow[]>([]);
   const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
-  const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<KnowledgeArticle[] | null>(null);
   const [prompts, setPrompts] = useState<PromptModuleRow[]>([]);
   const [tools, setTools] = useState<AutomationCustomToolRow[]>([]);
   const [toolPresets, setToolPresets] = useState<ToolPresetMeta[]>([]);
@@ -435,17 +438,6 @@ export function AutomationPage() {
       bot: { name: string };
     }>
   >([]);
-
-  const [kbForm, setKbForm] = useState({
-    id: "" as string | null,
-    title: "",
-    content: "",
-    category: "",
-    tags: "",
-    isActive: true,
-    syncToAi: true,
-    botIds: [] as string[],
-  });
 
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
@@ -576,75 +568,6 @@ export function AutomationPage() {
       </PageTransition>
     );
   }
-
-  const saveKb = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const tags = kbForm.tags
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (kbForm.id) {
-        await api.patch(`/automation/knowledge-articles/${kbForm.id}`, {
-          title: kbForm.title,
-          content: kbForm.content,
-          category: kbForm.category || null,
-          tags,
-          isActive: kbForm.isActive,
-          syncToAi: kbForm.syncToAi,
-          botIds: kbForm.botIds,
-        });
-      } else {
-        await api.post("/automation/knowledge-articles", {
-          title: kbForm.title,
-          content: kbForm.content,
-          category: kbForm.category || null,
-          tags,
-          isActive: kbForm.isActive,
-          syncToAi: kbForm.syncToAi,
-          botIds: kbForm.botIds,
-        });
-      }
-      setKbForm({
-        id: null,
-        title: "",
-        content: "",
-        category: "",
-        tags: "",
-        isActive: true,
-        syncToAi: true,
-        botIds: [],
-      });
-      await loadKnowledge();
-    } catch {
-      setError("load_failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteKb = async (id: string) => {
-    if (!window.confirm("Delete this article?")) return;
-    await api.delete(`/automation/knowledge-articles/${id}`);
-    await loadKnowledge();
-  };
-
-  const runSearch = async () => {
-    if (!searchQ.trim()) return;
-    setLoading(true);
-    try {
-      const res = await api.post<{ data: KnowledgeArticle[] }>("/automation/knowledge-articles/search", {
-        query: searchQ.trim(),
-        botId: kbForm.botIds[0] || undefined,
-      });
-      setSearchResults(res.data);
-    } catch {
-      setError("load_failed");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const openNewAgentModal = () => {
     setAgentForm(emptyAgentForm());
@@ -862,7 +785,9 @@ export function AutomationPage() {
               ? t("automationPage.agentValidation")
               : error === "prompt_validation"
                 ? t("automationPage.promptValidation")
-                : t("automationPage.loadError")}
+                : error === "load_failed"
+                  ? t("automationPage.loadError")
+                  : error}
           </div>
         ) : null}
 
@@ -925,169 +850,15 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "knowledge" ? (
-          <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-              <input
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                placeholder={t("automationPage.kbSearchPlaceholder")}
-                className="min-w-[200px] flex-1 rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-              />
-              <button
-                type="button"
-                onClick={() => void runSearch()}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-              >
-                {t("automationPage.kbSearch")}
-              </button>
-            </div>
-            {searchResults ? (
-              <div className="rounded-xl border border-ink-200 p-4 dark:border-ink-800">
-                <p className="text-xs font-semibold text-ink-500">Results ({searchResults.length})</p>
-                <ul className="mt-2 space-y-2">
-                  {searchResults.map((a) => (
-                    <li key={a.id} className="text-sm">
-                      <span className="font-medium">{a.title}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
-              <h3 className="text-sm font-semibold">{kbForm.id ? t("automationPage.kbEdit") : t("automationPage.kbNew")}</h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium text-ink-600 dark:text-ink-400">
-                  {t("automationPage.kbTitle")}
-                  <input
-                    value={kbForm.title}
-                    onChange={(e) => setKbForm((f) => ({ ...f, title: e.target.value }))}
-                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900"
-                  />
-                </label>
-                <label className="text-xs font-medium text-ink-600 dark:text-ink-400">
-                  {t("automationPage.kbCategory")}
-                  <input
-                    value={kbForm.category}
-                    onChange={(e) => setKbForm((f) => ({ ...f, category: e.target.value }))}
-                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900"
-                  />
-                </label>
-              </div>
-              <label className="mt-3 block text-xs font-medium text-ink-600 dark:text-ink-400">
-                {t("automationPage.kbContent")}
-                <textarea
-                  value={kbForm.content}
-                  onChange={(e) => setKbForm((f) => ({ ...f, content: e.target.value }))}
-                  rows={5}
-                  className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900"
-                />
-              </label>
-              <label className="mt-3 block text-xs font-medium text-ink-600 dark:text-ink-400">
-                {t("automationPage.kbTags")}
-                <input
-                  value={kbForm.tags}
-                  onChange={(e) => setKbForm((f) => ({ ...f, tags: e.target.value }))}
-                  className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900"
-                />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-4">
-                <label className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={kbForm.isActive}
-                    onChange={(e) => setKbForm((f) => ({ ...f, isActive: e.target.checked }))}
-                  />
-                  {t("automationPage.kbActive")}
-                </label>
-                <label className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={kbForm.syncToAi}
-                    onChange={(e) => setKbForm((f) => ({ ...f, syncToAi: e.target.checked }))}
-                  />
-                  {t("automationPage.kbSyncAi")}
-                </label>
-              </div>
-              <fieldset className="mt-3">
-                <legend className="text-xs font-medium text-ink-600 dark:text-ink-400">{t("automationPage.kbBots")}</legend>
-                <div className="mt-1 flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-ink-100 p-2 dark:border-ink-700">
-                  {bots.map((b) => (
-                    <label key={b.id} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={kbForm.botIds.includes(b.id)}
-                        onChange={(e) => {
-                          setKbForm((f) => ({
-                            ...f,
-                            botIds: e.target.checked
-                              ? [...f.botIds, b.id]
-                              : f.botIds.filter((id) => id !== b.id),
-                          }));
-                        }}
-                      />
-                      {b.name}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <button
-                type="button"
-                onClick={() => void saveKb()}
-                disabled={loading || !kbForm.title.trim() || !kbForm.content.trim()}
-                className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {t("automationPage.kbSave")}
-              </button>
-            </div>
-
-            <div className="rounded-xl border border-ink-200 dark:border-ink-800">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-ink-200 bg-ink-50 dark:border-ink-700 dark:bg-ink-800/50">
-                    <th className="px-3 py-2">Title</th>
-                    <th className="px-3 py-2">Active</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {articles.map((a) => (
-                    <tr key={a.id} className="border-b border-ink-100 dark:border-ink-800">
-                      <td className="px-3 py-2">{a.title}</td>
-                      <td className="px-3 py-2">{a.isActive ? "yes" : "no"}</td>
-                      <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          className="text-brand-600 text-xs font-medium"
-                          onClick={() =>
-                            setKbForm({
-                              id: a.id,
-                              title: a.title,
-                              content: a.content,
-                              category: a.category ?? "",
-                              tags: (a.tags ?? []).join(", "),
-                              isActive: a.isActive,
-                              syncToAi: a.syncToAi,
-                              botIds: a.botIds ?? [],
-                            })
-                          }
-                        >
-                          {t("automationPage.kbEdit")}
-                        </button>
-                        <button
-                          type="button"
-                          className="ml-2 text-red-600 text-xs"
-                          onClick={() => void deleteKb(a.id)}
-                        >
-                          {t("automationPage.kbDelete")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <AutomationKnowledgeHub
+            t={t}
+            loading={loading}
+            setLoading={setLoading}
+            setError={setError}
+            bots={bots}
+            articles={articles}
+            onRefresh={loadKnowledge}
+          />
         ) : null}
 
         {tab === "agents" ? (

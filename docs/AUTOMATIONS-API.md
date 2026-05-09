@@ -167,4 +167,26 @@ Autenticação OpenConduit (resumo):
    URL base correcta, e que não está a enviar ocb_ ou JWT no campo do ocu_ por engano.
 ```
 
-**Nota:** avisos do tipo *«ocu_ não pode ser Bearer»* ou *«lead-types exige só JWT»* estão **errados** para instâncias OpenConduit com as alterações de 2026 descritas neste ficheiro — actualize o texto de ajuda nesse sistema ou faça deploy da versão mais recente da API.
+**Nota:** avisos do tipo *«ocu_ não pode ser Bearer»* ou *«lead-types exige só JWT»* estão **errados** para instâncias OpenConduit com as alterações de 2026 descritas neste ficheiro — actualize o texto de ajuda nesse sistema ou faça deploy da variante mais recente da API.
+
+## 9) Automation suite — Knowledge Hub (JWT de sessão / admin tenant)
+
+Prefixo: **`/api/v1/automation`** (não confundir com `/api/v1/automations`). Requer autenticação de utilizador; mutações e métricas exigem papel de administrador do tenant (`ADMIN`, ou `SUPER_ADMIN` com organização activa).
+
+| Method | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/v1/automation/knowledge-articles` | Lista artigos da KB com `botIds`. |
+| POST | `/api/v1/automation/knowledge-articles` | Cria artigo (admin). Dispara reindexação assíncrona de embeddings se existir chave OpenAI no servidor. |
+| POST | `/api/v1/automation/knowledge-articles/import-file` | `multipart/form-data`: campo ficheiro **`file`** (PDF, DOCX, TXT/MD/CSV/TSV, XLSX/XLS). Campos opcionais: `title`, `category`, `tags` (JSON array), `botIds` (JSON array de UUIDs), `isActive`, `syncToAi` (`true`/`false`). Cria artigo com texto extraído, `sourceFileName` / `sourceMimeType`, e reindexa. Limite de tamanho: igual ao plugin multipart global (ex.: 16 MB). |
+| PATCH | `/api/v1/automation/knowledge-articles/:id` | Actualiza artigo (admin). Reindexa em background quando título, conteúdo, `syncToAi` ou `isActive` mudam. |
+| DELETE | `/api/v1/automation/knowledge-articles/:id` | Remove artigo (chunks em cascata). |
+| GET | `/api/v1/automation/knowledge-articles/:id/revisions` | Histórico de revisões. |
+| POST | `/api/v1/automation/knowledge-articles/:id/reindex` | Reindexa embeddings só deste artigo (admin). Resposta: `{ chunks: number }` ou `{ skipped: true, reason }`. |
+| POST | `/api/v1/automation/knowledge-articles/reindex-organization` | Reindexa todos os artigos da organização (admin). Resposta: `{ articles, errors }`. |
+| GET | `/api/v1/automation/knowledge-articles/hub-metrics` | Métricas do painel (incl. `indexedChunks`, `semanticSearchReady`, `embeddingModel`). |
+| POST | `/api/v1/automation/knowledge-articles/search` | Corpo: `{ "query": "...", "botId?": "uuid" }`. Resposta inclui `searchMode`: `lexical` \| `semantic` \| `hybrid` \| `cached`. Com `OPENAI_API_KEY` / `OPENAI_PROMPT_PREVIEW_KEY` e chunks indexados, usa similaridade de coseno + complemento lexical. |
+| POST | `/api/v1/automation/knowledge-articles/playground` | Teste RAG com LLM (admin). Resposta inclui `retrievalMode` (`lexical` \| `semantic` \| `hybrid`), `sources`, `answer`, `latencyMs`, `contextChars`. |
+
+Variáveis de ambiente relevantes: `OPENAI_API_KEY` ou `OPENAI_PROMPT_PREVIEW_KEY`, opcionalmente `OPENAI_EMBEDDING_MODEL` (por omissão `text-embedding-3-small`; tem de produzir vectores de **1536** dimensões para corresponder à coluna pgvector) e `OPENAI_API_BASE_URL` (por omissão `https://api.openai.com/v1`).
+
+**PostgreSQL:** a busca semântica usa a extensão **pgvector** (`vector(1536)`, índice HNSW, operador `<=>`). O `docker-compose` do projecto usa a imagem `pgvector/pgvector:pg16`. Noutros ambientes, instale a extensão antes de `prisma migrate deploy`.

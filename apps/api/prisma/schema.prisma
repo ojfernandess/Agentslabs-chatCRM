@@ -125,6 +125,7 @@ model Organization {
   inboxes          Inbox[]
 
   automationKnowledgeArticles      AutomationKnowledgeArticle[]
+  automationKnowledgeChunks        AutomationKnowledgeChunk[]
   kbSearchCaches                   KbSearchCache[]
   kbSearchLogs                     KbSearchLog[]
   automationPromptModules          AutomationPromptModule[]
@@ -875,15 +876,41 @@ model AutomationKnowledgeArticle {
   tags           String[]     @default([])
   isActive       Boolean      @default(true) @map("is_active")
   syncToAi       Boolean      @default(true) @map("sync_to_ai")
+  /// Preenchido quando o conteúdo veio de upload (PDF, DOCX, etc.).
+  sourceFileName String?      @map("source_file_name") @db.VarChar(500)
+  sourceMimeType String?      @map("source_mime_type") @db.VarChar(160)
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   botLinks  AutomationKnowledgeArticleBot[]
   revisions AutomationKnowledgeRevision[]
+  chunks    AutomationKnowledgeChunk[]
 
   @@index([organizationId])
   @@index([organizationId, isActive])
   @@map("automation_knowledge_articles")
+}
+
+/// Segmentos de texto com embeddings para busca semântica (RAG) sobre artigos da KB.
+model AutomationKnowledgeChunk {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  articleId      String                   @map("article_id") @db.Uuid
+  article        AutomationKnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  chunkIndex     Int                      @map("chunk_index")
+  text           String                   @db.Text
+  embeddingModel String                   @default("text-embedding-3-small") @map("embedding_model") @db.VarChar(80)
+  dimensions     Int                      @default(1536)
+  /// pgvector — usar `$executeRaw` / `$queryRaw` (Prisma não serializa `vector` no client).
+  embeddingVector Unsupported("vector(1536)") @map("embedding_vector")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([articleId, chunkIndex])
+  @@index([organizationId])
+  @@index([articleId])
+  @@map("automation_knowledge_chunks")
 }
 
 model AutomationKnowledgeArticleBot {

@@ -110,6 +110,12 @@ export const config = {
     "OPENAI_PROMPT_PREVIEW_KEY",
     optionalEnv("OPENAI_API_KEY", ""),
   ).trim(),
+  /** Base URL OpenAI (embeddings + chat compat). Sem barra final. */
+  openAiApiBaseUrl: optionalEnv("OPENAI_API_BASE_URL", "https://api.openai.com/v1")
+    .trim()
+    .replace(/\/+$/, ""),
+  /** Modelo de embeddings para indexação semântica da KB (requer chave OpenAI no servidor). */
+  openAiEmbeddingModel: optionalEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").trim(),
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
 } as const;
