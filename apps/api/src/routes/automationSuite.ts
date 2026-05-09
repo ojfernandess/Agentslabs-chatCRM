@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
+import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -45,17 +46,29 @@ const defaultBehaviorConfig = () => ({
     scheduling_outlook: false,
     ping: false,
   },
-  escalationRules: { conditions: "", transferMessage: "", mode: "keyword" as string },
+  escalationRules: {
+    conditions: "",
+    transferMessage: "",
+    mode: "keyword" as string,
+    keywords: "" as string,
+  },
   inactivity: {
     automationEnabled: false,
     timeoutMinutes: 30,
     followUpMax: 0,
     followUpMessages: [] as string[],
+    followUpMessage: "" as string,
     pauseMessage: "",
     closeMessage: "",
     clearContextAfterFollowUpMinutes: null as number | null,
   },
-  voice: { elevenLabsEnabled: false, voiceId: null as string | null, replyWithAudioOnInboundAudio: false },
+  voice: {
+    elevenLabsEnabled: false,
+    elevenLabsToolId: null as string | null,
+    voiceResponsePercent: 100,
+    voiceId: null as string | null,
+    replyWithAudioOnInboundAudio: false,
+  },
   segmentation: { segmentId: null, entityId: null, establishmentId: null },
   dataSource: { label: null as string | null, connectionRef: null as string | null },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
@@ -97,12 +110,30 @@ const promptModuleSchema = z.object({
 const customToolSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().min(1),
-  toolType: z.enum(["HTTP", "EMAIL", "WEBHOOK", "OTHER"]),
+  toolType: z.string().min(1).max(32),
   config: z.record(z.unknown()),
   parametersSchema: z.record(z.unknown()),
   isActive: z.boolean().optional(),
   botId: z.string().uuid().nullable().optional(),
 });
+
+function redactToolRow<T extends { config: unknown }>(row: T): T {
+  const cfg = row.config && typeof row.config === "object" ? { ...(row.config as Record<string, unknown>) } : {};
+  for (const k of ["apiKey", "api_key", "accessToken", "refreshToken", "password", "smtpPassword", "token"]) {
+    if (k in cfg && cfg[k]) (cfg as Record<string, unknown>)[k] = "***";
+  }
+  return { ...row, config: cfg } as T;
+}
+
+function mergeToolConfig(existing: unknown, incoming: unknown): Record<string, unknown> {
+  const e = existing && typeof existing === "object" ? { ...(existing as Record<string, unknown>) } : {};
+  const i = incoming && typeof incoming === "object" ? { ...(incoming as Record<string, unknown>) } : {};
+  const out: Record<string, unknown> = { ...e, ...i };
+  for (const k of Object.keys(out)) {
+    if (out[k] === "***") delete out[k];
+  }
+  return out;
+}
 
 const interactionCreateSchema = z.object({
   botId: z.string().uuid(),
@@ -541,6 +572,24 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     return reply.status(204).send();
   });
 
+  app.get("/tool-presets", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    return {
+      data: AUTOMATION_TOOL_PRESETS.map((p) => ({
+        presetKey: p.presetKey,
+        category: p.category,
+        name: p.name,
+        description: p.description,
+        toolType: p.toolType,
+        parametersSchema: p.parametersSchema,
+      })),
+    };
+  });
+
   app.get("/custom-tools", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -551,7 +600,54 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       where: { organizationId },
       orderBy: { name: "asc" },
     });
-    return { data };
+    return { data: data.map((r) => redactToolRow(r)) };
+  });
+
+  const fromPresetSchema = z.object({
+    presetKey: z.string().min(1).max(64),
+    botId: z.string().uuid().nullable().optional(),
+  });
+
+  app.post("/custom-tools/from-preset", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = fromPresetSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const def = getPresetByKey(parsed.data.presetKey);
+    if (!def) {
+      return reply.status(404).send({ error: "Not Found", message: "Unknown preset", statusCode: 404 });
+    }
+    if (parsed.data.botId) {
+      const b = await prisma.bot.findFirst({
+        where: { id: parsed.data.botId, organizationId },
+      });
+      if (!b) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botId", statusCode: 400 });
+      }
+    }
+    const existingAll = await prisma.automationCustomTool.findMany({ where: { organizationId } });
+    const existing = existingAll.find((r) => {
+      const c = r.config as Record<string, unknown> | null;
+      return c && typeof c === "object" && c.presetKey === def.presetKey;
+    });
+    if (existing) {
+      return reply.status(200).send(redactToolRow(existing));
+    }
+    const row = await prisma.automationCustomTool.create({
+      data: {
+        organizationId,
+        botId: parsed.data.botId ?? null,
+        name: def.name,
+        description: def.description,
+        toolType: def.toolType,
+        config: asJson(def.defaultConfig),
+        parametersSchema: asJson(def.parametersSchema),
+        isActive: true,
+      },
+    });
+    return reply.status(201).send(redactToolRow(row));
   });
 
   app.post("/custom-tools", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -581,7 +677,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         isActive: parsed.data.isActive ?? true,
       },
     });
-    return row;
+    return redactToolRow(row);
   });
 
   app.patch<{ Params: { id: string } }>("/custom-tools/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -600,24 +696,30 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       }
     }
     try {
+      const current = await prisma.automationCustomTool.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+      if (!current) {
+        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+      }
       const data: Prisma.AutomationCustomToolUncheckedUpdateInput = {};
       if (parsed.data.name !== undefined) data.name = parsed.data.name;
       if (parsed.data.description !== undefined) data.description = parsed.data.description;
       if (parsed.data.toolType !== undefined) data.toolType = parsed.data.toolType;
-      if (parsed.data.config !== undefined) data.config = asJson(parsed.data.config);
+      if (parsed.data.config !== undefined) {
+        data.config = asJson(mergeToolConfig(current.config, parsed.data.config));
+      }
       if (parsed.data.parametersSchema !== undefined) data.parametersSchema = asJson(parsed.data.parametersSchema);
       if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
       if (parsed.data.botId !== undefined) data.botId = parsed.data.botId;
-      const row = await prisma.automationCustomTool.updateMany({
-        where: { id: request.params.id, organizationId },
+      await prisma.automationCustomTool.update({
+        where: { id: current.id },
         data,
       });
-      if (row.count === 0) {
-        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
-      }
-      return prisma.automationCustomTool.findFirst({
+      const updated = await prisma.automationCustomTool.findFirst({
         where: { id: request.params.id, organizationId },
       });
+      return updated ? redactToolRow(updated) : null;
     } catch (e) {
       return reply.status(400).send({ error: "Bad Request", message: String(e), statusCode: 400 });
     }
@@ -922,6 +1024,29 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       },
     });
     return row;
+  });
+
+  app.get("/conversation-context", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const rows = await prisma.automationConversationContext.findMany({
+      where: { organizationId },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      include: { bot: { select: { id: true, name: true } } },
+    });
+    return {
+      data: rows.map((r) => ({
+        conversationId: r.conversationId,
+        botId: r.botId,
+        botName: r.bot.name,
+        updatedAt: r.updatedAt,
+        lastClearedAt: r.lastClearedAt,
+      })),
+    };
   });
 
   app.get<{ Params: { conversationId: string } }>(

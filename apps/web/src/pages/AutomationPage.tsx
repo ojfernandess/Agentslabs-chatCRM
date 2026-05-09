@@ -140,20 +140,51 @@ function defaultNativeTools(): Record<NativeToolKey, boolean> {
 
 const defaultBehavior = {
   nativeTools: defaultNativeTools(),
-  escalationRules: { conditions: "", transferMessage: "", mode: "keyword" },
+  escalationRules: {
+    conditions: "",
+    transferMessage: "",
+    mode: "keyword",
+    keywords: "",
+  },
   inactivity: {
     automationEnabled: false,
     timeoutMinutes: 30,
     followUpMax: 1,
     followUpMessages: [] as string[],
+    followUpMessage: "",
     pauseMessage: "",
     closeMessage: "",
     clearContextAfterFollowUpMinutes: null as number | null,
   },
-  voice: { elevenLabsEnabled: false, voiceId: null as string | null, replyWithAudioOnInboundAudio: false },
+  voice: {
+    elevenLabsEnabled: false,
+    elevenLabsToolId: null as string | null,
+    voiceResponsePercent: 100,
+    voiceId: null as string | null,
+    replyWithAudioOnInboundAudio: false,
+  },
   segmentation: { segmentId: null as string | null, entityId: null as string | null, establishmentId: null as string | null },
   dataSource: { label: null as string | null, connectionRef: null as string | null },
   scheduling: { useOrgReminders: true, externalCalendar: "none" },
+};
+
+export type AutomationCustomToolRow = {
+  id: string;
+  name: string;
+  description: string;
+  toolType: string;
+  isActive: boolean;
+  botId: string | null;
+  config?: Record<string, unknown>;
+};
+
+type ToolPresetMeta = {
+  presetKey: string;
+  category: string;
+  name: string;
+  description: string;
+  toolType: string;
+  parametersSchema: Record<string, unknown>;
 };
 
 type AgentFormFields = {
@@ -177,10 +208,17 @@ type AgentFormFields = {
   dataSourcePreset: "default" | "custom";
   dataSourceRef: string;
   voiceEnabled: boolean;
+  elevenLabsToolId: string;
+  voiceResponsePercent: number;
   replyWithAudioOnInboundAudio: boolean;
   inactivityEnabled: boolean;
   inactivityTimeout: number;
   inactivityFollowUpMax: number;
+  followUpMessage: string;
+  escalationMode: string;
+  escalationConditions: string;
+  escalationTransferMessage: string;
+  escalationKeywords: string;
   nativeTools: Record<NativeToolKey, boolean>;
   promptModuleIds: string[];
 };
@@ -207,10 +245,17 @@ function emptyAgentForm(): AgentFormFields {
     dataSourcePreset: "default",
     dataSourceRef: "",
     voiceEnabled: false,
+    elevenLabsToolId: "",
+    voiceResponsePercent: 100,
     replyWithAudioOnInboundAudio: false,
     inactivityEnabled: false,
     inactivityTimeout: 30,
     inactivityFollowUpMax: 1,
+    followUpMessage: "",
+    escalationMode: "keyword",
+    escalationConditions: "",
+    escalationTransferMessage: "",
+    escalationKeywords: "",
     nativeTools: defaultNativeTools(),
     promptModuleIds: [],
   };
@@ -226,6 +271,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   }
   const inc = (beh.inactivity ?? defaultBehavior.inactivity) as typeof defaultBehavior.inactivity;
   const voice = (beh.voice ?? defaultBehavior.voice) as typeof defaultBehavior.voice;
+  const esc = (beh.escalationRules ?? defaultBehavior.escalationRules) as typeof defaultBehavior.escalationRules;
   const seg = (beh.segmentation ?? defaultBehavior.segmentation) as typeof defaultBehavior.segmentation;
   const ds = (beh.dataSource ?? defaultBehavior.dataSource) as typeof defaultBehavior.dataSource;
   const cr = ds?.connectionRef;
@@ -256,10 +302,22 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     dataSourcePreset: preset,
     dataSourceRef: cr != null && preset === "custom" ? String(cr) : "",
     voiceEnabled: Boolean(voice.elevenLabsEnabled),
+    elevenLabsToolId: voice.elevenLabsToolId != null ? String(voice.elevenLabsToolId) : "",
+    voiceResponsePercent: Math.min(
+      100,
+      Math.max(0, Number(voice.voiceResponsePercent ?? 100)),
+    ),
     replyWithAudioOnInboundAudio: Boolean(voice.replyWithAudioOnInboundAudio),
     inactivityEnabled: Boolean(inc.automationEnabled),
     inactivityTimeout: Number(inc.timeoutMinutes ?? 30),
     inactivityFollowUpMax: Number(inc.followUpMax ?? 0),
+    followUpMessage: String(
+      inc.followUpMessage ?? (Array.isArray(inc.followUpMessages) ? inc.followUpMessages[0] ?? "" : ""),
+    ),
+    escalationMode: String(esc.mode ?? "keyword"),
+    escalationConditions: String(esc.conditions ?? ""),
+    escalationTransferMessage: String(esc.transferMessage ?? ""),
+    escalationKeywords: String(esc.keywords ?? ""),
     nativeTools,
     promptModuleIds,
   };
@@ -292,17 +350,29 @@ function formToPayload(form: AgentFormFields): {
       ? "outlook"
       : "none";
 
+  const fu = form.followUpMessage.trim();
   const behaviorConfig: Record<string, unknown> = {
     ...defaultBehavior,
     nativeTools: { ...form.nativeTools },
+    escalationRules: {
+      ...defaultBehavior.escalationRules,
+      mode: form.escalationMode,
+      conditions: form.escalationConditions,
+      transferMessage: form.escalationTransferMessage,
+      keywords: form.escalationKeywords,
+    },
     inactivity: {
       ...defaultBehavior.inactivity,
       automationEnabled: form.inactivityEnabled,
       timeoutMinutes: form.inactivityTimeout,
       followUpMax: form.inactivityEnabled ? Math.max(1, form.inactivityFollowUpMax) : 0,
+      followUpMessage: fu,
+      followUpMessages: fu ? [fu] : [],
     },
     voice: {
       elevenLabsEnabled: form.voiceEnabled,
+      elevenLabsToolId: form.elevenLabsToolId.trim() || null,
+      voiceResponsePercent: Math.min(100, Math.max(0, form.voiceResponsePercent)),
       voiceId: null,
       replyWithAudioOnInboundAudio: form.replyWithAudioOnInboundAudio,
     },
@@ -348,16 +418,8 @@ export function AutomationPage() {
   const [prompts, setPrompts] = useState<
     Array<{ id: string; name: string; slug: string; body: string; version: number }>
   >([]);
-  const [tools, setTools] = useState<
-    Array<{
-      id: string;
-      name: string;
-      description: string;
-      toolType: string;
-      isActive: boolean;
-      botId: string | null;
-    }>
-  >([]);
+  const [tools, setTools] = useState<AutomationCustomToolRow[]>([]);
+  const [toolPresets, setToolPresets] = useState<ToolPresetMeta[]>([]);
   const [interactions, setInteractions] = useState<
     Array<{
       id: string;
@@ -383,6 +445,27 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
+
+  const [promptForm, setPromptForm] = useState({
+    id: null as string | null,
+    name: "",
+    slug: "",
+    body: "",
+    version: 1,
+  });
+
+  const [ctxRows, setCtxRows] = useState<
+    Array<{
+      conversationId: string;
+      botId: string;
+      botName: string;
+      updatedAt: string;
+      lastClearedAt: string | null;
+    }>
+  >([]);
+  const [ctxManualId, setCtxManualId] = useState("");
+  const [ctxView, setCtxView] = useState<unknown>(null);
+  const [editingToolId, setEditingToolId] = useState<string | null>(null);
 
   const loadBots = useCallback(async () => {
     const res = await api.get<{ data: BotRow[] }>("/bots");
@@ -410,13 +493,31 @@ export function AutomationPage() {
   }, []);
 
   const loadTools = useCallback(async () => {
-    const res = await api.get<{ data: typeof tools }>("/automation/custom-tools");
+    const res = await api.get<{ data: AutomationCustomToolRow[] }>("/automation/custom-tools");
     setTools(res.data);
+  }, []);
+
+  const loadToolPresets = useCallback(async () => {
+    const res = await api.get<{ data: ToolPresetMeta[] }>("/automation/tool-presets");
+    setToolPresets(res.data);
   }, []);
 
   const loadInteractions = useCallback(async () => {
     const res = await api.get<{ data: typeof interactions }>("/automation/interactions");
     setInteractions(res.data);
+  }, []);
+
+  const loadContextRows = useCallback(async () => {
+    const res = await api.get<{
+      data: Array<{
+        conversationId: string;
+        botId: string;
+        botName: string;
+        updatedAt: string;
+        lastClearedAt: string | null;
+      }>;
+    }>("/automation/conversation-context");
+    setCtxRows(res.data);
   }, []);
 
   const refreshTab = useCallback(async () => {
@@ -433,16 +534,34 @@ export function AutomationPage() {
         await loadBots();
         await loadAgentProfiles();
         await loadPrompts();
+        await loadTools();
       }
-      if (tab === "tools") await loadTools();
+      if (tab === "tools") {
+        await loadTools();
+        await loadToolPresets();
+        await loadBots();
+      }
       if (tab === "prompts") await loadPrompts();
       if (tab === "interactions") await loadInteractions();
+      if (tab === "context") await loadContextRows();
     } catch {
       setError("load_failed");
     } finally {
       setLoading(false);
     }
-  }, [tenantAdmin, tab, loadDashboard, loadKnowledge, loadBots, loadAgentProfiles, loadTools, loadPrompts, loadInteractions]);
+  }, [
+    tenantAdmin,
+    tab,
+    loadDashboard,
+    loadKnowledge,
+    loadBots,
+    loadAgentProfiles,
+    loadTools,
+    loadToolPresets,
+    loadPrompts,
+    loadInteractions,
+    loadContextRows,
+  ]);
 
   useEffect(() => {
     void refreshTab();
@@ -615,6 +734,131 @@ export function AutomationPage() {
     }
   };
 
+  const savePromptModule = async () => {
+    if (!promptForm.name.trim() || !promptForm.slug.trim() || !promptForm.body.trim()) {
+      setError("prompt_validation");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      if (promptForm.id) {
+        await api.patch(`/automation/prompt-modules/${promptForm.id}`, {
+          name: promptForm.name.trim(),
+          slug: promptForm.slug.trim(),
+          body: promptForm.body,
+          version: promptForm.version,
+        });
+      } else {
+        await api.post("/automation/prompt-modules", {
+          name: promptForm.name.trim(),
+          slug: promptForm.slug.trim(),
+          body: promptForm.body,
+          version: promptForm.version,
+        });
+      }
+      setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 });
+      await loadPrompts();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deletePromptModule = async (id: string) => {
+    if (!window.confirm(t("automationPage.promptDeleteConfirm"))) return;
+    setLoading(true);
+    try {
+      await api.delete(`/automation/prompt-modules/${id}`);
+      if (promptForm.id === id) setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 });
+      await loadPrompts();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const installToolPreset = async (presetKey: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      await api.post("/automation/custom-tools/from-preset", { presetKey });
+      await loadTools();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveToolConfigPatch = async (toolId: string, patch: Record<string, string>) => {
+    const cleaned: Record<string, string> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v.trim()) cleaned[k] = v.trim();
+    }
+    if (Object.keys(cleaned).length === 0) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.patch(`/automation/custom-tools/${toolId}`, { config: cleaned });
+      await loadTools();
+      setEditingToolId(null);
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteCustomToolRow = async (toolId: string) => {
+    if (!window.confirm(t("automationPage.toolDeleteConfirm"))) return;
+    setLoading(true);
+    try {
+      await api.delete(`/automation/custom-tools/${toolId}`);
+      await loadTools();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadContextDetail = async (conversationId: string) => {
+    const id = conversationId.trim();
+    if (!id) return;
+    setError("");
+    try {
+      const row = await api.get<Record<string, unknown>>(`/automation/conversation-context/${id}`);
+      setCtxView(row);
+      setCtxManualId(id);
+    } catch {
+      setCtxView(null);
+      setError("load_failed");
+    }
+  };
+
+  const clearContextForConversation = async (conversationId: string) => {
+    const id = conversationId.trim();
+    if (!id) return;
+    if (!window.confirm(t("automationPage.contextClearConfirm"))) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.post(`/automation/conversation-context/${id}/clear`, {});
+      await loadContextRows();
+      setCtxView(null);
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const presetInstalled = (presetKey: string) =>
+    tools.some((x) => (x.config as Record<string, unknown> | undefined)?.presetKey === presetKey);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: t("automationPage.tabOverview") },
     { id: "knowledge", label: t("automationPage.tabKnowledge") },
@@ -650,7 +894,11 @@ export function AutomationPage() {
 
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-            {error === "validation" ? t("automationPage.agentValidation") : t("automationPage.loadError")}
+            {error === "validation"
+              ? t("automationPage.agentValidation")
+              : error === "prompt_validation"
+                ? t("automationPage.promptValidation")
+                : t("automationPage.loadError")}
           </div>
         ) : null}
 
@@ -883,6 +1131,7 @@ export function AutomationPage() {
             t={t}
             loading={loading}
             bots={bots}
+            tools={tools}
             agentProfiles={agentProfiles}
             agentModalOpen={agentModalOpen}
             setAgentModalOpen={setAgentModalOpen}
@@ -894,16 +1143,112 @@ export function AutomationPage() {
             onConfigureOrphan={openConfigureOrphanBot}
             onSaveModal={() => void saveAgentModal()}
             onDeleteProfile={deleteAgentProfile}
+            onOpenToolsTab={() => {
+              setAgentModalOpen(false);
+              setTab("tools");
+            }}
           />
         ) : null}
 
         {tab === "prompts" ? (
-          <div className="text-sm text-ink-600 dark:text-ink-400">
-            <p className="mb-4">{t("automationPage.promptNew")} — use API POST /api/v1/automation/prompt-modules or expand this UI later.</p>
+          <div className="space-y-6">
+            <p className="text-sm text-ink-600 dark:text-ink-400">{t("automationPage.promptsIntro")}</p>
+            <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
+              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                {promptForm.id ? t("automationPage.promptEditTitle") : t("automationPage.promptNewTitle")}
+              </h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.promptName")}
+                  <input
+                    value={promptForm.name}
+                    onChange={(e) => setPromptForm((f) => ({ ...f, name: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.promptSlug")}
+                  <input
+                    value={promptForm.slug}
+                    onChange={(e) => setPromptForm((f) => ({ ...f, slug: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="sm:col-span-2 text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.promptVersion")}
+                  <input
+                    type="number"
+                    min={1}
+                    value={promptForm.version}
+                    onChange={(e) => setPromptForm((f) => ({ ...f, version: Number(e.target.value) || 1 }))}
+                    className="mt-1 w-32 rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+              </div>
+              <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                {t("automationPage.promptBody")}
+                <textarea
+                  value={promptForm.body}
+                  onChange={(e) => setPromptForm((f) => ({ ...f, body: e.target.value }))}
+                  rows={8}
+                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                />
+              </label>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void savePromptModule()}
+                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {t("automationPage.promptSave")}
+                </button>
+                {promptForm.id ? (
+                  <button
+                    type="button"
+                    onClick={() => setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 })}
+                    className="rounded-lg border border-ink-200 px-4 py-2 text-sm dark:border-ink-600"
+                  >
+                    {t("automationPage.promptCancelEdit")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <ul className="space-y-2">
               {prompts.map((p) => (
-                <li key={p.id} className="rounded border border-ink-200 px-3 py-2 dark:border-ink-700">
-                  <span className="font-medium">{p.name}</span> <code className="text-xs opacity-70">{p.slug}</code> v{p.version}
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-700"
+                >
+                  <div>
+                    <span className="font-medium text-ink-900 dark:text-ink-100">{p.name}</span>{" "}
+                    <code className="text-xs opacity-70">{p.slug}</code>{" "}
+                    <span className="text-xs text-ink-500">v{p.version}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-brand-600"
+                      onClick={() =>
+                        setPromptForm({
+                          id: p.id,
+                          name: p.name,
+                          slug: p.slug,
+                          body: p.body,
+                          version: p.version,
+                        })
+                      }
+                    >
+                      {t("automationPage.kbEdit")}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-red-600"
+                      onClick={() => void deletePromptModule(p.id)}
+                    >
+                      {t("automationPage.kbDelete")}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -911,15 +1256,89 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "tools" ? (
-          <div className="text-sm text-ink-600 dark:text-ink-400">
-            <p className="mb-4">Custom tools (HTTP / EMAIL / …). Create via POST /api/v1/automation/custom-tools.</p>
-            <ul className="space-y-2">
-              {tools.map((tool) => (
-                <li key={tool.id} className="rounded border border-ink-200 px-3 py-2 dark:border-ink-700">
-                  <span className="font-medium">{tool.name}</span> ({tool.toolType}) {tool.isActive ? "" : "[off]"}
-                </li>
-              ))}
-            </ul>
+          <div className="space-y-8 text-sm">
+            <p className="text-ink-600 dark:text-ink-400">{t("automationPage.toolsIntro")}</p>
+            {(["MCP_NATIVE", "ELEVENLABS", "EMAIL_API"] as const).map((cat) => {
+              const catPresets = toolPresets.filter((p) => p.category === cat);
+              if (catPresets.length === 0) return null;
+              return (
+                <div key={cat}>
+                  <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                    {cat === "MCP_NATIVE"
+                      ? t("automationPage.toolsSectionMcp")
+                      : cat === "ELEVENLABS"
+                        ? t("automationPage.toolsSectionEleven")
+                        : t("automationPage.toolsSectionEmail")}
+                  </h3>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {catPresets.map((pr) => (
+                      <div
+                        key={pr.presetKey}
+                        className="rounded-xl border border-ink-200 bg-white p-3 dark:border-ink-700 dark:bg-ink-900/50"
+                      >
+                        <p className="font-medium text-ink-900 dark:text-ink-100">{pr.name}</p>
+                        <p className="mt-1 text-xs text-ink-500">{pr.description}</p>
+                        <p className="mt-1 text-[10px] uppercase text-ink-400">{pr.toolType}</p>
+                        {presetInstalled(pr.presetKey) ? (
+                          <span className="mt-2 inline-block text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                            {t("automationPage.toolInstalled")}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => void installToolPreset(pr.presetKey)}
+                            className="mt-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            {t("automationPage.toolInstall")}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div>
+              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.toolsConfigured")}</h3>
+              <ul className="mt-2 space-y-3">
+                {tools.map((tool) => (
+                  <li
+                    key={tool.id}
+                    className="rounded-xl border border-ink-200 bg-ink-50/50 p-3 dark:border-ink-700 dark:bg-ink-900/40"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <span className="font-medium text-ink-900 dark:text-ink-100">{tool.name}</span>{" "}
+                        <span className="text-xs text-ink-500">({tool.toolType})</span>
+                        {!tool.isActive ? (
+                          <span className="ml-2 text-xs text-amber-700 dark:text-amber-300">off</span>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-brand-600"
+                          onClick={() => setEditingToolId((id) => (id === tool.id ? null : tool.id))}
+                        >
+                          {editingToolId === tool.id ? t("automationPage.toolCloseEditor") : t("automationPage.toolEditSecrets")}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-red-600"
+                          onClick={() => void deleteCustomToolRow(tool.id)}
+                        >
+                          {t("automationPage.toolRemove")}
+                        </button>
+                      </div>
+                    </div>
+                    {editingToolId === tool.id ? (
+                      <ToolCredentialEditor tool={tool} t={t} onSave={(patch) => void saveToolConfigPatch(tool.id, patch)} />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         ) : null}
 
@@ -940,8 +1359,78 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "context" ? (
-          <div className="max-w-2xl space-y-4 text-sm text-ink-700 dark:text-ink-300">
+          <div className="max-w-3xl space-y-6 text-sm text-ink-700 dark:text-ink-300">
             <p>{t("automationPage.contextBlurb")}</p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                value={ctxManualId}
+                onChange={(e) => setCtxManualId(e.target.value)}
+                placeholder={t("automationPage.contextConversationPlaceholder")}
+                className="min-w-[240px] flex-1 rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+              />
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => void loadContextDetail(ctxManualId)}
+                className="rounded-lg border border-ink-200 px-4 py-2 font-medium dark:border-ink-600"
+              >
+                {t("automationPage.contextLoad")}
+              </button>
+              <button
+                type="button"
+                disabled={loading || !ctxManualId.trim()}
+                onClick={() => void clearContextForConversation(ctxManualId)}
+                className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
+              >
+                {t("automationPage.contextClear")}
+              </button>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.contextRecent")}</h3>
+              {ctxRows.length === 0 ? (
+                <p className="mt-2 text-xs text-ink-500">{t("automationPage.contextEmpty")}</p>
+              ) : (
+                <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-ink-200 dark:border-ink-700">
+                  {ctxRows.map((r) => (
+                    <li
+                      key={r.conversationId}
+                      className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 px-3 py-2 text-xs dark:border-ink-800"
+                    >
+                      <div className="min-w-0">
+                        <code className="break-all text-ink-800 dark:text-ink-200">{r.conversationId}</code>
+                        <div className="text-ink-500">
+                          {r.botName} · {new Date(r.updatedAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="font-medium text-brand-600"
+                          onClick={() => void loadContextDetail(r.conversationId)}
+                        >
+                          {t("automationPage.contextLoad")}
+                        </button>
+                        <button
+                          type="button"
+                          className="font-medium text-red-600"
+                          onClick={() => void clearContextForConversation(r.conversationId)}
+                        >
+                          {t("automationPage.contextClear")}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {ctxView ? (
+              <div className="rounded-xl border border-ink-200 bg-ink-50 p-3 dark:border-ink-700 dark:bg-ink-950/50">
+                <p className="text-xs font-semibold text-ink-500">{t("automationPage.contextSnapshot")}</p>
+                <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs text-ink-800 dark:text-ink-200">
+                  {JSON.stringify(ctxView, null, 2)}
+                </pre>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -951,10 +1440,13 @@ export function AutomationPage() {
 
 type Translate = (key: string) => string;
 
+const VOICE_PERCENT_STEPS = [0, 10, 20, 30, 50, 75, 100] as const;
+
 function AgentsTab({
   t,
   loading,
   bots,
+  tools,
   agentProfiles,
   agentModalOpen,
   setAgentModalOpen,
@@ -966,10 +1458,12 @@ function AgentsTab({
   onConfigureOrphan,
   onSaveModal,
   onDeleteProfile,
+  onOpenToolsTab,
 }: {
   t: Translate;
   loading: boolean;
   bots: BotRow[];
+  tools: AutomationCustomToolRow[];
   agentProfiles: AgentProfileRow[];
   agentModalOpen: boolean;
   setAgentModalOpen: (v: boolean) => void;
@@ -981,9 +1475,11 @@ function AgentsTab({
   onConfigureOrphan: (botId: string) => void;
   onSaveModal: () => void;
   onDeleteProfile: (botId: string) => void;
+  onOpenToolsTab: () => void;
 }) {
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
+  const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
 
@@ -1381,23 +1877,82 @@ function AgentsTab({
                   <Volume2 className="h-4 w-4 text-brand-600" />
                   {t("automationPage.agentVoiceSection")}
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-sm">
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
                   <input
                     type="checkbox"
+                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                     checked={agentForm.voiceEnabled}
                     onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
                   />
-                  {t("automationPage.agentVoiceResponses")}
+                  <span>{t("automationPage.agentVoiceResponses")}</span>
                 </label>
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
-                <label className="mt-2 flex items-center gap-2 text-sm">
+                {agentForm.voiceEnabled ? (
+                  <>
+                    <label className="mt-3 block text-sm font-medium text-ink-800 dark:text-ink-200">
+                      {t("automationPage.agentElevenLabsConfig")}
+                      <select
+                        value={agentForm.elevenLabsToolId}
+                        onChange={(e) => setAgentForm((f) => ({ ...f, elevenLabsToolId: e.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                      >
+                        <option value="">{t("automationPage.agentElevenLabsSelect")}</option>
+                        {elevenLabsTools.map((tl) => (
+                          <option key={tl.id} value={tl.id}>
+                            {tl.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      <button type="button" className="text-left text-brand-600 hover:underline" onClick={onOpenToolsTab}>
+                        {t("automationPage.agentElevenLabsToolsTabHint")}
+                      </button>
+                    </p>
+                    <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
+                      {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {VOICE_PERCENT_STEPS.map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
+                          className={clsx(
+                            "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                            agentForm.voiceResponsePercent === pct
+                              ? "bg-brand-600 text-white"
+                              : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
+                          )}
+                        >
+                          {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={agentForm.voiceResponsePercent}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
+                      }
+                      className="mt-3 w-full accent-brand-600"
+                    />
+                    <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
+                  </>
+                ) : null}
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
                   <input
                     type="checkbox"
+                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                     checked={agentForm.replyWithAudioOnInboundAudio}
                     onChange={(e) => setAgentForm((f) => ({ ...f, replyWithAudioOnInboundAudio: e.target.checked }))}
                   />
-                  {t("automationPage.agentVoiceOnAudioInbound")}
+                  <span>{t("automationPage.agentVoiceOnAudioInbound")}</span>
                 </label>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceOnAudioInboundHelp")}</p>
               </div>
 
               <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
@@ -1415,28 +1970,44 @@ function AgentsTab({
                 </label>
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentInactivityHelp")}</p>
                 {agentForm.inactivityEnabled ? (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                      {t("automationPage.agentInactivityTimeout")}
-                      <input
-                        type="number"
-                        min={1}
-                        value={agentForm.inactivityTimeout}
-                        onChange={(e) => setAgentForm((f) => ({ ...f, inactivityTimeout: Number(e.target.value) || 30 }))}
+                  <>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                        {t("automationPage.agentInactivityTimeout")}
+                        <input
+                          type="number"
+                          min={1}
+                          value={agentForm.inactivityTimeout}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({ ...f, inactivityTimeout: Number(e.target.value) || 30 }))
+                          }
+                          className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                        {t("automationPage.agentInactivityMaxFollowups")}
+                        <input
+                          type="number"
+                          min={1}
+                          value={agentForm.inactivityFollowUpMax}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({ ...f, inactivityFollowUpMax: Number(e.target.value) || 1 }))
+                          }
+                          className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                      {t("automationPage.agentFollowUpMessage")}
+                      <textarea
+                        value={agentForm.followUpMessage}
+                        onChange={(e) => setAgentForm((f) => ({ ...f, followUpMessage: e.target.value }))}
+                        rows={3}
+                        placeholder={t("automationPage.agentFollowUpMessagePh")}
                         className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
                       />
                     </label>
-                    <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                      {t("automationPage.agentInactivityMaxFollowups")}
-                      <input
-                        type="number"
-                        min={1}
-                        value={agentForm.inactivityFollowUpMax}
-                        onChange={(e) => setAgentForm((f) => ({ ...f, inactivityFollowUpMax: Number(e.target.value) || 1 }))}
-                        className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
-                      />
-                    </label>
-                  </div>
+                  </>
                 ) : null}
               </div>
 
@@ -1466,6 +2037,52 @@ function AgentsTab({
                 </label>
               </div>
 
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  {t("automationPage.agentEscalationSection")}
+                </p>
+                <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.agentEscalationMode")}
+                  <select
+                    value={agentForm.escalationMode}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, escalationMode: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  >
+                    <option value="keyword">{t("automationPage.agentEscalationModeKeyword")}</option>
+                    <option value="llm">{t("automationPage.agentEscalationModeLlm")}</option>
+                    <option value="always">{t("automationPage.agentEscalationModeAlways")}</option>
+                  </select>
+                </label>
+                <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.agentEscalationKeywords")}
+                  <input
+                    value={agentForm.escalationKeywords}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, escalationKeywords: e.target.value }))}
+                    placeholder={t("automationPage.agentEscalationKeywordsPh")}
+                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.agentEscalationConditions")}
+                  <textarea
+                    value={agentForm.escalationConditions}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, escalationConditions: e.target.value }))}
+                    rows={2}
+                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.agentEscalationTransfer")}
+                  <textarea
+                    value={agentForm.escalationTransferMessage}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, escalationTransferMessage: e.target.value }))}
+                    rows={2}
+                    placeholder={t("automationPage.agentEscalationTransferPh")}
+                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+              </div>
+
               <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                 {t("automationPage.agentSystemInstructions")}
                 <textarea
@@ -1480,6 +2097,11 @@ function AgentsTab({
               <div>
                 <p className="text-sm font-medium text-ink-800 dark:text-ink-200">{t("automationPage.agentNativeTools")}</p>
                 <p className="text-[11px] text-ink-500">{t("automationPage.agentNativeToolsHelp")}</p>
+                <p className="text-[11px] text-brand-700 dark:text-brand-400">
+                  <button type="button" className="underline" onClick={onOpenToolsTab}>
+                    {t("automationPage.agentNativeToolsTabLink")}
+                  </button>
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {NATIVE_TOOL_KEYS.map((key) => (
                     <button
@@ -1551,6 +2173,157 @@ function AgentsTab({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ToolCredentialEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, string>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const provider = String(c.provider ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [voiceId, setVoiceId] = useState(String(c.voiceId ?? ""));
+  const [modelId, setModelId] = useState(String(c.modelId ?? "eleven_multilingual_v2"));
+  const [fromEmail, setFromEmail] = useState(String(c.fromEmail ?? ""));
+  const [domain, setDomain] = useState(String(c.domain ?? ""));
+  const [host, setHost] = useState(String(c.host ?? ""));
+  const [port, setPort] = useState(String(c.port ?? "587"));
+  const [username, setUsername] = useState(String(c.username ?? ""));
+  const [password, setPassword] = useState("");
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+
+  if (tool.toolType === "MCP") {
+    return <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("automationPage.toolMcpNoSecrets")}</p>;
+  }
+
+  if (tool.toolType === "ELEVENLABS") {
+    return (
+      <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+        <p className="text-xs text-ink-500">{t("automationPage.toolElevenHelp")}</p>
+        <label className="block text-xs font-medium">
+          API key
+          <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className={fieldCls} />
+        </label>
+        <label className="block text-xs font-medium">
+          Voice ID
+          <input value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className={fieldCls} />
+        </label>
+        <label className="block text-xs font-medium">
+          Model ID
+          <input value={modelId} onChange={(e) => setModelId(e.target.value)} className={fieldCls} />
+        </label>
+        <button
+          type="button"
+          onClick={() => onSave({ apiKey, voiceId, modelId })}
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+        >
+          {t("automationPage.toolSaveCredentials")}
+        </button>
+      </div>
+    );
+  }
+
+  if (tool.toolType === "EMAIL_API") {
+    if (provider === "gmail") {
+      return (
+        <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+          <label className="block text-xs font-medium">
+            OAuth access token
+            <input type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            From e-mail
+            <input value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className={fieldCls} />
+          </label>
+          <button
+            type="button"
+            onClick={() => onSave({ accessToken, fromEmail })}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            {t("automationPage.toolSaveCredentials")}
+          </button>
+        </div>
+      );
+    }
+    if (provider === "smtp") {
+      return (
+        <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+          <label className="block text-xs font-medium">
+            Host
+            <input value={host} onChange={(e) => setHost(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Port
+            <input value={port} onChange={(e) => setPort(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Username
+            <input value={username} onChange={(e) => setUsername(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Password
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            From e-mail
+            <input value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className={fieldCls} />
+          </label>
+          <button
+            type="button"
+            onClick={() =>
+              onSave({ host, port, username, password, fromEmail })
+            }
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            {t("automationPage.toolSaveCredentials")}
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+        <label className="block text-xs font-medium">
+          API key
+          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className={fieldCls} />
+        </label>
+        {provider === "mailgun" ? (
+          <label className="block text-xs font-medium">
+            Domain
+            <input value={domain} onChange={(e) => setDomain(e.target.value)} className={fieldCls} />
+          </label>
+        ) : null}
+        <label className="block text-xs font-medium">
+          From e-mail
+          <input value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className={fieldCls} />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            const p: Record<string, string> = { apiKey, fromEmail };
+            if (provider === "mailgun" && domain.trim()) p.domain = domain;
+            onSave(p);
+          }}
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+        >
+          {t("automationPage.toolSaveCredentials")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <p className="mt-2 text-xs text-ink-500">
+      {tool.toolType} — {t("automationPage.toolGenericEditorHint")}
+    </p>
   );
 }
 
