@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef, useMemo, useCallback, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import {
@@ -36,6 +45,10 @@ import {
   Star,
   Bot,
   Headset,
+  MessageCircle,
+  MessageSquare,
+  Briefcase,
+  Circle,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -46,6 +59,12 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
+import {
+  timelineChannelLabel,
+  timelineEventSummary,
+  timelineEventTitle,
+  type TimelinePayload,
+} from "@/lib/contactTimeline";
 
 interface Message {
   id: string;
@@ -67,24 +86,13 @@ interface LeadTypeRow {
   color: string;
 }
 
-interface HandoffPayload {
-  conversationId?: string;
-  previousTeamId?: string | null;
-  previousTeamName?: string | null;
-  newTeamId?: string | null;
-  newTeamName?: string | null;
-  previousAssigneeId?: string | null;
-  previousAssigneeName?: string | null;
-  newAssigneeId?: string | null;
-  newAssigneeName?: string | null;
-}
-
-interface HandoffTimelineEvent {
+interface ContactTimelineEvent {
   id: string;
   occurredAt: string;
   eventType: string;
-  payload: HandoffPayload | null;
-  actorUser?: { id: string; name: string; email: string } | null;
+  channel: string | null;
+  payload: unknown;
+  actorUser?: { id: string; name: string; email?: string } | null;
 }
 
 interface MessageTemplateRow {
@@ -105,6 +113,7 @@ interface OrgTagRow {
 interface ConversationDetail {
   id: string;
   status: string;
+  createdAt: string;
   closureReason: string | null;
   closureValue?: number | null;
   csatScore?: number | null;
@@ -136,7 +145,7 @@ interface ConversationDetail {
   };
   team: { id: string; name: string } | null;
   messages?: Message[];
-  handoffLog?: HandoffTimelineEvent[];
+  contactTimeline?: ContactTimelineEvent[];
 }
 
 const MSG_GROUP_MINUTES = 5;
@@ -956,6 +965,32 @@ export function ConversationDetailPage() {
     return s;
   };
 
+  const contactTimelinePreview = useMemo((): ContactTimelineEvent[] => {
+    const c = conversation;
+    if (!c) return [];
+    const channelType = c.inbox?.channelType;
+    const channelLabel =
+      channelType === "WHATSAPP"
+        ? t("conversationDetail.channelLabelWhatsapp")
+        : channelType
+          ? String(channelType)
+          : null;
+    const synthetic: ContactTimelineEvent = {
+      id: `local:conv-started:${c.id}`,
+      occurredAt: c.createdAt || c.messages?.[0]?.createdAt || new Date().toISOString(),
+      eventType: "conversation.started",
+      channel: channelType === "WHATSAPP" ? "whatsapp" : null,
+      payload: {
+        inboxName: c.inbox?.name ?? null,
+        channelLabel,
+      },
+      actorUser: null,
+    };
+    const merged = [...(c.contactTimeline ?? []), synthetic];
+    merged.sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+    return merged.slice(-18);
+  }, [conversation, t]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -1310,36 +1345,86 @@ export function ConversationDetailPage() {
       ) : null}
 
       <div className="rounded-xl border border-ink-200/80 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-900/40">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">{t("conversationDetail.timelineTitle")}</p>
-        <p className="mt-1 text-[10px] font-medium text-ink-500 dark:text-ink-500">{t("conversationDetail.handoffHistoryTitle")}</p>
-        {(conversation.handoffLog?.length ?? 0) === 0 ? (
-          <p className="mt-1 text-xs text-ink-500">{t("conversationDetail.handoffNoEntries")}</p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.recentHistoryTitle")}
+          </p>
+          <Link
+            to={`/contacts/${conversation.contact.id}`}
+            onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+            className="shrink-0 text-[11px] font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            {t("conversationDetail.recentHistorySeeAll")}
+          </Link>
+        </div>
+        <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-500">{t("conversationDetail.recentHistoryHint")}</p>
+        {contactTimelinePreview.length === 0 ? (
+          <p className="mt-2 text-xs text-ink-500">{t("conversationDetail.handoffNoEntries")}</p>
         ) : (
-          <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-xs text-ink-700 dark:text-ink-300">
-            {[...(conversation.handoffLog ?? [])].reverse().map((ev) => {
-              const p = ev.payload;
-              const prevTeam = p?.previousTeamName ?? t("conversationDetail.noTeam");
-              const nextTeam = p?.newTeamName ?? t("conversationDetail.noTeam");
-              const prevAsg = p?.previousAssigneeName ?? t("conversationDetail.handoffUnassigned");
-              const nextAsg = p?.newAssigneeName ?? t("conversationDetail.handoffUnassigned");
-              const arrow = t("conversationDetail.handoffArrow");
+          <div className="relative mt-3 max-h-72 overflow-y-auto pr-1">
+            {contactTimelinePreview.map((ev, index) => {
+              const title = timelineEventTitle(ev.eventType, t);
+              const channel = timelineChannelLabel(ev.channel, t);
+              const summary = timelineEventSummary(ev.eventType, ev.payload as TimelinePayload, t);
+              const at = new Date(ev.occurredAt);
+              const timeStr = format(at, "HH:mm", { locale: dateLocale });
+              const iconWrap =
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-200/90 bg-white shadow-sm dark:border-ink-600 dark:bg-ink-900";
+              let icon: ReactNode = <Circle className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} />;
+              if (ev.eventType === "conversation.handoff") {
+                icon = <ArrowRightLeft className="h-4 w-4 text-violet-500" />;
+              } else if (ev.eventType.startsWith("deal.")) {
+                icon = <Briefcase className="h-4 w-4 text-amber-600 dark:text-amber-400" />;
+              } else if (ev.eventType === "message.inbound" || ev.eventType === "message.outbound") {
+                const wa = (ev.channel ?? "").toLowerCase() === "whatsapp";
+                icon = wa ? (
+                  <MessageCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                ) : (
+                  <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
+                );
+              } else if (ev.eventType === "conversation.started") {
+                icon = <MessageCircle className="h-4 w-4 text-green-600 dark:text-green-400" />;
+              }
+              const showLine = index < contactTimelinePreview.length - 1;
               return (
-                <li key={ev.id} className="rounded-lg border border-ink-100 bg-ink-50/80 px-2.5 py-2 dark:border-ink-700 dark:bg-ink-900/40">
-                  <p className="font-medium text-ink-800 dark:text-ink-200">
-                    {format(new Date(ev.occurredAt), "PPp", { locale: dateLocale })}
-                    {" · "}
-                    {ev.actorUser?.name ?? "—"}
-                  </p>
-                  <p className="mt-0.5 text-ink-600 dark:text-ink-400">
-                    <span className="text-ink-500">{t("conversationDetail.handoffTeamLine")}:</span> {prevTeam} {arrow} {nextTeam}
-                  </p>
-                  <p className="mt-0.5 text-ink-600 dark:text-ink-400">
-                    <span className="text-ink-500">{t("conversationDetail.handoffAssigneeLine")}:</span> {prevAsg} {arrow} {nextAsg}
-                  </p>
-                </li>
+                <div key={ev.id} className="relative flex gap-3 pb-4 last:pb-0">
+                  {showLine ? (
+                    <div
+                      className="absolute top-8 bottom-0 left-[15px] w-px bg-ink-200 dark:bg-ink-600"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <div className={iconWrap}>{icon}</div>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <time dateTime={ev.occurredAt} className="text-xs font-semibold tabular-nums text-ink-500 dark:text-ink-400">
+                        {timeStr}
+                      </time>
+                      <span className="text-xs font-semibold text-ink-900 dark:text-ink-100">{title}</span>
+                      {channel ? (
+                        <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+                          {channel}
+                        </span>
+                      ) : null}
+                    </div>
+                    {summary ? (
+                      <p className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-ink-600 dark:text-ink-400">
+                        {summary}
+                      </p>
+                    ) : null}
+                    {ev.actorUser ? (
+                      <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-500">
+                        <span className="font-medium text-ink-600 dark:text-ink-400">
+                          {t("contactDetail.timelineActor")}
+                        </span>
+                        : {ev.actorUser.name}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
     </div>

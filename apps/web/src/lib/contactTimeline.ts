@@ -6,6 +6,8 @@ export interface TimelinePayload {
   isPrivate?: unknown;
   name?: unknown;
   fields?: unknown;
+  inboxName?: unknown;
+  channelLabel?: unknown;
   previousTeamName?: unknown;
   newTeamName?: unknown;
   previousAssigneeName?: unknown;
@@ -17,6 +19,7 @@ const EVENT_I18N: Record<string, string> = {
   "message.inbound": "contactDetail.timelineMessageInbound",
   "message.outbound": "contactDetail.timelineMessageOutbound",
   "conversation.handoff": "contactDetail.timelineHandoff",
+  "conversation.started": "conversationDetail.timelineConversationStarted",
   "deal.created": "contactDetail.timelineDealCreated",
   "deal.linked": "contactDetail.timelineDealLinked",
   "deal.updated": "contactDetail.timelineDealUpdated",
@@ -98,6 +101,18 @@ export function timelineEventSummary(
   t: (path: string) => string,
 ): string | null {
   switch (eventType) {
+    case "conversation.started": {
+      const inbox =
+        typeof payload.inboxName === "string" && payload.inboxName.trim()
+          ? payload.inboxName.trim()
+          : null;
+      const ch =
+        typeof payload.channelLabel === "string" && payload.channelLabel.trim()
+          ? payload.channelLabel.trim()
+          : null;
+      const bits = [inbox, ch].filter(Boolean);
+      return bits.length ? bits.join(" · ") : null;
+    }
     case "conversation.handoff":
       return handoffSummary(payload, t);
     case "deal.created":

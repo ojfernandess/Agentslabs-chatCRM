@@ -49,6 +49,17 @@ const updateSchema = z.object({
   closureValue: z.number().nonnegative().nullable().optional(),
 });
 
+const CONTACT_TIMELINE_LIMIT = 80;
+
+async function fetchContactTimelineForConversation(organizationId: string, contactId: string) {
+  return prisma.timelineEvent.findMany({
+    where: { organizationId, subjectType: "CONTACT", subjectId: contactId },
+    orderBy: { occurredAt: "desc" },
+    take: CONTACT_TIMELINE_LIMIT,
+    include: { actorUser: { select: { id: true, name: true, email: true } } },
+  });
+}
+
 /** Agente tem de ser membro da caixa para ver ou alterar a conversa. */
 async function agentIsMemberOfInbox(
   userId: string,
@@ -414,23 +425,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const handoffLog = await prisma.timelineEvent.findMany({
-      where: {
-        organizationId,
-        subjectType: "CONTACT",
-        subjectId: conversation.contactId,
-        eventType: "conversation.handoff",
-      },
-      orderBy: { occurredAt: "desc" },
-      take: 40,
-      include: {
-        actorUser: { select: { id: true, name: true, email: true } },
-      },
-    });
+    const contactTimeline = await fetchContactTimelineForConversation(organizationId, conversation.contactId);
 
     const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, conversation.inbox.channelType);
-    return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
+    return { ...stripCsatSurveyToken(conversation), contactTimeline, agentBotTriageActive };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -847,23 +846,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const handoffLog = await prisma.timelineEvent.findMany({
-        where: {
-          organizationId,
-          subjectType: "CONTACT",
-          subjectId: conversation.contactId,
-          eventType: "conversation.handoff",
-        },
-        orderBy: { occurredAt: "desc" },
-        take: 40,
-        include: {
-          actorUser: { select: { id: true, name: true, email: true } },
-        },
-      });
+      const contactTimeline = await fetchContactTimelineForConversation(organizationId, conversation.contactId);
 
       const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
-      return { ...stripCsatSurveyToken(conversation), handoffLog, agentBotTriageActive };
+      return { ...stripCsatSurveyToken(conversation), contactTimeline, agentBotTriageActive };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }

@@ -8,6 +8,7 @@ import {
   ensurePipelineStageForLeadType,
   syncPipelineStageFromLeadType,
 } from "../lib/pipelineLeadTypeSync.js";
+import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 
 const bodySchema = z.object({
   name: z.string().min(1).max(120),
@@ -59,6 +60,7 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
     if (valueRollup === "WON") {
       await enforceSingleWonType(organizationId, row.id);
     }
+    await ensurePipelineStageForLeadType(prisma, organizationId, row.id);
     return reply.status(201).send(row);
   });
 
@@ -98,12 +100,33 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const res = await prisma.leadType.deleteMany({
+    const existing = await prisma.leadType.findFirst({
       where: { id: request.params.id, organizationId },
     });
-    if (res.count === 0) {
+    if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Lead type not found", statusCode: 404 });
     }
+
+    const pipeline = await getOrCreateDefaultPipeline(prisma, organizationId);
+    const stage = await prisma.pipelineStage.findFirst({
+      where: { pipelineId: pipeline.id, leadTypeId: request.params.id },
+    });
+    if (stage) {
+      const dealsOnStage = await prisma.deal.count({
+        where: { organizationId, stageId: stage.id },
+      });
+      if (dealsOnStage > 0) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "Cannot delete this lead type while deals are still in its pipeline stage. Move or close those deals first.",
+          statusCode: 400,
+        });
+      }
+      await prisma.pipelineStage.delete({ where: { id: stage.id } });
+    }
+
+    await prisma.leadType.delete({ where: { id: request.params.id } });
     return reply.status(204).send();
   });
 }

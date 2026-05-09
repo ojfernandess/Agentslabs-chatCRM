@@ -97,6 +97,15 @@ interface TagListRow {
   color: string;
 }
 
+/** Estágios do pipeline principal (Negócios / Novo negócio) — podem existir sem `leadType` após apagar tipo. */
+interface CrmPipelineStageRow {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+  leadType: { id: string; valueRollup: string } | null;
+}
+
 function workflowMinutesFromInput(n: number, u: "minutes" | "hours" | "days"): number {
   const v = Math.floor(Number(n));
   if (!Number.isFinite(v) || v < 1) return 10;
@@ -156,6 +165,8 @@ export function SettingsPage() {
   const [editLtColor, setEditLtColor] = useState("#6366f1");
   const [editLtRollup, setEditLtRollup] = useState<LeadTypeRow["valueRollup"]>("PIPELINE");
   const [editLtSubmitting, setEditLtSubmitting] = useState(false);
+  const [pipelineOrphans, setPipelineOrphans] = useState<CrmPipelineStageRow[]>([]);
+  const [orphanBusyId, setOrphanBusyId] = useState<string | null>(null);
 
   const [agentBotOptions, setAgentBotOptions] = useState<AgentBotOption[]>([]);
   const [agentBotId, setAgentBotId] = useState("");
@@ -397,6 +408,12 @@ export function SettingsPage() {
             valueRollup: (x as LeadTypeRow).valueRollup ?? "PIPELINE",
           })),
         );
+        try {
+          const pst = await api.get<CrmPipelineStageRow[]>("/crm/pipeline-stages");
+          setPipelineOrphans(pst.filter((s) => !s.leadType));
+        } catch {
+          setPipelineOrphans([]);
+        }
       } catch {
         // failed
       } finally {
@@ -405,6 +422,22 @@ export function SettingsPage() {
     }
     load();
   }, [isAdmin]);
+
+  const refreshLeadTypesAndPipelineOrphans = async () => {
+    const lt = await api.get<LeadTypeRow[]>("/lead-types");
+    setLeadTypes(
+      lt.map((x) => ({
+        ...x,
+        valueRollup: (x as LeadTypeRow).valueRollup ?? "PIPELINE",
+      })),
+    );
+    try {
+      const pst = await api.get<CrmPipelineStageRow[]>("/crm/pipeline-stages");
+      setPipelineOrphans(pst.filter((s) => !s.leadType));
+    } catch {
+      setPipelineOrphans([]);
+    }
+  };
 
   const handleAddLeadType = async (e: FormEvent) => {
     e.preventDefault();
@@ -423,7 +456,7 @@ export function SettingsPage() {
       setNewLtName("");
       setNewLtColor("#6366f1");
       setNewLtRollup("PIPELINE");
-      setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
+      await refreshLeadTypesAndPipelineOrphans();
     } catch (err) {
       setLtError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -431,12 +464,31 @@ export function SettingsPage() {
     }
   };
 
+  const handleCreateLeadFromOrphanStage = async (stage: CrmPipelineStageRow) => {
+    setLtError("");
+    setOrphanBusyId(stage.id);
+    try {
+      await api.post<LeadTypeRow>("/lead-types", {
+        name: stage.name,
+        color: stage.color,
+        order: stage.order,
+        valueRollup: "PIPELINE",
+      });
+      await refreshLeadTypesAndPipelineOrphans();
+    } catch (err) {
+      setLtError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setOrphanBusyId(null);
+    }
+  };
+
   const handleDeleteLeadType = async (id: string) => {
+    setLtError("");
     try {
       await api.delete(`/lead-types/${id}`);
-      setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
-    } catch {
-      /* ignore */
+      await refreshLeadTypesAndPipelineOrphans();
+    } catch (err) {
+      setLtError(err instanceof Error ? err.message : "Failed");
     }
   };
 
@@ -467,7 +519,7 @@ export function SettingsPage() {
         valueRollup: editLtRollup,
       });
       setEditingLtId(null);
-      setLeadTypes(await api.get<LeadTypeRow[]>("/lead-types"));
+      await refreshLeadTypesAndPipelineOrphans();
     } catch (err) {
       setLtError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -1401,6 +1453,42 @@ export function SettingsPage() {
                     {t("settings.leadTypesTitle")}
                   </h2>
                   <p className="mb-4 text-sm text-gray-500">{t("settings.leadTypesHint")}</p>
+                  {pipelineOrphans.length > 0 ? (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900/50 dark:bg-amber-950/25">
+                      <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-200">
+                        {t("settings.pipelineOrphanTitle")}
+                      </h3>
+                      <p className="mt-1 text-xs text-amber-900/85 dark:text-amber-300/90">
+                        {t("settings.pipelineOrphanHint")}
+                      </p>
+                      <ul className="mt-3 space-y-2">
+                        {pipelineOrphans.map((s) => (
+                          <li
+                            key={s.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-100 bg-white/90 px-3 py-2 dark:border-amber-900/35 dark:bg-ink-900/50"
+                          >
+                            <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-ink-100">
+                              <span
+                                className="h-3 w-3 shrink-0 rounded-full"
+                                style={{ backgroundColor: s.color }}
+                              />
+                              {s.name}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={orphanBusyId === s.id}
+                              onClick={() => void handleCreateLeadFromOrphanStage(s)}
+                              className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
+                            >
+                              {orphanBusyId === s.id
+                                ? t("settings.pipelineOrphanBusy")
+                                : t("settings.pipelineOrphanCreate")}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {leadTypes.length > 0 && (
                     <ul className="mb-4 divide-y divide-gray-100 rounded-lg border border-gray-100">
                       {leadTypes.map((lt) => (
