@@ -35,6 +35,7 @@ import { channelInboxPublicRoutes } from "./routes/channelInboxPublic.js";
 import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
+import { automationSuiteRoutes } from "./routes/automationSuite.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 
 const app = Fastify({
@@ -108,7 +109,8 @@ await app.register(workspaceRoutes, { prefix: "/api/v1" });
 await app.register(teamRoutes, { prefix: "/api/v1/teams" });
 await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
 await app.register(botRoutes, { prefix: "/api/v1/bots" });
-await app.register(automationRoutes, { prefix: "/api/v1/automations" });
+  await app.register(automationRoutes, { prefix: "/api/v1/automations" });
+  await app.register(automationSuiteRoutes, { prefix: "/api/v1/automation" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check

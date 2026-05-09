@@ -13,6 +13,7 @@ import {
   Bell,
   Languages,
   Bot,
+  Sparkles,
   ClipboardCheck,
   FileSearch,
   BarChart3,
@@ -260,6 +261,18 @@ export function Layout() {
               >
                 <Bot className="h-5 w-5" />
                 {t("nav.bots")}
+              </NavLink>
+              <NavLink
+                to="/automation"
+                className={({ isActive }) =>
+                  clsx(
+                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                  )
+                }
+              >
+                <Sparkles className="h-5 w-5" />
+                {t("nav.automation")}
               </NavLink>
               <NavLink
                 to="/broadcasts"

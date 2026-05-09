@@ -1,0 +1,843 @@
+import { createHash } from "node:crypto";
+import { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../db.js";
+import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { recordAuditLog, clientIp } from "../lib/audit.js";
+
+function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
+  return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
+}
+
+function asJson(v: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+}
+
+function redactLlmConfig(config: unknown): Record<string, unknown> {
+  if (!config || typeof config !== "object") return {};
+  const c = { ...(config as Record<string, unknown>) };
+  if ("apiKey" in c && c.apiKey) c.apiKey = "***";
+  return c;
+}
+
+const defaultLlmConfig = () => ({
+  provider: "openai",
+  model: "gpt-4o-mini",
+  temperature: 0.7,
+  maxTokens: 1024,
+  apiBaseUrl: null as string | null,
+  apiKey: null as string | null,
+});
+
+const defaultBehaviorConfig = () => ({
+  nativeTools: {
+    knowledge_search: true,
+    call_human: true,
+    end_conversation: false,
+    list_entities: false,
+    scheduling: false,
+  },
+  escalationRules: { conditions: "", transferMessage: "", mode: "keyword" as string },
+  inactivity: {
+    timeoutMinutes: 30,
+    followUpMax: 0,
+    followUpMessages: [] as string[],
+    pauseMessage: "",
+    closeMessage: "",
+    clearContextAfterFollowUpMinutes: null as number | null,
+  },
+  voice: { elevenLabsEnabled: false, voiceId: null as string | null, replyWithAudioOnInboundAudio: false },
+  segmentation: { segmentId: null, entityId: null, establishmentId: null },
+  dataSource: { label: null as string | null, connectionRef: null as string | null },
+  scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
+});
+
+const knowledgeCreateSchema = z.object({
+  title: z.string().min(1).max(500),
+  content: z.string().min(1),
+  category: z.string().max(120).optional().nullable(),
+  tags: z.array(z.string().max(64)).optional().default([]),
+  isActive: z.boolean().optional(),
+  syncToAi: z.boolean().optional(),
+  botIds: z.array(z.string().uuid()).optional().default([]),
+});
+
+const knowledgePatchSchema = knowledgeCreateSchema.partial();
+
+const promptModuleSchema = z.object({
+  name: z.string().min(1).max(200),
+  slug: z.string().min(1).max(120).regex(/^[a-z0-9_-]+$/),
+  body: z.string().min(1),
+  version: z.number().int().min(1).optional(),
+  labels: z.record(z.unknown()).optional().nullable(),
+});
+
+const customToolSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().min(1),
+  toolType: z.enum(["HTTP", "EMAIL", "WEBHOOK", "OTHER"]),
+  config: z.record(z.unknown()),
+  parametersSchema: z.record(z.unknown()),
+  isActive: z.boolean().optional(),
+  botId: z.string().uuid().nullable().optional(),
+});
+
+const interactionCreateSchema = z.object({
+  botId: z.string().uuid(),
+  conversationId: z.string().uuid().optional().nullable(),
+  userMessage: z.string().min(1),
+  assistantMessage: z.string().min(1),
+  metadata: z.record(z.unknown()).optional(),
+  knowledgeArticleIds: z.array(z.string().uuid()).optional(),
+  escalatedToHuman: z.boolean().optional(),
+  responseType: z.string().max(32).optional(),
+});
+
+const KB_CACHE_TTL_MS = 60 * 60 * 1000;
+
+export async function automationSuiteRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook("preHandler", authenticate);
+
+  app.get("/dashboard", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const [
+      knowledgeCount,
+      agentsWithProfile,
+      interactionsToday,
+      recentInteractions,
+      escalationsToday,
+    ] = await Promise.all([
+      prisma.automationKnowledgeArticle.count({ where: { organizationId } }),
+      prisma.automationAgentProfile.count({ where: { organizationId } }),
+      prisma.automationInteraction.count({
+        where: { organizationId, createdAt: { gte: start } },
+      }),
+      prisma.automationInteraction.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 15,
+        select: {
+          id: true,
+          botId: true,
+          conversationId: true,
+          userMessage: true,
+          assistantMessage: true,
+          escalatedToHuman: true,
+          responseType: true,
+          createdAt: true,
+          bot: { select: { name: true } },
+        },
+      }),
+      prisma.automationInteraction.count({
+        where: { organizationId, escalatedToHuman: true, createdAt: { gte: start } },
+      }),
+    ]);
+
+    const activeBots = await prisma.bot.count({ where: { organizationId, isActive: true } });
+
+    return {
+      counts: {
+        knowledgeArticles: knowledgeCount,
+        agentProfiles: agentsWithProfile,
+        activeBots,
+        interactionsToday,
+        escalationsToday,
+      },
+      recentInteractions,
+    };
+  });
+
+  app.get("/knowledge-articles", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+
+    const rows = await prisma.automationKnowledgeArticle.findMany({
+      where: { organizationId },
+      orderBy: { updatedAt: "desc" },
+      include: { botLinks: { select: { botId: true } } },
+    });
+    return {
+      data: rows.map((r) => ({
+        ...r,
+        botIds: r.botLinks.map((l) => l.botId),
+        botLinks: undefined,
+      })),
+    };
+  });
+
+  app.post("/knowledge-articles", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = knowledgeCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const botIds = parsed.data.botIds ?? [];
+    if (botIds.length > 0) {
+      const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
+      if (n !== botIds.length) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botIds", statusCode: 400 });
+      }
+    }
+
+    const row = await prisma.automationKnowledgeArticle.create({
+      data: {
+        organizationId,
+        title: parsed.data.title,
+        content: parsed.data.content,
+        category: parsed.data.category ?? null,
+        tags: parsed.data.tags ?? [],
+        isActive: parsed.data.isActive ?? true,
+        syncToAi: parsed.data.syncToAi ?? true,
+        botLinks: botIds.length ? { create: botIds.map((botId) => ({ botId })) } : undefined,
+      },
+      include: { botLinks: { select: { botId: true } } },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge.create",
+      resourceType: "automation_knowledge_article",
+      resourceId: row.id,
+      ip: clientIp(request),
+    });
+
+    return { ...row, botIds: row.botLinks.map((l) => l.botId) };
+  });
+
+  app.patch<{ Params: { id: string } }>("/knowledge-articles/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = knowledgePatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.automationKnowledgeArticle.findFirst({
+      where: { id: request.params.id, organizationId },
+      include: { botLinks: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Article not found", statusCode: 404 });
+    }
+
+    await prisma.automationKnowledgeRevision.create({
+      data: {
+        articleId: existing.id,
+        editorUserId: request.user.id,
+        snapshot: {
+          title: existing.title,
+          content: existing.content,
+          category: existing.category,
+          tags: existing.tags,
+          isActive: existing.isActive,
+          syncToAi: existing.syncToAi,
+        },
+      },
+    });
+
+    const botIds = parsed.data.botIds;
+    if (botIds !== undefined) {
+      const uniq = [...new Set(botIds)];
+      if (uniq.length > 0) {
+        const n = await prisma.bot.count({ where: { organizationId, id: { in: uniq } } });
+        if (n !== uniq.length) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid botIds", statusCode: 400 });
+        }
+      }
+    }
+
+    const updateData: {
+      title?: string;
+      content?: string;
+      category?: string | null;
+      tags?: string[];
+      isActive?: boolean;
+      syncToAi?: boolean;
+    } = {};
+    if (parsed.data.title !== undefined) updateData.title = parsed.data.title;
+    if (parsed.data.content !== undefined) updateData.content = parsed.data.content;
+    if (parsed.data.category !== undefined) updateData.category = parsed.data.category ?? null;
+    if (parsed.data.tags !== undefined) updateData.tags = parsed.data.tags;
+    if (parsed.data.isActive !== undefined) updateData.isActive = parsed.data.isActive;
+    if (parsed.data.syncToAi !== undefined) updateData.syncToAi = parsed.data.syncToAi;
+
+    const row = await prisma.$transaction(async (tx) => {
+      if (botIds !== undefined) {
+        await tx.automationKnowledgeArticleBot.deleteMany({ where: { articleId: existing.id } });
+        if (botIds.length > 0) {
+          await tx.automationKnowledgeArticleBot.createMany({
+            data: botIds.map((botId) => ({ articleId: existing.id, botId })),
+          });
+        }
+      }
+      return tx.automationKnowledgeArticle.update({
+        where: { id: existing.id },
+        data: updateData,
+        include: { botLinks: { select: { botId: true } } },
+      });
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge.update",
+      resourceType: "automation_knowledge_article",
+      resourceId: row.id,
+      ip: clientIp(request),
+    });
+
+    return { ...row, botIds: row.botLinks.map((l) => l.botId) };
+  });
+
+  app.delete<{ Params: { id: string } }>("/knowledge-articles/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const res = await prisma.automationKnowledgeArticle.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
+      return reply.status(404).send({ error: "Not Found", message: "Article not found", statusCode: 404 });
+    }
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge.delete",
+      resourceType: "automation_knowledge_article",
+      resourceId: request.params.id,
+      ip: clientIp(request),
+    });
+    return reply.status(204).send();
+  });
+
+  app.get<{ Params: { id: string } }>("/knowledge-articles/:id/revisions", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const article = await prisma.automationKnowledgeArticle.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true },
+    });
+    if (!article) {
+      return reply.status(404).send({ error: "Not Found", message: "Article not found", statusCode: 404 });
+    }
+    const revs = await prisma.automationKnowledgeRevision.findMany({
+      where: { articleId: article.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { editor: { select: { id: true, name: true } } },
+    });
+    return { data: revs };
+  });
+
+  const searchBodySchema = z.object({
+    query: z.string().min(1).max(500),
+    botId: z.string().uuid().optional(),
+  });
+
+  app.post("/knowledge-articles/search", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+
+    const parsed = searchBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const norm = parsed.data.query.trim().toLowerCase().slice(0, 500);
+    const hash = createHash("sha256").update(`${organizationId}:${norm}`).digest("hex");
+    const now = new Date();
+
+    const cached = await prisma.kbSearchCache.findUnique({
+      where: { organizationId_queryHash: { organizationId, queryHash: hash } },
+    });
+    if (cached?.expiresAt && cached.expiresAt > now) {
+      await prisma.kbSearchCache.update({
+        where: { id: cached.id },
+        data: { hitCount: { increment: 1 } },
+      });
+      const ids = cached.articleIds as string[];
+      const articles = await prisma.automationKnowledgeArticle.findMany({
+        where: { id: { in: ids }, organizationId },
+      });
+      await prisma.kbSearchLog.create({
+        data: {
+          organizationId,
+          queryNormalized: norm,
+          resultsCount: articles.length,
+          actorUserId: request.user.id,
+        },
+      });
+      return { cached: true, data: articles };
+    }
+
+    const whereBase = {
+      organizationId,
+      isActive: true,
+      syncToAi: true,
+      OR: [
+        { title: { contains: norm, mode: "insensitive" as const } },
+        { content: { contains: norm, mode: "insensitive" as const } },
+      ],
+    };
+
+    const where =
+      parsed.data.botId != null
+        ? { ...whereBase, botLinks: { some: { botId: parsed.data.botId } } }
+        : whereBase;
+
+    const articles = await prisma.automationKnowledgeArticle.findMany({
+      where,
+      take: 25,
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const articleIds = articles.map((a) => a.id);
+    const exp = new Date(Date.now() + KB_CACHE_TTL_MS);
+    await prisma.kbSearchCache.upsert({
+      where: { organizationId_queryHash: { organizationId, queryHash: hash } },
+      create: {
+        organizationId,
+        queryHash: hash,
+        articleIds,
+        expiresAt: exp,
+      },
+      update: {
+        articleIds,
+        expiresAt: exp,
+        hitCount: { increment: 1 },
+      },
+    });
+
+    await prisma.kbSearchLog.create({
+      data: {
+        organizationId,
+        queryNormalized: norm,
+        resultsCount: articles.length,
+        actorUserId: request.user.id,
+      },
+    });
+
+    return { cached: false, data: articles };
+  });
+
+  app.get("/prompt-modules", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const data = await prisma.automationPromptModule.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    });
+    return { data };
+  });
+
+  app.post("/prompt-modules", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = promptModuleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const row = await prisma.automationPromptModule.create({
+        data: {
+          organizationId,
+          name: parsed.data.name,
+          slug: parsed.data.slug,
+          body: parsed.data.body,
+          version: parsed.data.version ?? 1,
+          labels: parsed.data.labels == null ? undefined : asJson(parsed.data.labels),
+        },
+      });
+      return row;
+    } catch {
+      return reply.status(409).send({ error: "Conflict", message: "Slug already exists", statusCode: 409 });
+    }
+  });
+
+  app.patch<{ Params: { id: string } }>("/prompt-modules/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = promptModuleSchema.partial().safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const data: Prisma.AutomationPromptModuleUpdateInput = {};
+      if (parsed.data.name !== undefined) data.name = parsed.data.name;
+      if (parsed.data.slug !== undefined) data.slug = parsed.data.slug;
+      if (parsed.data.body !== undefined) data.body = parsed.data.body;
+      if (parsed.data.version !== undefined) data.version = parsed.data.version;
+      if (parsed.data.labels !== undefined) {
+        data.labels = parsed.data.labels == null ? Prisma.JsonNull : asJson(parsed.data.labels);
+      }
+      const row = await prisma.automationPromptModule.updateMany({
+        where: { id: request.params.id, organizationId },
+        data,
+      });
+      if (row.count === 0) {
+        return reply.status(404).send({ error: "Not Found", message: "Module not found", statusCode: 404 });
+      }
+      return prisma.automationPromptModule.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+    } catch {
+      return reply.status(409).send({ error: "Conflict", message: "Slug conflict", statusCode: 409 });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/prompt-modules/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const res = await prisma.automationPromptModule.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
+      return reply.status(404).send({ error: "Not Found", message: "Module not found", statusCode: 404 });
+    }
+    return reply.status(204).send();
+  });
+
+  app.get("/custom-tools", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const data = await prisma.automationCustomTool.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+    });
+    return { data };
+  });
+
+  app.post("/custom-tools", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = customToolSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    if (parsed.data.botId) {
+      const b = await prisma.bot.findFirst({
+        where: { id: parsed.data.botId, organizationId },
+      });
+      if (!b) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botId", statusCode: 400 });
+      }
+    }
+    const row = await prisma.automationCustomTool.create({
+      data: {
+        organizationId,
+        botId: parsed.data.botId ?? null,
+        name: parsed.data.name,
+        description: parsed.data.description,
+        toolType: parsed.data.toolType,
+        config: asJson(parsed.data.config),
+        parametersSchema: asJson(parsed.data.parametersSchema),
+        isActive: parsed.data.isActive ?? true,
+      },
+    });
+    return row;
+  });
+
+  app.patch<{ Params: { id: string } }>("/custom-tools/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = customToolSchema.partial().safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    if (parsed.data.botId) {
+      const b = await prisma.bot.findFirst({
+        where: { id: parsed.data.botId, organizationId },
+      });
+      if (!b) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botId", statusCode: 400 });
+      }
+    }
+    try {
+      const data: Prisma.AutomationCustomToolUncheckedUpdateInput = {};
+      if (parsed.data.name !== undefined) data.name = parsed.data.name;
+      if (parsed.data.description !== undefined) data.description = parsed.data.description;
+      if (parsed.data.toolType !== undefined) data.toolType = parsed.data.toolType;
+      if (parsed.data.config !== undefined) data.config = asJson(parsed.data.config);
+      if (parsed.data.parametersSchema !== undefined) data.parametersSchema = asJson(parsed.data.parametersSchema);
+      if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+      if (parsed.data.botId !== undefined) data.botId = parsed.data.botId;
+      const row = await prisma.automationCustomTool.updateMany({
+        where: { id: request.params.id, organizationId },
+        data,
+      });
+      if (row.count === 0) {
+        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+      }
+      return prisma.automationCustomTool.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+    } catch (e) {
+      return reply.status(400).send({ error: "Bad Request", message: String(e), statusCode: 400 });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/custom-tools/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const res = await prisma.automationCustomTool.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
+      return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+    }
+    return reply.status(204).send();
+  });
+
+  app.get("/agent-profiles", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const rows = await prisma.automationAgentProfile.findMany({
+      where: { organizationId },
+      include: { bot: { select: { id: true, name: true, isActive: true, webhookUrl: true } } },
+    });
+    return {
+      data: rows.map((r) => ({
+        ...r,
+        llmConfig: redactLlmConfig(r.llmConfig),
+      })),
+    };
+  });
+
+  app.put<{ Params: { botId: string } }>("/agent-profiles/:botId", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const bot = await prisma.bot.findFirst({
+      where: { id: request.params.botId, organizationId },
+    });
+    if (!bot) {
+      return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+    }
+
+    const bodySchema = z.object({
+      llmConfig: z.record(z.unknown()).optional(),
+      behaviorConfig: z.record(z.unknown()).optional(),
+      promptModuleIds: z.array(z.string().uuid()).optional().nullable(),
+    });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.automationAgentProfile.findUnique({
+      where: { botId: bot.id },
+    });
+
+    let llmConfig: Record<string, unknown> = existing
+      ? (existing.llmConfig as Record<string, unknown>)
+      : defaultLlmConfig();
+    if (parsed.data.llmConfig) {
+      const incoming = parsed.data.llmConfig as Record<string, unknown>;
+      if (incoming.apiKey === "***") {
+        delete incoming.apiKey;
+      }
+      llmConfig = { ...llmConfig, ...incoming };
+    }
+
+    const behaviorConfig = parsed.data.behaviorConfig
+      ? { ...defaultBehaviorConfig(), ...(parsed.data.behaviorConfig as object) }
+      : existing
+        ? (existing.behaviorConfig as object)
+        : defaultBehaviorConfig();
+
+    const row = await prisma.automationAgentProfile.upsert({
+      where: { botId: bot.id },
+      create: {
+        organizationId,
+        botId: bot.id,
+        llmConfig: asJson(llmConfig),
+        behaviorConfig: asJson(behaviorConfig),
+        promptModuleIds:
+          parsed.data.promptModuleIds == null ? undefined : asJson(parsed.data.promptModuleIds),
+      },
+      update: {
+        llmConfig: asJson(llmConfig),
+        ...(parsed.data.behaviorConfig ? { behaviorConfig: asJson(behaviorConfig) } : {}),
+        ...(parsed.data.promptModuleIds !== undefined
+          ? {
+              promptModuleIds:
+                parsed.data.promptModuleIds == null ? Prisma.JsonNull : asJson(parsed.data.promptModuleIds),
+            }
+          : {}),
+      },
+    });
+
+    return { ...row, llmConfig: redactLlmConfig(row.llmConfig) };
+  });
+
+  app.get("/interactions", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const data = await prisma.automationInteraction.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: { bot: { select: { name: true } } },
+    });
+    return { data };
+  });
+
+  app.post("/interactions", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = interactionCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const bot = await prisma.bot.findFirst({
+      where: { id: parsed.data.botId, organizationId },
+    });
+    if (!bot) {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid botId", statusCode: 400 });
+    }
+    if (parsed.data.conversationId) {
+      const c = await prisma.conversation.findFirst({
+        where: { id: parsed.data.conversationId, organizationId },
+      });
+      if (!c) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid conversationId", statusCode: 400 });
+      }
+    }
+    const row = await prisma.automationInteraction.create({
+      data: {
+        organizationId,
+        botId: parsed.data.botId,
+        conversationId: parsed.data.conversationId ?? null,
+        userMessage: parsed.data.userMessage,
+        assistantMessage: parsed.data.assistantMessage,
+        metadata: parsed.data.metadata == null ? undefined : asJson(parsed.data.metadata),
+        knowledgeArticleIds:
+          parsed.data.knowledgeArticleIds == null ? undefined : asJson(parsed.data.knowledgeArticleIds),
+        escalatedToHuman: parsed.data.escalatedToHuman ?? false,
+        responseType: parsed.data.responseType ?? null,
+      },
+    });
+    return row;
+  });
+
+  app.get<{ Params: { conversationId: string } }>(
+    "/conversation-context/:conversationId",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      if (!isTenantAdminLike(request.user)) {
+        return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+      }
+      const row = await prisma.automationConversationContext.findFirst({
+        where: { conversationId: request.params.conversationId, organizationId },
+      });
+      if (!row) {
+        return reply.status(404).send({ error: "Not Found", message: "Context not found", statusCode: 404 });
+      }
+      return row;
+    },
+  );
+
+  const contextPutSchema = z.object({
+    botId: z.string().uuid(),
+    state: z.record(z.unknown()),
+    clearPolicy: z.record(z.unknown()).optional().nullable(),
+  });
+
+  app.put<{ Params: { conversationId: string } }>(
+    "/conversation-context/:conversationId",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const parsed = contextPutSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const bot = await prisma.bot.findFirst({
+        where: { id: parsed.data.botId, organizationId },
+      });
+      if (!bot) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid botId", statusCode: 400 });
+      }
+      const conv = await prisma.conversation.findFirst({
+        where: { id: request.params.conversationId, organizationId },
+      });
+      if (!conv) {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+      }
+      const row = await prisma.automationConversationContext.upsert({
+        where: { conversationId: conv.id },
+        create: {
+          organizationId,
+          conversationId: conv.id,
+          botId: parsed.data.botId,
+          state: asJson(parsed.data.state),
+          clearPolicy:
+            parsed.data.clearPolicy == null ? undefined : asJson(parsed.data.clearPolicy),
+        },
+        update: {
+          botId: parsed.data.botId,
+          state: asJson(parsed.data.state),
+          clearPolicy:
+            parsed.data.clearPolicy === undefined
+              ? undefined
+              : parsed.data.clearPolicy == null
+                ? Prisma.JsonNull
+                : asJson(parsed.data.clearPolicy),
+        },
+      });
+      return row;
+    },
+  );
+
+  app.post<{ Params: { conversationId: string } }>(
+    "/conversation-context/:conversationId/clear",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const row = await prisma.automationConversationContext.updateMany({
+        where: { conversationId: request.params.conversationId, organizationId },
+        data: { state: asJson({}), lastClearedAt: new Date() },
+      });
+      if (row.count === 0) {
+        return reply.status(404).send({ error: "Not Found", message: "Context not found", statusCode: 404 });
+      }
+      return { ok: true };
+    },
+  );
+}

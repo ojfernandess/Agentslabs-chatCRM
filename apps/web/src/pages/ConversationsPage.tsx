@@ -329,7 +329,7 @@ export function ConversationsPage() {
                           >
                             <Bot className="h-3 w-3" />
                             {typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0
-                              ? t("conversationDetail.botTriageListHuman")
+                              ? t("conversationDetail.transferToBot")
                               : t("conversationDetail.botInAttendance")}
                           </span>
                         ) : null}
