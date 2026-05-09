@@ -132,6 +132,7 @@ model Organization {
   automationCustomTools          AutomationCustomTool[]
   automationInteractions           AutomationInteraction[]
   automationConversationContexts   AutomationConversationContext[]
+  automationToolExecutions         AutomationToolExecution[]
 
   @@map("organizations")
 }
@@ -981,16 +982,45 @@ model AutomationCustomTool {
   bot              Bot?         @relation(fields: [botId], references: [id], onDelete: Cascade)
   name             String       @db.VarChar(120)
   description      String       @db.Text
-  toolType         String       @map("tool_type") @db.VarChar(32)
+  toolType         String       @map("tool_type") @db.VarChar(64)
   config           Json
   parametersSchema Json         @map("parameters_schema")
   isActive         Boolean      @default(true) @map("is_active")
+  /// Estatísticas agregadas (atualizadas em testes e execuções registadas)
+  lastExecutedAt   DateTime?    @map("last_executed_at")
+  executionCount   Int          @default(0) @map("execution_count")
+  avgDurationMs    Float?       @map("avg_duration_ms")
+  tags             String[]     @default([]) @map("tags")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  executions AutomationToolExecution[]
 
   @@index([organizationId])
   @@index([botId])
   @@map("automation_custom_tools")
+}
+
+model AutomationToolExecution {
+  id               String       @id @default(uuid()) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  toolId           String       @map("tool_id") @db.Uuid
+  tool             AutomationCustomTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  source           String       @default("manual_test") @map("source") @db.VarChar(32)
+  ok               Boolean      @default(false) @map("ok")
+  statusCode       Int?         @map("status_code")
+  durationMs       Int?         @map("duration_ms")
+  requestSummary   Json?        @map("request_summary")
+  responseSummary  Json?        @map("response_summary")
+  errorMessage     String?      @map("error_message") @db.Text
+  tokensUsed       Int?         @map("tokens_used")
+  botId            String?      @map("bot_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([toolId, createdAt])
+  @@map("automation_tool_executions")
 }
 
 model AutomationInteraction {

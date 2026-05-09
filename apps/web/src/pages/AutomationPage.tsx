@@ -18,6 +18,10 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
 import { api } from "@/lib/api";
+import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
+import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
+
+export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
 type Tab =
   | "overview"
@@ -149,6 +153,34 @@ function defaultNativeTools(): Record<NativeToolKey, boolean> {
   return o;
 }
 
+function defaultConnectedTools(): AgentConnectedToolRow[] {
+  return [];
+}
+
+function normalizeConnectedTools(raw: unknown): AgentConnectedToolRow[] {
+  if (!Array.isArray(raw)) return defaultConnectedTools();
+  const out: AgentConnectedToolRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.toolId !== "string") continue;
+    out.push({
+      toolId: o.toolId,
+      enabled: Boolean(o.enabled),
+      permission: o.permission === "write" || o.permission === "admin" ? o.permission : "read",
+      maxCallsPerConversation:
+        typeof o.maxCallsPerConversation === "number"
+          ? o.maxCallsPerConversation
+          : o.maxCallsPerConversation === null
+            ? null
+            : null,
+      priority: typeof o.priority === "number" ? o.priority : 0,
+      runMode: o.runMode === "manual" ? "manual" : "auto",
+    });
+  }
+  return out;
+}
+
 const defaultBehavior = {
   nativeTools: defaultNativeTools(),
   escalationRules: {
@@ -175,25 +207,16 @@ const defaultBehavior = {
     replyWithAudioOnInboundAudio: false,
   },
   scheduling: { useOrgReminders: true, externalCalendar: "none" },
+  connectedTools: defaultConnectedTools(),
 };
 
-export type AutomationCustomToolRow = {
-  id: string;
-  name: string;
-  description: string;
-  toolType: string;
-  isActive: boolean;
-  botId: string | null;
-  config?: Record<string, unknown>;
-};
-
-type ToolPresetMeta = {
-  presetKey: string;
-  category: string;
-  name: string;
-  description: string;
-  toolType: string;
-  parametersSchema: Record<string, unknown>;
+export type AgentConnectedToolRow = {
+  toolId: string;
+  enabled: boolean;
+  permission: "read" | "write" | "admin";
+  maxCallsPerConversation: number | null;
+  priority: number;
+  runMode: "auto" | "manual";
 };
 
 type AgentFormFields = {
@@ -225,6 +248,7 @@ type AgentFormFields = {
   escalationKeywords: string;
   nativeTools: Record<NativeToolKey, boolean>;
   promptModuleIds: string[];
+  connectedTools: AgentConnectedToolRow[];
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -257,6 +281,7 @@ function emptyAgentForm(): AgentFormFields {
     escalationKeywords: "",
     nativeTools: defaultNativeTools(),
     promptModuleIds: [],
+    connectedTools: defaultConnectedTools(),
   };
 }
 
@@ -309,6 +334,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     escalationKeywords: String(esc.keywords ?? ""),
     nativeTools,
     promptModuleIds,
+    connectedTools: normalizeConnectedTools(beh.connectedTools),
   };
 }
 
@@ -338,6 +364,7 @@ function formToPayload(form: AgentFormFields): {
   const behaviorConfig: Record<string, unknown> = {
     ...defaultBehavior,
     nativeTools: { ...form.nativeTools },
+    connectedTools: form.connectedTools,
     escalationRules: {
       ...defaultBehavior.escalationRules,
       mode: form.escalationMode,
@@ -780,6 +807,19 @@ export function AutomationPage() {
       await api.patch(`/automation/custom-tools/${toolId}`, { config: cleaned });
       await loadTools();
       setEditingToolId(null);
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const patchAutomationTool = async (toolId: string, patch: Record<string, unknown>) => {
+    setLoading(true);
+    setError("");
+    try {
+      await api.patch(`/automation/custom-tools/${toolId}`, patch);
+      await loadTools();
     } catch {
       setError("load_failed");
     } finally {
@@ -1231,92 +1271,21 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "tools" ? (
-          <div className="space-y-8 text-sm">
-            <p className="text-ink-600 dark:text-ink-400">{t("automationPage.toolsIntro")}</p>
-            {(["MCP_NATIVE", "GOOGLE_CALENDAR", "ELEVENLABS", "EMAIL_API"] as const).map((cat) => {
-              const catPresets = toolPresets.filter((p) => p.category === cat);
-              if (catPresets.length === 0) return null;
-              return (
-                <div key={cat}>
-                  <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
-                    {cat === "MCP_NATIVE"
-                      ? t("automationPage.toolsSectionMcp")
-                      : cat === "GOOGLE_CALENDAR"
-                        ? t("automationPage.toolsSectionGoogleCal")
-                        : cat === "ELEVENLABS"
-                          ? t("automationPage.toolsSectionEleven")
-                          : t("automationPage.toolsSectionEmail")}
-                  </h3>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {catPresets.map((pr) => (
-                      <div
-                        key={pr.presetKey}
-                        className="rounded-xl border border-ink-200 bg-white p-3 dark:border-ink-700 dark:bg-ink-900/50"
-                      >
-                        <p className="font-medium text-ink-900 dark:text-ink-100">{pr.name}</p>
-                        <p className="mt-1 text-xs text-ink-500">{pr.description}</p>
-                        <p className="mt-1 text-[10px] uppercase text-ink-400">{pr.toolType}</p>
-                        {presetInstalled(pr.presetKey) ? (
-                          <span className="mt-2 inline-block text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                            {t("automationPage.toolInstalled")}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={loading}
-                            onClick={() => void installToolPreset(pr.presetKey)}
-                            className="mt-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                          >
-                            {t("automationPage.toolInstall")}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            <div>
-              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.toolsConfigured")}</h3>
-              <ul className="mt-2 space-y-3">
-                {tools.map((tool) => (
-                  <li
-                    key={tool.id}
-                    className="rounded-xl border border-ink-200 bg-ink-50/50 p-3 dark:border-ink-700 dark:bg-ink-900/40"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <span className="font-medium text-ink-900 dark:text-ink-100">{tool.name}</span>{" "}
-                        <span className="text-xs text-ink-500">({tool.toolType})</span>
-                        {!tool.isActive ? (
-                          <span className="ml-2 text-xs text-amber-700 dark:text-amber-300">off</span>
-                        ) : null}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-brand-600"
-                          onClick={() => setEditingToolId((id) => (id === tool.id ? null : tool.id))}
-                        >
-                          {editingToolId === tool.id ? t("automationPage.toolCloseEditor") : t("automationPage.toolEditSecrets")}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs text-red-600"
-                          onClick={() => void deleteCustomToolRow(tool.id)}
-                        >
-                          {t("automationPage.toolRemove")}
-                        </button>
-                      </div>
-                    </div>
-                    {editingToolId === tool.id ? (
-                      <ToolCredentialEditor tool={tool} t={t} onSave={(patch) => void saveToolConfigPatch(tool.id, patch)} />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <AutomationToolsHub
+            t={t}
+            loading={loading}
+            tools={tools}
+            toolPresets={toolPresets}
+            installToolPreset={(k) => installToolPreset(k)}
+            presetInstalled={presetInstalled}
+            deleteCustomToolRow={(id) => deleteCustomToolRow(id)}
+            saveToolConfigPatch={(id, p) => saveToolConfigPatch(id, p)}
+            patchTool={(id, p) => patchAutomationTool(id, p)}
+            editingToolId={editingToolId}
+            setEditingToolId={setEditingToolId}
+            CredentialEditor={ToolCredentialEditor}
+            onToolsUpdated={loadTools}
+          />
         ) : null}
 
         {tab === "interactions" ? (
@@ -2035,6 +2004,148 @@ function AgentsTab({
                 </div>
               </div>
 
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  {t("automationPage.agentConnectedToolsTitle")}
+                </p>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsHelp")}</p>
+                {tools.length === 0 ? (
+                  <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedToolsEmpty")}</p>
+                ) : (
+                  <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto">
+                    {tools.map((tl) => {
+                      const existing = agentForm.connectedTools.find((x) => x.toolId === tl.id);
+                      const enabled = Boolean(existing?.enabled);
+                      const row: AgentConnectedToolRow = existing ?? {
+                        toolId: tl.id,
+                        enabled: false,
+                        permission: "read",
+                        maxCallsPerConversation: null,
+                        priority: 0,
+                        runMode: "auto",
+                      };
+                      return (
+                        <li
+                          key={tl.id}
+                          className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
+                              <input
+                                type="checkbox"
+                                checked={enabled}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  setAgentForm((f) => {
+                                    const rest = f.connectedTools.filter((x) => x.toolId !== tl.id);
+                                    if (!on) return { ...f, connectedTools: rest };
+                                    return {
+                                      ...f,
+                                      connectedTools: [
+                                        ...rest,
+                                        {
+                                          toolId: tl.id,
+                                          enabled: true,
+                                          permission: "read",
+                                          maxCallsPerConversation: null,
+                                          priority: 0,
+                                          runMode: "auto",
+                                        },
+                                      ],
+                                    };
+                                  });
+                                }}
+                              />
+                              {tl.name}
+                            </label>
+                            <span className="text-[10px] text-ink-400">{tl.toolType}</span>
+                          </div>
+                          {enabled ? (
+                            <div className="mt-2 grid gap-2 border-t border-ink-100 pt-2 dark:border-ink-800 sm:grid-cols-2">
+                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                {t("automationPage.agentConnectedPermission")}
+                                <select
+                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                  value={row.permission}
+                                  onChange={(e) => {
+                                    const v = e.target.value as AgentConnectedToolRow["permission"];
+                                    setAgentForm((f) => ({
+                                      ...f,
+                                      connectedTools: f.connectedTools.map((x) =>
+                                        x.toolId === tl.id ? { ...x, permission: v } : x,
+                                      ),
+                                    }));
+                                  }}
+                                >
+                                  <option value="read">read</option>
+                                  <option value="write">write</option>
+                                  <option value="admin">admin</option>
+                                </select>
+                              </label>
+                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                {t("automationPage.agentConnectedRunMode")}
+                                <select
+                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                  value={row.runMode}
+                                  onChange={(e) => {
+                                    const v = e.target.value as AgentConnectedToolRow["runMode"];
+                                    setAgentForm((f) => ({
+                                      ...f,
+                                      connectedTools: f.connectedTools.map((x) =>
+                                        x.toolId === tl.id ? { ...x, runMode: v } : x,
+                                      ),
+                                    }));
+                                  }}
+                                >
+                                  <option value="auto">{t("automationPage.agentConnectedRunAuto")}</option>
+                                  <option value="manual">{t("automationPage.agentConnectedRunManual")}</option>
+                                </select>
+                              </label>
+                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                {t("automationPage.agentConnectedPriority")}
+                                <input
+                                  type="number"
+                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                  value={row.priority}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value) || 0;
+                                    setAgentForm((f) => ({
+                                      ...f,
+                                      connectedTools: f.connectedTools.map((x) =>
+                                        x.toolId === tl.id ? { ...x, priority: v } : x,
+                                      ),
+                                    }));
+                                  }}
+                                />
+                              </label>
+                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                {t("automationPage.agentConnectedMaxCalls")}
+                                <input
+                                  type="number"
+                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                  placeholder={t("automationPage.agentConnectedMaxCallsPh")}
+                                  value={row.maxCallsPerConversation ?? ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const v = raw === "" ? null : Math.max(0, Number(raw) || 0);
+                                    setAgentForm((f) => ({
+                                      ...f,
+                                      connectedTools: f.connectedTools.map((x) =>
+                                        x.toolId === tl.id ? { ...x, maxCallsPerConversation: v } : x,
+                                      ),
+                                    }));
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
               {prompts.length > 0 ? (
                 <fieldset>
                   <legend className="text-sm font-medium text-ink-800 dark:text-ink-200">{t("automationPage.agentPromptModulesPick")}</legend>
@@ -2086,6 +2197,239 @@ function AgentsTab({
 }
 
 const GOOGLE_CAL_DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
+
+function HttpLikeToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const isWebhook = tool.toolType === "WEBHOOK";
+  const [baseUrl, setBaseUrl] = useState(String(c.baseUrl ?? ""));
+  const [webhookUrl, setWebhookUrl] = useState(String(c.webhookUrl ?? ""));
+  const [httpMethod, setHttpMethod] = useState(String(c.httpMethod ?? "GET"));
+  const [httpPath, setHttpPath] = useState(String(c.httpPath ?? "/"));
+  const [authType, setAuthType] = useState(String(c.authType ?? "none"));
+  const [bearerToken, setBearerToken] = useState("");
+  const [apiKeyHeader, setApiKeyHeader] = useState(String(c.apiKeyHeader ?? "X-Api-Key"));
+  const [apiKeyValue, setApiKeyValue] = useState("");
+  const [basicUser, setBasicUser] = useState(String(c.basicUser ?? ""));
+  const [basicPassword, setBasicPassword] = useState("");
+  const [customAuthHeader, setCustomAuthHeader] = useState(String(c.customAuthHeader ?? ""));
+  const [customAuthValue, setCustomAuthValue] = useState("");
+  const [defaultHeadersJson, setDefaultHeadersJson] = useState(() =>
+    JSON.stringify((c.defaultHeaders && typeof c.defaultHeaders === "object" ? c.defaultHeaders : {}) as object, null, 2),
+  );
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+
+  const handleSave = () => {
+    let defaultHeaders: Record<string, unknown> = {};
+    try {
+      defaultHeaders = JSON.parse(defaultHeadersJson || "{}") as Record<string, unknown>;
+    } catch {
+      window.alert(t("automationPage.toolsCreateConfigInvalid"));
+      return;
+    }
+    const patch: Record<string, unknown> = {
+      httpMethod,
+      authType,
+      defaultHeaders,
+      executor: c.executor ?? "http_client",
+    };
+    for (const k of ["presetKey", "nativeToolKey"] as const) {
+      const v = c[k];
+      if (typeof v === "string" && v) patch[k] = v;
+    }
+    if (isWebhook) {
+      patch.webhookUrl = webhookUrl.trim();
+    } else {
+      patch.baseUrl = baseUrl.trim();
+      patch.httpPath = httpPath.trim() || "/";
+    }
+    if (authType === "bearer" || authType === "bearer_token") {
+      if (bearerToken.trim()) patch.bearerToken = bearerToken.trim();
+    } else if (authType === "api_key") {
+      patch.apiKeyHeader = apiKeyHeader.trim() || "X-Api-Key";
+      if (apiKeyValue.trim()) patch.apiKeyValue = apiKeyValue.trim();
+    } else if (authType === "basic") {
+      patch.basicUser = basicUser.trim();
+      if (basicPassword.trim()) patch.basicPassword = basicPassword.trim();
+    } else if (authType === "custom_header") {
+      patch.customAuthHeader = customAuthHeader.trim();
+      if (customAuthValue.trim()) patch.customAuthValue = customAuthValue.trim();
+    }
+    onSave(patch);
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <p className="text-xs text-ink-500">{t("automationPage.toolHttpEditorHelp")}</p>
+      {isWebhook ? (
+        <label className="block text-xs font-medium">
+          Webhook URL
+          <input value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} className={fieldCls} />
+        </label>
+      ) : (
+        <>
+          <label className="block text-xs font-medium">
+            Base URL
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Path
+            <input value={httpPath} onChange={(e) => setHttpPath(e.target.value)} className={fieldCls} />
+          </label>
+        </>
+      )}
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolHttpMethod")}
+        <select value={httpMethod} onChange={(e) => setHttpMethod(e.target.value)} className={fieldCls}>
+          {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolAuthType")}
+        <select value={authType} onChange={(e) => setAuthType(e.target.value)} className={fieldCls}>
+          <option value="none">none</option>
+          <option value="bearer">Bearer</option>
+          <option value="api_key">API Key header</option>
+          <option value="basic">Basic</option>
+          <option value="custom_header">Custom header</option>
+        </select>
+      </label>
+      {(authType === "bearer" || authType === "bearer_token") && (
+        <label className="block text-xs font-medium">
+          Bearer token
+          <input type="password" autoComplete="off" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} className={fieldCls} />
+        </label>
+      )}
+      {authType === "api_key" && (
+        <>
+          <label className="block text-xs font-medium">
+            Header name
+            <input value={apiKeyHeader} onChange={(e) => setApiKeyHeader(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            API key
+            <input type="password" autoComplete="off" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={fieldCls} />
+          </label>
+        </>
+      )}
+      {authType === "basic" && (
+        <>
+          <label className="block text-xs font-medium">
+            User
+            <input value={basicUser} onChange={(e) => setBasicUser(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Password
+            <input type="password" autoComplete="off" value={basicPassword} onChange={(e) => setBasicPassword(e.target.value)} className={fieldCls} />
+          </label>
+        </>
+      )}
+      {authType === "custom_header" && (
+        <>
+          <label className="block text-xs font-medium">
+            Header
+            <input value={customAuthHeader} onChange={(e) => setCustomAuthHeader(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="block text-xs font-medium">
+            Value
+            <input type="password" autoComplete="off" value={customAuthValue} onChange={(e) => setCustomAuthValue(e.target.value)} className={fieldCls} />
+          </label>
+        </>
+      )}
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolDefaultHeadersJson")}
+        <textarea value={defaultHeadersJson} onChange={(e) => setDefaultHeadersJson(e.target.value)} rows={4} className={clsx(fieldCls, "font-mono text-[11px]")} />
+      </label>
+      <button type="button" onClick={handleSave} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white">
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
+
+function IntegrationToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const provider = String(c.provider ?? "");
+  const [baseUrl, setBaseUrl] = useState(String(c.baseUrl ?? c.apiBaseUrl ?? ""));
+  const [secret, setSecret] = useState("");
+  const [extraJson, setExtraJson] = useState("{}");
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+
+  const handleSave = () => {
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(extraJson) as Record<string, unknown>;
+    } catch {
+      window.alert(t("automationPage.toolsCreateConfigInvalid"));
+      return;
+    }
+    const patch: Record<string, unknown> = { ...parsed, provider };
+    if (baseUrl.trim()) {
+      patch.baseUrl = baseUrl.trim();
+      patch.apiBaseUrl = baseUrl.trim();
+    }
+    if (secret.trim()) {
+      if (provider === "stripe") patch.secretKey = secret.trim();
+      else if (provider === "slack") patch.botToken = secret.trim();
+      else if (provider === "twilio") patch.authToken = secret.trim();
+      else if (provider === "whatsapp_cloud") patch.accessToken = secret.trim();
+      else if (provider === "groq" || provider === "openai" || provider === "anthropic") patch.apiKey = secret.trim();
+      else if (provider === "evolution_api") patch.apiKey = secret.trim();
+      else if (provider === "chatwoot") patch.accessToken = secret.trim();
+      else patch.apiKey = secret.trim();
+    }
+    for (const k of ["presetKey", "executor"] as const) {
+      const v = c[k];
+      if (typeof v === "string" && v) patch[k] = v;
+    }
+    onSave(patch);
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <p className="text-xs text-ink-500">
+        {t("automationPage.toolIntegrationHelp")} <span className="font-mono">({provider})</span>
+      </p>
+      <label className="block text-xs font-medium">
+        Base URL (se aplicável)
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolIntegrationSecret")}
+        <input type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolIntegrationConfigJson")}
+        <textarea value={extraJson} onChange={(e) => setExtraJson(e.target.value)} rows={6} className={clsx(fieldCls, "font-mono text-[11px]")} />
+      </label>
+      <button type="button" onClick={handleSave} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white">
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
 
 function parseGoogleCalAvailability(cfg: Record<string, unknown>): { days: number[]; start: string; end: string } {
   const av = (cfg.availability && typeof cfg.availability === "object" ? cfg.availability : {}) as Record<string, unknown>;
@@ -2333,6 +2677,14 @@ function ToolCredentialEditor({
 
   if (tool.toolType === "GOOGLE_CALENDAR") {
     return <GoogleCalendarToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK") {
+    return <HttpLikeToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (tool.toolType === "INTEGRATION") {
+    return <IntegrationToolEditor tool={tool} t={t} onSave={onSave} />;
   }
 
   if (tool.toolType === "MCP") {

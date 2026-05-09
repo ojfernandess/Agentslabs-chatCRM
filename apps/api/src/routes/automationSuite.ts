@@ -7,6 +7,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
+import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -70,6 +71,7 @@ const defaultBehaviorConfig = () => ({
     replyWithAudioOnInboundAudio: false,
   },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
+  connectedTools: [] as Array<Record<string, unknown>>,
 });
 
 function deriveBotAutomationSource(bot: { webhookUrl: string | null; config: unknown }): {
@@ -108,11 +110,12 @@ const promptModuleSchema = z.object({
 const customToolSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().min(1),
-  toolType: z.string().min(1).max(32),
+  toolType: z.string().min(1).max(64),
   config: z.record(z.unknown()),
   parametersSchema: z.record(z.unknown()),
   isActive: z.boolean().optional(),
   botId: z.string().uuid().nullable().optional(),
+  tags: z.array(z.string().max(48)).max(32).optional(),
 });
 
 function redactToolRow<T extends { config: unknown }>(row: T): T {
@@ -127,6 +130,16 @@ function redactToolRow<T extends { config: unknown }>(row: T): T {
     "password",
     "smtpPassword",
     "token",
+    "authToken",
+    "botToken",
+    "secretKey",
+    "bearerToken",
+    "apiKeyValue",
+    "basicPassword",
+    "customAuthValue",
+    "signingSecret",
+    "connectionString",
+    "credentialsJson",
   ]) {
     if (k in cfg && cfg[k]) (cfg as Record<string, unknown>)[k] = "***";
   }
@@ -594,6 +607,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         description: p.description,
         toolType: p.toolType,
         parametersSchema: p.parametersSchema,
+        marketplace: p.marketplace ?? null,
       })),
     };
   });
@@ -683,6 +697,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         config: asJson(parsed.data.config),
         parametersSchema: asJson(parsed.data.parametersSchema),
         isActive: parsed.data.isActive ?? true,
+        tags: parsed.data.tags ?? [],
       },
     });
     return redactToolRow(row);
@@ -720,6 +735,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       if (parsed.data.parametersSchema !== undefined) data.parametersSchema = asJson(parsed.data.parametersSchema);
       if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
       if (parsed.data.botId !== undefined) data.botId = parsed.data.botId;
+      if (parsed.data.tags !== undefined) data.tags = parsed.data.tags;
       await prisma.automationCustomTool.update({
         where: { id: current.id },
         data,
@@ -744,6 +760,253 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     }
     return reply.status(204).send();
   });
+
+  function flattenTemplateContext(obj: unknown, prefix = ""): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        const p = prefix ? `${prefix}.${k}` : k;
+        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+          Object.assign(out, flattenTemplateContext(v, p));
+        } else if (v !== undefined && v !== null) {
+          out[p] = typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
+        }
+      }
+    }
+    return out;
+  }
+
+  function expandTemplateString(template: string, flat: Record<string, string>): string {
+    return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, rawKey: string) => {
+      const key = rawKey.trim();
+      return flat[key] ?? "";
+    });
+  }
+
+  const toolTestBodySchema = z.object({
+    pathParams: z.record(z.string()).optional(),
+    query: z.record(z.string()).optional(),
+    headers: z.record(z.string()).optional(),
+    body: z.unknown().optional(),
+    sampleContext: z.record(z.unknown()).optional(),
+  });
+
+  app.get<{ Params: { id: string } }>("/custom-tools/:id/executions", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const tool = await prisma.automationCustomTool.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true },
+    });
+    if (!tool) {
+      return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+    }
+    const limit = Math.min(100, Math.max(1, Number((request.query as { limit?: string }).limit) || 50));
+    const rows = await prisma.automationToolExecution.findMany({
+      where: { toolId: tool.id, organizationId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return { data: rows };
+  });
+
+  app.post<{ Params: { id: string } }>(
+    "/custom-tools/:id/test",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const parsed = toolTestBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const tool = await prisma.automationCustomTool.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+      if (!tool) {
+        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+      }
+      if (!tool.isActive) {
+        return reply.status(400).send({ error: "Bad Request", message: "Tool is inactive", statusCode: 400 });
+      }
+      if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Test runner supports HTTP_API and WEBHOOK tools only",
+          statusCode: 400,
+        });
+      }
+
+      const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
+      const flat = flattenTemplateContext(parsed.data.sampleContext ?? {});
+
+      let method = String(cfg.httpMethod ?? "GET").toUpperCase();
+      let pathPart = expandTemplateString(String(cfg.httpPath ?? "/"), flat);
+      let base = String(cfg.baseUrl ?? "").replace(/\/$/, "");
+      let fullUrlStr = "";
+
+      if (tool.toolType === "WEBHOOK") {
+        const wUrl = expandTemplateString(String(cfg.webhookUrl ?? ""), flat);
+        if (!wUrl.trim()) {
+          return reply.status(400).send({ error: "Bad Request", message: "webhookUrl is not configured", statusCode: 400 });
+        }
+        fullUrlStr = wUrl;
+        method = String(cfg.httpMethod ?? "POST").toUpperCase();
+      } else {
+        if (!base) {
+          return reply.status(400).send({ error: "Bad Request", message: "baseUrl is not configured", statusCode: 400 });
+        }
+        const pathParams = parsed.data.pathParams ?? {};
+        for (const [pk, pv] of Object.entries(pathParams)) {
+          pathPart = pathPart.split(`{${pk}}`).join(encodeURIComponent(pv));
+        }
+        pathPart = pathPart.startsWith("/") ? pathPart : `/${pathPart}`;
+        fullUrlStr = `${base}${pathPart}`;
+      }
+
+      const url = assertHttpUrlAllowed(fullUrlStr);
+      if (parsed.data.query) {
+        for (const [qk, qv] of Object.entries(parsed.data.query)) {
+          url.searchParams.set(qk, qv);
+        }
+      }
+      const defaultQuery = cfg.defaultQuery && typeof cfg.defaultQuery === "object" ? (cfg.defaultQuery as Record<string, unknown>) : {};
+      for (const [qk, qv] of Object.entries(defaultQuery)) {
+        if (typeof qv === "string" || typeof qv === "number" || typeof qv === "boolean") {
+          if (!url.searchParams.has(qk)) url.searchParams.set(qk, String(qv));
+        }
+      }
+
+      const headers = new Headers();
+      const defaultHeaders =
+        cfg.defaultHeaders && typeof cfg.defaultHeaders === "object" ? (cfg.defaultHeaders as Record<string, unknown>) : {};
+      for (const [hk, hv] of Object.entries(defaultHeaders)) {
+        if (typeof hv === "string") headers.set(hk, expandTemplateString(hv, flat));
+      }
+      if (parsed.data.headers) {
+        for (const [hk, hv] of Object.entries(parsed.data.headers)) {
+          headers.set(hk, expandTemplateString(hv, flat));
+        }
+      }
+
+      const authType = String(cfg.authType ?? "none");
+      if (authType === "bearer" || authType === "bearer_token") {
+        const tok = String(cfg.bearerToken ?? "");
+        if (tok) headers.set("Authorization", `Bearer ${tok}`);
+      } else if (authType === "api_key") {
+        const hName = String(cfg.apiKeyHeader ?? "X-Api-Key");
+        const hVal = String(cfg.apiKeyValue ?? "");
+        if (hVal) headers.set(hName, hVal);
+      } else if (authType === "basic") {
+        const u = String(cfg.basicUser ?? "");
+        const p = String(cfg.basicPassword ?? "");
+        if (u || p) {
+          const b64 = Buffer.from(`${u}:${p}`).toString("base64");
+          headers.set("Authorization", `Basic ${b64}`);
+        }
+      } else if (authType === "custom_header") {
+        const hn = String(cfg.customAuthHeader ?? "");
+        const hv = String(cfg.customAuthValue ?? "");
+        if (hn && hv) headers.set(hn, hv);
+      }
+
+      let bodyStr: string | undefined;
+      if (method !== "GET" && method !== "HEAD") {
+        const bodyPayload = parsed.data.body !== undefined ? parsed.data.body : cfg.bodyTemplate;
+        if (bodyPayload !== undefined && bodyPayload !== null) {
+          const raw =
+            typeof bodyPayload === "string"
+              ? expandTemplateString(bodyPayload, flat)
+              : expandTemplateString(JSON.stringify(bodyPayload), flat);
+          try {
+            const parsedJson = JSON.parse(raw);
+            bodyStr = JSON.stringify(parsedJson);
+          } catch {
+            bodyStr = raw;
+          }
+          if (!headers.has("Content-Type") && typeof bodyStr === "string" && bodyStr.trim().startsWith("{")) {
+            headers.set("Content-Type", "application/json");
+          }
+        }
+      }
+
+      const started = Date.now();
+      let ok = false;
+      let statusCode: number | null = null;
+      let responseText = "";
+      let errMsg: string | null = null;
+
+      const reqSummary = {
+        method,
+        url: url.toString(),
+        headerKeys: [...headers.keys()],
+      };
+
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 25_000);
+        const res = await fetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
+        clearTimeout(t);
+        statusCode = res.status;
+        ok = res.ok;
+        responseText = truncateBody(await res.text(), 50_000);
+      } catch (e) {
+        errMsg = e instanceof Error ? e.message : String(e);
+      }
+
+      const durationMs = Date.now() - started;
+
+      const execRow = await prisma.$transaction(async (tx) => {
+        const row = await tx.automationToolExecution.create({
+          data: {
+            organizationId,
+            toolId: tool.id,
+            source: "manual_test",
+            ok: ok && statusCode !== null,
+            statusCode,
+            durationMs,
+            requestSummary: asJson(reqSummary),
+            responseSummary: asJson({
+              preview: responseText.slice(0, 8000),
+              truncated: responseText.length > 8000,
+            }),
+            errorMessage: errMsg,
+            tokensUsed: null,
+            botId: null,
+          },
+        });
+        const current = await tx.automationCustomTool.findUnique({ where: { id: tool.id } });
+        if (current) {
+          const n = current.executionCount + 1;
+          const nextAvg =
+            current.avgDurationMs != null
+              ? (current.avgDurationMs * current.executionCount + durationMs) / n
+              : durationMs;
+          await tx.automationCustomTool.update({
+            where: { id: tool.id },
+            data: {
+              executionCount: n,
+              avgDurationMs: nextAvg,
+              lastExecutedAt: new Date(),
+            },
+          });
+        }
+        return row;
+      });
+
+      return {
+        executionId: execRow.id,
+        ok: ok && !errMsg,
+        statusCode,
+        durationMs,
+        error: errMsg,
+        responsePreview: responseText.slice(0, 12_000),
+      };
+    },
+  );
 
   app.get("/agent-profiles", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
