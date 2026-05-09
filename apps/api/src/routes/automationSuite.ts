@@ -3,12 +3,18 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { config } from "../config.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
 import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
 import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
+import {
+  callGeminiGenerateContent,
+  callOpenAiCompatibleChat,
+  type PreviewChatTurn,
+} from "../lib/promptModulePreviewLlm.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -107,6 +113,72 @@ const promptModuleSchema = z.object({
   version: z.number().int().min(1).optional(),
   labels: z.record(z.unknown()).optional().nullable(),
 });
+
+const promptPreviewSchema = z.object({
+  systemPrompt: z.string().min(1).max(120_000),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(48_000),
+      }),
+    )
+    .max(40)
+    .optional()
+    .default([]),
+  userMessage: z.string().min(1).max(48_000),
+  provider: z.enum(["openai", "google_gemini"]),
+  model: z.string().min(1).max(120),
+  temperature: z.number().min(0).max(2).optional().default(0.7),
+  maxTokens: z.number().int().min(16).max(8192).optional().default(1024),
+  apiBaseUrl: z.string().max(2000).optional().nullable(),
+  apiKey: z.string().max(4000).optional().nullable(),
+  promptModuleId: z.string().uuid().optional().nullable(),
+  recordMetrics: z.boolean().optional().default(false),
+});
+
+async function mergePromptModulePreviewAnalytics(
+  organizationId: string,
+  promptModuleId: string,
+  tokensDelta: number,
+  latencyMs: number,
+): Promise<void> {
+  const row = await prisma.automationPromptModule.findFirst({
+    where: { id: promptModuleId, organizationId },
+    select: { labels: true },
+  });
+  if (!row) return;
+  const labels =
+    row.labels && typeof row.labels === "object" && !Array.isArray(row.labels)
+      ? { ...(row.labels as Record<string, unknown>) }
+      : {};
+  const analyticsRaw = labels.analytics;
+  const a =
+    analyticsRaw && typeof analyticsRaw === "object"
+      ? { ...(analyticsRaw as Record<string, unknown>) }
+      : {};
+  const executions = Number(a.executions ?? 0) + 1;
+  const tokens = Number(a.tokens ?? 0) + tokensDelta;
+  const prevAvg = Number(a.avgMs ?? 0);
+  const avgMs =
+    executions <= 1 ? latencyMs : Math.round((prevAvg * (executions - 1) + latencyMs) / executions);
+  const prevSr = Number(a.successRate ?? 1);
+  const successRate = (prevSr * (executions - 1) + 1) / executions;
+
+  labels.analytics = {
+    ...a,
+    executions,
+    tokens,
+    avgMs,
+    successRate,
+    lastPreviewAt: new Date().toISOString(),
+  };
+
+  await prisma.automationPromptModule.updateMany({
+    where: { id: promptModuleId, organizationId },
+    data: { labels: asJson(labels) },
+  });
+}
 
 const customToolSchema = z.object({
   name: z.string().min(1).max(120),
@@ -568,6 +640,121 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(404).send({ error: "Not Found", message: "Module not found", statusCode: 404 });
     }
     return reply.status(204).send();
+  });
+
+  app.get("/prompt-modules/preview-options", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    return {
+      hasPlatformOpenAiKey: config.openAiPromptPreviewKey.length > 0,
+      hasPlatformGeminiKey: config.geminiPromptPreviewKey.length > 0,
+    };
+  });
+
+  app.post("/prompt-modules/preview", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = promptPreviewSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const body = parsed.data;
+    let apiKey = body.apiKey?.trim() ?? "";
+    if (body.provider === "openai") {
+      if (!apiKey) apiKey = config.openAiPromptPreviewKey;
+    } else if (!apiKey) {
+      apiKey = config.geminiPromptPreviewKey;
+    }
+    if (!apiKey) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        code: "prompt_preview_no_api_key",
+        message:
+          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI) or GEMINI_PROMPT_PREVIEW_KEY (Gemini) on the server.",
+        statusCode: 400,
+      });
+    }
+
+    const history = body.history as PreviewChatTurn[];
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90_000);
+    const started = Date.now();
+    try {
+      let text: string;
+      let usage: { prompt: number; completion: number; total: number } | undefined;
+      if (body.provider === "openai") {
+        const baseUrl = (body.apiBaseUrl?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+        try {
+          assertHttpUrlAllowed(baseUrl);
+        } catch (e) {
+          clearTimeout(timer);
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: e instanceof Error ? e.message : "Invalid API base URL",
+            statusCode: 400,
+          });
+        }
+        const r = await callOpenAiCompatibleChat({
+          baseUrl,
+          apiKey,
+          model: body.model,
+          temperature: body.temperature,
+          maxTokens: body.maxTokens,
+          system: body.systemPrompt,
+          history,
+          userMessage: body.userMessage,
+          signal: ctrl.signal,
+        });
+        text = r.text;
+        usage = r.usage;
+      } else {
+        const r = await callGeminiGenerateContent({
+          apiKey,
+          model: body.model,
+          temperature: body.temperature,
+          maxTokens: body.maxTokens,
+          system: body.systemPrompt,
+          history,
+          userMessage: body.userMessage,
+          signal: ctrl.signal,
+        });
+        text = r.text;
+        usage = r.usage;
+      }
+      clearTimeout(timer);
+      const latencyMs = Date.now() - started;
+
+      if (body.recordMetrics && body.promptModuleId) {
+        await mergePromptModulePreviewAnalytics(
+          organizationId,
+          body.promptModuleId,
+          usage?.total ?? 0,
+          latencyMs,
+        );
+      }
+
+      return {
+        reply: text,
+        usage: usage
+          ? {
+              promptTokens: usage.prompt,
+              completionTokens: usage.completion,
+              totalTokens: usage.total,
+            }
+          : null,
+        latencyMs,
+      };
+    } catch (err) {
+      clearTimeout(timer);
+      const aborted = err instanceof Error && err.name === "AbortError";
+      const msg = err instanceof Error ? err.message : "LLM request failed";
+      return reply.status(aborted ? 504 : 502).send({
+        error: aborted ? "Gateway Timeout" : "Bad Gateway",
+        code: aborted ? "prompt_preview_timeout" : "prompt_preview_llm_error",
+        message: msg.slice(0, 1500),
+        statusCode: aborted ? 504 : 502,
+      });
+    }
   });
 
   app.get("/tool-presets", async (request, reply) => {

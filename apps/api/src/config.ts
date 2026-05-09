@@ -102,4 +102,14 @@ export const config = {
   nodeEnv: optionalEnv("NODE_ENV", "development"),
   isProduction: optionalEnv("NODE_ENV", "development") === "production",
   corsOrigin: optionalEnv("CORS_ORIGIN", "http://localhost:5173"),
+  /**
+   * Chave opcional no servidor para pré-visualização de prompts (API OpenAI-compatível).
+   * Ordem: OPENAI_PROMPT_PREVIEW_KEY, depois OPENAI_API_KEY. O cliente pode omitir apiKey no POST preview quando definida.
+   */
+  openAiPromptPreviewKey: optionalEnv(
+    "OPENAI_PROMPT_PREVIEW_KEY",
+    optionalEnv("OPENAI_API_KEY", ""),
+  ).trim(),
+  /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
+  geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
 } as const;

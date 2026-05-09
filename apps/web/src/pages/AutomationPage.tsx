@@ -19,7 +19,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
 import { api } from "@/lib/api";
 import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
+import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
+import type { PromptModuleRow } from "@/pages/automation/promptHubTypes";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -420,9 +422,7 @@ export function AutomationPage() {
   const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<KnowledgeArticle[] | null>(null);
-  const [prompts, setPrompts] = useState<
-    Array<{ id: string; name: string; slug: string; body: string; version: number }>
-  >([]);
+  const [prompts, setPrompts] = useState<PromptModuleRow[]>([]);
   const [tools, setTools] = useState<AutomationCustomToolRow[]>([]);
   const [toolPresets, setToolPresets] = useState<ToolPresetMeta[]>([]);
   const [interactions, setInteractions] = useState<
@@ -450,14 +450,6 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
-
-  const [promptForm, setPromptForm] = useState({
-    id: null as string | null,
-    name: "",
-    slug: "",
-    body: "",
-    version: 1,
-  });
 
   const [ctxRows, setCtxRows] = useState<
     Array<{
@@ -493,7 +485,7 @@ export function AutomationPage() {
   }, []);
 
   const loadPrompts = useCallback(async () => {
-    const res = await api.get<{ data: typeof prompts }>("/automation/prompt-modules");
+    const res = await api.get<{ data: PromptModuleRow[] }>("/automation/prompt-modules");
     setPrompts(res.data);
   }, []);
 
@@ -546,7 +538,10 @@ export function AutomationPage() {
         await loadToolPresets();
         await loadBots();
       }
-      if (tab === "prompts") await loadPrompts();
+      if (tab === "prompts") {
+        await loadPrompts();
+        await loadTools();
+      }
       if (tab === "interactions") await loadInteractions();
       if (tab === "context") await loadContextRows();
     } catch {
@@ -732,52 +727,6 @@ export function AutomationPage() {
       await api.delete(`/automation/agent-profiles/${botId}`);
       await loadAgentProfiles();
       await loadDashboard();
-    } catch {
-      setError("load_failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const savePromptModule = async () => {
-    if (!promptForm.name.trim() || !promptForm.slug.trim() || !promptForm.body.trim()) {
-      setError("prompt_validation");
-      return;
-    }
-    setError("");
-    setLoading(true);
-    try {
-      if (promptForm.id) {
-        await api.patch(`/automation/prompt-modules/${promptForm.id}`, {
-          name: promptForm.name.trim(),
-          slug: promptForm.slug.trim(),
-          body: promptForm.body,
-          version: promptForm.version,
-        });
-      } else {
-        await api.post("/automation/prompt-modules", {
-          name: promptForm.name.trim(),
-          slug: promptForm.slug.trim(),
-          body: promptForm.body,
-          version: promptForm.version,
-        });
-      }
-      setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 });
-      await loadPrompts();
-    } catch {
-      setError("load_failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deletePromptModule = async (id: string) => {
-    if (!window.confirm(t("automationPage.promptDeleteConfirm"))) return;
-    setLoading(true);
-    try {
-      await api.delete(`/automation/prompt-modules/${id}`);
-      if (promptForm.id === id) setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 });
-      await loadPrompts();
     } catch {
       setError("load_failed");
     } finally {
@@ -1166,108 +1115,21 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "prompts" ? (
-          <div className="space-y-6">
-            <p className="text-sm text-ink-600 dark:text-ink-400">{t("automationPage.promptsIntro")}</p>
-            <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
-              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
-                {promptForm.id ? t("automationPage.promptEditTitle") : t("automationPage.promptNewTitle")}
-              </h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                  {t("automationPage.promptName")}
-                  <input
-                    value={promptForm.name}
-                    onChange={(e) => setPromptForm((f) => ({ ...f, name: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  />
-                </label>
-                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                  {t("automationPage.promptSlug")}
-                  <input
-                    value={promptForm.slug}
-                    onChange={(e) => setPromptForm((f) => ({ ...f, slug: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  />
-                </label>
-                <label className="sm:col-span-2 text-xs font-medium text-ink-700 dark:text-ink-300">
-                  {t("automationPage.promptVersion")}
-                  <input
-                    type="number"
-                    min={1}
-                    value={promptForm.version}
-                    onChange={(e) => setPromptForm((f) => ({ ...f, version: Number(e.target.value) || 1 }))}
-                    className="mt-1 w-32 rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  />
-                </label>
-              </div>
-              <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
-                {t("automationPage.promptBody")}
-                <textarea
-                  value={promptForm.body}
-                  onChange={(e) => setPromptForm((f) => ({ ...f, body: e.target.value }))}
-                  rows={8}
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                />
-              </label>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void savePromptModule()}
-                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {t("automationPage.promptSave")}
-                </button>
-                {promptForm.id ? (
-                  <button
-                    type="button"
-                    onClick={() => setPromptForm({ id: null, name: "", slug: "", body: "", version: 1 })}
-                    className="rounded-lg border border-ink-200 px-4 py-2 text-sm dark:border-ink-600"
-                  >
-                    {t("automationPage.promptCancelEdit")}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <ul className="space-y-2">
-              {prompts.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-700"
-                >
-                  <div>
-                    <span className="font-medium text-ink-900 dark:text-ink-100">{p.name}</span>{" "}
-                    <code className="text-xs opacity-70">{p.slug}</code>{" "}
-                    <span className="text-xs text-ink-500">v{p.version}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-brand-600"
-                      onClick={() =>
-                        setPromptForm({
-                          id: p.id,
-                          name: p.name,
-                          slug: p.slug,
-                          body: p.body,
-                          version: p.version,
-                        })
-                      }
-                    >
-                      {t("automationPage.kbEdit")}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs text-red-600"
-                      onClick={() => void deletePromptModule(p.id)}
-                    >
-                      {t("automationPage.kbDelete")}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <AutomationPromptsHub
+            t={t}
+            loading={loading}
+            setLoading={setLoading}
+            setError={setError}
+            prompts={prompts}
+            tools={tools}
+            agentProfiles={agentProfiles}
+            userDisplayName={user?.name ?? null}
+            onRefresh={async () => {
+              await loadPrompts();
+            }}
+            onNavigateAgents={() => setTab("agents")}
+            onOpenToolsTab={() => setTab("tools")}
+          />
         ) : null}
 
         {tab === "tools" ? (
@@ -1415,7 +1277,7 @@ function AgentsTab({
   setAgentModalOpen: (v: boolean) => void;
   agentForm: AgentFormFields;
   setAgentForm: Dispatch<SetStateAction<AgentFormFields>>;
-  prompts: Array<{ id: string; name: string; slug: string; body: string; version: number }>;
+  prompts: PromptModuleRow[];
   onNew: () => void;
   onEdit: (row: AgentProfileRow) => void;
   onConfigureOrphan: (botId: string) => void;
@@ -1426,6 +1288,20 @@ function AgentsTab({
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
   const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
+
+  useEffect(() => {
+    if (!agentModalOpen) return;
+    if (elevenLabsTools.length > 0) return;
+    setAgentForm((f) => {
+      if (!f.voiceEnabled && !f.elevenLabsToolId && !f.replyWithAudioOnInboundAudio) return f;
+      return {
+        ...f,
+        voiceEnabled: false,
+        elevenLabsToolId: "",
+        replyWithAudioOnInboundAudio: false,
+      };
+    });
+  }, [agentModalOpen, elevenLabsTools.length, setAgentForm]);
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
 
@@ -1750,88 +1626,96 @@ function AgentsTab({
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentApiKeyHelp")}</p>
               </label>
 
-              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
-                  <Volume2 className="h-4 w-4 text-brand-600" />
-                  {t("automationPage.agentVoiceSection")}
-                </div>
-                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                    checked={agentForm.voiceEnabled}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
-                  />
-                  <span>{t("automationPage.agentVoiceResponses")}</span>
-                </label>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
-                {agentForm.voiceEnabled ? (
-                  <>
-                    <label className="mt-3 block text-sm font-medium text-ink-800 dark:text-ink-200">
-                      {t("automationPage.agentElevenLabsConfig")}
-                      <select
-                        value={agentForm.elevenLabsToolId}
-                        onChange={(e) => setAgentForm((f) => ({ ...f, elevenLabsToolId: e.target.value }))}
-                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                      >
-                        <option value="">{t("automationPage.agentElevenLabsSelect")}</option>
-                        {elevenLabsTools.map((tl) => (
-                          <option key={tl.id} value={tl.id}>
-                            {tl.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <p className="mt-1 text-[11px] text-ink-500">
-                      <button type="button" className="text-left text-brand-600 hover:underline" onClick={onOpenToolsTab}>
-                        {t("automationPage.agentElevenLabsToolsTabHint")}
-                      </button>
-                    </p>
-                    <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
-                      {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {VOICE_PERCENT_STEPS.map((pct) => (
-                        <button
-                          key={pct}
-                          type="button"
-                          onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
-                          className={clsx(
-                            "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                            agentForm.voiceResponsePercent === pct
-                              ? "bg-brand-600 text-white"
-                              : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
-                          )}
-                        >
-                          {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
-                        </button>
-                      ))}
-                    </div>
+              {elevenLabsTools.length > 0 ? (
+                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                    <Volume2 className="h-4 w-4 text-brand-600" />
+                    {t("automationPage.agentVoiceSection")}
+                  </div>
+                  <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
                     <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={agentForm.voiceResponsePercent}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
-                      }
-                      className="mt-3 w-full accent-brand-600"
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                      checked={agentForm.voiceEnabled}
+                      onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
                     />
-                    <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
-                  </>
-                ) : null}
-                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                    checked={agentForm.replyWithAudioOnInboundAudio}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, replyWithAudioOnInboundAudio: e.target.checked }))}
-                  />
-                  <span>{t("automationPage.agentVoiceOnAudioInbound")}</span>
-                </label>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceOnAudioInboundHelp")}</p>
-              </div>
+                    <span>{t("automationPage.agentVoiceResponses")}</span>
+                  </label>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
+                  {agentForm.voiceEnabled ? (
+                    <>
+                      <label className="mt-3 block text-sm font-medium text-ink-800 dark:text-ink-200">
+                        {t("automationPage.agentElevenLabsConfig")}
+                        <select
+                          value={agentForm.elevenLabsToolId}
+                          onChange={(e) => setAgentForm((f) => ({ ...f, elevenLabsToolId: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                        >
+                          <option value="">{t("automationPage.agentElevenLabsSelect")}</option>
+                          {elevenLabsTools.map((tl) => (
+                            <option key={tl.id} value={tl.id}>
+                              {tl.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        <button
+                          type="button"
+                          className="text-left text-brand-600 hover:underline"
+                          onClick={onOpenToolsTab}
+                        >
+                          {t("automationPage.agentElevenLabsToolsTabHint")}
+                        </button>
+                      </p>
+                      <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
+                        {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {VOICE_PERCENT_STEPS.map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
+                            className={clsx(
+                              "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                              agentForm.voiceResponsePercent === pct
+                                ? "bg-brand-600 text-white"
+                                : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
+                            )}
+                          >
+                            {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={agentForm.voiceResponsePercent}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
+                        }
+                        className="mt-3 w-full accent-brand-600"
+                      />
+                      <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
+                    </>
+                  ) : null}
+                  <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                      checked={agentForm.replyWithAudioOnInboundAudio}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({ ...f, replyWithAudioOnInboundAudio: e.target.checked }))
+                      }
+                    />
+                    <span>{t("automationPage.agentVoiceOnAudioInbound")}</span>
+                  </label>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceOnAudioInboundHelp")}</p>
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
                 <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
