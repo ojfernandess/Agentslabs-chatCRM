@@ -37,10 +37,17 @@ const defaultBehaviorConfig = () => ({
     call_human: true,
     end_conversation: false,
     list_entities: false,
+    list_hotels: false,
+    get_hotel_info: false,
+    get_entity_info: false,
     scheduling: false,
+    scheduling_google: false,
+    scheduling_outlook: false,
+    ping: false,
   },
   escalationRules: { conditions: "", transferMessage: "", mode: "keyword" as string },
   inactivity: {
+    automationEnabled: false,
     timeoutMinutes: 30,
     followUpMax: 0,
     followUpMessages: [] as string[],
@@ -53,6 +60,19 @@ const defaultBehaviorConfig = () => ({
   dataSource: { label: null as string | null, connectionRef: null as string | null },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
 });
+
+function deriveBotAutomationSource(bot: { webhookUrl: string | null; config: unknown }): {
+  editInExternalAutomation: boolean;
+  managedByOpenConduit: boolean;
+} {
+  const cfg = bot.config && typeof bot.config === "object" ? (bot.config as Record<string, unknown>) : {};
+  const managedByOpenConduit = cfg.automationManagedByOpenConduit === true;
+  const hasOutboundWebhook = Boolean(bot.webhookUrl?.trim());
+  return {
+    managedByOpenConduit,
+    editInExternalAutomation: hasOutboundWebhook && !managedByOpenConduit,
+  };
+}
 
 const knowledgeCreateSchema = z.object({
   title: z.string().min(1).max(500),
@@ -623,14 +643,179 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     }
     const rows = await prisma.automationAgentProfile.findMany({
       where: { organizationId },
-      include: { bot: { select: { id: true, name: true, isActive: true, webhookUrl: true } } },
+      include: {
+        bot: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isActive: true,
+            webhookUrl: true,
+            config: true,
+          },
+        },
+      },
     });
     return {
-      data: rows.map((r) => ({
-        ...r,
-        llmConfig: redactLlmConfig(r.llmConfig),
-      })),
+      data: rows.map((r) => {
+        const src = deriveBotAutomationSource({ webhookUrl: r.bot.webhookUrl, config: r.bot.config });
+        const { bot: b, ...rest } = r;
+        return {
+          ...rest,
+          bot: {
+            id: b.id,
+            name: b.name,
+            description: b.description,
+            isActive: b.isActive,
+            webhookUrl: b.webhookUrl,
+            editInExternalAutomation: src.editInExternalAutomation,
+            managedByOpenConduit: src.managedByOpenConduit,
+          },
+          llmConfig: redactLlmConfig(r.llmConfig),
+        };
+      }),
     };
+  });
+
+  const agentProfileBodySchema = z.object({
+    llmConfig: z.record(z.unknown()).optional(),
+    behaviorConfig: z.record(z.unknown()).optional(),
+    promptModuleIds: z.array(z.string().uuid()).optional().nullable(),
+    botPatch: z
+      .object({
+        name: z.string().min(1).max(120).optional(),
+        description: z.string().max(4000).optional().nullable(),
+        isActive: z.boolean().optional(),
+      })
+      .optional(),
+  });
+
+  async function upsertAgentProfileForBot(params: {
+    organizationId: string;
+    botId: string;
+    parsed: z.infer<typeof agentProfileBodySchema>;
+  }) {
+    const { organizationId, botId, parsed } = params;
+    const existing = await prisma.automationAgentProfile.findUnique({
+      where: { botId },
+    });
+
+    let llmConfig: Record<string, unknown> = existing
+      ? (existing.llmConfig as Record<string, unknown>)
+      : defaultLlmConfig();
+    if (parsed.llmConfig) {
+      const incoming = parsed.llmConfig as Record<string, unknown>;
+      if (incoming.apiKey === "***") {
+        delete incoming.apiKey;
+      }
+      llmConfig = { ...llmConfig, ...incoming };
+    }
+
+    const behaviorConfig = parsed.behaviorConfig
+      ? { ...defaultBehaviorConfig(), ...(parsed.behaviorConfig as object) }
+      : existing
+        ? (existing.behaviorConfig as object)
+        : defaultBehaviorConfig();
+
+    const row = await prisma.automationAgentProfile.upsert({
+      where: { botId },
+      create: {
+        organizationId,
+        botId,
+        llmConfig: asJson(llmConfig),
+        behaviorConfig: asJson(behaviorConfig),
+        promptModuleIds:
+          parsed.promptModuleIds == null ? undefined : asJson(parsed.promptModuleIds),
+      },
+      update: {
+        llmConfig: asJson(llmConfig),
+        ...(parsed.behaviorConfig ? { behaviorConfig: asJson(behaviorConfig) } : {}),
+        ...(parsed.promptModuleIds !== undefined
+          ? {
+              promptModuleIds:
+                parsed.promptModuleIds == null ? Prisma.JsonNull : asJson(parsed.promptModuleIds),
+            }
+          : {}),
+      },
+    });
+
+    return { row, llmConfig };
+  }
+
+  const createAutomationAgentSchema = z
+    .object({
+      createBot: z.boolean(),
+      botId: z.string().uuid().optional(),
+      botName: z.string().min(1).max(120).optional(),
+      botDescription: z.string().max(4000).optional().nullable(),
+      botIsActive: z.boolean().optional(),
+      llmConfig: z.record(z.unknown()),
+      behaviorConfig: z.record(z.unknown()),
+      promptModuleIds: z.array(z.string().uuid()).optional().nullable(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.createBot) {
+        if (!data.botName?.trim()) {
+          ctx.addIssue({ code: "custom", message: "botName is required when createBot is true" });
+        }
+      } else if (!data.botId) {
+        ctx.addIssue({ code: "custom", message: "botId is required when createBot is false" });
+      }
+    });
+
+  app.post("/agents", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = createAutomationAgentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    let botId: string;
+    if (parsed.data.createBot) {
+      const created = await prisma.bot.create({
+        data: {
+          organizationId,
+          name: parsed.data.botName!.trim(),
+          description: parsed.data.botDescription ?? null,
+          type: "WEBHOOK",
+          webhookUrl: null,
+          isActive: parsed.data.botIsActive ?? true,
+          config: { automationManagedByOpenConduit: true } as Prisma.InputJsonValue,
+        },
+      });
+      botId = created.id;
+    } else {
+      const bot = await prisma.bot.findFirst({
+        where: { id: parsed.data.botId!, organizationId },
+      });
+      if (!bot) {
+        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+      }
+      botId = bot.id;
+    }
+
+    const { row } = await upsertAgentProfileForBot({
+      organizationId,
+      botId,
+      parsed: {
+        llmConfig: parsed.data.llmConfig,
+        behaviorConfig: parsed.data.behaviorConfig,
+        promptModuleIds: parsed.data.promptModuleIds,
+      },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.agent.create",
+      resourceType: "automation_agent_profile",
+      resourceId: row.id,
+      metadata: { botId, createdBot: parsed.data.createBot },
+      ip: clientIp(request),
+    });
+
+    return reply.status(201).send({ ...row, llmConfig: redactLlmConfig(row.llmConfig) });
   });
 
   app.put<{ Params: { botId: string } }>("/agent-profiles/:botId", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -644,61 +829,47 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
     }
 
-    const bodySchema = z.object({
-      llmConfig: z.record(z.unknown()).optional(),
-      behaviorConfig: z.record(z.unknown()).optional(),
-      promptModuleIds: z.array(z.string().uuid()).optional().nullable(),
-    });
-    const parsed = bodySchema.safeParse(request.body);
+    const parsed = agentProfileBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const existing = await prisma.automationAgentProfile.findUnique({
-      where: { botId: bot.id },
-    });
-
-    let llmConfig: Record<string, unknown> = existing
-      ? (existing.llmConfig as Record<string, unknown>)
-      : defaultLlmConfig();
-    if (parsed.data.llmConfig) {
-      const incoming = parsed.data.llmConfig as Record<string, unknown>;
-      if (incoming.apiKey === "***") {
-        delete incoming.apiKey;
-      }
-      llmConfig = { ...llmConfig, ...incoming };
+    if (parsed.data.botPatch && Object.keys(parsed.data.botPatch).length > 0) {
+      const bp = parsed.data.botPatch;
+      await prisma.bot.update({
+        where: { id: bot.id },
+        data: {
+          ...(bp.name !== undefined ? { name: bp.name } : {}),
+          ...(bp.description !== undefined ? { description: bp.description } : {}),
+          ...(bp.isActive !== undefined ? { isActive: bp.isActive } : {}),
+        },
+      });
     }
 
-    const behaviorConfig = parsed.data.behaviorConfig
-      ? { ...defaultBehaviorConfig(), ...(parsed.data.behaviorConfig as object) }
-      : existing
-        ? (existing.behaviorConfig as object)
-        : defaultBehaviorConfig();
-
-    const row = await prisma.automationAgentProfile.upsert({
-      where: { botId: bot.id },
-      create: {
-        organizationId,
-        botId: bot.id,
-        llmConfig: asJson(llmConfig),
-        behaviorConfig: asJson(behaviorConfig),
-        promptModuleIds:
-          parsed.data.promptModuleIds == null ? undefined : asJson(parsed.data.promptModuleIds),
-      },
-      update: {
-        llmConfig: asJson(llmConfig),
-        ...(parsed.data.behaviorConfig ? { behaviorConfig: asJson(behaviorConfig) } : {}),
-        ...(parsed.data.promptModuleIds !== undefined
-          ? {
-              promptModuleIds:
-                parsed.data.promptModuleIds == null ? Prisma.JsonNull : asJson(parsed.data.promptModuleIds),
-            }
-          : {}),
-      },
+    const { row } = await upsertAgentProfileForBot({
+      organizationId,
+      botId: bot.id,
+      parsed: parsed.data,
     });
 
     return { ...row, llmConfig: redactLlmConfig(row.llmConfig) };
   });
+
+  app.delete<{ Params: { botId: string } }>(
+    "/agent-profiles/:botId",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const res = await prisma.automationAgentProfile.deleteMany({
+        where: { botId: request.params.botId, organizationId },
+      });
+      if (res.count === 0) {
+        return reply.status(404).send({ error: "Not Found", message: "Agent profile not found", statusCode: 404 });
+      }
+      return reply.status(204).send();
+    },
+  );
 
   app.get("/interactions", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
