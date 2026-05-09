@@ -44,8 +44,8 @@ const updateSchema = z.object({
   status: z.enum(["OPEN", "RESOLVED", "PENDING"]).optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   teamId: z.string().uuid().nullable().optional(),
-  closureReason: z.string().min(3).max(4000).optional(),
-  leadTypeId: z.string().uuid().optional(),
+  closureReason: z.union([z.string().max(4000), z.null()]).optional(),
+  leadTypeId: z.union([z.string().uuid(), z.null()]).optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
 });
 
@@ -519,19 +519,34 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     const nextStatus = parsed.data.status ?? existing.status;
 
+    const tenantSettings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: {
+        csatEnabled: true,
+        csatSurveyMessage: true,
+        resolveRequireClosureReason: true,
+        resolveRequireLeadType: true,
+      },
+    });
+    const requireClosureReason = tenantSettings?.resolveRequireClosureReason ?? true;
+    const requireLeadType = tenantSettings?.resolveRequireLeadType ?? true;
+
     if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
-        const reason = parsed.data.closureReason?.trim();
-        if (!reason || reason.length < 3) {
-          return reply.status(400).send({
-            error: "Bad Request",
-            message:
-              "closureReason is required (min 3 characters) when resolving an open or pending conversation",
-            statusCode: 400,
-          });
+        if (requireClosureReason) {
+          const reason =
+            typeof parsed.data.closureReason === "string" ? parsed.data.closureReason.trim() : "";
+          if (!reason || reason.length < 3) {
+            return reply.status(400).send({
+              error: "Bad Request",
+              message:
+                "closureReason is required (min 3 characters) when resolving an open or pending conversation",
+              statusCode: 400,
+            });
+          }
         }
 
-        if (!parsed.data.leadTypeId) {
+        if (requireLeadType && !parsed.data.leadTypeId) {
           return reply.status(400).send({
             error: "Bad Request",
             message: "leadTypeId is required when resolving an open or pending conversation",
@@ -539,23 +554,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           });
         }
 
-        const leadType = await prisma.leadType.findFirst({
-          where: { id: parsed.data.leadTypeId, organizationId },
-        });
-        if (!leadType) {
-          return reply.status(400).send({
-            error: "Bad Request",
-            message: "Invalid leadTypeId",
-            statusCode: 400,
+        const effectiveLeadTypeId = parsed.data.leadTypeId ?? null;
+        if (effectiveLeadTypeId) {
+          const leadType = await prisma.leadType.findFirst({
+            where: { id: effectiveLeadTypeId, organizationId },
           });
+          if (!leadType) {
+            return reply.status(400).send({
+              error: "Bad Request",
+              message: "Invalid leadTypeId",
+              statusCode: 400,
+            });
+          }
         }
       }
     }
-
-    const tenantSettings = await prisma.settings.findUnique({
-      where: { organizationId },
-      select: { csatEnabled: true, csatSurveyMessage: true },
-    });
 
     const data: {
       status?: typeof nextStatus;
@@ -599,8 +612,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.csatSurveyToken = null;
     } else if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
-        data.closureReason = parsed.data.closureReason!.trim();
-        data.leadTypeId = parsed.data.leadTypeId!;
+        const rawCr = parsed.data.closureReason;
+        const trimmedReason = typeof rawCr === "string" ? rawCr.trim() : "";
+        data.closureReason = requireClosureReason
+          ? trimmedReason
+          : trimmedReason.length > 0
+            ? trimmedReason
+            : null;
+        data.leadTypeId = requireLeadType ? parsed.data.leadTypeId! : (parsed.data.leadTypeId ?? null);
         if (parsed.data.closureValue !== undefined && parsed.data.closureValue !== null) {
           data.closureValue = parsed.data.closureValue;
         } else {

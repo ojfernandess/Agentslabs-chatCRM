@@ -359,6 +359,7 @@ model Tag {
   contacts ContactTag[]
   rules    AutoTagRule[]
   broadcastCampaignTags BroadcastCampaignTag[]
+  settingsAutoResolveTag Settings[] @relation("SettingsAutoResolveTag")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -546,6 +547,7 @@ model LeadType {
 
   conversations  Conversation[]
   pipelineStages PipelineStage[]
+  settingsAutoResolveLeadType Settings[] @relation("SettingsAutoResolveLeadType")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -765,6 +767,24 @@ model Settings {
   /// Inquérito CSAT: ao resolver, envia ao contacto um link para avaliar (1–5).
   csatEnabled       Boolean @default(false) @map("csat_enabled")
   csatSurveyMessage String? @map("csat_survey_message") @db.Text
+
+  /// Resolução automática por inatividade (regras ao estilo «fluxos de conversa»).
+  autoResolveConversationsEnabled Boolean @default(false) @map("auto_resolve_conversations_enabled")
+  /// Duração mínima de inatividade antes de resolver (em minutos; 1–43200).
+  autoResolveInactivityMinutes    Int      @default(10) @map("auto_resolve_inactivity_minutes")
+  /// Mensagem opcional ao cliente após a resolução automática (WhatsApp).
+  autoResolveCustomerMessage      String?  @map("auto_resolve_customer_message") @db.Text
+  /// Se verdadeiro, não resolver conversas com agente atribuído (aguardam resposta humana).
+  autoResolveSkipWhenAssigned     Boolean  @default(false) @map("auto_resolve_skip_when_assigned")
+  autoResolveTagId                String?  @map("auto_resolve_tag_id") @db.Uuid
+  autoResolveLeadTypeId           String?  @map("auto_resolve_lead_type_id") @db.Uuid
+  autoResolveTag                  Tag?     @relation("SettingsAutoResolveTag", fields: [autoResolveTagId], references: [id], onDelete: SetNull)
+  autoResolveLeadType             LeadType? @relation("SettingsAutoResolveLeadType", fields: [autoResolveLeadTypeId], references: [id], onDelete: SetNull)
+
+  /// Finalização manual: exigir motivo (mín. 3 caracteres) ao resolver.
+  resolveRequireClosureReason Boolean @default(true) @map("resolve_require_closure_reason")
+  /// Finalização manual: exigir tipo de lead ao resolver.
+  resolveRequireLeadType      Boolean @default(true) @map("resolve_require_lead_type")
 
   @@map("settings")
 }

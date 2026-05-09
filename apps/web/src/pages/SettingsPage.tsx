@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Settings, Wifi, WifiOff, Copy, Check, UserPlus, Bell, Tag, Smartphone, MessageCircle, Pencil, Star, FileText } from "lucide-react";
+import {
+  Settings,
+  Wifi,
+  WifiOff,
+  Copy,
+  Check,
+  UserPlus,
+  Bell,
+  Tag,
+  Smartphone,
+  MessageCircle,
+  Pencil,
+  Star,
+  FileText,
+  GitBranch,
+} from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -13,7 +28,7 @@ import {
 } from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
 
-type SettingsSection = "channel" | "notifications" | "csat" | "crm" | "templates" | "team";
+type SettingsSection = "channel" | "notifications" | "csat" | "workflow" | "crm" | "templates" | "team";
 
 interface AppSettings {
   whatsappProvider: string | null;
@@ -30,6 +45,14 @@ interface AppSettings {
   csatEnabled: boolean;
   csatSurveyMessage: string | null;
   evolutionPlatformQrMode?: boolean;
+  autoResolveConversationsEnabled?: boolean;
+  autoResolveInactivityMinutes?: number;
+  autoResolveCustomerMessage?: string | null;
+  autoResolveSkipWhenAssigned?: boolean;
+  autoResolveTagId?: string | null;
+  autoResolveLeadTypeId?: string | null;
+  resolveRequireClosureReason?: boolean;
+  resolveRequireLeadType?: boolean;
 }
 
 interface AgentBotOption {
@@ -66,6 +89,27 @@ interface TeamUser {
   email: string;
   role: "ADMIN" | "AGENT";
   createdAt: string;
+}
+
+interface TagListRow {
+  id: string;
+  name: string;
+  color: string;
+}
+
+function workflowMinutesFromInput(n: number, u: "minutes" | "hours" | "days"): number {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v) || v < 1) return 10;
+  if (u === "days") return Math.min(v, 30) * 1440;
+  if (u === "hours") return Math.min(v, 720) * 60;
+  return Math.min(v, 43_200);
+}
+
+function workflowDisplayFromMinutes(total: number): { n: number; u: "minutes" | "hours" | "days" } {
+  const m = Math.min(43_200, Math.max(1, Math.floor(Number(total)) || 10));
+  if (m >= 1440 && m % 1440 === 0) return { n: m / 1440, u: "days" };
+  if (m >= 60 && m % 60 === 0) return { n: m / 60, u: "hours" };
+  return { n: m, u: "minutes" };
 }
 
 export function SettingsPage() {
@@ -124,6 +168,18 @@ export function SettingsPage() {
   const [evoTplBusy, setEvoTplBusy] = useState(false);
   const [evoTplError, setEvoTplError] = useState("");
   const [evoTplSuccess, setEvoTplSuccess] = useState(false);
+
+  const [workflowTags, setWorkflowTags] = useState<TagListRow[]>([]);
+  const [wfAutoEnabled, setWfAutoEnabled] = useState(false);
+  const [wfInactivityValue, setWfInactivityValue] = useState(10);
+  const [wfInactivityUnit, setWfInactivityUnit] = useState<"minutes" | "hours" | "days">("minutes");
+  const [wfCustomerMessage, setWfCustomerMessage] = useState("");
+  const [wfSkipWhenAssigned, setWfSkipWhenAssigned] = useState(false);
+  const [wfTagId, setWfTagId] = useState("");
+  const [wfAutoLeadTypeId, setWfAutoLeadTypeId] = useState("");
+  const [wfRequireClosure, setWfRequireClosure] = useState(true);
+  const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
+  const [workflowError, setWorkflowError] = useState("");
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
   const [embeddedBusy, setEmbeddedBusy] = useState(false);
@@ -295,10 +351,11 @@ export function SettingsPage() {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, users, lt, botList, emb] = await Promise.all([
+        const [data, users, lt, tags, botList, emb] = await Promise.all([
           api.get<AppSettings>("/settings"),
           api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
+          api.get<TagListRow[]>("/tags").catch(() => [] as TagListRow[]),
           api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
           api.get<WhatsappEmbeddedTenantInfo>("/settings/whatsapp-embedded").catch(() => null),
         ]);
@@ -319,6 +376,18 @@ export function SettingsPage() {
         setNotifyPending(data.notifyConversationPending ?? true);
         setCsatEnabled(data.csatEnabled ?? false);
         setCsatSurveyMessage(data.csatSurveyMessage ?? "");
+        setWorkflowTags(tags);
+        setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
+        const disp = workflowDisplayFromMinutes(data.autoResolveInactivityMinutes ?? 10);
+        setWfInactivityValue(disp.n);
+        setWfInactivityUnit(disp.u);
+        setWfCustomerMessage(data.autoResolveCustomerMessage ?? "");
+        setWfSkipWhenAssigned(data.autoResolveSkipWhenAssigned ?? false);
+        setWfTagId(data.autoResolveTagId ?? "");
+        setWfAutoLeadTypeId(data.autoResolveLeadTypeId ?? "");
+        setWfRequireClosure(data.resolveRequireClosureReason ?? true);
+        setWfRequireLeadType(data.resolveRequireLeadType ?? true);
+        setWorkflowError("");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setTeamUsers(users);
@@ -427,6 +496,40 @@ export function SettingsPage() {
       setUserFormError(err instanceof Error ? err.message : "Failed to create user");
     } finally {
       setUserFormSubmitting(false);
+    }
+  };
+
+  const handleSaveWorkflow = async (e: FormEvent) => {
+    e.preventDefault();
+    setWorkflowError("");
+    setSaving(true);
+    try {
+      const minutes = workflowMinutesFromInput(wfInactivityValue, wfInactivityUnit);
+      const data = await api.put<AppSettings>("/settings", {
+        autoResolveConversationsEnabled: wfAutoEnabled,
+        autoResolveInactivityMinutes: minutes,
+        autoResolveCustomerMessage: wfCustomerMessage.trim() || null,
+        autoResolveSkipWhenAssigned: wfSkipWhenAssigned,
+        autoResolveTagId: wfTagId.trim() || null,
+        autoResolveLeadTypeId: wfAutoLeadTypeId.trim() || null,
+        resolveRequireClosureReason: wfRequireClosure,
+        resolveRequireLeadType: wfRequireLeadType,
+      });
+      setSettings(data);
+      setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
+      const disp = workflowDisplayFromMinutes(data.autoResolveInactivityMinutes ?? 10);
+      setWfInactivityValue(disp.n);
+      setWfInactivityUnit(disp.u);
+      setWfCustomerMessage(data.autoResolveCustomerMessage ?? "");
+      setWfSkipWhenAssigned(data.autoResolveSkipWhenAssigned ?? false);
+      setWfTagId(data.autoResolveTagId ?? "");
+      setWfAutoLeadTypeId(data.autoResolveLeadTypeId ?? "");
+      setWfRequireClosure(data.resolveRequireClosureReason ?? true);
+      setWfRequireLeadType(data.resolveRequireLeadType ?? true);
+    } catch (err) {
+      setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -591,6 +694,7 @@ export function SettingsPage() {
                   ["channel", t("settings.sectionChannel"), Smartphone],
                   ["notifications", t("settings.sectionNotifications"), Bell],
                   ["csat", t("settings.sectionCsat"), Star],
+                  ["workflow", t("settings.sectionWorkflow"), GitBranch],
                   ["crm", t("settings.sectionCrm"), Tag],
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -1092,6 +1196,197 @@ export function SettingsPage() {
                     className="mt-6 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                   >
                     {saving ? t("common.loading") : t("settings.csatSave")}
+                  </button>
+                </motion.form>
+              )}
+
+              {section === "workflow" && (
+                <motion.form
+                  onSubmit={(e) => void handleSaveWorkflow(e)}
+                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  variants={staggerItem}
+                >
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                    <GitBranch className="h-5 w-5" />
+                    {t("settings.workflowTitle")}
+                  </h2>
+                  <p className="mb-6 text-sm text-gray-500">{t("settings.workflowIntro")}</p>
+
+                  <div className="flex flex-col gap-4 border-b border-gray-100 pb-6">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{t("settings.workflowAutoResolve")}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowAutoResolveHint")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={wfAutoEnabled}
+                        onClick={() => setWfAutoEnabled((v) => !v)}
+                        className={clsx(
+                          "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                          wfAutoEnabled ? "bg-brand-500" : "bg-gray-200",
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                            wfAutoEnabled ? "translate-x-5" : "translate-x-0",
+                          )}
+                        />
+                      </button>
+                    </div>
+
+                    <div className={clsx("space-y-4", !wfAutoEnabled && "pointer-events-none opacity-50")}>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[100px]">
+                          <label className="block text-sm font-medium text-gray-700">
+                            {t("settings.workflowInactivityValue")}
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={wfInactivityValue}
+                            onChange={(e) => setWfInactivityValue(Number(e.target.value))}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          />
+                        </div>
+                        <div className="min-w-[140px]">
+                          <label className="block text-sm font-medium text-gray-700">
+                            {t("settings.workflowInactivityUnit")}
+                          </label>
+                          <select
+                            value={wfInactivityUnit}
+                            onChange={(e) =>
+                              setWfInactivityUnit(e.target.value as "minutes" | "hours" | "days")
+                            }
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          >
+                            <option value="minutes">{t("settings.workflowUnitMinutes")}</option>
+                            <option value="hours">{t("settings.workflowUnitHours")}</option>
+                            <option value="days">{t("settings.workflowUnitDays")}</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500">{t("settings.workflowInactivityHint")}</p>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.workflowCustomerMessage")}
+                        </label>
+                        <textarea
+                          value={wfCustomerMessage}
+                          onChange={(e) => setWfCustomerMessage(e.target.value)}
+                          rows={4}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          placeholder={t("settings.workflowCustomerMessagePlaceholder")}
+                        />
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.workflowCustomerMessageHint")}</p>
+                      </div>
+
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{t("settings.workflowSkipAssigned")}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowSkipAssignedHint")}</p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={wfSkipWhenAssigned}
+                          onClick={() => setWfSkipWhenAssigned((v) => !v)}
+                          className={clsx(
+                            "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                            wfSkipWhenAssigned ? "bg-brand-500" : "bg-gray-200",
+                          )}
+                        >
+                          <span
+                            className={clsx(
+                              "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                              wfSkipWhenAssigned ? "translate-x-5" : "translate-x-0",
+                            )}
+                          />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.workflowAutoLeadType")}
+                        </label>
+                        <select
+                          value={wfAutoLeadTypeId}
+                          onChange={(e) => setWfAutoLeadTypeId(e.target.value)}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="">{t("settings.workflowSelectLeadType")}</option>
+                          {leadTypes.map((lt) => (
+                            <option key={lt.id} value={lt.id}>
+                              {lt.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.workflowAutoLeadTypeHint")}</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.workflowTagAfterResolve")}
+                        </label>
+                        <select
+                          value={wfTagId}
+                          onChange={(e) => setWfTagId(e.target.value)}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="">{t("settings.workflowSelectTag")}</option>
+                          {workflowTags.map((tg) => (
+                            <option key={tg.id} value={tg.id}>
+                              {tg.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-4 border-b border-gray-100 pb-6">
+                    <h3 className="text-sm font-semibold text-gray-900">{t("settings.workflowManualTitle")}</h3>
+                    <p className="text-xs text-gray-500">{t("settings.workflowManualIntro")}</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="wfReqClosure"
+                        type="checkbox"
+                        checked={wfRequireClosure}
+                        onChange={(e) => setWfRequireClosure(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      <label htmlFor="wfReqClosure" className="text-sm text-gray-700">
+                        {t("settings.workflowRequireClosure")}
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="wfReqLead"
+                        type="checkbox"
+                        checked={wfRequireLeadType}
+                        onChange={(e) => setWfRequireLeadType(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      <label htmlFor="wfReqLead" className="text-sm text-gray-700">
+                        {t("settings.workflowRequireLeadType")}
+                      </label>
+                    </div>
+                  </div>
+
+                  {workflowError ? (
+                    <p className="mt-4 text-sm text-red-600" role="alert">
+                      {workflowError}
+                    </p>
+                  ) : null}
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="mt-6 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    {saving ? t("common.loading") : t("settings.workflowSave")}
                   </button>
                 </motion.form>
               )}

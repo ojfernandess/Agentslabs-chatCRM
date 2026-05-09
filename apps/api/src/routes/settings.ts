@@ -78,6 +78,14 @@ const settingsSchema = z.object({
   agentBotId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   csatEnabled: z.boolean().optional(),
   csatSurveyMessage: z.union([z.string().max(4000), z.literal(""), z.null()]).optional(),
+  autoResolveConversationsEnabled: z.boolean().optional(),
+  autoResolveInactivityMinutes: z.number().int().min(1).max(43_200).optional(),
+  autoResolveCustomerMessage: z.union([z.string().max(4000), z.literal(""), z.null()]).optional(),
+  autoResolveSkipWhenAssigned: z.boolean().optional(),
+  autoResolveTagId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
+  autoResolveLeadTypeId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
+  resolveRequireClosureReason: z.boolean().optional(),
+  resolveRequireLeadType: z.boolean().optional(),
 });
 
 function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(
@@ -93,6 +101,28 @@ function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhook
 }
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
+  /** Regras de finalização manual (motivo / tipo de lead) para a UI da conversa. */
+  app.get("/conversation-workflow", { preHandler: [authenticate] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    let row = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: {
+        resolveRequireClosureReason: true,
+        resolveRequireLeadType: true,
+      },
+    });
+    if (!row) {
+      await prisma.settings.create({ data: { organizationId } });
+      row = { resolveRequireClosureReason: true, resolveRequireLeadType: true };
+    }
+    return {
+      resolveRequireClosureReason: row.resolveRequireClosureReason,
+      resolveRequireLeadType: row.resolveRequireLeadType,
+    };
+  });
+
   app.get("/notifications", { preHandler: [authenticate] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -173,6 +203,42 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.evolutionApiBaseUrl === "") data.evolutionApiBaseUrl = null;
       if (data.agentBotId === "") data.agentBotId = null;
       if (data.csatSurveyMessage === "") data.csatSurveyMessage = null;
+      if (data.autoResolveCustomerMessage === "") data.autoResolveCustomerMessage = null;
+      if (data.autoResolveTagId === "") data.autoResolveTagId = null;
+      if (data.autoResolveLeadTypeId === "") data.autoResolveLeadTypeId = null;
+
+      const mergedAutoEnabled =
+        (data.autoResolveConversationsEnabled as boolean | undefined) ??
+        settings?.autoResolveConversationsEnabled ??
+        false;
+      const mergedAutoLeadTypeId =
+        (data.autoResolveLeadTypeId as string | null | undefined) ?? settings?.autoResolveLeadTypeId ?? null;
+      if (mergedAutoEnabled && !mergedAutoLeadTypeId) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "autoResolveLeadTypeId is required when automatic conversation resolution is enabled",
+          statusCode: 400,
+        });
+      }
+
+      if (data.autoResolveTagId) {
+        const tagOk = await prisma.tag.findFirst({
+          where: { id: data.autoResolveTagId as string, organizationId },
+        });
+        if (!tagOk) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid autoResolveTagId", statusCode: 400 });
+        }
+      }
+      if (data.autoResolveLeadTypeId) {
+        const ltOk = await prisma.leadType.findFirst({
+          where: { id: data.autoResolveLeadTypeId as string, organizationId },
+        });
+        if (!ltOk) {
+          return reply
+            .status(400)
+            .send({ error: "Bad Request", message: "Invalid autoResolveLeadTypeId", statusCode: 400 });
+        }
+      }
 
       const qrMode = await evolutionPlatformQrModeActive();
       const effectiveProvider = (data.whatsappProvider ?? settings?.whatsappProvider) ?? null;

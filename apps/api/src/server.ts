@@ -35,6 +35,7 @@ import { channelInboxPublicRoutes } from "./routes/channelInboxPublic.js";
 import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
+import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 
 const app = Fastify({
   logger: {
@@ -128,6 +129,11 @@ process.on("SIGTERM", shutdown);
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Server running at http://${config.host}:${config.port}`);
+  const autoResolveMs = 120_000;
+  setInterval(() => {
+    void runAutoResolveInactiveConversationsTick({ log: app.log });
+  }, autoResolveMs);
+  void runAutoResolveInactiveConversationsTick({ log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

@@ -645,6 +645,8 @@ export const messages = {
       finalizeTitle: "Finalizar atendimento",
       finalizeSubtitle:
         "Informe o motivo e o tipo de lead. Esses dados alimentam relatórios e o funil.",
+      finalizeRulesHint:
+        "Nem todos os campos são obrigatórios — siga as etiquetas «opcional» ou «*» conforme a configuração da organização.",
       closureReason: "Motivo / resumo do atendimento",
       closureReasonHint: "Mínimo de 3 caracteres — ex.: cliente comprou, desistiu, só dúvida, etc.",
       leadType: "Tipo de lead",
@@ -912,6 +914,40 @@ export const messages = {
       sectionCrm: "CRM e leads",
       sectionTeam: "Equipa",
       sectionCsat: "Satisfação (CSAT)",
+      sectionWorkflow: "Fluxos de conversa",
+      workflowTitle: "Fluxos de conversa",
+      workflowIntro:
+        "Configure a resolução automática por inatividade e quais campos são obrigatórios quando um agente finaliza manualmente.",
+      workflowAutoResolve: "Resolver conversas automaticamente",
+      workflowAutoResolveHint:
+        "Após o período de inatividade indicado, conversas abertas ou pendentes são finalizadas com o tipo de lead escolhido e motivo fixo do sistema.",
+      workflowInactivityValue: "Duração da inatividade",
+      workflowInactivityUnit: "Unidade",
+      workflowUnitMinutes: "Minutos",
+      workflowUnitHours: "Horas",
+      workflowUnitDays: "Dias",
+      workflowInactivityHint:
+        "Contamos a última mensagem não privada na conversa (ou a data de criação se não houver mensagens). Valor máximo: 30 dias.",
+      workflowCustomerMessage: "Mensagem ao cliente após resolução automática",
+      workflowCustomerMessagePlaceholder:
+        "Ex.: Atendimento finalizado. Se precisar de ajuda novamente, envie uma nova mensagem.",
+      workflowCustomerMessageHint:
+        "Texto opcional enviado por WhatsApp após a resolução automática (respeita a janela de 24 h da Meta).",
+      workflowSkipAssigned: "Não resolver conversas com agente atribuído",
+      workflowSkipAssignedHint:
+        "Se ativo, conversas com atendente humano atribuído não são fechadas automaticamente (aguardam resposta da equipa).",
+      workflowAutoLeadType: "Tipo de lead na resolução automática",
+      workflowAutoLeadTypeHint: "Obrigatório enquanto a resolução automática estiver ligada.",
+      workflowSelectLeadType: "Selecione o tipo de lead…",
+      workflowTagAfterResolve: "Adicionar etiqueta ao contacto após resolução automática",
+      workflowSelectTag: "Selecione a etiqueta",
+      workflowManualTitle: "Finalização manual",
+      workflowManualIntro:
+        "Defina se o motivo e o tipo de lead são obrigatórios no formulário de finalizar atendimento na conversa.",
+      workflowRequireClosure: "Exigir motivo / resumo (mín. 3 caracteres)",
+      workflowRequireLeadType: "Exigir tipo de lead",
+      workflowSave: "Guardar fluxos de conversa",
+      workflowSaveError: "Não foi possível guardar as definições.",
       sectionTemplates: "Modelos de mensagem",
       templatesTitle: "Modelos de mensagem (WhatsApp)",
       templatesMetaHint:
@@ -1753,6 +1789,8 @@ export const messages = {
       finalize: "Resolve conversation",
       finalizeTitle: "Resolve conversation",
       finalizeSubtitle: "Provide a reason and lead type for reporting and the funnel.",
+      finalizeRulesHint:
+        "Not every field is required — follow “optional” or “*” labels according to your organization settings.",
       closureReason: "Reason / summary",
       closureReasonHint: "At least 3 characters — e.g. purchased, dropped off, question only.",
       leadType: "Lead type",
@@ -2021,6 +2059,40 @@ export const messages = {
       sectionCrm: "CRM & lead types",
       sectionTeam: "Team",
       sectionCsat: "Satisfaction (CSAT)",
+      sectionWorkflow: "Conversation workflows",
+      workflowTitle: "Conversation workflows",
+      workflowIntro:
+        "Configure automatic resolution after inactivity and which fields agents must fill when resolving manually.",
+      workflowAutoResolve: "Resolve conversations automatically",
+      workflowAutoResolveHint:
+        "After the inactivity period, open or pending conversations are resolved using the selected lead type and a fixed system closure reason.",
+      workflowInactivityValue: "Inactivity duration",
+      workflowInactivityUnit: "Unit",
+      workflowUnitMinutes: "Minutes",
+      workflowUnitHours: "Hours",
+      workflowUnitDays: "Days",
+      workflowInactivityHint:
+        "We use the latest non-private message time (or conversation creation if there are no messages). Maximum: 30 days.",
+      workflowCustomerMessage: "Customer message after automatic resolution",
+      workflowCustomerMessagePlaceholder:
+        "e.g. This chat is closed. Send a new message if you need help again.",
+      workflowCustomerMessageHint:
+        "Optional WhatsApp text sent after auto-resolution (Meta 24h session rules still apply).",
+      workflowSkipAssigned: "Skip conversations assigned to an agent",
+      workflowSkipAssignedHint:
+        "When enabled, conversations with a human assignee are not auto-resolved (waiting for the team).",
+      workflowAutoLeadType: "Lead type for automatic resolution",
+      workflowAutoLeadTypeHint: "Required while automatic resolution is enabled.",
+      workflowSelectLeadType: "Select lead type…",
+      workflowTagAfterResolve: "Add tag to contact after automatic resolution",
+      workflowSelectTag: "Select tag",
+      workflowManualTitle: "Manual resolution",
+      workflowManualIntro:
+        "Control whether the reason and lead type are required in the resolve dialog on the conversation page.",
+      workflowRequireClosure: "Require reason / summary (min. 3 characters)",
+      workflowRequireLeadType: "Require lead type",
+      workflowSave: "Save conversation workflows",
+      workflowSaveError: "Could not save these settings.",
       sectionTemplates: "Message templates",
       templatesTitle: "Message templates (WhatsApp)",
       templatesMetaHint:

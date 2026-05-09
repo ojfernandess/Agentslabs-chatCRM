@@ -189,6 +189,8 @@ export function ConversationDetailPage() {
   const [closureAmount, setClosureAmount] = useState("");
   const [leadTypeId, setLeadTypeId] = useState("");
   const [resolveError, setResolveError] = useState("");
+  const [resolveRequireClosureReason, setResolveRequireClosureReason] = useState(true);
+  const [resolveRequireLeadType, setResolveRequireLeadType] = useState(true);
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -291,15 +293,21 @@ export function ConversationDetailPage() {
   }, [conversation?.inbox?.id]);
 
   useEffect(() => {
-    async function loadLeadTypes() {
+    void (async () => {
       try {
-        const rows = await api.get<LeadTypeRow[]>("/lead-types");
+        const [rows, wf] = await Promise.all([
+          api.get<LeadTypeRow[]>("/lead-types"),
+          api.get<{ resolveRequireClosureReason: boolean; resolveRequireLeadType: boolean }>(
+            "/settings/conversation-workflow",
+          ),
+        ]);
         setLeadTypes(rows);
+        setResolveRequireClosureReason(wf.resolveRequireClosureReason ?? true);
+        setResolveRequireLeadType(wf.resolveRequireLeadType ?? true);
       } catch {
         /* ignore */
       }
-    }
-    loadLeadTypes();
+    })();
   }, []);
 
   useEffect(() => {
@@ -652,8 +660,8 @@ export function ConversationDetailPage() {
   const applyStatus = async (
     status: "OPEN" | "PENDING" | "RESOLVED",
     extra?: {
-      closureReason?: string;
-      leadTypeId?: string;
+      closureReason?: string | null;
+      leadTypeId?: string | null;
       closureValue?: number | null;
       assignedToId?: string | null;
     },
@@ -664,8 +672,12 @@ export function ConversationDetailPage() {
     setFlowError("");
     try {
       const body: Record<string, unknown> = { status };
-      if (extra?.closureReason) body.closureReason = extra.closureReason;
-      if (extra?.leadTypeId) body.leadTypeId = extra.leadTypeId;
+      if (extra && "closureReason" in extra && extra.closureReason !== undefined) {
+        body.closureReason = extra.closureReason;
+      }
+      if (extra && "leadTypeId" in extra && extra.leadTypeId !== undefined) {
+        body.leadTypeId = extra.leadTypeId;
+      }
       if (extra && "closureValue" in extra) {
         body.closureValue = extra.closureValue;
       }
@@ -899,11 +911,11 @@ export function ConversationDetailPage() {
   const submitResolve = async (e: FormEvent) => {
     e.preventDefault();
     setResolveError("");
-    if (closureReason.trim().length < 3) {
+    if (resolveRequireClosureReason && closureReason.trim().length < 3) {
       setResolveError(t("conversationDetail.closureReasonHint"));
       return;
     }
-    if (!leadTypeId) {
+    if (resolveRequireLeadType && !leadTypeId) {
       setResolveError(t("conversationDetail.selectLeadType"));
       return;
     }
@@ -919,11 +931,22 @@ export function ConversationDetailPage() {
       }
       closureValue = n;
     }
-    await applyStatus("RESOLVED", {
-      closureReason: closureReason.trim(),
-      leadTypeId,
-      closureValue,
-    });
+    const extra: {
+      closureReason?: string | null;
+      leadTypeId?: string | null;
+      closureValue?: number | null;
+    } = { closureValue };
+    if (resolveRequireClosureReason) {
+      extra.closureReason = closureReason.trim();
+    } else {
+      extra.closureReason = closureReason.trim().length > 0 ? closureReason.trim() : null;
+    }
+    if (resolveRequireLeadType) {
+      extra.leadTypeId = leadTypeId;
+    } else {
+      extra.leadTypeId = leadTypeId || null;
+    }
+    await applyStatus("RESOLVED", extra);
   };
 
   const statusLabel = (s: string) => {
@@ -2150,16 +2173,20 @@ export function ConversationDetailPage() {
             >
               <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.finalizeTitle")}</h3>
               <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.finalizeSubtitle")}</p>
+              {(!resolveRequireClosureReason || !resolveRequireLeadType) && (
+                <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.finalizeRulesHint")}</p>
+              )}
               <form onSubmit={submitResolve} className="mt-4 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                    {t("conversationDetail.leadType")} *
+                    {t("conversationDetail.leadType")}
+                    {resolveRequireLeadType ? " *" : ` (${t("common.optional")})`}
                   </label>
                   <select
                     value={leadTypeId}
                     onChange={(e) => setLeadTypeId(e.target.value)}
                     className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-                    required
+                    required={resolveRequireLeadType}
                   >
                     <option value="">{t("conversationDetail.selectLeadType")}</option>
                     {leadTypes.map((lt) => (
@@ -2171,7 +2198,8 @@ export function ConversationDetailPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                    {t("conversationDetail.closureReason")} *
+                    {t("conversationDetail.closureReason")}
+                    {resolveRequireClosureReason ? " *" : ` (${t("common.optional")})`}
                   </label>
                   <textarea
                     value={closureReason}
@@ -2179,8 +2207,8 @@ export function ConversationDetailPage() {
                     rows={4}
                     className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                     placeholder={t("conversationDetail.closureReasonHint")}
-                    required
-                    minLength={3}
+                    required={resolveRequireClosureReason}
+                    minLength={resolveRequireClosureReason ? 3 : undefined}
                   />
                 </div>
                 <div>
