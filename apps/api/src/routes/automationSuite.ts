@@ -37,11 +37,11 @@ const defaultBehaviorConfig = () => ({
     knowledge_search: true,
     call_human: true,
     end_conversation: false,
-    list_entities: false,
-    list_hotels: false,
-    get_hotel_info: false,
-    get_entity_info: false,
-    scheduling: false,
+    list_teams: false,
+    list_pipeline_stages: false,
+    assign_team_to_conversation: false,
+    set_conversation_status: false,
+    list_google_calendars: false,
     scheduling_google: false,
     scheduling_outlook: false,
     ping: false,
@@ -69,8 +69,6 @@ const defaultBehaviorConfig = () => ({
     voiceId: null as string | null,
     replyWithAudioOnInboundAudio: false,
   },
-  segmentation: { segmentId: null, entityId: null, establishmentId: null },
-  dataSource: { label: null as string | null, connectionRef: null as string | null },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
 });
 
@@ -119,7 +117,17 @@ const customToolSchema = z.object({
 
 function redactToolRow<T extends { config: unknown }>(row: T): T {
   const cfg = row.config && typeof row.config === "object" ? { ...(row.config as Record<string, unknown>) } : {};
-  for (const k of ["apiKey", "api_key", "accessToken", "refreshToken", "password", "smtpPassword", "token"]) {
+  for (const k of [
+    "apiKey",
+    "api_key",
+    "accessToken",
+    "refreshToken",
+    "refresh_token",
+    "client_secret",
+    "password",
+    "smtpPassword",
+    "token",
+  ]) {
     if (k in cfg && cfg[k]) (cfg as Record<string, unknown>)[k] = "***";
   }
   return { ...row, config: cfg } as T;

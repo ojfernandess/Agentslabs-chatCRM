@@ -62,11 +62,12 @@ function botExternalWarning(bot: { webhookUrl?: string | null; config?: unknown 
 }
 
 const NATIVE_TOOL_KEYS = [
-  "list_hotels",
-  "get_hotel_info",
-  "list_entities",
-  "get_entity_info",
   "knowledge_search",
+  "list_teams",
+  "list_pipeline_stages",
+  "assign_team_to_conversation",
+  "set_conversation_status",
+  "list_google_calendars",
   "scheduling_google",
   "scheduling_outlook",
   "call_human",
@@ -75,6 +76,16 @@ const NATIVE_TOOL_KEYS = [
 ] as const;
 
 type NativeToolKey = (typeof NATIVE_TOOL_KEYS)[number];
+
+function compactToolConfigPatch(patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    if (typeof v === "string" && !v.trim()) continue;
+    out[k] = v;
+  }
+  return out;
+}
 
 const DEFAULT_API_BASE: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -163,8 +174,6 @@ const defaultBehavior = {
     voiceId: null as string | null,
     replyWithAudioOnInboundAudio: false,
   },
-  segmentation: { segmentId: null as string | null, entityId: null as string | null, establishmentId: null as string | null },
-  dataSource: { label: null as string | null, connectionRef: null as string | null },
   scheduling: { useOrgReminders: true, externalCalendar: "none" },
 };
 
@@ -202,11 +211,6 @@ type AgentFormFields = {
   systemInstructions: string;
   temperature: number;
   maxTokens: number;
-  segmentId: string;
-  entityId: string;
-  establishmentId: string;
-  dataSourcePreset: "default" | "custom";
-  dataSourceRef: string;
   voiceEnabled: boolean;
   elevenLabsToolId: string;
   voiceResponsePercent: number;
@@ -239,11 +243,6 @@ function emptyAgentForm(): AgentFormFields {
     systemInstructions: "",
     temperature: 0.7,
     maxTokens: 1024,
-    segmentId: "",
-    entityId: "",
-    establishmentId: "",
-    dataSourcePreset: "default",
-    dataSourceRef: "",
     voiceEnabled: false,
     elevenLabsToolId: "",
     voiceResponsePercent: 100,
@@ -272,11 +271,6 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const inc = (beh.inactivity ?? defaultBehavior.inactivity) as typeof defaultBehavior.inactivity;
   const voice = (beh.voice ?? defaultBehavior.voice) as typeof defaultBehavior.voice;
   const esc = (beh.escalationRules ?? defaultBehavior.escalationRules) as typeof defaultBehavior.escalationRules;
-  const seg = (beh.segmentation ?? defaultBehavior.segmentation) as typeof defaultBehavior.segmentation;
-  const ds = (beh.dataSource ?? defaultBehavior.dataSource) as typeof defaultBehavior.dataSource;
-  const cr = ds?.connectionRef;
-  const preset: "default" | "custom" =
-    cr == null || String(cr) === "" || String(cr) === "default" ? "default" : "custom";
   const pm = p.promptModuleIds;
   const promptModuleIds = Array.isArray(pm) ? (pm as string[]).filter((x) => typeof x === "string") : [];
   const prov = String(llm.provider ?? "openai");
@@ -296,11 +290,6 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     systemInstructions: String(llm.systemInstructions ?? ""),
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
-    segmentId: seg.segmentId != null ? String(seg.segmentId) : "",
-    entityId: seg.entityId != null ? String(seg.entityId) : "",
-    establishmentId: seg.establishmentId != null ? String(seg.establishmentId) : "",
-    dataSourcePreset: preset,
-    dataSourceRef: cr != null && preset === "custom" ? String(cr) : "",
     voiceEnabled: Boolean(voice.elevenLabsEnabled),
     elevenLabsToolId: voice.elevenLabsToolId != null ? String(voice.elevenLabsToolId) : "",
     voiceResponsePercent: Math.min(
@@ -339,11 +328,6 @@ function formToPayload(form: AgentFormFields): {
   };
   if (form.apiKey.trim()) llmConfig.apiKey = form.apiKey.trim();
 
-  const dataSource =
-    form.dataSourcePreset === "default"
-      ? { label: "Padrão (Supabase)", connectionRef: "default" }
-      : { label: "Custom", connectionRef: form.dataSourceRef.trim() || null };
-
   const schedulingExternal = form.nativeTools.scheduling_google
     ? "google"
     : form.nativeTools.scheduling_outlook
@@ -376,12 +360,6 @@ function formToPayload(form: AgentFormFields): {
       voiceId: null,
       replyWithAudioOnInboundAudio: form.replyWithAudioOnInboundAudio,
     },
-    segmentation: {
-      segmentId: form.segmentId.trim() || null,
-      entityId: form.entityId.trim() || null,
-      establishmentId: form.establishmentId.trim() || null,
-    },
-    dataSource,
     scheduling: {
       ...defaultBehavior.scheduling,
       externalCalendar: schedulingExternal,
@@ -793,11 +771,8 @@ export function AutomationPage() {
     }
   };
 
-  const saveToolConfigPatch = async (toolId: string, patch: Record<string, string>) => {
-    const cleaned: Record<string, string> = {};
-    for (const [k, v] of Object.entries(patch)) {
-      if (v.trim()) cleaned[k] = v.trim();
-    }
+  const saveToolConfigPatch = async (toolId: string, patch: Record<string, unknown>) => {
+    const cleaned = compactToolConfigPatch(patch);
     if (Object.keys(cleaned).length === 0) return;
     setLoading(true);
     setError("");
@@ -1258,7 +1233,7 @@ export function AutomationPage() {
         {tab === "tools" ? (
           <div className="space-y-8 text-sm">
             <p className="text-ink-600 dark:text-ink-400">{t("automationPage.toolsIntro")}</p>
-            {(["MCP_NATIVE", "ELEVENLABS", "EMAIL_API"] as const).map((cat) => {
+            {(["MCP_NATIVE", "GOOGLE_CALENDAR", "ELEVENLABS", "EMAIL_API"] as const).map((cat) => {
               const catPresets = toolPresets.filter((p) => p.category === cat);
               if (catPresets.length === 0) return null;
               return (
@@ -1266,9 +1241,11 @@ export function AutomationPage() {
                   <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
                     {cat === "MCP_NATIVE"
                       ? t("automationPage.toolsSectionMcp")
-                      : cat === "ELEVENLABS"
-                        ? t("automationPage.toolsSectionEleven")
-                        : t("automationPage.toolsSectionEmail")}
+                      : cat === "GOOGLE_CALENDAR"
+                        ? t("automationPage.toolsSectionGoogleCal")
+                        : cat === "ELEVENLABS"
+                          ? t("automationPage.toolsSectionEleven")
+                          : t("automationPage.toolsSectionEmail")}
                   </h3>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {catPresets.map((pr) => (
@@ -1515,13 +1492,11 @@ function AgentsTab({
           const llm = row.llmConfig as Record<string, unknown>;
           const beh = row.behaviorConfig as Record<string, unknown>;
           const nt = (beh.nativeTools ?? {}) as Record<string, boolean>;
-          const seg = (beh.segmentation ?? {}) as Record<string, unknown>;
           const voice = (beh.voice ?? {}) as Record<string, unknown>;
           const model = String(llm.model ?? "—");
           const temp = typeof llm.temperature === "number" ? llm.temperature : Number(llm.temperature ?? 0);
           const maxTok = typeof llm.maxTokens === "number" ? llm.maxTokens : Number(llm.maxTokens ?? 0);
           const instr = String(llm.systemInstructions ?? row.bot.description ?? "");
-          const segmentTag = seg.segmentId != null && String(seg.segmentId) ? String(seg.segmentId) : null;
 
           return (
             <div
@@ -1581,11 +1556,6 @@ function AgentsTab({
                 >
                   {row.bot.isActive ? t("automationPage.agentStatusActive") : t("automationPage.agentStatusInactive")}
                 </span>
-                {segmentTag ? (
-                  <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[11px] text-ink-700 dark:bg-ink-800 dark:text-ink-200">
-                    {segmentTag}
-                  </span>
-                ) : null}
                 {voice.elevenLabsEnabled ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-ink-600 dark:text-ink-400">
                     <Volume2 className="h-3 w-3" /> {t("automationPage.agentVoiceTag")}
@@ -1810,67 +1780,6 @@ function AgentsTab({
                 />
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentApiKeyHelp")}</p>
               </label>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                  {t("automationPage.agentSegment")}
-                  <input
-                    value={agentForm.segmentId}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, segmentId: e.target.value }))}
-                    placeholder={t("automationPage.agentSegmentPlaceholder")}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  />
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentSegmentHelp")}</p>
-                </label>
-                <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                  {t("automationPage.agentEstablishment")}
-                  <input
-                    value={agentForm.establishmentId}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, establishmentId: e.target.value }))}
-                    placeholder={t("automationPage.agentEstablishmentPlaceholder")}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  />
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentEstablishmentHelp")}</p>
-                </label>
-              </div>
-
-              <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                {t("automationPage.agentEntityId")}
-                <input
-                  value={agentForm.entityId}
-                  onChange={(e) => setAgentForm((f) => ({ ...f, entityId: e.target.value }))}
-                  placeholder={t("automationPage.agentEntityPlaceholder")}
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                />
-              </label>
-
-              <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                {t("automationPage.agentDataSource")}
-                <select
-                  value={agentForm.dataSourcePreset}
-                  onChange={(e) =>
-                    setAgentForm((f) => ({
-                      ...f,
-                      dataSourcePreset: e.target.value as "default" | "custom",
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                >
-                  <option value="default">{t("automationPage.agentDataSourceDefault")}</option>
-                  <option value="custom">{t("automationPage.agentDataSourceCustom")}</option>
-                </select>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentDataSourceHelp")}</p>
-              </label>
-              {agentForm.dataSourcePreset === "custom" ? (
-                <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                  {t("automationPage.agentDataSourceRef")}
-                  <input
-                    value={agentForm.dataSourceRef}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, dataSourceRef: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  />
-                </label>
-              ) : null}
 
               <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
                 <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
@@ -2176,6 +2085,227 @@ function AgentsTab({
   );
 }
 
+const GOOGLE_CAL_DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
+
+function parseGoogleCalAvailability(cfg: Record<string, unknown>): { days: number[]; start: string; end: string } {
+  const av = (cfg.availability && typeof cfg.availability === "object" ? cfg.availability : {}) as Record<string, unknown>;
+  const daysRaw = Array.isArray(av.days) ? (av.days as unknown[]) : [1, 2, 3, 4, 5];
+  let days = [...new Set(daysRaw.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b);
+  if (days.length === 0) days = [1, 2, 3, 4, 5];
+  return {
+    days,
+    start: String(av.start ?? "09:00"),
+    end: String(av.end ?? "18:00"),
+  };
+}
+
+function GoogleCalendarToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const av0 = parseGoogleCalAvailability(c);
+  const [clientId, setClientId] = useState(String(c.client_id ?? ""));
+  const [clientSecret, setClientSecret] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [calendarId, setCalendarId] = useState(String(c.calendar_id ?? "primary"));
+  const [days, setDays] = useState<number[]>(av0.days);
+  const [startTime, setStartTime] = useState(av0.start);
+  const [endTime, setEndTime] = useState(av0.end);
+  const [calendarsJson, setCalendarsJson] = useState(() =>
+    JSON.stringify(
+      Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }],
+      null,
+      2,
+    ),
+  );
+  const [calPreview, setCalPreview] = useState<unknown>(() =>
+    Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }],
+  );
+
+  useEffect(() => {
+    const cfg = (tool.config ?? {}) as Record<string, unknown>;
+    const av = parseGoogleCalAvailability(cfg);
+    setClientId(String(cfg.client_id ?? ""));
+    setClientSecret("");
+    setRefreshToken("");
+    setCalendarId(String(cfg.calendar_id ?? "primary"));
+    setDays(av.days);
+    setStartTime(av.start);
+    setEndTime(av.end);
+    const cal = Array.isArray(cfg.connectedCalendars) ? cfg.connectedCalendars : [{ id: "primary", name: "Principal" }];
+    setCalendarsJson(JSON.stringify(cal, null, 2));
+    setCalPreview(cal);
+  }, [tool.id]);
+
+  const toggleDay = (d: number) => {
+    setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b)));
+  };
+
+  const refreshCalPreview = () => {
+    try {
+      const parsed = JSON.parse(calendarsJson);
+      if (!Array.isArray(parsed)) {
+        window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
+        return;
+      }
+      setCalPreview(parsed);
+    } catch {
+      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
+    }
+  };
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+
+  const handleSave = () => {
+    let connectedCalendars: unknown;
+    try {
+      connectedCalendars = JSON.parse(calendarsJson);
+    } catch {
+      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
+      return;
+    }
+    if (!Array.isArray(connectedCalendars)) {
+      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
+      return;
+    }
+    const patch: Record<string, unknown> = {
+      auth_mode: "oauth",
+      client_id: clientId.trim(),
+      calendar_id: calendarId.trim() || "primary",
+      availability: { days, start: startTime.trim() || "09:00", end: endTime.trim() || "18:00" },
+      connectedCalendars,
+    };
+    if (clientSecret.trim()) patch.client_secret = clientSecret.trim();
+    if (refreshToken.trim()) patch.refresh_token = refreshToken.trim();
+    for (const k of ["presetKey", "nativeToolKey", "executor"] as const) {
+      const v = c[k];
+      if (typeof v === "string" && v) patch[k] = v;
+    }
+    onSave(patch);
+  };
+
+  const listItems = Array.isArray(calPreview)
+    ? (calPreview as Array<Record<string, unknown>>).filter((x) => x && typeof x === "object")
+    : [];
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <p className="text-xs text-ink-500">{t("automationPage.toolGoogleCalendarHelp")}</p>
+      <label className="block text-xs font-medium">
+        OAuth client ID
+        <input value={clientId} onChange={(e) => setClientId(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        OAuth client secret
+        <input
+          type="password"
+          autoComplete="off"
+          value={clientSecret}
+          onChange={(e) => setClientSecret(e.target.value)}
+          placeholder={t("automationPage.toolGoogleCalendarSecretPlaceholder")}
+          className={fieldCls}
+        />
+      </label>
+      <label className="block text-xs font-medium">
+        Refresh token (offline)
+        <input
+          type="password"
+          autoComplete="off"
+          value={refreshToken}
+          onChange={(e) => setRefreshToken(e.target.value)}
+          placeholder={t("automationPage.toolGoogleCalendarRefreshPlaceholder")}
+          className={fieldCls}
+        />
+      </label>
+      <label className="block text-xs font-medium">
+        Calendar ID (default)
+        <input value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className={fieldCls} />
+      </label>
+
+      <div>
+        <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarAvailabilityTitle")}</p>
+        <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarDaysHint")}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {GOOGLE_CAL_DAY_INDEXES.map((d) => (
+            <label key={d} className="flex cursor-pointer items-center gap-1.5 text-xs">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                checked={days.includes(d)}
+                onChange={() => toggleDay(d)}
+              />
+              {t(`automationPage.toolCalDay_${d}`)}
+            </label>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label className="flex items-center gap-1">
+            {t("automationPage.toolGoogleCalendarFrom")}
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={fieldCls} />
+          </label>
+          <label className="flex items-center gap-1">
+            {t("automationPage.toolGoogleCalendarTo")}
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={fieldCls} />
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarConnectedTitle")}</p>
+          <button
+            type="button"
+            onClick={refreshCalPreview}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
+          >
+            <RefreshCw className="h-3 w-3" />
+            {t("automationPage.toolGoogleCalendarRefreshList")}
+          </button>
+        </div>
+        <textarea
+          value={calendarsJson}
+          onChange={(e) => setCalendarsJson(e.target.value)}
+          rows={5}
+          className={clsx(fieldCls, "mt-1 font-mono text-[11px]")}
+        />
+        <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarConsultHint")}</p>
+        {listItems.length > 0 ? (
+          <ul className="mt-2 space-y-1.5 rounded-lg border border-ink-100 bg-white p-2 dark:border-ink-700 dark:bg-ink-950/40">
+            {listItems.map((row, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-ink-700 dark:text-ink-300">
+                <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" />
+                <span>
+                  <span className="font-medium">{String(row.name ?? row.id ?? "—")}</span>
+                  {row.id != null ? (
+                    <span className="mt-0.5 block text-[10px] text-ink-500">ID: {String(row.id)}</span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <p className="text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarOAuthNote")}</p>
+
+      <button
+        type="button"
+        onClick={handleSave}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+      >
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
+
 function ToolCredentialEditor({
   tool,
   t,
@@ -2183,7 +2313,7 @@ function ToolCredentialEditor({
 }: {
   tool: AutomationCustomToolRow;
   t: Translate;
-  onSave: (patch: Record<string, string>) => void;
+  onSave: (patch: Record<string, unknown>) => void;
 }) {
   const c = (tool.config ?? {}) as Record<string, unknown>;
   const provider = String(c.provider ?? "");
@@ -2200,6 +2330,10 @@ function ToolCredentialEditor({
 
   const fieldCls =
     "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+
+  if (tool.toolType === "GOOGLE_CALENDAR") {
+    return <GoogleCalendarToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
 
   if (tool.toolType === "MCP") {
     return <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("automationPage.toolMcpNoSecrets")}</p>;
@@ -2308,7 +2442,7 @@ function ToolCredentialEditor({
         <button
           type="button"
           onClick={() => {
-            const p: Record<string, string> = { apiKey, fromEmail };
+            const p: Record<string, unknown> = { apiKey, fromEmail };
             if (provider === "mailgun" && domain.trim()) p.domain = domain;
             onSave(p);
           }}

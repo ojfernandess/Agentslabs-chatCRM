@@ -3,7 +3,12 @@
  * Instâncias por organização ficam em `automation_custom_tools` com `config.presetKey`.
  */
 
-export type AutomationPresetCategory = "MCP_NATIVE" | "ELEVENLABS" | "EMAIL_API" | "HTTP_CUSTOM";
+export type AutomationPresetCategory =
+  | "MCP_NATIVE"
+  | "GOOGLE_CALENDAR"
+  | "ELEVENLABS"
+  | "EMAIL_API"
+  | "HTTP_CUSTOM";
 
 export interface AutomationToolPresetDefinition {
   presetKey: string;
@@ -25,69 +30,80 @@ const openAiObjectSchema = (properties: Record<string, unknown>, required?: stri
 
 export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
   {
-    presetKey: "mcp_list_hotels",
+    presetKey: "mcp_list_teams",
     category: "MCP_NATIVE",
-    name: "listar_hotéis",
-    description: "Lista estabelecimentos/hotéis disponíveis para o contexto do agente.",
+    name: "listar_equipas",
+    description:
+      "Lista equipas da organização. HTTP: GET /api/v1/agent-bot/teams (Bearer ocb_… do bot).",
     toolType: "MCP",
-    parametersSchema: openAiObjectSchema({
-      query: { type: "string", description: "Filtro opcional por nome ou localização" },
-      limit: { type: "integer", description: "Máximo de resultados", default: 10 },
-    }),
+    parametersSchema: openAiObjectSchema({}),
     defaultConfig: {
-      presetKey: "mcp_list_hotels",
-      nativeToolKey: "list_hotels",
-      executor: "openconduit_webhook",
+      presetKey: "mcp_list_teams",
+      nativeToolKey: "list_teams",
+      executor: "openconduit_agent_bot",
+      httpMethod: "GET",
+      httpPath: "/api/v1/agent-bot/teams",
     },
   },
   {
-    presetKey: "mcp_hotel_info",
+    presetKey: "mcp_list_pipeline_stages",
     category: "MCP_NATIVE",
-    name: "info_hotel",
-    description: "Obtém detalhes de um estabelecimento/hotel por id ou nome.",
+    name: "listar_etapas_funil",
+    description:
+      "Lista colunas do funil CRM (lead types). HTTP: GET /api/v1/agent-bot/lead-types (Bearer ocb_…).",
+    toolType: "MCP",
+    parametersSchema: openAiObjectSchema({}),
+    defaultConfig: {
+      presetKey: "mcp_list_pipeline_stages",
+      nativeToolKey: "list_pipeline_stages",
+      executor: "openconduit_agent_bot",
+      httpMethod: "GET",
+      httpPath: "/api/v1/agent-bot/lead-types",
+    },
+  },
+  {
+    presetKey: "mcp_assign_conversation_team",
+    category: "MCP_NATIVE",
+    name: "atribuir_equipa_conversa",
+    description:
+      "Atribui equipa (e opcionalmente agente) a uma conversa. HTTP: PATCH /api/v1/agent-bot/conversations/{conversationId}/team com JSON { teamId, assignedToId? }.",
     toolType: "MCP",
     parametersSchema: openAiObjectSchema(
       {
-        establishmentId: { type: "string", description: "ID do estabelecimento" },
-        name: { type: "string", description: "Nome se o id for desconhecido" },
+        conversationId: { type: "string", description: "UUID da conversa" },
+        teamId: { type: "string", description: "UUID da equipa ou null para limpar" },
+        assignedToId: { type: "string", description: "UUID do utilizador (opcional); deve pertencer à equipa" },
       },
-      [],
+      ["conversationId"],
     ),
     defaultConfig: {
-      presetKey: "mcp_hotel_info",
-      nativeToolKey: "get_hotel_info",
-      executor: "openconduit_webhook",
+      presetKey: "mcp_assign_conversation_team",
+      nativeToolKey: "assign_team_to_conversation",
+      executor: "openconduit_agent_bot",
+      httpMethod: "PATCH",
+      httpPathTemplate: "/api/v1/agent-bot/conversations/{conversationId}/team",
     },
   },
   {
-    presetKey: "mcp_list_entities",
+    presetKey: "mcp_set_conversation_status",
     category: "MCP_NATIVE",
-    name: "listar_entidades",
-    description: "Lista entidades genéricas (CRM / cadastro).",
+    name: "definir_estado_conversa",
+    description:
+      "Define estado da conversa (OPEN = handoff humano, PENDING = fila do bot). HTTP: PATCH /api/v1/agent-bot/conversations/{conversationId} com { status }.",
     toolType: "MCP",
-    parametersSchema: openAiObjectSchema({
-      entityType: { type: "string", description: "Tipo lógico de entidade" },
-      limit: { type: "integer", default: 20 },
-    }),
+    parametersSchema: openAiObjectSchema(
+      {
+        conversationId: { type: "string" },
+        status: { type: "string", enum: ["OPEN", "PENDING"], description: "OPEN ou PENDING" },
+      },
+      ["conversationId", "status"],
+    ),
     defaultConfig: {
-      presetKey: "mcp_list_entities",
-      nativeToolKey: "list_entities",
-      executor: "openconduit_webhook",
-    },
-  },
-  {
-    presetKey: "mcp_entity_info",
-    category: "MCP_NATIVE",
-    name: "obter_informações",
-    description: "Obtém informação detalhada de uma entidade.",
-    toolType: "MCP",
-    parametersSchema: openAiObjectSchema({
-      entityId: { type: "string" },
-    }),
-    defaultConfig: {
-      presetKey: "mcp_entity_info",
-      nativeToolKey: "get_entity_info",
-      executor: "openconduit_webhook",
+      presetKey: "mcp_set_conversation_status",
+      nativeToolKey: "set_conversation_status",
+      executor: "openconduit_agent_bot",
+      httpMethod: "PATCH",
+      httpPathTemplate: "/api/v1/agent-bot/conversations/{conversationId}",
     },
   },
   {
@@ -106,19 +122,51 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
     },
   },
   {
-    presetKey: "mcp_scheduling_google",
-    category: "MCP_NATIVE",
+    presetKey: "google_calendar_oauth",
+    category: "GOOGLE_CALENDAR",
     name: "agendar_google",
-    description: "Agendamento via Google Calendar (integrador deve executar).",
+    description:
+      "Google Calendar API: OAuth 2.0 (offline refresh_token), calendar_id, disponibilidade e agendas ligadas. Integrador: trocar refresh_token por access_token e chamar calendar.events.insert (ver documentação Google Calendar API).",
+    toolType: "GOOGLE_CALENDAR",
+    parametersSchema: openAiObjectSchema(
+      {
+        title: { type: "string", description: "Título do evento" },
+        start: { type: "string", description: "Início em ISO 8601 (timezone explícito recomendado)" },
+        end: { type: "string", description: "Fim em ISO 8601" },
+        calendar_name: {
+          type: "string",
+          description: "Nome amigável da agenda (ver connectedCalendars); omite para calendar_id principal",
+        },
+        description: { type: "string", description: "Descrição / notas do evento" },
+      },
+      ["title", "start", "end"],
+    ),
+    defaultConfig: {
+      presetKey: "google_calendar_oauth",
+      nativeToolKey: "scheduling_google",
+      executor: "google_calendar_api",
+      auth_mode: "oauth",
+      client_id: "",
+      client_secret: "",
+      refresh_token: "",
+      calendar_id: "primary",
+      availability: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
+      connectedCalendars: [{ id: "primary", name: "Principal" }],
+    },
+  },
+  {
+    presetKey: "mcp_consultar_agendas",
+    category: "MCP_NATIVE",
+    name: "consultar_agendas",
+    description:
+      "Lista ou filtra agendas configuradas (connectedCalendars da ferramenta Google Calendar). O integrador implementa no webhook usando o mesmo OAuth.",
     toolType: "MCP",
     parametersSchema: openAiObjectSchema({
-      title: { type: "string" },
-      start: { type: "string", description: "ISO 8601" },
-      end: { type: "string", description: "ISO 8601" },
+      calendar_name: { type: "string", description: "Filtrar por nome exibido (opcional)" },
     }),
     defaultConfig: {
-      presetKey: "mcp_scheduling_google",
-      nativeToolKey: "scheduling_google",
+      presetKey: "mcp_consultar_agendas",
+      nativeToolKey: "list_google_calendars",
       executor: "openconduit_webhook",
     },
   },
@@ -195,6 +243,7 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
     defaultConfig: {
       presetKey: "elevenlabs_tts",
       apiKey: "",
+      /** Base URL; síntese: POST {apiBaseUrl}/text-to-speech/{voiceId} com header xi-api-key */
       apiBaseUrl: "https://api.elevenlabs.io/v1",
       voiceId: "",
       modelId: "eleven_multilingual_v2",
