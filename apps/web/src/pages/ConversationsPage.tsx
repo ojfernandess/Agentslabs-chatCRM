@@ -5,6 +5,7 @@ import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot } from "lucide
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
 
@@ -24,7 +25,7 @@ interface Conversation {
   };
   assignedTo: { id: string; name: string } | null;
   team: { id: string; name: string } | null;
-  inbox?: { id: string; name: string; isDefault: boolean } | null;
+  inbox?: { id: string; name: string; isDefault: boolean; channelType?: string } | null;
   leadType: { id: string; name: string; color: string } | null;
   messages: { body: string | null; direction: string; createdAt: string }[];
 }
@@ -284,16 +285,26 @@ export function ConversationsPage() {
                     to={`/conversations/${conv.id}`}
                     className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-ink-700 dark:bg-[#161f2c] dark:shadow-none dark:hover:border-ink-600 dark:hover:bg-[#1a2532] dark:hover:shadow-lg dark:hover:shadow-black/20"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-1 dark:ring-brand-500/20">
-                      {conv.contact.profilePictureUrl ? (
-                        <img
-                          src={conv.contact.profilePictureUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        conv.contact.name.charAt(0).toUpperCase()
-                      )}
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-1 dark:ring-brand-500/20">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+                        {conv.contact.profilePictureUrl ? (
+                          <img
+                            src={conv.contact.profilePictureUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          conv.contact.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      {conv.inbox?.channelType === "WHATSAPP" ? (
+                        <span
+                          className="absolute -left-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-white shadow ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
+                          title="WhatsApp"
+                        >
+                          <WhatsAppBrandIcon className="h-3 w-3" />
+                        </span>
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -311,15 +322,15 @@ export function ConversationsPage() {
                             {conv.inbox.name}
                           </span>
                         ) : null}
-                        {conv.agentBotTriageActive ? (
+                        {conv.agentBotTriageActive && (conv.status === "OPEN" || conv.status === "PENDING") ? (
                           <span
                             className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200"
                             title={t("conversationDetail.botTriageBanner")}
                           >
                             <Bot className="h-3 w-3" />
-                            {!conv.assignedTo?.id
-                              ? t("conversationDetail.botInAttendance")
-                              : t("conversationDetail.transferToBot")}
+                            {typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0
+                              ? t("conversationDetail.botTriageListHuman")
+                              : t("conversationDetail.botInAttendance")}
                           </span>
                         ) : null}
                         {conv.status === "RESOLVED" && conv.leadType && (

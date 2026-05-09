@@ -89,7 +89,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         tags: { include: { tag: true } },
         pipelineStage: true,
         assignedTo: { select: { id: true, name: true } },
-        conversations: { orderBy: { updatedAt: "desc" }, take: 1 },
+        conversations: {
+          orderBy: { updatedAt: "desc" },
+          take: 30,
+          include: { inbox: { select: { channelType: true } } },
+        },
       },
     });
 

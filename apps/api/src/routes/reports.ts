@@ -75,6 +75,14 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       tagRows,
       csatAggRows,
       csatDistRows,
+      outboundBotBucketRows,
+      outboundHumanActorBucketRows,
+      botOutboundTotalRows,
+      humanOutboundTotalRows,
+      conversationsWithBotOutboundRows,
+      handoffEventsRows,
+      handoffsToHumanRows,
+      pendingBotQueueCount,
     ] = await Promise.all([
       prisma.conversation.count({ where: { organizationId: org, status: "OPEN" } }),
       prisma.conversation.count({ where: { organizationId: org, status: "PENDING" } }),
@@ -303,6 +311,91 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         GROUP BY c.csat_score
         ORDER BY c.csat_score ASC
       `,
+      prisma.$queryRaw<Array<{ bucket: Date; n: number }>>(
+        Prisma.sql`
+        SELECT ${Prisma.raw(truncM)} AS bucket, COUNT(*)::int AS n
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.organization_id = ${org}::uuid
+          AND m.direction = 'OUTBOUND'
+          AND COALESCE(m.is_private, false) = false
+          AND m.actor_user_id IS NULL
+          AND m.sent_at >= ${from}
+          AND m.sent_at <= ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC`,
+      ),
+      prisma.$queryRaw<Array<{ bucket: Date; n: number }>>(
+        Prisma.sql`
+        SELECT ${Prisma.raw(truncM)} AS bucket, COUNT(*)::int AS n
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.organization_id = ${org}::uuid
+          AND m.direction = 'OUTBOUND'
+          AND COALESCE(m.is_private, false) = false
+          AND m.actor_user_id IS NOT NULL
+          AND m.sent_at >= ${from}
+          AND m.sent_at <= ${to}
+        GROUP BY 1
+        ORDER BY 1 ASC`,
+      ),
+      prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT COUNT(*)::int AS n
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.organization_id = ${org}::uuid
+          AND m.direction = 'OUTBOUND'
+          AND COALESCE(m.is_private, false) = false
+          AND m.actor_user_id IS NULL
+          AND m.sent_at >= ${from}
+          AND m.sent_at <= ${to}
+      `,
+      prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT COUNT(*)::int AS n
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.organization_id = ${org}::uuid
+          AND m.direction = 'OUTBOUND'
+          AND COALESCE(m.is_private, false) = false
+          AND m.actor_user_id IS NOT NULL
+          AND m.sent_at >= ${from}
+          AND m.sent_at <= ${to}
+      `,
+      prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT COUNT(DISTINCT m.conversation_id)::int AS n
+        FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.organization_id = ${org}::uuid
+          AND m.direction = 'OUTBOUND'
+          AND COALESCE(m.is_private, false) = false
+          AND m.actor_user_id IS NULL
+          AND m.sent_at >= ${from}
+          AND m.sent_at <= ${to}
+      `,
+      prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT COUNT(*)::int AS n
+        FROM timeline_events te
+        WHERE te.organization_id = ${org}::uuid
+          AND te.event_type = 'conversation.handoff'
+          AND te.occurred_at >= ${from}
+          AND te.occurred_at <= ${to}
+      `,
+      prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT COUNT(*)::int AS n
+        FROM timeline_events te
+        WHERE te.organization_id = ${org}::uuid
+          AND te.event_type = 'conversation.handoff'
+          AND te.occurred_at >= ${from}
+          AND te.occurred_at <= ${to}
+          AND NULLIF(TRIM(te.payload->>'newAssigneeId'), '') IS NOT NULL
+      `,
+      prisma.conversation.count({
+        where: {
+          organizationId: org,
+          status: "PENDING",
+          assignedToId: null,
+        },
+      }),
     ]);
 
     const closureAgg = await prisma.conversation.aggregate({
@@ -324,6 +417,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       conversationsResolved: number;
       messagesInbound: number;
       messagesOutbound: number;
+      messagesOutboundBot: number;
+      messagesOutboundHuman: number;
     };
 
     const merge = new Map<string, TsRow>();
@@ -336,6 +431,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         conversationsResolved: 0,
         messagesInbound: 0,
         messagesOutbound: 0,
+        messagesOutboundBot: 0,
+        messagesOutboundHuman: 0,
       };
       cur[field] = row.n;
       merge.set(k, cur);
@@ -345,6 +442,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     for (const r of resolvedRows) touch(r, "conversationsResolved");
     for (const r of inboundRows) touch(r, "messagesInbound");
     for (const r of outboundRows) touch(r, "messagesOutbound");
+    for (const r of outboundBotBucketRows) touch(r, "messagesOutboundBot");
+    for (const r of outboundHumanActorBucketRows) touch(r, "messagesOutboundHuman");
 
     const timeSeries = Array.from(merge.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
 
@@ -401,6 +500,29 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const settingsBot = await prisma.settings.findUnique({
+      where: { organizationId: org },
+      select: { agentBotId: true },
+    });
+    const agentBotRow =
+      settingsBot?.agentBotId != null
+        ? await prisma.bot.findFirst({
+            where: {
+              id: settingsBot.agentBotId,
+              organizationId: org,
+              isActive: true,
+              webhookUrl: { not: null },
+            },
+            select: { id: true, name: true },
+          })
+        : null;
+
+    const messagesOutboundBot = botOutboundTotalRows[0]?.n ?? 0;
+    const messagesOutboundHuman = humanOutboundTotalRows[0]?.n ?? 0;
+    const conversationsWithBotReplies = conversationsWithBotOutboundRows[0]?.n ?? 0;
+    const handoffEvents = handoffEventsRows[0]?.n ?? 0;
+    const handoffsToHuman = handoffsToHumanRows[0]?.n ?? 0;
+
     return {
       meta: {
         from: from.toISOString(),
@@ -410,6 +532,11 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
           teamsWithBusinessHours: scheduleByTeamId.size,
           firstResponsePairs: firstResponseWallN,
           firstResponsePairsInBusinessHours: firstResponseBizN,
+        },
+        agentBot: {
+          enabled: agentBotRow != null,
+          botId: agentBotRow?.id ?? null,
+          name: agentBotRow?.name ?? null,
         },
       },
       summary: {
@@ -427,6 +554,12 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         csatResponses,
         csatAverage,
         csatResponseRatePct,
+        messagesOutboundBot,
+        messagesOutboundHuman,
+        conversationsWithBotReplies,
+        handoffEvents,
+        handoffsToHuman,
+        pendingBotQueue: pendingBotQueueCount,
       },
       csatByScore,
       timeSeries,

@@ -5,6 +5,7 @@ import { ArrowLeft, Phone, Tag, MessageSquare, Trash2, Edit, Plus, X, ChevronDow
 import { format } from "date-fns";
 import clsx from "clsx";
 import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/components/Motion";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   timelineChannelLabel,
@@ -48,7 +49,7 @@ interface ContactDetail {
   tags: { tag: TagItem }[];
   pipelineStage: StageItem | null;
   assignedTo: { id: string; name: string } | null;
-  conversations: { id: string; status: string; updatedAt: string }[];
+  conversations: { id: string; status: string; updatedAt: string; inbox?: { channelType: string } | null }[];
 }
 
 export function ContactDetailPage() {
@@ -282,7 +283,11 @@ export function ContactDetailPage() {
                         to={`/conversations/${conv.id}`}
                         className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
                       >
-                        <MessageSquare className="h-4 w-4 text-gray-400" />
+                        {conv.inbox?.channelType === "WHATSAPP" ? (
+                          <WhatsAppBrandIcon className="h-4 w-4 shrink-0" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4 shrink-0 text-gray-400" />
+                        )}
                         <span className="text-sm font-medium text-gray-700">
                           {conv.status === "OPEN"
                             ? t("contactDetail.conversationStatusOpen")
@@ -322,7 +327,10 @@ export function ContactDetailPage() {
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="font-medium text-gray-900">{title}</span>
                             {channel ? (
-                              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                                {(ev.channel ?? "").toLowerCase() === "whatsapp" ? (
+                                  <WhatsAppBrandIcon className="h-3 w-3 shrink-0" />
+                                ) : null}
                                 {channel}
                               </span>
                             ) : null}

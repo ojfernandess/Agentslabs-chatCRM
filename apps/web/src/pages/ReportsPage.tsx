@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import {
   BarChart3,
+  Bot,
   Clock,
   Download,
   Inbox,
@@ -42,6 +43,11 @@ interface ReportsPayload {
       firstResponsePairs: number;
       firstResponsePairsInBusinessHours: number;
     };
+    agentBot?: {
+      enabled: boolean;
+      botId: string | null;
+      name: string | null;
+    };
   };
   summary: {
     openConversations: number;
@@ -58,6 +64,12 @@ interface ReportsPayload {
     csatResponses: number;
     csatAverage: number | null;
     csatResponseRatePct: number | null;
+    messagesOutboundBot?: number;
+    messagesOutboundHuman?: number;
+    conversationsWithBotReplies?: number;
+    handoffEvents?: number;
+    handoffsToHuman?: number;
+    pendingBotQueue?: number;
   };
   csatByScore: Array<{ score: number; count: number }>;
   timeSeries: Array<{
@@ -66,6 +78,8 @@ interface ReportsPayload {
     conversationsResolved: number;
     messagesInbound: number;
     messagesOutbound: number;
+    messagesOutboundBot?: number;
+    messagesOutboundHuman?: number;
   }>;
   agents: Array<{
     userId: string;
@@ -158,6 +172,8 @@ export function ReportsPage() {
     if (!data?.timeSeries.length) return [];
     return data.timeSeries.map((row) => ({
       ...row,
+      messagesOutboundBot: row.messagesOutboundBot ?? 0,
+      messagesOutboundHuman: row.messagesOutboundHuman ?? 0,
       label: formatBucketLabel(row.bucket, data.meta.granularity, dateLocale),
     }));
   }, [data, dateLocale]);
@@ -178,13 +194,23 @@ export function ReportsPage() {
   const exportCsv = () => {
     if (!data) return;
     const rows: string[][] = [
-      ["bucket", "conversations_created", "conversations_resolved", "messages_inbound", "messages_outbound"],
+      [
+        "bucket",
+        "conversations_created",
+        "conversations_resolved",
+        "messages_inbound",
+        "messages_outbound",
+        "messages_outbound_bot",
+        "messages_outbound_human",
+      ],
       ...data.timeSeries.map((r) => [
         r.bucket,
         String(r.conversationsCreated),
         String(r.conversationsResolved),
         String(r.messagesInbound),
         String(r.messagesOutbound),
+        String(r.messagesOutboundBot ?? 0),
+        String(r.messagesOutboundHuman ?? 0),
       ]),
       [],
       [
@@ -354,6 +380,83 @@ export function ReportsPage() {
                   <Kpi icon={Tag} label={t("reportsPage.kpiClosuresWithValue")} value={data.summary.closuresWithValue} />
                 </div>
 
+                {data.meta.agentBot?.enabled ? (
+                  <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900 dark:text-ink-50">
+                          <Bot className="h-5 w-5 text-violet-500" />
+                          {t("reportsPage.botSectionTitle")}
+                        </h2>
+                        <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">
+                          {t("reportsPage.botSectionSubtitle")}
+                          {data.meta.agentBot.name?.trim() ? (
+                            <span className="font-medium text-ink-800 dark:text-ink-200">
+                              {" "}
+                              — {data.meta.agentBot.name.trim()}
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <Kpi
+                        icon={Bot}
+                        label={t("reportsPage.kpiBotOutbound")}
+                        value={data.summary.messagesOutboundBot ?? 0}
+                      />
+                      <Kpi
+                        icon={UsersRound}
+                        label={t("reportsPage.kpiHumanOutbound")}
+                        value={data.summary.messagesOutboundHuman ?? 0}
+                      />
+                      <Kpi
+                        icon={MessageSquare}
+                        label={t("reportsPage.kpiConversationsBot")}
+                        value={data.summary.conversationsWithBotReplies ?? 0}
+                      />
+                      <Kpi
+                        icon={TrendingUp}
+                        label={t("reportsPage.kpiHandoffEvents")}
+                        value={data.summary.handoffEvents ?? 0}
+                      />
+                      <Kpi
+                        icon={UsersRound}
+                        label={t("reportsPage.kpiHandoffsToHuman")}
+                        value={data.summary.handoffsToHuman ?? 0}
+                      />
+                      <Kpi icon={Inbox} label={t("reportsPage.kpiPendingBotQueue")} value={data.summary.pendingBotQueue ?? 0} />
+                    </div>
+                    <p className="mt-4 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.botFootnote")}</p>
+                    <div className="mt-6 h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar
+                            dataKey="messagesOutboundHuman"
+                            name={t("reportsPage.seriesOutboundHuman")}
+                            stackId="out"
+                            fill="#0ea5e9"
+                            radius={[0, 0, 0, 0]}
+                          />
+                          <Bar
+                            dataKey="messagesOutboundBot"
+                            name={t("reportsPage.seriesOutboundBot")}
+                            stackId="out"
+                            fill="#8b5cf6"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <p className="mt-2 text-center text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.chartBotVsHumanTitle")}</p>
+                  </section>
+                ) : null}
+
                 <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
                   <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("reportsPage.csatSectionTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("reportsPage.csatFootnote")}</p>
@@ -451,6 +554,36 @@ export function ReportsPage() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
+                {data.meta.agentBot?.enabled ? (
+                  <ChartCard title={t("reportsPage.chartBotVsHumanTitle")}>
+                    <div className="h-80 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                          <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar
+                            dataKey="messagesOutboundHuman"
+                            name={t("reportsPage.seriesOutboundHuman")}
+                            stackId="botHum"
+                            fill="#0ea5e9"
+                            radius={[0, 0, 0, 0]}
+                          />
+                          <Bar
+                            dataKey="messagesOutboundBot"
+                            name={t("reportsPage.seriesOutboundBot")}
+                            stackId="botHum"
+                            fill="#8b5cf6"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.botFootnote")}</p>
+                  </ChartCard>
+                ) : null}
                 <Footnotes t={t} />
               </div>
             )}

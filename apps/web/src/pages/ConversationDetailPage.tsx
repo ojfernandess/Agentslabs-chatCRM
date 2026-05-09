@@ -45,7 +45,6 @@ import {
   Star,
   Bot,
   Headset,
-  MessageCircle,
   MessageSquare,
   Briefcase,
   Circle,
@@ -59,6 +58,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
   timelineChannelLabel,
   timelineEventSummary,
@@ -1007,21 +1007,23 @@ export function ConversationDetailPage() {
     );
   }
 
+  const assigneeId = conversation.assignedTo?.id;
+  const hasHumanAssignee = typeof assigneeId === "string" && assigneeId.length > 0;
+  const hasNoHumanAssignee = !hasHumanAssignee;
   const canResolve =
-    (conversation.status === "OPEN" || conversation.status === "PENDING") &&
-    Boolean(conversation.assignedTo?.id);
+    (conversation.status === "OPEN" || conversation.status === "PENDING") && hasHumanAssignee;
   const canTransfer = canResolve && teamOptions.length > 0;
-  const hasNoHumanAssignee = !conversation.assignedTo?.id;
   const inBotQueueOnly =
-    conversation.status === "PENDING" && hasNoHumanAssignee;
+    (conversation.status === "OPEN" || conversation.status === "PENDING") &&
+    hasNoHumanAssignee &&
+    agentBotTriageActive;
   const showTransferToBot =
     agentBotTriageActive &&
-    conversation.status !== "RESOLVED" &&
-    !hasNoHumanAssignee;
+    (conversation.status === "OPEN" || conversation.status === "PENDING") &&
+    hasHumanAssignee;
+  const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
   const canStartAttendance =
-    Boolean(user?.id) &&
-    !conversation.assignedTo?.id &&
-    (conversation.status === "OPEN" || conversation.status === "PENDING");
+    Boolean(user?.id) && hasNoHumanAssignee && (conversation.status === "OPEN" || conversation.status === "PENDING");
   const transferUnchanged =
     transferTeamId === (conversation.team?.id ?? "") &&
     (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
@@ -1378,12 +1380,17 @@ export function ConversationDetailPage() {
               } else if (ev.eventType === "message.inbound" || ev.eventType === "message.outbound") {
                 const wa = (ev.channel ?? "").toLowerCase() === "whatsapp";
                 icon = wa ? (
-                  <MessageCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <WhatsAppBrandIcon className="h-4 w-4" />
                 ) : (
                   <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
                 );
               } else if (ev.eventType === "conversation.started") {
-                icon = <MessageCircle className="h-4 w-4 text-green-600 dark:text-green-400" />;
+                const waStart = (ev.channel ?? "").toLowerCase() === "whatsapp";
+                icon = waStart ? (
+                  <WhatsAppBrandIcon className="h-4 w-4" />
+                ) : (
+                  <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
+                );
               }
               const showLine = index < contactTimelinePreview.length - 1;
               return (
@@ -1446,21 +1453,31 @@ export function ConversationDetailPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 text-sm font-semibold text-ink-700 dark:from-ink-700 dark:to-ink-800 dark:text-ink-100">
-              {conversation.contact.profilePictureUrl ? (
-                <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center">
-                  {conversation.contact.name.charAt(0).toUpperCase()}
-                </span>
-              )}
-              <span
-                className={clsx(
-                  "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
-                  presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+            <div className="relative h-12 w-12 shrink-0 overflow-visible rounded-2xl text-sm font-semibold text-ink-700 dark:text-ink-100">
+              <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 dark:from-ink-700 dark:to-ink-800">
+                {conversation.contact.profilePictureUrl ? (
+                  <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center">
+                    {conversation.contact.name.charAt(0).toUpperCase()}
+                  </span>
                 )}
-                title={presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
-              />
+                <span
+                  className={clsx(
+                    "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
+                    presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+                  )}
+                  title={presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
+                />
+              </div>
+              {isWhatsappInbox ? (
+                <span
+                  className="absolute -left-1 -top-1 flex h-[22px] w-[22px] items-center justify-center rounded-lg bg-white shadow-md ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
+                  title="WhatsApp"
+                >
+                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1667,7 +1684,7 @@ export function ConversationDetailPage() {
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
           <div className="relative w-full min-w-0 space-y-0">
-            {agentBotTriageActive && inBotQueueOnly ? (
+            {inBotQueueOnly ? (
               <div
                 className="mb-4 flex items-start gap-2 rounded-xl border border-violet-200/80 bg-violet-50/90 px-3 py-2.5 text-xs text-violet-950 shadow-sm dark:border-violet-800/40 dark:bg-violet-950/40 dark:text-violet-100"
                 role="status"
