@@ -22,7 +22,7 @@ import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
-import type { PromptModuleRow } from "@/pages/automation/promptHubTypes";
+import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -416,6 +416,72 @@ function formToPayload(form: AgentFormFields): {
   };
 }
 
+/** Combine selected prompt modules into agent LLM fields, system instructions, and tool links. */
+function applyPromptModuleSelectionToAgentForm(
+  f: AgentFormFields,
+  nextPromptModuleIds: string[],
+  promptsList: PromptModuleRow[],
+): AgentFormFields {
+  const ordered = nextPromptModuleIds
+    .map((id) => promptsList.find((pm) => pm.id === id))
+    .filter((pm): pm is PromptModuleRow => pm != null);
+  const bodies = ordered.map((pm) => pm.body.trim()).filter(Boolean);
+  const systemInstructions =
+    ordered.length > 0 ? bodies.join("\n\n---\n\n") : f.systemInstructions;
+
+  const toolIdSet = new Set<string>();
+  for (const pm of ordered) {
+    const lb = parsePromptLabels(pm.labels);
+    for (const tid of lb.connectedToolIds ?? []) {
+      if (tid) toolIdSet.add(tid);
+    }
+  }
+
+  let connectedTools = f.connectedTools;
+  for (const tid of toolIdSet) {
+    const existing = connectedTools.find((x) => x.toolId === tid);
+    if (existing) {
+      connectedTools = connectedTools.map((x) => (x.toolId === tid ? { ...x, enabled: true } : x));
+    } else {
+      connectedTools = [
+        ...connectedTools,
+        {
+          toolId: tid,
+          enabled: true,
+          permission: "read" as const,
+          maxCallsPerConversation: null,
+          priority: 0,
+          runMode: "auto" as const,
+        },
+      ];
+    }
+  }
+
+  let next: AgentFormFields = {
+    ...f,
+    promptModuleIds: nextPromptModuleIds,
+    systemInstructions,
+    connectedTools,
+  };
+
+  const firstLlm = ordered.map((pm) => parsePromptLabels(pm.labels).llmDefaults).find(Boolean);
+  if (firstLlm && ordered.length > 0) {
+    next = {
+      ...next,
+      provider: firstLlm.provider,
+      model: firstLlm.model,
+      temperature: firstLlm.temperature,
+      maxTokens: firstLlm.maxTokens,
+      apiBaseUrl:
+        firstLlm.provider === "openai"
+          ? firstLlm.apiBaseUrl?.trim() || DEFAULT_API_BASE.openai
+          : DEFAULT_API_BASE.google_gemini,
+    };
+  }
+
+  return next;
+}
+
 export function AutomationPage() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -574,6 +640,24 @@ export function AutomationPage() {
     setAgentForm(emptyAgentForm());
     setAgentModalOpen(true);
   };
+
+  const openAgentFromPromptModule = useCallback((row: PromptModuleRow) => {
+    const base = emptyAgentForm();
+    const merged = applyPromptModuleSelectionToAgentForm(base, [row.id], [row]);
+    const lb = parsePromptLabels(row.labels);
+    setAgentForm({
+      ...merged,
+      mode: "new",
+      createBot: true,
+      botName: row.name.slice(0, 120),
+      botDescription: (lb.description ?? "").trim().slice(0, 500),
+      botIsActive: true,
+      existingBotId: "",
+      editBotId: null,
+    });
+    setTab("agents");
+    setAgentModalOpen(true);
+  }, []);
 
   const openEditAgentModal = (row: AgentProfileRow) => {
     setAgentForm(profileToForm(row));
@@ -883,6 +967,9 @@ export function AutomationPage() {
               setAgentModalOpen(false);
               setTab("tools");
             }}
+            applyPromptModulesSelection={(nextIds) =>
+              setAgentForm((f) => applyPromptModuleSelectionToAgentForm(f, nextIds, prompts))
+            }
           />
         ) : null}
 
@@ -901,6 +988,7 @@ export function AutomationPage() {
             }}
             onNavigateAgents={() => setTab("agents")}
             onOpenToolsTab={() => setTab("tools")}
+            onCreateAgentFromPrompt={openAgentFromPromptModule}
           />
         ) : null}
 
@@ -1039,6 +1127,7 @@ function AgentsTab({
   onSaveModal,
   onDeleteProfile,
   onOpenToolsTab,
+  applyPromptModulesSelection,
 }: {
   t: Translate;
   loading: boolean;
@@ -1056,6 +1145,7 @@ function AgentsTab({
   onSaveModal: () => void;
   onDeleteProfile: (botId: string) => void;
   onOpenToolsTab: () => void;
+  applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
 }) {
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
@@ -1805,6 +1895,7 @@ function AgentsTab({
               {prompts.length > 0 ? (
                 <fieldset>
                   <legend className="text-sm font-medium text-ink-800 dark:text-ink-200">{t("automationPage.agentPromptModulesPick")}</legend>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentPromptModulesMergeHint")}</p>
                   <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded border border-ink-100 p-2 dark:border-ink-700">
                     {prompts.map((p) => (
                       <label key={p.id} className="flex items-center gap-2 text-xs">
@@ -1812,12 +1903,11 @@ function AgentsTab({
                           type="checkbox"
                           checked={agentForm.promptModuleIds.includes(p.id)}
                           onChange={(e) => {
-                            setAgentForm((f) => ({
-                              ...f,
-                              promptModuleIds: e.target.checked
-                                ? [...f.promptModuleIds, p.id]
-                                : f.promptModuleIds.filter((id) => id !== p.id),
-                            }));
+                            const on = e.target.checked;
+                            const nextIds = on
+                              ? [...agentForm.promptModuleIds, p.id]
+                              : agentForm.promptModuleIds.filter((id) => id !== p.id);
+                            applyPromptModulesSelection(nextIds);
                           }}
                         />
                         {p.name} <span className="opacity-60">({p.slug})</span>

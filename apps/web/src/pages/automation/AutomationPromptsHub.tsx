@@ -23,7 +23,14 @@ import {
 } from "lucide-react";
 import { ApiError, api } from "@/lib/api";
 import type { AutomationCustomToolRow } from "./automationToolTypes";
-import type { PromptHistoryEntry, PromptLabels, PromptModuleRow, PromptStatus } from "./promptHubTypes";
+import {
+  parsePromptLabels,
+  type PromptHistoryEntry,
+  type PromptLabels,
+  type PromptLlmDefaults,
+  type PromptModuleRow,
+  type PromptStatus,
+} from "./promptHubTypes";
 
 const CATEGORY_IDS = [
   "general",
@@ -122,43 +129,6 @@ function slugify(name: string): string {
     .slice(0, 64);
 }
 
-function parseLabels(raw: unknown): PromptLabels {
-  const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const tags = Array.isArray(o.tags) ? o.tags.filter((x): x is string => typeof x === "string") : [];
-  let status: PromptStatus = "active";
-  if (o.status === "production" || o.status === "test" || o.status === "draft" || o.status === "active") {
-    status = o.status;
-  }
-  const category = typeof o.category === "string" && o.category ? o.category : "general";
-  return {
-    category,
-    tags,
-    status,
-    modelHint: typeof o.modelHint === "string" ? o.modelHint : "",
-    description: typeof o.description === "string" ? o.description : "",
-    icon: typeof o.icon === "string" ? o.icon : "Sparkles",
-    color: typeof o.color === "string" ? o.color : "violet",
-    connectedToolIds: Array.isArray(o.connectedToolIds)
-      ? o.connectedToolIds.filter((x): x is string => typeof x === "string")
-      : [],
-    history: Array.isArray(o.history)
-      ? (o.history.filter(
-          (h): h is PromptHistoryEntry =>
-            h &&
-            typeof h === "object" &&
-            typeof (h as PromptHistoryEntry).at === "string" &&
-            typeof (h as PromptHistoryEntry).body === "string" &&
-            typeof (h as PromptHistoryEntry).version === "number",
-        ) as PromptHistoryEntry[])
-      : [],
-    analytics:
-      o.analytics && typeof o.analytics === "object"
-        ? (o.analytics as PromptLabels["analytics"])
-        : undefined,
-    createdByName: typeof o.createdByName === "string" ? o.createdByName : undefined,
-  };
-}
-
 function HubIcon({ name, className }: { name: string; className?: string }) {
   const Cmp =
     (LucideIcons as unknown as Record<string, LucideIcon>)[name] ?? LucideIcons.Sparkles;
@@ -222,6 +192,7 @@ export function AutomationPromptsHub({
   onRefresh,
   onNavigateAgents,
   onOpenToolsTab,
+  onCreateAgentFromPrompt,
 }: {
   t: (path: string) => string;
   loading: boolean;
@@ -234,6 +205,8 @@ export function AutomationPromptsHub({
   onRefresh: () => Promise<void>;
   onNavigateAgents: () => void;
   onOpenToolsTab: () => void;
+  /** After saving a new module, open agent modal with LLM + body pre-filled */
+  onCreateAgentFromPrompt?: (row: PromptModuleRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -284,11 +257,12 @@ export function AutomationPromptsHub({
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [createAgentAfterSave, setCreateAgentAfterSave] = useState(false);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
     for (const p of prompts) {
-      for (const tag of parseLabels(p.labels).tags ?? []) s.add(tag);
+      for (const tag of parsePromptLabels(p.labels).tags ?? []) s.add(tag);
     }
     return [...s].sort();
   }, [prompts]);
@@ -297,7 +271,7 @@ export function AutomationPromptsHub({
     const q = search.trim().toLowerCase();
     const tf = tagFilter.trim().toLowerCase();
     return prompts.filter((p) => {
-      const lb = parseLabels(p.labels);
+      const lb = parsePromptLabels(p.labels);
       const tags = lb.tags ?? [];
       const desc = lb.description ?? "";
       if (categoryFilter !== "all" && lb.category !== categoryFilter) return false;
@@ -321,7 +295,7 @@ export function AutomationPromptsHub({
     setDraftBody("");
     setDraftCategory("general");
     setDraftTags("");
-    setDraftStatus("draft");
+    setDraftStatus("active");
     setDraftModelHint("gpt-4o-mini");
     setDraftDescription("");
     setDraftIcon("Sparkles");
@@ -340,11 +314,12 @@ export function AutomationPromptsHub({
     setPreviewBaseUrl("https://api.openai.com/v1");
     setPreviewRecordMetrics(false);
     setPreviewError("");
+    setCreateAgentAfterSave(false);
     setEditorOpen(true);
   }, []);
 
   const openEdit = useCallback((row: PromptModuleRow) => {
-    const lb = parseLabels(row.labels);
+    const lb = parsePromptLabels(row.labels);
     setDraftId(row.id);
     setDraftName(row.name);
     setDraftSlug(row.slug);
@@ -362,10 +337,22 @@ export function AutomationPromptsHub({
     setEditorTab("editor");
     setPreviewMessages([]);
     setPreviewInput("");
-    setPreviewModel((lb.modelHint ?? "").trim() || "gpt-4o-mini");
-    setPreviewProvider(/gemini/i.test(lb.modelHint ?? "") ? "google_gemini" : "openai");
+    const ld = lb.llmDefaults;
+    if (ld) {
+      setPreviewProvider(ld.provider);
+      setPreviewModel(ld.model);
+      setPreviewTemperature(ld.temperature);
+      setPreviewMaxTokens(ld.maxTokens);
+      if (ld.provider === "openai") {
+        setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.openai.com/v1");
+      }
+    } else {
+      setPreviewModel((lb.modelHint ?? "").trim() || "gpt-4o-mini");
+      setPreviewProvider(/gemini/i.test(lb.modelHint ?? "") ? "google_gemini" : "openai");
+    }
     setPreviewRecordMetrics(false);
     setPreviewError("");
+    setCreateAgentAfterSave(false);
     setEditorOpen(true);
   }, []);
 
@@ -401,7 +388,7 @@ export function AutomationPromptsHub({
     try {
       const prevRow = draftId ? prompts.find((x) => x.id === draftId) : null;
       const prevBody = prevRow?.body ?? "";
-      const prevLabels = parseLabels(prevRow?.labels);
+      const prevLabels = parsePromptLabels(prevRow?.labels);
       const hist = [...(prevLabels.history ?? [])];
       if (draftId && prevRow && prevBody !== body) {
         hist.unshift({
@@ -414,15 +401,23 @@ export function AutomationPromptsHub({
         .split(/[,;\n]/)
         .map((s) => s.trim())
         .filter(Boolean);
+      const llmDefaults: PromptLlmDefaults = {
+        provider: previewProvider,
+        model: previewModel.trim() || draftModelHint.trim() || "gpt-4o-mini",
+        temperature: previewTemperature,
+        maxTokens: previewMaxTokens,
+        apiBaseUrl: previewProvider === "openai" ? previewBaseUrl.trim() || null : null,
+      };
       const labels: PromptLabels = {
         category: draftCategory,
         tags,
         status: draftStatus,
-        modelHint: draftModelHint.trim(),
+        modelHint: previewModel.trim() || draftModelHint.trim(),
         description: draftDescription.trim(),
         icon: draftIcon,
         color: draftColor,
         connectedToolIds: draftConnectedToolIds,
+        llmDefaults,
         history: hist.slice(0, 8),
         analytics: prevLabels.analytics,
         createdByName:
@@ -439,6 +434,7 @@ export function AutomationPromptsHub({
         nextVersion = Math.max(1, draftVersion);
       }
 
+      let createdRow: PromptModuleRow | null = null;
       if (draftId) {
         const row = await api.patch<PromptModuleRow>(`/automation/prompt-modules/${draftId}`, {
           name,
@@ -449,7 +445,7 @@ export function AutomationPromptsHub({
         });
         setDraftVersion(row.version);
       } else {
-        await api.post<PromptModuleRow>("/automation/prompt-modules", {
+        createdRow = await api.post<PromptModuleRow>("/automation/prompt-modules", {
           name,
           slug,
           body,
@@ -459,6 +455,10 @@ export function AutomationPromptsHub({
       }
       setEditorOpen(false);
       await onRefresh();
+      if (!draftId && createAgentAfterSave && createdRow && onCreateAgentFromPrompt) {
+        onCreateAgentFromPrompt(createdRow);
+      }
+      setCreateAgentAfterSave(false);
     } catch {
       setError("load_failed");
     } finally {
@@ -488,7 +488,7 @@ export function AutomationPromptsHub({
       slug = `${base}_${n}`;
       n++;
     }
-    const lb = parseLabels(row.labels);
+    const lb = parsePromptLabels(row.labels);
     setLoading(true);
     try {
       await api.post("/automation/prompt-modules", {
@@ -514,10 +514,17 @@ export function AutomationPromptsHub({
     setDraftCategory(tpl.categoryKey);
     setDraftModelHint(tpl.modelHint);
     setDraftBody(tpl.body);
+    setDraftStatus("active");
     setDraftSlug(slugify(title));
     setDraftVersion(1);
     setSlugTouched(false);
     setDraftConnectedToolIds([]);
+    setPreviewModel((tpl.modelHint ?? "").trim() || "gpt-4o-mini");
+    setPreviewProvider(/gemini/i.test(tpl.modelHint ?? "") ? "google_gemini" : "openai");
+    setPreviewTemperature(0.7);
+    setPreviewMaxTokens(1024);
+    setPreviewBaseUrl("https://api.openai.com/v1");
+    setCreateAgentAfterSave(false);
     setTemplatesOpen(false);
     setEditorOpen(true);
     setEditorTab("editor");
@@ -560,7 +567,7 @@ export function AutomationPromptsHub({
   const serverHistory = useMemo(() => {
     if (!draftId) return [];
     const row = prompts.find((p) => p.id === draftId);
-    return parseLabels(row?.labels).history ?? [];
+    return parsePromptLabels(row?.labels).history ?? [];
   }, [draftId, prompts]);
 
   const sendPreview = async () => {
@@ -802,7 +809,7 @@ export function AutomationPromptsHub({
       ) : view === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => {
-            const lb = parseLabels(p.labels);
+            const lb = parsePromptLabels(p.labels);
             const usage = countPromptUsage(p.id, agentProfiles);
             const accent = COLOR_ACCENTS[lb.color ?? "violet"] ?? COLOR_ACCENTS.violet;
             const execs = lb.analytics?.executions ?? usage;
@@ -896,7 +903,7 @@ export function AutomationPromptsHub({
       ) : (
         <ul className="space-y-2">
           {filtered.map((p) => {
-            const lb = parseLabels(p.labels);
+            const lb = parsePromptLabels(p.labels);
             const usage = countPromptUsage(p.id, agentProfiles);
             return (
               <li
@@ -1089,15 +1096,30 @@ export function AutomationPromptsHub({
                     </option>
                   ))}
                 </select>
+                {!draftId ? (
+                  <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-ink-600 dark:text-ink-400">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 rounded border-ink-300"
+                      checked={createAgentAfterSave}
+                      onChange={(e) => setCreateAgentAfterSave(e.target.checked)}
+                    />
+                    <span>{t("automationPage.promptHub.createAgentAfterSave")}</span>
+                  </label>
+                ) : null}
                 <label className="mt-3 block text-xs font-medium text-ink-600 dark:text-ink-400">
                   {t("automationPage.promptHub.fieldModel")}
                 </label>
                 <input
                   value={draftModelHint}
-                  onChange={(e) => setDraftModelHint(e.target.value)}
+                  onChange={(e) => {
+                    setDraftModelHint(e.target.value);
+                    setPreviewModel(e.target.value.trim() || "gpt-4o-mini");
+                  }}
                   placeholder="gpt-4o"
                   className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900"
                 />
+                <p className="mt-1 text-[10px] text-ink-500">{t("automationPage.promptHub.fieldModelLlmTabHint")}</p>
                 <label className="mt-3 block text-xs font-medium text-ink-600 dark:text-ink-400">
                   {t("automationPage.promptHub.fieldDescription")}
                 </label>
@@ -1273,7 +1295,11 @@ export function AutomationPromptsHub({
                               {t("automationPage.promptHub.previewModel")}
                               <input
                                 value={previewModel}
-                                onChange={(e) => setPreviewModel(e.target.value)}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setPreviewModel(v);
+                                  setDraftModelHint(v);
+                                }}
                                 className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 font-mono text-xs dark:border-ink-600 dark:bg-ink-900"
                               />
                             </label>

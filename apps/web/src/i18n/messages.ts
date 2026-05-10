@@ -200,6 +200,8 @@ export const messages = {
       agentSystemInstructionsPh: "Prompt do sistema para o agente…",
       agentVoiceOnAudioInbound: "Responder em áudio quando o cliente enviar áudio",
       agentPromptModulesPick: "Módulos da biblioteca de prompts",
+      agentPromptModulesMergeHint:
+        "Ao marcar módulos, as instruções de sistema juntam o texto de cada prompt (pela ordem da lista de seleccionados). O primeiro módulo com dados LLM guardados define provedor, modelo, temperatura, tokens e URL base. As ferramentas associadas ao módulo ficam activas.",
       agentCancel: "Cancelar",
       agentValidation: "Preencha o nome do bot ou selecione um bot existente.",
       agentExternalWebhookWarning:
@@ -298,6 +300,9 @@ export const messages = {
         status_active: "Ativo",
         status_test: "Teste",
         status_draft: "Rascunho",
+        createAgentAfterSave: "Depois de guardar, abrir «Novo agente» com este módulo (instruções + LLM)",
+        fieldModelLlmTabHint:
+          "O separador Pré-visualização define modelo, temperatura e max. tokens — são guardados no módulo e reutilizados ao ligar a um agente.",
         category_general: "Geral",
         category_support: "Suporte",
         category_sales: "Vendas",
@@ -1901,6 +1906,8 @@ export const messages = {
       agentSystemInstructions: "System instructions",
       agentSystemInstructionsPh: "System prompt for the agent…",
       agentPromptModulesPick: "Prompt library modules",
+      agentPromptModulesMergeHint:
+        "When you check modules, system instructions concatenate each prompt body (in selection order) and the first module with saved LLM settings applies provider, model, temperature, max tokens, and API base URL. Tools linked on the module are enabled.",
       agentCancel: "Cancel",
       agentValidation: "Enter a bot name or select an existing bot.",
       agentExternalWebhookWarning:
@@ -1996,6 +2003,9 @@ export const messages = {
         status_active: "Active",
         status_test: "Test",
         status_draft: "Draft",
+        createAgentAfterSave: "After saving, open New agent with this module (instructions + LLM)",
+        fieldModelLlmTabHint:
+          "The Preview tab sets model, temperature, and max tokens — they are stored on the module and reused when attaching to an agent.",
         category_general: "General",
         category_support: "Support",
         category_sales: "Sales",
