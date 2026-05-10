@@ -35,6 +35,160 @@ const querySchema = z.object({
   assignee: z.string().uuid().optional(),
 });
 
+type ContactListRow = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  profilePictureUrl: string | null;
+  optedIn: boolean;
+  lifecycleStage: string | null;
+  updatedAt: Date;
+  tags: { tag: { id: string; name: string; color: string } }[];
+  pipelineStage: {
+    id: string;
+    name: string;
+    color: string;
+    order: number;
+    probabilityPct: number;
+    leadTypeId: string | null;
+  } | null;
+  assignedTo: { id: string; name: string } | null;
+  account: { id: string; name: string; metadata: unknown } | null;
+  lastMessage: {
+    preview: string;
+    createdAt: Date;
+    direction: string;
+    type: string;
+  } | null;
+  primaryChannel: string | null;
+  inboxName: string | null;
+  openDealsTotalCents: number;
+  openDealsCurrency: string;
+  openDealCount: number;
+  engagementScore: number;
+  recentlyActive: boolean;
+};
+
+function previewFromMessage(body: string | null, type: string): string {
+  if (body?.trim()) return body.trim().slice(0, 160);
+  if (type === "TEXT") return "";
+  const short: Record<string, string> = {
+    IMAGE: "📷",
+    AUDIO: "🎤",
+    VIDEO: "🎬",
+    DOCUMENT: "📎",
+    TEMPLATE: "📋",
+  };
+  return short[type] ?? "…";
+}
+
+function engagementScoreFromListContact(c: {
+  optedIn: boolean;
+  tags: unknown[];
+  pipelineStage: { probabilityPct: number } | null;
+  dealsPrimary: unknown[];
+  conversations: {
+    updatedAt: Date;
+    messages: { createdAt: Date; body: string | null; type: string }[];
+  }[];
+}): number {
+  let s = 28;
+  const lastMsg = c.conversations[0]?.messages[0];
+  if (lastMsg) {
+    const days = (Date.now() - lastMsg.createdAt.getTime()) / 86_400_000;
+    if (days < 3) s += 28;
+    else if (days < 14) s += 18;
+    else if (days < 60) s += 8;
+  }
+  if (c.optedIn) s += 12;
+  const prob = c.pipelineStage?.probabilityPct ?? 0;
+  s += Math.min(22, Math.round(prob * 0.22));
+  if (c.dealsPrimary.length > 0) {
+    s += Math.min(18, 6 * c.dealsPrimary.length);
+  }
+  s += Math.min(14, c.tags.length * 2);
+  return Math.min(100, s);
+}
+
+function recentlyActiveFromListContact(c: {
+  updatedAt: Date;
+  conversations: {
+    updatedAt: Date;
+    messages: { createdAt: Date }[];
+  }[];
+}): boolean {
+  const lastMsg = c.conversations[0]?.messages[0];
+  const t = lastMsg
+    ? Math.max(lastMsg.createdAt.getTime(), c.updatedAt.getTime())
+    : c.updatedAt.getTime();
+  return Date.now() - t < 8 * 60 * 1000;
+}
+
+function mapContactListRow(
+  c: {
+    id: string;
+    name: string;
+    phone: string;
+    email: string | null;
+    profilePictureUrl: string | null;
+    optedIn: boolean;
+    lifecycleStage: string | null;
+    updatedAt: Date;
+    tags: { tag: { id: string; name: string; color: string } }[];
+    pipelineStage: {
+      id: string;
+      name: string;
+      color: string;
+      order: number;
+      probabilityPct: number;
+      leadTypeId: string | null;
+    } | null;
+    assignedTo: { id: string; name: string } | null;
+    account: { id: string; name: string; metadata: unknown } | null;
+    dealsPrimary: { amountCents: number; currency: string }[];
+    conversations: {
+      updatedAt: Date;
+      inbox: { channelType: string; name: string } | null;
+      messages: { createdAt: Date; body: string | null; direction: string; type: string }[];
+    }[];
+  },
+): ContactListRow {
+  const conv = c.conversations[0];
+  const lastMsg = conv?.messages[0];
+  const dealSum = c.dealsPrimary.reduce((acc, d) => acc + d.amountCents, 0);
+  const currency = c.dealsPrimary[0]?.currency ?? "BRL";
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email,
+    profilePictureUrl: c.profilePictureUrl,
+    optedIn: c.optedIn,
+    lifecycleStage: c.lifecycleStage,
+    updatedAt: c.updatedAt,
+    tags: c.tags,
+    pipelineStage: c.pipelineStage,
+    assignedTo: c.assignedTo,
+    account: c.account,
+    lastMessage: lastMsg
+      ? {
+          preview: previewFromMessage(lastMsg.body, lastMsg.type),
+          createdAt: lastMsg.createdAt,
+          direction: lastMsg.direction,
+          type: lastMsg.type,
+        }
+      : null,
+    primaryChannel: conv?.inbox?.channelType ?? null,
+    inboxName: conv?.inbox?.name ?? null,
+    openDealsTotalCents: dealSum,
+    openDealsCurrency: currency,
+    openDealCount: c.dealsPrimary.length,
+    engagementScore: engagementScoreFromListContact(c),
+    recentlyActive: recentlyActiveFromListContact(c),
+  };
+}
+
 export async function contactRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -46,9 +200,12 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     const where: Record<string, unknown> = { organizationId };
 
     if (query.search) {
+      const q = query.search.trim();
       where.OR = [
-        { name: { contains: query.search, mode: "insensitive" } },
-        { phone: { contains: query.search } },
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+        { email: { contains: q, mode: "insensitive" } },
+        { account: { name: { contains: q, mode: "insensitive" } } },
       ];
     }
     if (query.tag) {
@@ -61,22 +218,55 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       where.assignedToId = query.assignee;
     }
 
-    const [data, total] = await Promise.all([
+    const [raw, total, withOpenDeals] = await Promise.all([
       prisma.contact.findMany({
         where,
         include: {
           tags: { include: { tag: true } },
           pipelineStage: true,
           assignedTo: { select: { id: true, name: true } },
+          account: { select: { id: true, name: true, metadata: true } },
+          dealsPrimary: {
+            where: { status: "OPEN" },
+            select: { amountCents: true, currency: true },
+          },
+          conversations: {
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+            include: {
+              inbox: { select: { channelType: true, name: true } },
+              messages: {
+                where: { isPrivate: false },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { body: true, direction: true, createdAt: true, type: true },
+              },
+            },
+          },
         },
         orderBy: { updatedAt: "desc" },
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
       prisma.contact.count({ where }),
+      prisma.contact.count({
+        where: {
+          ...where,
+          dealsPrimary: { some: { status: "OPEN" } },
+        },
+      }),
     ]);
 
-    return { data, total, page: query.page, pageSize: query.pageSize };
+    const data: ContactListRow[] = raw.map(mapContactListRow);
+    const engagementSum = data.reduce((acc, row) => acc + row.engagementScore, 0);
+    const avgEngagement = data.length > 0 ? Math.round(engagementSum / data.length) : 0;
+    return {
+      data,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      stats: { withOpenDeals, avgEngagementOnPage: avgEngagement },
+    };
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -89,10 +279,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         tags: { include: { tag: true } },
         pipelineStage: true,
         assignedTo: { select: { id: true, name: true } },
+        account: { select: { id: true, name: true, website: true, industry: true, metadata: true } },
         conversations: {
           orderBy: { updatedAt: "desc" },
           take: 30,
-          include: { inbox: { select: { channelType: true } } },
+          include: { inbox: { select: { channelType: true, name: true } } },
         },
       },
     });
@@ -248,7 +439,12 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           include: {
             messages: {
               orderBy: { createdAt: "asc" },
-              include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+              include: {
+                actorUser: { select: { id: true, name: true, displayName: true } },
+                conversation: {
+                  select: { id: true, inbox: { select: { channelType: true, name: true } } },
+                },
+              },
             },
           },
         },

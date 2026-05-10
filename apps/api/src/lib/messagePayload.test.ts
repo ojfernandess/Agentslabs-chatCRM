@@ -64,3 +64,13 @@ test("optional conversationId accepted", () => {
   });
   assert.equal(r.success, true);
 });
+
+test("optional inboxId accepted", () => {
+  const r = sendMessageSchema.safeParse({
+    contactId: "550e8400-e29b-41d4-a716-446655440000",
+    inboxId: "550e8400-e29b-41d4-a716-446655440002",
+    type: "TEXT",
+    body: "hi",
+  });
+  assert.equal(r.success, true);
+});

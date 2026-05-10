@@ -1,7 +1,21 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { ArrowLeft, Phone, Tag, MessageSquare, Trash2, Edit, Plus, X, ChevronDown, History } from "lucide-react";
+import {
+  ArrowLeft,
+  Phone,
+  Tag,
+  MessageSquare,
+  Trash2,
+  Edit,
+  Plus,
+  X,
+  ChevronDown,
+  History,
+  Send,
+  Mail,
+  Building2,
+} from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
 import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/components/Motion";
@@ -13,6 +27,7 @@ import {
   timelineEventTitle,
   type TimelinePayload,
 } from "@/lib/contactTimeline";
+import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 
 interface TagItem {
   id: string;
@@ -42,6 +57,9 @@ interface ContactDetail {
   id: string;
   name: string;
   phone: string;
+  email: string | null;
+  profilePictureUrl: string | null;
+  lifecycleStage: string | null;
   notes: string | null;
   optedIn: boolean;
   optedInAt: string | null;
@@ -49,7 +67,32 @@ interface ContactDetail {
   tags: { tag: TagItem }[];
   pipelineStage: StageItem | null;
   assignedTo: { id: string; name: string } | null;
-  conversations: { id: string; status: string; updatedAt: string; inbox?: { channelType: string } | null }[];
+  account: {
+    id: string;
+    name: string;
+    website: string | null;
+    industry: string | null;
+    metadata: unknown;
+  } | null;
+  conversations: {
+    id: string;
+    status: string;
+    updatedAt: string;
+    inbox?: { channelType: string; name: string } | null;
+  }[];
+}
+
+interface ThreadMessage {
+  id: string;
+  direction: string;
+  type: string;
+  body: string | null;
+  createdAt: string;
+  isPrivate: boolean;
+  conversation: {
+    id: string;
+    inbox: { channelType: string; name: string } | null;
+  };
 }
 
 export function ContactDetailPage() {
@@ -70,6 +113,13 @@ export function ContactDetailPage() {
   const [allStages, setAllStages] = useState<StageItem[]>([]);
   const [showStagePicker, setShowStagePicker] = useState(false);
   const [timeline, setTimeline] = useState<TimelineEventApi[]>([]);
+  const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
+  const [detailTab, setDetailTab] = useState<"overview" | "chats">("overview");
+  const [quickOpen, setQuickOpen] = useState(false);
+
+  useEffect(() => {
+    if (editing) setDetailTab("overview");
+  }, [editing]);
 
   useEffect(() => {
     if (!id) {
@@ -79,13 +129,14 @@ export function ContactDetailPage() {
     async function load() {
       if (!id) return;
       try {
-        const [data, tags, stages, timelineRes] = await Promise.all([
+        const [data, tags, stages, timelineRes, msgRes] = await Promise.all([
           api.get<ContactDetail>(`/contacts/${id}`),
           api.get<TagItem[]>("/tags"),
           api.get<StageItem[]>("/lead-types"),
           api.get<{ data: TimelineEventApi[] }>(
             `/crm/timeline?subjectType=CONTACT&subjectId=${encodeURIComponent(id)}`,
           ).catch(() => ({ data: [] as TimelineEventApi[] })),
+          api.get<ThreadMessage[]>(`/contacts/${id}/messages`).catch(() => [] as ThreadMessage[]),
         ]);
         setContact(data);
         setEditName(data.name);
@@ -93,6 +144,7 @@ export function ContactDetailPage() {
         setAllTags(tags);
         setAllStages(stages.sort((a, b) => a.order - b.order));
         setTimeline(timelineRes.data ?? []);
+        setThreadMessages(Array.isArray(msgRes) ? msgRes : []);
       } catch {
         // failed
       } finally {
@@ -186,13 +238,44 @@ export function ContactDetailPage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">{contact.name}</h1>
-          <p className="flex items-center gap-1 text-sm text-gray-500">
-            <Phone className="h-3.5 w-3.5" /> {contact.phone}
-          </p>
+        <div className="flex flex-1 items-start gap-4">
+          <div className="flex h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-lg font-bold text-brand-800 dark:from-brand-900/40 dark:to-brand-800/30 dark:text-brand-100">
+            {contact.profilePictureUrl ? (
+              <img src={contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center">
+                {contact.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{contact.name}</h1>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
+              <span className="inline-flex items-center gap-1">
+                <Phone className="h-3.5 w-3.5" /> {contact.phone}
+              </span>
+              {contact.email ? (
+                <span className="inline-flex items-center gap-1">
+                  <Mail className="h-3.5 w-3.5" /> {contact.email}
+                </span>
+              ) : null}
+              {contact.account ? (
+                <span className="inline-flex items-center gap-1">
+                  <Building2 className="h-3.5 w-3.5" /> {contact.account.name}
+                </span>
+              ) : null}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setQuickOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            <Send className="h-4 w-4" />
+            {t("contacts.quickMessage")}
+          </button>
           <button
             onClick={() => setEditing(!editing)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -210,6 +293,24 @@ export function ContactDetailPage() {
         </div>
       </div>
 
+      <div className="mb-6 flex gap-1 border-b border-gray-200 dark:border-ink-800">
+        {(["overview", "chats"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setDetailTab(k)}
+            className={clsx(
+              "px-4 py-2.5 text-sm font-medium transition",
+              detailTab === k
+                ? "border-b-2 border-brand-500 text-brand-600 dark:text-brand-400"
+                : "text-gray-500 hover:text-gray-800 dark:text-ink-400 dark:hover:text-ink-200",
+            )}
+          >
+            {k === "overview" ? t("contactDrawer.tabGeneral") : t("contactDrawer.tabConversations")}
+          </button>
+        ))}
+      </div>
+
       <motion.div
         className="grid grid-cols-1 gap-6 lg:grid-cols-3"
         initial={{ opacity: 0, y: 12 }}
@@ -218,7 +319,80 @@ export function ContactDetailPage() {
       >
         {/* Main info */}
         <div className="lg:col-span-2 space-y-6">
-          {editing ? (
+          {detailTab === "chats" ? (
+            <>
+              <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+                <h2 className="mb-4 font-semibold text-gray-900 dark:text-ink-50">
+                  {t("contactDetail.conversationsTitle")}
+                </h2>
+                {contact.conversations.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-ink-400">{t("contactDetail.noConversations")}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {contact.conversations.map((conv) => (
+                      <Link
+                        key={conv.id}
+                        to={`/conversations/${conv.id}`}
+                        className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-ink-800 dark:hover:bg-ink-900/60"
+                      >
+                        {conv.inbox?.channelType === "WHATSAPP" ? (
+                          <WhatsAppBrandIcon className="h-4 w-4 shrink-0" />
+                        ) : (
+                          <MessageSquare className="h-4 w-4 shrink-0 text-gray-400" />
+                        )}
+                        <span className="text-sm font-medium text-gray-700 dark:text-ink-200">
+                          {conv.inbox?.name ?? conv.inbox?.channelType}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {format(new Date(conv.updatedAt), "PP", { locale: dateLocale })}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+                <h2 className="mb-3 font-semibold text-gray-900 dark:text-ink-50">{t("contactDrawer.threadTitle")}</h2>
+                {threadMessages.filter((m) => !m.isPrivate).length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-ink-400">{t("contactDrawer.noMessagesThread")}</p>
+                ) : (
+                  <div className="max-h-[480px] space-y-2 overflow-y-auto rounded-xl bg-slate-50/80 p-4 dark:bg-ink-950/40">
+                    {threadMessages
+                      .filter((m) => !m.isPrivate)
+                      .map((msg) => {
+                        const inbound = msg.direction === "INBOUND";
+                        return (
+                          <div key={msg.id} className={clsx("flex", inbound ? "justify-start" : "justify-end")}>
+                            <div
+                              className={clsx(
+                                "max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm",
+                                inbound
+                                  ? "border border-gray-100 bg-white text-gray-900 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+                                  : "bg-gradient-to-br from-brand-500 to-brand-600 text-white",
+                              )}
+                            >
+                              <p className="mb-1 text-[10px] font-medium opacity-80">
+                                {msg.conversation.inbox?.name ?? msg.conversation.inbox?.channelType} ·{" "}
+                                {format(new Date(msg.createdAt), "Pp", { locale: dateLocale })}
+                              </p>
+                              <p className="whitespace-pre-wrap break-words">
+                                {msg.body?.trim()
+                                  ? msg.body
+                                  : msg.type !== "TEXT"
+                                    ? `(${msg.type})`
+                                    : ""}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
+
+          {detailTab === "overview" && editing ? (
             <motion.div
               className="rounded-xl border border-gray-200 bg-white p-6"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -261,7 +435,9 @@ export function ContactDetailPage() {
                 </div>
               </div>
             </motion.div>
-          ) : (
+          ) : null}
+
+          {detailTab === "overview" && !editing ? (
             <>
               {contact.notes && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -269,42 +445,6 @@ export function ContactDetailPage() {
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{contact.notes}</p>
                 </div>
               )}
-
-              {/* Conversations */}
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 font-semibold text-gray-900">{t("contactDetail.conversationsTitle")}</h2>
-                {contact.conversations.length === 0 ? (
-                  <p className="text-sm text-gray-500">{t("contactDetail.noConversations")}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {contact.conversations.map((conv) => (
-                      <Link
-                        key={conv.id}
-                        to={`/conversations/${conv.id}`}
-                        className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
-                      >
-                        {conv.inbox?.channelType === "WHATSAPP" ? (
-                          <WhatsAppBrandIcon className="h-4 w-4 shrink-0" />
-                        ) : (
-                          <MessageSquare className="h-4 w-4 shrink-0 text-gray-400" />
-                        )}
-                        <span className="text-sm font-medium text-gray-700">
-                          {conv.status === "OPEN"
-                            ? t("contactDetail.conversationStatusOpen")
-                            : conv.status === "PENDING"
-                              ? t("contactDetail.conversationStatusPending")
-                              : conv.status === "RESOLVED"
-                                ? t("contactDetail.conversationStatusResolved")
-                                : conv.status}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {format(new Date(conv.updatedAt), "PP", { locale: dateLocale })}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
@@ -359,30 +499,48 @@ export function ContactDetailPage() {
                 )}
               </div>
             </>
-          )}
+          ) : null}
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-3 text-sm font-medium text-gray-500">Details</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+            <h2 className="mb-3 text-sm font-medium text-gray-500 dark:text-ink-400">{t("contactDrawer.tabGeneral")}</h2>
             <dl className="space-y-3">
+              {contact.email ? (
+                <div>
+                  <dt className="text-xs text-gray-400 dark:text-ink-500">{t("contactDrawer.email")}</dt>
+                  <dd className="text-sm text-gray-700 dark:text-ink-200">{contact.email}</dd>
+                </div>
+              ) : null}
+              {contact.account ? (
+                <div>
+                  <dt className="text-xs text-gray-400 dark:text-ink-500">{t("contactDrawer.company")}</dt>
+                  <dd className="text-sm text-gray-700 dark:text-ink-200">{contact.account.name}</dd>
+                </div>
+              ) : null}
+              {contact.lifecycleStage ? (
+                <div>
+                  <dt className="text-xs text-gray-400 dark:text-ink-500">{t("contacts.colSource")}</dt>
+                  <dd className="text-sm text-gray-700 dark:text-ink-200">{contact.lifecycleStage}</dd>
+                </div>
+              ) : null}
               <div>
-                <dt className="text-xs text-gray-400">Created</dt>
-                <dd className="text-sm text-gray-700">
+                <dt className="text-xs text-gray-400 dark:text-ink-500">Created</dt>
+                <dd className="text-sm text-gray-700 dark:text-ink-200">
                   {format(new Date(contact.createdAt), "MMM d, yyyy")}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-gray-400">Opted In</dt>
-                <dd className="text-sm text-gray-700">
+                <dt className="text-xs text-gray-400 dark:text-ink-500">Opted In</dt>
+                <dd className="text-sm text-gray-700 dark:text-ink-200">
                   {contact.optedIn ? "Yes" : "No"}
                 </dd>
               </div>
               {contact.assignedTo && (
                 <div>
-                  <dt className="text-xs text-gray-400">Assigned To</dt>
-                  <dd className="text-sm text-gray-700">{contact.assignedTo.name}</dd>
+                  <dt className="text-xs text-gray-400 dark:text-ink-500">Assigned To</dt>
+                  <dd className="text-sm text-gray-700 dark:text-ink-200">{contact.assignedTo.name}</dd>
                 </div>
               )}
             </dl>
@@ -519,6 +677,12 @@ export function ContactDetailPage() {
         </div>
       </motion.div>
     </div>
+
+      <ContactQuickMessageModal
+        open={quickOpen}
+        onClose={() => setQuickOpen(false)}
+        contact={contact ? { id: contact.id, name: contact.name, phone: contact.phone } : null}
+      />
     </PageTransition>
   );
 }

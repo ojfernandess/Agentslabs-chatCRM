@@ -6,6 +6,8 @@ export const sendMessageSchema = z
     contactId: z.string().uuid(),
     /** Quando envia a partir de uma conversa aberta, fixa a caixa (WhatsApp vs API / widget / …). */
     conversationId: z.string().uuid().optional(),
+    /** Sem conversationId: abre ou reutiliza conversa nesta caixa (painel / mensagem rápida). Ignorado se conversationId estiver definido. */
+    inboxId: z.string().uuid().optional(),
     type: z.enum(["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "TEMPLATE"]),
     body: z.string().max(4096).optional(),
     templateId: z.string().uuid().optional(),

@@ -5,7 +5,7 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
-import { ensureConversationForWhatsAppContact } from "./conversationRouting.js";
+import { ensureConversationForChannelInbox, ensureConversationForWhatsAppContact } from "./conversationRouting.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 
@@ -65,8 +65,17 @@ export async function deliverOutboundWhatsAppMessage(options: {
   pinnedConversationId?: string;
 }): Promise<{ message: Message; conversation: Conversation }> {
   const { organizationId, data, actor, log, newConversation, pinnedConversationId } = options;
-  const { contactId, type, body, templateId, mediaUrl, mediaType, isPrivate, conversationId: dataConversationId } =
-    data;
+  const {
+    contactId,
+    type,
+    body,
+    templateId,
+    mediaUrl,
+    mediaType,
+    isPrivate,
+    conversationId: dataConversationId,
+    inboxId: dataInboxId,
+  } = data;
 
   if (actor.kind === "agent_bot" && isPrivate) {
     throw new Error("Agent bot cannot send private notes");
@@ -105,32 +114,68 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const { inbox: _inbox, ...rest } = conv;
     conversation = rest;
   } else {
-    const defInbox = await getDefaultInboxId(organizationId);
-    const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, defInbox);
-    const botTriageActive = Boolean(agentCtxPre);
-    const activeConversationStatus: "OPEN" | "PENDING" =
-      actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
-    const base = await ensureConversationForWhatsAppContact({
-      organizationId,
-      contactId,
-      lockSingleConversation,
-      activeConversationStatus,
-      createDefaults: {
-        status: newConversation.status,
-        assignedToId: newConversation.assignedToId ?? null,
-      },
-    });
-    const conv = await prisma.conversation.findFirst({
-      where: { id: base.id },
-      include: { inbox: { select: { channelType: true, channelConfig: true } } },
-    });
-    if (!conv) {
-      throw new Error("Conversation not found");
+    const explicitInboxId = dataConversationId ? undefined : dataInboxId;
+    if (explicitInboxId) {
+      const inboxRow = await prisma.inbox.findFirst({
+        where: { id: explicitInboxId, organizationId },
+      });
+      if (!inboxRow) {
+        throw new Error("Inbox not found");
+      }
+      const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, explicitInboxId);
+      const botTriageActive = Boolean(agentCtxPre);
+      const activeConversationStatus: "OPEN" | "PENDING" =
+        actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      const base = await ensureConversationForChannelInbox({
+        organizationId,
+        contactId,
+        inboxId: explicitInboxId,
+        lockSingleConversation,
+        activeConversationStatus,
+        createDefaults: {
+          status: newConversation.status,
+          assignedToId: newConversation.assignedToId ?? null,
+        },
+      });
+      const conv = await prisma.conversation.findFirst({
+        where: { id: base.id },
+        include: { inbox: { select: { channelType: true, channelConfig: true } } },
+      });
+      if (!conv) {
+        throw new Error("Conversation not found");
+      }
+      inboxChannelType = conv.inbox.channelType;
+      inboxChannelConfig = conv.inbox.channelConfig ?? null;
+      const { inbox: _inbox, ...rest } = conv;
+      conversation = rest;
+    } else {
+      const defInbox = await getDefaultInboxId(organizationId);
+      const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, defInbox);
+      const botTriageActive = Boolean(agentCtxPre);
+      const activeConversationStatus: "OPEN" | "PENDING" =
+        actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      const base = await ensureConversationForWhatsAppContact({
+        organizationId,
+        contactId,
+        lockSingleConversation,
+        activeConversationStatus,
+        createDefaults: {
+          status: newConversation.status,
+          assignedToId: newConversation.assignedToId ?? null,
+        },
+      });
+      const conv = await prisma.conversation.findFirst({
+        where: { id: base.id },
+        include: { inbox: { select: { channelType: true, channelConfig: true } } },
+      });
+      if (!conv) {
+        throw new Error("Conversation not found");
+      }
+      inboxChannelType = conv.inbox.channelType;
+      inboxChannelConfig = conv.inbox.channelConfig ?? null;
+      const { inbox: _inbox, ...rest } = conv;
+      conversation = rest;
     }
-    inboxChannelType = conv.inbox.channelType;
-    inboxChannelConfig = conv.inbox.channelConfig ?? null;
-    const { inbox: _inbox, ...rest } = conv;
-    conversation = rest;
   }
 
   if (type === "TEMPLATE" && !isPrivate && inboxChannelType !== "WHATSAPP") {
@@ -144,13 +189,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     (providerKind === "meta" || providerKind === "360dialog" || providerKind === "twilio" || providerKind == null);
 
   if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession) {
-    const lastInboundWhere =
-      targetConversationId != null
-        ? { conversationId: targetConversationId, direction: "INBOUND" as const }
-        : { conversation: { contactId, organizationId }, direction: "INBOUND" as const };
-
     const lastInbound = await prisma.message.findFirst({
-      where: lastInboundWhere,
+      where: { conversationId: conversation.id, direction: "INBOUND" },
       orderBy: { createdAt: "desc" },
     });
 
