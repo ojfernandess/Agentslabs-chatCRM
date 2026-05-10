@@ -95,6 +95,16 @@ interface ThreadMessage {
   };
 }
 
+function metaFirstString(metadata: unknown, keys: string[]): string {
+  if (!metadata || typeof metadata !== "object") return "";
+  const o = metadata as Record<string, unknown>;
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
 export function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -103,6 +113,11 @@ export function ContactDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editDocument, setEditDocument] = useState("");
+  const [editCity, setEditCity] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
   // Tag picker state
@@ -140,6 +155,13 @@ export function ContactDetailPage() {
         ]);
         setContact(data);
         setEditName(data.name);
+        setEditPhone(data.phone);
+        setEditEmail(data.email ?? "");
+        setEditCompany(data.account?.name ?? "");
+        setEditDocument(
+          metaFirstString(data.account?.metadata, ["document", "documento", "cpf", "cnpj", "taxId"]),
+        );
+        setEditCity(metaFirstString(data.account?.metadata, ["city", "cidade", "municipio"]));
         setEditNotes(data.notes ?? "");
         setAllTags(tags);
         setAllStages(stages.sort((a, b) => a.order - b.order));
@@ -155,12 +177,27 @@ export function ContactDetailPage() {
   }, [id]);
 
   const handleSave = async () => {
+    if (!id) return;
     try {
       const updated = await api.put<ContactDetail>(`/contacts/${id}`, {
-        name: editName,
-        notes: editNotes || undefined,
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim() === "" ? null : editEmail.trim(),
+        notes: editNotes.trim() === "" ? undefined : editNotes,
+        company: editCompany.trim() === "" ? null : editCompany.trim(),
+        document: editDocument.trim() === "" ? null : editDocument.trim(),
+        city: editCity.trim() === "" ? null : editCity.trim(),
       });
-      setContact({ ...contact!, ...updated });
+      setContact(updated);
+      setEditName(updated.name);
+      setEditPhone(updated.phone);
+      setEditEmail(updated.email ?? "");
+      setEditCompany(updated.account?.name ?? "");
+      setEditDocument(
+        metaFirstString(updated.account?.metadata, ["document", "documento", "cpf", "cnpj", "taxId"]),
+      );
+      setEditCity(metaFirstString(updated.account?.metadata, ["city", "cidade", "municipio"]));
+      setEditNotes(updated.notes ?? "");
       setEditing(false);
     } catch {
       // failed
@@ -394,43 +431,113 @@ export function ContactDetailPage() {
 
           {detailTab === "overview" && editing ? (
             <motion.div
-              className="rounded-xl border border-gray-200 bg-white p-6"
+              className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/50"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.25 }}
             >
-              <h2 className="mb-4 font-semibold text-gray-900">Edit Contact</h2>
+              <h2 className="mb-1 font-semibold text-gray-900 dark:text-ink-50">{t("contactEdit.title")}</h2>
+              <p className="mb-4 text-xs text-gray-500 dark:text-ink-400">{t("contactEdit.optionalHint")}</p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldName")} <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Notes</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldPhone")} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldEmail")}
+                  </label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder={t("contactEdit.placeholderOptional")}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldCompany")}
+                  </label>
+                  <input
+                    type="text"
+                    value={editCompany}
+                    onChange={(e) => setEditCompany(e.target.value)}
+                    placeholder={t("contactEdit.placeholderOptional")}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                      {t("contactEdit.fieldDocument")}
+                    </label>
+                    <input
+                      type="text"
+                      value={editDocument}
+                      onChange={(e) => setEditDocument(e.target.value)}
+                      placeholder={t("contactEdit.placeholderOptional")}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                      {t("contactEdit.fieldCity")}
+                    </label>
+                    <input
+                      type="text"
+                      value={editCity}
+                      onChange={(e) => setEditCity(e.target.value)}
+                      placeholder={t("contactEdit.placeholderOptional")}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldNotes")}
+                  </label>
                   <textarea
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={4}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder={t("contactEdit.placeholderOptional")}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                   />
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleSave}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+                    type="button"
+                    disabled={!editName.trim() || !editPhone.trim()}
+                    onClick={() => void handleSave()}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                   >
-                    Save
+                    {t("contactEdit.save")}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setEditing(false)}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-600 dark:text-ink-200 dark:hover:bg-ink-800"
                   >
-                    Cancel
+                    {t("contactEdit.cancel")}
                   </button>
                 </div>
               </div>

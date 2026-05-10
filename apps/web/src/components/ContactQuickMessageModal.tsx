@@ -79,7 +79,7 @@ export function ContactQuickMessageModal({
   const selectedInbox = inboxes.find((i) => i.id === inboxId);
 
   const toolbarBtn =
-    "rounded-md p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40";
+    "rounded-md p-2 text-gray-500 transition hover:bg-gray-100 disabled:opacity-40 dark:text-ink-400 dark:hover:bg-ink-800";
 
   const onSend = async () => {
     if (!contact) return;
@@ -121,7 +121,7 @@ export function ContactQuickMessageModal({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 dark:bg-black/60"
           variants={backdropVariants}
           initial="hidden"
           animate="show"
@@ -129,42 +129,44 @@ export function ContactQuickMessageModal({
           onClick={onClose}
         >
           <motion.div
-            className="w-full max-w-lg overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900"
             variants={modalVariants}
             initial="hidden"
             animate="show"
             exit="exit"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="divide-y divide-zinc-800">
+            <div className="divide-y divide-gray-100 dark:divide-ink-800">
               <div className="flex items-baseline gap-3 px-4 py-3">
-                <span className="shrink-0 text-sm font-medium text-zinc-500">{t("quickMessage.to")}</span>
-                <span className="min-w-0 truncate text-sm text-zinc-100">
+                <span className="shrink-0 text-sm font-medium text-gray-500 dark:text-ink-400">
+                  {t("quickMessage.to")}
+                </span>
+                <span className="min-w-0 truncate text-sm text-gray-900 dark:text-ink-100">
                   {contact.name}{" "}
-                  <span className="text-zinc-500">· {contact.phone}</span>
+                  <span className="text-gray-500 dark:text-ink-400">· {contact.phone}</span>
                 </span>
               </div>
 
               <div className="px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-zinc-500">{t("quickMessage.via")}</span>
+                  <span className="text-sm font-medium text-gray-500 dark:text-ink-400">{t("quickMessage.via")}</span>
                   <button
                     type="button"
                     onClick={() => setShowInboxList((v) => !v)}
-                    className="text-sm font-medium text-sky-400 hover:text-sky-300"
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
                   >
                     {showInboxList ? t("quickMessage.hideInboxes") : t("quickMessage.showInboxes")}
                   </button>
                   {selectedInbox ? (
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-gray-500 dark:text-ink-400">
                       {selectedInbox.name} ({selectedInbox.channelType})
                     </span>
                   ) : null}
                 </div>
                 {showInboxList ? (
-                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/80">
+                  <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50/80 dark:border-ink-700 dark:bg-ink-950/80">
                     {inboxes.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-zinc-500">{t("quickMessage.noInboxes")}</p>
+                      <p className="px-3 py-2 text-xs text-gray-500 dark:text-ink-400">{t("quickMessage.noInboxes")}</p>
                     ) : (
                       inboxes.map((ib) => (
                         <button
@@ -175,12 +177,12 @@ export function ContactQuickMessageModal({
                             setShowInboxList(false);
                           }}
                           className={clsx(
-                            "flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-800",
-                            ib.id === inboxId && "bg-zinc-800/80 text-sky-300",
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white dark:hover:bg-ink-800",
+                            ib.id === inboxId && "bg-brand-50 font-medium text-brand-800 dark:bg-brand-950/40 dark:text-brand-200",
                           )}
                         >
-                          <span className="text-zinc-200">{ib.name}</span>
-                          <span className="text-xs text-zinc-500">{ib.channelType}</span>
+                          <span className="text-gray-900 dark:text-ink-100">{ib.name}</span>
+                          <span className="text-xs text-gray-500 dark:text-ink-400">{ib.channelType}</span>
                         </button>
                       ))
                     )}
@@ -189,7 +191,7 @@ export function ContactQuickMessageModal({
               </div>
 
               <div className="px-2 pt-2">
-                <div className="flex flex-wrap gap-0.5 border-b border-zinc-800/80 px-2 pb-2">
+                <div className="flex flex-wrap gap-0.5 border-b border-gray-100 px-2 pb-2 dark:border-ink-800">
                   <button
                     type="button"
                     className={toolbarBtn}
@@ -263,12 +265,12 @@ export function ContactQuickMessageModal({
                   }}
                   rows={6}
                   placeholder={t("quickMessage.placeholder")}
-                  className="w-full resize-none bg-transparent px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                  className="w-full resize-none bg-transparent px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-ink-100 dark:placeholder:text-ink-500"
                 />
               </div>
 
               {error ? (
-                <div className="px-4 py-2 text-xs text-red-400">{error}</div>
+                <div className="px-4 py-2 text-xs text-red-600 dark:text-red-400">{error}</div>
               ) : null}
 
               <div className="flex items-center justify-between gap-3 px-3 py-3">
@@ -282,12 +284,12 @@ export function ContactQuickMessageModal({
                     <Smile className="h-4 w-4" />
                   </button>
                   {showEmoji ? (
-                    <div className="absolute bottom-full left-0 z-10 mb-1 flex max-w-[220px] flex-wrap gap-1 rounded-lg border border-zinc-700 bg-zinc-950 p-2 shadow-xl">
+                    <div className="absolute bottom-full left-0 z-10 mb-1 flex max-w-[220px] flex-wrap gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-ink-700 dark:bg-ink-900">
                       {EMOJI_PICK.map((em) => (
                         <button
                           key={em}
                           type="button"
-                          className="rounded p-1.5 text-lg hover:bg-zinc-800"
+                          className="rounded p-1.5 text-lg hover:bg-gray-100 dark:hover:bg-ink-800"
                           onClick={() => {
                             const el = taRef.current;
                             if (el) {
@@ -312,7 +314,7 @@ export function ContactQuickMessageModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-600 dark:text-ink-200 dark:hover:bg-ink-800"
                   >
                     {t("quickMessage.discard")}
                   </button>
@@ -320,10 +322,10 @@ export function ContactQuickMessageModal({
                     type="button"
                     disabled={sending || !body.trim()}
                     onClick={() => void onSend()}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 hover:bg-sky-400 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50"
                   >
                     {sending ? t("quickMessage.sending") : t("quickMessage.send")}
-                    <span className="text-sky-100/90">{t("quickMessage.sendShortcut")}</span>
+                    <span className="font-normal text-white/90">{t("quickMessage.sendShortcut")}</span>
                   </button>
                 </div>
               </div>

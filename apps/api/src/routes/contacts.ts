@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
@@ -20,11 +21,64 @@ const updateContactSchema = z.object({
   notes: z.string().max(5000).optional(),
   email: z.string().max(255).nullable().optional(),
   accountId: z.string().uuid().nullable().optional(),
+  /** Nome da empresa: vazio ou null desassocia a conta; texto cria ou reutiliza Account por nome. */
+  company: z.string().max(255).nullable().optional(),
+  /** Gravado em account.metadata (chaves document / city). */
+  document: z.string().max(120).nullable().optional(),
+  city: z.string().max(120).nullable().optional(),
   lifecycleStage: z.string().max(64).nullable().optional(),
   pipelineStageId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   optedIn: z.boolean().optional(),
 });
+
+async function findOrCreateAccountByName(
+  organizationId: string,
+  name: string,
+): Promise<string> {
+  const trimmed = name.trim();
+  const existing = await prisma.account.findFirst({
+    where: { organizationId, name: { equals: trimmed, mode: "insensitive" } },
+  });
+  if (existing) return existing.id;
+  const created = await prisma.account.create({
+    data: { organizationId, name: trimmed },
+  });
+  return created.id;
+}
+
+function mergeAccountMetadataPatch(
+  current: unknown,
+  document: string | null | undefined,
+  city: string | null | undefined,
+): Prisma.InputJsonValue {
+  const base: Record<string, unknown> =
+    current != null && typeof current === "object" && !Array.isArray(current)
+      ? { ...(current as Record<string, unknown>) }
+      : {};
+
+  if (document !== undefined) {
+    if (document === null || document.trim() === "") {
+      delete base.document;
+      delete base.documento;
+      delete base.cpf;
+      delete base.cnpj;
+      delete base.taxId;
+    } else {
+      base.document = document.trim();
+    }
+  }
+  if (city !== undefined) {
+    if (city === null || city.trim() === "") {
+      delete base.city;
+      delete base.cidade;
+      delete base.municipio;
+    } else {
+      base.city = city.trim();
+    }
+  }
+  return base as Prisma.InputJsonValue;
+}
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -353,13 +407,41 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.notes !== undefined) data.notes = parsed.data.notes;
     if (parsed.data.email !== undefined) data.email = parsed.data.email;
-    if (parsed.data.accountId !== undefined) data.accountId = parsed.data.accountId;
     if (parsed.data.lifecycleStage !== undefined) data.lifecycleStage = parsed.data.lifecycleStage;
     if (parsed.data.pipelineStageId !== undefined) data.pipelineStageId = parsed.data.pipelineStageId;
     if (parsed.data.assignedToId !== undefined) data.assignedToId = parsed.data.assignedToId;
     if (parsed.data.optedIn !== undefined) {
       data.optedIn = parsed.data.optedIn;
       if (parsed.data.optedIn) data.optedInAt = new Date();
+    }
+
+    const wantsCompany = parsed.data.company !== undefined;
+    const wantsMeta =
+      parsed.data.document !== undefined || parsed.data.city !== undefined;
+
+    if (wantsCompany) {
+      const c = parsed.data.company;
+      if (c === null || (typeof c === "string" && c.trim() === "")) {
+        data.accountId = null;
+      } else if (typeof c === "string") {
+        data.accountId = await findOrCreateAccountByName(organizationId, c);
+      }
+    } else if (parsed.data.accountId !== undefined) {
+      data.accountId = parsed.data.accountId;
+    }
+
+    if (wantsMeta && !wantsCompany) {
+      const doc = parsed.data.document;
+      const city = parsed.data.city;
+      const anyNonEmpty =
+        (doc !== undefined && doc !== null && String(doc).trim() !== "") ||
+        (city !== undefined && city !== null && String(city).trim() !== "");
+      if (!current.accountId && anyNonEmpty) {
+        const acc = await prisma.account.create({
+          data: { organizationId, name: current.name },
+        });
+        data.accountId = acc.id;
+      }
     }
 
     if (parsed.data.phone !== undefined) {
@@ -391,23 +473,78 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    if (parsed.data.accountId) {
+    const accountIdToValidate =
+      typeof data.accountId === "string" ? data.accountId : parsed.data.accountId;
+    if (accountIdToValidate) {
       const acc = await prisma.account.findFirst({
-        where: { id: parsed.data.accountId, organizationId },
+        where: { id: accountIdToValidate, organizationId },
       });
       if (!acc) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid account", statusCode: 400 });
       }
     }
 
+    const contactDetailInclude = {
+      tags: { include: { tag: true } },
+      pipelineStage: true,
+      assignedTo: { select: { id: true, name: true } },
+      account: { select: { id: true, name: true, website: true, industry: true, metadata: true } },
+      conversations: {
+        orderBy: { updatedAt: "desc" as const },
+        take: 30,
+        include: { inbox: { select: { channelType: true, name: true } } },
+      },
+    } satisfies Prisma.ContactInclude;
+
     try {
-      const contact = await prisma.contact.update({
+      await prisma.contact.update({
         where: { id: request.params.id },
         data,
-        include: { tags: { include: { tag: true } }, pipelineStage: true },
       });
-      if (parsed.data.pipelineStageId !== undefined && contact.pipelineStageId) {
-        await syncDealsForContactPipelineStage(prisma, organizationId, contact.id, contact.pipelineStageId);
+      if (parsed.data.pipelineStageId !== undefined) {
+        const row = await prisma.contact.findFirst({
+          where: { id: request.params.id, organizationId },
+          select: { pipelineStageId: true },
+        });
+        if (row?.pipelineStageId) {
+          await syncDealsForContactPipelineStage(
+            prisma,
+            organizationId,
+            request.params.id,
+            row.pipelineStageId,
+          );
+        }
+      }
+
+      if (wantsMeta) {
+        const row = await prisma.contact.findFirst({
+          where: { id: request.params.id, organizationId },
+          select: { accountId: true },
+        });
+        if (row?.accountId) {
+          const accRow = await prisma.account.findFirst({
+            where: { id: row.accountId, organizationId },
+          });
+          if (accRow) {
+            const nextMeta = mergeAccountMetadataPatch(
+              accRow.metadata,
+              parsed.data.document,
+              parsed.data.city,
+            );
+            await prisma.account.update({
+              where: { id: accRow.id },
+              data: { metadata: nextMeta },
+            });
+          }
+        }
+      }
+
+      const contact = await prisma.contact.findFirst({
+        where: { id: request.params.id, organizationId },
+        include: contactDetailInclude,
+      });
+      if (!contact) {
+        return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
       }
       return contact;
     } catch {
