@@ -158,6 +158,13 @@ export async function syncKnowledgeSource(params: {
       ? (cfg.defaultBotIds as unknown[]).filter((x): x is string => typeof x === "string" && zodUuid(x))
       : [];
 
+    const tagsFromCfg = Array.isArray(cfg.tags)
+      ? (cfg.tags as unknown[])
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.slice(0, 64))
+          .slice(0, 32)
+      : undefined;
+
     if (existing) {
       await prisma.automationKnowledgeArticle.update({
         where: { id: existing.id },
@@ -166,6 +173,10 @@ export async function syncKnowledgeSource(params: {
           content: text,
           sourceMimeType: ct.slice(0, 160) || "text/html",
           sourceFileName: fetchUrl.hostname.slice(0, 500),
+          ...(typeof cfg.category === "string"
+            ? { category: cfg.category.trim() ? cfg.category.trim().slice(0, 120) : null }
+            : {}),
+          ...(tagsFromCfg !== undefined ? { tags: tagsFromCfg } : {}),
         },
       });
       articleId = existing.id;
@@ -177,12 +188,7 @@ export async function syncKnowledgeSource(params: {
           title,
           content: text,
           category: typeof cfg.category === "string" ? cfg.category.slice(0, 120) : null,
-          tags: Array.isArray(cfg.tags)
-            ? (cfg.tags as unknown[])
-                .filter((x): x is string => typeof x === "string")
-                .map((s) => s.slice(0, 64))
-                .slice(0, 32)
-            : [],
+          tags: tagsFromCfg ?? [],
           isActive: true,
           syncToAi: true,
           sourceMimeType: ct.slice(0, 160) || "text/html",
@@ -256,13 +262,35 @@ export async function applyWebhookPush(params: {
   });
 
   let articleId: string;
+  const tagsFromCfg = Array.isArray(cfg.tags)
+    ? (cfg.tags as unknown[])
+        .filter((x): x is string => typeof x === "string")
+        .map((s) => s.slice(0, 64))
+        .slice(0, 32)
+    : undefined;
+
   if (existing) {
     await prisma.automationKnowledgeArticle.update({
       where: { id: existing.id },
-      data: { title, content: text, sourceMimeType: "application/json", sourceFileName: "webhook" },
+      data: {
+        title,
+        content: text,
+        sourceMimeType: "application/json",
+        sourceFileName: "webhook",
+        ...(typeof cfg.category === "string"
+          ? { category: cfg.category.trim() ? cfg.category.trim().slice(0, 120) : null }
+          : {}),
+        ...(tagsFromCfg !== undefined ? { tags: tagsFromCfg } : {}),
+      },
     });
     articleId = existing.id;
   } else {
+    const tagList = Array.isArray(cfg.tags)
+      ? (cfg.tags as unknown[])
+          .filter((x): x is string => typeof x === "string")
+          .map((s) => s.slice(0, 64))
+          .slice(0, 32)
+      : [];
     const created = await prisma.automationKnowledgeArticle.create({
       data: {
         organizationId: source.organizationId,
@@ -270,7 +298,7 @@ export async function applyWebhookPush(params: {
         title,
         content: text,
         category: typeof cfg.category === "string" ? cfg.category.slice(0, 120) : null,
-        tags: [],
+        tags: tagList,
         isActive: true,
         syncToAi: true,
         sourceMimeType: "application/json",

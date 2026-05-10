@@ -139,6 +139,49 @@ const knowledgeSourcePatchSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+async function validateKnowledgeSourceConfigForOrg(
+  organizationId: string,
+  kind: string,
+  config: Record<string, unknown>,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const ids = Array.isArray(config.defaultBotIds) ? config.defaultBotIds : [];
+  const botIds = ids.filter((x): x is string => typeof x === "string");
+  if (botIds.length > 0) {
+    const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
+    if (n !== botIds.length) return { ok: false, message: "Invalid defaultBotIds" };
+  }
+  if (kind === "web_url") {
+    const url = typeof config.url === "string" ? config.url.trim() : "";
+    if (!url) return { ok: false, message: "web_url sources require config.url" };
+    try {
+      assertHttpUrlAllowed(url);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : "Invalid URL" };
+    }
+  }
+  if (kind === "web") {
+    const u = typeof config.siteRootUrl === "string" ? config.siteRootUrl.trim() : "";
+    if (u) {
+      try {
+        assertHttpUrlAllowed(u);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "Invalid siteRootUrl" };
+      }
+    }
+  }
+  if (kind === "confluence") {
+    const u = typeof config.confluenceBaseUrl === "string" ? config.confluenceBaseUrl.trim() : "";
+    if (u) {
+      try {
+        assertHttpUrlAllowed(u);
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "Invalid confluenceBaseUrl" };
+      }
+    }
+  }
+  return { ok: true };
+}
+
 function multipartBool(raw: string | undefined, defaultVal: boolean): boolean {
   if (raw === undefined || raw === "") return defaultVal;
   const s = raw.toLowerCase().trim();
@@ -695,33 +738,10 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
     const body = parsed.data;
-    if (body.kind === "web_url") {
-      const url = typeof body.config.url === "string" ? body.config.url.trim() : "";
-      if (!url) {
-        return reply.status(400).send({
-          error: "Bad Request",
-          message: "web_url sources require config.url",
-          statusCode: 400,
-        });
-      }
-      const ids = Array.isArray(body.config.defaultBotIds) ? body.config.defaultBotIds : [];
-      const botIds = ids.filter((x): x is string => typeof x === "string");
-      if (botIds.length > 0) {
-        const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
-        if (n !== botIds.length) {
-          return reply.status(400).send({ error: "Bad Request", message: "Invalid defaultBotIds", statusCode: 400 });
-        }
-      }
-    }
-    if (body.kind === "webhook_push") {
-      const ids = Array.isArray(body.config.defaultBotIds) ? body.config.defaultBotIds : [];
-      const botIds = ids.filter((x): x is string => typeof x === "string");
-      if (botIds.length > 0) {
-        const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
-        if (n !== botIds.length) {
-          return reply.status(400).send({ error: "Bad Request", message: "Invalid defaultBotIds", statusCode: 400 });
-        }
-      }
+    const cfg = body.config as Record<string, unknown>;
+    const validated = await validateKnowledgeSourceConfigForOrg(organizationId, body.kind, cfg);
+    if (!validated.ok) {
+      return reply.status(400).send({ error: "Bad Request", message: validated.message, statusCode: 400 });
     }
 
     const webhookToken = body.kind === "webhook_push" ? newWebhookToken() : null;
@@ -773,7 +793,18 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     }
     const data: { name?: string; config?: object; isActive?: boolean } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
-    if (parsed.data.config !== undefined) data.config = parsed.data.config as object;
+    if (parsed.data.config !== undefined) {
+      const prev =
+        existing.config && typeof existing.config === "object" && !Array.isArray(existing.config)
+          ? { ...(existing.config as Record<string, unknown>) }
+          : {};
+      const merged = { ...prev, ...(parsed.data.config as Record<string, unknown>) };
+      const validated = await validateKnowledgeSourceConfigForOrg(organizationId, existing.kind, merged);
+      if (!validated.ok) {
+        return reply.status(400).send({ error: "Bad Request", message: validated.message, statusCode: 400 });
+      }
+      data.config = merged;
+    }
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
     const row = await prisma.automationKnowledgeSource.update({
       where: { id: existing.id },
