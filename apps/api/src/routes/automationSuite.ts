@@ -1776,8 +1776,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   }
 
   const toolTestBodySchema = z.object({
-    pathParams: z.record(z.string()).optional(),
-    query: z.record(z.string()).optional(),
+    pathParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+    query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
     headers: z.record(z.string()).optional(),
     body: z.unknown().optional(),
     sampleContext: z.record(z.unknown()).optional(),
@@ -1834,6 +1834,16 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
       const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
       const flat = flattenTemplateContext(parsed.data.sampleContext ?? {});
+      /** Merge test payload query/pathParams so `{{arrival_date}}` in path or defaultQuery resolves (schema often sends args in `query`). */
+      const mergeIntoFlat = (rec: Record<string, string | number | boolean> | undefined) => {
+        if (!rec) return;
+        for (const [k, v] of Object.entries(rec)) {
+          if (v === undefined || v === null) continue;
+          flat[k] = String(v);
+        }
+      };
+      mergeIntoFlat(parsed.data.query);
+      mergeIntoFlat(parsed.data.pathParams);
 
       let method = String(cfg.httpMethod ?? "GET").toUpperCase();
       let pathPart = expandTemplateString(String(cfg.httpPath ?? "/"), flat);
@@ -1862,12 +1872,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const url = assertHttpUrlAllowed(fullUrlStr);
       if (parsed.data.query) {
         for (const [qk, qv] of Object.entries(parsed.data.query)) {
-          url.searchParams.set(qk, qv);
+          url.searchParams.set(qk, String(qv));
         }
       }
       const defaultQuery = cfg.defaultQuery && typeof cfg.defaultQuery === "object" ? (cfg.defaultQuery as Record<string, unknown>) : {};
       for (const [qk, qv] of Object.entries(defaultQuery)) {
-        if (typeof qv === "string" || typeof qv === "number" || typeof qv === "boolean") {
+        if (typeof qv === "string") {
+          const expanded = expandTemplateString(qv, flat);
+          if (!url.searchParams.has(qk)) url.searchParams.set(qk, expanded);
+        } else if (typeof qv === "number" || typeof qv === "boolean") {
           if (!url.searchParams.has(qk)) url.searchParams.set(qk, String(qv));
         }
       }

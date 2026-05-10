@@ -1970,13 +1970,23 @@ function HttpLikeToolEditor({
   const [defaultHeadersJson, setDefaultHeadersJson] = useState(() =>
     JSON.stringify((c.defaultHeaders && typeof c.defaultHeaders === "object" ? c.defaultHeaders : {}) as object, null, 2),
   );
+  const [defaultQueryJson, setDefaultQueryJson] = useState(() =>
+    JSON.stringify((c.defaultQuery && typeof c.defaultQuery === "object" ? c.defaultQuery : {}) as object, null, 2),
+  );
   const fieldCls =
     "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
 
   const handleSave = () => {
     let defaultHeaders: Record<string, unknown> = {};
+    let defaultQuery: Record<string, unknown> = {};
     try {
       defaultHeaders = JSON.parse(defaultHeadersJson || "{}") as Record<string, unknown>;
+    } catch {
+      window.alert(t("automationPage.toolsCreateConfigInvalid"));
+      return;
+    }
+    try {
+      defaultQuery = JSON.parse(defaultQueryJson || "{}") as Record<string, unknown>;
     } catch {
       window.alert(t("automationPage.toolsCreateConfigInvalid"));
       return;
@@ -1985,6 +1995,7 @@ function HttpLikeToolEditor({
       httpMethod,
       authType,
       defaultHeaders,
+      defaultQuery,
       executor: c.executor ?? "http_client",
     };
     for (const k of ["presetKey", "nativeToolKey"] as const) {
@@ -2030,6 +2041,17 @@ function HttpLikeToolEditor({
             Path
             <input value={httpPath} onChange={(e) => setHttpPath(e.target.value)} className={fieldCls} />
           </label>
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolDefaultQueryJson")}
+            <textarea
+              value={defaultQueryJson}
+              onChange={(e) => setDefaultQueryJson(e.target.value)}
+              rows={4}
+              placeholder='{"arrival_date":"{{arrival_date}}","adults":"2"}'
+              className={clsx(fieldCls, "font-mono text-[11px]")}
+            />
+          </label>
+          <p className="text-[10px] text-ink-500">{t("automationPage.toolDefaultQueryHint")}</p>
         </>
       )}
       <label className="block text-xs font-medium">

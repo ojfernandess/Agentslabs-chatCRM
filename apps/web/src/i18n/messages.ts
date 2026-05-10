@@ -583,14 +583,19 @@ export const messages = {
       toolsVariablesHelp: "Clique para copiar. Use no path, headers ou corpo; o testador substitui com o contexto de exemplo.",
       toolsTestPanel: "Testar ferramenta",
       toolsLogsPanel: "Histórico",
-      toolsTestHelp: "Opcional: pathParams, query, headers, body — fundidos com a configuração guardada.",
+      toolsTestHelp:
+        "Use `query` com os parâmetros da API (ex.: arrival_date, departure_date, adults, kids). Eles preenchem `{{variáveis}}` no Path e em Query predefinida. Opcional: pathParams, headers, body, sampleContext.",
       toolsTestPayload: "Payload do teste (JSON)",
       toolsTestContext: "Contexto de exemplo (JSON)",
       toolsRunTest: "Executar pedido",
       toolsTestUnsupported: "Teste integrado só para ferramentas HTTP API e Webhook.",
       toolsExportLogs: "Exportar JSON",
       toolsLogsEmpty: "Sem execuções registadas ainda.",
-      toolHttpEditorHelp: "Configure o pedido HTTP executado pelo testador ou pelo integrador.",
+      toolHttpEditorHelp:
+        "Path: só o caminho (ex. /rooms/availability) ou com query em `{{chave}}` (ex. ?arrival_date={{arrival_date}}). Preferível: Path sem query + JSON «Query predefinida» com valores `{{chave}}` ou fixos — o teste envia valores reais no campo «Payload» em `query`.",
+      toolDefaultQueryJson: "Query predefinida (JSON)",
+      toolDefaultQueryHint:
+        "Chaves = nomes na query string; valores string podem usar {{arrival_date}} etc. Valores do «Payload».query substituem após expandir templates.",
       toolHttpMethod: "Método HTTP",
       toolAuthType: "Autenticação",
       toolDefaultHeadersJson: "Headers predefinidos (JSON)",
@@ -2286,14 +2291,19 @@ export const messages = {
       toolsVariablesHelp: "Click to copy. Use in path, headers, or body; the tester substitutes from sample context.",
       toolsTestPanel: "Test tool",
       toolsLogsPanel: "History",
-      toolsTestHelp: "Optional: pathParams, query, headers, body — merged with saved config.",
+      toolsTestHelp:
+        "Put API arguments in `query` (e.g. arrival_date, departure_date, adults, kids). They fill `{{placeholders}}` in Path and default query. Optional: pathParams, headers, body, sampleContext.",
       toolsTestPayload: "Test payload (JSON)",
       toolsTestContext: "Sample context (JSON)",
       toolsRunTest: "Run request",
       toolsTestUnsupported: "Integrated tests support HTTP API and Webhook tools only.",
       toolsExportLogs: "Export JSON",
       toolsLogsEmpty: "No recorded executions yet.",
-      toolHttpEditorHelp: "Configure the HTTP request executed by the tester or integrator.",
+      toolHttpEditorHelp:
+        "Path: pathname only (e.g. /rooms/availability) or include `{{placeholders}}` in the query string. Recommended: path without query + «Default query» JSON using `{{keys}}` — the test panel sends real values under `query` in the payload.",
+      toolDefaultQueryJson: "Default query (JSON)",
+      toolDefaultQueryHint:
+        "Keys = query parameter names; string values may use {{arrival_date}} etc. Payload `query` values merge after template expansion.",
       toolHttpMethod: "HTTP method",
       toolAuthType: "Authentication",
       toolDefaultHeadersJson: "Default headers (JSON)",
