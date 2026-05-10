@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { config } from "../config.js";
+import { config, getPublicOrigin } from "../config.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
@@ -23,6 +23,7 @@ import {
   titleFromFilename,
   wrapIngestError,
 } from "../lib/knowledgeFileIngest.js";
+import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -113,6 +114,30 @@ const knowledgeCreateSchema = z.object({
 });
 
 const knowledgePatchSchema = knowledgeCreateSchema.partial();
+
+const knowledgeSourceKindSchema = z.enum([
+  "web_url",
+  "webhook_push",
+  "gdrive",
+  "notion",
+  "web",
+  "confluence",
+  "zendesk",
+  "github",
+]);
+
+const knowledgeSourceCreateSchema = z.object({
+  kind: knowledgeSourceKindSchema,
+  name: z.string().min(1).max(200),
+  config: z.record(z.unknown()).optional().default({}),
+  isActive: z.boolean().optional(),
+});
+
+const knowledgeSourcePatchSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  config: z.record(z.unknown()).optional(),
+  isActive: z.boolean().optional(),
+});
 
 function multipartBool(raw: string | undefined, defaultVal: boolean): boolean {
   if (raw === undefined || raw === "") return defaultVal;
@@ -641,6 +666,174 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     };
   });
 
+  app.get("/knowledge-sources", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const rows = await prisma.automationKnowledgeSource.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+    });
+    const withArticle = await Promise.all(
+      rows.map(async (r) => {
+        const n = await prisma.automationKnowledgeArticle.count({
+          where: { organizationId, knowledgeSourceId: r.id },
+        });
+        return { ...redactSourceForClient(r), linkedArticles: n };
+      }),
+    );
+    return { data: withArticle };
+  });
+
+  app.post("/knowledge-sources", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = knowledgeSourceCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const body = parsed.data;
+    if (body.kind === "web_url") {
+      const url = typeof body.config.url === "string" ? body.config.url.trim() : "";
+      if (!url) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "web_url sources require config.url",
+          statusCode: 400,
+        });
+      }
+      const ids = Array.isArray(body.config.defaultBotIds) ? body.config.defaultBotIds : [];
+      const botIds = ids.filter((x): x is string => typeof x === "string");
+      if (botIds.length > 0) {
+        const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
+        if (n !== botIds.length) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid defaultBotIds", statusCode: 400 });
+        }
+      }
+    }
+    if (body.kind === "webhook_push") {
+      const ids = Array.isArray(body.config.defaultBotIds) ? body.config.defaultBotIds : [];
+      const botIds = ids.filter((x): x is string => typeof x === "string");
+      if (botIds.length > 0) {
+        const n = await prisma.bot.count({ where: { organizationId, id: { in: botIds } } });
+        if (n !== botIds.length) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid defaultBotIds", statusCode: 400 });
+        }
+      }
+    }
+
+    const webhookToken = body.kind === "webhook_push" ? newWebhookToken() : null;
+
+    const row = await prisma.automationKnowledgeSource.create({
+      data: {
+        organizationId,
+        kind: body.kind,
+        name: body.name,
+        config: body.config as object,
+        isActive: body.isActive ?? true,
+        webhookToken,
+      },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge_source.create",
+      resourceType: "automation_knowledge_source",
+      resourceId: row.id,
+      ip: clientIp(request),
+    });
+
+    const base = getPublicOrigin();
+    const out: Record<string, unknown> = {
+      ...redactSourceForClient(row),
+      linkedArticles: 0,
+    };
+    if (body.kind === "webhook_push" && webhookToken) {
+      out.webhookUrlOnce = `${base}/api/v1/public/knowledge-source-push/${webhookToken}`;
+      out.webhookTokenOnce = webhookToken;
+    }
+    return out;
+  });
+
+  app.patch<{ Params: { id: string } }>("/knowledge-sources/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = knowledgeSourcePatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.automationKnowledgeSource.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Source not found", statusCode: 404 });
+    }
+    const data: { name?: string; config?: object; isActive?: boolean } = {};
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.config !== undefined) data.config = parsed.data.config as object;
+    if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+    const row = await prisma.automationKnowledgeSource.update({
+      where: { id: existing.id },
+      data,
+    });
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge_source.update",
+      resourceType: "automation_knowledge_source",
+      resourceId: row.id,
+      ip: clientIp(request),
+    });
+    const n = await prisma.automationKnowledgeArticle.count({
+      where: { organizationId, knowledgeSourceId: row.id },
+    });
+    return { ...redactSourceForClient(row), linkedArticles: n };
+  });
+
+  app.delete<{ Params: { id: string } }>("/knowledge-sources/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const res = await prisma.automationKnowledgeSource.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (res.count === 0) {
+      return reply.status(404).send({ error: "Not Found", message: "Source not found", statusCode: 404 });
+    }
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "automation.knowledge_source.delete",
+      resourceType: "automation_knowledge_source",
+      resourceId: request.params.id,
+      ip: clientIp(request),
+    });
+    return reply.status(204).send();
+  });
+
+  app.post<{ Params: { id: string } }>("/knowledge-sources/:id/sync", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const result = await syncKnowledgeSource({ sourceId: request.params.id, organizationId });
+    if (!result.ok) {
+      const status =
+        result.code === "not_found"
+          ? 404
+          : result.code === "url_blocked" || result.code === "bad_config" || result.code === "inactive"
+            ? 400
+            : 502;
+      return reply.status(status).send({
+        error: status === 404 ? "Not Found" : status === 400 ? "Bad Request" : "Bad Gateway",
+        code: result.code,
+        message: result.message,
+        statusCode: status,
+      });
+    }
+    return { ok: true, articleId: result.articleId, message: result.message };
+  });
+
   app.patch<{ Params: { id: string } }>("/knowledge-articles/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -890,6 +1083,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const categories = [...new Set(articles.map((a) => a.category).filter((c): c is string => Boolean(c?.trim())))].sort();
 
     const indexedChunks = await prisma.automationKnowledgeChunk.count({ where: { organizationId } });
+    const connectedSources = await prisma.automationKnowledgeSource.count({ where: { organizationId } });
     const sampleChunk = await prisma.automationKnowledgeChunk.findFirst({
       where: { organizationId },
       select: { embeddingModel: true },
@@ -901,6 +1095,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       syncEnabled,
       estimatedTokens,
       estimatedChunks,
+      connectedSources,
       indexedChunks,
       embeddingModel: sampleChunk?.embeddingModel ?? null,
       semanticSearchReady: indexedChunks > 0 && Boolean(config.openAiPromptPreviewKey),

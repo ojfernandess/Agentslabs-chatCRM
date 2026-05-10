@@ -183,10 +183,53 @@ Prefixo: **`/api/v1/automation`** (não confundir com `/api/v1/automations`). Re
 | GET | `/api/v1/automation/knowledge-articles/:id/revisions` | Histórico de revisões. |
 | POST | `/api/v1/automation/knowledge-articles/:id/reindex` | Reindexa embeddings só deste artigo (admin). Resposta: `{ chunks: number }` ou `{ skipped: true, reason }`. |
 | POST | `/api/v1/automation/knowledge-articles/reindex-organization` | Reindexa todos os artigos da organização (admin). Resposta: `{ articles, errors }`. |
-| GET | `/api/v1/automation/knowledge-articles/hub-metrics` | Métricas do painel (incl. `indexedChunks`, `semanticSearchReady`, `embeddingModel`). |
+| GET | `/api/v1/automation/knowledge-articles/hub-metrics` | Métricas do painel (incl. `connectedSources`, `indexedChunks`, `semanticSearchReady`, `embeddingModel`). |
 | POST | `/api/v1/automation/knowledge-articles/search` | Corpo: `{ "query": "...", "botId?": "uuid" }`. Resposta inclui `searchMode`: `lexical` \| `semantic` \| `hybrid` \| `cached`. Com `OPENAI_API_KEY` / `OPENAI_PROMPT_PREVIEW_KEY` e chunks indexados, usa similaridade de coseno + complemento lexical. |
 | POST | `/api/v1/automation/knowledge-articles/playground` | Teste RAG com LLM (admin). Resposta inclui `retrievalMode` (`lexical` \| `semantic` \| `hybrid`), `sources`, `answer`, `latencyMs`, `contextChars`. |
 
 Variáveis de ambiente relevantes: `OPENAI_API_KEY` ou `OPENAI_PROMPT_PREVIEW_KEY`, opcionalmente `OPENAI_EMBEDDING_MODEL` (por omissão `text-embedding-3-small`; tem de produzir vectores de **1536** dimensões para corresponder à coluna pgvector) e `OPENAI_API_BASE_URL` (por omissão `https://api.openai.com/v1`).
 
 **PostgreSQL:** a busca semântica usa a extensão **pgvector** (`vector(1536)`, índice HNSW, operador `<=>`). O `docker-compose` do projecto usa a imagem `pgvector/pgvector:pg16`. Noutros ambientes, instale a extensão antes de `prisma migrate deploy`.
+
+## 10) Automation suite — Fontes da KB (`knowledge-sources`)
+
+Mesmo prefixo **`/api/v1/automation`**, JWT de sessão. `GET` exige utilizador autenticado com papel de administrador do tenant; `POST`, `PATCH`, `DELETE` e `POST …/sync` exigem `requireAdmin` (igual ao Knowledge Hub).
+
+| Method | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/v1/automation/knowledge-sources` | Lista fontes: `{ data: [{ …, linkedArticles, webhookConfigured }] }`. O token do webhook **nunca** é devolvido; só `webhookConfigured`. |
+| POST | `/api/v1/automation/knowledge-sources` | Cria fonte. Corpo (Zod): `kind`, `name`, `config` (objecto, por omissão `{}`), `isActive` opcional. |
+| PATCH | `/api/v1/automation/knowledge-sources/:id` | Actualiza `name`, `config` e/ou `isActive`. |
+| DELETE | `/api/v1/automation/knowledge-sources/:id` | Remove a fonte (`204`). Artigos ligados ficam com `knowledgeSourceId` a `null`. |
+| POST | `/api/v1/automation/knowledge-sources/:id/sync` | Sincroniza conforme o tipo: `web_url` faz fetch do HTML (sujeito a `assertHttpUrlAllowed` / lista de hosts da API); `webhook_push` apenas actualiza estado “à espera de POST”; tipos `gdrive`, `notion`, `web`, `confluence`, `zendesk`, `github` marcam *stub* até existir conector. Sucesso: `{ ok, articleId, message }`. Erros: `404` (*not_found*), `400` (*inactive*, *bad_config*, *url_blocked*), `502` noutros falhanços de rede/servidor. |
+
+**Valores de `kind`:** `web_url` \| `webhook_push` \| `gdrive` \| `notion` \| `web` \| `confluence` \| `zendesk` \| `github`.
+
+**`config` recomendado:**
+
+- **`web_url`:** obrigatório `url` (string). Opcional `defaultBotIds` (array de UUIDs de bots da mesma organização); ao criar/atualizar o artigo pela sync, esses bots são associados.
+- **`webhook_push`:** opcional `defaultBotIds` (mesma regra). O conteúdo chega pelo endpoint público abaixo.
+- **Outros tipos:** reservados; sync regista mensagem de *connector* não implementado.
+
+**Resposta única na criação `webhook_push`:** além do objecto da fonte (sem token), o `POST` pode incluir **`webhookUrlOnce`** e **`webhookTokenOnce`** (hex 64 caracteres) — **só nesta resposta**; guarde o URL ou token no sistema externo; depois só existe `webhookConfigured: true`.
+
+Auditoria: `automation.knowledge_source.create` \| `update` \| `delete`.
+
+Os artigos `GET/PATCH` em `/knowledge-articles` podem expor o campo opcional **`knowledgeSourceId`** quando o documento foi criado ou associado a uma fonte.
+
+## 11) Push público — Webhook KB (sem JWT)
+
+- **POST** `/api/v1/public/knowledge-source-push/:token`
+- **Autenticação:** nenhuma; o `:token` (hex 64, minúsculas no armazenamento) é o segredo.
+- **Corpo JSON:** `{ "content": "<texto>", "title": "<opcional, máx. 500>" }` — `content` obrigatório, até 500 000 caracteres.
+- **Respostas:** `200` `{ ok: true, articleId }`; `404` token inválido ou fonte inexistente; `400` validação ou fonte inactiva / tipo incorrecto (códigos em `code` / `message`).
+
+O rate-limit global da API trata este path como **allowlist** (como outros webhooks públicos); ainda assim proteja o token como credencial.
+
+**Exemplo:**
+
+```bash
+curl -X POST "https://YOUR_DOMAIN/api/v1/public/knowledge-source-push/<token-hex-64>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"FAQ actualizada","content":"… texto …"}'
+```

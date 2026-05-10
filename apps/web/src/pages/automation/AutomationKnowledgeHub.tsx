@@ -34,6 +34,7 @@ export type KnowledgeArticleRow = {
   updatedAt?: string;
   sourceFileName?: string | null;
   sourceMimeType?: string | null;
+  knowledgeSourceId?: string | null;
 };
 
 type BotRow = { id: string; name: string };
@@ -57,6 +58,7 @@ type HubMetrics = {
   indexedChunks: number;
   embeddingModel: string | null;
   semanticSearchReady: boolean;
+  connectedSources?: number;
   lastUpdatedAt: string | null;
   searchesWeek: number;
   searchSuccessRate: number | null;
@@ -94,13 +96,28 @@ function naiveMdToHtml(text: string): string {
 }
 
 const SOURCE_PRESETS = [
-  { key: "gdrive", icon: Cloud },
-  { key: "notion", icon: FileText },
-  { key: "web", icon: Link2 },
-  { key: "confluence", icon: BookOpen },
-  { key: "zendesk", icon: Tags },
-  { key: "github", icon: Link2 },
+  { key: "gdrive", icon: Cloud, kind: "gdrive" as const },
+  { key: "notion", icon: FileText, kind: "notion" as const },
+  { key: "web", icon: Link2, kind: "web" as const },
+  { key: "confluence", icon: BookOpen, kind: "confluence" as const },
+  { key: "zendesk", icon: Tags, kind: "zendesk" as const },
+  { key: "github", icon: Link2, kind: "github" as const },
 ] as const;
+
+type KbSourceRow = {
+  id: string;
+  kind: string;
+  name: string;
+  config: Record<string, unknown>;
+  isActive: boolean;
+  webhookConfigured: boolean;
+  lastSyncedAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  linkedArticles: number;
+};
 
 export function AutomationKnowledgeHub({
   t,
@@ -135,6 +152,7 @@ export function AutomationKnowledgeHub({
     syncToAi: true,
     botIds: [] as string[],
     sourceFileName: null as string | null,
+    knowledgeSourceId: null as string | null,
   });
 
   const [searchQ, setSearchQ] = useState("");
@@ -146,6 +164,16 @@ export function AutomationKnowledgeHub({
   const [searchMode, setSearchMode] = useState<string | null>(null);
   const [reindexBusy, setReindexBusy] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  const [sources, setSources] = useState<KbSourceRow[]>([]);
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
+  const [srcKind, setSrcKind] = useState<"web_url" | "webhook_push" | "gdrive" | "notion" | "web" | "confluence" | "zendesk" | "github">(
+    "web_url",
+  );
+  const [srcName, setSrcName] = useState("");
+  const [srcUrl, setSrcUrl] = useState("");
+  const [srcBotIds, setSrcBotIds] = useState<string[]>([]);
+  const [webhookOnce, setWebhookOnce] = useState<{ url: string; token: string } | null>(null);
 
   const [historyArticleId, setHistoryArticleId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<
@@ -181,6 +209,19 @@ export function AutomationKnowledgeHub({
   useEffect(() => {
     void loadMetrics();
   }, [loadMetrics, articles.length]);
+
+  const loadSources = useCallback(async () => {
+    try {
+      const res = await api.get<{ data: KbSourceRow[] }>("/automation/knowledge-sources");
+      setSources(res.data);
+    } catch {
+      setSources([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sub === "sources") void loadSources();
+  }, [sub, loadSources]);
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -226,6 +267,7 @@ export function AutomationKnowledgeHub({
       syncToAi: true,
       botIds: [],
       sourceFileName: null,
+      knowledgeSourceId: null,
     });
     setEditorPreview(false);
     setEditorOpen(true);
@@ -242,6 +284,7 @@ export function AutomationKnowledgeHub({
       syncToAi: a.syncToAi,
       botIds: a.botIds ?? [],
       sourceFileName: a.sourceFileName ?? null,
+      knowledgeSourceId: a.knowledgeSourceId ?? null,
     });
     setEditorPreview(false);
     setEditorOpen(true);
@@ -351,6 +394,83 @@ export function AutomationKnowledgeHub({
     }
   };
 
+  const saveNewSource = async () => {
+    if (!srcName.trim()) return;
+    if (srcKind === "web_url" && !srcUrl.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const config: Record<string, unknown> = {};
+      if (srcKind === "web_url") config.url = srcUrl.trim();
+      if (srcBotIds.length > 0) config.defaultBotIds = srcBotIds;
+      const res = await api.post<{
+        id: string;
+        webhookUrlOnce?: string;
+        webhookTokenOnce?: string;
+      }>("/automation/knowledge-sources", {
+        kind: srcKind,
+        name: srcName.trim(),
+        config,
+        isActive: true,
+      });
+      setSourceModalOpen(false);
+      setSrcName("");
+      setSrcUrl("");
+      setSrcBotIds([]);
+      setSrcKind("web_url");
+      if (res.webhookUrlOnce && res.webhookTokenOnce) {
+        setWebhookOnce({ url: res.webhookUrlOnce, token: res.webhookTokenOnce });
+      }
+      await loadSources();
+      await loadMetrics();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteSourceRow = async (id: string) => {
+    if (!window.confirm(t("automationPage.kbHub.sourceDeleteConfirm"))) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.delete(`/automation/knowledge-sources/${id}`);
+      await loadSources();
+      await loadMetrics();
+      await onRefresh();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncSourceRow = async (id: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      await api.post<{ ok: boolean; articleId: string | null; message: string }>(
+        `/automation/knowledge-sources/${id}/sync`,
+      );
+      await loadSources();
+      await loadMetrics();
+      await onRefresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openAddSourceFromCatalog = (kind: (typeof SOURCE_PRESETS)[number]["kind"]) => {
+    setSrcKind(kind);
+    setSrcName("");
+    setSrcUrl("");
+    setSrcBotIds([]);
+    setSourceModalOpen(true);
+  };
+
   const onImportKnowledgeFile = async (file: File) => {
     setLoading(true);
     setError("");
@@ -373,6 +493,7 @@ export function AutomationKnowledgeHub({
         botIds: res.botIds ?? [],
         sourceFileName: res.sourceFileName ?? null,
         sourceMimeType: res.sourceMimeType ?? null,
+        knowledgeSourceId: res.knowledgeSourceId ?? null,
         createdAt: res.createdAt,
         updatedAt: res.updatedAt,
       });
@@ -621,7 +742,7 @@ export function AutomationKnowledgeHub({
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             {[
               {
                 label: t("automationPage.kbHub.metricDocs"),
@@ -653,6 +774,11 @@ export function AutomationKnowledgeHub({
                   : "—",
                 hint: t("automationPage.kbHub.metricSyncHint"),
               },
+              {
+                label: t("automationPage.kbHub.metricSources"),
+                value: metrics?.connectedSources ?? "—",
+                hint: t("automationPage.kbHub.metricSourcesHint"),
+              },
             ].map((c) => (
               <div
                 key={c.label}
@@ -665,7 +791,7 @@ export function AutomationKnowledgeHub({
             ))}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-2xl border border-ink-200 bg-white/80 p-4 dark:border-ink-700 dark:bg-ink-900/50">
               <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.searchesWeek")}</p>
               <p className="mt-2 text-3xl font-bold text-brand-600">{metrics?.searchesWeek ?? "—"}</p>
@@ -679,6 +805,11 @@ export function AutomationKnowledgeHub({
               <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.connectedBots")}</p>
               <p className="mt-2 text-3xl font-bold text-ink-800 dark:text-ink-200">{bots.length}</p>
               <p className="mt-1 text-xs text-ink-500">{t("automationPage.kbHub.connectedBotsHint")}</p>
+            </div>
+            <div className="rounded-2xl border border-ink-200 bg-white/80 p-4 dark:border-ink-700 dark:bg-ink-900/50">
+              <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.navSources")}</p>
+              <p className="mt-2 text-3xl font-bold text-violet-700 dark:text-violet-300">{metrics?.connectedSources ?? "—"}</p>
+              <p className="mt-1 text-xs text-ink-500">{t("automationPage.kbHub.metricSourcesHint")}</p>
             </div>
           </div>
 
@@ -763,6 +894,11 @@ export function AutomationKnowledgeHub({
                       <p className="mt-1 text-[11px] text-ink-500">
                         {t("automationPage.kbHub.docType")} · {a.category || t("automationPage.kbHub.uncategorized")}
                       </p>
+                      {a.knowledgeSourceId ? (
+                        <p className="mt-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-300">
+                          {t("automationPage.kbHub.linkedToSource")}
+                        </p>
+                      ) : null}
                       {a.sourceFileName ? (
                         <p className="mt-0.5 text-[10px] text-ink-400 line-clamp-1" title={a.sourceFileName}>
                           {t("automationPage.kbHub.importSource")}: {a.sourceFileName}
@@ -858,22 +994,121 @@ export function AutomationKnowledgeHub({
       ) : null}
 
       {sub === "sources" ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {SOURCE_PRESETS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <div
-                key={s.key}
-                className="rounded-2xl border border-dashed border-ink-300 bg-ink-50/50 p-4 opacity-80 dark:border-ink-600 dark:bg-ink-900/30"
-              >
-                <Icon className="h-8 w-8 text-ink-400" />
-                <p className="mt-2 font-semibold text-ink-800 dark:text-ink-200">
-                  {t(`automationPage.kbHub.source_${s.key}`)}
-                </p>
-                <p className="mt-1 text-xs text-ink-500">{t("automationPage.kbHub.sourceSoon")}</p>
-              </div>
-            );
-          })}
+        <div className="space-y-6">
+          <p className="text-sm text-ink-600 dark:text-ink-400">{t("automationPage.kbHub.sourcesIntro")}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.sourcesCatalog")}</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setSrcKind("web_url");
+                setSrcName("");
+                setSrcUrl("");
+                setSrcBotIds([]);
+                setSourceModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              <Plus className="h-4 w-4" />
+              {t("automationPage.kbHub.sourceAddUrl")}
+            </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => {
+                setSrcKind("webhook_push");
+                setSrcName("");
+                setSrcUrl("");
+                setSrcBotIds([]);
+                setSourceModalOpen(true);
+              }}
+              className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left transition hover:shadow-md dark:border-emerald-900 dark:bg-emerald-950/30"
+            >
+              <Sparkles className="h-8 w-8 text-emerald-600" />
+              <p className="mt-2 font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.sourceWebhookTitle")}</p>
+              <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("automationPage.kbHub.sourceWebhookDesc")}</p>
+            </button>
+            {SOURCE_PRESETS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <div
+                  key={s.key}
+                  className="rounded-2xl border border-ink-200 bg-white/90 p-4 dark:border-ink-700 dark:bg-ink-900/50"
+                >
+                  <Icon className="h-8 w-8 text-violet-500" />
+                  <p className="mt-2 font-semibold text-ink-800 dark:text-ink-200">{t(`automationPage.kbHub.source_${s.key}`)}</p>
+                  <p className="mt-1 text-xs text-ink-500">{t("automationPage.kbHub.sourceStubRegister")}</p>
+                  <button
+                    type="button"
+                    onClick={() => openAddSourceFromCatalog(s.kind)}
+                    className="mt-3 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold dark:border-ink-600"
+                  >
+                    {t("automationPage.kbHub.sourceRegister")}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.sourcesActive")}</h3>
+            {sources.length === 0 ? (
+              <p className="mt-2 text-sm text-ink-500">{t("automationPage.kbHub.sourcesEmpty")}</p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {sources.map((s) => (
+                  <li
+                    key={s.id}
+                    className="rounded-2xl border border-ink-200 bg-white/90 p-4 dark:border-ink-700 dark:bg-ink-900/60"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900 dark:text-ink-50">{s.name}</p>
+                        <p className="text-[11px] text-ink-500">
+                          {t(`automationPage.kbHub.sourceKind_${s.kind}`)} · {s.linkedArticles}{" "}
+                          {t("automationPage.kbHub.sourceArticles")}
+                        </p>
+                        {typeof s.config.url === "string" && s.config.url ? (
+                          <p className="mt-1 truncate text-xs text-sky-600 dark:text-sky-300" title={s.config.url}>
+                            {s.config.url}
+                          </p>
+                        ) : null}
+                        {s.lastSyncMessage ? (
+                          <p className="mt-1 text-[11px] text-ink-500 line-clamp-2">{s.lastSyncMessage}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={loading || !s.isActive}
+                          onClick={() => void syncSourceRow(s.id)}
+                          className="rounded-lg bg-ink-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 dark:bg-ink-100 dark:text-ink-900"
+                        >
+                          {t("automationPage.kbHub.sourceSync")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void deleteSourceRow(s.id)}
+                          className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs dark:border-ink-600"
+                        >
+                          {t("automationPage.kbHub.sourceRemove")}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[10px] text-ink-400">
+                      {s.lastSyncedAt
+                        ? `${t("automationPage.kbHub.sourceLastSync")}: ${new Date(s.lastSyncedAt).toLocaleString()} · ${s.lastSyncStatus ?? "—"}`
+                        : t("automationPage.kbHub.sourceNeverSynced")}
+                    </p>
+                    {s.kind === "webhook_push" && s.webhookConfigured ? (
+                      <p className="mt-1 text-[10px] text-ink-500">{t("automationPage.kbHub.sourceWebhookStored")}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -1079,6 +1314,128 @@ export function AutomationKnowledgeHub({
         </div>
       ) : null}
 
+      {sourceModalOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-950">
+            <h3 className="text-lg font-bold text-ink-900 dark:text-ink-50">{t("automationPage.kbHub.sourceModalTitle")}</h3>
+            <label className="mt-4 block text-xs font-medium">
+              {t("automationPage.kbHub.sourceKindLabel")}
+              <select
+                value={srcKind}
+                onChange={(e) =>
+                  setSrcKind(
+                    e.target.value as typeof srcKind,
+                  )
+                }
+                className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-2 text-sm dark:border-ink-600 dark:bg-ink-900"
+              >
+                <option value="web_url">{t("automationPage.kbHub.sourceKind_web_url")}</option>
+                <option value="webhook_push">{t("automationPage.kbHub.sourceKind_webhook_push")}</option>
+                <option value="gdrive">{t("automationPage.kbHub.sourceKind_gdrive")}</option>
+                <option value="notion">{t("automationPage.kbHub.sourceKind_notion")}</option>
+                <option value="web">{t("automationPage.kbHub.sourceKind_web")}</option>
+                <option value="confluence">{t("automationPage.kbHub.sourceKind_confluence")}</option>
+                <option value="zendesk">{t("automationPage.kbHub.sourceKind_zendesk")}</option>
+                <option value="github">{t("automationPage.kbHub.sourceKind_github")}</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-xs font-medium">
+              {t("automationPage.kbHub.sourceNameLabel")}
+              <input
+                value={srcName}
+                onChange={(e) => setSrcName(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-2 text-sm dark:border-ink-600 dark:bg-ink-900"
+              />
+            </label>
+            {srcKind === "web_url" ? (
+              <label className="mt-3 block text-xs font-medium">
+                {t("automationPage.kbHub.sourceUrlLabel")}
+                <input
+                  value={srcUrl}
+                  onChange={(e) => setSrcUrl(e.target.value)}
+                  placeholder="https://"
+                  className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-2 font-mono text-sm dark:border-ink-600 dark:bg-ink-900"
+                />
+              </label>
+            ) : null}
+            <div className="mt-3">
+              <p className="text-xs font-medium text-ink-700 dark:text-ink-300">{t("automationPage.kbHub.sourceBotsOptional")}</p>
+              <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-lg border border-ink-100 p-2 dark:border-ink-800">
+                {bots.map((b) => (
+                  <label key={b.id} className="flex cursor-pointer items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={srcBotIds.includes(b.id)}
+                      onChange={() =>
+                        setSrcBotIds((prev) =>
+                          prev.includes(b.id) ? prev.filter((x) => x !== b.id) : [...prev, b.id],
+                        )
+                      }
+                    />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSourceModalOpen(false)}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm dark:border-ink-600"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={loading || !srcName.trim() || (srcKind === "web_url" && !srcUrl.trim())}
+                onClick={() => void saveNewSource()}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {t("automationPage.kbHub.sourceSave")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {webhookOnce ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-ink-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-xl dark:border-amber-900 dark:bg-amber-950/40">
+            <h3 className="font-bold text-amber-950 dark:text-amber-100">{t("automationPage.kbHub.webhookOnceTitle")}</h3>
+            <p className="mt-2 text-sm text-amber-900/90 dark:text-amber-200/90">{t("automationPage.kbHub.webhookOnceBody")}</p>
+            <label className="mt-3 block text-xs font-medium text-amber-950 dark:text-amber-100">URL</label>
+            <div className="mt-1 flex gap-2">
+              <input readOnly value={webhookOnce.url} className="min-w-0 flex-1 rounded border border-amber-300 bg-white px-2 py-1.5 font-mono text-xs dark:bg-ink-900" />
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(webhookOnce.url)}
+                className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                {t("automationPage.kbHub.copy")}
+              </button>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-amber-950 dark:text-amber-100">{t("automationPage.kbHub.webhookTokenLabel")}</label>
+            <div className="mt-1 flex gap-2">
+              <input readOnly value={webhookOnce.token} className="min-w-0 flex-1 rounded border border-amber-300 bg-white px-2 py-1.5 font-mono text-xs dark:bg-ink-900" />
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(webhookOnce.token)}
+                className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                {t("automationPage.kbHub.copy")}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWebhookOnce(null)}
+              className="mt-4 w-full rounded-lg bg-ink-900 py-2 text-sm font-semibold text-white dark:bg-ink-100 dark:text-ink-900"
+            >
+              {t("automationPage.kbHub.webhookOnceClose")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {editorOpen ? (
         <div className="fixed inset-0 z-[65] flex flex-col bg-ink-950/75 p-3 backdrop-blur-md sm:p-5">
           <div className="mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-950">
@@ -1138,6 +1495,9 @@ export function AutomationKnowledgeHub({
                   className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-900"
                 />
               </label>
+              {kbForm.knowledgeSourceId ? (
+                <p className="mt-2 text-[11px] text-violet-600 dark:text-violet-300">{t("automationPage.kbHub.editorLinkedSource")}</p>
+              ) : null}
               {kbForm.sourceFileName ? (
                 <p className="mt-2 text-[11px] text-ink-500">
                   {t("automationPage.kbHub.importSource")}:{" "}

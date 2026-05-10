@@ -36,6 +36,7 @@ import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
+import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 
 const app = Fastify({
@@ -64,7 +65,8 @@ await app.register(rateLimit, {
           path.startsWith("/api/v1/public/csat/") ||
           path.startsWith("/api/v1/public/inbox/") ||
           path.startsWith("/api/v1/public/channels/") ||
-          path.startsWith("/api/v1/public/system-documentation")
+          path.startsWith("/api/v1/public/system-documentation") ||
+          path.startsWith("/api/v1/public/knowledge-source-push/")
         );
       },
 });
@@ -85,6 +87,7 @@ await app.register(publicSystemDocumentationRoutes, { prefix: "/api/v1/public" }
 await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
 await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" });
 await app.register(channelNativePublicRoutes, { prefix: "/api/v1/public/channels" });
+await app.register(publicKnowledgeSourcePushRoutes, { prefix: "/api/v1/public" });
 
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });

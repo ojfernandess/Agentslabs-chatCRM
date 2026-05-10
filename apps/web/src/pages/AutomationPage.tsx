@@ -122,6 +122,7 @@ interface KnowledgeArticle {
   updatedAt?: string;
   sourceFileName?: string | null;
   sourceMimeType?: string | null;
+  knowledgeSourceId?: string | null;
 }
 
 interface DashboardPayload {

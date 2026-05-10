@@ -125,6 +125,7 @@ model Organization {
   inboxes          Inbox[]
 
   automationKnowledgeArticles      AutomationKnowledgeArticle[]
+  automationKnowledgeSources       AutomationKnowledgeSource[]
   automationKnowledgeChunks        AutomationKnowledgeChunk[]
   kbSearchCaches                   KbSearchCache[]
   kbSearchLogs                     KbSearchLog[]
@@ -870,6 +871,8 @@ model AutomationKnowledgeArticle {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  knowledgeSourceId String?   @map("knowledge_source_id") @db.Uuid
+  knowledgeSource   AutomationKnowledgeSource? @relation(fields: [knowledgeSourceId], references: [id], onDelete: SetNull)
   title          String       @db.VarChar(500)
   content        String       @db.Text
   category       String?      @db.VarChar(120)
@@ -888,7 +891,32 @@ model AutomationKnowledgeArticle {
 
   @@index([organizationId])
   @@index([organizationId, isActive])
+  @@index([knowledgeSourceId])
   @@map("automation_knowledge_articles")
+}
+
+/// Fonte externa ou automatizada ligada à base de conhecimento (URL, webhook, integrações futuras).
+model AutomationKnowledgeSource {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           String       @db.VarChar(40)
+  name           String       @db.VarChar(200)
+  config         Json
+  isActive       Boolean      @default(true) @map("is_active")
+  /// Token secreto para `POST /api/v1/public/knowledge-source-push/:token` (kind webhook_push).
+  webhookToken   String?      @unique @map("webhook_token") @db.VarChar(64)
+  lastSyncedAt   DateTime?    @map("last_synced_at")
+  lastSyncStatus String?      @map("last_sync_status") @db.VarChar(20)
+  lastSyncMessage String?     @map("last_sync_message") @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  articles AutomationKnowledgeArticle[]
+
+  @@index([organizationId])
+  @@index([organizationId, kind])
+  @@map("automation_knowledge_sources")
 }
 
 /// Segmentos de texto com embeddings para busca semântica (RAG) sobre artigos da KB.
