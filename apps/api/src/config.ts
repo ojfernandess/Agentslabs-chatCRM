@@ -14,6 +14,19 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] ?? defaultValue;
 }
 
+/** Aceita true/1/yes/on, trim, aspas opcionais e BOM UTF-8 (ficheiros .env no Windows). */
+function parseTruthyEnv(name: string): boolean {
+  const raw = process.env[name];
+  if (raw == null) return false;
+  const inner = raw
+    .replace(/^\ufeff/, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "on"].includes(inner);
+}
+
 /** Base URL pública (sem barra final) — usada no webhook exibido em Configurações. */
 export function getPublicOrigin(): string {
   return optionalEnv("PUBLIC_URL", "http://localhost:3000").replace(/\/+$/, "");
@@ -119,5 +132,5 @@ export const config = {
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
   /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */
-  agentKbDebug: ["1", "true", "yes"].includes(optionalEnv("AGENT_KB_DEBUG", "").trim().toLowerCase()),
+  agentKbDebug: parseTruthyEnv("AGENT_KB_DEBUG"),
 } as const;

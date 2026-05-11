@@ -2,6 +2,27 @@ export type PreviewChatTurn = { role: "user" | "assistant"; content: string };
 
 export type PreviewLlmUsage = { prompt: number; completion: number; total: number };
 
+/**
+ * Novos modelos OpenAI (ex. GPT-5.x) em `/v1/chat/completions` rejeitam `max_tokens` e exigem
+ * `max_completion_tokens`. Ver documentação de modelos em https://developers.openai.com/api/docs/models
+ */
+export function openAiChatCompletionsUsesMaxCompletionTokens(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  if (m.startsWith("gpt-5")) return true;
+  if (m.startsWith("o1")) return true;
+  if (m.startsWith("o3")) return true;
+  if (m.startsWith("o4")) return true;
+  return false;
+}
+
+function applyOpenAiMaxTokensToBody(body: Record<string, unknown>, model: string, maxTokens: number): void {
+  if (openAiChatCompletionsUsesMaxCompletionTokens(model)) {
+    body.max_completion_tokens = maxTokens;
+  } else {
+    body.max_tokens = maxTokens;
+  }
+}
+
 export type OpenAiToolDefinition = {
   type: "function";
   function: { name: string; description: string; parameters: Record<string, unknown> };
@@ -47,20 +68,22 @@ export async function callOpenAiCompatibleChatWithTools(params: {
   let totalUsage: PreviewLlmUsage | undefined;
 
   for (;;) {
+    const body: Record<string, unknown> = {
+      model: params.model,
+      temperature: params.temperature,
+      messages,
+      tools: params.tools,
+      tool_choice: "auto",
+    };
+    applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
+
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${params.apiKey}`,
       },
-      body: JSON.stringify({
-        model: params.model,
-        temperature: params.temperature,
-        max_tokens: params.maxTokens,
-        messages,
-        tools: params.tools,
-        tool_choice: "auto",
-      }),
+      body: JSON.stringify(body),
       signal: params.signal,
     });
     const rawText = await res.text();
@@ -148,18 +171,20 @@ export async function callOpenAiCompatibleChat(params: {
     ...params.history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: params.userMessage },
   ];
+  const body: Record<string, unknown> = {
+    model: params.model,
+    temperature: params.temperature,
+    messages,
+  };
+  applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${params.apiKey}`,
     },
-    body: JSON.stringify({
-      model: params.model,
-      temperature: params.temperature,
-      max_tokens: params.maxTokens,
-      messages,
-    }),
+    body: JSON.stringify(body),
     signal: params.signal,
   });
   const rawText = await res.text();

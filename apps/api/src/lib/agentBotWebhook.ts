@@ -14,6 +14,7 @@ import { prisma } from "../db.js";
 import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { generateNativeAgentReply } from "./agentNativeLlm.js";
+import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -207,6 +208,16 @@ async function dispatchAgentBotNativeFallback(input: {
   const { organizationId, bot, conversation, contact, message, log } = input;
   const userMessage = (message.body ?? "").trim();
 
+  if (isAgentKbDebugEnabled()) {
+    logAgentKbDebug(log, {
+      stage: "dispatchAgentBotNativeFallback",
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      messageId: message.id,
+    });
+  }
+
   try {
     await upsertAutomationConversationContextForNative({
       organizationId,
@@ -360,8 +371,31 @@ export async function dispatchAgentBotWebhook(input: {
   }
 
   const hasExternalWebhook = Boolean(bot.webhookUrl?.trim());
+  const nativeManaged = botManagedByOpenConduit(bot.config);
+  if (isAgentKbDebugEnabled()) {
+    logAgentKbDebug(log, {
+      stage: "dispatchAgentBotWebhook",
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      hasExternalWebhook,
+      nativeManaged,
+      path: !hasExternalWebhook && nativeManaged ? "native_openconduit" : hasExternalWebhook ? "external_webhook" : "none",
+    });
+  }
+
   if (!hasExternalWebhook) {
-    if (!botManagedByOpenConduit(bot.config)) return;
+    if (!nativeManaged) {
+      if (isAgentKbDebugEnabled()) {
+        logAgentKbDebug(log, {
+          stage: "dispatchAgentBotWebhook_skipped",
+          reason: "bot_config_missing_automation_managed_by_openconduit",
+          botId: bot.id,
+          conversationId: conversation.id,
+        });
+      }
+      return;
+    }
     await dispatchAgentBotNativeFallback({
       organizationId,
       bot,
@@ -371,6 +405,16 @@ export async function dispatchAgentBotWebhook(input: {
       log,
     });
     return;
+  }
+
+  if (isAgentKbDebugEnabled()) {
+    logAgentKbDebug(log, {
+      stage: "dispatchAgentBotWebhook_external",
+      botId: bot.id,
+      conversationId: conversation.id,
+      note:
+        "Com webhookUrl definido, a resposta e a KB vêm do integrador externo; o agente nativo OpenConduit (RAG buscar_conhecimento) não é executado.",
+    });
   }
   const webhookUrl = bot.webhookUrl!.trim();
 

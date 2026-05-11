@@ -48,6 +48,8 @@ const app = Fastify({
 app.log.warn(
   {
     agentKbDebug: config.agentKbDebug,
+    /** Se false em Docker, confirme que o serviço `api` recebe `AGENT_KB_DEBUG` (env_file / environment). */
+    agentKbDebugEnvPresent: Boolean(process.env.AGENT_KB_DEBUG?.trim()),
   },
   "startup_flags",
 );

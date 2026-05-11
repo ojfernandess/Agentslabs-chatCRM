@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Bot, Conversation, Message } from "@prisma/client";
+import { config } from "../config.js";
 import { prisma } from "../db.js";
 import {
   callGeminiGenerateContent,
@@ -345,15 +346,46 @@ export async function generateNativeAgentReply(input: {
   });
   if (!profile?.llmConfig || typeof profile.llmConfig !== "object") {
     log.warn({ botId: bot.id }, "Agent bot native fallback skipped: missing automation profile");
+    if (isAgentKbDebugEnabled()) {
+      logAgentKbDebug(log, {
+        stage: "nativeAgentReply_skipped",
+        reason: "missing_automation_agent_profile",
+        botId: bot.id,
+        conversationId: conversation.id,
+        organizationId,
+      });
+    }
     return "";
   }
 
   const llm = profile.llmConfig as Record<string, unknown>;
   const provider = llmString(llm, "provider") || "openai";
   const model = llmString(llm, "model") || "gpt-4o-mini";
-  const apiKey = llmString(llm, "apiKey");
-  if (!apiKey || apiKey === "***") {
-    log.warn({ botId: bot.id }, "Agent bot native fallback skipped: API key not configured");
+  const storedKey = llmString(llm, "apiKey");
+  /** Mesma ordem que embeddings/playground: chave no perfil ou `OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY` no servidor. */
+  const apiKey =
+    storedKey && storedKey !== "***"
+      ? storedKey
+      : provider === "openai"
+        ? config.openAiPromptPreviewKey.trim()
+        : provider === "google_gemini"
+          ? config.geminiPromptPreviewKey.trim()
+          : "";
+  if (!apiKey) {
+    log.warn(
+      { botId: bot.id },
+      "Agent bot native fallback skipped: API key not configured (perfil do agente ou OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY / GEMINI_PROMPT_PREVIEW_KEY no servidor)",
+    );
+    if (isAgentKbDebugEnabled()) {
+      logAgentKbDebug(log, {
+        stage: "nativeAgentReply_skipped",
+        reason: "missing_api_key",
+        botId: bot.id,
+        conversationId: conversation.id,
+        organizationId,
+        provider,
+      });
+    }
     return "";
   }
   const temperatureRaw = llm.temperature;
@@ -387,6 +419,14 @@ export async function generateNativeAgentReply(input: {
       pinnedArticleIdsCount: pinnedArticleIds.length,
       provider,
       useTools: provider !== "google_gemini" && buildOpenAiTools(flags).length > 0,
+      apiKeySource:
+        storedKey && storedKey !== "***"
+          ? "profile"
+          : provider === "openai" && config.openAiPromptPreviewKey.trim()
+            ? "server_openai_env"
+            : provider === "google_gemini" && config.geminiPromptPreviewKey.trim()
+              ? "server_gemini_env"
+              : "none",
     });
   }
 

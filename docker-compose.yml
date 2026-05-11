@@ -77,6 +77,17 @@ services:
       # Ouve IPv4+IPv6 no container (evita falhas com loopback IPv6-only).
       HOST: "::"
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
+      # CORS / URLs expostas ao browser (defina no .env da raiz; o Compose não injeta o ficheiro inteiro no contentor).
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      WEB_APP_PUBLIC_URL: ${WEB_APP_PUBLIC_URL:-}
+      # LLM + embeddings (KB semântica e agente nativo). Sem isto no contentor, OPENAI_* no .env do host não tem efeito.
+      OPENAI_PROMPT_PREVIEW_KEY: ${OPENAI_PROMPT_PREVIEW_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      GEMINI_PROMPT_PREVIEW_KEY: ${GEMINI_PROMPT_PREVIEW_KEY:-}
+      # Logs `agent_kb_debug` / startup_flags (ver apps/api).
+      AGENT_KB_DEBUG: ${AGENT_KB_DEBUG:-}
       # Áudio/mídia enviada: ficheiros neste diretório; expostos como ${PUBLIC_URL}/api/v1/messages/media/…
       MEDIA_UPLOAD_DIR: /app/data/message-media
       NODE_ENV: production

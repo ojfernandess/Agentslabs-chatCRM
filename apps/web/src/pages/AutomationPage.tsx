@@ -110,9 +110,19 @@ const PROVIDER_OPTIONS = [
   { value: "google_gemini", labelKey: "automationPage.agentProviderGemini" as const },
 ];
 
+/** Sugestões alinhadas ao catálogo OpenAI (frontier + chat); pode escrever outro ID no campo. */
 const MODELS_BY_PROVIDER: Record<string, string[]> = {
-  // Mantém os modelos anteriores e apenas acrescenta o mais recente.
-  openai: ["gpt-4o-mini", "gpt-4o", "gpt-5.5", "gpt-4-turbo", "gpt-3.5-turbo"],
+  openai: [
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-4",
+    "gpt-3.5-turbo",
+  ],
   google_gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
 };
 
@@ -1690,17 +1700,37 @@ function AgentsTab({
                 </label>
                 <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                   {t("automationPage.agentModel")}
-                  <select
-                    value={agentForm.model}
-                    onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  >
-                    {(MODELS_BY_PROVIDER[agentForm.provider] ?? MODELS_BY_PROVIDER.openai).map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
+                  {agentForm.provider === "openai" ? (
+                    <>
+                      <input
+                        type="text"
+                        list="oc-automation-openai-model-suggestions"
+                        value={agentForm.model}
+                        onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
+                        placeholder="gpt-4o-mini"
+                        maxLength={120}
+                        autoComplete="off"
+                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 font-mono text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                      />
+                      <datalist id="oc-automation-openai-model-suggestions">
+                        {MODELS_BY_PROVIDER.openai.map((m) => (
+                          <option key={m} value={m} />
+                        ))}
+                      </datalist>
+                    </>
+                  ) : (
+                    <select
+                      value={agentForm.model}
+                      onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    >
+                      {(MODELS_BY_PROVIDER[agentForm.provider] ?? MODELS_BY_PROVIDER.google_gemini).map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentModelHelp")}</p>
                 </label>
               </div>

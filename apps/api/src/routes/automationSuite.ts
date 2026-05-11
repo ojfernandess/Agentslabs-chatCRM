@@ -2160,7 +2160,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const llm = (profile.llmConfig as Record<string, unknown>) ?? {};
       const provider = String(llm.provider ?? "openai");
       const model = String(llm.model ?? "gpt-4o-mini");
-      const apiKey = String(llm.apiKey ?? "").trim();
+      const storedKey = String(llm.apiKey ?? "").trim();
+      const apiKey =
+        storedKey && storedKey !== "***"
+          ? storedKey
+          : provider === "openai"
+            ? config.openAiPromptPreviewKey.trim()
+            : provider === "google_gemini"
+              ? config.geminiPromptPreviewKey.trim()
+              : "";
       const system = String(llm.systemInstructions ?? "");
       const temperature = Number(llm.temperature ?? 0.7);
       const maxTokens = Number(llm.maxTokens ?? 1024);
@@ -2185,11 +2193,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         }
       }
 
-      if (!apiKey || apiKey === "***") {
+      if (!apiKey) {
         return reply.status(400).send({
           error: "Bad Request",
           message:
-            "Agent API key not configured. Save a valid API key in Automation > Agents IA before testing chat.",
+            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY (or GEMINI_PROMPT_PREVIEW_KEY) on the server.",
           statusCode: 400,
         });
       }
