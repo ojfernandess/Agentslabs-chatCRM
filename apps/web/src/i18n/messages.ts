@@ -253,6 +253,26 @@ export const messages = {
       promptKbScopeNoBotYet:
         "Guarde o perfil do agente para existir um bot com UUID; depois pode vincular artigos a esse bot em Base de conhecimento para restringir a pesquisa.",
       promptKbOpenKnowledgeTab: "Abrir Base de conhecimento",
+      promptKbToolDisabledWarning:
+        "A capacidade nativa «buscar_conhecimento» está desligada. Sem ela, não há pesquisa na base nem injectação automática de excertos neste fluxo — active o chip abaixo.",
+      promptKbCatalogLine:
+        "Resumo: {org} artigo(s) activo(s) com sincronização IA na organização · {linked} vinculado(s) a este bot (com 0 vínculos, a pesquisa usa todos os da org até restringir no hub).",
+      promptKbCatalogLineNoBot:
+        "{org} artigo(s) activo(s) com sincronização IA na organização. Guarde o perfil com um bot seleccionado para ver quantos estão vinculados a esse bot.",
+      agentKbBadgeToolOff: "KB desligada",
+      agentKbBadgeToolOffTitle: "Active «buscar_conhecimento» no editor do agente para habilitar RAG e a tool.",
+      agentKbBadgeLinked: "KB · {count}",
+      agentKbBadgeLinkedTitle: "{count} artigo(s) com IA vinculado(s) a este bot.",
+      agentKbBadgeOrg: "KB org ({count})",
+      agentKbBadgeOrgTitle:
+        "Nenhum artigo só deste bot: a pesquisa usa os {count} artigo(s) com IA em toda a organização.",
+      agentKbBadgeEmpty: "Sem base IA",
+      agentKbBadgeEmptyTitle:
+        "Nenhum artigo activo com «Sincronizar com IA». Crie conteúdo ou active a opção em Base de conhecimento.",
+      kbHubChipInactive: "Inactivo",
+      kbHubChipNoSyncAi: "Fora da IA",
+      kbHubChipBotsUnscoped: "Qualquer bot",
+      kbHubChipBotsCount: "{n} bot(s)",
       promptGeneratedTitle: "Instruções geradas automaticamente (pré-visualização)",
       promptGeneratedHelp:
         "Este bloco é acrescentado ao prompt final quando grava o perfil — não precisa copiar manualmente.",
@@ -2119,6 +2139,24 @@ export const messages = {
       promptKbScopeNoBotYet:
         "Save the agent profile first so a bot UUID exists; then link articles to that bot under Knowledge to narrow what the agent can retrieve.",
       promptKbOpenKnowledgeTab: "Open Knowledge base",
+      promptKbToolDisabledWarning:
+        "Native «knowledge_search» / buscar_conhecimento is off. Without it, there is no KB retrieval or automatic excerpt injection in this flow — enable the chip below.",
+      promptKbCatalogLine:
+        "Summary: {org} active article(s) with AI sync in the org · {linked} linked to this bot (with 0 links, search uses all org articles until you scope in the hub).",
+      promptKbCatalogLineNoBot:
+        "{org} active article(s) with AI sync in the organization. Save the profile with a bot selected to see how many are linked to that bot.",
+      agentKbBadgeToolOff: "KB off",
+      agentKbBadgeToolOffTitle: "Enable «knowledge_search» / buscar_conhecimento in the agent editor to turn on RAG and the tool.",
+      agentKbBadgeLinked: "KB · {count}",
+      agentKbBadgeLinkedTitle: "{count} AI-synced article(s) linked to this bot.",
+      agentKbBadgeOrg: "KB org ({count})",
+      agentKbBadgeOrgTitle: "No bot-only articles: search uses all {count} AI-synced article(s) in the organization.",
+      agentKbBadgeEmpty: "No KB",
+      agentKbBadgeEmptyTitle: "No active articles with «Sync to AI». Add content or enable it under Knowledge.",
+      kbHubChipInactive: "Inactive",
+      kbHubChipNoSyncAi: "Not in AI",
+      kbHubChipBotsUnscoped: "Any bot",
+      kbHubChipBotsCount: "{n} bot(s)",
       promptGeneratedTitle: "Auto-generated instructions (preview)",
       promptGeneratedHelp:
         "This block is appended to the final prompt when you save — you do not need to copy it manually.",

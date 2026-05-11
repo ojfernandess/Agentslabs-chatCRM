@@ -1342,6 +1342,11 @@ function AgentsTab({
     ).length;
   }, [articles, kbScopeBotId]);
 
+  const orgKbActiveSyncCount = useMemo(
+    () => articles.filter((a) => a.syncToAi !== false && a.isActive !== false).length,
+    [articles],
+  );
+
   const kbq = kbArticleFilter.trim().toLowerCase();
   const visibleKbArticles = articles.filter((a) => {
     if (kbq && !(`${a.title} ${a.content ?? ""}`.toLowerCase().includes(kbq))) return false;
@@ -1393,6 +1398,13 @@ function AgentsTab({
           const temp = typeof llm.temperature === "number" ? llm.temperature : Number(llm.temperature ?? 0);
           const maxTok = typeof llm.maxTokens === "number" ? llm.maxTokens : Number(llm.maxTokens ?? 0);
           const instr = String(llm.systemInstructions ?? row.bot.description ?? "");
+          const linkedKbCount = articles.filter(
+            (a) =>
+              a.syncToAi !== false &&
+              a.isActive !== false &&
+              Array.isArray(a.botIds) &&
+              a.botIds.includes(row.bot.id),
+          ).length;
 
           return (
             <div
@@ -1468,11 +1480,35 @@ function AgentsTab({
                 <span className="text-[11px] text-ink-500">
                   T: {temp.toFixed(2)} · {t("automationPage.agentTokens")}: {maxTok}
                 </span>
-                {nt.knowledge_search ? (
-                  <span className="rounded-full bg-ink-50 px-2 py-0.5 text-[10px] text-ink-600 dark:bg-ink-800 dark:text-ink-400">
-                    KB
+                {!nt.knowledge_search ? (
+                  <span
+                    className="rounded-full border border-amber-300/80 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100"
+                    title={t("automationPage.agentKbBadgeToolOffTitle")}
+                  >
+                    {t("automationPage.agentKbBadgeToolOff")}
                   </span>
-                ) : null}
+                ) : orgKbActiveSyncCount === 0 ? (
+                  <span
+                    className="rounded-full border border-red-300/80 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+                    title={t("automationPage.agentKbBadgeEmptyTitle")}
+                  >
+                    {t("automationPage.agentKbBadgeEmpty")}
+                  </span>
+                ) : linkedKbCount > 0 ? (
+                  <span
+                    className="rounded-full border border-emerald-300/80 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                    title={t("automationPage.agentKbBadgeLinkedTitle").replace("{count}", String(linkedKbCount))}
+                  >
+                    {t("automationPage.agentKbBadgeLinked").replace("{count}", String(linkedKbCount))}
+                  </span>
+                ) : (
+                  <span
+                    className="rounded-full border border-sky-300/80 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-950 dark:border-sky-800 dark:bg-sky-950/35 dark:text-sky-100"
+                    title={t("automationPage.agentKbBadgeOrgTitle").replace("{count}", String(orgKbActiveSyncCount))}
+                  >
+                    {t("automationPage.agentKbBadgeOrg").replace("{count}", String(orgKbActiveSyncCount))}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -2080,7 +2116,28 @@ function AgentsTab({
                     <div className="rounded-xl border border-ink-100 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-950/50">
                       <p className="text-xs font-semibold text-ink-900 dark:text-ink-100">{t("automationPage.promptKbSection")}</p>
                       <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptKbHint")}</p>
-                      {agentForm.nativeTools.knowledge_search ? (
+                      <p className="mt-2 text-[11px] leading-snug text-ink-600 dark:text-ink-400">
+                        {kbScopeBotId
+                          ? t("automationPage.promptKbCatalogLine")
+                              .replace("{org}", String(orgKbActiveSyncCount))
+                              .replace("{linked}", String(kbLinkedArticleCount ?? 0))
+                          : t("automationPage.promptKbCatalogLineNoBot").replace(
+                              "{org}",
+                              String(orgKbActiveSyncCount),
+                            )}
+                      </p>
+                      {!agentForm.nativeTools.knowledge_search ? (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-[11px] leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                          <p>{t("automationPage.promptKbToolDisabledWarning")}</p>
+                          <button
+                            type="button"
+                            onClick={onOpenKnowledgeTab}
+                            className="mt-2 inline-flex text-[11px] font-semibold text-brand-700 underline hover:text-brand-600 dark:text-brand-300 dark:hover:text-brand-200"
+                          >
+                            {t("automationPage.promptKbOpenKnowledgeTab")}
+                          </button>
+                        </div>
+                      ) : (
                         <div
                           className={clsx(
                             "mt-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed",
@@ -2111,7 +2168,7 @@ function AgentsTab({
                             {t("automationPage.promptKbOpenKnowledgeTab")}
                           </button>
                         </div>
-                      ) : null}
+                      )}
                       <input
                         type="search"
                         value={kbArticleFilter}

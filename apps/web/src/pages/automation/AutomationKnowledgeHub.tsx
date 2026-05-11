@@ -1075,6 +1075,27 @@ export function AutomationKnowledgeHub({
                       </span>
                     ))}
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {a.isActive === false ? (
+                      <span className="rounded-md border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                        {t("automationPage.kbHubChipInactive")}
+                      </span>
+                    ) : null}
+                    {a.syncToAi === false ? (
+                      <span className="rounded-md border border-ink-200 bg-ink-100 px-2 py-0.5 text-[10px] font-semibold text-ink-700 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200">
+                        {t("automationPage.kbHubChipNoSyncAi")}
+                      </span>
+                    ) : null}
+                    {Array.isArray(a.botIds) && a.botIds.length > 0 ? (
+                      <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+                        {t("automationPage.kbHubChipBotsCount").replace("{n}", String(a.botIds.length))}
+                      </span>
+                    ) : (
+                      <span className="rounded-md border border-emerald-200/80 bg-emerald-50/80 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-100">
+                        {t("automationPage.kbHubChipBotsUnscoped")}
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-3 text-[11px] text-ink-500">
                     {chunks} {t("automationPage.kbHub.chunks")} · {tok} tok ·{" "}
                     {a.updatedAt ? new Date(a.updatedAt).toLocaleString() : "—"}
