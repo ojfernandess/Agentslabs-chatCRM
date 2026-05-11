@@ -17,6 +17,7 @@ import { SuperAdminPage } from "@/pages/SuperAdminPage";
 import { TeamsPage } from "@/pages/TeamsPage";
 import { BotsPage } from "@/pages/BotsPage";
 import { AutomationPage } from "@/pages/AutomationPage";
+import { AutomationAgentEditLayout } from "@/pages/AutomationAgentEditLayout";
 import { MyAttendancePage } from "@/pages/MyAttendancePage";
 import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { CsatPage } from "@/pages/CsatPage";
@@ -141,6 +142,7 @@ export function App() {
         <Route path="inboxes" element={<InboxesPage />} />
         <Route path="bots" element={<BotsPage />} />
         <Route path="automation" element={<AutomationPage />} />
+        <Route path="automation/agents/:botId" element={<AutomationAgentEditLayout />} />
         <Route path="broadcasts" element={<BroadcastCampaignsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

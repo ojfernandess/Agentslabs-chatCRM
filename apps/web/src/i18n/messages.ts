@@ -202,6 +202,7 @@ export const messages = {
       agentPromptModulesPick: "Módulos da biblioteca de prompts",
       agentPromptModulesMergeHint:
         "Ao marcar módulos, as instruções de sistema juntam o texto de cada prompt (pela ordem da lista de seleccionados). O primeiro módulo com dados LLM guardados define provedor, modelo, temperatura, tokens e URL base. As ferramentas associadas ao módulo ficam activas.",
+      agentBackToAutomation: "← Voltar à automação",
       agentCancel: "Cancelar",
       agentValidation: "Preencha o nome do bot ou selecione um bot existente.",
       agentExternalWebhookWarning:
@@ -2065,6 +2066,7 @@ export const messages = {
       agentPromptModulesPick: "Prompt library modules",
       agentPromptModulesMergeHint:
         "When you check modules, system instructions concatenate each prompt body (in selection order) and the first module with saved LLM settings applies provider, model, temperature, max tokens, and API base URL. Tools linked on the module are enabled.",
+      agentBackToAutomation: "← Back to automation",
       agentCancel: "Cancel",
       agentValidation: "Enter a bot name or select an existing bot.",
       agentExternalWebhookWarning:

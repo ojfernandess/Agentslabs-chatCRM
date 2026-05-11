@@ -14,6 +14,7 @@ import {
   parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
 } from "./knowledgeRetrieval.js";
+import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 
 const STALL_RE =
@@ -177,12 +178,14 @@ async function executeNativeTool(input: {
           normalizedQuery: norm,
           botId,
           limit: 8,
+          debugLog: log,
         })
       ).ranked;
       ranked = await mergePinnedKnowledgeWhenRankedEmpty({
         organizationId,
         ranked,
         pinnedArticleIds,
+        debugLog: log,
       });
       ranked = ranked.slice(0, 8);
       return formatKnowledgeToolResult(ranked);
@@ -275,12 +278,14 @@ async function augmentStallWithKnowledge(params: {
         normalizedQuery: norm,
         botId: params.botId,
         limit: 6,
+        debugLog: params.log,
       })
     ).ranked;
     ranked = await mergePinnedKnowledgeWhenRankedEmpty({
       organizationId: params.organizationId,
       ranked,
       pinnedArticleIds: params.pinnedArticleIds,
+      debugLog: params.log,
     });
     ranked = ranked.slice(0, 6);
     const kbBlock = formatKnowledgeToolResult(ranked);
@@ -372,6 +377,19 @@ export async function generateNativeAgentReply(input: {
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
+  if (isAgentKbDebugEnabled()) {
+    logAgentKbDebug(log, {
+      stage: "nativeAgentReply_start",
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      knowledge_search: flags.knowledge_search,
+      pinnedArticleIdsCount: pinnedArticleIds.length,
+      provider,
+      useTools: provider !== "google_gemini" && buildOpenAiTools(flags).length > 0,
+    });
+  }
+
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
     try {
@@ -381,6 +399,7 @@ export async function generateNativeAgentReply(input: {
         userMessage,
         limit: 8,
         pinnedArticleIds,
+        debugLog: log,
       });
     } catch (err) {
       log.warn({ err, botId: bot.id }, "proactive knowledge appendix failed");

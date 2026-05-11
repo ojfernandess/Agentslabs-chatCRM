@@ -118,4 +118,6 @@ export const config = {
   openAiEmbeddingModel: optionalEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").trim(),
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
+  /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */
+  agentKbDebug: ["1", "true", "yes"].includes(optionalEnv("AGENT_KB_DEBUG", "").trim().toLowerCase()),
 } as const;

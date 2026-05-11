@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useOptionalAgentEditBotIdFromRoute } from "@/context/AgentEditRouteContext";
 import clsx from "clsx";
 import {
   Sparkles,
@@ -531,9 +532,11 @@ function applyPromptModuleSelectionToAgentForm(
 
 export function AutomationPage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
+  const routeEditBotId = useOptionalAgentEditBotIdFromRoute();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(routeEditBotId ? "agents" : "overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
@@ -555,6 +558,7 @@ export function AutomationPage() {
 
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [agentEditorFullPage, setAgentEditorFullPage] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
 
   const [ctxRows, setCtxRows] = useState<
@@ -675,6 +679,25 @@ export function AutomationPage() {
     void refreshTab();
   }, [refreshTab]);
 
+  useEffect(() => {
+    if (!routeEditBotId) {
+      setAgentEditorFullPage(false);
+      return;
+    }
+    if (!agentProfiles.length) return;
+    const row = agentProfiles.find((p) => p.botId === routeEditBotId);
+    if (!row) return;
+    setAgentForm(profileToForm(row));
+    setAgentModalOpen(true);
+    setAgentEditorFullPage(true);
+    setTab("agents");
+  }, [routeEditBotId, agentProfiles]);
+
+  const closeAgentEditorChrome = useCallback(() => {
+    setAgentModalOpen(false);
+    setAgentEditorFullPage(false);
+  }, []);
+
   if (!tenantAdmin) {
     return (
       <PageTransition>
@@ -707,11 +730,6 @@ export function AutomationPage() {
     setTab("agents");
     setAgentModalOpen(true);
   }, []);
-
-  const openEditAgentModal = (row: AgentProfileRow) => {
-    setAgentForm(profileToForm(row));
-    setAgentModalOpen(true);
-  };
 
   const openConfigureOrphanBot = (botId: string) => {
     const b = bots.find((x) => x.id === botId);
@@ -771,6 +789,8 @@ export function AutomationPage() {
         });
       }
       setAgentModalOpen(false);
+      setAgentEditorFullPage(false);
+      if (routeEditBotId) navigate("/automation?tab=agents");
       await loadAgentProfiles();
       await loadBots();
       await loadDashboard();
@@ -929,23 +949,25 @@ export function AutomationPage() {
           </div>
         ) : null}
 
-        <nav className="flex flex-wrap gap-1 rounded-xl border border-ink-200 bg-ink-50/80 p-1 dark:border-ink-800 dark:bg-ink-900/40">
-          {tabs.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setTab(x.id)}
-              className={clsx(
-                "rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm",
-                tab === x.id
-                  ? "bg-white text-brand-700 shadow-sm dark:bg-ink-800 dark:text-brand-300"
-                  : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
-              )}
-            >
-              {x.label}
-            </button>
-          ))}
-        </nav>
+        {routeEditBotId ? null : (
+          <nav className="flex flex-wrap gap-1 rounded-xl border border-ink-200 bg-ink-50/80 p-1 dark:border-ink-800 dark:bg-ink-900/40">
+            {tabs.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => setTab(x.id)}
+                className={clsx(
+                  "rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm",
+                  tab === x.id
+                    ? "bg-white text-brand-700 shadow-sm dark:bg-ink-800 dark:text-brand-300"
+                    : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
+                )}
+              >
+                {x.label}
+              </button>
+            ))}
+          </nav>
+        )}
 
         {tab === "overview" && dashboard ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1009,23 +1031,29 @@ export function AutomationPage() {
             agentProfiles={agentProfiles}
             agentModalOpen={agentModalOpen}
             setAgentModalOpen={setAgentModalOpen}
+            agentEditorFullPage={agentEditorFullPage}
+            onExitAgentEditorPage={() => {
+              closeAgentEditorChrome();
+              if (routeEditBotId) navigate("/automation?tab=agents");
+            }}
             agentForm={agentForm}
             setAgentForm={setAgentForm}
             prompts={prompts}
             onNew={openNewAgentModal}
-            onEdit={openEditAgentModal}
             onConfigureOrphan={openConfigureOrphanBot}
             onSaveModal={() => void saveAgentModal()}
             onDeleteProfile={deleteAgentProfile}
             onOpenToolsTab={() => {
-              setAgentModalOpen(false);
+              closeAgentEditorChrome();
+              if (routeEditBotId) navigate("/automation?tab=tools");
               setTab("tools");
             }}
             applyPromptModulesSelection={(nextIds) =>
               setAgentForm((f) => applyPromptModuleSelectionToAgentForm(f, nextIds, prompts))
             }
             onOpenKnowledgeTab={() => {
-              setAgentModalOpen(false);
+              closeAgentEditorChrome();
+              if (routeEditBotId) navigate("/automation?tab=knowledge");
               setTab("knowledge");
             }}
           />
@@ -1179,11 +1207,12 @@ function AgentsTab({
   agentProfiles,
   agentModalOpen,
   setAgentModalOpen,
+  agentEditorFullPage,
+  onExitAgentEditorPage,
   agentForm,
   setAgentForm,
   prompts,
   onNew,
-  onEdit,
   onConfigureOrphan,
   onSaveModal,
   onDeleteProfile,
@@ -1199,11 +1228,12 @@ function AgentsTab({
   agentProfiles: AgentProfileRow[];
   agentModalOpen: boolean;
   setAgentModalOpen: (v: boolean) => void;
+  agentEditorFullPage: boolean;
+  onExitAgentEditorPage: () => void;
   agentForm: AgentFormFields;
   setAgentForm: Dispatch<SetStateAction<AgentFormFields>>;
   prompts: PromptModuleRow[];
   onNew: () => void;
-  onEdit: (row: AgentProfileRow) => void;
   onConfigureOrphan: (botId: string) => void;
   onSaveModal: () => void;
   onDeleteProfile: (botId: string) => void;
@@ -1348,6 +1378,7 @@ function AgentsTab({
 
   return (
     <div className="space-y-8">
+      {agentEditorFullPage && agentModalOpen ? null : (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-bold text-ink-900 dark:text-ink-50">{t("automationPage.agentsHeading")}</h2>
@@ -1362,7 +1393,9 @@ function AgentsTab({
           {t("automationPage.agentNewButton")}
         </button>
       </div>
+      )}
 
+      {agentEditorFullPage && agentModalOpen ? null : (
       <div className="grid gap-4 sm:grid-cols-2">
         {agentProfiles.map((row) => {
           const llm = row.llmConfig as Record<string, unknown>;
@@ -1410,14 +1443,13 @@ function AgentsTab({
                   >
                     <Bot className="h-4 w-4" />
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => onEdit(row)}
+                  <Link
+                    to={`/automation/agents/${row.botId}`}
                     className="rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800"
                     title={t("automationPage.agentEdit")}
                   >
                     <Pencil className="h-4 w-4" />
-                  </button>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => onDeleteProfile(row.botId)}
@@ -1458,8 +1490,9 @@ function AgentsTab({
           );
         })}
       </div>
+      )}
 
-      {orphanBots.length > 0 ? (
+      {agentEditorFullPage && agentModalOpen ? null : orphanBots.length > 0 ? (
         <div>
           <h3 className="text-sm font-semibold text-ink-800 dark:text-ink-200">{t("automationPage.agentsOrphanTitle")}</h3>
           <ul className="mt-2 space-y-2">
@@ -1549,22 +1582,44 @@ function AgentsTab({
       ) : null}
 
       {agentModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10">
-          <div className="relative w-full max-w-2xl rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
-            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-ink-800">
+        <div
+          className={
+            agentEditorFullPage
+              ? "mx-auto w-full max-w-5xl space-y-3 pb-8"
+              : "fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/50 p-4 sm:p-5"
+          }
+        >
+          {agentEditorFullPage ? (
+            <button
+              type="button"
+              onClick={onExitAgentEditorPage}
+              className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:hover:bg-ink-800"
+            >
+              {t("automationPage.agentBackToAutomation")}
+            </button>
+          ) : null}
+          <div
+            className={clsx(
+              "relative flex flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900",
+              agentEditorFullPage
+                ? "max-h-[min(88dvh,56rem)] w-full min-h-[50vh]"
+                : "max-h-[min(92vh,52rem)] w-full max-w-2xl",
+            )}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-ink-800">
               <h3 className="text-lg font-bold text-ink-900 dark:text-ink-50">
                 {agentForm.mode === "edit" ? t("automationPage.agentModalEditTitle") : t("automationPage.agentModalNewTitle")}
               </h3>
               <button
                 type="button"
-                onClick={() => setAgentModalOpen(false)}
+                onClick={() => (agentEditorFullPage ? onExitAgentEditorPage() : setAgentModalOpen(false))}
                 className="rounded p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="max-h-[calc(100vh-8rem)] space-y-4 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-5 py-4">
               {agentForm.mode === "edit" && agentForm.editBotId ? (
                 agentProfiles.find((p) => p.botId === agentForm.editBotId)?.bot.editInExternalAutomation ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
@@ -2008,7 +2063,7 @@ function AgentsTab({
                       <textarea
                         value={agentForm.promptUserCore}
                         onChange={(e) => setAgentForm((f) => ({ ...f, promptUserCore: e.target.value }))}
-                        rows={6}
+                        rows={4}
                         placeholder={t("automationPage.agentSystemInstructionsPh")}
                         className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm leading-relaxed dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                       />
@@ -2303,10 +2358,10 @@ function AgentsTab({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
               <button
                 type="button"
-                onClick={() => setAgentModalOpen(false)}
+                onClick={() => (agentEditorFullPage ? onExitAgentEditorPage() : setAgentModalOpen(false))}
                 className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium dark:border-ink-600"
               >
                 {t("automationPage.agentCancel")}

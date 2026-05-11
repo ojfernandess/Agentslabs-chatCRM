@@ -2178,6 +2178,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
               botId: profile.bot.id,
               userMessage,
               pinnedArticleIds: parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig),
+              debugLog: request.log,
             }));
         } catch (err) {
           request.log.warn({ err, botId: profile.bot.id }, "test-chat proactive kb failed");

@@ -168,6 +168,34 @@ function botManagedByOpenConduit(config: unknown): boolean {
   return v === true;
 }
 
+async function upsertAutomationConversationContextForNative(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  message: Message;
+}): Promise<void> {
+  const preview = (params.message.body ?? "").trim().slice(0, 500);
+  const state = {
+    source: "native_agent",
+    lastInboundMessageId: params.message.id,
+    lastInboundAt: params.message.createdAt.toISOString(),
+    lastPreview: preview,
+  };
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state,
+    },
+    update: {
+      botId: params.botId,
+      state,
+    },
+  });
+}
+
 async function dispatchAgentBotNativeFallback(input: {
   organizationId: string;
   bot: Bot;
@@ -178,6 +206,17 @@ async function dispatchAgentBotNativeFallback(input: {
 }): Promise<void> {
   const { organizationId, bot, conversation, contact, message, log } = input;
   const userMessage = (message.body ?? "").trim();
+
+  try {
+    await upsertAutomationConversationContextForNative({
+      organizationId,
+      conversationId: conversation.id,
+      botId: bot.id,
+      message,
+    });
+  } catch (err) {
+    log.warn({ err, conversationId: conversation.id }, "automation conversation context upsert failed");
+  }
 
   const replyText = await generateNativeAgentReply({
     organizationId,

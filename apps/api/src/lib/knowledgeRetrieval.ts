@@ -1,7 +1,9 @@
+import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
+import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 
 const KNOWLEDGE_ARTICLE_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -145,8 +147,10 @@ export async function rankedKnowledgeSearch(params: {
   normalizedQuery: string;
   botId: string | undefined;
   limit: number;
+  /** Quando `AGENT_KB_DEBUG=true`, regista resultado da pesquisa (nível info, campo `agentKbDebug`). */
+  debugLog?: FastifyBaseLogger;
 }): Promise<{ ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" }> {
-  const { organizationId, normalizedQuery: norm, limit } = params;
+  const { organizationId, normalizedQuery: norm, limit, debugLog } = params;
   const botId = await effectiveKnowledgeSearchBotId(organizationId, params.botId);
   const hasKey = Boolean(config.openAiPromptPreviewKey);
   const chunkCount = hasKey
@@ -171,26 +175,54 @@ export async function rankedKnowledgeSearch(params: {
 
   const lexical = await rankedLexicalKnowledgeSearch(params);
 
+  let out: { ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" };
   if (!semantic.length) {
-    return { ranked: lexical.slice(0, limit), mode: "lexical" };
-  }
-
-  const semTop = semantic.slice(0, limit);
-  const seen = new Set(semTop.map((r) => r.article.id));
-  const merged: RankedKnowledgeRow[] = [...semTop];
-  for (const r of lexical) {
-    if (merged.length >= limit) break;
-    if (!seen.has(r.article.id)) {
-      seen.add(r.article.id);
-      merged.push({
-        ...r,
-        score: Math.min(0.995, r.score * 0.42),
-      });
+    out = { ranked: lexical.slice(0, limit), mode: "lexical" };
+  } else {
+    const semTop = semantic.slice(0, limit);
+    const seen = new Set(semTop.map((r) => r.article.id));
+    const merged: RankedKnowledgeRow[] = [...semTop];
+    for (const r of lexical) {
+      if (merged.length >= limit) break;
+      if (!seen.has(r.article.id)) {
+        seen.add(r.article.id);
+        merged.push({
+          ...r,
+          score: Math.min(0.995, r.score * 0.42),
+        });
+      }
     }
+    const mode: "semantic" | "hybrid" = merged.length > semTop.length ? "hybrid" : "semantic";
+    out = { ranked: merged.slice(0, limit), mode };
   }
 
-  const mode: "semantic" | "hybrid" = merged.length > semTop.length ? "hybrid" : "semantic";
-  return { ranked: merged.slice(0, limit), mode };
+  if (isAgentKbDebugEnabled() && debugLog) {
+    const syncLinks =
+      params.botId != null
+        ? await prisma.automationKnowledgeArticleBot.count({
+            where: {
+              botId: params.botId,
+              article: { organizationId, isActive: true, syncToAi: true },
+            },
+          })
+        : 0;
+    logAgentKbDebug(debugLog, {
+      stage: "rankedKnowledgeSearch",
+      organizationId,
+      requestBotId: params.botId ?? null,
+      effectiveScopedBotId: botId ?? null,
+      syncedArticleLinksForBot: syncLinks,
+      normalizedQuerySnippet: norm.slice(0, 200),
+      rankedCount: out.ranked.length,
+      mode: out.mode,
+      semanticCandidates: semantic.length,
+      lexicalCandidates: lexical.length,
+      hasOpenAiServerKey: hasKey,
+      semanticChunkRowsOrg: chunkCount,
+    });
+  }
+
+  return out;
 }
 
 function normalizePinnedKnowledgeArticleIds(pinnedArticleIds: string[] | undefined): string[] {
@@ -209,6 +241,7 @@ export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
   organizationId: string;
   ranked: RankedKnowledgeRow[];
   pinnedArticleIds: string[] | undefined;
+  debugLog?: FastifyBaseLogger;
 }): Promise<RankedKnowledgeRow[]> {
   if (params.ranked.length) return params.ranked;
   const pinned = normalizePinnedKnowledgeArticleIds(params.pinnedArticleIds);
@@ -223,6 +256,14 @@ export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
     take: 12,
   });
   if (!pinnedRows.length) return params.ranked;
+  if (isAgentKbDebugEnabled() && params.debugLog) {
+    logAgentKbDebug(params.debugLog, {
+      stage: "mergePinnedKnowledgeFallback",
+      organizationId: params.organizationId,
+      pinnedRequested: pinned.length,
+      pinnedArticlesLoaded: pinnedRows.length,
+    });
+  }
   return pinnedRows.map((article) => {
     const excerpt =
       article.content.length > 600 ? `${article.content.slice(0, 600)}…` : article.content;
@@ -261,6 +302,7 @@ export async function fetchProactiveKnowledgeSystemAppendix(params: {
   limit?: number;
   /** Artigos ligados ao agente no editor: se a pesquisa não devolver nada, injecta excerto destes. */
   pinnedArticleIds?: string[];
+  debugLog?: FastifyBaseLogger;
 }): Promise<string> {
   const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
   if (!norm) return "";
@@ -270,12 +312,25 @@ export async function fetchProactiveKnowledgeSystemAppendix(params: {
     normalizedQuery: norm,
     botId: params.botId,
     limit,
+    debugLog: params.debugLog,
   });
   ranked = await mergePinnedKnowledgeWhenRankedEmpty({
     organizationId: params.organizationId,
     ranked,
     pinnedArticleIds: params.pinnedArticleIds,
+    debugLog: params.debugLog,
   });
 
-  return formatRankedKnowledgeForSystemPrompt(ranked);
+  const appendix = formatRankedKnowledgeForSystemPrompt(ranked);
+  if (isAgentKbDebugEnabled() && params.debugLog) {
+    logAgentKbDebug(params.debugLog, {
+      stage: "proactiveKnowledgeAppendix",
+      organizationId: params.organizationId,
+      botId: params.botId,
+      rankedCount: ranked.length,
+      appendixChars: appendix.length,
+    });
+  }
+
+  return appendix;
 }
