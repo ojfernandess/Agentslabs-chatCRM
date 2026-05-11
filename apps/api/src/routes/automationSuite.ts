@@ -17,6 +17,7 @@ import {
 } from "../lib/promptModulePreviewLlm.js";
 import {
   fetchProactiveKnowledgeSystemAppendix,
+  mergeBotLinkedKnowledgeWhenRankedEmpty,
   parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
   syncKnowledgeArticleBotsFromPromptBuilder,
@@ -1228,12 +1229,21 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       };
     }
 
-    const { ranked, mode: searchMode } = await rankedKnowledgeSearch({
+    let { ranked, mode: searchMode } = await rankedKnowledgeSearch({
       organizationId,
       normalizedQuery: norm,
       botId: parsed.data.botId,
       limit: 25,
+      debugLog: request.log,
     });
+    if (parsed.data.botId) {
+      ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
+        organizationId,
+        botId: parsed.data.botId,
+        ranked,
+        debugLog: request.log,
+      });
+    }
 
     const articleIds = ranked.map((r) => r.article.id);
     const exp = new Date(Date.now() + KB_CACHE_TTL_MS);

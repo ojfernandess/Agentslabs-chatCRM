@@ -11,6 +11,7 @@ import {
 } from "./promptModulePreviewLlm.js";
 import {
   fetchProactiveKnowledgeSystemAppendix,
+  mergeBotLinkedKnowledgeWhenRankedEmpty,
   mergePinnedKnowledgeWhenRankedEmpty,
   parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
@@ -202,6 +203,12 @@ async function executeNativeTool(input: {
         pinnedArticleIds,
         debugLog: log,
       });
+      ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
+        organizationId,
+        botId,
+        ranked,
+        debugLog: log,
+      });
       ranked = ranked.slice(0, 8);
       return formatKnowledgeToolResult(ranked);
     }
@@ -300,6 +307,12 @@ async function augmentStallWithKnowledge(params: {
       organizationId: params.organizationId,
       ranked,
       pinnedArticleIds: params.pinnedArticleIds,
+      debugLog: params.log,
+    });
+    ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
+      organizationId: params.organizationId,
+      botId: params.botId,
+      ranked,
       debugLog: params.log,
     });
     ranked = ranked.slice(0, 6);

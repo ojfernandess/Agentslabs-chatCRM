@@ -303,6 +303,49 @@ export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
   return pinnedRowsRanked;
 }
 
+/**
+ * Quando a pesquisa não devolve nada e não há artigos «pinned» no prompt, injecta artigos ligados ao bot
+ * na tabela `automation_knowledge_article_bots` (hub Conhecimento → vincular bot). Sem isto, quem só
+ * vincula no artigo nunca tinha fallback se a query não batesse no lexical/semântico.
+ */
+export async function mergeBotLinkedKnowledgeWhenRankedEmpty(params: {
+  organizationId: string;
+  botId: string;
+  ranked: RankedKnowledgeRow[];
+  debugLog?: FastifyBaseLogger;
+}): Promise<RankedKnowledgeRow[]> {
+  if (params.ranked.length > 0) return params.ranked;
+  const botId = params.botId.trim();
+  if (!botId) return params.ranked;
+
+  const articles = await prisma.automationKnowledgeArticle.findMany({
+    where: {
+      organizationId: params.organizationId,
+      isActive: true,
+      syncToAi: true,
+      botLinks: { some: { botId } },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 8,
+  });
+  if (!articles.length) return params.ranked;
+
+  if (isAgentKbDebugEnabled() && params.debugLog) {
+    logAgentKbDebug(params.debugLog, {
+      stage: "mergeBotLinkedKnowledgeFallback",
+      organizationId: params.organizationId,
+      botId,
+      articlesInjected: articles.length,
+    });
+  }
+
+  return articles.map((article) => ({
+    article,
+    score: 0.48,
+    excerpt: article.content.length > 600 ? `${article.content.slice(0, 600)}…` : article.content,
+  }));
+}
+
 /** Texto a anexar ao system prompt do agente nativo (RAG proactivo). */
 export function formatRankedKnowledgeForSystemPrompt(ranked: RankedKnowledgeRow[]): string {
   if (!ranked.length) {
@@ -350,6 +393,12 @@ export async function fetchProactiveKnowledgeSystemAppendix(params: {
     organizationId: params.organizationId,
     ranked,
     pinnedArticleIds: params.pinnedArticleIds,
+    debugLog: params.debugLog,
+  });
+  ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
+    organizationId: params.organizationId,
+    botId: params.botId,
+    ranked,
     debugLog: params.debugLog,
   });
 
