@@ -173,7 +173,13 @@ export async function rankedKnowledgeSearch(params: {
     }
   }
 
-  const lexical = await rankedLexicalKnowledgeSearch(params);
+  /** Usar o mesmo `botId` efectivo que a semântica: sem vínculos artigo↔bot é org-wide; lexical com `params.botId` filtrava só por bot e esvaziava resultados. */
+  const lexical = await rankedLexicalKnowledgeSearch({
+    organizationId,
+    normalizedQuery: norm,
+    botId,
+    limit,
+  });
 
   let out: { ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" };
   if (!semantic.length) {
