@@ -241,7 +241,7 @@ export const messages = {
         "Tom, regras de marca, o que pode ou não prometer. As secções seguintes geram texto extra anexado ao guardar.",
       promptKbSection: "Base de conhecimento no prompt",
       promptKbHint:
-        "Seleccione artigos para o modelo priorizar (títulos aparecem como referência). A pesquisa semântica continua a usar toda a KB ligada ao bot quando «buscar_conhecimento» está activo.",
+        "Seleccione artigos para o modelo priorizar (títulos aparecem como referência). Na base de dados, artigos podem ser vinculados a bots específicos: com vínculos, a busca do agente só usa esses artigos; sem nenhum vínculo para este bot, a busca usa todos os artigos activos da organização (evita respostas vazias).",
       promptKbSearch: "Filtrar artigos…",
       promptKbEmpty: "Nenhum artigo. Crie conteúdos no separador Base de conhecimento.",
       promptGeneratedTitle: "Instruções geradas automaticamente (pré-visualização)",
@@ -2097,7 +2097,7 @@ export const messages = {
         "Tone, brand rules, what the agent may promise. The sections below add auto-generated text on save.",
       promptKbSection: "Knowledge in the prompt",
       promptKbHint:
-        "Pick articles the model should treat as primary references (titles appear in the auto block). Semantic search still uses the full KB linked to the bot when knowledge_search is enabled.",
+        "Pick articles the model should treat as primary references (titles appear in the auto block). In the database, articles can be linked to specific bots: with links, the agent search only uses those articles; with no links for this bot, search uses all active organization articles (avoids empty answers).",
       promptKbSearch: "Filter articles…",
       promptKbEmpty: "No articles yet. Add content under the Knowledge tab.",
       promptGeneratedTitle: "Auto-generated instructions (preview)",

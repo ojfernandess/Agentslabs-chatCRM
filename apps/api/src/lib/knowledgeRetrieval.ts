@@ -3,6 +3,26 @@ import { config } from "../config.js";
 import { queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
 
+/**
+ * Quando o bot tem pelo menos um artigo (activo, syncToAi) ligado em `automation_knowledge_article_bots`,
+ * a pesquisa restringe-se a esses artigos. Se não houver nenhum vínculo, usa-se toda a KB da organização —
+ * caso contrário artigos sem vínculo nunca apareciam e o agente dizia que não havia informação.
+ */
+export async function effectiveKnowledgeSearchBotId(
+  organizationId: string,
+  botId: string | undefined,
+): Promise<string | undefined> {
+  const id = typeof botId === "string" ? botId.trim() : "";
+  if (!id) return undefined;
+  const linkedCount = await prisma.automationKnowledgeArticleBot.count({
+    where: {
+      botId: id,
+      article: { organizationId, isActive: true, syncToAi: true },
+    },
+  });
+  return linkedCount > 0 ? id : undefined;
+}
+
 export type RankedKnowledgeRow = {
   article: {
     id: string;
@@ -83,7 +103,8 @@ export async function rankedKnowledgeSearch(params: {
   botId: string | undefined;
   limit: number;
 }): Promise<{ ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" }> {
-  const { organizationId, normalizedQuery: norm, botId, limit } = params;
+  const { organizationId, normalizedQuery: norm, limit } = params;
+  const botId = await effectiveKnowledgeSearchBotId(organizationId, params.botId);
   const hasKey = Boolean(config.openAiPromptPreviewKey);
   const chunkCount = hasKey
     ? await prisma.automationKnowledgeChunk.count({ where: { organizationId } })

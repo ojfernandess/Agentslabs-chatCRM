@@ -66,6 +66,15 @@ Implementação: `apps/api/src/routes/agentBotInbox.ts`.
 
 `OPEN` coloca a conversa na fila humana; `PENDING` devolve à fila do bot, quando aplicável.
 
+## Bot nativo (OpenConduit) e base de conhecimento
+
+A pesquisa usada por **`buscar_conhecimento`** (e pela pré-visualização na automação) filtra por **organização** e por artigos **`is_active`** + **`sync_to_ai`**.
+
+- Se existir **pelo menos um** registo em **`automation_knowledge_article_bots`** ligando um artigo (válido) a esse **bot**, a pesquisa **restringe-se** a esses artigos (útil para bots com subconjuntos da KB).
+- Se **não existir nenhum** vínculo artigo↔bot, a pesquisa usa **todos** os artigos activos da organização (evita que o agente diga que não há informação só porque os artigos nunca foram associados ao bot no painel **Base de conhecimento**).
+
+A pesquisa semântica (embeddings) exige chave OpenAI no servidor (`OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY`) e chunks indexados; sem isso mantém-se a pesquisa lexical por texto.
+
 ## Verificação de implementação
 
 | Etapa | Estado |
