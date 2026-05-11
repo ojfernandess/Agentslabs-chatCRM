@@ -249,9 +249,19 @@ export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
   pinnedArticleIds: string[] | undefined;
   debugLog?: FastifyBaseLogger;
 }): Promise<RankedKnowledgeRow[]> {
-  if (params.ranked.length) return params.ranked;
   const pinned = normalizePinnedKnowledgeArticleIds(params.pinnedArticleIds);
   if (!pinned.length) return params.ranked;
+
+  if (params.ranked.length) {
+    const rankedIds = new Set(params.ranked.map((r) => r.article.id));
+    const hasAnyPinned =
+      pinned.length > 0 ? pinned.some((id) => rankedIds.has(id)) : false;
+
+    // Se já trouxe pelo menos um dos artigos “pinned” (ligados ao agente no editor),
+    // não precisamos injectar de backup.
+    if (hasAnyPinned) return params.ranked;
+  }
+
   const pinnedRows = await prisma.automationKnowledgeArticle.findMany({
     where: {
       organizationId: params.organizationId,
@@ -270,11 +280,21 @@ export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
       pinnedArticlesLoaded: pinnedRows.length,
     });
   }
-  return pinnedRows.map((article) => {
+
+  const pinnedRowsRanked = pinnedRows.map((article) => {
     const excerpt =
       article.content.length > 600 ? `${article.content.slice(0, 600)}…` : article.content;
     return { article, score: 0.55, excerpt };
   });
+
+  // Quando a busca retornou resultados, mas nenhum inclui os “pinned” esperados,
+  // colocamos os excertos pinned em primeiro lugar e depois preservamos o restante.
+  if (params.ranked.length) {
+    const pinnedIds = new Set(pinnedRowsRanked.map((r) => r.article.id));
+    return [...pinnedRowsRanked, ...params.ranked.filter((r) => !pinnedIds.has(r.article.id))];
+  }
+
+  return pinnedRowsRanked;
 }
 
 /** Texto a anexar ao system prompt do agente nativo (RAG proactivo). */

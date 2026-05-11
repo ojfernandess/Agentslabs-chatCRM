@@ -8,5 +8,6 @@ export function isAgentKbDebugEnabled(): boolean {
 
 export function logAgentKbDebug(log: FastifyBaseLogger, payload: Record<string, unknown>): void {
   if (!config.agentKbDebug) return;
-  log.info({ agentKbDebug: payload }, "agent_kb_debug");
+  // Usar warn para garantir que apareça em deployments com level > info.
+  log.warn({ agentKbDebug: payload }, "agent_kb_debug");
 }

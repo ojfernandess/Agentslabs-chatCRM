@@ -111,7 +111,8 @@ const PROVIDER_OPTIONS = [
 ];
 
 const MODELS_BY_PROVIDER: Record<string, string[]> = {
-  openai: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+  // Mantém os modelos anteriores e apenas acrescenta o mais recente.
+  openai: ["gpt-4o-mini", "gpt-4o", "gpt-5.5", "gpt-4-turbo", "gpt-3.5-turbo"],
   google_gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
 };
 
@@ -404,7 +405,9 @@ function formToPayload(
     apiBaseUrl: form.apiBaseUrl.trim() || null,
     systemInstructions: mergedInstructions,
   };
-  if (form.apiKey.trim()) llmConfig.apiKey = form.apiKey.trim();
+  const apiKeyTrimmed = form.apiKey.trim();
+  // Evitar enviar o placeholder "***" (o backend interpreta como “não mudou”).
+  if (apiKeyTrimmed && apiKeyTrimmed !== "***") llmConfig.apiKey = apiKeyTrimmed;
 
   const schedulingExternal = form.nativeTools.scheduling_google
     ? "google"

@@ -45,6 +45,13 @@ const app = Fastify({
   },
 });
 
+app.log.warn(
+  {
+    agentKbDebug: config.agentKbDebug,
+  },
+  "startup_flags",
+);
+
 // Security plugins
 await app.register(helmet, {
   contentSecurityPolicy: config.isProduction ? undefined : false,
