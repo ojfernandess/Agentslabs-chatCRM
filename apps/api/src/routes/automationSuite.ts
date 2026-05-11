@@ -31,6 +31,7 @@ import {
   wrapIngestError,
 } from "../lib/knowledgeFileIngest.js";
 import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
+import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -2473,4 +2474,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return { ok: true, createdContextRow: true };
     },
   );
+
+  await registerAutomationExecutionLogRoutes(app);
 }

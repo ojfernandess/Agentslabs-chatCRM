@@ -15,6 +15,7 @@ import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { generateNativeAgentReply } from "./agentNativeLlm.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
+import { startAutomationExecution } from "./automationExecutionLog.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -208,6 +209,21 @@ async function dispatchAgentBotNativeFallback(input: {
   const { organizationId, bot, conversation, contact, message, log } = input;
   const userMessage = (message.body ?? "").trim();
 
+  const exLog = await startAutomationExecution({
+    organizationId,
+    botId: bot.id,
+    conversationId: conversation.id,
+    triggerMessageId: message.id,
+    workflowKey: "native_agent",
+    workflowName: bot.name.slice(0, 200),
+    log,
+  });
+  exLog.info(
+    { id: "inbound", name: "Webhook inbound" },
+    "Mensagem recebida — fluxo nativo OpenConduit",
+    { input: { messageId: message.id, userMessage: userMessage.slice(0, 4000) } },
+  );
+
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
       stage: "dispatchAgentBotNativeFallback",
@@ -215,60 +231,83 @@ async function dispatchAgentBotNativeFallback(input: {
       botId: bot.id,
       conversationId: conversation.id,
       messageId: message.id,
+      executionId: exLog.getExecutionId(),
     });
   }
 
   try {
-    await upsertAutomationConversationContextForNative({
-      organizationId,
-      conversationId: conversation.id,
-      botId: bot.id,
-      message,
-    });
-  } catch (err) {
-    log.warn({ err, conversationId: conversation.id }, "automation conversation context upsert failed");
-  }
-
-  const replyText = await generateNativeAgentReply({
-    organizationId,
-    bot,
-    conversation,
-    message,
-    log,
-  });
-
-  if (!replyText) return;
-
-  try {
-    await deliverOutboundWhatsAppMessage({
-      organizationId,
-      data: {
-        contactId: contact.id,
-        conversationId: conversation.id,
-        type: "TEXT",
-        body: replyText,
-      },
-      actor: { kind: "agent_bot", botId: bot.id },
-      log,
-      newConversation: { status: "PENDING", assignedToId: null },
-    });
-  } catch (err) {
-    log.warn({ err, botId: bot.id }, "Agent bot native fallback send failed");
-    return;
-  }
-
-  await prisma.automationInteraction
-    .create({
-      data: {
+    try {
+      await upsertAutomationConversationContextForNative({
         organizationId,
-        botId: bot.id,
         conversationId: conversation.id,
-        userMessage,
-        assistantMessage: replyText,
-        responseType: "native_fallback",
-      },
-    })
-    .catch(() => {});
+        botId: bot.id,
+        message,
+      });
+      exLog.debug({ id: "context", name: "Contexto automação" }, "Estado de contexto actualizado");
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "automation conversation context upsert failed");
+      exLog.warn({ id: "context", name: "Contexto automação" }, "Upsert de contexto falhou", {
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+
+    const replyText = await generateNativeAgentReply({
+      organizationId,
+      bot,
+      conversation,
+      message,
+      log,
+      executionLog: exLog.child("agent_llm"),
+    });
+
+    if (!replyText) {
+      exLog.info({ id: "outbound", name: "Resposta" }, "Modelo devolveu texto vazio — sem envio");
+      await exLog.completeSuccess();
+      return;
+    }
+
+    try {
+      await deliverOutboundWhatsAppMessage({
+        organizationId,
+        data: {
+          contactId: contact.id,
+          conversationId: conversation.id,
+          type: "TEXT",
+          body: replyText,
+        },
+        actor: { kind: "agent_bot", botId: bot.id },
+        log,
+        newConversation: { status: "PENDING", assignedToId: null },
+      });
+    } catch (err) {
+      log.warn({ err, botId: bot.id }, "Agent bot native fallback send failed");
+      await exLog.completeError(err);
+      return;
+    }
+
+    exLog.info(
+      { id: "outbound", name: "Entrega" },
+      "Mensagem outbound enviada",
+      { output: { chars: replyText.length } },
+    );
+
+    await prisma.automationInteraction
+      .create({
+        data: {
+          organizationId,
+          botId: bot.id,
+          conversationId: conversation.id,
+          userMessage,
+          assistantMessage: replyText,
+          responseType: "native_fallback",
+        },
+      })
+      .catch(() => {});
+
+    await exLog.completeSuccess();
+  } catch (err) {
+    await exLog.completeError(err);
+  }
 }
 
 /**

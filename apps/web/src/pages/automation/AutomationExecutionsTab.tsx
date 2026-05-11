@@ -1,0 +1,479 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { ChevronRight, Download, Loader2, RefreshCw } from "lucide-react";
+import { api } from "@/lib/api";
+
+type BotRow = { id: string; name: string };
+
+type ExecRow = {
+  id: string;
+  botId: string;
+  conversationId: string | null;
+  workflowKey: string;
+  workflowName: string;
+  status: string;
+  errorMessage: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  bot: { name: string };
+};
+
+type LogEntry = {
+  id: string;
+  sequence: number;
+  level: string;
+  nodeId: string;
+  nodeName: string;
+  nodePath: string;
+  message: string;
+  inputContext: unknown;
+  outputContext: unknown;
+  stackTrace: string | null;
+  createdAt: string;
+};
+
+type ExecDetail = ExecRow & { logEntries: LogEntry[] };
+
+function levelBadgeClass(level: string): string {
+  switch (level) {
+    case "DEBUG":
+      return "bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200";
+    case "INFO":
+      return "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100";
+    case "WARN":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+    case "ERROR":
+    case "FATAL":
+      return "bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-100";
+    default:
+      return "bg-ink-50 text-ink-600";
+  }
+}
+
+function treeDepth(nodePath: string): number {
+  if (!nodePath) return 0;
+  return nodePath.split("/").filter(Boolean).length - 1;
+}
+
+export function AutomationExecutionsTab({
+  t,
+  loading,
+  setLoading,
+  setError,
+  bots,
+}: {
+  t: (path: string) => string;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  setError: (code: string) => void;
+  bots: BotRow[];
+}) {
+  const [rows, setRows] = useState<ExecRow[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [workflowKey, setWorkflowKey] = useState("");
+  const [level, setLevel] = useState("");
+  const [botId, setBotId] = useState("");
+  const [executionId, setExecutionId] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ExecDetail | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<{
+    retentionDays: number;
+    minPersistLevel: string;
+    alertWebhookUrl: string | null;
+    alertEmail: string | null;
+    alertMinLevel: string;
+  } | null>(null);
+  const [queryNonce, setQueryNonce] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const qs = new URLSearchParams();
+        qs.set("limit", "40");
+        qs.set("offset", String(offset));
+        if (from) qs.set("from", new Date(from).toISOString());
+        if (to) qs.set("to", new Date(to).toISOString());
+        if (workflowKey.trim()) qs.set("workflowKey", workflowKey.trim());
+        if (level) qs.set("level", level);
+        if (botId) qs.set("botId", botId);
+        if (executionId.trim()) qs.set("executionId", executionId.trim());
+        const res = await api.get<{ data: ExecRow[]; hasMore: boolean; nextOffset: number }>(
+          `/automation/execution-logs?${qs.toString()}`,
+        );
+        if (!cancelled) {
+          setRows(res.data);
+          setHasMore(res.hasMore);
+        }
+      } catch {
+        if (!cancelled) setError("load_failed");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setLoading, setError, offset, from, to, workflowKey, level, botId, executionId, queryNonce]);
+
+  const loadDetail = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      setError("");
+      try {
+        const d = await api.get<ExecDetail>(`/automation/execution-logs/${id}`);
+        setDetail(d);
+      } catch {
+        setError("load_failed");
+        setDetail(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setLoading, setError],
+  );
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const s = await api.get<{
+        retentionDays: number;
+        minPersistLevel: string;
+        alertWebhookUrl: string | null;
+        alertEmail: string | null;
+        alertMinLevel: string;
+      }>("/automation/execution-logs/settings");
+      setSettings({
+        retentionDays: s.retentionDays,
+        minPersistLevel: s.minPersistLevel,
+        alertWebhookUrl: s.alertWebhookUrl,
+        alertEmail: s.alertEmail,
+        alertMinLevel: s.alertMinLevel,
+      });
+    } catch {
+      setError("load_failed");
+    }
+  }, [setError]);
+
+  useEffect(() => {
+    if (selectedId) void loadDetail(selectedId);
+    else setDetail(null);
+  }, [selectedId, loadDetail]);
+
+  const sortedEntries = useMemo(() => {
+    if (!detail?.logEntries) return [];
+    return [...detail.logEntries].sort((a, b) => a.sequence - b.sequence);
+  }, [detail]);
+
+  const exportFile = async (format: "json" | "csv") => {
+    if (!selectedId) return;
+    try {
+      const blob = await api.fetchBlob(`/automation/execution-logs/${selectedId}/export?format=${format}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `execution-${selectedId}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("load_failed");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          {t("automationPage.execLogsFrom")}
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="mt-1 block rounded-lg border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+          />
+        </label>
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          {t("automationPage.execLogsTo")}
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="mt-1 block rounded-lg border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+          />
+        </label>
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          {t("automationPage.execLogsWorkflow")}
+          <input
+            value={workflowKey}
+            onChange={(e) => setWorkflowKey(e.target.value)}
+            placeholder="native_agent"
+            className="mt-1 block min-w-[140px] rounded-lg border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+          />
+        </label>
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          {t("automationPage.execLogsLevel")}
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+            className="mt-1 block rounded-lg border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+          >
+            <option value="">{t("automationPage.execLogsAnyLevel")}</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+            <option value="FATAL">FATAL</option>
+          </select>
+        </label>
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          {t("automationPage.execLogsBot")}
+          <select
+            value={botId}
+            onChange={(e) => setBotId(e.target.value)}
+            className="mt-1 block min-w-[160px] rounded-lg border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+          >
+            <option value="">{t("automationPage.execLogsAnyBot")}</option>
+            {bots.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-ink-700 dark:text-ink-200">
+          executionId
+          <input
+            value={executionId}
+            onChange={(e) => setExecutionId(e.target.value)}
+            className="mt-1 block min-w-[220px] rounded-lg border border-ink-200 px-2 py-1 font-mono text-xs dark:border-ink-600 dark:bg-ink-950"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            setOffset(0);
+            setQueryNonce((n) => n + 1);
+          }}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {t("automationPage.execLogsApply")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSettingsOpen((v) => !v);
+            if (!settings) void loadSettings();
+          }}
+          className="rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600"
+        >
+          {t("automationPage.execLogsSettings")}
+        </button>
+      </div>
+
+      {settingsOpen && settings ? (
+        <div className="rounded-xl border border-ink-200 bg-ink-50/80 p-4 dark:border-ink-700 dark:bg-ink-900/40">
+          <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.execLogsSettingsTitle")}</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-xs">
+              {t("automationPage.execLogsRetention")}
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={settings.retentionDays}
+                onChange={(e) => setSettings({ ...settings, retentionDays: Number(e.target.value) })}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+              />
+            </label>
+            <label className="text-xs">
+              {t("automationPage.execLogsMinPersist")}
+              <select
+                value={settings.minPersistLevel}
+                onChange={(e) => setSettings({ ...settings, minPersistLevel: e.target.value })}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+              >
+                {["DEBUG", "INFO", "WARN", "ERROR", "FATAL"].map((x) => (
+                  <option key={x} value={x}>
+                    {x}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs sm:col-span-2">
+              {t("automationPage.execLogsAlertWebhook")}
+              <input
+                value={settings.alertWebhookUrl ?? ""}
+                onChange={(e) => setSettings({ ...settings, alertWebhookUrl: e.target.value || null })}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+              />
+            </label>
+            <label className="text-xs">
+              {t("automationPage.execLogsAlertEmail")}
+              <input
+                value={settings.alertEmail ?? ""}
+                onChange={(e) => setSettings({ ...settings, alertEmail: e.target.value || null })}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+              />
+            </label>
+            <label className="text-xs">
+              {t("automationPage.execLogsAlertMin")}
+              <select
+                value={settings.alertMinLevel}
+                onChange={(e) => setSettings({ ...settings, alertMinLevel: e.target.value })}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 text-sm dark:border-ink-600 dark:bg-ink-950"
+              >
+                {["DEBUG", "INFO", "WARN", "ERROR", "FATAL"].map((x) => (
+                  <option key={x} value={x}>
+                    {x}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            className="mt-3 rounded-lg bg-ink-900 px-3 py-1.5 text-xs font-semibold text-white dark:bg-ink-100 dark:text-ink-900"
+            onClick={async () => {
+              setLoading(true);
+              try {
+                await api.patch("/automation/execution-logs/settings", settings);
+                await loadSettings();
+              } catch {
+                setError("load_failed");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            {t("automationPage.execLogsSaveSettings")}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900/50">
+          <div className="border-b border-ink-100 px-3 py-2 text-sm font-semibold dark:border-ink-800">
+            {t("automationPage.execLogsList")}
+          </div>
+          <ul className="max-h-[480px] divide-y divide-ink-100 overflow-y-auto dark:divide-ink-800">
+            {rows.map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(r.id)}
+                  className={clsx(
+                    "flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 dark:hover:bg-ink-800/60",
+                    selectedId === r.id && "bg-brand-50/80 dark:bg-brand-950/30",
+                  )}
+                >
+                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink-900 dark:text-ink-50">{r.bot.name}</p>
+                    <p className="truncate text-xs text-ink-500">{r.workflowKey}</p>
+                    <p className="text-[10px] text-ink-400">{new Date(r.startedAt).toISOString()}</p>
+                    <span
+                      className={clsx(
+                        "mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                        r.status === "success"
+                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                          : r.status === "error"
+                            ? "bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-100"
+                            : "bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
+                      )}
+                    >
+                      {r.status}
+                    </span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {hasMore ? (
+            <div className="border-t border-ink-100 p-2 dark:border-ink-800">
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand-600 underline"
+                onClick={() => setOffset((o) => o + 40)}
+              >
+                {t("automationPage.execLogsMore")}
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900/50">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 px-3 py-2 dark:border-ink-800">
+            <p className="text-sm font-semibold">{t("automationPage.execLogsDetail")}</p>
+            {selectedId ? (
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => void exportFile("json")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-ink-600"
+                >
+                  <Download className="h-3 w-3" /> JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportFile("csv")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-ink-600"
+                >
+                  <Download className="h-3 w-3" /> CSV
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {!selectedId ? (
+            <p className="p-4 text-sm text-ink-500">{t("automationPage.execLogsPick")}</p>
+          ) : !detail ? (
+            <p className="p-4 text-sm text-ink-500">{loading ? "…" : "—"}</p>
+          ) : (
+            <div className="max-h-[520px] space-y-1 overflow-y-auto p-2">
+              <p className="px-2 font-mono text-[10px] text-ink-400">{detail.id}</p>
+              {sortedEntries.map((e) => (
+                <details
+                  key={e.id}
+                  className="rounded-lg border border-ink-100 bg-ink-50/50 dark:border-ink-800 dark:bg-ink-950/40"
+                  style={{ marginLeft: Math.min(treeDepth(e.nodePath), 6) * 12 }}
+                >
+                  <summary className="cursor-pointer select-none px-2 py-1.5 text-xs font-medium text-ink-800 dark:text-ink-100">
+                    <span className={clsx("mr-2 rounded px-1 py-0.5 text-[10px] font-bold", levelBadgeClass(e.level))}>
+                      {e.level}
+                    </span>
+                    <span className="text-ink-500">#{e.sequence}</span> {e.nodeName}
+                    <span className="ml-2 text-[10px] text-ink-400">{e.nodePath}</span>
+                  </summary>
+                  <div className="space-y-2 border-t border-ink-100 px-2 py-2 text-[11px] dark:border-ink-800">
+                    <p className="whitespace-pre-wrap text-ink-800 dark:text-ink-200">{e.message}</p>
+                    {e.inputContext != null ? (
+                      <pre className="max-h-32 overflow-auto rounded bg-ink-950/90 p-2 font-mono text-ink-100">
+                        {JSON.stringify(e.inputContext, null, 2)}
+                      </pre>
+                    ) : null}
+                    {e.outputContext != null ? (
+                      <pre className="max-h-32 overflow-auto rounded bg-ink-900/90 p-2 font-mono text-ink-100">
+                        {JSON.stringify(e.outputContext, null, 2)}
+                      </pre>
+                    ) : null}
+                    {e.stackTrace ? (
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-red-950/40 p-2 text-red-100">
+                        {e.stackTrace}
+                      </pre>
+                    ) : null}
+                    <p className="text-[10px] text-ink-400">{new Date(e.createdAt).toISOString()}</p>
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

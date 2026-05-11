@@ -38,6 +38,10 @@ import { automationRoutes } from "./routes/automations.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
+import {
+  flushAutomationLogBuffer,
+  registerAutomationExecutionLogWorker,
+} from "./lib/automationExecutionLog.js";
 
 const app = Fastify({
   logger: {
@@ -131,6 +135,7 @@ app.get("/health", async () => ({ status: "ok" }));
 // Graceful shutdown
 const shutdown = async () => {
   app.log.info("Shutting down...");
+  await flushAutomationLogBuffer().catch(() => {});
   await app.close();
   await disconnectDb();
   process.exit(0);
@@ -143,6 +148,7 @@ process.on("SIGTERM", shutdown);
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Server running at http://${config.host}:${config.port}`);
+  registerAutomationExecutionLogWorker(app.log);
   const autoResolveMs = 120_000;
   setInterval(() => {
     void runAutoResolveInactiveConversationsTick({ log: app.log });

@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
+import { AutomationExecutionsTab } from "@/pages/automation/AutomationExecutionsTab";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 import {
@@ -39,6 +40,7 @@ type Tab =
   | "tools"
   | "prompts"
   | "interactions"
+  | "executions"
   | "context";
 
 interface BotRow {
@@ -670,6 +672,7 @@ export function AutomationPage() {
         await loadTools();
       }
       if (tab === "interactions") await loadInteractions();
+      if (tab === "executions") await loadBots();
       if (tab === "context") await loadContextRows();
     } catch {
       setError("load_failed");
@@ -911,6 +914,7 @@ export function AutomationPage() {
     { id: "tools", label: t("automationPage.tabTools") },
     { id: "prompts", label: t("automationPage.tabPrompts") },
     { id: "interactions", label: t("automationPage.tabInteractions") },
+    { id: "executions", label: t("automationPage.tabExecutions") },
     { id: "context", label: t("automationPage.tabContext") },
   ];
 
@@ -1048,6 +1052,16 @@ export function AutomationPage() {
               setAgentModalOpen(false);
               setTab("knowledge");
             }}
+          />
+        ) : null}
+
+        {tab === "executions" ? (
+          <AutomationExecutionsTab
+            t={t}
+            loading={loading}
+            setLoading={setLoading}
+            setError={setError}
+            bots={bots}
           />
         ) : null}
 

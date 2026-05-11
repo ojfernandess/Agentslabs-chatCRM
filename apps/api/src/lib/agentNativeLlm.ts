@@ -20,6 +20,7 @@ import {
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
+import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
@@ -362,8 +363,10 @@ export async function generateNativeAgentReply(input: {
   conversation: Conversation;
   message: Message;
   log: FastifyBaseLogger;
+  /** Opcional: registo de execução (Automação → Execuções) por mensagem inbound. */
+  executionLog?: AutomationExecutionLogPort | null;
 }): Promise<string> {
-  const { organizationId, bot, conversation, message, log } = input;
+  const { organizationId, bot, conversation, message, log, executionLog: ex } = input;
   if (message.direction !== "INBOUND") return "";
   const userMessage = (message.body ?? "").trim();
   if (!userMessage) return "";
@@ -374,6 +377,7 @@ export async function generateNativeAgentReply(input: {
   });
   if (!profile?.llmConfig || typeof profile.llmConfig !== "object") {
     log.warn({ botId: bot.id }, "Agent bot native fallback skipped: missing automation profile");
+    ex?.warn({ id: "profile", name: "Perfil de automação" }, "Perfil em falta — geração abortada");
     if (isAgentKbDebugEnabled()) {
       logAgentKbDebug(log, {
         stage: "nativeAgentReply_skipped",
@@ -404,6 +408,7 @@ export async function generateNativeAgentReply(input: {
       { botId: bot.id },
       "Agent bot native fallback skipped: API key not configured (perfil do agente ou OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY / GEMINI_PROMPT_PREVIEW_KEY no servidor)",
     );
+    ex?.warn({ id: "llm_keys", name: "Chaves API" }, "Chave API em falta no perfil ou env do servidor");
     if (isAgentKbDebugEnabled()) {
       logAgentKbDebug(log, {
         stage: "nativeAgentReply_skipped",
@@ -443,8 +448,24 @@ export async function generateNativeAgentReply(input: {
       });
     } catch (err) {
       log.warn({ err, botId: bot.id }, "proactive knowledge appendix failed");
+      ex?.child("rag")?.error({ id: "proactive_kb", name: "RAG proactivo" }, "Falha ao montar appendix", {
+        stack: err instanceof Error ? err.stack : undefined,
+        input: { userMessage: userMessage.slice(0, 500) },
+      });
     }
   }
+
+  ex?.debug(
+    { id: "rag", name: "Base de conhecimento" },
+    "Appendix proactivo preparado",
+    {
+      output: {
+        knowledgeSearch: flags.knowledge_search,
+        appendixChars: kbProactiveAppendix.length,
+        hasUsefulExcerpts: flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix),
+      },
+    },
+  );
 
   const kbHasUsefulExcerpts =
     flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
@@ -538,6 +559,11 @@ export async function generateNativeAgentReply(input: {
   try {
     if (useTools) {
       try {
+        ex?.info(
+          { id: "llm", name: "Modelo + tools" },
+          "Início da geração com ferramentas nativas",
+          { input: { provider, model, toolCount: tools.length, historyTurns: history.length } },
+        );
         const r = await callOpenAiCompatibleChatWithTools({
           baseUrl: apiBaseUrl.replace(/\/+$/, ""),
           apiKey,
@@ -549,8 +575,12 @@ export async function generateNativeAgentReply(input: {
           userMessage,
           tools,
           maxToolRounds: 6,
-          onToolCall: (name, argsJson) =>
-            executeNativeTool({
+          onToolCall: (name, argsJson) => {
+            const tlog = ex?.child("tools");
+            tlog?.info({ id: name, name: `Tool: ${name}` }, "Chamada à ferramenta", {
+              input: { argsPreview: argsJson.slice(0, 4000) },
+            });
+            return executeNativeTool({
               name,
               argsJson,
               organizationId,
@@ -559,13 +589,27 @@ export async function generateNativeAgentReply(input: {
               flags,
               log,
               pinnedArticleIds,
-            }),
+            }).then((out) => {
+              tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
+                output: { preview: out.slice(0, 4000) },
+              });
+              return out;
+            });
+          },
           signal,
         });
         replyText = r.text.trim();
         completedToolRounds = r.toolRounds;
+        ex?.info(
+          { id: "llm", name: "Modelo + tools" },
+          "Geração com ferramentas concluída",
+          { output: { replyChars: replyText.length, toolRounds: completedToolRounds } },
+        );
       } catch (err) {
         log.warn({ err, botId: bot.id }, "OpenAI tool chat failed; falling back to plain chat");
+        ex?.warn({ id: "llm", name: "Modelo + tools" }, "Falha com tools — fallback para chat simples", {
+          stack: err instanceof Error ? err.stack : undefined,
+        });
         const r = await callOpenAiCompatibleChat({
           baseUrl: apiBaseUrl.replace(/\/+$/, ""),
           apiKey,
@@ -578,8 +622,12 @@ export async function generateNativeAgentReply(input: {
           signal,
         });
         replyText = r.text.trim();
+        ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
+          output: { replyChars: replyText.length },
+        });
       }
     } else if (provider === "google_gemini") {
+      ex?.info({ id: "llm", name: "Gemini" }, "Geração sem tools (Gemini)");
       const r = await callGeminiGenerateContent({
         apiKey,
         model,
@@ -591,7 +639,9 @@ export async function generateNativeAgentReply(input: {
         signal,
       });
       replyText = r.text.trim();
+      ex?.info({ id: "llm", name: "Gemini" }, "Resposta Gemini", { output: { replyChars: replyText.length } });
     } else {
+      ex?.info({ id: "llm", name: "OpenAI chat" }, "Geração sem tools (OpenAI)");
       const r = await callOpenAiCompatibleChat({
         baseUrl: apiBaseUrl.replace(/\/+$/, ""),
         apiKey,
@@ -604,9 +654,13 @@ export async function generateNativeAgentReply(input: {
         signal,
       });
       replyText = r.text.trim();
+      ex?.info({ id: "llm", name: "OpenAI chat" }, "Resposta OpenAI", { output: { replyChars: replyText.length } });
     }
   } catch (err) {
     log.warn({ err, botId: bot.id, provider }, "Agent bot native fallback generation failed");
+    ex?.error({ id: "llm", name: "Geração" }, err instanceof Error ? err.message : String(err), {
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return "";
   }
 
@@ -620,6 +674,7 @@ export async function generateNativeAgentReply(input: {
     (isLikelyStallOnlyReply(replyText) ||
       (kbHasUsefulExcerpts && isLikelyKbDeflectionOnlyReply(replyText)))
   ) {
+    ex?.warn({ id: "stall", name: "Correção de resposta" }, "Resposta parece stall ou deflexão — augment RAG");
     const fixed = await augmentStallWithKnowledge({
       organizationId,
       botId: bot.id,

@@ -90,6 +90,15 @@ enum BotType {
   CUSTOM
 }
 
+/// Níveis de log de execução de automação (estilo n8n / pipelines).
+enum AutomationLogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
 model Organization {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -98,43 +107,45 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
 
   /// Plano comercial (free | growth | enterprise) — quotas e faturação são informativas até integração de pagamentos.
-  planTier             String  @default("free") @map("plan_tier") @db.VarChar(32)
-  billingEmail         String? @map("billing_email") @db.VarChar(255)
+  planTier            String  @default("free") @map("plan_tier") @db.VarChar(32)
+  billingEmail        String? @map("billing_email") @db.VarChar(255)
   /// Limite mensal opcional de mensagens enviadas+recebidas (null = ilimitado na app).
-  monthlyMessageQuota  Int?    @map("monthly_message_quota")
+  monthlyMessageQuota Int?    @map("monthly_message_quota")
 
-  users            User[]
-  contacts         Contact[]
-  conversations    Conversation[]
-  tags             Tag[]
-  pipelines        Pipeline[]
-  accounts         Account[]
-  products         Product[]
-  deals            Deal[]
-  timelineEvents   TimelineEvent[]
-  leadTypes        LeadType[]
-  reminders        Reminder[]
-  messageTemplates MessageTemplate[]
-  autoTagRules     AutoTagRule[]
-  settings         Settings?
-  auditLogs        AuditLog[]
-  featureFlags     OrganizationFeatureFlag[]
-  teams            Team[]
-  bots             Bot[]
+  users              User[]
+  contacts           Contact[]
+  conversations      Conversation[]
+  tags               Tag[]
+  pipelines          Pipeline[]
+  accounts           Account[]
+  products           Product[]
+  deals              Deal[]
+  timelineEvents     TimelineEvent[]
+  leadTypes          LeadType[]
+  reminders          Reminder[]
+  messageTemplates   MessageTemplate[]
+  autoTagRules       AutoTagRule[]
+  settings           Settings?
+  auditLogs          AuditLog[]
+  featureFlags       OrganizationFeatureFlag[]
+  teams              Team[]
+  bots               Bot[]
   broadcastCampaigns BroadcastCampaign[]
-  inboxes          Inbox[]
+  inboxes            Inbox[]
 
-  automationKnowledgeArticles      AutomationKnowledgeArticle[]
-  automationKnowledgeSources       AutomationKnowledgeSource[]
-  automationKnowledgeChunks        AutomationKnowledgeChunk[]
-  kbSearchCaches                   KbSearchCache[]
-  kbSearchLogs                     KbSearchLog[]
-  automationPromptModules          AutomationPromptModule[]
-  automationAgentProfiles          AutomationAgentProfile[]
+  automationKnowledgeArticles    AutomationKnowledgeArticle[]
+  automationKnowledgeSources     AutomationKnowledgeSource[]
+  automationKnowledgeChunks      AutomationKnowledgeChunk[]
+  kbSearchCaches                 KbSearchCache[]
+  kbSearchLogs                   KbSearchLog[]
+  automationPromptModules        AutomationPromptModule[]
+  automationAgentProfiles        AutomationAgentProfile[]
   automationCustomTools          AutomationCustomTool[]
-  automationInteractions           AutomationInteraction[]
-  automationConversationContexts   AutomationConversationContext[]
-  automationToolExecutions         AutomationToolExecution[]
+  automationInteractions         AutomationInteraction[]
+  automationConversationContexts AutomationConversationContext[]
+  automationToolExecutions       AutomationToolExecution[]
+  automationExecutions           AutomationExecution[]
+  automationExecutionLogSettings AutomationExecutionLogSettings?
 
   @@map("organizations")
 }
@@ -155,19 +166,19 @@ enum InboxChannelType {
 }
 
 model Inbox {
-  id             String           @id @default(uuid()) @db.Uuid
-  name           String
-  description    String?          @db.Text
-  channelType    InboxChannelType @default(WHATSAPP) @map("channel_type")
+  id            String           @id @default(uuid()) @db.Uuid
+  name          String
+  description   String?          @db.Text
+  channelType   InboxChannelType @default(WHATSAPP) @map("channel_type")
   /// Token secreto (URL) para webhooks e widget. Só mostrar a administradores.
-  ingestToken    String?            @unique @map("ingest_token") @db.VarChar(64)
-  channelConfig  Json?              @map("channel_config")
-  isDefault      Boolean            @default(false) @map("is_default")
+  ingestToken   String?          @unique @map("ingest_token") @db.VarChar(64)
+  channelConfig Json?            @map("channel_config")
+  isDefault     Boolean          @default(false) @map("is_default")
   /// Bot de triagem (primeira linha) só para esta caixa; se vazio, usa `Settings.agentBotId` da organização.
-  agentBotId     String?            @map("agent_bot_id") @db.Uuid
-  agentBot       Bot?               @relation("InboxAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
+  agentBotId    String?          @map("agent_bot_id") @db.Uuid
+  agentBot      Bot?             @relation("InboxAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -244,22 +255,23 @@ model Bot {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   inboxTokenPrefix String? @map("inbox_token_prefix") @db.VarChar(16)
-  inboxTokenHash   String?  @map("inbox_token_hash") @db.Text
+  inboxTokenHash   String? @map("inbox_token_hash") @db.Text
   /// Segredo opcional: assinatura HMAC-SHA256 (cabeçalho X-OpenConduit-Signature) nos POST enviados ao webhookUrl.
-  webhookSecret    String?  @map("webhook_secret") @db.VarChar(512)
+  webhookSecret    String? @map("webhook_secret") @db.VarChar(512)
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   interactions    BotInteraction[]
-  settingsAsAgent Settings?    @relation("SettingsAgentBot")
-  inboxesAsAgent  Inbox[]      @relation("InboxAgentBot")
+  settingsAsAgent Settings?        @relation("SettingsAgentBot")
+  inboxesAsAgent  Inbox[]          @relation("InboxAgentBot")
 
-  automationProfile               AutomationAgentProfile?
-  automationCustomTools           AutomationCustomTool[]
-  automationInteractions          AutomationInteraction[]
-  automationConversationContexts  AutomationConversationContext[]
+  automationProfile              AutomationAgentProfile?
+  automationCustomTools          AutomationCustomTool[]
+  automationInteractions         AutomationInteraction[]
+  automationConversationContexts AutomationConversationContext[]
   automationKnowledgeArticleBots AutomationKnowledgeArticleBot[]
+  automationExecutions           AutomationExecution[]
 
   @@unique([inboxTokenPrefix])
   @@index([organizationId])
@@ -284,37 +296,37 @@ model BotInteraction {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
-  displayName  String? @map("display_name") @db.VarChar(200)
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  messageSignature String? @map("message_signature") @db.Text
+  id                       String    @id @default(uuid()) @db.Uuid
+  name                     String
+  displayName              String?   @map("display_name") @db.VarChar(200)
+  email                    String    @unique
+  passwordHash             String    @map("password_hash")
+  messageSignature         String?   @map("message_signature") @db.Text
   /// Na UI da conversa, mostrar o nome do atendente em cada mensagem enviada (equipa).
-  showAgentNameInChat Boolean @default(false) @map("show_agent_name_in_chat")
+  showAgentNameInChat      Boolean   @default(false) @map("show_agent_name_in_chat")
   /// Token de API pessoal (estilo Chatwoot) para integrações por utilizador.
-  apiAccessTokenPrefix String? @map("api_access_token_prefix") @db.VarChar(16)
-  apiAccessTokenHash   String? @map("api_access_token_hash") @db.Text
+  apiAccessTokenPrefix     String?   @map("api_access_token_prefix") @db.VarChar(16)
+  apiAccessTokenHash       String?   @map("api_access_token_hash") @db.Text
   apiAccessTokenLastUsedAt DateTime? @map("api_access_token_last_used_at")
-  role         UserRole @default(AGENT)
-  createdAt    DateTime @default(now()) @map("created_at")
+  role                     UserRole  @default(AGENT)
+  createdAt                DateTime  @default(now()) @map("created_at")
 
   organizationId String?       @map("organization_id") @db.Uuid
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
-  assignedContacts      Contact[]      @relation("AssignedContacts")
-  createdContacts       Contact[]      @relation("ContactCreator")
-  assignedConversations Conversation[] @relation("AssignedConversations")
-  reminders             Reminder[]
-  auditLogs             AuditLog[]
-  platformAppsCreated   PlatformApplication[]
-  ownedAccounts         Account[]      @relation("AccountOwner")
-  ownedDeals            Deal[]         @relation("DealOwner")
-  timelineEvents        TimelineEvent[]
-  teamMemberships       TeamMember[]
-  inboxMemberships      InboxMember[]
-  messagesAsActor       Message[]      @relation("MessageActor")
-  broadcastCampaignsCreated BroadcastCampaign[] @relation("BroadcastCampaignCreator")
+  assignedContacts             Contact[]                     @relation("AssignedContacts")
+  createdContacts              Contact[]                     @relation("ContactCreator")
+  assignedConversations        Conversation[]                @relation("AssignedConversations")
+  reminders                    Reminder[]
+  auditLogs                    AuditLog[]
+  platformAppsCreated          PlatformApplication[]
+  ownedAccounts                Account[]                     @relation("AccountOwner")
+  ownedDeals                   Deal[]                        @relation("DealOwner")
+  timelineEvents               TimelineEvent[]
+  teamMemberships              TeamMember[]
+  inboxMemberships             InboxMember[]
+  messagesAsActor              Message[]                     @relation("MessageActor")
+  broadcastCampaignsCreated    BroadcastCampaign[]           @relation("BroadcastCampaignCreator")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
 
   @@index([organizationId])
@@ -322,21 +334,21 @@ model User {
 }
 
 model Contact {
-  id        String    @id @default(uuid()) @db.Uuid
-  phone     String
-  name      String
-  email     String?
-  notes     String?   @db.Text
+  id                String    @id @default(uuid()) @db.Uuid
+  phone             String
+  name              String
+  email             String?
+  notes             String?   @db.Text
   /// URL da foto de perfil WhatsApp (Evolution API / webhooks CONTACTS_*).
-  profilePictureUrl String? @map("profile_picture_url") @db.VarChar(2048)
-  waId      String?   @map("wa_id")
+  profilePictureUrl String?   @map("profile_picture_url") @db.VarChar(2048)
+  waId              String?   @map("wa_id")
   /// Conversa WhatsApp em grupo (@g.us) — destino de envio usa waId (JID do grupo).
-  isGroupChat Boolean @default(false) @map("is_group_chat")
-  optedIn   Boolean   @default(false) @map("opted_in")
-  optedInAt DateTime? @map("opted_in_at")
-  lifecycleStage String? @map("lifecycle_stage") @db.VarChar(64)
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  isGroupChat       Boolean   @default(false) @map("is_group_chat")
+  optedIn           Boolean   @default(false) @map("opted_in")
+  optedInAt         DateTime? @map("opted_in_at")
+  lifecycleStage    String?   @map("lifecycle_stage") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -350,13 +362,13 @@ model Contact {
   createdById String? @map("created_by_id") @db.Uuid
   createdBy   User?   @relation("ContactCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
-  pipelineStageId String?         @map("pipeline_stage_id") @db.Uuid
-  pipelineStage   PipelineStage?  @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
+  pipelineStageId String?        @map("pipeline_stage_id") @db.Uuid
+  pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
 
-  tags          ContactTag[]
-  conversations Conversation[]
-  reminders     Reminder[]
-  dealsPrimary  Deal[]         @relation("DealPrimaryContact")
+  tags                ContactTag[]
+  conversations       Conversation[]
+  reminders           Reminder[]
+  dealsPrimary        Deal[]                       @relation("DealPrimaryContact")
   broadcastRecipients BroadcastCampaignRecipient[]
 
   @@unique([organizationId, phone])
@@ -375,10 +387,10 @@ model Tag {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  contacts ContactTag[]
-  rules    AutoTagRule[]
-  broadcastCampaignTags BroadcastCampaignTag[]
-  settingsAutoResolveTag Settings[] @relation("SettingsAutoResolveTag")
+  contacts               ContactTag[]
+  rules                  AutoTagRule[]
+  broadcastCampaignTags  BroadcastCampaignTag[]
+  settingsAutoResolveTag Settings[]             @relation("SettingsAutoResolveTag")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -397,11 +409,11 @@ model ContactTag {
 }
 
 model Pipeline {
-  id             String       @id @default(uuid()) @db.Uuid
-  name           String
-  isDefault      Boolean      @default(false) @map("is_default")
-  sortOrder      Int          @default(0) @map("sort_order")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  isDefault Boolean  @default(false) @map("is_default")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -437,13 +449,13 @@ model PipelineStage {
 }
 
 model Account {
-  id             String       @id @default(uuid()) @db.Uuid
-  name           String
-  website        String?
-  industry       String?
-  metadata       Json?
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  website   String?
+  industry  String?
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -459,15 +471,15 @@ model Account {
 }
 
 model Product {
-  id             String       @id @default(uuid()) @db.Uuid
-  name           String
-  sku            String?
-  priceCents     Int          @default(0) @map("price_cents")
-  currency       String       @default("BRL") @db.VarChar(3)
-  isActive       Boolean      @default(true) @map("is_active")
-  metadata       Json?
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  sku        String?
+  priceCents Int      @default(0) @map("price_cents")
+  currency   String   @default("BRL") @db.VarChar(3)
+  isActive   Boolean  @default(true) @map("is_active")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -479,16 +491,16 @@ model Product {
 }
 
 model Deal {
-  id             String       @id @default(uuid()) @db.Uuid
+  id             String     @id @default(uuid()) @db.Uuid
   name           String
-  status         DealStatus   @default(OPEN)
-  amountCents    Int          @default(0) @map("amount_cents")
-  currency       String       @default("BRL") @db.VarChar(3)
-  probabilityPct Int?         @map("probability_pct")
-  closeDate      DateTime?    @map("close_date")
-  lostReason     String?      @map("lost_reason") @db.Text
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  status         DealStatus @default(OPEN)
+  amountCents    Int        @default(0) @map("amount_cents")
+  currency       String     @default("BRL") @db.VarChar(3)
+  probabilityPct Int?       @map("probability_pct")
+  closeDate      DateTime?  @map("close_date")
+  lostReason     String?    @map("lost_reason") @db.Text
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -496,7 +508,7 @@ model Deal {
   pipelineId String   @map("pipeline_id") @db.Uuid
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
 
-  stageId String         @map("stage_id") @db.Uuid
+  stageId String        @map("stage_id") @db.Uuid
   stage   PipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
 
   accountId String?  @map("account_id") @db.Uuid
@@ -534,15 +546,15 @@ model DealLineItem {
 }
 
 model TimelineEvent {
-  id             String               @id @default(uuid()) @db.Uuid
-  subjectType    TimelineSubjectType  @map("subject_type")
-  subjectId      String               @map("subject_id") @db.Uuid
-  eventType      String               @map("event_type") @db.VarChar(120)
-  channel        String?              @db.VarChar(32)
-  payload        Json
-  sourceId       String?              @map("source_id") @db.VarChar(120)
-  occurredAt     DateTime             @default(now()) @map("occurred_at")
-  createdAt      DateTime             @default(now()) @map("created_at")
+  id          String              @id @default(uuid()) @db.Uuid
+  subjectType TimelineSubjectType @map("subject_type")
+  subjectId   String              @map("subject_id") @db.Uuid
+  eventType   String              @map("event_type") @db.VarChar(120)
+  channel     String?             @db.VarChar(32)
+  payload     Json
+  sourceId    String?             @map("source_id") @db.VarChar(120)
+  occurredAt  DateTime            @default(now()) @map("occurred_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -555,18 +567,18 @@ model TimelineEvent {
 }
 
 model LeadType {
-  id             String       @id @default(uuid()) @db.Uuid
+  id             String          @id @default(uuid()) @db.Uuid
   name           String
-  color          String       @db.VarChar(7)
-  order          Int          @default(0) @map("sort_order")
+  color          String          @db.VarChar(7)
+  order          Int             @default(0) @map("sort_order")
   /// Soma em auditoria / Meu atendimento e estado do negócio quando a etapa do funil corresponde a este tipo.
   valueRollup    LeadValueRollup @default(PIPELINE) @map("value_roll_up")
-  organizationId String       @map("organization_id") @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String          @map("organization_id") @db.Uuid
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  conversations  Conversation[]
-  pipelineStages PipelineStage[]
-  settingsAutoResolveLeadType Settings[] @relation("SettingsAutoResolveLeadType")
+  conversations               Conversation[]
+  pipelineStages              PipelineStage[]
+  settingsAutoResolveLeadType Settings[]      @relation("SettingsAutoResolveLeadType")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -591,25 +603,26 @@ model Conversation {
   assignedToId String? @map("assigned_to_id") @db.Uuid
   assignedTo   User?   @relation("AssignedConversations", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  leadTypeId    String?   @map("lead_type_id") @db.Uuid
-  leadType      LeadType? @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
-  closureReason String?   @map("closure_reason") @db.Text
+  leadTypeId      String?   @map("lead_type_id") @db.Uuid
+  leadType        LeadType? @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
+  closureReason   String?   @map("closure_reason") @db.Text
   /// Valor opcional associado ao lead quando a conversa é finalizada (acompanhamento comercial).
-  closureValue  Float?    @map("closure_value")
+  closureValue    Float?    @map("closure_value")
   /// CSAT 1–5: preenchido pelo cliente via link (inquérito pós-resolução).
-  csatScore      Int?      @map("csat_score")
-  csatComment    String?   @map("csat_comment") @db.Text
-  csatRecordedAt DateTime? @map("csat_recorded_at")
+  csatScore       Int?      @map("csat_score")
+  csatComment     String?   @map("csat_comment") @db.Text
+  csatRecordedAt  DateTime? @map("csat_recorded_at")
   /// Token opaco para o link público de avaliação (limpo ao reabrir ou após submissão).
-  csatSurveyToken String?  @unique @map("csat_survey_token") @db.VarChar(48)
+  csatSurveyToken String?   @unique @map("csat_survey_token") @db.VarChar(48)
 
   teamId String? @map("team_id") @db.Uuid
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
-  messages         Message[]
-  botInteractions  BotInteraction[]
-  automationContext AutomationConversationContext?
+  messages               Message[]
+  botInteractions        BotInteraction[]
+  automationContext      AutomationConversationContext?
   automationInteractions AutomationInteraction[]
+  automationExecutions   AutomationExecution[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -682,8 +695,8 @@ model MessageTemplate {
   metaCategory       String?  @map("meta_category") @db.VarChar(64)
   createdAt          DateTime @default(now()) @map("created_at")
 
-  organizationId String       @map("organization_id") @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId     String              @map("organization_id") @db.Uuid
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   broadcastCampaigns BroadcastCampaign[]
 
   @@index([organizationId])
@@ -692,13 +705,13 @@ model MessageTemplate {
 }
 
 model BroadcastCampaign {
-  id             String                 @id @default(uuid()) @db.Uuid
-  name           String                 @db.VarChar(200)
-  status         BroadcastCampaignStatus @default(DRAFT)
+  id          String                  @id @default(uuid()) @db.Uuid
+  name        String                  @db.VarChar(200)
+  status      BroadcastCampaignStatus @default(DRAFT)
   /// Apenas TEXT ou TEMPLATE são aceites na API de campanhas.
-  messageType    MessageType            @map("message_type")
-  body           String?                @db.Text
-  templateId     String?                @map("template_id") @db.Uuid
+  messageType MessageType             @map("message_type")
+  body        String?                 @db.Text
+  templateId  String?                 @map("template_id") @db.Uuid
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -790,16 +803,16 @@ model Settings {
   csatSurveyMessage String? @map("csat_survey_message") @db.Text
 
   /// Resolução automática por inatividade (regras ao estilo «fluxos de conversa»).
-  autoResolveConversationsEnabled Boolean @default(false) @map("auto_resolve_conversations_enabled")
+  autoResolveConversationsEnabled Boolean   @default(false) @map("auto_resolve_conversations_enabled")
   /// Duração mínima de inatividade antes de resolver (em minutos; 1–43200).
-  autoResolveInactivityMinutes    Int      @default(10) @map("auto_resolve_inactivity_minutes")
+  autoResolveInactivityMinutes    Int       @default(10) @map("auto_resolve_inactivity_minutes")
   /// Mensagem opcional ao cliente após a resolução automática (WhatsApp).
-  autoResolveCustomerMessage      String?  @map("auto_resolve_customer_message") @db.Text
+  autoResolveCustomerMessage      String?   @map("auto_resolve_customer_message") @db.Text
   /// Se verdadeiro, não resolver conversas com agente atribuído (aguardam resposta humana).
-  autoResolveSkipWhenAssigned     Boolean  @default(false) @map("auto_resolve_skip_when_assigned")
-  autoResolveTagId                String?  @map("auto_resolve_tag_id") @db.Uuid
-  autoResolveLeadTypeId           String?  @map("auto_resolve_lead_type_id") @db.Uuid
-  autoResolveTag                  Tag?     @relation("SettingsAutoResolveTag", fields: [autoResolveTagId], references: [id], onDelete: SetNull)
+  autoResolveSkipWhenAssigned     Boolean   @default(false) @map("auto_resolve_skip_when_assigned")
+  autoResolveTagId                String?   @map("auto_resolve_tag_id") @db.Uuid
+  autoResolveLeadTypeId           String?   @map("auto_resolve_lead_type_id") @db.Uuid
+  autoResolveTag                  Tag?      @relation("SettingsAutoResolveTag", fields: [autoResolveTagId], references: [id], onDelete: SetNull)
   autoResolveLeadType             LeadType? @relation("SettingsAutoResolveLeadType", fields: [autoResolveLeadTypeId], references: [id], onDelete: SetNull)
 
   /// Finalização manual: exigir motivo (mín. 3 caracteres) ao resolver.
@@ -855,7 +868,9 @@ model OrganizationFeatureFlag {
   @@map("organization_feature_flags")
 }
 
-/** Configuração global da plataforma (super admin). Valores em JSON para flexibilidade. */
+/**
+ * Configuração global da plataforma (super admin). Valores em JSON para flexibilidade.
+ */
 model PlatformSetting {
   id        String   @id @default(uuid()) @db.Uuid
   key       String   @unique @db.VarChar(120)
@@ -868,22 +883,22 @@ model PlatformSetting {
 // --- Automação (KB, perfis de agente por Bot, ferramentas, prompts, interações, contexto) ---
 
 model AutomationKnowledgeArticle {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  knowledgeSourceId String?   @map("knowledge_source_id") @db.Uuid
+  id                String                     @id @default(uuid()) @db.Uuid
+  organizationId    String                     @map("organization_id") @db.Uuid
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  knowledgeSourceId String?                    @map("knowledge_source_id") @db.Uuid
   knowledgeSource   AutomationKnowledgeSource? @relation(fields: [knowledgeSourceId], references: [id], onDelete: SetNull)
-  title          String       @db.VarChar(500)
-  content        String       @db.Text
-  category       String?      @db.VarChar(120)
-  tags           String[]     @default([])
-  isActive       Boolean      @default(true) @map("is_active")
-  syncToAi       Boolean      @default(true) @map("sync_to_ai")
+  title             String                     @db.VarChar(500)
+  content           String                     @db.Text
+  category          String?                    @db.VarChar(120)
+  tags              String[]                   @default([])
+  isActive          Boolean                    @default(true) @map("is_active")
+  syncToAi          Boolean                    @default(true) @map("sync_to_ai")
   /// Preenchido quando o conteúdo veio de upload (PDF, DOCX, etc.).
-  sourceFileName String?      @map("source_file_name") @db.VarChar(500)
-  sourceMimeType String?      @map("source_mime_type") @db.VarChar(160)
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  sourceFileName    String?                    @map("source_file_name") @db.VarChar(500)
+  sourceMimeType    String?                    @map("source_mime_type") @db.VarChar(160)
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
 
   botLinks  AutomationKnowledgeArticleBot[]
   revisions AutomationKnowledgeRevision[]
@@ -897,20 +912,20 @@ model AutomationKnowledgeArticle {
 
 /// Fonte externa ou automatizada ligada à base de conhecimento (URL, webhook, integrações futuras).
 model AutomationKnowledgeSource {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  kind           String       @db.VarChar(40)
-  name           String       @db.VarChar(200)
-  config         Json
-  isActive       Boolean      @default(true) @map("is_active")
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind            String       @db.VarChar(40)
+  name            String       @db.VarChar(200)
+  config          Json
+  isActive        Boolean      @default(true) @map("is_active")
   /// Token secreto para `POST /api/v1/public/knowledge-source-push/:token` (kind webhook_push).
-  webhookToken   String?      @unique @map("webhook_token") @db.VarChar(64)
-  lastSyncedAt   DateTime?    @map("last_synced_at")
-  lastSyncStatus String?      @map("last_sync_status") @db.VarChar(20)
-  lastSyncMessage String?     @map("last_sync_message") @db.Text
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  webhookToken    String?      @unique @map("webhook_token") @db.VarChar(64)
+  lastSyncedAt    DateTime?    @map("last_synced_at")
+  lastSyncStatus  String?      @map("last_sync_status") @db.VarChar(20)
+  lastSyncMessage String?      @map("last_sync_message") @db.Text
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
   articles AutomationKnowledgeArticle[]
 
@@ -921,19 +936,19 @@ model AutomationKnowledgeSource {
 
 /// Segmentos de texto com embeddings para busca semântica (RAG) sobre artigos da KB.
 model AutomationKnowledgeChunk {
-  id             String                   @id @default(uuid()) @db.Uuid
-  organizationId String                   @map("organization_id") @db.Uuid
-  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  articleId      String                   @map("article_id") @db.Uuid
-  article        AutomationKnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  chunkIndex     Int                      @map("chunk_index")
-  text           String                   @db.Text
-  embeddingModel String                   @default("text-embedding-3-small") @map("embedding_model") @db.VarChar(80)
-  dimensions     Int                      @default(1536)
+  id              String                      @id @default(uuid()) @db.Uuid
+  organizationId  String                      @map("organization_id") @db.Uuid
+  organization    Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  articleId       String                      @map("article_id") @db.Uuid
+  article         AutomationKnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  chunkIndex      Int                         @map("chunk_index")
+  text            String                      @db.Text
+  embeddingModel  String                      @default("text-embedding-3-small") @map("embedding_model") @db.VarChar(80)
+  dimensions      Int                         @default(1536)
   /// pgvector — usar `$executeRaw` / `$queryRaw` (Prisma não serializa `vector` no client).
   embeddingVector Unsupported("vector(1536)") @map("embedding_vector")
-  createdAt      DateTime                 @default(now()) @map("created_at")
-  updatedAt      DateTime                 @updatedAt @map("updated_at")
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
 
   @@unique([articleId, chunkIndex])
   @@index([organizationId])
@@ -942,10 +957,10 @@ model AutomationKnowledgeChunk {
 }
 
 model AutomationKnowledgeArticleBot {
-  articleId String                   @map("article_id") @db.Uuid
-  botId     String                   @map("bot_id") @db.Uuid
+  articleId String                     @map("article_id") @db.Uuid
+  botId     String                     @map("bot_id") @db.Uuid
   article   AutomationKnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  bot       Bot                      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  bot       Bot                        @relation(fields: [botId], references: [id], onDelete: Cascade)
 
   @@id([articleId, botId])
   @@index([botId])
@@ -953,13 +968,13 @@ model AutomationKnowledgeArticleBot {
 }
 
 model AutomationKnowledgeRevision {
-  id           String                   @id @default(uuid()) @db.Uuid
-  articleId    String                   @map("article_id") @db.Uuid
+  id           String                     @id @default(uuid()) @db.Uuid
+  articleId    String                     @map("article_id") @db.Uuid
   article      AutomationKnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  editorUserId String                   @map("editor_user_id") @db.Uuid
-  editor       User                     @relation(fields: [editorUserId], references: [id], onDelete: Restrict)
+  editorUserId String                     @map("editor_user_id") @db.Uuid
+  editor       User                       @relation(fields: [editorUserId], references: [id], onDelete: Restrict)
   snapshot     Json
-  createdAt    DateTime                 @default(now()) @map("created_at")
+  createdAt    DateTime                   @default(now()) @map("created_at")
 
   @@index([articleId])
   @@map("automation_knowledge_revisions")
@@ -981,13 +996,13 @@ model KbSearchCache {
 }
 
 model KbSearchLog {
-  id               String       @id @default(uuid()) @db.Uuid
-  organizationId   String       @map("organization_id") @db.Uuid
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  queryNormalized  String       @map("query_normalized") @db.VarChar(512)
-  resultsCount     Int          @map("results_count")
-  actorUserId      String?      @map("actor_user_id") @db.Uuid
-  createdAt        DateTime     @default(now()) @map("created_at")
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  queryNormalized String       @map("query_normalized") @db.VarChar(512)
+  resultsCount    Int          @map("results_count")
+  actorUserId     String?      @map("actor_user_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at")
 
   @@index([organizationId, createdAt])
   @@map("kb_search_logs")
@@ -1012,18 +1027,18 @@ model AutomationPromptModule {
 
 /// Configuração avançada por Bot (LLM, ferramentas nativas, escalonamento, inatividade, voz, etc.).
 model AutomationAgentProfile {
-  id               String       @id @default(uuid()) @db.Uuid
-  organizationId   String       @map("organization_id") @db.Uuid
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  botId            String       @unique @map("bot_id") @db.Uuid
-  bot              Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+  id              String       @id @default(uuid()) @db.Uuid
+  organizationId  String       @map("organization_id") @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  botId           String       @unique @map("bot_id") @db.Uuid
+  bot             Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
   /// provider, model, temperature, maxTokens, apiBaseUrl, apiKey (nunca devolvida em GET — só indicador)
-  llmConfig        Json         @map("llm_config")
+  llmConfig       Json         @map("llm_config")
   /// nativeTools, escalationRules, inactivity, voice, segmentation, dataSource, scheduling
-  behaviorConfig   Json         @map("behavior_config")
-  promptModuleIds  Json?        @map("prompt_module_ids")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+  behaviorConfig  Json         @map("behavior_config")
+  promptModuleIds Json?        @map("prompt_module_ids")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
   @@index([organizationId])
   @@map("automation_agent_profiles")
@@ -1057,21 +1072,21 @@ model AutomationCustomTool {
 }
 
 model AutomationToolExecution {
-  id               String       @id @default(uuid()) @db.Uuid
-  organizationId   String       @map("organization_id") @db.Uuid
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  toolId           String       @map("tool_id") @db.Uuid
-  tool             AutomationCustomTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
-  source           String       @default("manual_test") @map("source") @db.VarChar(32)
-  ok               Boolean      @default(false) @map("ok")
-  statusCode       Int?         @map("status_code")
-  durationMs       Int?         @map("duration_ms")
-  requestSummary   Json?        @map("request_summary")
-  responseSummary  Json?        @map("response_summary")
-  errorMessage     String?      @map("error_message") @db.Text
-  tokensUsed       Int?         @map("tokens_used")
-  botId            String?      @map("bot_id") @db.Uuid
-  createdAt        DateTime     @default(now()) @map("created_at")
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  toolId          String               @map("tool_id") @db.Uuid
+  tool            AutomationCustomTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  source          String               @default("manual_test") @map("source") @db.VarChar(32)
+  ok              Boolean              @default(false) @map("ok")
+  statusCode      Int?                 @map("status_code")
+  durationMs      Int?                 @map("duration_ms")
+  requestSummary  Json?                @map("request_summary")
+  responseSummary Json?                @map("response_summary")
+  errorMessage    String?              @map("error_message") @db.Text
+  tokensUsed      Int?                 @map("tokens_used")
+  botId           String?              @map("bot_id") @db.Uuid
+  createdAt       DateTime             @default(now()) @map("created_at")
 
   @@index([organizationId, createdAt])
   @@index([toolId, createdAt])
@@ -1114,4 +1129,64 @@ model AutomationConversationContext {
 
   @@index([organizationId])
   @@map("automation_conversation_contexts")
+}
+
+/// Uma execução de «workflow» de automação (ex.: uma volta completa do agente nativo por mensagem).
+model AutomationExecution {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @map("organization_id") @db.Uuid
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  botId            String        @map("bot_id") @db.Uuid
+  bot              Bot           @relation(fields: [botId], references: [id], onDelete: Cascade)
+  conversationId   String?       @map("conversation_id") @db.Uuid
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  triggerMessageId String?       @map("trigger_message_id") @db.Uuid
+  workflowKey      String        @default("native_agent") @map("workflow_key") @db.VarChar(120)
+  workflowName     String        @default("") @map("workflow_name") @db.VarChar(200)
+  status           String        @default("running") @map("status") @db.VarChar(24)
+  errorMessage     String?       @map("error_message") @db.Text
+  startedAt        DateTime      @default(now()) @map("started_at")
+  finishedAt       DateTime?     @map("finished_at")
+
+  logEntries AutomationExecutionLogEntry[]
+
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@index([botId, startedAt(sort: Desc)])
+  @@index([conversationId, startedAt(sort: Desc)])
+  @@index([workflowKey, startedAt(sort: Desc)])
+  @@map("automation_executions")
+}
+
+model AutomationExecutionLogEntry {
+  id            String              @id @default(uuid()) @db.Uuid
+  executionId   String              @map("execution_id") @db.Uuid
+  execution     AutomationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  sequence      Int                 @map("sequence")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  level         AutomationLogLevel
+  nodeId        String              @map("node_id") @db.VarChar(120)
+  nodeName      String              @map("node_name") @db.VarChar(200)
+  nodePath      String              @default("") @map("node_path") @db.VarChar(400)
+  message       String              @db.Text
+  inputContext  Json?               @map("input_context")
+  outputContext Json?               @map("output_context")
+  stackTrace    String?             @map("stack_trace") @db.Text
+
+  @@index([executionId, sequence])
+  @@index([executionId, level])
+  @@map("automation_execution_log_entries")
+}
+
+/// Retenção e alertas por organização.
+model AutomationExecutionLogSettings {
+  organizationId  String             @id @map("organization_id") @db.Uuid
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  retentionDays   Int                @default(30) @map("retention_days")
+  minPersistLevel AutomationLogLevel @default(DEBUG) @map("min_persist_level")
+  alertWebhookUrl String?            @map("alert_webhook_url") @db.VarChar(2048)
+  alertEmail      String?            @map("alert_email") @db.VarChar(255)
+  alertMinLevel   AutomationLogLevel @default(ERROR) @map("alert_min_level")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@map("automation_execution_log_settings")
 }

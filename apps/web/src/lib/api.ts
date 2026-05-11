@@ -143,6 +143,25 @@ class ApiClient {
     }
     return response.json() as Promise<T>;
   }
+
+  /** GET binário / texto (exportações, ficheiros) com o mesmo Bearer da sessão. */
+  async fetchBlob(path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(`${API_BASE}${path}`, { headers });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw new ApiError(
+        typeof (error as { message?: unknown }).message === "string"
+          ? (error as { message: string }).message
+          : "Request failed",
+        response.status,
+      );
+    }
+    return response.blob();
+  }
 }
 
 export class ApiError extends Error {
