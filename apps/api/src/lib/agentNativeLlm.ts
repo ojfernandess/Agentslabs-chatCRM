@@ -29,12 +29,12 @@ export function isLikelyStallOnlyReply(text: string): boolean {
   return STALL_RE.test(t);
 }
 
-/** Resposta curta a negar informação / “não tenho dados” quando já injectámos excertos da KB (modelo ignorou o contexto). */
+/** Resposta curta a negar informação quando já injectámos excertos da KB (modelo ignorou o contexto). */
 function isLikelyKbDeflectionOnlyReply(text: string): boolean {
   const t = text.trim();
-  if (t.length < 10 || t.length > 360) return false;
-  if (/[.!?][\s\S]{90,}/.test(t)) return false;
-  return /\b(não\s+(tenho|posso|sei|encontrei)\s+(essa\s+)?informa(c|ç)ão|não\s+há\s+informa(c|ç)ão|sem\s+informa(c|ç)ão\s+(sobre|disponível)|não\s+consigo\s+(aceder|fornecer|confirmar)|não\s+está\s+disponível|i\s+don'?t\s+have\s+(that|this|the)\s+information)\b/i.test(
+  if (t.length < 10 || t.length > 420) return false;
+  if (/[.!?][\s\S]{110,}/.test(t)) return false;
+  return /\b(não\s+(tenho|posso|sei|encontrei)\s+(essa\s+)?informa(c|ç)ão|não\s+há\s+informa(c|ç)ão|sem\s+informa(c|ç)ão\s+(sobre|disponível|n(a|ã)o\s+encontrad[ao])|não\s+consigo\s+(aceder|fornecer|confirmar|encontrar|localizar)|não\s+é\s+possível\s+(encontrar|localizar|obter|fornecer)|não\s+foi\s+possível\s+(encontrar|localizar|obter)|não\s+encontrei(\s+na\s+base)?|não\s+temos\s+(es[sa]ta\s+)?informa(c|ç)ão|infelizmente\s+não\s+(tenho|posso|consigo|encontro)|sem\s+dados\s+(sobre|suficientes)|não\s+está\s+disponível|i\s+don'?t\s+have\s+(that|this|the)\s+information|i\s+can'?t\s+find\s+(that|any))\b/i.test(
     t,
   );
 }
@@ -91,9 +91,12 @@ function formatKnowledgeToolResult(
   return JSON.stringify({ found: true, articles: items });
 }
 
-function buildOpenAiTools(flags: NativeToolsFlags): OpenAiToolDefinition[] {
+function buildOpenAiTools(
+  flags: NativeToolsFlags,
+  opts?: { omitBuscarConhecimento?: boolean },
+): OpenAiToolDefinition[] {
   const tools: OpenAiToolDefinition[] = [];
-  if (flags.knowledge_search) {
+  if (flags.knowledge_search && !opts?.omitBuscarConhecimento) {
     tools.push({
       type: "function",
       function: {
@@ -412,27 +415,6 @@ export async function generateNativeAgentReply(input: {
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
-  if (isAgentKbDebugEnabled()) {
-    logAgentKbDebug(log, {
-      stage: "nativeAgentReply_start",
-      organizationId,
-      botId: bot.id,
-      conversationId: conversation.id,
-      knowledge_search: flags.knowledge_search,
-      pinnedArticleIdsCount: pinnedArticleIds.length,
-      provider,
-      useTools: provider !== "google_gemini" && buildOpenAiTools(flags).length > 0,
-      apiKeySource:
-        storedKey && storedKey !== "***"
-          ? "profile"
-          : provider === "openai" && config.openAiPromptPreviewKey.trim()
-            ? "server_openai_env"
-            : provider === "google_gemini" && config.geminiPromptPreviewKey.trim()
-              ? "server_gemini_env"
-              : "none",
-    });
-  }
-
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
     try {
@@ -450,10 +432,12 @@ export async function generateNativeAgentReply(input: {
   }
 
   const hasDenseKbAppendix = kbProactiveAppendix.trim().length >= 80;
+  /** Com RAG já no system (como no playground de conhecimento), não expor `buscar_conhecimento` — evita o modelo priorizar a ferramenta e ignorar os excertos. */
+  const omitBuscarConhecimento = hasDenseKbAppendix && flags.knowledge_search;
+
   const toolPreamble = hasDenseKbAppendix
     ? "\n\n### Ferramentas (complemento)\n" +
-      "- **Prioridade:** a secção **Base de conhecimento** acima foi recuperada para a última mensagem do cliente. Para morada, Wi‑Fi, horários, preços e políticas, **responda com dados concretos dessa secção**. Não diga que não tem a informação nem que vai «confirmar» ou «verificar» se ela constar nos excertos.\n" +
-      "- `buscar_conhecimento`: apenas se a pergunta for sobre **outro** tema não coberto pelos excertos já mostrados.\n" +
+      "- **Prioridade:** a secção **Base de conhecimento** acima **já foi pesquisada** para a última mensagem do cliente (igual ao «Teste IA» do hub). Responda **com factos concretos** dessa secção (morada, Wi‑Fi, horários, preços). Não diga que não encontrou ou que não é possível obter a informação se ela constar nos excertos; não use «vou verificar» como substituto de resposta.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
       "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos forem claramente insuficientes."
     : "\n\n### Ferramentas (complemento)\n" +
@@ -481,8 +465,31 @@ export async function generateNativeAgentReply(input: {
   let replyText = "";
   let completedToolRounds = 0;
 
-  const tools = buildOpenAiTools(flags);
+  const tools = buildOpenAiTools(flags, { omitBuscarConhecimento });
   const useTools = provider !== "google_gemini" && tools.length > 0;
+
+  if (isAgentKbDebugEnabled()) {
+    logAgentKbDebug(log, {
+      stage: "nativeAgentReply_start",
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      knowledge_search: flags.knowledge_search,
+      pinnedArticleIdsCount: pinnedArticleIds.length,
+      provider,
+      useTools,
+      omitBuscarConhecimento,
+      openAiToolCount: tools.length,
+      apiKeySource:
+        storedKey && storedKey !== "***"
+          ? "profile"
+          : provider === "openai" && config.openAiPromptPreviewKey.trim()
+            ? "server_openai_env"
+            : provider === "google_gemini" && config.geminiPromptPreviewKey.trim()
+              ? "server_gemini_env"
+              : "none",
+    });
+  }
 
   try {
     if (useTools) {
