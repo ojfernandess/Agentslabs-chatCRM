@@ -8,7 +8,10 @@ import {
   type OpenAiToolDefinition,
   type PreviewChatTurn,
 } from "./promptModulePreviewLlm.js";
-import { rankedKnowledgeSearch } from "./knowledgeRetrieval.js";
+import {
+  fetchProactiveKnowledgeSystemAppendix,
+  rankedKnowledgeSearch,
+} from "./knowledgeRetrieval.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 
 const STALL_RE =
@@ -340,10 +343,29 @@ export async function generateNativeAgentReply(input: {
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
 
   const toolPreamble =
-    "\n\nRegras de ferramentas: Para factos (morada, horário, preços, políticas), chame buscar_conhecimento e responda com a informação obtida — nunca diga apenas que vai verificar sem chamar a função ou sem dar a resposta final. Para transferir para uma equipa, use transfer_to_team com o UUID correto (use listar_equipas se precisar do id). Para falar com humano, use call_human.";
+    "\n\n### Ferramentas (complemento)\n" +
+    "- Os excertos da base podem já estar na secção «Base de conhecimento» acima: responda com base neles.\n" +
+    "- `buscar_conhecimento`: use só se precisar de outra consulta além dos excertos já injectados.\n" +
+    "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
+    "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de usar os excertos, não for possível responder com verdade — **não** use para perguntas factuais que os excertos já respondem.";
 
-  const systemWithTools = systemInstructions + toolPreamble;
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
+
+  let kbProactiveAppendix = "";
+  if (flags.knowledge_search) {
+    try {
+      kbProactiveAppendix = await fetchProactiveKnowledgeSystemAppendix({
+        organizationId,
+        botId: bot.id,
+        userMessage,
+        limit: 8,
+      });
+    } catch (err) {
+      log.warn({ err, botId: bot.id }, "proactive knowledge appendix failed");
+    }
+  }
+
+  const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble;
 
   const recent = await prisma.message.findMany({
     where: { conversationId: conversation.id },
@@ -374,7 +396,7 @@ export async function generateNativeAgentReply(input: {
           model,
           temperature,
           maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemWithTools,
+          system: systemBase,
           history,
           userMessage,
           tools,
@@ -401,7 +423,7 @@ export async function generateNativeAgentReply(input: {
           model,
           temperature,
           maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemWithTools,
+          system: systemBase,
           history,
           userMessage,
           signal,
@@ -414,7 +436,7 @@ export async function generateNativeAgentReply(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemWithTools,
+        system: systemBase,
         history,
         userMessage,
         signal,
@@ -427,7 +449,7 @@ export async function generateNativeAgentReply(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemWithTools,
+        system: systemBase,
         history,
         userMessage,
         signal,

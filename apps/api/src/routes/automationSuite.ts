@@ -15,7 +15,11 @@ import {
   callOpenAiCompatibleChat,
   type PreviewChatTurn,
 } from "../lib/promptModulePreviewLlm.js";
-import { rankedKnowledgeSearch } from "../lib/knowledgeRetrieval.js";
+import {
+  fetchProactiveKnowledgeSystemAppendix,
+  rankedKnowledgeSearch,
+} from "../lib/knowledgeRetrieval.js";
+import { parseNativeToolsFromBehavior } from "../lib/agentNativeLlm.js";
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
 import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
 import {
@@ -2153,6 +2157,22 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const history = parsed.data.history as PreviewChatTurn[];
       const userMessage = parsed.data.message;
 
+      let systemEffective = system;
+      const nativeFlags = parseNativeToolsFromBehavior(profile.behaviorConfig);
+      if (nativeFlags.knowledge_search) {
+        try {
+          systemEffective =
+            system +
+            (await fetchProactiveKnowledgeSystemAppendix({
+              organizationId,
+              botId: profile.bot.id,
+              userMessage,
+            }));
+        } catch (err) {
+          request.log.warn({ err, botId: profile.bot.id }, "test-chat proactive kb failed");
+        }
+      }
+
       if (!apiKey || apiKey === "***") {
         return reply.status(400).send({
           error: "Bad Request",
@@ -2170,7 +2190,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             model,
             temperature: Number.isFinite(temperature) ? temperature : 0.7,
             maxTokens: Number.isFinite(maxTokens) ? Math.max(16, Math.min(8192, Math.trunc(maxTokens))) : 1024,
-            system,
+            system: systemEffective,
             history,
             userMessage,
             signal: AbortSignal.timeout(28_000),
@@ -2183,7 +2203,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             model,
             temperature: Number.isFinite(temperature) ? temperature : 0.7,
             maxTokens: Number.isFinite(maxTokens) ? Math.max(16, Math.min(8192, Math.trunc(maxTokens))) : 1024,
-            system,
+            system: systemEffective,
             history,
             userMessage,
             signal: AbortSignal.timeout(28_000),

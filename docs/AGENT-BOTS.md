@@ -75,6 +75,8 @@ A pesquisa usada por **`buscar_conhecimento`** (e pela pré-visualização na au
 
 A pesquisa semântica (embeddings) exige chave OpenAI no servidor (`OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY`) e chunks indexados; sem isso mantém-se a pesquisa lexical por texto.
 
+Em cada mensagem inbound, o agente **nativo** também executa essa pesquisa de forma **proactiva** e injecta excertos no *system prompt* antes de chamar o LLM (para Gemini não haver function calling, e para reduzir respostas «não encontrei» quando o modelo ignora `buscar_conhecimento`).
+
 ## Verificação de implementação
 
 | Etapa | Estado |

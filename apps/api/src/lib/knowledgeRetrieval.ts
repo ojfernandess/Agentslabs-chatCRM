@@ -149,3 +149,44 @@ export async function rankedKnowledgeSearch(params: {
   const mode: "semantic" | "hybrid" = merged.length > semTop.length ? "hybrid" : "semantic";
   return { ranked: merged.slice(0, limit), mode };
 }
+
+/** Texto a anexar ao system prompt do agente nativo (RAG proactivo). */
+export function formatRankedKnowledgeForSystemPrompt(ranked: RankedKnowledgeRow[]): string {
+  if (!ranked.length) {
+    return (
+      "\n\n### Base de conhecimento (pesquisa automática na última mensagem do cliente)\n" +
+      "Não foi encontrado nenhum trecho indexado relevante. Não invente factos (moradas, preços, Wi‑Fi, quartos). " +
+      "Só ofereça transferência para humano se o cliente pedir atendente/humano ou se, honestamente, não existir informação útil em lado nenhum."
+    );
+  }
+  const parts = ranked.slice(0, 8).map((r, i) => {
+    const sc = Math.round(r.score * 1000) / 1000;
+    return `**${i + 1}. ${r.article.title}** (relevância ${sc})\n${r.excerpt}`;
+  });
+  return (
+    "\n\n### Base de conhecimento (excertos recuperados automaticamente)\n" +
+    parts.join("\n\n") +
+    "\n\n**Instruções:** use estes excertos para responder à pergunta actual quando forem pertinentes. " +
+    "Não diga que não tem a informação se ela constar acima. " +
+    "Não encaminhe para humano nem use call_human só por precaução: primeiro responda com base nos excertos. " +
+    "Chame buscar_conhecimento apenas se precisar de uma consulta diferente da já reflectida acima."
+  );
+}
+
+/** Recuperação lexical/semântica para injectar no system prompt (independente de function calling). */
+export async function fetchProactiveKnowledgeSystemAppendix(params: {
+  organizationId: string;
+  botId: string;
+  userMessage: string;
+  limit?: number;
+}): Promise<string> {
+  const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
+  if (!norm) return "";
+  const { ranked } = await rankedKnowledgeSearch({
+    organizationId: params.organizationId,
+    normalizedQuery: norm,
+    botId: params.botId,
+    limit: params.limit ?? 8,
+  });
+  return formatRankedKnowledgeForSystemPrompt(ranked);
+}
