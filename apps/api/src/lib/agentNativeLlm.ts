@@ -10,6 +10,8 @@ import {
 } from "./promptModulePreviewLlm.js";
 import {
   fetchProactiveKnowledgeSystemAppendix,
+  mergePinnedKnowledgeWhenRankedEmpty,
+  parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
 } from "./knowledgeRetrieval.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
@@ -153,8 +155,9 @@ async function executeNativeTool(input: {
   conversationId: string;
   flags: NativeToolsFlags;
   log: FastifyBaseLogger;
+  pinnedArticleIds: string[] | undefined;
 }): Promise<string> {
-  const { name, argsJson, organizationId, botId, conversationId, flags, log } = input;
+  const { name, argsJson, organizationId, botId, conversationId, flags, log, pinnedArticleIds } = input;
   let args: Record<string, unknown> = {};
   try {
     const p = JSON.parse(argsJson || "{}");
@@ -168,12 +171,20 @@ async function executeNativeTool(input: {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) return JSON.stringify({ ok: false, error: "missing_query" });
       const norm = query.toLowerCase().slice(0, 500);
-      const { ranked } = await rankedKnowledgeSearch({
+      let ranked = (
+        await rankedKnowledgeSearch({
+          organizationId,
+          normalizedQuery: norm,
+          botId,
+          limit: 8,
+        })
+      ).ranked;
+      ranked = await mergePinnedKnowledgeWhenRankedEmpty({
         organizationId,
-        normalizedQuery: norm,
-        botId,
-        limit: 8,
+        ranked,
+        pinnedArticleIds,
       });
+      ranked = ranked.slice(0, 8);
       return formatKnowledgeToolResult(ranked);
     }
 
@@ -253,16 +264,25 @@ async function augmentStallWithKnowledge(params: {
   maxTokens: number;
   signal: AbortSignal;
   log: FastifyBaseLogger;
+  pinnedArticleIds: string[] | undefined;
 }): Promise<string> {
   const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
   if (!norm) return "";
   try {
-    const { ranked } = await rankedKnowledgeSearch({
+    let ranked = (
+      await rankedKnowledgeSearch({
+        organizationId: params.organizationId,
+        normalizedQuery: norm,
+        botId: params.botId,
+        limit: 6,
+      })
+    ).ranked;
+    ranked = await mergePinnedKnowledgeWhenRankedEmpty({
       organizationId: params.organizationId,
-      normalizedQuery: norm,
-      botId: params.botId,
-      limit: 6,
+      ranked,
+      pinnedArticleIds: params.pinnedArticleIds,
     });
+    ranked = ranked.slice(0, 6);
     const kbBlock = formatKnowledgeToolResult(ranked);
     const extra =
       "\n\n[Instrução do sistema: A tua resposta anterior era só ‘vou verificar’ sem dados. Usa OBRIGATORIAMENTE os excertos abaixo da base de conhecimento para responder de forma completa ao cliente. Se não houver dados úteis, diz honestamente que não encontraste e oferece transferência para humano. Não repitas frases vazias de espera.]\n" +
@@ -350,6 +370,7 @@ export async function generateNativeAgentReply(input: {
     "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de usar os excertos, não for possível responder com verdade — **não** use para perguntas factuais que os excertos já respondem.";
 
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
+  const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
@@ -359,6 +380,7 @@ export async function generateNativeAgentReply(input: {
         botId: bot.id,
         userMessage,
         limit: 8,
+        pinnedArticleIds,
       });
     } catch (err) {
       log.warn({ err, botId: bot.id }, "proactive knowledge appendix failed");
@@ -410,6 +432,7 @@ export async function generateNativeAgentReply(input: {
               conversationId: conversation.id,
               flags,
               log,
+              pinnedArticleIds,
             }),
           signal,
         });
@@ -481,6 +504,7 @@ export async function generateNativeAgentReply(input: {
       maxTokens,
       signal,
       log,
+      pinnedArticleIds,
     });
     if (fixed.trim()) replyText = fixed.trim();
   }

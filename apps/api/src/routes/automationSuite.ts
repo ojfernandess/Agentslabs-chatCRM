@@ -17,7 +17,9 @@ import {
 } from "../lib/promptModulePreviewLlm.js";
 import {
   fetchProactiveKnowledgeSystemAppendix,
+  parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
+  syncKnowledgeArticleBotsFromPromptBuilder,
 } from "../lib/knowledgeRetrieval.js";
 import { parseNativeToolsFromBehavior } from "../lib/agentNativeLlm.js";
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
@@ -2011,6 +2013,14 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       },
     });
 
+    if (parsed.behaviorConfig) {
+      await syncKnowledgeArticleBotsFromPromptBuilder({
+        organizationId,
+        botId,
+        behaviorConfig,
+      });
+    }
+
     return { row, llmConfig };
   }
 
@@ -2167,6 +2177,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
               organizationId,
               botId: profile.bot.id,
               userMessage,
+              pinnedArticleIds: parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig),
             }));
         } catch (err) {
           request.log.warn({ err, botId: profile.bot.id }, "test-chat proactive kb failed");

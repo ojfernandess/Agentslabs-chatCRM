@@ -3,6 +3,49 @@ import { config } from "../config.js";
 import { queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
 
+const KNOWLEDGE_ARTICLE_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** IDs em `behaviorConfig.promptBuilder.linkedKnowledgeArticleIds` (editor do agente). */
+export function parseLinkedKnowledgeArticleIdsFromBehavior(behavior: unknown): string[] {
+  if (!behavior || typeof behavior !== "object") return [];
+  const pb = (behavior as Record<string, unknown>).promptBuilder;
+  if (!pb || typeof pb !== "object") return [];
+  const raw = (pb as Record<string, unknown>).linkedKnowledgeArticleIds;
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const t = x.trim();
+    if (!KNOWLEDGE_ARTICLE_UUID_RE.test(t) || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Garante linhas em `automation_knowledge_article_bots` para os artigos escolhidos no editor do agente.
+ * A pesquisa RAG usa essa tabela; sem isto, só `linkedKnowledgeArticleIds` no JSON não era consultado.
+ */
+export async function syncKnowledgeArticleBotsFromPromptBuilder(params: {
+  organizationId: string;
+  botId: string;
+  behaviorConfig: unknown;
+}): Promise<void> {
+  const ids = parseLinkedKnowledgeArticleIdsFromBehavior(params.behaviorConfig);
+  if (!ids.length) return;
+  const ok = await prisma.automationKnowledgeArticle.findMany({
+    where: { organizationId: params.organizationId, id: { in: ids } },
+    select: { id: true },
+  });
+  const allowed = new Set(ok.map((r) => r.id));
+  const rows = ids.filter((id) => allowed.has(id)).map((articleId) => ({ articleId, botId: params.botId }));
+  if (!rows.length) return;
+  await prisma.automationKnowledgeArticleBot.createMany({ data: rows, skipDuplicates: true });
+}
+
 /**
  * Quando o bot tem pelo menos um artigo (activo, syncToAi) ligado em `automation_knowledge_article_bots`,
  * a pesquisa restringe-se a esses artigos. Se não houver nenhum vínculo, usa-se toda a KB da organização —
@@ -150,6 +193,43 @@ export async function rankedKnowledgeSearch(params: {
   return { ranked: merged.slice(0, limit), mode };
 }
 
+function normalizePinnedKnowledgeArticleIds(pinnedArticleIds: string[] | undefined): string[] {
+  return (pinnedArticleIds ?? [])
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter((id) => KNOWLEDGE_ARTICLE_UUID_RE.test(id))
+    .filter((id, i, a) => a.indexOf(id) === i)
+    .slice(0, 12);
+}
+
+/**
+ * Se a pesquisa não devolver linhas, usa artigos ligados ao agente no editor (activos, syncToAi).
+ * Partilhado entre RAG proactivo, `buscar_conhecimento` e a correcção de respostas vazias (“vou verificar”).
+ */
+export async function mergePinnedKnowledgeWhenRankedEmpty(params: {
+  organizationId: string;
+  ranked: RankedKnowledgeRow[];
+  pinnedArticleIds: string[] | undefined;
+}): Promise<RankedKnowledgeRow[]> {
+  if (params.ranked.length) return params.ranked;
+  const pinned = normalizePinnedKnowledgeArticleIds(params.pinnedArticleIds);
+  if (!pinned.length) return params.ranked;
+  const pinnedRows = await prisma.automationKnowledgeArticle.findMany({
+    where: {
+      organizationId: params.organizationId,
+      id: { in: pinned },
+      isActive: true,
+      syncToAi: true,
+    },
+    take: 12,
+  });
+  if (!pinnedRows.length) return params.ranked;
+  return pinnedRows.map((article) => {
+    const excerpt =
+      article.content.length > 600 ? `${article.content.slice(0, 600)}…` : article.content;
+    return { article, score: 0.55, excerpt };
+  });
+}
+
 /** Texto a anexar ao system prompt do agente nativo (RAG proactivo). */
 export function formatRankedKnowledgeForSystemPrompt(ranked: RankedKnowledgeRow[]): string {
   if (!ranked.length) {
@@ -179,14 +259,23 @@ export async function fetchProactiveKnowledgeSystemAppendix(params: {
   botId: string;
   userMessage: string;
   limit?: number;
+  /** Artigos ligados ao agente no editor: se a pesquisa não devolver nada, injecta excerto destes. */
+  pinnedArticleIds?: string[];
 }): Promise<string> {
   const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
   if (!norm) return "";
-  const { ranked } = await rankedKnowledgeSearch({
+  const limit = params.limit ?? 8;
+  let { ranked } = await rankedKnowledgeSearch({
     organizationId: params.organizationId,
     normalizedQuery: norm,
     botId: params.botId,
-    limit: params.limit ?? 8,
+    limit,
   });
+  ranked = await mergePinnedKnowledgeWhenRankedEmpty({
+    organizationId: params.organizationId,
+    ranked,
+    pinnedArticleIds: params.pinnedArticleIds,
+  });
+
   return formatRankedKnowledgeForSystemPrompt(ranked);
 }
