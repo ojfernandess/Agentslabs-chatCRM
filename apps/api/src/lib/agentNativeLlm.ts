@@ -16,6 +16,7 @@ import {
   rankedKnowledgeSearch,
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
+import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 
 const STALL_RE =
@@ -447,8 +448,18 @@ export async function generateNativeAgentReply(input: {
 
   const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble;
 
+  const automationCtxRow = await prisma.automationConversationContext.findUnique({
+    where: { conversationId: conversation.id },
+    select: { lastClearedAt: true },
+  });
+  const lastClearedAt = automationCtxRow?.lastClearedAt ?? null;
+
   const recent = await prisma.message.findMany({
-    where: { conversationId: conversation.id, id: { not: message.id } },
+    where: buildNativeAgentMessageWhere({
+      conversationId: conversation.id,
+      excludeMessageId: message.id,
+      lastClearedAt,
+    }),
     orderBy: { createdAt: "desc" },
     take: 20,
     select: { direction: true, body: true },
@@ -480,6 +491,8 @@ export async function generateNativeAgentReply(input: {
       useTools,
       omitBuscarConhecimento,
       openAiToolCount: tools.length,
+      lastClearedAt: lastClearedAt?.toISOString() ?? null,
+      historyTurns: history.length,
       apiKeySource:
         storedKey && storedKey !== "***"
           ? "profile"

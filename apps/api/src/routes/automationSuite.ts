@@ -1080,6 +1080,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       normalizedQuery: norm,
       botId,
       limit: body.topK,
+      debugLog: request.log,
     });
 
     const sources = ranked.map((r) => ({
@@ -2419,14 +2420,47 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
-      const row = await prisma.automationConversationContext.updateMany({
-        where: { conversationId: request.params.conversationId, organizationId },
-        data: { state: asJson({}), lastClearedAt: new Date() },
+      const conversationId = request.params.conversationId;
+      const clearedAt = new Date();
+      const updated = await prisma.automationConversationContext.updateMany({
+        where: { conversationId, organizationId },
+        data: { state: asJson({}), lastClearedAt: clearedAt },
       });
-      if (row.count === 0) {
-        return reply.status(404).send({ error: "Not Found", message: "Context not found", statusCode: 404 });
+      if (updated.count > 0) {
+        return { ok: true };
       }
-      return { ok: true };
+      const conv = await prisma.conversation.findFirst({
+        where: { id: conversationId, organizationId },
+        select: { id: true },
+      });
+      if (!conv) {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+      }
+      const settings = await prisma.settings.findUnique({
+        where: { organizationId },
+        select: { agentBotId: true },
+      });
+      const botId = settings?.agentBotId;
+      if (!botId) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message:
+            "No automation context row yet and no organization agent bot (Settings). Nothing to clear; send one agent message first or configure the inbox bot.",
+          statusCode: 404,
+        });
+      }
+      await prisma.automationConversationContext.upsert({
+        where: { conversationId },
+        create: {
+          organizationId,
+          conversationId,
+          botId,
+          state: asJson({ source: "context_cleared_before_first_native_turn" }),
+          lastClearedAt: clearedAt,
+        },
+        update: { state: asJson({}), lastClearedAt: clearedAt, botId },
+      });
+      return { ok: true, createdContextRow: true };
     },
   );
 }

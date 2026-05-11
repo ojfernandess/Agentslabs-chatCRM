@@ -168,7 +168,13 @@ export async function rankedKnowledgeSearch(params: {
         apiKey: config.openAiPromptPreviewKey,
         embeddingModel: config.openAiEmbeddingModel,
       });
-    } catch {
+    } catch (err) {
+      if (debugLog) {
+        debugLog.warn(
+          { err, organizationId, botId: botId ?? null, stage: "rankedKnowledgeSearch_semantic_failed" },
+          "KB semantic search failed; using lexical fallback only",
+        );
+      }
       semantic = [];
     }
   }

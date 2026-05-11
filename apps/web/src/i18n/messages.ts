@@ -670,13 +670,14 @@ export const messages = {
       contextConversationPlaceholder: "UUID da conversa",
       contextLoad: "Carregar estado",
       contextClear: "Limpar contexto",
-      contextClearConfirm: "Limpar memória de contexto desta conversa? Esta ação não apaga mensagens no chat.",
+      contextClearConfirm:
+        "Limpar memória de automação desta conversa? As mensagens no chat mantêm-se, mas o agente nativo deixa de ver o histórico anterior (só mensagens após esta limpeza).",
       contextRecent: "Conversas com contexto guardado",
       contextEmpty: "Ainda não há registos de contexto de automação.",
       contextSnapshot: "Estado atual (JSON)",
       interactionsEmpty: "Nenhuma interação registada.",
       contextBlurb:
-        "Memória de curto prazo por conversa (automação). Carregue ou limpe o contexto abaixo. Agendamentos: página de Lembretes.",
+        "Estado de automação por conversa e data da última limpeza: ao limpar, o JSON é reposto e o agente nativo deixa de ver mensagens anteriores à limpeza (as mensagens no chat não são apagadas). Agendamentos: página de Lembretes.",
       refresh: "Atualizar",
     },
     broadcastPage: {
@@ -2532,13 +2533,14 @@ export const messages = {
       contextConversationPlaceholder: "Conversation UUID",
       contextLoad: "Load state",
       contextClear: "Clear context",
-      contextClearConfirm: "Clear automation memory for this conversation? Chat messages are not deleted.",
+      contextClearConfirm:
+        "Clear automation memory for this conversation? Chat messages stay in the inbox, but the native agent will only see messages sent after this clear (earlier turns are hidden from the model).",
       contextRecent: "Conversations with saved context",
       contextEmpty: "No automation context records yet.",
       contextSnapshot: "Current state (JSON)",
       interactionsEmpty: "No interactions logged yet.",
       contextBlurb:
-        "Short-term memory per conversation. Load or clear context below. Scheduling: Reminders page.",
+        "Per-conversation automation state and «clear» timestamp: clearing resets JSON state and hides pre-clear messages from the native agent LLM (messages are not deleted). Scheduling: Reminders page.",
       refresh: "Refresh",
     },
     broadcastPage: {
