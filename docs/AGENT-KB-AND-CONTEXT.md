@@ -14,7 +14,7 @@
 | Causa | Mitigação |
 |--------|-----------|
 | Chaves OpenAI só no `.env` do host em Docker | `docker-compose.yml` repassa `OPENAI_*` ao serviço `api`. |
-| Modelo prioriza `buscar_conhecimento` e ignora excertos | Omitir a tool quando há appendix denso (`agentNativeLlm.ts`). |
+| Modelo prioriza `buscar_conhecimento` e ignora excertos | Omitir a tool só quando há **excertos reais** no appendix (`kbAppendixHasRetrievedExcerpts`); prompt «se falhar → call_human» com template «nenhum trecho» já não omite a tool. Bloco final `serverKbGuard` evita `call_human` por falso «falha de busca». |
 | Erro na pesquisa semântica (API/embeddings) | `warn` em log com `stage: rankedKnowledgeSearch_semantic_failed` e fallback lexical (`knowledgeRetrieval.ts`). |
 | Só artigos vinculados no **hub** (checkbox no artigo), sem IDs no prompt do agente | `mergeBotLinkedKnowledgeWhenRankedEmpty`: se a pesquisa devolver vazio, injecta até 8 artigos activos com `botLinks` para esse bot (`knowledgeRetrieval.ts` + agente + `buscar_conhecimento`). |
 | Diagnóstico | `AGENT_KB_DEBUG=true` no contentor da API → eventos `agent_kb_debug` (ex.: `rankedKnowledgeSearch`, `mergeBotLinkedKnowledgeFallback`, `nativeAgentReply_start`). |

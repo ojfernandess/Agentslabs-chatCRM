@@ -9,6 +9,7 @@ import {
   type OpenAiToolDefinition,
   type PreviewChatTurn,
 } from "./promptModulePreviewLlm.js";
+import { kbAppendixHasRetrievedExcerpts } from "./kbAppendix.js";
 import {
   fetchProactiveKnowledgeSystemAppendix,
   mergeBotLinkedKnowledgeWhenRankedEmpty,
@@ -445,11 +446,16 @@ export async function generateNativeAgentReply(input: {
     }
   }
 
-  const hasDenseKbAppendix = kbProactiveAppendix.trim().length >= 80;
-  /** Com RAG já no system (como no playground de conhecimento), não expor `buscar_conhecimento` — evita o modelo priorizar a ferramenta e ignorar os excertos. */
-  const omitBuscarConhecimento = hasDenseKbAppendix && flags.knowledge_search;
+  const kbHasUsefulExcerpts =
+    flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
+  /**
+   * Só omitimos `buscar_conhecimento` quando há excertos reais no appendix. O template «nenhum trecho»
+   * também é longo; se omitíssemos a tool, prompts do tipo «se buscar_conhecimento falhar → call_human»
+   * faziam o modelo invocar call_human de imediato.
+   */
+  const omitBuscarConhecimento = kbHasUsefulExcerpts;
 
-  const toolPreamble = hasDenseKbAppendix
+  const toolPreamble = kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
       "- **Prioridade:** a secção **Base de conhecimento** acima **já foi pesquisada** para a última mensagem do cliente (igual ao «Teste IA» do hub). Responda **com factos concretos** dessa secção (morada, Wi‑Fi, horários, preços). Não diga que não encontrou ou que não é possível obter a informação se ela constar nos excertos; não use «vou verificar» como substituto de resposta.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
@@ -459,7 +465,15 @@ export async function generateNativeAgentReply(input: {
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
       "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre.";
 
-  const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble;
+  const serverKbGuard = kbHasUsefulExcerpts
+    ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
+      "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
+      "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
+      "**Não** invoque `call_human` nem `transfer_to_team` apenas porque o texto do prompt do hotel diz «se buscar_conhecimento falhar» — neste fluxo a busca já foi executada e o resultado está nos excertos. " +
+      "Use `call_human` só se o hóspede pedir atendente/humano **ou** se os excertos forem claramente irrelevantes ou não responderem à pergunta."
+    : "";
+
+  const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard;
 
   const automationCtxRow = await prisma.automationConversationContext.findUnique({
     where: { conversationId: conversation.id },
@@ -503,6 +517,7 @@ export async function generateNativeAgentReply(input: {
       provider,
       useTools,
       omitBuscarConhecimento,
+      kbHasUsefulExcerpts,
       openAiToolCount: tools.length,
       lastClearedAt: lastClearedAt?.toISOString() ?? null,
       historyTurns: history.length,
@@ -600,7 +615,7 @@ export async function generateNativeAgentReply(input: {
   if (
     flags.knowledge_search &&
     (isLikelyStallOnlyReply(replyText) ||
-      (hasDenseKbAppendix && isLikelyKbDeflectionOnlyReply(replyText)))
+      (kbHasUsefulExcerpts && isLikelyKbDeflectionOnlyReply(replyText)))
   ) {
     const fixed = await augmentStallWithKnowledge({
       organizationId,
