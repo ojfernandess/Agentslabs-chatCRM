@@ -7,7 +7,7 @@
 1. **Vínculo artigo ↔ bot** — `automation_knowledge_article_bots` (sincronizado ao guardar o agente com artigos ligados no editor; ver `syncKnowledgeArticleBotsFromPromptBuilder`).
 2. **Índice semântico** — `automation_knowledge_chunks` + pgvector; reindexação gera embeddings com `OPENAI_API_KEY` / `OPENAI_PROMPT_PREVIEW_KEY` no servidor.
 3. **Consulta** — `rankedKnowledgeSearch` (semântica + lexical) com `effectiveKnowledgeSearchBotId` (se não há vínculos, pesquisa a nível da organização).
-4. **Agente** — `fetchProactiveKnowledgeSystemAppendix` injeta excertos no system prompt. A ferramenta `buscar_conhecimento` só é omitida quando o appendix contém **excertos reais** (`kbAppendixHasRetrievedExcerpts`), não quando é só o aviso «nenhum trecho».
+4. **Agente** — `fetchProactiveKnowledgeSystemAppendix` injeta excertos no system prompt (pesquisa proactiva). Com `knowledge_search` activo, **`buscar_conhecimento` permanece na lista de tools** para alinhar com prompts que exigem chamada explícita; o modelo pode usar só os excertos ou invocar a função (possível segunda consulta à BD).
 
 ### Checklist na UI (operador)
 
@@ -20,7 +20,7 @@
 | Causa | Mitigação |
 |--------|-----------|
 | Chaves OpenAI só no `.env` do host em Docker | `docker-compose.yml` repassa `OPENAI_*` ao serviço `api`. |
-| Modelo prioriza `buscar_conhecimento` e ignora excertos | Omitir a tool só quando há **excertos reais** no appendix (`kbAppendixHasRetrievedExcerpts`); prompt «se falhar → call_human» com template «nenhum trecho» já não omite a tool. Bloco final `serverKbGuard` evita `call_human` por falso «falha de busca». |
+| Modelo prioriza `buscar_conhecimento` e ignora excertos | A tool **não** é omitida por haver excertos — `serverKbGuard` + preâmbulo explicam que a pesquisa proactiva já correu e que `call_human` não deve seguir um falso «falha de busca». |
 | Erro na pesquisa semântica (API/embeddings) | `warn` em log com `stage: rankedKnowledgeSearch_semantic_failed` e fallback lexical (`knowledgeRetrieval.ts`). |
 | Só artigos vinculados no **hub** (checkbox no artigo), sem IDs no prompt do agente | `mergeBotLinkedKnowledgeWhenRankedEmpty`: se a pesquisa devolver vazio, injeta até 8 artigos activos com `botLinks` para esse bot (`knowledgeRetrieval.ts` + agente + `buscar_conhecimento`). |
 | Diagnóstico | `AGENT_KB_DEBUG=true` no contentor da API → eventos `agent_kb_debug` (ex.: `rankedKnowledgeSearch`, `mergeBotLinkedKnowledgeFallback`, `nativeAgentReply_start`). |

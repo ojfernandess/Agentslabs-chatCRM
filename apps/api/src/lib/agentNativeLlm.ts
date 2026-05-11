@@ -449,17 +449,19 @@ export async function generateNativeAgentReply(input: {
   const kbHasUsefulExcerpts =
     flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
   /**
-   * Só omitimos `buscar_conhecimento` quando há excertos reais no appendix. O template «nenhum trecho»
-   * também é longo; se omitíssemos a tool, prompts do tipo «se buscar_conhecimento falhar → call_human»
-   * faziam o modelo invocar call_human de imediato.
+   * Mantemos `buscar_conhecimento` sempre registado quando `knowledge_search` está activo.
+   * Prompts de clientes exigem «executar buscar_conhecimento antes» — omitir a tool fazia o modelo
+   * achar que não cumpria a regra (apesar da pesquisa proactiva já ter corrido). Chamada duplicada
+   * à BD é aceitável para alinhar prompts rígidos e observabilidade.
    */
-  const omitBuscarConhecimento = kbHasUsefulExcerpts;
+  const omitBuscarConhecimento = false;
 
   const toolPreamble = kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
-      "- **Prioridade:** a secção **Base de conhecimento** acima **já foi pesquisada** para a última mensagem do cliente (igual ao «Teste IA» do hub). Responda **com factos concretos** dessa secção (morada, Wi‑Fi, horários, preços). Não diga que não encontrou ou que não é possível obter a informação se ela constar nos excertos; não use «vou verificar» como substituto de resposta.\n" +
+      "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
+      "- **`buscar_conhecimento`:** continua disponível. Se o seu prompt interno exigir uma chamada explícita à função antes de responder, invoque‑a com `query` adequada; se os excertos acima já bastarem, pode responder sem nova chamada.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos forem claramente insuficientes."
+      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes."
     : "\n\n### Ferramentas (complemento)\n" +
       "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
@@ -469,8 +471,9 @@ export async function generateNativeAgentReply(input: {
     ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
       "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
       "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
-      "**Não** invoque `call_human` nem `transfer_to_team` apenas porque o texto do prompt do hotel diz «se buscar_conhecimento falhar» — neste fluxo a busca já foi executada e o resultado está nos excertos. " +
-      "Use `call_human` só se o hóspede pedir atendente/humano **ou** se os excertos forem claramente irrelevantes ou não responderem à pergunta."
+      "A função `buscar_conhecimento` está disponível para uma segunda consulta ou se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
+      "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do hotel diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
+      "Use `call_human` só se o hóspede pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
     : "";
 
   const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard;
