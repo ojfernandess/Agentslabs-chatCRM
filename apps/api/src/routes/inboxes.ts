@@ -137,7 +137,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     if (body.isDefault) {
       inbox = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
-        return tx.inbox.create({
+        const created = await tx.inbox.create({
           data: {
             organizationId,
             name: body.name.trim(),
@@ -149,19 +149,37 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             agentBotId: body.agentBotId,
           },
         });
+        if (body.agentBotId) {
+          await tx.settings.upsert({
+            where: { organizationId },
+            create: { organizationId, agentBotId: body.agentBotId },
+            update: { agentBotId: body.agentBotId },
+          });
+        }
+        return created;
       });
     } else {
-      inbox = await prisma.inbox.create({
-        data: {
-          organizationId,
-          name: body.name.trim(),
-          description: body.description ?? undefined,
-          channelType,
-          isDefault: false,
-          ingestToken: newIngestToken(),
-          channelConfig,
-          agentBotId: body.agentBotId,
-        },
+      inbox = await prisma.$transaction(async (tx) => {
+        const created = await tx.inbox.create({
+          data: {
+            organizationId,
+            name: body.name.trim(),
+            description: body.description ?? undefined,
+            channelType,
+            isDefault: false,
+            ingestToken: newIngestToken(),
+            channelConfig,
+            agentBotId: body.agentBotId,
+          },
+        });
+        if (body.agentBotId) {
+          await tx.settings.upsert({
+            where: { organizationId },
+            create: { organizationId, agentBotId: body.agentBotId },
+            update: { agentBotId: body.agentBotId },
+          });
+        }
+        return created;
       });
     }
 
@@ -352,7 +370,15 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     if (p.isDefault === true) {
       const updated = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
-        return tx.inbox.update({ where: { id: inbox.id }, data: { ...data, isDefault: true } });
+        const next = await tx.inbox.update({ where: { id: inbox.id }, data: { ...data, isDefault: true } });
+        if (p.agentBotId && p.agentBotId !== null) {
+          await tx.settings.upsert({
+            where: { organizationId },
+            create: { organizationId, agentBotId: p.agentBotId },
+            update: { agentBotId: p.agentBotId },
+          });
+        }
+        return next;
       });
       return updated;
     }
@@ -364,7 +390,18 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    return prisma.inbox.update({ where: { id: inbox.id }, data });
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.inbox.update({ where: { id: inbox.id }, data });
+      if (p.agentBotId && p.agentBotId !== null) {
+        await tx.settings.upsert({
+          where: { organizationId },
+          create: { organizationId, agentBotId: p.agentBotId },
+          update: { agentBotId: p.agentBotId },
+        });
+      }
+      return next;
+    });
+    return updated;
   });
 
   app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {

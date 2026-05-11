@@ -37,6 +37,13 @@ type InboxRow = {
   _count: { members: number; conversations: number };
 };
 
+type ChannelSettings = {
+  whatsappProvider: string | null;
+  whatsappPhoneNumberId: string | null;
+  evolutionApiBaseUrl: string | null;
+  evolutionPlatformQrMode?: boolean;
+};
+
 function nativeUrlsForChannel(channelType: string, token: string, baseNative: string): { key: string; labelKey: string; url: string }[] {
   const b = `${baseNative}/${encodeURIComponent(token)}`;
   switch (channelType) {
@@ -86,6 +93,12 @@ export function InboxesPage() {
   const [editWebhook, setEditWebhook] = useState("");
   const [editAgentBotId, setEditAgentBotId] = useState("");
   const [copiedInboxId, setCopiedInboxId] = useState<string | null>(null);
+  const [channelSettings, setChannelSettings] = useState<ChannelSettings | null>(null);
+  const [editProvider, setEditProvider] = useState("meta");
+  const [editProviderApiKey, setEditProviderApiKey] = useState("");
+  const [editProviderPhoneId, setEditProviderPhoneId] = useState("");
+  const [editProviderEvoBaseUrl, setEditProviderEvoBaseUrl] = useState("");
+  const [providerSaving, setProviderSaving] = useState(false);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -127,6 +140,10 @@ export function InboxesPage() {
     try {
       const res = await api.get<{ data: InboxRow[] }>("/inboxes");
       setRows(res.data);
+      if (isAdmin) {
+        const cfg = await api.get<ChannelSettings>("/settings");
+        setChannelSettings(cfg);
+      }
     } catch {
       setRows([]);
     }
@@ -209,6 +226,10 @@ export function InboxesPage() {
     setEditChannel(row.channelType);
     setEditWebhook(outboundWebhookFromConfig(row.channelConfig));
     setEditAgentBotId(row.agentBotId ?? "");
+    setEditProvider(channelSettings?.whatsappProvider ?? "meta");
+    setEditProviderPhoneId(channelSettings?.whatsappPhoneNumberId ?? "");
+    setEditProviderEvoBaseUrl(channelSettings?.evolutionApiBaseUrl ?? "");
+    setEditProviderApiKey("");
   };
 
   const cancelEdit = () => {
@@ -240,12 +261,27 @@ export function InboxesPage() {
         channelConfig: channelConfigPayload,
         agentBotId: editAgentBotId.trim() ? editAgentBotId.trim() : null,
       });
+      if (editChannel === "WHATSAPP") {
+        setProviderSaving(true);
+        const providerBody: Record<string, unknown> = {
+          whatsappProvider: editProvider,
+          whatsappPhoneNumberId: editProviderPhoneId.trim() || undefined,
+        };
+        if (editProviderApiKey.trim()) providerBody.whatsappApiKey = editProviderApiKey.trim();
+        if (editProvider === "evolution") {
+          providerBody.evolutionApiBaseUrl = editProviderEvoBaseUrl.trim() || null;
+        } else {
+          providerBody.evolutionApiBaseUrl = null;
+        }
+        await api.put("/settings", providerBody);
+      }
       setEditingId(null);
       await load();
     } catch {
       window.alert(t("inboxesPage.editSaveFailed"));
     } finally {
       setEditSavingId(null);
+      setProviderSaving(false);
     }
   };
 
@@ -470,6 +506,70 @@ export function InboxesPage() {
                             placeholder="https://"
                             className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                           />
+                          {editChannel === "WHATSAPP" ? (
+                            <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+                                WhatsApp provider
+                              </p>
+                              <p className="mb-2 text-[11px] text-gray-600 dark:text-ink-400">
+                                Centralizado na Caixa de entrada. A ligação rápida Meta/Evolution mantém-se em Configurações.
+                              </p>
+                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                                Provider
+                              </label>
+                              <select
+                                value={editProvider}
+                                onChange={(e) => setEditProvider(e.target.value)}
+                                className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                              >
+                                <option value="meta">Meta Cloud API</option>
+                                <option value="360dialog">360dialog</option>
+                                <option value="twilio">Twilio</option>
+                                <option value="evolution">Evolution API</option>
+                              </select>
+                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                                {editProvider === "evolution" ? "Instance name" : "Phone Number ID"}
+                              </label>
+                              <input
+                                value={editProviderPhoneId}
+                                onChange={(e) => setEditProviderPhoneId(e.target.value)}
+                                className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                                placeholder={editProvider === "evolution" ? "instance-name" : "phone_number_id"}
+                              />
+                              {editProvider === "evolution" ? (
+                                <>
+                                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                                    Evolution API base URL
+                                  </label>
+                                  <input
+                                    type="url"
+                                    value={editProviderEvoBaseUrl}
+                                    onChange={(e) => setEditProviderEvoBaseUrl(e.target.value)}
+                                    placeholder="https://evolution.example.com"
+                                    className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                                  />
+                                </>
+                              ) : null}
+                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                                API Key (opcional; preencha só para atualizar)
+                              </label>
+                              <input
+                                type="password"
+                                value={editProviderApiKey}
+                                onChange={(e) => setEditProviderApiKey(e.target.value)}
+                                className="w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                                placeholder="••••••••"
+                              />
+                              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                                <a className="text-brand-600 hover:underline dark:text-brand-400" href="/settings">
+                                  Configuração rápida Meta
+                                </a>
+                                <a className="text-brand-600 hover:underline dark:text-brand-400" href="/settings">
+                                  Conexão rápida Evolution
+                                </a>
+                              </div>
+                            </div>
+                          ) : null}
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
                             {t("inboxesPage.agentBotField")}
                           </label>
@@ -490,11 +590,11 @@ export function InboxesPage() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              disabled={editSavingId === row.id || !editName.trim()}
+                              disabled={editSavingId === row.id || providerSaving || !editName.trim()}
                               onClick={() => void saveEdit(row.id)}
                               className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                             >
-                              {editSavingId === row.id ? t("common.saving") : t("common.save")}
+                              {editSavingId === row.id || providerSaving ? t("common.saving") : t("common.save")}
                             </button>
                             <button
                               type="button"

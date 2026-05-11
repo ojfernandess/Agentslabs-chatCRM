@@ -319,7 +319,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     provider: prov,
     model: String(llm.model ?? "gpt-4o-mini"),
     apiBaseUrl: String(llm.apiBaseUrl ?? DEFAULT_API_BASE[prov] ?? ""),
-    apiKey: "",
+    apiKey: typeof llm.apiKey === "string" ? llm.apiKey : "",
     systemInstructions: String(llm.systemInstructions ?? ""),
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
@@ -1486,6 +1486,11 @@ function AgentsTab({
                   className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                 />
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentApiKeyHelp")}</p>
+                {agentForm.apiKey === "***" ? (
+                  <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+                    Chave já configurada. Digite uma nova para substituir.
+                  </p>
+                ) : null}
               </label>
 
               {elevenLabsTools.length > 0 ? (
