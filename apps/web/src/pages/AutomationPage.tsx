@@ -6,7 +6,7 @@ import {
   RefreshCw,
   ExternalLink,
   Bot,
-  MessageSquare,
+  MessageCircle,
   Pencil,
   Trash2,
   X,
@@ -1110,6 +1110,8 @@ type Translate = (key: string) => string;
 
 const VOICE_PERCENT_STEPS = [0, 10, 20, 30, 50, 75, 100] as const;
 
+type AgentTestChatTurn = { role: "user" | "assistant"; content: string };
+
 function AgentsTab({
   t,
   loading,
@@ -1149,6 +1151,10 @@ function AgentsTab({
 }) {
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
+  const [testChatBot, setTestChatBot] = useState<{ id: string; name: string } | null>(null);
+  const [testChatDraft, setTestChatDraft] = useState("");
+  const [testChatTurns, setTestChatTurns] = useState<AgentTestChatTurn[]>([]);
+  const [testChatBusy, setTestChatBusy] = useState(false);
   const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
 
   useEffect(() => {
@@ -1164,6 +1170,39 @@ function AgentsTab({
       };
     });
   }, [agentModalOpen, elevenLabsTools.length, setAgentForm]);
+
+  const openAgentTestChat = (botId: string, botName: string) => {
+    setTestChatBot({ id: botId, name: botName });
+    setTestChatDraft("");
+    setTestChatTurns([]);
+    setTestChatBusy(false);
+  };
+
+  const sendAgentTestChat = async () => {
+    if (!testChatBot) return;
+    const userMessage = testChatDraft.trim();
+    if (!userMessage || testChatBusy) return;
+    const nextTurns: AgentTestChatTurn[] = [...testChatTurns, { role: "user", content: userMessage }];
+    setTestChatTurns(nextTurns);
+    setTestChatDraft("");
+    setTestChatBusy(true);
+    try {
+      const res = await api.post<{ assistantMessage: string }>(
+        `/automation/agent-profiles/${testChatBot.id}/test-chat`,
+        {
+          message: userMessage,
+          history: nextTurns.slice(0, -1),
+        },
+      );
+      const assistant = (res.assistantMessage ?? "").trim() || "Sem resposta.";
+      setTestChatTurns((prev) => [...prev, { role: "assistant", content: assistant }]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Falha ao testar agente";
+      setTestChatTurns((prev) => [...prev, { role: "assistant", content: `Erro: ${msg}` }]);
+    } finally {
+      setTestChatBusy(false);
+    }
+  };
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
 
@@ -1226,12 +1265,20 @@ function AgentsTab({
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openAgentTestChat(row.bot.id, row.bot.name)}
+                    className="rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800"
+                    title={t("automationPage.agentTestChat")}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </button>
                   <Link
                     to="/bots"
                     className="rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800"
                     title={t("automationPage.agentOpenBots")}
                   >
-                    <MessageSquare className="h-4 w-4" />
+                    <Bot className="h-4 w-4" />
                   </Link>
                   <button
                     type="button"
@@ -1307,6 +1354,67 @@ function AgentsTab({
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {testChatBot ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 py-10">
+          <div className="w-full max-w-xl rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
+            <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-ink-800">
+              <div>
+                <h3 className="text-lg font-bold text-ink-900 dark:text-ink-50">{t("automationPage.agentTestChat")}</h3>
+                <p className="text-xs text-ink-500 dark:text-ink-400">{testChatBot.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTestChatBot(null)}
+                className="rounded p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[50vh] space-y-2 overflow-y-auto px-5 py-4">
+              {testChatTurns.length === 0 ? (
+                <p className="text-sm text-ink-500 dark:text-ink-400">{t("automationPage.agentTestChatHint")}</p>
+              ) : (
+                testChatTurns.map((turn, idx) => (
+                  <div
+                    key={`${turn.role}-${idx}`}
+                    className={clsx(
+                      "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                      turn.role === "user"
+                        ? "ml-auto bg-brand-600 text-white"
+                        : "bg-ink-100 text-ink-900 dark:bg-ink-800 dark:text-ink-100",
+                    )}
+                  >
+                    {turn.content}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex items-center gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
+              <input
+                value={testChatDraft}
+                onChange={(e) => setTestChatDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendAgentTestChat();
+                  }
+                }}
+                placeholder={t("automationPage.agentTestChatInput")}
+                className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+              />
+              <button
+                type="button"
+                disabled={!testChatDraft.trim() || testChatBusy}
+                onClick={() => void sendAgentTestChat()}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {testChatBusy ? t("common.loading") : t("automationPage.agentTestChatSend")}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

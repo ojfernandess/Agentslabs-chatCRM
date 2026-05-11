@@ -412,6 +412,15 @@ async function handleWhatsAppPost(
             log: app.log,
           });
         }
+      } else {
+        app.log.warn(
+          {
+            organizationId,
+            conversationId: conversation.id,
+            inboxId: conversation.inboxId,
+          },
+          "Agent bot dispatch skipped: no active bot context found for inbox/settings",
+        );
       }
     } catch (err) {
       app.log.error(err, "Error processing incoming webhook message");

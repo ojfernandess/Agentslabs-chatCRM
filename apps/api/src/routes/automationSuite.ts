@@ -2068,6 +2068,20 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       .optional(),
   });
 
+  const agentProfileTestChatSchema = z.object({
+    message: z.string().min(1).max(48_000),
+    history: z
+      .array(
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().max(48_000),
+        }),
+      )
+      .max(30)
+      .optional()
+      .default([]),
+  });
+
   async function upsertAgentProfileForBot(params: {
     organizationId: string;
     botId: string;
@@ -2232,6 +2246,93 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
     return { ...row, llmConfig: redactLlmConfig(row.llmConfig) };
   });
+
+  app.post<{ Params: { botId: string } }>(
+    "/agent-profiles/:botId/test-chat",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = agentProfileTestChatSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const profile = await prisma.automationAgentProfile.findFirst({
+        where: { organizationId, botId: request.params.botId },
+        include: { bot: { select: { id: true, name: true } } },
+      });
+      if (!profile) {
+        return reply.status(404).send({ error: "Not Found", message: "Agent profile not found", statusCode: 404 });
+      }
+
+      const llm = (profile.llmConfig as Record<string, unknown>) ?? {};
+      const provider = String(llm.provider ?? "openai");
+      const model = String(llm.model ?? "gpt-4o-mini");
+      const apiKey = String(llm.apiKey ?? "").trim();
+      const system = String(llm.systemInstructions ?? "");
+      const temperature = Number(llm.temperature ?? 0.7);
+      const maxTokens = Number(llm.maxTokens ?? 1024);
+      const history = parsed.data.history as PreviewChatTurn[];
+      const userMessage = parsed.data.message;
+
+      if (!apiKey || apiKey === "***") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "Agent API key not configured. Save a valid API key in Automation > Agents IA before testing chat.",
+          statusCode: 400,
+        });
+      }
+
+      try {
+        let assistantText = "";
+        if (provider === "google_gemini") {
+          const r = await callGeminiGenerateContent({
+            apiKey,
+            model,
+            temperature: Number.isFinite(temperature) ? temperature : 0.7,
+            maxTokens: Number.isFinite(maxTokens) ? Math.max(16, Math.min(8192, Math.trunc(maxTokens))) : 1024,
+            system,
+            history,
+            userMessage,
+            signal: AbortSignal.timeout(28_000),
+          });
+          assistantText = r.text;
+        } else {
+          const r = await callOpenAiCompatibleChat({
+            baseUrl: (String(llm.apiBaseUrl ?? "").trim() || "https://api.openai.com/v1").replace(/\/+$/, ""),
+            apiKey,
+            model,
+            temperature: Number.isFinite(temperature) ? temperature : 0.7,
+            maxTokens: Number.isFinite(maxTokens) ? Math.max(16, Math.min(8192, Math.trunc(maxTokens))) : 1024,
+            system,
+            history,
+            userMessage,
+            signal: AbortSignal.timeout(28_000),
+          });
+          assistantText = r.text;
+        }
+
+        return {
+          botId: profile.bot.id,
+          botName: profile.bot.name,
+          provider,
+          model,
+          assistantMessage: (assistantText ?? "").trim(),
+        };
+      } catch (err) {
+        const aborted = err instanceof Error && err.name === "AbortError";
+        const msg = err instanceof Error ? err.message : "Agent test chat failed";
+        return reply.status(aborted ? 504 : 502).send({
+          error: aborted ? "Gateway Timeout" : "Bad Gateway",
+          message: msg.slice(0, 1500),
+          statusCode: aborted ? 504 : 502,
+        });
+      }
+    },
+  );
 
   app.delete<{ Params: { botId: string } }>(
     "/agent-profiles/:botId",

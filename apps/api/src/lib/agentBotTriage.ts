@@ -63,7 +63,21 @@ export async function getAgentBotDispatchContextForInbox(
     where: { organizationId },
     include: { agentBot: true },
   });
-  return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
+  const fromSettings = await resolveAgentBotFromOrgSettingsRow(organizationId, settings);
+  if (fromSettings) return fromSettings;
+
+  // Fallback: if a bot is linked in any inbox, use it even when the current
+  // conversation landed in another inbox (common during provider/inbox migration).
+  const anyInboxWithBot = await prisma.inbox.findFirst({
+    where: { organizationId, agentBotId: { not: null } },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    include: { agentBot: true },
+  });
+  if (!anyInboxWithBot?.agentBotId) return null;
+  return resolveAgentBotFromOrgSettingsRow(organizationId, {
+    agentBotId: anyInboxWithBot.agentBotId,
+    agentBot: anyInboxWithBot.agentBot,
+  });
 }
 
 /** Compat: usa a caixa preferida da org (defeito ou primeira) e aplica a mesma regra caixa → settings. */
