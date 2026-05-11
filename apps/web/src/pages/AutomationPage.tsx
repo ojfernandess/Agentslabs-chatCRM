@@ -1024,6 +1024,10 @@ export function AutomationPage() {
             applyPromptModulesSelection={(nextIds) =>
               setAgentForm((f) => applyPromptModuleSelectionToAgentForm(f, nextIds, prompts))
             }
+            onOpenKnowledgeTab={() => {
+              setAgentModalOpen(false);
+              setTab("knowledge");
+            }}
           />
         ) : null}
 
@@ -1185,6 +1189,7 @@ function AgentsTab({
   onDeleteProfile,
   onOpenToolsTab,
   applyPromptModulesSelection,
+  onOpenKnowledgeTab,
 }: {
   t: Translate;
   loading: boolean;
@@ -1204,6 +1209,7 @@ function AgentsTab({
   onDeleteProfile: (botId: string) => void;
   onOpenToolsTab: () => void;
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
+  onOpenKnowledgeTab: () => void;
 }) {
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
@@ -1298,6 +1304,23 @@ function AgentsTab({
     () => mergeSystemWithAutoBlock(agentForm.promptUserCore, promptAutoPreview),
     [agentForm.promptUserCore, promptAutoPreview],
   );
+
+  const kbScopeBotId =
+    agentForm.editBotId ||
+    (agentForm.mode === "new" && !agentForm.createBot && agentForm.existingBotId.trim()
+      ? agentForm.existingBotId.trim()
+      : null);
+
+  const kbLinkedArticleCount = useMemo(() => {
+    if (!kbScopeBotId) return null;
+    return articles.filter(
+      (a) =>
+        a.syncToAi !== false &&
+        a.isActive !== false &&
+        Array.isArray(a.botIds) &&
+        a.botIds.includes(kbScopeBotId),
+    ).length;
+  }, [articles, kbScopeBotId]);
 
   const kbq = kbArticleFilter.trim().toLowerCase();
   const visibleKbArticles = articles.filter((a) => {
@@ -1995,6 +2018,38 @@ function AgentsTab({
                     <div className="rounded-xl border border-ink-100 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-950/50">
                       <p className="text-xs font-semibold text-ink-900 dark:text-ink-100">{t("automationPage.promptKbSection")}</p>
                       <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptKbHint")}</p>
+                      {agentForm.nativeTools.knowledge_search ? (
+                        <div
+                          className={clsx(
+                            "mt-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed",
+                            !kbScopeBotId
+                              ? "border-amber-200 bg-amber-50/90 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
+                              : kbLinkedArticleCount === 0
+                                ? "border-sky-200 bg-sky-50/90 text-sky-950 dark:border-sky-900/40 dark:bg-sky-950/25 dark:text-sky-100"
+                                : "border-emerald-200 bg-emerald-50/90 text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100",
+                          )}
+                        >
+                          {!kbScopeBotId ? (
+                            <p>{t("automationPage.promptKbScopeNoBotYet")}</p>
+                          ) : kbLinkedArticleCount === 0 ? (
+                            <p>{t("automationPage.promptKbScopeOrgWide")}</p>
+                          ) : (
+                            <p>
+                              {t("automationPage.promptKbScopeBotLinked").replace(
+                                "{count}",
+                                String(kbLinkedArticleCount),
+                              )}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={onOpenKnowledgeTab}
+                            className="mt-2 inline-flex text-[11px] font-semibold text-brand-700 underline hover:text-brand-600 dark:text-brand-300 dark:hover:text-brand-200"
+                          >
+                            {t("automationPage.promptKbOpenKnowledgeTab")}
+                          </button>
+                        </div>
+                      ) : null}
                       <input
                         type="search"
                         value={kbArticleFilter}

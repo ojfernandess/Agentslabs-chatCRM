@@ -244,6 +244,13 @@ export const messages = {
         "Seleccione artigos para o modelo priorizar (títulos aparecem como referência). Na base de dados, artigos podem ser vinculados a bots específicos: com vínculos, a busca do agente só usa esses artigos; sem nenhum vínculo para este bot, a busca usa todos os artigos activos da organização (evita respostas vazias).",
       promptKbSearch: "Filtrar artigos…",
       promptKbEmpty: "Nenhum artigo. Crie conteúdos no separador Base de conhecimento.",
+      promptKbScopeOrgWide:
+        "Nenhum artigo (activo, com sincronização IA) está vinculado a este bot na base de dados: na conversa, buscar_conhecimento usa toda a KB da organização. Para limitar ao subconjunto do bot, edite cada artigo em Base de conhecimento e associe este bot.",
+      promptKbScopeBotLinked:
+        "{count} artigo(s) vinculado(s) a este bot: buscar_conhecimento na conversa só pesquisa nesses artigos.",
+      promptKbScopeNoBotYet:
+        "Guarde o perfil do agente para existir um bot com UUID; depois pode vincular artigos a esse bot em Base de conhecimento para restringir a pesquisa.",
+      promptKbOpenKnowledgeTab: "Abrir Base de conhecimento",
       promptGeneratedTitle: "Instruções geradas automaticamente (pré-visualização)",
       promptGeneratedHelp:
         "Este bloco é acrescentado ao prompt final quando grava o perfil — não precisa copiar manualmente.",
@@ -2100,6 +2107,13 @@ export const messages = {
         "Pick articles the model should treat as primary references (titles appear in the auto block). In the database, articles can be linked to specific bots: with links, the agent search only uses those articles; with no links for this bot, search uses all active organization articles (avoids empty answers).",
       promptKbSearch: "Filter articles…",
       promptKbEmpty: "No articles yet. Add content under the Knowledge tab.",
+      promptKbScopeOrgWide:
+        "No active AI-synced articles are linked to this bot in the database: in chats, buscar_conhecimento searches the whole organization KB. To scope to a subset, edit each article under Knowledge and attach this bot.",
+      promptKbScopeBotLinked:
+        "{count} article(s) linked to this bot: buscar_conhecimento in chats only searches those articles.",
+      promptKbScopeNoBotYet:
+        "Save the agent profile first so a bot UUID exists; then link articles to that bot under Knowledge to narrow what the agent can retrieve.",
+      promptKbOpenKnowledgeTab: "Open Knowledge base",
       promptGeneratedTitle: "Auto-generated instructions (preview)",
       promptGeneratedHelp:
         "This block is appended to the final prompt when you save — you do not need to copy it manually.",
