@@ -1014,6 +1014,8 @@ export const messages = {
       inboxTokenBanner:
         "Guarde este token — não será mostrado outra vez. Foi copiado para a área de transferência.",
       tokenConfigured: "Token configurado",
+      nativeBot: "Bot nativo",
+      nativeDiagnostic: "Diagnóstico nativo",
       secretConfigured: "Secret configurado",
       clearWebhookSecret: "Remover secret",
       webhookSecretCleared: "Secret removido.",
@@ -2821,6 +2823,8 @@ export const messages = {
       inboxTokenBanner:
         "Save this token — it will not be shown again. It was copied to your clipboard.",
       tokenConfigured: "Token configured",
+      nativeBot: "Native bot",
+      nativeDiagnostic: "Native diagnostic",
       secretConfigured: "Secret configured",
       clearWebhookSecret: "Remove secret",
       webhookSecretCleared: "Secret removed.",

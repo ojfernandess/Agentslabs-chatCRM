@@ -25,8 +25,15 @@ interface BotRow {
   isActive: boolean;
   inboxTokenConfigured?: boolean;
   webhookSecretConfigured?: boolean;
+  nativeManagedByOpenConduit?: boolean;
   _count?: { interactions: number };
 }
+
+type NativeDiagnosticResult = {
+  status: "ok" | "warn" | "error";
+  summary: string;
+  reasons: string[];
+};
 
 export function BotsPage() {
   const { t } = useI18n();
@@ -53,6 +60,9 @@ export function BotsPage() {
   const [webhookTestBusy, setWebhookTestBusy] = useState<string | null>(null);
   const [webhookTestMessage, setWebhookTestMessage] = useState<string | null>(null);
   const [webhookTestTone, setWebhookTestTone] = useState<"ok" | "err" | null>(null);
+  const [nativeDiagBusyId, setNativeDiagBusyId] = useState<string | null>(null);
+  const [nativeDiagMessage, setNativeDiagMessage] = useState<string | null>(null);
+  const [nativeDiagTone, setNativeDiagTone] = useState<"ok" | "warn" | "err" | null>(null);
 
   const load = async () => {
     try {
@@ -158,6 +168,24 @@ export function BotsPage() {
       setTestOutcome("err", e instanceof Error ? e.message : t("bots.testWebhookFail"));
     } finally {
       setWebhookTestBusy(null);
+    }
+  };
+
+  const runNativeDiagnostic = async (id: string) => {
+    setNativeDiagBusyId(id);
+    setNativeDiagMessage(null);
+    setNativeDiagTone(null);
+    try {
+      const r = await api.post<NativeDiagnosticResult>(`/bots/${id}/native-diagnostic`);
+      const reasons = r.reasons.length ? ` ${r.reasons.join(" | ")}` : "";
+      const text = `${r.summary}${reasons}`;
+      setNativeDiagMessage(text);
+      setNativeDiagTone(r.status === "ok" ? "ok" : r.status === "warn" ? "warn" : "err");
+    } catch (e: unknown) {
+      setNativeDiagTone("err");
+      setNativeDiagMessage(e instanceof Error ? e.message : "Falha ao executar diagnóstico do bot nativo.");
+    } finally {
+      setNativeDiagBusyId(null);
     }
   };
 
@@ -386,6 +414,21 @@ export function BotsPage() {
           </div>
         ) : null}
 
+        {nativeDiagMessage && nativeDiagTone ? (
+          <div
+            className={
+              nativeDiagTone === "ok"
+                ? "mb-6 rounded-lg border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100"
+                : nativeDiagTone === "warn"
+                  ? "mb-6 rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+                  : "mb-6 rounded-lg border border-red-200 bg-red-50/90 p-3 text-sm text-red-950 shadow-sm dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+            }
+            role="status"
+          >
+            {nativeDiagMessage}
+          </div>
+        ) : null}
+
         <motion.ul variants={staggerContainer} initial="hidden" animate="show" className="space-y-3">
           {bots.length === 0 ? (
             <p className="text-ink-500">{t("bots.empty")}</p>
@@ -529,6 +572,11 @@ export function BotsPage() {
                         </button>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-1.5">
+                        {b.nativeManagedByOpenConduit ? (
+                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800">
+                            {t("bots.nativeBot")}
+                          </span>
+                        ) : null}
                         {b.inboxTokenConfigured ? (
                           <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800">
                             {t("bots.tokenConfigured")}
@@ -577,6 +625,17 @@ export function BotsPage() {
                         >
                           <Zap className="h-3.5 w-3.5" />
                           {webhookTestBusy === b.id ? t("bots.testWebhookRunning") : t("bots.testWebhook")}
+                        </button>
+                      ) : null}
+                      {b.nativeManagedByOpenConduit ? (
+                        <button
+                          type="button"
+                          disabled={nativeDiagBusyId === b.id}
+                          onClick={() => void runNativeDiagnostic(b.id)}
+                          className="btn-secondary text-sm"
+                          title={t("bots.nativeDiagnostic")}
+                        >
+                          {nativeDiagBusyId === b.id ? t("common.loading") : t("bots.nativeDiagnostic")}
                         </button>
                       ) : null}
                       <button type="button" onClick={() => startEdit(b)} className="btn-secondary text-sm">

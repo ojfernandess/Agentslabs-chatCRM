@@ -23,17 +23,24 @@ const createBotSchema = z.object({
 
 const patchBotSchema = createBotSchema.partial();
 
-function sanitizeBot<T extends { inboxTokenHash?: string | null; inboxTokenPrefix?: string | null; webhookSecret?: string | null }>(
+function isNativeManagedBotConfig(config: unknown): boolean {
+  if (config == null || typeof config !== "object") return false;
+  return (config as { automationManagedByOpenConduit?: unknown }).automationManagedByOpenConduit === true;
+}
+
+function sanitizeBot<T extends { inboxTokenHash?: string | null; inboxTokenPrefix?: string | null; webhookSecret?: string | null; config?: unknown }>(
   row: T,
 ): Omit<T, "inboxTokenHash" | "inboxTokenPrefix" | "webhookSecret"> & {
   inboxTokenConfigured: boolean;
   webhookSecretConfigured: boolean;
+  nativeManagedByOpenConduit: boolean;
 } {
   const { inboxTokenHash, inboxTokenPrefix, webhookSecret, ...rest } = row;
   return {
     ...rest,
     inboxTokenConfigured: Boolean(inboxTokenHash),
     webhookSecretConfigured: Boolean(webhookSecret),
+    nativeManagedByOpenConduit: isNativeManagedBotConfig(row.config),
   };
 }
 
@@ -266,6 +273,74 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
       log: app.log,
     });
     return reply.status(200).send(result);
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/native-diagnostic", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const bot = await prisma.bot.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!bot) {
+      return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+    }
+
+    const nativeManagedByOpenConduit = isNativeManagedBotConfig(bot.config);
+    const hasWebhookUrl = Boolean(bot.webhookUrl?.trim());
+    const hasInboxToken = Boolean(bot.inboxTokenHash);
+    const linkedInSettings =
+      (await prisma.settings.count({ where: { organizationId, agentBotId: bot.id } })) > 0;
+    const linkedInInbox =
+      (await prisma.inbox.count({ where: { organizationId, agentBotId: bot.id } })) > 0;
+    const profile = await prisma.automationAgentProfile.findFirst({
+      where: { organizationId, botId: bot.id },
+      select: { id: true, llmConfig: true },
+    });
+    const llmCfg =
+      profile?.llmConfig && typeof profile.llmConfig === "object"
+        ? (profile.llmConfig as Record<string, unknown>)
+        : null;
+    const hasApiKeyConfigured = typeof llmCfg?.apiKey === "string" && llmCfg.apiKey.trim() !== "" && llmCfg.apiKey !== "***";
+    const checks = {
+      botActive: bot.isActive,
+      nativeManagedByOpenConduit,
+      linkedInSettings,
+      linkedInInbox,
+      hasAutomationProfile: Boolean(profile),
+      hasApiKeyConfigured,
+      hasWebhookUrl,
+      hasInboxToken,
+    };
+
+    const reasons: string[] = [];
+    if (!checks.botActive) reasons.push("Bot está inativo.");
+    if (!checks.nativeManagedByOpenConduit) reasons.push("Bot não está marcado como nativo (automationManagedByOpenConduit).");
+    if (!checks.linkedInSettings && !checks.linkedInInbox) reasons.push("Bot não está vinculado em Configurações nem em nenhuma Inbox.");
+    if (!checks.hasAutomationProfile) reasons.push("Perfil do agente IA não encontrado para este bot.");
+    if (checks.hasAutomationProfile && !checks.hasApiKeyConfigured) reasons.push("Chave de API do agente não configurada no perfil IA.");
+
+    let status: "ok" | "warn" | "error" = "ok";
+    if (reasons.length > 0) status = "error";
+    else if (checks.hasWebhookUrl) status = "warn";
+
+    const summary =
+      status === "ok"
+        ? "Diagnóstico OK: bot nativo pronto para responder."
+        : status === "warn"
+          ? "Diagnóstico parcial: bot apto, mas há webhook externo configurado."
+          : "Diagnóstico com falhas: ajustes necessários.";
+
+    return {
+      botId: bot.id,
+      status,
+      summary,
+      checks,
+      reasons,
+      hints: [
+        "Confirme se a mensagem inbound entrou na conversa com status PENDING e sem atendente.",
+        "Use Testar chat do agente em Automação para validar geração LLM.",
+      ],
+    };
   });
 
   app.get<{ Params: { id: string } }>("/:id/interactions", { preHandler: [requireAdmin] }, async (request, reply) => {
