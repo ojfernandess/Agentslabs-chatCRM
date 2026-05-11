@@ -7,6 +7,11 @@ export type AgentBotDispatchContext = {
   agentBot: Bot;
 };
 
+function isNativeManagedBotConfig(config: unknown): boolean {
+  if (config == null || typeof config !== "object") return false;
+  return (config as { automationManagedByOpenConduit?: unknown }).automationManagedByOpenConduit === true;
+}
+
 /**
  * A partir da linha de Settings (e include opcional do Bot), obtém contexto de envio se o bot estiver operacional.
  * Recarrega `Bot` por id quando o include veio vazio ou desactualizado.
@@ -22,7 +27,10 @@ export async function resolveAgentBotFromOrgSettingsRow(
       where: { id: row.agentBotId, organizationId },
     });
   }
-  if (!bot?.isActive || !bot.webhookUrl?.trim()) return null;
+  if (!bot?.isActive) return null;
+  const hasExternalWebhook = Boolean(bot.webhookUrl?.trim());
+  const nativeManaged = isNativeManagedBotConfig(bot.config);
+  if (!hasExternalWebhook && !nativeManaged) return null;
   return { agentBotId: row.agentBotId, agentBot: bot };
 }
 
