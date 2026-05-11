@@ -110,7 +110,10 @@ const PROVIDER_OPTIONS = [
   { value: "google_gemini", labelKey: "automationPage.agentProviderGemini" as const },
 ];
 
-/** Sugestões alinhadas ao catálogo OpenAI (frontier + chat); pode escrever outro ID no campo. */
+/** Valor sintético no `<select>` quando o modelo guardado não está na lista fixa. */
+const OPENAI_MODEL_CUSTOM = "__oc_openai_custom_model__";
+
+/** Sugestões alinhadas ao catálogo OpenAI (frontier + chat); «Outro modelo» abre campo de texto. */
 const MODELS_BY_PROVIDER: Record<string, string[]> = {
   openai: [
     "gpt-5.5",
@@ -407,9 +410,13 @@ function formToPayload(
   });
   const mergedInstructions = mergeSystemWithAutoBlock(form.promptUserCore, autoInner);
 
+  const modelResolved =
+    form.model.trim() ||
+    (form.provider === "google_gemini" ? (MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-2.0-flash") : "gpt-4o-mini");
+
   const llmConfig: Record<string, unknown> = {
     provider: form.provider,
-    model: form.model,
+    model: modelResolved,
     temperature: form.temperature,
     maxTokens: form.maxTokens,
     apiBaseUrl: form.apiBaseUrl.trim() || null,
@@ -1702,21 +1709,43 @@ function AgentsTab({
                   {t("automationPage.agentModel")}
                   {agentForm.provider === "openai" ? (
                     <>
-                      <input
-                        type="text"
-                        list="oc-automation-openai-model-suggestions"
-                        value={agentForm.model}
-                        onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
-                        placeholder="gpt-4o-mini"
-                        maxLength={120}
-                        autoComplete="off"
-                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 font-mono text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                      />
-                      <datalist id="oc-automation-openai-model-suggestions">
+                      <select
+                        value={
+                          MODELS_BY_PROVIDER.openai.includes(agentForm.model)
+                            ? agentForm.model
+                            : OPENAI_MODEL_CUSTOM
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === OPENAI_MODEL_CUSTOM) {
+                            setAgentForm((f) => ({
+                              ...f,
+                              model: MODELS_BY_PROVIDER.openai.includes(f.model) ? "" : f.model,
+                            }));
+                          } else {
+                            setAgentForm((f) => ({ ...f, model: v }));
+                          }
+                        }}
+                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                      >
                         {MODELS_BY_PROVIDER.openai.map((m) => (
-                          <option key={m} value={m} />
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
                         ))}
-                      </datalist>
+                        <option value={OPENAI_MODEL_CUSTOM}>{t("automationPage.agentModelCustom")}</option>
+                      </select>
+                      {!MODELS_BY_PROVIDER.openai.includes(agentForm.model) ? (
+                        <input
+                          type="text"
+                          value={agentForm.model}
+                          onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
+                          placeholder={t("automationPage.agentModelCustomPlaceholder")}
+                          maxLength={120}
+                          autoComplete="off"
+                          className="mt-2 w-full rounded-lg border border-ink-200 px-3 py-2 font-mono text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                        />
+                      ) : null}
                     </>
                   ) : (
                     <select

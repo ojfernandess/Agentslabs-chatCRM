@@ -29,6 +29,16 @@ export function isLikelyStallOnlyReply(text: string): boolean {
   return STALL_RE.test(t);
 }
 
+/** Resposta curta a negar informação / “não tenho dados” quando já injectámos excertos da KB (modelo ignorou o contexto). */
+function isLikelyKbDeflectionOnlyReply(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 10 || t.length > 360) return false;
+  if (/[.!?][\s\S]{90,}/.test(t)) return false;
+  return /\b(não\s+(tenho|posso|sei|encontrei)\s+(essa\s+)?informa(c|ç)ão|não\s+há\s+informa(c|ç)ão|sem\s+informa(c|ç)ão\s+(sobre|disponível)|não\s+consigo\s+(aceder|fornecer|confirmar)|não\s+está\s+disponível|i\s+don'?t\s+have\s+(that|this|the)\s+information)\b/i.test(
+    t,
+  );
+}
+
 function llmString(cfg: Record<string, unknown>, key: string): string {
   const v = cfg[key];
   return typeof v === "string" ? v.trim() : "";
@@ -399,13 +409,6 @@ export async function generateNativeAgentReply(input: {
     "Você é um agente de atendimento útil, objetivo e cordial. Responda de forma curta e prática.";
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
 
-  const toolPreamble =
-    "\n\n### Ferramentas (complemento)\n" +
-    "- Os excertos da base podem já estar na secção «Base de conhecimento» acima: responda com base neles.\n" +
-    "- `buscar_conhecimento`: use só se precisar de outra consulta além dos excertos já injectados.\n" +
-    "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
-    "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de usar os excertos, não for possível responder com verdade — **não** use para perguntas factuais que os excertos já respondem.";
-
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
@@ -446,15 +449,28 @@ export async function generateNativeAgentReply(input: {
     }
   }
 
+  const hasDenseKbAppendix = kbProactiveAppendix.trim().length >= 80;
+  const toolPreamble = hasDenseKbAppendix
+    ? "\n\n### Ferramentas (complemento)\n" +
+      "- **Prioridade:** a secção **Base de conhecimento** acima foi recuperada para a última mensagem do cliente. Para morada, Wi‑Fi, horários, preços e políticas, **responda com dados concretos dessa secção**. Não diga que não tem a informação nem que vai «confirmar» ou «verificar» se ela constar nos excertos.\n" +
+      "- `buscar_conhecimento`: apenas se a pergunta for sobre **outro** tema não coberto pelos excertos já mostrados.\n" +
+      "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos forem claramente insuficientes."
+    : "\n\n### Ferramentas (complemento)\n" +
+      "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
+      "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
+      "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre.";
+
   const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble;
 
   const recent = await prisma.message.findMany({
-    where: { conversationId: conversation.id },
-    orderBy: { createdAt: "asc" },
-    take: 12,
+    where: { conversationId: conversation.id, id: { not: message.id } },
+    orderBy: { createdAt: "desc" },
+    take: 20,
     select: { direction: true, body: true },
   });
   const history = recent
+    .reverse()
     .map((m) => ({
       role: m.direction === "INBOUND" ? "user" : "assistant",
       content: (m.body ?? "").trim(),
@@ -548,7 +564,11 @@ export async function generateNativeAgentReply(input: {
       "Já tratei do seu pedido no sistema. Um agente humano irá continuar o atendimento em breve, se necessário.";
   }
 
-  if (flags.knowledge_search && isLikelyStallOnlyReply(replyText)) {
+  if (
+    flags.knowledge_search &&
+    (isLikelyStallOnlyReply(replyText) ||
+      (hasDenseKbAppendix && isLikelyKbDeflectionOnlyReply(replyText)))
+  ) {
     const fixed = await augmentStallWithKnowledge({
       organizationId,
       botId: bot.id,

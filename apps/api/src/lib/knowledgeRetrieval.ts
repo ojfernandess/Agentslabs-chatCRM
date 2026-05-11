@@ -313,7 +313,7 @@ export function formatRankedKnowledgeForSystemPrompt(ranked: RankedKnowledgeRow[
   return (
     "\n\n### Base de conhecimento (excertos recuperados automaticamente)\n" +
     parts.join("\n\n") +
-    "\n\n**Instruções:** use estes excertos para responder à pergunta actual quando forem pertinentes. " +
+    "\n\n**Instruções:** a sua mensagem ao cliente deve **incorporar factos concretos** destes excertos quando forem pertinentes (números, nomes, moradas, SSIDs, horários). " +
     "Não diga que não tem a informação se ela constar acima. " +
     "Não encaminhe para humano nem use call_human só por precaução: primeiro responda com base nos excertos. " +
     "Chame buscar_conhecimento apenas se precisar de uma consulta diferente da já reflectida acima."
