@@ -12,8 +12,8 @@ import type {
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
-import { callGeminiGenerateContent, callOpenAiCompatibleChat } from "./promptModulePreviewLlm.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { generateNativeAgentReply } from "./agentNativeLlm.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -168,11 +168,6 @@ function botManagedByOpenConduit(config: unknown): boolean {
   return v === true;
 }
 
-function llmString(cfg: Record<string, unknown>, key: string): string {
-  const v = cfg[key];
-  return typeof v === "string" ? v.trim() : "";
-}
-
 async function dispatchAgentBotNativeFallback(input: {
   organizationId: string;
   bot: Bot;
@@ -182,83 +177,15 @@ async function dispatchAgentBotNativeFallback(input: {
   log: FastifyBaseLogger;
 }): Promise<void> {
   const { organizationId, bot, conversation, contact, message, log } = input;
-  if (message.direction !== "INBOUND") return;
   const userMessage = (message.body ?? "").trim();
-  if (!userMessage) return;
 
-  const profile = await prisma.automationAgentProfile.findUnique({
-    where: { botId: bot.id },
-    select: { llmConfig: true },
+  const replyText = await generateNativeAgentReply({
+    organizationId,
+    bot,
+    conversation,
+    message,
+    log,
   });
-  if (!profile?.llmConfig || typeof profile.llmConfig !== "object") {
-    log.warn({ botId: bot.id }, "Agent bot native fallback skipped: missing automation profile");
-    return;
-  }
-
-  const llm = profile.llmConfig as Record<string, unknown>;
-  const provider = llmString(llm, "provider") || "openai";
-  const model = llmString(llm, "model") || "gpt-4o-mini";
-  const apiKey = llmString(llm, "apiKey");
-  if (!apiKey || apiKey === "***") {
-    log.warn({ botId: bot.id }, "Agent bot native fallback skipped: API key not configured");
-    return;
-  }
-  const temperatureRaw = llm.temperature;
-  const maxTokensRaw = llm.maxTokens;
-  const temperature =
-    typeof temperatureRaw === "number" && Number.isFinite(temperatureRaw) ? temperatureRaw : 0.7;
-  const maxTokens =
-    typeof maxTokensRaw === "number" && Number.isFinite(maxTokensRaw) ? Math.trunc(maxTokensRaw) : 1024;
-  const systemInstructions =
-    llmString(llm, "systemInstructions") ||
-    "Você é um agente de atendimento útil, objetivo e cordial. Responda de forma curta e prática.";
-  const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
-
-  const recent = await prisma.message.findMany({
-    where: { conversationId: conversation.id },
-    orderBy: { createdAt: "asc" },
-    take: 12,
-    select: { direction: true, body: true },
-  });
-  const history = recent
-    .map((m) => ({
-      role: m.direction === "INBOUND" ? "user" : "assistant",
-      content: (m.body ?? "").trim(),
-    }))
-    .filter((m): m is { role: "user" | "assistant"; content: string } => Boolean(m.content));
-
-  let replyText = "";
-  try {
-    if (provider === "google_gemini") {
-      const r = await callGeminiGenerateContent({
-        apiKey,
-        model,
-        temperature,
-        maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemInstructions,
-        history,
-        userMessage,
-        signal: AbortSignal.timeout(28_000),
-      });
-      replyText = r.text.trim();
-    } else {
-      const r = await callOpenAiCompatibleChat({
-        baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-        apiKey,
-        model,
-        temperature,
-        maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemInstructions,
-        history,
-        userMessage,
-        signal: AbortSignal.timeout(28_000),
-      });
-      replyText = r.text.trim();
-    }
-  } catch (err) {
-    log.warn({ err, botId: bot.id, provider }, "Agent bot native fallback generation failed");
-    return;
-  }
 
   if (!replyText) return;
 

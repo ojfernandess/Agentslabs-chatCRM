@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -12,6 +12,7 @@ import {
   X,
   Volume2,
   Clock,
+  Blocks,
 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -23,6 +24,11 @@ import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
+import {
+  buildPromptAutoInstructionBlock,
+  mergeSystemWithAutoBlock,
+  splitStoredSystemInstructions,
+} from "@/pages/automation/agentPromptBuilder";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -239,7 +245,10 @@ type AgentFormFields = {
   model: string;
   apiBaseUrl: string;
   apiKey: string;
-  systemInstructions: string;
+  /** Núcleo editável; ao gravar junta-se o bloco automático de ferramentas / KB. */
+  promptUserCore: string;
+  /** Artigos da KB referenciados no bloco automático. */
+  promptLinkedKnowledgeIds: string[];
   temperature: number;
   maxTokens: number;
   voiceEnabled: boolean;
@@ -272,7 +281,8 @@ function emptyAgentForm(): AgentFormFields {
     model: "gpt-4o-mini",
     apiBaseUrl: DEFAULT_API_BASE.openai,
     apiKey: "",
-    systemInstructions: "",
+    promptUserCore: "",
+    promptLinkedKnowledgeIds: [],
     temperature: 0.7,
     maxTokens: 1024,
     voiceEnabled: false,
@@ -308,6 +318,17 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const promptModuleIds = Array.isArray(pm) ? (pm as string[]).filter((x) => typeof x === "string") : [];
   const prov = String(llm.provider ?? "openai");
 
+  const pbRaw = beh.promptBuilder;
+  const pb = pbRaw && typeof pbRaw === "object" ? (pbRaw as Record<string, unknown>) : {};
+  const linkedRaw = pb.linkedKnowledgeArticleIds;
+  const promptLinkedKnowledgeIds = Array.isArray(linkedRaw)
+    ? linkedRaw.filter((x): x is string => typeof x === "string" && x.length >= 32)
+    : [];
+  const userFromPb = typeof pb.userCore === "string" ? pb.userCore : null;
+  const fullInstr = String(llm.systemInstructions ?? "");
+  const strippedCore = splitStoredSystemInstructions(fullInstr).userCore;
+  const promptUserCore = userFromPb != null ? userFromPb : strippedCore;
+
   return {
     mode: "edit",
     createBot: false,
@@ -320,7 +341,8 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     model: String(llm.model ?? "gpt-4o-mini"),
     apiBaseUrl: String(llm.apiBaseUrl ?? DEFAULT_API_BASE[prov] ?? ""),
     apiKey: typeof llm.apiKey === "string" ? llm.apiKey : "",
-    systemInstructions: String(llm.systemInstructions ?? ""),
+    promptUserCore,
+    promptLinkedKnowledgeIds,
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
     voiceEnabled: Boolean(voice.elevenLabsEnabled),
@@ -346,19 +368,41 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   };
 }
 
-function formToPayload(form: AgentFormFields): {
+function formToPayload(
+  form: AgentFormFields,
+  ctx: {
+    knowledgeArticles: KnowledgeArticle[];
+    customTools: AutomationCustomToolRow[];
+    t: (key: string) => string;
+  },
+): {
   llmConfig: Record<string, unknown>;
   behaviorConfig: Record<string, unknown>;
   promptModuleIds: string[];
   botPatch?: { name: string; description: string | null; isActive: boolean };
 } {
+  const linkedTitles = form.promptLinkedKnowledgeIds
+    .map((id) => ctx.knowledgeArticles.find((a) => a.id === id)?.title)
+    .filter((x): x is string => Boolean(x));
+  const connectedNames = form.connectedTools
+    .filter((x) => x.enabled)
+    .map((x) => ctx.customTools.find((tl) => tl.id === x.toolId)?.name)
+    .filter((x): x is string => Boolean(x));
+  const autoInner = buildPromptAutoInstructionBlock({
+    nativeTools: form.nativeTools as Record<string, boolean>,
+    linkedArticleTitles: linkedTitles,
+    connectedToolNames: connectedNames,
+    t: ctx.t,
+  });
+  const mergedInstructions = mergeSystemWithAutoBlock(form.promptUserCore, autoInner);
+
   const llmConfig: Record<string, unknown> = {
     provider: form.provider,
     model: form.model,
     temperature: form.temperature,
     maxTokens: form.maxTokens,
     apiBaseUrl: form.apiBaseUrl.trim() || null,
-    systemInstructions: form.systemInstructions,
+    systemInstructions: mergedInstructions,
   };
   if (form.apiKey.trim()) llmConfig.apiKey = form.apiKey.trim();
 
@@ -399,6 +443,10 @@ function formToPayload(form: AgentFormFields): {
       ...defaultBehavior.scheduling,
       externalCalendar: schedulingExternal,
     },
+    promptBuilder: {
+      userCore: form.promptUserCore,
+      linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
+    },
   };
 
   return {
@@ -426,8 +474,7 @@ function applyPromptModuleSelectionToAgentForm(
     .map((id) => promptsList.find((pm) => pm.id === id))
     .filter((pm): pm is PromptModuleRow => pm != null);
   const bodies = ordered.map((pm) => pm.body.trim()).filter(Boolean);
-  const systemInstructions =
-    ordered.length > 0 ? bodies.join("\n\n---\n\n") : f.systemInstructions;
+  const promptUserCore = ordered.length > 0 ? bodies.join("\n\n---\n\n") : f.promptUserCore;
 
   const toolIdSet = new Set<string>();
   for (const pm of ordered) {
@@ -460,7 +507,7 @@ function applyPromptModuleSelectionToAgentForm(
   let next: AgentFormFields = {
     ...f,
     promptModuleIds: nextPromptModuleIds,
-    systemInstructions,
+    promptUserCore,
     connectedTools,
   };
 
@@ -591,6 +638,7 @@ export function AutomationPage() {
         await loadAgentProfiles();
         await loadPrompts();
         await loadTools();
+        await loadKnowledge();
       }
       if (tab === "tools") {
         await loadTools();
@@ -618,6 +666,7 @@ export function AutomationPage() {
     loadTools,
     loadToolPresets,
     loadPrompts,
+    loadKnowledge,
     loadInteractions,
     loadContextRows,
   ]);
@@ -682,7 +731,11 @@ export function AutomationPage() {
     setLoading(true);
     setError("");
     try {
-      const payload = formToPayload(agentForm);
+      const payload = formToPayload(agentForm, {
+        knowledgeArticles: articles,
+        customTools: tools,
+        t,
+      });
       if (agentForm.mode === "edit" && agentForm.editBotId) {
         await api.put(`/automation/agent-profiles/${agentForm.editBotId}`, {
           llmConfig: payload.llmConfig,
@@ -952,6 +1005,7 @@ export function AutomationPage() {
             loading={loading}
             bots={bots}
             tools={tools}
+            articles={articles}
             agentProfiles={agentProfiles}
             agentModalOpen={agentModalOpen}
             setAgentModalOpen={setAgentModalOpen}
@@ -1117,6 +1171,7 @@ function AgentsTab({
   loading,
   bots,
   tools,
+  articles,
   agentProfiles,
   agentModalOpen,
   setAgentModalOpen,
@@ -1135,6 +1190,7 @@ function AgentsTab({
   loading: boolean;
   bots: BotRow[];
   tools: AutomationCustomToolRow[];
+  articles: KnowledgeArticle[];
   agentProfiles: AgentProfileRow[];
   agentModalOpen: boolean;
   setAgentModalOpen: (v: boolean) => void;
@@ -1156,6 +1212,15 @@ function AgentsTab({
   const [testChatTurns, setTestChatTurns] = useState<AgentTestChatTurn[]>([]);
   const [testChatBusy, setTestChatBusy] = useState(false);
   const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
+  const [promptEditorTab, setPromptEditorTab] = useState<"builder" | "merged">("builder");
+  const [kbArticleFilter, setKbArticleFilter] = useState("");
+
+  useEffect(() => {
+    if (!agentModalOpen) {
+      setPromptEditorTab("builder");
+      setKbArticleFilter("");
+    }
+  }, [agentModalOpen]);
 
   useEffect(() => {
     if (!agentModalOpen) return;
@@ -1205,6 +1270,48 @@ function AgentsTab({
   };
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
+
+  const promptAutoPreview = useMemo(
+    () =>
+      buildPromptAutoInstructionBlock({
+        nativeTools: agentForm.nativeTools as Record<string, boolean>,
+        linkedArticleTitles: agentForm.promptLinkedKnowledgeIds
+          .map((id) => articles.find((a) => a.id === id)?.title)
+          .filter((x): x is string => Boolean(x)),
+        connectedToolNames: agentForm.connectedTools
+          .filter((c) => c.enabled)
+          .map((c) => tools.find((tl) => tl.id === c.toolId)?.name)
+          .filter((x): x is string => Boolean(x)),
+        t,
+      }),
+    [
+      agentForm.connectedTools,
+      agentForm.nativeTools,
+      agentForm.promptLinkedKnowledgeIds,
+      articles,
+      tools,
+      t,
+    ],
+  );
+
+  const mergedPromptPreview = useMemo(
+    () => mergeSystemWithAutoBlock(agentForm.promptUserCore, promptAutoPreview),
+    [agentForm.promptUserCore, promptAutoPreview],
+  );
+
+  const kbq = kbArticleFilter.trim().toLowerCase();
+  const visibleKbArticles = articles.filter((a) => {
+    if (kbq && !(`${a.title} ${a.content ?? ""}`.toLowerCase().includes(kbq))) return false;
+    if (
+      agentForm.editBotId &&
+      Array.isArray(a.botIds) &&
+      a.botIds.length > 0 &&
+      !a.botIds.includes(agentForm.editBotId)
+    ) {
+      return false;
+    }
+    return a.isActive !== false;
+  });
 
   const onProviderChange = (prov: string) => {
     const models = MODELS_BY_PROVIDER[prov] ?? MODELS_BY_PROVIDER.openai;
@@ -1420,7 +1527,7 @@ function AgentsTab({
 
       {agentModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10">
-          <div className="relative w-full max-w-lg rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
             <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-ink-800">
               <h3 className="text-lg font-bold text-ink-900 dark:text-ink-50">
                 {agentForm.mode === "edit" ? t("automationPage.agentModalEditTitle") : t("automationPage.agentModalNewTitle")}
@@ -1820,50 +1927,157 @@ function AgentsTab({
                 </label>
               </div>
 
-              <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                {t("automationPage.agentSystemInstructions")}
-                <textarea
-                  value={agentForm.systemInstructions}
-                  onChange={(e) => setAgentForm((f) => ({ ...f, systemInstructions: e.target.value }))}
-                  rows={5}
-                  placeholder={t("automationPage.agentSystemInstructionsPh")}
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                />
-              </label>
-
-              <div>
-                <p className="text-sm font-medium text-ink-800 dark:text-ink-200">{t("automationPage.agentNativeTools")}</p>
-                <p className="text-[11px] text-ink-500">{t("automationPage.agentNativeToolsHelp")}</p>
-                <p className="text-[11px] text-brand-700 dark:text-brand-400">
-                  <button type="button" className="underline" onClick={onOpenToolsTab}>
-                    {t("automationPage.agentNativeToolsTabLink")}
-                  </button>
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {NATIVE_TOOL_KEYS.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          nativeTools: { ...f.nativeTools, [key]: !f.nativeTools[key] },
-                        }))
-                      }
-                      className={clsx(
-                        "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                        agentForm.nativeTools[key]
-                          ? "border-brand-500 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/50 dark:text-brand-200"
-                          : "border-ink-200 bg-white text-ink-600 hover:border-ink-300 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-400",
-                      )}
-                    >
-                      {toolLabel(key)}
-                    </button>
-                  ))}
+              <div className="rounded-2xl border border-brand-200/50 bg-gradient-to-br from-brand-50/40 via-white to-ink-50/90 p-4 shadow-sm dark:border-brand-900/30 dark:from-brand-950/25 dark:via-ink-900/30 dark:to-ink-950/80">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-md dark:bg-brand-500">
+                    <Blocks className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                        {t("automationPage.promptBuilderTitle")}
+                      </h3>
+                      <p className="mt-1 text-[11px] leading-relaxed text-ink-600 dark:text-ink-400">
+                        {t("automationPage.promptBuilderHelp")}
+                      </p>
+                    </div>
+                    <div className="inline-flex rounded-lg border border-ink-200/80 bg-white/90 p-0.5 shadow-sm dark:border-ink-600 dark:bg-ink-950/80">
+                      <button
+                        type="button"
+                        onClick={() => setPromptEditorTab("builder")}
+                        className={clsx(
+                          "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                          promptEditorTab === "builder"
+                            ? "bg-brand-600 text-white shadow-sm"
+                            : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
+                        )}
+                      >
+                        {t("automationPage.promptBuilderTabBuilder")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPromptEditorTab("merged")}
+                        className={clsx(
+                          "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                          promptEditorTab === "merged"
+                            ? "bg-brand-600 text-white shadow-sm"
+                            : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
+                        )}
+                      >
+                        {t("automationPage.promptBuilderTabMerged")}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                {promptEditorTab === "merged" ? (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs font-medium text-ink-700 dark:text-ink-300">{t("automationPage.promptMergedTitle")}</p>
+                    <p className="text-[11px] text-ink-500">{t("automationPage.promptMergedHelp")}</p>
+                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-ink-200 bg-ink-950/90 p-3 font-mono text-[11px] leading-relaxed text-ink-100 dark:border-ink-700">
+                      {mergedPromptPreview || t("automationPage.agentSystemInstructionsPh")}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-5">
+                    <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
+                      {t("automationPage.promptUserCoreLabel")}
+                      <textarea
+                        value={agentForm.promptUserCore}
+                        onChange={(e) => setAgentForm((f) => ({ ...f, promptUserCore: e.target.value }))}
+                        rows={6}
+                        placeholder={t("automationPage.agentSystemInstructionsPh")}
+                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm leading-relaxed dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                      />
+                      <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptUserCoreHint")}</p>
+                    </label>
+
+                    <div className="rounded-xl border border-ink-100 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-950/50">
+                      <p className="text-xs font-semibold text-ink-900 dark:text-ink-100">{t("automationPage.promptKbSection")}</p>
+                      <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptKbHint")}</p>
+                      <input
+                        type="search"
+                        value={kbArticleFilter}
+                        onChange={(e) => setKbArticleFilter(e.target.value)}
+                        placeholder={t("automationPage.promptKbSearch")}
+                        className="mt-2 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                      />
+                      {visibleKbArticles.length === 0 ? (
+                        <p className="mt-3 text-xs text-ink-500">{t("automationPage.promptKbEmpty")}</p>
+                      ) : (
+                        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-ink-100 bg-ink-50/50 p-2 dark:border-ink-800 dark:bg-ink-900/40">
+                          {visibleKbArticles.map((a) => {
+                            const checked = agentForm.promptLinkedKnowledgeIds.includes(a.id);
+                            return (
+                              <li key={a.id}>
+                                <label className="flex cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-xs hover:bg-white/80 dark:hover:bg-ink-800/60">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-ink-300 text-brand-600"
+                                    checked={checked}
+                                    onChange={() =>
+                                      setAgentForm((f) => {
+                                        const set = new Set(f.promptLinkedKnowledgeIds);
+                                        if (set.has(a.id)) set.delete(a.id);
+                                        else set.add(a.id);
+                                        return { ...f, promptLinkedKnowledgeIds: [...set] };
+                                      })
+                                    }
+                                  />
+                                  <span>
+                                    <span className="font-medium text-ink-800 dark:text-ink-200">{a.title}</span>
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-dashed border-brand-300/70 bg-brand-50/30 p-3 dark:border-brand-800/50 dark:bg-brand-950/20">
+                      <p className="text-xs font-semibold text-brand-900 dark:text-brand-200">
+                        {t("automationPage.promptGeneratedTitle")}
+                      </p>
+                      <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">{t("automationPage.promptGeneratedHelp")}</p>
+                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-ink-200/80 bg-white/90 p-3 font-mono text-[11px] leading-relaxed text-ink-800 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-200">
+                        {promptAutoPreview.trim() ? promptAutoPreview : t("automationPage.promptBuilderAutoEmpty")}
+                      </pre>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-ink-800 dark:text-ink-200">{t("automationPage.agentNativeTools")}</p>
+                      <p className="text-[11px] text-ink-500">{t("automationPage.agentNativeToolsHelp")}</p>
+                      <p className="text-[11px] text-brand-700 dark:text-brand-400">
+                        <button type="button" className="underline" onClick={onOpenToolsTab}>
+                          {t("automationPage.agentNativeToolsTabLink")}
+                        </button>
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {NATIVE_TOOL_KEYS.map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() =>
+                              setAgentForm((f) => ({
+                                ...f,
+                                nativeTools: { ...f.nativeTools, [key]: !f.nativeTools[key] },
+                              }))
+                            }
+                            className={clsx(
+                              "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                              agentForm.nativeTools[key]
+                                ? "border-brand-500 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/50 dark:text-brand-200"
+                                : "border-ink-200 bg-white text-ink-600 hover:border-ink-300 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-400",
+                            )}
+                          >
+                            {toolLabel(key)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
                 <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
                   {t("automationPage.agentConnectedToolsTitle")}
                 </p>
@@ -2029,6 +2243,9 @@ function AgentsTab({
                   </div>
                 </fieldset>
               ) : null}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">

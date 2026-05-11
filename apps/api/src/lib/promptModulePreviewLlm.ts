@@ -2,6 +2,135 @@ export type PreviewChatTurn = { role: "user" | "assistant"; content: string };
 
 export type PreviewLlmUsage = { prompt: number; completion: number; total: number };
 
+export type OpenAiToolDefinition = {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+};
+
+type OpenAiChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+};
+
+/**
+ * Chat com tools (function calling). Executa `onToolCall` para cada tool_call e reenvia até obter texto final ou esgotar `maxToolRounds`.
+ */
+export async function callOpenAiCompatibleChatWithTools(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  system: string;
+  history: PreviewChatTurn[];
+  userMessage: string;
+  tools: OpenAiToolDefinition[];
+  onToolCall: (name: string, argsJson: string) => Promise<string>;
+  maxToolRounds?: number;
+  signal?: AbortSignal;
+}): Promise<{ text: string; toolRounds: number; usage?: PreviewLlmUsage }> {
+  const maxRounds = Math.max(1, Math.min(params.maxToolRounds ?? 6, 12));
+  const url = `${params.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const messages: OpenAiChatMessage[] = [
+    { role: "system", content: params.system },
+    ...params.history.map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: params.userMessage },
+  ];
+
+  let toolRounds = 0;
+  let totalUsage: PreviewLlmUsage | undefined;
+
+  for (;;) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        temperature: params.temperature,
+        max_tokens: params.maxTokens,
+        messages,
+        tools: params.tools,
+        tool_choice: "auto",
+      }),
+      signal: params.signal,
+    });
+    const rawText = await res.text();
+    if (!res.ok) {
+      throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
+    }
+    let data: {
+      choices?: Array<{
+        message?: {
+          content?: string | null;
+          tool_calls?: OpenAiChatMessage["tool_calls"];
+        };
+      }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    };
+    try {
+      data = JSON.parse(rawText) as typeof data;
+    } catch {
+      throw new Error("OpenAI-compatible API returned non-JSON");
+    }
+
+    const u = data.usage;
+    if (u) {
+      const chunk: PreviewLlmUsage = {
+        prompt: u.prompt_tokens ?? 0,
+        completion: u.completion_tokens ?? 0,
+        total: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0),
+      };
+      totalUsage = totalUsage
+        ? {
+            prompt: totalUsage.prompt + chunk.prompt,
+            completion: totalUsage.completion + chunk.completion,
+            total: totalUsage.total + chunk.total,
+          }
+        : chunk;
+    }
+
+    const choice = data.choices?.[0]?.message;
+    const toolCalls = choice?.tool_calls?.filter((t) => t.type === "function") ?? [];
+
+    if (toolCalls.length) {
+      if (toolRounds >= maxRounds) {
+        const fallback =
+          (typeof choice?.content === "string" && choice.content.trim()) ||
+          "Não foi possível concluir as ações automáticas a tempo. Um agente humano irá ajudá-lo em seguida.";
+        return { text: fallback, toolRounds, usage: totalUsage };
+      }
+      toolRounds++;
+      messages.push({
+        role: "assistant",
+        content: choice?.content ?? null,
+        tool_calls: toolCalls,
+      });
+      for (const tc of toolCalls) {
+        const name = tc.function.name;
+        const out = await params.onToolCall(name, tc.function.arguments ?? "{}");
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: out,
+        });
+      }
+      continue;
+    }
+
+    const text = choice?.content ?? "";
+    return { text: typeof text === "string" ? text : "", toolRounds, usage: totalUsage };
+  }
+}
+
 export async function callOpenAiCompatibleChat(params: {
   baseUrl: string;
   apiKey: string;

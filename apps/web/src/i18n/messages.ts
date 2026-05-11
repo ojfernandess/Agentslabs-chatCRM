@@ -231,6 +231,47 @@ export const messages = {
       agentTool_call_human: "call_human",
       agentTool_end_conversation: "end_conversation",
       agentTool_ping: "ping",
+      promptBuilderTitle: "Editor de prompt (builder)",
+      promptBuilderHelp:
+        "Escreva o núcleo do agente abaixo; ao activar ferramentas ou artigos, o sistema acrescenta automaticamente instruções claras ao prompt final guardado no modelo.",
+      promptBuilderTabBuilder: "Montar",
+      promptBuilderTabMerged: "Prompt final",
+      promptUserCoreLabel: "Instruções principais (voz do agente)",
+      promptUserCoreHint:
+        "Tom, regras de marca, o que pode ou não prometer. As secções seguintes geram texto extra anexado ao guardar.",
+      promptKbSection: "Base de conhecimento no prompt",
+      promptKbHint:
+        "Seleccione artigos para o modelo priorizar (títulos aparecem como referência). A pesquisa semântica continua a usar toda a KB ligada ao bot quando «buscar_conhecimento» está activo.",
+      promptKbSearch: "Filtrar artigos…",
+      promptKbEmpty: "Nenhum artigo. Crie conteúdos no separador Base de conhecimento.",
+      promptGeneratedTitle: "Instruções geradas automaticamente (pré-visualização)",
+      promptGeneratedHelp:
+        "Este bloco é acrescentado ao prompt final quando grava o perfil — não precisa copiar manualmente.",
+      promptMergedTitle: "Texto completo enviado ao modelo",
+      promptMergedHelp: "Junção das instruções principais + bloco automático (marcador openconduit).",
+      promptBuilderAutoEmpty:
+        "(Sem bloco automático — active busca na base ou capacidades nativas / ferramentas personalizadas para gerar instruções.)",
+      promptBuilderAutoHeader: "[OpenConduit — instruções automáticas de capacidades]",
+      promptBuilderKbLinkedIntro: "Artigos de referência prioritários (consulte e cite quando relevante):",
+      promptBuilderKbLinkedOutro:
+        "Use a função buscar_conhecimento para obter excertos actualizados; integre essa informação na resposta ao cliente.",
+      promptBuilderKbGeneric:
+        "Tem acesso à base de conhecimento via buscar_conhecimento: antes de afirmar que vai «verificar» factos (moradas, preços, políticas), chame a função e responda com o resultado.",
+      promptBuilderNativeSection: "Capacidades nativas activas (resumo operacional):",
+      promptBuilderCustomToolsSection: "Ferramentas personalizadas ligadas (executar conforme contrato do integrador / webhook):",
+      promptBuilderHint_list_teams:
+        "Chame listar_equipas para listar equipas com UUID; use esses ids em transfer_to_team ou atribuir_equipa.",
+      promptBuilderHint_list_pipeline_stages: "Use para saber ids de etapas do funil ao mover oportunidades.",
+      promptBuilderHint_assign_team_to_conversation:
+        "Para transferir, use transfer_to_team com team_id UUID (nunca números fictícios). Se não souber o id, liste equipas primeiro.",
+      promptBuilderHint_set_conversation_status:
+        "OPEN coloca a conversa em atendimento humano; PENDING devolve à fila do bot.",
+      promptBuilderHint_list_google_calendars: "Lista agendas configuradas antes de marcar eventos.",
+      promptBuilderHint_scheduling_google: "Agendamento Google Calendar — seguir OAuth e políticas da ferramenta.",
+      promptBuilderHint_scheduling_outlook: "Agendamento Outlook / Microsoft Graph — seguir configuração da ferramenta.",
+      promptBuilderHint_call_human: "Quando o cliente pedir humano, chame call_human e confirme a transferência.",
+      promptBuilderHint_end_conversation: "Use apenas quando o fluxo pedir encerramento explícito.",
+      promptBuilderHint_ping: "Diagnóstico de latência / teste de integração.",
       promptsIntro: "Módulos reutilizáveis para compor instruções de sistema ou anexar a agentes.",
       promptNewTitle: "Novo módulo",
       promptEditTitle: "Editar módulo",
@@ -2046,6 +2087,47 @@ export const messages = {
       agentTool_call_human: "call_human",
       agentTool_end_conversation: "end_conversation",
       agentTool_ping: "ping",
+      promptBuilderTitle: "Prompt editor (builder)",
+      promptBuilderHelp:
+        "Write the core instructions below; when you enable tools or pick knowledge articles, the app appends clear operational instructions to the final prompt saved for the model.",
+      promptBuilderTabBuilder: "Build",
+      promptBuilderTabMerged: "Final prompt",
+      promptUserCoreLabel: "Core instructions (agent voice)",
+      promptUserCoreHint:
+        "Tone, brand rules, what the agent may promise. The sections below add auto-generated text on save.",
+      promptKbSection: "Knowledge in the prompt",
+      promptKbHint:
+        "Pick articles the model should treat as primary references (titles appear in the auto block). Semantic search still uses the full KB linked to the bot when knowledge_search is enabled.",
+      promptKbSearch: "Filter articles…",
+      promptKbEmpty: "No articles yet. Add content under the Knowledge tab.",
+      promptGeneratedTitle: "Auto-generated instructions (preview)",
+      promptGeneratedHelp:
+        "This block is appended to the final prompt when you save — you do not need to copy it manually.",
+      promptMergedTitle: "Full text sent to the model",
+      promptMergedHelp: "Core instructions + auto block (openconduit marker).",
+      promptBuilderAutoEmpty:
+        "(No auto block yet — enable knowledge search, native capabilities, or custom tools to generate instructions.)",
+      promptBuilderAutoHeader: "[OpenConduit — capability auto-instructions]",
+      promptBuilderKbLinkedIntro: "Priority knowledge articles (read and cite when relevant):",
+      promptBuilderKbLinkedOutro:
+        "Call buscar_conhecimento for up-to-date excerpts and weave them into the customer reply.",
+      promptBuilderKbGeneric:
+        "You have knowledge base access via buscar_conhecimento: before saying you will “check” facts (addresses, prices, policies), call the function and answer with the result.",
+      promptBuilderNativeSection: "Active native capabilities (operational summary):",
+      promptBuilderCustomToolsSection: "Connected custom tools (execute per integrator / webhook contract):",
+      promptBuilderHint_list_teams:
+        "Call listar_equipas to list teams with UUIDs; use those ids in transfer_to_team or assign team.",
+      promptBuilderHint_list_pipeline_stages: "Use to discover pipeline stage ids when moving deals.",
+      promptBuilderHint_assign_team_to_conversation:
+        "To transfer, use transfer_to_team with a real team_id UUID (never placeholder numbers). If unknown, list teams first.",
+      promptBuilderHint_set_conversation_status:
+        "OPEN hands the thread to humans; PENDING returns it to the bot queue.",
+      promptBuilderHint_list_google_calendars: "Lists configured calendars before creating events.",
+      promptBuilderHint_scheduling_google: "Google Calendar scheduling — follow OAuth and tool policy.",
+      promptBuilderHint_scheduling_outlook: "Outlook / Microsoft Graph scheduling — follow tool configuration.",
+      promptBuilderHint_call_human: "When the customer asks for a person, call call_human and confirm handoff.",
+      promptBuilderHint_end_conversation: "Use only when the flow requires an explicit closure.",
+      promptBuilderHint_ping: "Latency / connectivity diagnostic for integrations.",
       promptsIntro: "Reusable modules to compose system instructions or attach to agents.",
       promptNewTitle: "New module",
       promptEditTitle: "Edit module",
