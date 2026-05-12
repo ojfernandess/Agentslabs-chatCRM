@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { embedTextsBatched } from "./openaiEmbeddings.js";
 import { embeddingToVectorLiteral } from "./pgvectorEmbedding.js";
+import { excerptAround, queryTerms } from "./knowledgeSearchRanking.js";
 
 export type KnowledgeArticleRow = {
   id: string;
@@ -19,6 +20,78 @@ function excerptFromChunk(text: string, maxLen = 220): string {
   const t = text.trim();
   if (t.length <= maxLen) return t;
   return `${t.slice(0, maxLen - 1)}…`;
+}
+
+/** Termos muito curtos / stopwords PT levam `excerptAround` a ancorar no sítio errado. */
+const LEXICAL_STOPWORDS = new Set([
+  "da",
+  "de",
+  "do",
+  "das",
+  "dos",
+  "em",
+  "na",
+  "no",
+  "nas",
+  "nos",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "o",
+  "a",
+  "os",
+  "as",
+  "e",
+  "ou",
+  "com",
+  "por",
+  "ao",
+  "à",
+  "aos",
+  "às",
+]);
+
+function meaningfulQueryTermsForExcerpt(normalizedQuery: string): string[] {
+  const raw = queryTerms(normalizedQuery);
+  const filtered = raw.filter((t) => t.length >= 4 || (t.length === 3 && !LEXICAL_STOPWORDS.has(t)));
+  return [...new Set(filtered)].sort((a, b) => b.length - a.length);
+}
+
+/**
+ * O melhor chunk por embedding nem sempre contém o facto pedido (ex.: morada num doc longo de hotel).
+ * Juntamos vários chunks do mesmo artigo + uma janela lexical no corpo completo centrada nos termos da pergunta.
+ */
+function buildRichSemanticExcerpt(
+  chunkTexts: string[],
+  article: KnowledgeArticleRow,
+  normalizedQuery: string,
+): string {
+  const mergedChunks = chunkTexts
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join("\n\n—\n\n");
+  const fromChunks = excerptFromChunk(mergedChunks, 780);
+
+  const terms = meaningfulQueryTermsForExcerpt(normalizedQuery);
+  if (!terms.length) return fromChunks;
+
+  const fromLexical = excerptAround(
+    { id: article.id, title: article.title, content: article.content },
+    terms,
+    520,
+  ).trim();
+  if (fromLexical.length < 35) return fromChunks;
+
+  const a = fromChunks.toLowerCase();
+  const b = fromLexical.toLowerCase();
+  const anchor = b.slice(0, Math.min(96, b.length));
+  if (anchor.length >= 48 && a.includes(anchor.slice(0, 48))) {
+    return fromChunks.length >= fromLexical.length ? fromChunks : `${fromChunks}\n\n${fromLexical}`.slice(0, 1500);
+  }
+
+  const combined = `${fromChunks}\n\n[Trecho do artigo alinhado à pergunta]\n${fromLexical}`;
+  return combined.length > 1500 ? `${combined.slice(0, 1499)}…` : combined;
 }
 
 type ChunkSimRow = {
@@ -81,13 +154,18 @@ export async function rankedSemanticKnowledgeSearch(params: {
   const topN = Math.min(rows.length, Math.max(params.limit * 10, 40));
   const topChunks = rows.slice(0, topN);
 
-  const byArticle = new Map<string, { best: number; excerpt: string }>();
+  const byArticle = new Map<string, { best: number; chunkTexts: string[] }>();
   for (const row of topChunks) {
-    const cur = byArticle.get(row.articleId);
-    const ex = excerptFromChunk(row.text);
     const sc = Number(row.score);
-    if (!cur || sc > cur.best) {
-      byArticle.set(row.articleId, { best: sc, excerpt: ex });
+    const txt = row.text.trim();
+    let agg = byArticle.get(row.articleId);
+    if (!agg) {
+      agg = { best: sc, chunkTexts: [] };
+      byArticle.set(row.articleId, agg);
+    }
+    agg.best = Math.max(agg.best, sc);
+    if (txt && agg.chunkTexts.length < 4 && !agg.chunkTexts.includes(txt)) {
+      agg.chunkTexts.push(txt);
     }
   }
 
@@ -103,10 +181,11 @@ export async function rankedSemanticKnowledgeSearch(params: {
 
   return articles.map((article) => {
     const meta = byArticle.get(article.id)!;
+    const excerpt = buildRichSemanticExcerpt(meta.chunkTexts, article, q);
     return {
       article,
       score: meta.best,
-      excerpt: meta.excerpt,
+      excerpt,
     };
   });
 }
