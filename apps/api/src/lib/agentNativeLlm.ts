@@ -21,6 +21,12 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
+import {
+  openAiToolDefinitionForAutomationTool,
+  parseAutomationToolIdFromOpenAiName,
+  runAutomationHttpLikeTool,
+  type AutomationHttpToolRow,
+} from "./automationHttpToolExecute.js";
 
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
@@ -277,6 +283,42 @@ async function executeNativeTool(input: {
   return JSON.stringify({ ok: false, error: "unknown_or_disabled_tool", tool: name });
 }
 
+/** Ferramentas HTTP/WEBHOOK ligadas ao agente com `runMode` ≠ manual — expostas ao modelo nativo. */
+function parseEnabledNativeHttpCustomToolIds(behavior: unknown): string[] {
+  if (!behavior || typeof behavior !== "object") return [];
+  const raw = (behavior as Record<string, unknown>).connectedTools;
+  if (!Array.isArray(raw)) return [];
+  const ids: string[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (o.enabled !== true) continue;
+    const id = typeof o.toolId === "string" ? o.toolId.trim() : "";
+    if (!id) continue;
+    if (o.runMode === "manual") continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** Instruções por `toolId` a partir de `behavior.connectedTools[].agentInstruction`. */
+function parseConnectedToolAgentInstructions(behavior: unknown): Map<string, string> {
+  const m = new Map<string, string>();
+  if (!behavior || typeof behavior !== "object") return m;
+  const raw = (behavior as Record<string, unknown>).connectedTools;
+  if (!Array.isArray(raw)) return m;
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (o.enabled !== true) continue;
+    const id = typeof o.toolId === "string" ? o.toolId.trim() : "";
+    if (!id) continue;
+    const ins = typeof o.agentInstruction === "string" ? o.agentInstruction.trim() : "";
+    if (ins) m.set(id, ins);
+  }
+  return m;
+}
+
 async function augmentStallWithKnowledge(params: {
   organizationId: string;
   botId: string;
@@ -435,6 +477,32 @@ export async function generateNativeAgentReply(input: {
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
+  const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
+  let customHttpTools: AutomationHttpToolRow[] = [];
+  if (nativeHttpCustomToolIds.length > 0) {
+    const rows = await prisma.automationCustomTool.findMany({
+      where: { organizationId, id: { in: nativeHttpCustomToolIds }, isActive: true },
+      select: {
+        id: true,
+        organizationId: true,
+        name: true,
+        description: true,
+        toolType: true,
+        config: true,
+        parametersSchema: true,
+      },
+    });
+    const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
+    customHttpTools = rows
+      .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  }
+  const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
+  const customToolPreamble =
+    customHttpTools.length > 0
+      ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n"
+      : "";
+
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
     try {
@@ -482,20 +550,28 @@ export async function generateNativeAgentReply(input: {
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
       "- **`buscar_conhecimento`:** continua disponível. Se o seu prompt interno exigir uma chamada explícita à função antes de responder, invoque‑a com `query` adequada; se os excertos acima já bastarem, pode responder sem nova chamada.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes."
+      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
+      customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
       "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
-      "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre.";
+      "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre." +
+      customToolPreamble;
 
-  const serverKbGuard = kbHasUsefulExcerpts
-    ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
-      "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
-      "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
-      "A função `buscar_conhecimento` está disponível para uma segunda consulta ou se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
-      "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do hotel diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
-      "Use `call_human` só se o hóspede pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
-    : "";
+  const serverKbGuard =
+    (kbHasUsefulExcerpts
+      ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
+        "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
+        "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
+        "A função `buscar_conhecimento` está disponível para uma segunda consulta ou se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
+        "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do hotel diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
+        "Use `call_human` só se o hóspede pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
+      : "") +
+    (customHttpTools.length > 0
+      ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
+        "Existem funções com nome `oc_tool_` no catálogo: são integrações HTTP/Webhook configuradas para este agente. " +
+        "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente."
+      : "");
 
   const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard;
 
@@ -527,7 +603,12 @@ export async function generateNativeAgentReply(input: {
   let replyText = "";
   let completedToolRounds = 0;
 
-  const tools = buildOpenAiTools(flags, { omitBuscarConhecimento });
+  const tools: OpenAiToolDefinition[] = [
+    ...buildOpenAiTools(flags, { omitBuscarConhecimento }),
+    ...customHttpTools.map((row) =>
+      openAiToolDefinitionForAutomationTool(row, { agentInstruction: agentInstructionByToolId.get(row.id) }),
+    ),
+  ];
   const useTools = provider !== "google_gemini" && tools.length > 0;
 
   if (isAgentKbDebugEnabled()) {
@@ -575,12 +656,52 @@ export async function generateNativeAgentReply(input: {
           userMessage,
           tools,
           maxToolRounds: 6,
-          onToolCall: (name, argsJson) => {
+          onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
             tlog?.info({ id: name, name: `Tool: ${name}` }, "Chamada à ferramenta", {
               input: { argsPreview: argsJson.slice(0, 4000) },
             });
-            return executeNativeTool({
+            const customId = parseAutomationToolIdFromOpenAiName(name);
+            if (customId) {
+              const row = customHttpTools.find((t) => t.id === customId);
+              if (!row) {
+                const out = JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" });
+                tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
+                  output: { preview: out },
+                });
+                return out;
+              }
+              let args: Record<string, unknown> = {};
+              try {
+                const p = JSON.parse(argsJson || "{}");
+                if (p && typeof p === "object" && !Array.isArray(p)) args = p as Record<string, unknown>;
+              } catch {
+                const out = JSON.stringify({ ok: false, error: "invalid_json_arguments" });
+                tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
+                  output: { preview: out },
+                });
+                return out;
+              }
+              const exec = await runAutomationHttpLikeTool({
+                tool: row,
+                llmArgs: args,
+                organizationId,
+                botId: bot.id,
+                conversationId: conversation.id,
+                executionSource: "native_agent",
+              });
+              const out = JSON.stringify({
+                ok: exec.ok,
+                statusCode: exec.statusCode,
+                bodyPreview: exec.responseText.slice(0, 12_000),
+                error: exec.error,
+              });
+              tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
+                output: { preview: out.slice(0, 4000) },
+              });
+              return out;
+            }
+            const out = await executeNativeTool({
               name,
               argsJson,
               organizationId,
@@ -589,12 +710,11 @@ export async function generateNativeAgentReply(input: {
               flags,
               log,
               pinnedArticleIds,
-            }).then((out) => {
-              tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
-                output: { preview: out.slice(0, 4000) },
-              });
-              return out;
             });
+            tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
+              output: { preview: out.slice(0, 4000) },
+            });
+            return out;
           },
           signal,
         });

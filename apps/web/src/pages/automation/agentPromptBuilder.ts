@@ -17,7 +17,14 @@ export function mergeSystemWithAutoBlock(userCore: string, autoInner: string): s
 
 type Translate = (key: string) => string;
 
-export type ConnectedToolInstructionRow = { name: string; instruction: string };
+/**
+ * Nome da função no agente nativo OpenAI — **deve coincidir** com `openAiFunctionNameForAutomationTool` na API (`automationHttpToolExecute.ts`).
+ */
+export function nativeOpenAiToolFunctionName(toolId: string): string {
+  return `oc_tool_${toolId.replace(/-/g, "")}`;
+}
+
+export type ConnectedToolInstructionRow = { name: string; instruction: string; toolId: string };
 export type TeamTransferHint = { teamId: string; teamName: string; instruction: string };
 
 export type EscalationPromptContext = {
@@ -93,11 +100,14 @@ export function buildPromptAutoInstructionBlock(input: {
     lines.push("");
   }
 
-  const ctInstr = (connectedToolInstructions ?? []).filter((x) => x.name && x.instruction?.trim());
+  const ctInstr = (connectedToolInstructions ?? []).filter((x) => x.name && x.instruction?.trim() && x.toolId);
   if (ctInstr.length) {
     lines.push(t("automationPage.promptBuilderConnectedInstrSection"));
     for (const row of ctInstr) {
       lines.push(`**${row.name}**`);
+      lines.push(
+        t("automationPage.promptBuilderConnectedToolNativeFnLine").replace("{fn}", nativeOpenAiToolFunctionName(row.toolId)),
+      );
       lines.push(row.instruction.trim());
       lines.push("");
     }

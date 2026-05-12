@@ -335,6 +335,8 @@ export const messages = {
       promptBuilderHint_end_conversation: "Use apenas quando o fluxo pedir encerramento explícito.",
       promptBuilderHint_ping: "Diagnóstico de latência / teste de integração.",
       promptBuilderConnectedInstrSection: "Instruções por ferramenta personalizada (uso no modelo):",
+      promptBuilderConnectedToolNativeFnLine:
+        "Função OpenAI no agente nativo (nome exacto): `{fn}` — use este identificador ao invocar a ferramenta.",
       promptBuilderTeamHintsSection: "Transferência para equipas (transfer_to_team):",
       promptBuilderEscalationSection: "Escalonamento e transferência humana:",
       promptBuilderEscalationTeamLine: "Equipa de destino: **{name}** — `team_id`: `{id}`",
@@ -350,6 +352,8 @@ export const messages = {
       agentConnectedToolInstruction: "Instruções para o agente (prompt automático)",
       agentConnectedToolInstructionHint:
         "Texto injectado no bloco automático quando grava — descreva quando e como usar esta ferramenta.",
+      agentConnectedToolNativeFnHint:
+        "Agente nativo (OpenAI): o nome exacto da função é `{fn}` — referencie-o nas instruções para evitar ambiguidade.",
       agentTeamTransferSection: "Transferência para equipas",
       agentTeamTransferHelp:
         "Por equipa, indique quando o agente deve chamar transfer_to_team com o UUID indicado. O bloco só entra no prompt se listar_equipas, atribuir_equipa ou transferir_equipa estiverem activos.",
@@ -740,6 +744,8 @@ export const messages = {
       agentConnectedRunMode: "Execução",
       agentConnectedRunAuto: "Automática (modelo)",
       agentConnectedRunManual: "Manual / confirmar",
+      agentConnectedRunManualNativeHint:
+        "No agente nativo OpenConduit, ferramentas em modo manual **não** são registadas como funções OpenAI — só o integrador externo as pode invocar. Use «Automático» para consultas HTTP pelo próprio servidor.",
       agentConnectedPriority: "Prioridade",
       agentConnectedMaxCalls: "Máx. chamadas / conversa",
       agentConnectedMaxCallsPh: "vazio = ilimitado",
@@ -2290,6 +2296,8 @@ export const messages = {
       promptBuilderHint_end_conversation: "Use only when the flow requires an explicit closure.",
       promptBuilderHint_ping: "Latency / connectivity diagnostic for integrations.",
       promptBuilderConnectedInstrSection: "Per custom tool — agent instructions (model-facing):",
+      promptBuilderConnectedToolNativeFnLine:
+        "Native OpenConduit agent OpenAI function (exact name): `{fn}` — use this identifier when calling the tool.",
       promptBuilderTeamHintsSection: "Team transfers (transfer_to_team):",
       promptBuilderEscalationSection: "Escalation and human handoff:",
       promptBuilderEscalationTeamLine: "Destination team: **{name}** — `team_id`: `{id}`",
@@ -2305,6 +2313,8 @@ export const messages = {
       agentConnectedToolInstruction: "Agent instructions (auto prompt block)",
       agentConnectedToolInstructionHint:
         "Text merged into the auto block on save — describe when and how to use this tool.",
+      agentConnectedToolNativeFnHint:
+        "Native agent (OpenAI): the exact function name is `{fn}` — reference it in instructions to avoid ambiguity.",
       agentTeamTransferSection: "Transfer to teams",
       agentTeamTransferHelp:
         "Per team, describe when the agent should call transfer_to_team with the UUID shown. The block is only emitted if list_teams, assign_team, or transfer_to_team is enabled.",
@@ -2692,6 +2702,8 @@ export const messages = {
       agentConnectedRunMode: "Execution",
       agentConnectedRunAuto: "Automatic (model)",
       agentConnectedRunManual: "Manual / confirm",
+      agentConnectedRunManualNativeHint:
+        "In the native OpenConduit agent, manual tools are **not** registered as OpenAI functions — only an external integrator can invoke them. Use Automatic for HTTP calls executed by the server.",
       agentConnectedPriority: "Priority",
       agentConnectedMaxCalls: "Max calls / conversation",
       agentConnectedMaxCallsPh: "empty = unlimited",

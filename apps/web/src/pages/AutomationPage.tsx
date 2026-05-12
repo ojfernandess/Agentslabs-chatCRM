@@ -28,6 +28,7 @@ import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/prom
 import {
   buildPromptAutoInstructionBlock,
   mergeSystemWithAutoBlock,
+  nativeOpenAiToolFunctionName,
   splitStoredSystemInstructions,
 } from "@/pages/automation/agentPromptBuilder";
 
@@ -440,9 +441,9 @@ function formToPayload(
       const name = tl?.name;
       const ins = (x.agentInstruction ?? "").trim();
       if (!name || !ins) return null;
-      return { name, instruction: ins };
+      return { name, instruction: ins, toolId: x.toolId };
     })
-    .filter((x): x is { name: string; instruction: string } => x != null);
+    .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
   const teamHintsResolved = form.teamTransferHints
     .filter((h) => h.instruction.trim())
     .map((h) => ({
@@ -1420,9 +1421,9 @@ function AgentsTab({
         const name = tl?.name;
         const ins = (x.agentInstruction ?? "").trim();
         if (!name || !ins) return null;
-        return { name, instruction: ins };
+        return { name, instruction: ins, toolId: x.toolId };
       })
-      .filter((x): x is { name: string; instruction: string } => x != null);
+      .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
     const teamHintsResolved = agentForm.teamTransferHints
       .filter((h) => h.instruction.trim())
       .map((h) => ({
@@ -2572,6 +2573,12 @@ function AgentsTab({
                                   <option value="manual">{t("automationPage.agentConnectedRunManual")}</option>
                                 </select>
                               </label>
+                              {row.runMode === "manual" &&
+                              (tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK") ? (
+                                <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-200 sm:col-span-2">
+                                  {t("automationPage.agentConnectedRunManualNativeHint")}
+                                </p>
+                              ) : null}
                               <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
                                 {t("automationPage.agentConnectedPriority")}
                                 <input
@@ -2626,6 +2633,14 @@ function AgentsTab({
                                     placeholder={t("automationPage.agentConnectedToolInstructionHint")}
                                     className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
                                   />
+                                  {tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK" ? (
+                                    <p className="mt-1 text-[10px] leading-snug text-ink-500">
+                                      {t("automationPage.agentConnectedToolNativeFnHint").replace(
+                                        "{fn}",
+                                        nativeOpenAiToolFunctionName(tl.id),
+                                      )}
+                                    </p>
+                                  ) : null}
                                 </label>
                                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                   <button
