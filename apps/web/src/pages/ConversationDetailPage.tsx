@@ -125,6 +125,7 @@ interface ConversationDetail {
   /** Presente na API — caixa e flag do bot por canal. */
   inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
   agentBotTriageActive?: boolean;
+  awaitingHumanHandoff?: boolean;
   contact: {
     id: string;
     name: string;
@@ -267,7 +268,7 @@ export function ConversationDetailPage() {
     };
   }, [voicePreviewUrl]);
 
-  const loadConversation = async () => {
+  const loadConversation = useCallback(async () => {
     try {
       const data = await api.get<ConversationDetail>(`/conversations/${id}`);
       setConversation(data);
@@ -278,7 +279,7 @@ export function ConversationDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     async function loadChannel() {
@@ -411,10 +412,20 @@ export function ConversationDetailPage() {
   }, [transferMembers, transferAssigneeId]);
 
   useEffect(() => {
-    loadConversation();
-    const interval = setInterval(loadConversation, 5000);
+    void loadConversation();
+    const interval = setInterval(() => void loadConversation(), 5000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [loadConversation]);
+
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ conversationId?: string }>).detail;
+      if (d?.conversationId !== id) return;
+      void loadConversation();
+    };
+    window.addEventListener("openconduit:conversation-updated", h);
+    return () => window.removeEventListener("openconduit:conversation-updated", h);
+  }, [id, loadConversation]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -1016,7 +1027,8 @@ export function ConversationDetailPage() {
   const inBotQueueOnly =
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
     hasNoHumanAssignee &&
-    agentBotTriageActive;
+    agentBotTriageActive &&
+    !conversation.awaitingHumanHandoff;
   const showTransferToBot =
     agentBotTriageActive &&
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
@@ -1497,6 +1509,14 @@ export function ConversationDetailPage() {
                 >
                   {statusLabel(conversation.status)}
                 </span>
+                {conversation.awaitingHumanHandoff ? (
+                  <span
+                    className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:bg-sky-950/60 dark:text-sky-100"
+                    title={t("conversationDetail.awaitingHumanBanner")}
+                  >
+                    {t("conversationDetail.awaitingHumanBadge")}
+                  </span>
+                ) : null}
                 <span className="text-[11px] text-ink-500 dark:text-ink-400">
                   {presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
                 </span>
@@ -1559,7 +1579,7 @@ export function ConversationDetailPage() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
-            {agentBotTriageActive && hasNoHumanAssignee ? (
+            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
                 title={t("conversationDetail.botTriageBanner")}
@@ -1684,6 +1704,15 @@ export function ConversationDetailPage() {
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
           <div className="relative w-full min-w-0 space-y-0">
+            {conversation.awaitingHumanHandoff ? (
+              <div
+                className="mb-4 flex items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2.5 text-xs text-sky-950 shadow-sm dark:border-sky-800/50 dark:bg-sky-950/45 dark:text-sky-100"
+                role="status"
+              >
+                <Headset className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" aria-hidden />
+                <p className="leading-snug">{t("conversationDetail.awaitingHumanBanner")}</p>
+              </div>
+            ) : null}
             {inBotQueueOnly ? (
               <div
                 className="mb-4 flex items-start gap-2 rounded-xl border border-violet-200/80 bg-violet-50/90 px-3 py-2.5 text-xs text-violet-950 shadow-sm dark:border-violet-800/40 dark:bg-violet-950/40 dark:text-violet-100"

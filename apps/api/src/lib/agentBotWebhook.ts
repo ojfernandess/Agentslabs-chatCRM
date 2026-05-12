@@ -260,6 +260,20 @@ async function dispatchAgentBotNativeFallback(input: {
       executionLog: exLog.child("agent_llm"),
     });
 
+    const handoffAfter = await prisma.conversation.findFirst({
+      where: { id: conversation.id },
+      select: { awaitingHumanHandoff: true },
+    });
+    if (handoffAfter?.awaitingHumanHandoff) {
+      exLog.info(
+        { id: "outbound", name: "Resposta" },
+        "Transferência para humano — resposta do modelo não enviada ao cliente",
+        { output: { replyChars: replyText.length } },
+      );
+      await exLog.completeSuccess();
+      return;
+    }
+
     if (!replyText) {
       exLog.info({ id: "outbound", name: "Resposta" }, "Modelo devolveu texto vazio — sem envio");
       await exLog.completeSuccess();
@@ -395,6 +409,9 @@ export async function dispatchAgentBotWebhook(input: {
   let conversation = input.conversation;
   const bot = settings.agentBot;
   if (!settings.agentBotId || !bot?.isActive) {
+    return;
+  }
+  if (conversation.awaitingHumanHandoff) {
     return;
   }
   /** `OPEN` sem atendente com bot activo deve estar na fila como `PENDING` (reabertura manual, etc.). */

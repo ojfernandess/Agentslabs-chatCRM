@@ -53,13 +53,25 @@ export function WorkspaceRealtime() {
 
     ws.onmessage = (ev) => {
       try {
-        const data = JSON.parse(String(ev.data)) as { type?: string; contact?: { name?: string }; teamId?: string | null };
+        const data = JSON.parse(String(ev.data)) as {
+          type?: string;
+          contact?: { name?: string };
+          teamId?: string | null;
+          conversationId?: string;
+          awaitingHumanHandoff?: boolean;
+        };
         if (data.type === "conversation.transferred") {
           const name = data.contact?.name ?? "—";
           pushToast(translate(locale, "workspace.transferToast").replace("{name}", name));
           playTransferChime();
           window.dispatchEvent(
             new CustomEvent("openconduit:conversation-transferred", { detail: data }),
+          );
+        } else if (data.type === "conversation.updated" && typeof data.conversationId === "string") {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-updated", {
+              detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
+            }),
           );
         }
       } catch {

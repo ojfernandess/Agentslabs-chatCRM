@@ -618,6 +618,9 @@ model Conversation {
   teamId String? @map("team_id") @db.Uuid
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
+  /// Após transferência pelo agente nativo: não voltar a responder até voltar a `PENDING` (fila do bot) ou `awaitingHumanHandoff` limpo.
+  awaitingHumanHandoff Boolean @default(false) @map("awaiting_human_handoff")
+
   messages               Message[]
   botInteractions        BotInteraction[]
   automationContext      AutomationConversationContext?

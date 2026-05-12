@@ -19,6 +19,7 @@ import {
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
+import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 import {
@@ -145,7 +146,7 @@ function buildOpenAiTools(
           type: "object",
           properties: {
             team_id: { type: "string", description: "UUID da equipa (ex.: 0727f763-09b4-4aae-acb6-1e25a93b3a1c)" },
-            reason: { type: "string", description: "Motivo curto (opcional)" },
+            reason: { type: "string", description: "Motivo curto para a equipa (nota interna, não vai ao cliente)" },
           },
           required: ["team_id"],
         },
@@ -158,11 +159,11 @@ function buildOpenAiTools(
       function: {
         name: "call_human",
         description:
-          "Abre a conversa para atendimento humano (fila de agentes). Use quando o cliente pedir falar com pessoa / atendente.",
+          "Abre a conversa para atendimento humano (fila de agentes). Use quando o cliente pedir falar com pessoa / atendente. Indique sempre `reason` (motivo curto) para a equipa no painel.",
         parameters: {
           type: "object",
           properties: {
-            reason: { type: "string" },
+            reason: { type: "string", description: "Motivo da transferência (visível só na equipa, nota interna)" },
             team_id: { type: "string", description: "UUID opcional da equipa para encaminhar" },
           },
         },
@@ -181,8 +182,9 @@ async function executeNativeTool(input: {
   flags: NativeToolsFlags;
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
+  userMessage?: string;
 }): Promise<string> {
-  const { name, argsJson, organizationId, botId, conversationId, flags, log, pinnedArticleIds } = input;
+  const { name, argsJson, organizationId, botId, conversationId, flags, log, pinnedArticleIds, userMessage } = input;
   let args: Record<string, unknown> = {};
   try {
     const p = JSON.parse(argsJson || "{}");
@@ -247,6 +249,20 @@ async function executeNativeTool(input: {
         where: { id: conversationId },
         data: { status: "OPEN", updatedAt: new Date() },
       });
+      const reason = typeof args.reason === "string" ? args.reason : null;
+      const snippet = (userMessage ?? "").trim();
+      try {
+        await recordNativeAgentTransferHandoff({
+          organizationId,
+          conversationId,
+          toolName: name === "assign_team_to_conversation" ? "assign_team_to_conversation" : "transfer_to_team",
+          reason,
+          userMessageSnippet: snippet,
+          teamName: r.payload.team?.name ?? null,
+        });
+      } catch (err) {
+        log.warn({ err, conversationId }, "recordNativeAgentTransferHandoff failed after transfer_to_team");
+      }
       return JSON.stringify({
         ok: true,
         teamId: r.payload.teamId,
@@ -259,6 +275,7 @@ async function executeNativeTool(input: {
       const teamIdRaw = args.team_id ?? args.teamId;
       const teamId =
         typeof teamIdRaw === "string" && teamIdRaw.trim().length >= 32 ? teamIdRaw.trim() : null;
+      let teamName: string | null = null;
       if (teamId) {
         const r = await assignConversationTeamForOrg(prisma, {
           organizationId,
@@ -267,12 +284,28 @@ async function executeNativeTool(input: {
         });
         if (!r.ok) {
           log.warn({ err: r.error }, "call_human team assign failed");
+        } else {
+          teamName = r.payload.team?.name ?? null;
         }
       }
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { status: "OPEN", assignedToId: null, updatedAt: new Date() },
       });
+      const reason = typeof args.reason === "string" ? args.reason : null;
+      const snippet = (userMessage ?? "").trim();
+      try {
+        await recordNativeAgentTransferHandoff({
+          organizationId,
+          conversationId,
+          toolName: "call_human",
+          reason,
+          userMessageSnippet: snippet,
+          teamName,
+        });
+      } catch (err) {
+        log.warn({ err, conversationId }, "recordNativeAgentTransferHandoff failed after call_human");
+      }
       return JSON.stringify({ ok: true, message: "Conversa aberta para atendimento humano." });
     }
   } catch (err) {
@@ -710,6 +743,7 @@ export async function generateNativeAgentReply(input: {
               flags,
               log,
               pinnedArticleIds,
+              userMessage,
             });
             tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
               output: { preview: out.slice(0, 4000) },

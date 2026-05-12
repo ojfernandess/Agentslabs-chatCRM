@@ -1346,6 +1346,9 @@ export const messages = {
       botTriageListHuman: "Com agente humano",
       botTriageBanner:
         "O agente virtual (bot) está na primeira linha desta conversa: estado pendente, sem atendente humano atribuído. As mensagens do cliente são enviadas ao webhook do bot.",
+      awaitingHumanBadge: "Aguardando atendimento",
+      awaitingHumanBanner:
+        "O bot transferiu esta conversa para atendimento humano. As respostas automáticas estão em pausa até a conversa voltar à pendência (fila do bot) ou ser tratada pela equipa.",
       startAttendance: "Iniciar atendimento",
       startAttendanceHint: "Atribuir a conversa a si sem enviar mensagem (equivalente à aceitação manual).",
       reopen: "Reabrir conversa",
@@ -3301,6 +3304,9 @@ export const messages = {
       botTriageListHuman: "Human agent",
       botTriageBanner:
         "The virtual agent (bot) is handling this conversation: pending state with no human assignee. Customer messages are sent to the bot webhook.",
+      awaitingHumanBadge: "Awaiting agent",
+      awaitingHumanBanner:
+        "The bot handed this conversation to your team. Automated replies stay paused until the conversation is set back to pending (bot queue) or handled by an agent.",
       startAttendance: "Start handling",
       startAttendanceHint: "Assign this conversation to yourself without sending a message (manual claim).",
       reopen: "Reopen conversation",

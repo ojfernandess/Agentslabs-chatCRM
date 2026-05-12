@@ -47,6 +47,7 @@ const updateSchema = z.object({
   closureReason: z.union([z.string().max(4000), z.null()]).optional(),
   leadTypeId: z.union([z.string().uuid(), z.null()]).optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
+  awaitingHumanHandoff: z.literal(false).optional(),
 });
 
 const CONTACT_TIMELINE_LIMIT = 80;
@@ -580,6 +581,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       csatComment?: string | null;
       csatRecordedAt?: Date | null;
       csatSurveyToken?: string | null;
+      awaitingHumanHandoff?: boolean;
     } = {};
 
     if (parsed.data.status !== undefined) {
@@ -590,6 +592,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
     if (parsed.data.teamId !== undefined) {
       data.teamId = parsed.data.teamId;
+    }
+    if (parsed.data.status === "PENDING") {
+      data.awaitingHumanHandoff = false;
+    } else if (parsed.data.awaitingHumanHandoff === false) {
+      data.awaitingHumanHandoff = false;
     }
 
     if (
@@ -609,6 +616,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.csatComment = null;
       data.csatRecordedAt = null;
       data.csatSurveyToken = null;
+      data.awaitingHumanHandoff = false;
     } else if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
         const rawCr = parsed.data.closureReason;
@@ -843,6 +851,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           assignedToId: conversation.assignedToId,
           previousAssignedToId: prevAssignedToId,
           contact: conversation.contact,
+        });
+      }
+
+      if (existing.awaitingHumanHandoff !== conversation.awaitingHumanHandoff) {
+        broadcastToOrganization(organizationId, {
+          type: "conversation.updated",
+          conversationId: conversation.id,
+          awaitingHumanHandoff: conversation.awaitingHumanHandoff,
         });
       }
 

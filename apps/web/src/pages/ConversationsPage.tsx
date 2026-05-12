@@ -16,6 +16,7 @@ interface Conversation {
   status: string;
   updatedAt: string;
   agentBotTriageActive?: boolean;
+  awaitingHumanHandoff?: boolean;
   closureValue?: number | null;
   contact: {
     id: string;
@@ -151,6 +152,12 @@ export function ConversationsPage() {
 
   useEffect(() => {
     void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    const h = () => void loadConversations();
+    window.addEventListener("openconduit:conversation-updated", h);
+    return () => window.removeEventListener("openconduit:conversation-updated", h);
   }, [loadConversations]);
 
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
@@ -376,7 +383,17 @@ export function ConversationsPage() {
                             {conv.inbox.name}
                           </span>
                         ) : null}
-                        {conv.agentBotTriageActive && (conv.status === "OPEN" || conv.status === "PENDING") ? (
+                        {conv.awaitingHumanHandoff ? (
+                          <span
+                            className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900 dark:bg-sky-950/55 dark:text-sky-100"
+                            title={t("conversationDetail.awaitingHumanBanner")}
+                          >
+                            {t("conversationDetail.awaitingHumanBadge")}
+                          </span>
+                        ) : null}
+                        {conv.agentBotTriageActive &&
+                        !conv.awaitingHumanHandoff &&
+                        (conv.status === "OPEN" || conv.status === "PENDING") ? (
                           <span
                             className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200"
                             title={t("conversationDetail.botTriageBanner")}

@@ -158,7 +158,11 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
 
     const updated = await prisma.conversation.update({
       where: { id: conv.id },
-      data: { status: parsed.data.status, updatedAt: new Date() },
+      data: {
+        status: parsed.data.status,
+        ...(parsed.data.status === "PENDING" ? { awaitingHumanHandoff: false } : {}),
+        updatedAt: new Date(),
+      },
     });
 
     return updated;
