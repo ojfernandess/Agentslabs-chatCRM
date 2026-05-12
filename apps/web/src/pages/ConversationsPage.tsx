@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Search, SquarePen } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
+import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
+import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 
 interface Conversation {
   id: string;
@@ -41,6 +43,9 @@ export function ConversationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listSearch, setListSearch] = useState("");
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [teamFilter, setTeamFilter] = useState<string>(() => searchParams.get("teamId") ?? "");
   const [inboxFilter, setInboxFilter] = useState<string>(() => searchParams.get("inboxId") ?? "");
@@ -126,26 +131,45 @@ export function ConversationsPage() {
     void loadInboxes();
   }, []);
 
-  useEffect(() => {
-    async function load() {
-      if (!hasAnimated.current) setLoading(true);
-      try {
-        const params = new URLSearchParams({ pageSize: "50" });
-        if (statusFilter) params.set("status", statusFilter);
-        if (teamFilter) params.set("teamId", teamFilter);
-        if (inboxFilter) params.set("inboxId", inboxFilter);
-        if (mineActive) params.set("mine", "1");
-        const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
-        setConversations(res.data);
-      } catch {
-        /* failed */
-      } finally {
-        hasAnimated.current = true;
-        setLoading(false);
-      }
+  const loadConversations = useCallback(async () => {
+    if (!hasAnimated.current) setLoading(true);
+    try {
+      const params = new URLSearchParams({ pageSize: "50" });
+      if (statusFilter) params.set("status", statusFilter);
+      if (teamFilter) params.set("teamId", teamFilter);
+      if (inboxFilter) params.set("inboxId", inboxFilter);
+      if (mineActive) params.set("mine", "1");
+      const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
+      setConversations(res.data);
+    } catch {
+      /* failed */
+    } finally {
+      hasAnimated.current = true;
+      setLoading(false);
     }
-    load();
   }, [statusFilter, teamFilter, inboxFilter, mineActive]);
+
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  const digitsOnly = (s: string) => s.replace(/\D/g, "");
+  const filteredConversations = useMemo(() => {
+    const raw = listSearch.trim().toLowerCase();
+    if (!raw) return conversations;
+    const dRaw = digitsOnly(raw);
+    return conversations.filter((c) => {
+      const name = c.contact.name.toLowerCase();
+      const phone = c.contact.phone ?? "";
+      const phoneDigits = digitsOnly(phone);
+      const last = (c.messages[0]?.body ?? "").toLowerCase();
+      if (name.includes(raw)) return true;
+      if (dRaw && phoneDigits.includes(dRaw)) return true;
+      if (phone.toLowerCase().includes(raw)) return true;
+      if (last.includes(raw)) return true;
+      return false;
+    });
+  }, [conversations, listSearch]);
 
   const statusLabel = (s: string) => {
     if (s === "OPEN") return t("conversationDetail.statusOpen");
@@ -164,10 +188,32 @@ export function ConversationsPage() {
   return (
     <PageTransition>
       <div className="p-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{t("conversations.title")}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("conversations.subtitle")}</p>
+          </div>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-[280px] sm:max-w-md sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-ink-500" />
+              <input
+                type="search"
+                value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                placeholder={t("conversations.searchListPlaceholder")}
+                className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500"
+                aria-label={t("conversations.searchListPlaceholder")}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setComposeOpen(true)}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-brand-950/40 dark:hover:text-brand-200"
+              title={t("conversations.newMessageTooltip")}
+              aria-label={t("conversations.newMessageTooltip")}
+            >
+              <SquarePen className="h-5 w-5" />
+            </button>
           </div>
         </div>
 
@@ -260,7 +306,7 @@ export function ConversationsPage() {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
-        ) : conversations.length === 0 ? (
+        ) : filteredConversations.length === 0 ? (
           <motion.div
             className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white py-16 dark:border-ink-600 dark:bg-[#161f2c]/80"
             initial={{ opacity: 0, scale: 0.95 }}
@@ -269,15 +315,23 @@ export function ConversationsPage() {
           >
             <MessageSquare className="mb-3 h-12 w-12 text-gray-300 dark:text-ink-600" />
             <p className="text-sm text-gray-500 dark:text-ink-400">
-              {mineActive ? t("conversations.emptyMineTitle") : t("conversations.emptyTitle")}
+              {listSearch.trim() && conversations.length > 0
+                ? t("conversations.emptySearchTitle")
+                : mineActive
+                  ? t("conversations.emptyMineTitle")
+                  : t("conversations.emptyTitle")}
             </p>
             <p className="mt-1 text-xs text-gray-400 dark:text-ink-500">
-              {mineActive ? t("conversations.emptyMineHint") : t("conversations.emptyHint")}
+              {listSearch.trim() && conversations.length > 0
+                ? t("conversations.emptySearchHint")
+                : mineActive
+                  ? t("conversations.emptyMineHint")
+                  : t("conversations.emptyHint")}
             </p>
           </motion.div>
         ) : (
           <div className="space-y-2">
-            {conversations.map((conv) => {
+            {filteredConversations.map((conv) => {
               const lastMessage = conv.messages[0];
               return (
                 <div key={conv.id}>
@@ -367,6 +421,22 @@ export function ConversationsPage() {
           </div>
         )}
       </div>
+      <ConversationsStartChatModal
+        open={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        onPickContact={(c) => {
+          setQuickContact(c);
+          setComposeOpen(false);
+        }}
+      />
+      <ContactQuickMessageModal
+        open={!!quickContact}
+        contact={quickContact}
+        onClose={() => {
+          setQuickContact(null);
+          void loadConversations();
+        }}
+      />
     </PageTransition>
   );
 }

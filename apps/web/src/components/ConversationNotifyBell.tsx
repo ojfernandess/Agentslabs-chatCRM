@@ -15,24 +15,51 @@ export interface ConversationNotifyBellProps {
 const PANEL_W = 320;
 const GAP = 8;
 const MARGIN = 12;
+/** Altura máxima total do painel (lista + rodapé “Ver todas”). */
+const PANEL_MAX = 380;
+const MIN_USEFUL_SPACE = 96;
 
-function computePanelPosition(anchor: DOMRect): { top: number; left: number; width: number } {
+/**
+ * Ancora o painel ao sino: abaixo quando há espaço; por cima quando o sino está no fundo do ecrã.
+ * Evita o clamp antigo (`min(top, vh - estHeight)`) que deslocava o painel para o fundo da viewport,
+ * longe do ícone.
+ */
+function computePanelPosition(anchor: DOMRect): { top: number; left: number; width: number; maxHeight: number } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(PANEL_W, vw - MARGIN * 2);
   let left = anchor.right - width;
   left = Math.max(MARGIN, Math.min(left, vw - width - MARGIN));
 
-  const estHeight = Math.min(72 * 4 + 80, vh - MARGIN * 2);
+  const spaceBelow = vh - anchor.bottom - GAP - MARGIN;
+  const spaceAbove = anchor.top - GAP - MARGIN;
 
-  /** Preferir abaixo do ícone; se não couber na viewport, abrir por cima — nunca “colar” o painel ao fundo do ecrã solto do sino. */
-  let top = anchor.bottom + GAP;
-  if (top + estHeight > vh - MARGIN) {
-    top = anchor.top - estHeight - GAP;
+  let top: number;
+  let maxHeight: number;
+
+  if (spaceBelow >= MIN_USEFUL_SPACE) {
+    top = anchor.bottom + GAP;
+    maxHeight = Math.min(PANEL_MAX, spaceBelow);
+  } else if (spaceAbove >= MIN_USEFUL_SPACE) {
+    maxHeight = Math.min(PANEL_MAX, spaceAbove);
+    top = anchor.top - GAP - maxHeight;
+    if (top < MARGIN) {
+      const shift = MARGIN - top;
+      top = MARGIN;
+      maxHeight = Math.max(MIN_USEFUL_SPACE, maxHeight - shift);
+    }
+  } else {
+    if (spaceAbove >= spaceBelow) {
+      maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceAbove));
+      top = anchor.top - GAP - maxHeight;
+      top = Math.max(MARGIN, top);
+    } else {
+      top = anchor.bottom + GAP;
+      maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceBelow));
+    }
   }
-  top = Math.max(MARGIN, Math.min(top, vh - MARGIN - estHeight));
 
-  return { top, left, width };
+  return { top, left, width, maxHeight };
 }
 
 export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }: ConversationNotifyBellProps) {
@@ -40,7 +67,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: PANEL_W });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: PANEL_W, maxHeight: PANEL_MAX });
 
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
@@ -77,13 +104,13 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
     <div
       id="openconduit-notify-panel"
       role="menu"
-      style={{ top: pos.top, left: pos.left, width: pos.width }}
+      style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
       className={clsx(
-        "fixed z-[1000] overflow-hidden rounded-xl border shadow-xl",
+        "fixed z-[1000] flex flex-col overflow-hidden rounded-xl border shadow-xl",
         "border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-800",
       )}
     >
-      <div className="max-h-72 overflow-y-auto py-1">
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {alertPreviews.length === 0 ? (
           <p className="px-3 py-4 text-center text-xs text-ink-500 dark:text-ink-400">
             {t("conversationAlerts.empty")}
@@ -120,7 +147,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           ))
         )}
       </div>
-      <div className="border-t border-ink-100 p-2 dark:border-ink-600">
+      <div className="shrink-0 border-t border-ink-100 p-2 dark:border-ink-600">
         <button
           type="button"
           className="w-full rounded-lg py-1.5 text-center text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
