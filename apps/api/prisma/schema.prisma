@@ -823,6 +823,9 @@ model Settings {
   /// Finalização manual: exigir tipo de lead ao resolver.
   resolveRequireLeadType      Boolean @default(true) @map("resolve_require_lead_type")
 
+  /// Transcrever mensagens de áudio recebidas (WhatsApp / caixas) para texto — requer chave OpenAI no servidor.
+  audioTranscriptionEnabled Boolean @default(false) @map("audio_transcription_enabled")
+
   @@map("settings")
 }
 

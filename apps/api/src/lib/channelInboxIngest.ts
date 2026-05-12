@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
+import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { ensureConversationForChannelInbox } from "./conversationRouting.js";
 
@@ -103,6 +104,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     include: { agentBot: true },
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
+  const audioTranscriptionEnabled = channelSettings?.audioTranscriptionEnabled ?? false;
   const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, inboxId);
   const useAgentBot = Boolean(agentCtx);
 
@@ -131,6 +133,12 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     },
   });
 
+  const inboundForPipeline = await maybeTranscribeInboundAudioMessage({
+    message: inbound,
+    enabled: audioTranscriptionEnabled,
+    log,
+  });
+
   const channelTag = channelType.toLowerCase();
 
   await appendTimelineEvent({
@@ -143,7 +151,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       messageId: inbound.id,
       conversationId: conversation.id,
       type,
-      body: body ?? null,
+      body: inboundForPipeline.body ?? null,
       mediaUrl: mediaUrl ?? null,
       providerMsgId: externalMessageId ?? null,
       inboxId,
@@ -159,7 +167,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     data: { updatedAt: new Date() },
   });
 
-  const inboundBody = body?.trim() ?? "";
+  const inboundBody = inboundForPipeline.body?.trim() ?? "";
   if (inboundBody) {
     const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
     for (const rule of rules) {
@@ -186,7 +194,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
         },
         conversation: fresh,
         contact,
-        message: inbound,
+        message: inboundForPipeline,
         log,
       });
     }

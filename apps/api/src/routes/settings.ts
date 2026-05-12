@@ -86,6 +86,7 @@ const settingsSchema = z.object({
   autoResolveLeadTypeId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   resolveRequireClosureReason: z.boolean().optional(),
   resolveRequireLeadType: z.boolean().optional(),
+  audioTranscriptionEnabled: z.boolean().optional(),
 });
 
 function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(

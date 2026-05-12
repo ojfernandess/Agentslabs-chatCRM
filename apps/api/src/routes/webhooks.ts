@@ -5,6 +5,7 @@ import { MetaCloudApiProvider } from "../providers/meta.js";
 import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
+import { maybeTranscribeInboundAudioMessage } from "../lib/audioTranscription.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
@@ -350,6 +351,13 @@ async function handleWhatsAppPost(
         },
       });
 
+      const inboundForPipeline = await maybeTranscribeInboundAudioMessage({
+        message: inbound,
+        enabled: channelSettings.audioTranscriptionEnabled,
+        log: app.log,
+      });
+      const inboundBodyForRules = inboundForPipeline.body?.trim() ?? "";
+
       await appendTimelineEvent({
         organizationId,
         subjectType: "CONTACT",
@@ -360,7 +368,7 @@ async function handleWhatsAppPost(
           messageId: inbound.id,
           conversationId: conversation.id,
           type: msg.type,
-          body: inboundBody ?? null,
+          body: inboundForPipeline.body ?? inboundBody ?? null,
           mediaUrl: resolvedMediaUrl ?? null,
           providerMsgId: msg.waMessageId ?? null,
         },
@@ -375,10 +383,10 @@ async function handleWhatsAppPost(
         data: { updatedAt: new Date() },
       });
 
-      if (inboundBody) {
+      if (inboundBodyForRules) {
         const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
         for (const rule of rules) {
-          if (inboundBody.toLowerCase().includes(rule.keyword.toLowerCase())) {
+          if (inboundBodyForRules.toLowerCase().includes(rule.keyword.toLowerCase())) {
             await prisma.contactTag.upsert({
               where: {
                 contactId_tagId: {
@@ -408,7 +416,7 @@ async function handleWhatsAppPost(
             },
             conversation: fresh,
             contact,
-            message: inbound,
+            message: inboundForPipeline,
             log: app.log,
           });
         }

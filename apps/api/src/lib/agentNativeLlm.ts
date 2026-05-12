@@ -28,6 +28,7 @@ import {
   runAutomationHttpLikeTool,
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
+import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
@@ -606,7 +607,16 @@ export async function generateNativeAgentReply(input: {
         "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente."
       : "");
 
-  const systemBase = systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard;
+  const audioInboundHint =
+    message.type === "AUDIO" || userMessage.includes(AUDIO_TRANSCRIPTION_PREFIX)
+      ? "\n\n[OpenConduit — entrada de áudio]\n" +
+        "Se o texto do cliente começar por «" +
+        AUDIO_TRANSCRIPTION_PREFIX +
+        "», trate o que segue como o conteúdo falado numa nota de voz do cliente."
+      : "";
+
+  const systemBase =
+    systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard + audioInboundHint;
 
   const automationCtxRow = await prisma.automationConversationContext.findUnique({
     where: { conversationId: conversation.id },

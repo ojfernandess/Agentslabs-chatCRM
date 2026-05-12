@@ -38,6 +38,7 @@ interface AppSettings {
   whatsappWebhookSecret: string | null;
   autoOptInOnFirstMessage: boolean;
   lockSingleConversation: boolean;
+  audioTranscriptionEnabled?: boolean;
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
   webhookUrl: string;
@@ -141,6 +142,7 @@ export function SettingsPage() {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
+  const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(true);
   const [notifyPending, setNotifyPending] = useState(true);
   const [csatEnabled, setCsatEnabled] = useState(false);
@@ -383,6 +385,7 @@ export function SettingsPage() {
         setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
+        setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
         setCsatEnabled(data.csatEnabled ?? false);
@@ -628,6 +631,7 @@ export function SettingsPage() {
       const body: Record<string, unknown> = {
         autoOptInOnFirstMessage: autoOptIn,
         lockSingleConversation,
+        audioTranscriptionEnabled,
       };
       if (provider) body.whatsappProvider = provider;
       if (!(evolutionPlatformQrMode && provider === "evolution")) {
@@ -650,6 +654,7 @@ export function SettingsPage() {
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
       setAgentBotId(data.agentBotId ?? "");
       setLockSingleConversation(data.lockSingleConversation ?? false);
+      setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
     } catch {
       // failed
     } finally {
@@ -1114,6 +1119,21 @@ export function SettingsPage() {
                           <option value="off">{t("settings.lockSingleConversationOff")}</option>
                         </select>
                         <p className="mt-1 text-xs text-gray-500">{t("settings.lockSingleConversationHint")}</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.audioTranscription")}
+                        </label>
+                        <select
+                          value={audioTranscriptionEnabled ? "on" : "off"}
+                          onChange={(e) => setAudioTranscriptionEnabled(e.target.value === "on")}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="on">{t("settings.audioTranscriptionOn")}</option>
+                          <option value="off">{t("settings.audioTranscriptionOff")}</option>
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.audioTranscriptionHint")}</p>
                       </div>
 
                       <div className="flex items-center gap-3 border-t border-gray-100 pt-4">

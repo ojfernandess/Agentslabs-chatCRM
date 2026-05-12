@@ -1809,6 +1809,11 @@ export const messages = {
       lockSingleConversationOff: "Desativado",
       lockSingleConversationHint:
         "Com ativado, todas as mensagens do mesmo contato reutilizam uma única conversa (reabre a última se estiver finalizada). Com desativado, após resolver pode abrir-se uma conversa nova.",
+      audioTranscription: "Transcrever áudios recebidos",
+      audioTranscriptionOn: "Ativado",
+      audioTranscriptionOff: "Desativado",
+      audioTranscriptionHint:
+        "Quando ativo, mensagens de voz/áudio do WhatsApp e das caixas API são transcritas para texto (prefixo «[Transcrição automática]») antes de chegarem ao agente e às regras de etiquetas. Requer chave OpenAI no servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY). Modelo opcional: OPENAI_WHISPER_MODEL (predefinição whisper-1).",
       embeddedTitle: "Configuração rápida com Meta",
       embeddedDesc:
         "Use o fluxo de inscrição incorporada do WhatsApp para ligar o Cloud API sem colar token manualmente. Será redireccionado para a Meta para concluir o WhatsApp Business.",
@@ -3770,6 +3775,11 @@ export const messages = {
       lockSingleConversationOff: "Disabled",
       lockSingleConversationHint:
         "When enabled, all messages from the same contact reuse one thread (reopens the latest if it was resolved). When disabled, resolving allows a new conversation on the next message.",
+      audioTranscription: "Transcribe inbound audio",
+      audioTranscriptionOn: "Enabled",
+      audioTranscriptionOff: "Disabled",
+      audioTranscriptionHint:
+        "When enabled, WhatsApp voice notes and API inbox audio are transcribed to text (prefix “[Transcrição automática]”) before the agent and auto-tag rules run. Requires an OpenAI key on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY). Optional model: OPENAI_WHISPER_MODEL (default whisper-1).",
       embeddedTitle: "Quick setup with Meta",
       embeddedDesc:
         "Use WhatsApp embedded signup to connect the Cloud API without pasting tokens manually. You will sign in with Meta to finish WhatsApp Business onboarding.",
