@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import {
   Send,
   ArrowLeft,
@@ -48,6 +48,8 @@ import {
   MessageSquare,
   Briefcase,
   Circle,
+  Loader2,
+  Brain,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -223,6 +225,7 @@ export function ConversationDetailPage() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [suggestReplyBusy, setSuggestReplyBusy] = useState(false);
   const [voicePreview, setVoicePreview] = useState<{ blob: Blob; ext: string } | null>(null);
   const voicePreviewUrl = useMemo(
     () => (voicePreview ? URL.createObjectURL(voicePreview.blob) : null),
@@ -679,6 +682,29 @@ export function ConversationDetailPage() {
       setSending(false);
     }
   };
+
+  const handleAiSuggestReply = useCallback(async () => {
+    if (!id || privateNote || !conversation) return;
+    setSuggestReplyBusy(true);
+    setFlowError("");
+    try {
+      const draft = newMessage.trim();
+      const { suggestion } = await api.post<{ suggestion: string }>(`/conversations/${id}/suggest-reply`, {
+        currentDraft: draft || undefined,
+      });
+      const s = suggestion.trim();
+      if (!s) {
+        setFlowError(t("conversationDetail.generateReplyError"));
+        return;
+      }
+      setNewMessage((prev) => (prev.trim() ? `${prev.trim()}\n\n` : "") + s);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : t("conversationDetail.generateReplyError");
+      setFlowError(msg);
+    } finally {
+      setSuggestReplyBusy(false);
+    }
+  }, [id, privateNote, conversation, newMessage, t]);
 
   const applyStatus = async (
     status: "OPEN" | "PENDING" | "RESOLVED",
@@ -1525,6 +1551,15 @@ export function ConversationDetailPage() {
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
+              <p className="mt-1">
+                <Link
+                  to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
+                >
+                  <Brain className="h-3.5 w-3.5" />
+                  {t("conversationDetail.linkAiInsights")}
+                </Link>
+              </p>
               {clientWaitLabel ? (
                 <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-200/90">
                   <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -1976,17 +2011,24 @@ export function ConversationDetailPage() {
                 <div className="flex shrink-0 items-center gap-1 pb-0.5">
                   <motion.button
                     type="button"
-                    disabled={(isOutsideWindow && !privateNote) || recording || sending || !!voicePreview}
-                    onClick={() =>
-                      setNewMessage(
-                        (prev) => (prev.trim() ? `${prev.trim()}\n` : "") + t("conversationDetail.aiDraftSnippet"),
-                      )
+                    disabled={
+                      (isOutsideWindow && !privateNote) ||
+                      recording ||
+                      sending ||
+                      !!voicePreview ||
+                      suggestReplyBusy ||
+                      privateNote
                     }
-                    title={t("conversationDetail.generateReply")}
+                    onClick={() => void handleAiSuggestReply()}
+                    title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200/80 bg-violet-50 text-violet-800 hover:bg-violet-100/90 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
                     whileTap={{ scale: 0.94 }}
                   >
-                    <Sparkles className="h-4 w-4" />
+                    {suggestReplyBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
                   </motion.button>
                   <button
                     type="button"
@@ -2003,7 +2045,9 @@ export function ConversationDetailPage() {
               <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
                   <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
-                ) : null}
+                ) : (
+                  <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
+                )}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (
                   <p className="mb-2 rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-950 dark:border-sky-800/50 dark:bg-sky-950/40 dark:text-sky-100">
                     {t("conversationDetail.composerSignatureBanner")}{" "}

@@ -42,3 +42,7 @@
 
 - `apps/api/src/lib/agentConversationHistory.test.ts` — construção do filtro Prisma.
 - `npm run test -w apps/api` — inclui este ficheiro e `messagePayload.test.ts`.
+
+## Ver também
+
+- [IA & Insights (assistente humano no painel)](./IA-AND-INSIGHTS.md) — sugestão de resposta e análise por conversa; usa as mesmas chaves OpenAI no servidor, fluxo **independente** do agente nativo descrito neste documento.

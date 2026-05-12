@@ -16,6 +16,12 @@ import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js"
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { markConversationReadForUser } from "../lib/teamTransferUnread.js";
+import {
+  analyzeConversationForInsights,
+  buildPublicConversationTranscript,
+  openAiKeyForAssistFeatures,
+  suggestAgentReplyText,
+} from "../lib/agentAssistLlm.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -408,6 +414,128 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       conversationId: existing.id,
     });
     return reply.status(204).send();
+  });
+
+  const suggestReplyBodySchema = z.object({
+    currentDraft: z.string().max(16_000).optional(),
+  });
+
+  /** Sugestão de resposta ao cliente (OpenAI no servidor — `OPENAI_API_KEY` / `OPENAI_PROMPT_PREVIEW_KEY`). */
+  app.post<{ Params: { id: string } }>("/:id/suggest-reply", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    if (!openAiKeyForAssistFeatures()) {
+      return reply.status(503).send({
+        error: "Service Unavailable",
+        message: "OpenAI API key is not configured on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+        code: "missing_openai_key",
+        statusCode: 503,
+      });
+    }
+
+    const parsedBody = suggestReplyBodySchema.safeParse(request.body ?? {});
+    if (!parsedBody.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsedBody.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: {
+        id: true,
+        teamId: true,
+        inboxId: true,
+        contact: { select: { name: true } },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          select: { direction: true, body: true, isPrivate: true },
+        },
+      },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const transcript = buildPublicConversationTranscript(existing.messages);
+    try {
+      const suggestion = await suggestAgentReplyText({
+        contactName: existing.contact.name ?? "",
+        transcript,
+        currentDraft: parsedBody.data.currentDraft,
+      });
+      return { suggestion };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      request.log.warn({ err, conversationId: existing.id }, "suggest-reply failed");
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        message: msg.slice(0, 500),
+        code: "suggestion_failed",
+        statusCode: 502,
+      });
+    }
+  });
+
+  /** Análise IA da conversa (resumo, intenção, sentimento, sugestões) — mesma chave OpenAI do servidor. */
+  app.post<{ Params: { id: string } }>("/:id/insights", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    if (!openAiKeyForAssistFeatures()) {
+      return reply.status(503).send({
+        error: "Service Unavailable",
+        message: "OpenAI API key is not configured on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+        code: "missing_openai_key",
+        statusCode: 503,
+      });
+    }
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: {
+        id: true,
+        teamId: true,
+        inboxId: true,
+        contact: { select: { name: true } },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          select: { direction: true, body: true, isPrivate: true },
+        },
+      },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const transcript = buildPublicConversationTranscript(existing.messages);
+    try {
+      const insights = await analyzeConversationForInsights({
+        contactName: existing.contact.name ?? "",
+        transcript,
+      });
+      return { insights };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      request.log.warn({ err, conversationId: existing.id }, "conversation insights failed");
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        message: msg.slice(0, 500),
+        code: "insights_failed",
+        statusCode: 502,
+      });
+    }
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {

@@ -19,6 +19,7 @@ import {
   BarChart3,
   Megaphone,
   Inbox,
+  Brain,
 } from "lucide-react";
 import clsx from "clsx";
 import { brandAssetUrl } from "@/lib/brandingAssets";
@@ -35,6 +36,7 @@ type SidebarInbox = { id: string; name: string };
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
   { to: "/reports", icon: BarChart3, labelKey: "nav.reports" },
+  { to: "/ai-insights", icon: Brain, labelKey: "nav.aiInsights" },
   { to: "/conversations", icon: MessageSquare, labelKey: "nav.conversations" },
   { to: "/contacts", icon: Users, labelKey: "nav.contacts" },
   { to: "/crm", icon: LayoutGrid, labelKey: "nav.crm" },
