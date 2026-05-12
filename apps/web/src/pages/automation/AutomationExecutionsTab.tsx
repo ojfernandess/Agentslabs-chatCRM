@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { ChevronRight, Download, Loader2, RefreshCw } from "lucide-react";
+import { ChevronRight, ClipboardCopy, Download, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 
 type BotRow = { id: string; name: string };
@@ -55,6 +55,91 @@ function treeDepth(nodePath: string): number {
   return nodePath.split("/").filter(Boolean).length - 1;
 }
 
+function csvEscapeCell(s: string): string {
+  const t = s.replace(/"/g, '""');
+  if (/[",\n\r]/.test(t)) return `"${t}"`;
+  return t;
+}
+
+/** Same columns as GET …/export?format=csv (API). */
+function buildExecutionCsv(detail: ExecDetail, entries: LogEntry[]): string {
+  const header = ["sequence", "level", "nodePath", "nodeId", "nodeName", "message", "createdAt"].join(",");
+  const lines = entries.map((e) =>
+    [
+      e.sequence,
+      e.level,
+      csvEscapeCell(e.nodePath),
+      csvEscapeCell(e.nodeId),
+      csvEscapeCell(e.nodeName),
+      csvEscapeCell(e.message),
+      new Date(e.createdAt).toISOString(),
+    ].join(","),
+  );
+  return [header, ...lines].join("\n");
+}
+
+function buildExecutionMarkdown(detail: ExecDetail, entries: LogEntry[]): string {
+  const lines: string[] = [
+    "# Automation execution",
+    "",
+    `- **id:** \`${detail.id}\``,
+    `- **bot:** ${detail.bot.name}`,
+    `- **workflowKey:** \`${detail.workflowKey}\``,
+    `- **workflowName:** ${detail.workflowName}`,
+    `- **status:** ${detail.status}`,
+    `- **startedAt:** ${new Date(detail.startedAt).toISOString()}`,
+    `- **finishedAt:** ${detail.finishedAt ? new Date(detail.finishedAt).toISOString() : "—"}`,
+    `- **conversationId:** ${detail.conversationId ?? "—"}`,
+    "",
+  ];
+  if (detail.errorMessage) {
+    lines.push("## errorMessage", "", "```", detail.errorMessage, "```", "");
+  }
+  lines.push("## Log entries", "");
+  for (const e of entries) {
+    lines.push(`### #${e.sequence} — ${e.level} — ${e.nodeName}`, "");
+    lines.push(`- **nodePath:** \`${e.nodePath}\``);
+    lines.push(`- **nodeId:** \`${e.nodeId}\``);
+    lines.push(`- **createdAt:** ${new Date(e.createdAt).toISOString()}`);
+    lines.push("");
+    lines.push(e.message);
+    lines.push("");
+    if (e.inputContext != null) {
+      lines.push("**inputContext**", "", "```json", JSON.stringify(e.inputContext, null, 2), "```", "");
+    }
+    if (e.outputContext != null) {
+      lines.push("**outputContext**", "", "```json", JSON.stringify(e.outputContext, null, 2), "```", "");
+    }
+    if (e.stackTrace) {
+      lines.push("**stackTrace**", "", "```", e.stackTrace, "```", "");
+    }
+    lines.push("---", "");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export function AutomationExecutionsTab({
   t,
   loading,
@@ -88,6 +173,8 @@ export function AutomationExecutionsTab({
     alertMinLevel: string;
   } | null>(null);
   const [queryNonce, setQueryNonce] = useState(0);
+  const [copyFlash, setCopyFlash] = useState<"ok" | "fail" | null>(null);
+  const copyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +271,36 @@ export function AutomationExecutionsTab({
       setError("load_failed");
     }
   };
+
+  const flashCopyMessage = useCallback((kind: "ok" | "fail") => {
+    if (copyFlashTimer.current) clearTimeout(copyFlashTimer.current);
+    setCopyFlash(kind);
+    copyFlashTimer.current = setTimeout(() => {
+      setCopyFlash(null);
+      copyFlashTimer.current = null;
+    }, 2200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyFlashTimer.current) clearTimeout(copyFlashTimer.current);
+    };
+  }, []);
+
+  const copyExecutionAs = useCallback(
+    async (format: "markdown" | "json" | "csv") => {
+      if (!detail) return;
+      const entries = [...detail.logEntries].sort((a, b) => a.sequence - b.sequence);
+      let text: string;
+      if (format === "json") text = JSON.stringify(detail, null, 2);
+      else if (format === "csv") text = buildExecutionCsv(detail, entries);
+      else text = buildExecutionMarkdown(detail, entries);
+      const ok = await copyTextToClipboard(text);
+      if (ok) flashCopyMessage("ok");
+      else flashCopyMessage("fail");
+    },
+    [detail, flashCopyMessage, t],
+  );
 
   return (
     <div className="space-y-6">
@@ -411,7 +528,38 @@ export function AutomationExecutionsTab({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 px-3 py-2 dark:border-ink-800">
             <p className="text-sm font-semibold">{t("automationPage.execLogsDetail")}</p>
             {selectedId ? (
-              <div className="flex gap-1">
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                {detail ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void copyExecutionAs("markdown")}
+                      className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-ink-600"
+                      title={t("automationPage.execLogsCopyMarkdown")}
+                    >
+                      <ClipboardCopy className="h-3 w-3" /> MD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void copyExecutionAs("json")}
+                      className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-ink-600"
+                      title={t("automationPage.execLogsCopyJson")}
+                    >
+                      <ClipboardCopy className="h-3 w-3" /> JSON
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void copyExecutionAs("csv")}
+                      className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-ink-600"
+                      title={t("automationPage.execLogsCopyCsv")}
+                    >
+                      <ClipboardCopy className="h-3 w-3" /> CSV
+                    </button>
+                  </>
+                ) : null}
+                <span className="mx-0.5 hidden text-ink-300 sm:inline" aria-hidden>
+                  |
+                </span>
                 <button
                   type="button"
                   onClick={() => void exportFile("json")}
@@ -426,6 +574,18 @@ export function AutomationExecutionsTab({
                 >
                   <Download className="h-3 w-3" /> CSV
                 </button>
+                {copyFlash ? (
+                  <span
+                    className={clsx(
+                      "ml-1 max-w-[200px] truncate text-[10px]",
+                      copyFlash === "ok"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400",
+                    )}
+                  >
+                    {copyFlash === "ok" ? t("automationPage.execLogsCopied") : t("automationPage.execLogsCopyFailed")}
+                  </span>
+                ) : null}
               </div>
             ) : null}
           </div>
