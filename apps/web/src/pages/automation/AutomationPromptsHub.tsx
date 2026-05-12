@@ -3,6 +3,7 @@ import clsx from "clsx";
 import * as LucideIcons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Blocks,
   BookTemplate,
   ChevronDown,
   Copy,
@@ -216,6 +217,7 @@ export function AutomationPromptsHub({
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTab, setEditorTab] = useState<EditorTab>("editor");
+  const [promptHubBuilderSubTab, setPromptHubBuilderSubTab] = useState<"builder" | "merged">("builder");
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftSlug, setDraftSlug] = useState("");
@@ -303,6 +305,7 @@ export function AutomationPromptsHub({
     setDraftConnectedToolIds([]);
     setSlugTouched(false);
     setEditorTab("editor");
+    setPromptHubBuilderSubTab("builder");
     setPreviewMessages([]);
     setPreviewInput("");
     setPreviewLiveMode(true);
@@ -335,6 +338,7 @@ export function AutomationPromptsHub({
     setDraftConnectedToolIds(lb.connectedToolIds ?? []);
     setSlugTouched(true);
     setEditorTab("editor");
+    setPromptHubBuilderSubTab("builder");
     setPreviewMessages([]);
     setPreviewInput("");
     const ld = lb.llmDefaults;
@@ -1200,40 +1204,98 @@ export function AutomationPromptsHub({
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
                   {editorTab === "editor" ? (
                     <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {PROMPT_BLOCK_SNIPPETS.map((b) => (
-                          <button
-                            key={b.key}
-                            type="button"
-                            onClick={() => insertAtCursor(`\n${b.heading}`)}
-                            className="rounded-full border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium dark:border-ink-600 dark:bg-ink-900"
-                          >
-                            {t(`automationPage.promptHub.block_${b.key}`)}
-                          </button>
-                        ))}
+                      <div className="rounded-2xl border border-brand-200/50 bg-gradient-to-br from-brand-50/40 via-white to-ink-50/90 p-4 shadow-sm dark:border-brand-900/30 dark:from-brand-950/25 dark:via-ink-900/30 dark:to-ink-950/80">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-md dark:bg-brand-500">
+                            <Blocks className="h-5 w-5" aria-hidden />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div>
+                              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                                {t("automationPage.promptBuilderTitle")}
+                              </h3>
+                              <p className="mt-1 text-[11px] leading-relaxed text-ink-600 dark:text-ink-400">
+                                {t("automationPage.promptHub.editorPromptBuilderIntro")}
+                              </p>
+                            </div>
+                            <div className="inline-flex rounded-lg border border-ink-200/80 bg-white/90 p-0.5 shadow-sm dark:border-ink-600 dark:bg-ink-950/80">
+                              <button
+                                type="button"
+                                onClick={() => setPromptHubBuilderSubTab("builder")}
+                                className={clsx(
+                                  "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                                  promptHubBuilderSubTab === "builder"
+                                    ? "bg-brand-600 text-white shadow-sm"
+                                    : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
+                                )}
+                              >
+                                {t("automationPage.promptBuilderTabBuilder")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPromptHubBuilderSubTab("merged")}
+                                className={clsx(
+                                  "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                                  promptHubBuilderSubTab === "merged"
+                                    ? "bg-brand-600 text-white shadow-sm"
+                                    : "text-ink-600 hover:text-ink-900 dark:text-ink-400 dark:hover:text-ink-100",
+                                )}
+                              >
+                                {t("automationPage.promptBuilderTabMerged")}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {promptHubBuilderSubTab === "merged" ? (
+                          <div className="mt-4 space-y-2">
+                            <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                              {t("automationPage.promptMergedTitle")}
+                            </p>
+                            <p className="text-[11px] text-ink-500">{t("automationPage.promptHub.mergedModuleHelp")}</p>
+                            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-ink-200 bg-ink-950/90 p-3 font-mono text-[11px] leading-relaxed text-ink-100 dark:border-ink-700">
+                              {draftBody.trim() || t("automationPage.agentSystemInstructionsPh")}
+                            </pre>
+                          </div>
+                        ) : (
+                          <div className="mt-4 space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                              {PROMPT_BLOCK_SNIPPETS.map((b) => (
+                                <button
+                                  key={b.key}
+                                  type="button"
+                                  onClick={() => insertAtCursor(`\n${b.heading}`)}
+                                  className="rounded-full border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium dark:border-ink-600 dark:bg-ink-900"
+                                >
+                                  {t(`automationPage.promptHub.block_${b.key}`)}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {VARIABLE_SNIPPETS.map((v) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  onClick={() => insertAtCursor(v)}
+                                  className="rounded-md bg-sky-500/15 px-2 py-0.5 font-mono text-[10px] text-sky-800 dark:text-sky-200"
+                                >
+                                  {v}
+                                </button>
+                              ))}
+                            </div>
+                            <textarea
+                              ref={bodyRef}
+                              value={draftBody}
+                              onChange={(e) => setDraftBody(e.target.value)}
+                              onKeyDown={onBodyKeyDown}
+                              spellCheck={false}
+                              className="min-h-[320px] w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-4 py-3 font-mono text-sm leading-relaxed text-ink-100 shadow-inner ring-1 ring-inset ring-white/10 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-ink-700"
+                              placeholder={t("automationPage.agentSystemInstructionsPh")}
+                            />
+                            <p className="text-[11px] text-ink-500">{t("automationPage.promptHub.editorHint")}</p>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {VARIABLE_SNIPPETS.map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => insertAtCursor(v)}
-                            className="rounded-md bg-sky-500/15 px-2 py-0.5 font-mono text-[10px] text-sky-800 dark:text-sky-200"
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                      <textarea
-                        ref={bodyRef}
-                        value={draftBody}
-                        onChange={(e) => setDraftBody(e.target.value)}
-                        onKeyDown={onBodyKeyDown}
-                        spellCheck={false}
-                        className="min-h-[320px] w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-4 py-3 font-mono text-sm leading-relaxed text-ink-100 shadow-inner ring-1 ring-inset ring-white/10 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-ink-700"
-                        placeholder={t("automationPage.agentSystemInstructionsPh")}
-                      />
-                      <p className="text-[11px] text-ink-500">{t("automationPage.promptHub.editorHint")}</p>
                     </div>
                   ) : null}
 

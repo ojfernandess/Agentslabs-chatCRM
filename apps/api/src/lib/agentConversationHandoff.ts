@@ -20,7 +20,7 @@ export async function recordNativeAgentTransferHandoff(input: {
   const body = [
     "[Nota interna — transferência do assistente automático]",
     `Ferramenta: ${input.toolName}`,
-    input.teamName ? `Equipa: ${input.teamName}` : null,
+    input.teamName ? `Equipe: ${input.teamName}` : null,
     `Motivo: ${reasonLine}`,
     `Resumo (última mensagem do cliente): ${summary}`,
   ]

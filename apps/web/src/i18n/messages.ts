@@ -264,7 +264,7 @@ export const messages = {
       agentTool_call_human: "call_human",
       agentTool_end_conversation: "end_conversation",
       agentTool_ping: "ping",
-      promptBuilderTitle: "Editor de prompt (builder)",
+      promptBuilderTitle: "Editor de prompt",
       promptBuilderHelp:
         "Escreva o núcleo do agente abaixo; ao activar ferramentas ou artigos, o sistema acrescenta automaticamente instruções claras ao prompt final guardado no modelo.",
       promptBuilderTabBuilder: "Montar",
@@ -393,11 +393,15 @@ export const messages = {
         fieldDescription: "Descrição curta",
         fieldIcon: "Ícone Lucide",
         fieldColor: "Cor do cartão",
-        tabEditor: "Editor",
+        tabEditor: "Editor de prompt",
         tabPreview: "Pré-visualizar",
         tabVariables: "Variáveis",
         tabTools: "Ferramentas",
         tabHistory: "Histórico",
+        editorPromptBuilderIntro:
+          "Monte o corpo do módulo em «Montar» ou veja o texto completo em «Prompt final» (o mesmo guardado neste módulo).",
+        mergedModuleHelp:
+          "Neste módulo, o «Prompt final» é o corpo do texto. Nos agentes, o prompt final pode incluir blocos automáticos além dos módulos seleccionados.",
         editorHint:
           "Markdown suportado. Variáveis `{{chave}}` em destaque. Tab insere indentação. Blocos aceleram a estrutura.",
         previewContext: "Contexto de teste",
@@ -2230,7 +2234,7 @@ export const messages = {
       agentTool_call_human: "call_human",
       agentTool_end_conversation: "end_conversation",
       agentTool_ping: "ping",
-      promptBuilderTitle: "Prompt editor (builder)",
+      promptBuilderTitle: "Prompt editor",
       promptBuilderHelp:
         "Write the core instructions below; when you enable tools or pick knowledge articles, the app appends clear operational instructions to the final prompt saved for the model.",
       promptBuilderTabBuilder: "Build",
@@ -2356,11 +2360,15 @@ export const messages = {
         fieldDescription: "Short description",
         fieldIcon: "Lucide icon name",
         fieldColor: "Card accent",
-        tabEditor: "Editor",
+        tabEditor: "Prompt editor",
         tabPreview: "Preview",
         tabVariables: "Variables",
         tabTools: "Tools",
         tabHistory: "History",
+        editorPromptBuilderIntro:
+          "Use «Montar» to edit the module body, or «Prompt final» for the full saved text (same as this module).",
+        mergedModuleHelp:
+          "For a standalone module, «Prompt final» matches the body. On agents, the final prompt can add automatic blocks beyond selected modules.",
         editorHint:
           "Markdown-friendly. `{{variables}}` in the body. Tab inserts indentation. Blocks add structure quickly.",
         previewContext: "Test context",

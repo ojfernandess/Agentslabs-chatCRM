@@ -1511,7 +1511,7 @@ export function ConversationDetailPage() {
                 </span>
                 {conversation.awaitingHumanHandoff ? (
                   <span
-                    className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:bg-sky-950/60 dark:text-sky-100"
+                    className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"
                     title={t("conversationDetail.awaitingHumanBanner")}
                   >
                     {t("conversationDetail.awaitingHumanBadge")}
@@ -1706,10 +1706,10 @@ export function ConversationDetailPage() {
           <div className="relative w-full min-w-0 space-y-0">
             {conversation.awaitingHumanHandoff ? (
               <div
-                className="mb-4 flex items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2.5 text-xs text-sky-950 shadow-sm dark:border-sky-800/50 dark:bg-sky-950/45 dark:text-sky-100"
+                className="mb-4 flex items-start gap-2 rounded-xl border border-red-200/90 bg-red-50/95 px-3 py-2.5 text-xs text-red-950 shadow-sm dark:border-red-800/50 dark:bg-red-950/45 dark:text-red-100"
                 role="status"
               >
-                <Headset className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-300" aria-hidden />
+                <Headset className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-300" aria-hidden />
                 <p className="leading-snug">{t("conversationDetail.awaitingHumanBanner")}</p>
               </div>
             ) : null}
