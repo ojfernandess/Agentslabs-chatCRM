@@ -87,6 +87,7 @@ const settingsSchema = z.object({
   resolveRequireClosureReason: z.boolean().optional(),
   resolveRequireLeadType: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
+  silentTransferToAgentBot: z.boolean().optional(),
 });
 
 function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(

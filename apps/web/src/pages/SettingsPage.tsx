@@ -39,6 +39,7 @@ interface AppSettings {
   autoOptInOnFirstMessage: boolean;
   lockSingleConversation: boolean;
   audioTranscriptionEnabled?: boolean;
+  silentTransferToAgentBot?: boolean;
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
   webhookUrl: string;
@@ -143,6 +144,7 @@ export function SettingsPage() {
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
+  const [silentTransferToAgentBot, setSilentTransferToAgentBot] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(true);
   const [notifyPending, setNotifyPending] = useState(true);
   const [csatEnabled, setCsatEnabled] = useState(false);
@@ -386,6 +388,7 @@ export function SettingsPage() {
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
         setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
+        setSilentTransferToAgentBot(data.silentTransferToAgentBot ?? false);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
         setCsatEnabled(data.csatEnabled ?? false);
@@ -632,6 +635,7 @@ export function SettingsPage() {
         autoOptInOnFirstMessage: autoOptIn,
         lockSingleConversation,
         audioTranscriptionEnabled,
+        silentTransferToAgentBot,
       };
       if (provider) body.whatsappProvider = provider;
       if (!(evolutionPlatformQrMode && provider === "evolution")) {
@@ -655,6 +659,7 @@ export function SettingsPage() {
       setAgentBotId(data.agentBotId ?? "");
       setLockSingleConversation(data.lockSingleConversation ?? false);
       setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
+      setSilentTransferToAgentBot(data.silentTransferToAgentBot ?? false);
     } catch {
       // failed
     } finally {
@@ -1134,6 +1139,21 @@ export function SettingsPage() {
                           <option value="off">{t("settings.audioTranscriptionOff")}</option>
                         </select>
                         <p className="mt-1 text-xs text-gray-500">{t("settings.audioTranscriptionHint")}</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("settings.silentTransferToAgentBot")}
+                        </label>
+                        <select
+                          value={silentTransferToAgentBot ? "on" : "off"}
+                          onChange={(e) => setSilentTransferToAgentBot(e.target.value === "on")}
+                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="on">{t("settings.silentTransferToAgentBotOn")}</option>
+                          <option value="off">{t("settings.silentTransferToAgentBotOff")}</option>
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">{t("settings.silentTransferToAgentBotHint")}</p>
                       </div>
 
                       <div className="flex items-center gap-3 border-t border-gray-100 pt-4">

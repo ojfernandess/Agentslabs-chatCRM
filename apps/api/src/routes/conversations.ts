@@ -15,6 +15,7 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
+import { markConversationReadForUser } from "../lib/teamTransferUnread.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -382,6 +383,33 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /** Marca a conversa como vista pelo utilizador (badge de transferência de equipa). */
+  app.post<{ Params: { id: string } }>("/:id/read", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    await markConversationReadForUser(prisma, {
+      organizationId,
+      userId: request.user.id,
+      conversationId: existing.id,
+    });
+    return reply.status(204).send();
+  });
+
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -526,6 +554,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         csatSurveyMessage: true,
         resolveRequireClosureReason: true,
         resolveRequireLeadType: true,
+        silentTransferToAgentBot: true,
       },
     });
     const requireClosureReason = tenantSettings?.resolveRequireClosureReason ?? true;
@@ -582,6 +611,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       csatRecordedAt?: Date | null;
       csatSurveyToken?: string | null;
       awaitingHumanHandoff?: boolean;
+      teamTransferPulseAt?: Date | null;
     } = {};
 
     if (parsed.data.status !== undefined) {
@@ -592,6 +622,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
     if (parsed.data.teamId !== undefined) {
       data.teamId = parsed.data.teamId;
+      if (parsed.data.teamId !== existing.teamId) {
+        data.teamTransferPulseAt = parsed.data.teamId ? new Date() : null;
+      }
     }
     if (parsed.data.status === "PENDING") {
       data.awaitingHumanHandoff = false;
@@ -777,7 +810,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
       const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
-      if (nowBotQueue && !wasBotQueue) {
+      if (nowBotQueue && !wasBotQueue && !tenantSettings?.silentTransferToAgentBot) {
         const ch = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
         if (ch) {
           const lastInbound = await prisma.message.findFirst({

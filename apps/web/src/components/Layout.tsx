@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { NavLink, Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -28,7 +28,7 @@ import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 
-type SidebarTeam = { id: string; name: string };
+type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
 type SidebarInbox = { id: string; name: string };
 
 const navItems = [
@@ -58,24 +58,38 @@ export function Layout() {
   const conversationInboxId =
     location.pathname === "/conversations" ? new URLSearchParams(location.search).get("inboxId") : null;
 
-  useEffect(() => {
+  const fetchSidebarTeams = useCallback(() => {
     if (!user) {
       setSidebarTeams([]);
       return;
     }
-    let cancelled = false;
     void api
-      .get<{ data: SidebarTeam[] }>("/teams")
-      .then((res) => {
-        if (!cancelled) setSidebarTeams(res.data.map((x) => ({ id: x.id, name: x.name })));
-      })
-      .catch(() => {
-        if (!cancelled) setSidebarTeams([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .get<{ data: { id: string; name: string; unseenTransferCount?: number }[] }>("/teams")
+      .then((res) =>
+        setSidebarTeams(
+          res.data.map((x) => ({
+            id: x.id,
+            name: x.name,
+            unseenTransferCount: x.unseenTransferCount ?? 0,
+          })),
+        ),
+      )
+      .catch(() => setSidebarTeams([]));
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchSidebarTeams();
+  }, [fetchSidebarTeams]);
+
+  useEffect(() => {
+    const refresh = () => fetchSidebarTeams();
+    window.addEventListener("openconduit:conversation-transferred", refresh);
+    window.addEventListener("openconduit:team-transfer-badges-refresh", refresh);
+    return () => {
+      window.removeEventListener("openconduit:conversation-transferred", refresh);
+      window.removeEventListener("openconduit:team-transfer-badges-refresh", refresh);
+    };
+  }, [fetchSidebarTeams]);
 
   useEffect(() => {
     if (!user) {
@@ -149,7 +163,9 @@ export function Layout() {
                     <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
                       {t("nav.teamInboxes")}
                     </p>
-                    {sidebarTeams.map((team) => (
+                    {sidebarTeams.map((team) => {
+                      const n = team.unseenTransferCount ?? 0;
+                      return (
                       <Link
                         key={team.id}
                         to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
@@ -159,9 +175,19 @@ export function Layout() {
                         title={team.name}
                       >
                         <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
-                        <span className="min-w-0 truncate">{team.name}</span>
+                        <span className="min-w-0 flex-1 truncate">{team.name}</span>
+                        {n > 0 ? (
+                          <span
+                            className="shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-brand-500"
+                            title={t("nav.teamTransferUnreadBadge")}
+                            aria-label={`${t("nav.teamTransferUnreadBadge")}: ${n}`}
+                          >
+                            {n > 99 ? "99+" : n}
+                          </span>
+                        ) : null}
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : null}
                 {sidebarInboxes.length > 0 ? (

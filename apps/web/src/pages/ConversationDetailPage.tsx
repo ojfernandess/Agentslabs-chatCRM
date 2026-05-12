@@ -274,6 +274,9 @@ export function ConversationDetailPage() {
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setAgentBotTriageActive(data.agentBotTriageActive ?? false);
+      void api.post(`/conversations/${id}/read`).then(() => {
+        window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+      });
     } catch {
       /* failed */
     } finally {

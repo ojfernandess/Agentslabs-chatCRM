@@ -34,11 +34,12 @@ export async function assignConversationTeamForOrg(
 
   const conversation = await prisma.conversation.findFirst({
     where: { id: conversationId, organizationId },
-    select: { id: true },
+    select: { id: true, teamId: true },
   });
   if (!conversation) {
     return { ok: false, error: { status: 404, message: "Conversation not found" } };
   }
+  const prevTeamId = conversation.teamId;
 
   if (body.teamId) {
     const team = await prisma.team.findFirst({
@@ -72,11 +73,15 @@ export async function assignConversationTeamForOrg(
     }
   }
 
+  const teamPulse =
+    body.teamId !== prevTeamId ? { teamTransferPulseAt: body.teamId ? new Date() : null } : {};
+
   const updated = await prisma.conversation.update({
     where: { id: conversation.id },
     data: {
       teamId: body.teamId,
       ...(body.assignedToId !== undefined ? { assignedToId: body.assignedToId } : {}),
+      ...teamPulse,
     },
     include: {
       team: { select: { id: true, name: true } },

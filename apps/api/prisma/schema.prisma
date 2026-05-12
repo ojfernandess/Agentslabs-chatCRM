@@ -328,9 +328,24 @@ model User {
   messagesAsActor              Message[]                     @relation("MessageActor")
   broadcastCampaignsCreated    BroadcastCampaign[]           @relation("BroadcastCampaignCreator")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
+  conversationReadStates       ConversationUserReadState[]
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Última vez que o utilizador abriu a conversa no painel — para ocultar badge de transferência de equipa.
+model ConversationUserReadState {
+  userId         String   @map("user_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  lastReadAt     DateTime @default(now()) @map("last_read_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, conversationId])
+  @@index([userId])
+  @@map("conversation_user_read_states")
 }
 
 model Contact {
@@ -618,10 +633,14 @@ model Conversation {
   teamId String? @map("team_id") @db.Uuid
   team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
+  /// Marca temporal quando a conversa entra numa equipa por transferência — usada para badge «não vista» por utilizador.
+  teamTransferPulseAt DateTime? @map("team_transfer_pulse_at")
+
   /// Após transferência pelo agente nativo: não voltar a responder até voltar a `PENDING` (fila do bot) ou `awaitingHumanHandoff` limpo.
   awaitingHumanHandoff Boolean @default(false) @map("awaiting_human_handoff")
 
   messages               Message[]
+  userReadStates         ConversationUserReadState[]
   botInteractions        BotInteraction[]
   automationContext      AutomationConversationContext?
   automationInteractions AutomationInteraction[]
@@ -825,6 +844,9 @@ model Settings {
 
   /// Transcrever mensagens de áudio recebidas (WhatsApp / caixas) para texto — requer chave OpenAI no servidor.
   audioTranscriptionEnabled Boolean @default(false) @map("audio_transcription_enabled")
+
+  /// Ao passar a conversa para a fila do bot (PENDING), não voltar a disparar o webhook com a última mensagem do cliente.
+  silentTransferToAgentBot Boolean @default(false) @map("silent_transfer_to_agent_bot")
 
   @@map("settings")
 }

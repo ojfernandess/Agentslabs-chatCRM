@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { TeamMemberRole, Prisma } from "@prisma/client";
+import { getUnseenTeamTransferCounts } from "../lib/teamTransferUnread.js";
 
 const createTeamSchema = z.object({
   name: z.string().min(1).max(120),
@@ -53,7 +54,14 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
         },
         orderBy: { name: "asc" },
       });
-      return { data: rows };
+      const teamIds = rows.map((r) => r.id);
+      const unseen = await getUnseenTeamTransferCounts(prisma, organizationId, request.user.id, teamIds);
+      return {
+        data: rows.map((r) => ({
+          ...r,
+          unseenTransferCount: unseen.get(r.id) ?? 0,
+        })),
+      };
     }
 
     const rows = await prisma.team.findMany({
@@ -66,7 +74,14 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
       },
       orderBy: { name: "asc" },
     });
-    return { data: rows };
+    const teamIds = rows.map((r) => r.id);
+    const unseen = await getUnseenTeamTransferCounts(prisma, organizationId, request.user.id, teamIds);
+    return {
+      data: rows.map((r) => ({
+        ...r,
+        unseenTransferCount: unseen.get(r.id) ?? 0,
+      })),
+    };
   });
 
   app.post("/", { preHandler: [requireAdmin] }, async (request, reply) => {

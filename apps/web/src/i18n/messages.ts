@@ -82,6 +82,7 @@ export const messages = {
       myAttendance: "Meu atendimento",
       conversationAudit: "Auditoria de conversas",
       teamInboxes: "Times",
+      teamTransferUnreadBadge: "Conversas transferidas por ver",
       inboxShortcuts: "Caixas de entrada",
       inboxes: "Caixas de entrada",
       broadcast: "Campanhas",
@@ -1814,6 +1815,11 @@ export const messages = {
       audioTranscriptionOff: "Desativado",
       audioTranscriptionHint:
         "Quando ativo, mensagens de voz/áudio do WhatsApp e das caixas API são transcritas para texto (prefixo «[Transcrição automática]») antes de chegarem ao agente e às regras de etiquetas. Requer chave OpenAI no servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY). Modelo opcional: OPENAI_WHISPER_MODEL (predefinição whisper-1).",
+      silentTransferToAgentBot: "Transferência silenciosa para o bot",
+      silentTransferToAgentBotOn: "Ativada",
+      silentTransferToAgentBotOff: "Desativada",
+      silentTransferToAgentBotHint:
+        "Quando ativada, ao passar a conversa manualmente para a fila do bot (pendente sem atendente), o sistema não volta a enviar o webhook com a última mensagem do cliente — evita duplicar o processamento. O bot continua a receber as mensagens novas que chegarem a seguir.",
       embeddedTitle: "Configuração rápida com Meta",
       embeddedDesc:
         "Use o fluxo de inscrição incorporada do WhatsApp para ligar o Cloud API sem colar token manualmente. Será redireccionado para a Meta para concluir o WhatsApp Business.",
@@ -2058,6 +2064,7 @@ export const messages = {
       myAttendance: "My attendance",
       conversationAudit: "Conversation audit",
       teamInboxes: "Teams",
+      teamTransferUnreadBadge: "Transferred conversations not yet viewed",
       inboxShortcuts: "Inboxes",
       inboxes: "Inboxes",
       broadcast: "Campaigns",
@@ -3780,6 +3787,11 @@ export const messages = {
       audioTranscriptionOff: "Disabled",
       audioTranscriptionHint:
         "When enabled, WhatsApp voice notes and API inbox audio are transcribed to text (prefix “[Transcrição automática]”) before the agent and auto-tag rules run. Requires an OpenAI key on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY). Optional model: OPENAI_WHISPER_MODEL (default whisper-1).",
+      silentTransferToAgentBot: "Silent handoff to bot queue",
+      silentTransferToAgentBotOn: "Enabled",
+      silentTransferToAgentBotOff: "Disabled",
+      silentTransferToAgentBotHint:
+        "When enabled, moving a conversation manually to the bot queue (pending, unassigned) does not fire the agent-bot webhook again with the customer’s last message, avoiding duplicate processing. The bot still receives new inbound messages as they arrive.",
       embeddedTitle: "Quick setup with Meta",
       embeddedDesc:
         "Use WhatsApp embedded signup to connect the Cloud API without pasting tokens manually. You will sign in with Meta to finish WhatsApp Business onboarding.",
