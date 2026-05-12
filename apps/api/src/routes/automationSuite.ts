@@ -65,6 +65,7 @@ const defaultBehaviorConfig = () => ({
     list_teams: false,
     list_pipeline_stages: false,
     assign_team_to_conversation: false,
+    transfer_to_team: false,
     set_conversation_status: false,
     list_google_calendars: false,
     scheduling_google: false,
@@ -76,6 +77,7 @@ const defaultBehaviorConfig = () => ({
     transferMessage: "",
     mode: "keyword" as string,
     keywords: "" as string,
+    transferTeamId: null as string | null,
   },
   inactivity: {
     automationEnabled: false,
@@ -1904,6 +1906,107 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: errMsg,
         responsePreview: responseText.slice(0, 12_000),
       };
+    },
+  );
+
+  const promptBuilderSuggestSchema = z.object({
+    kind: z.enum(["connected_tool", "team_transfer", "escalation"]),
+    locale: z.enum(["pt-BR", "en"]).optional().default("pt-BR"),
+    agentContextSnippet: z.string().max(8000).optional().default(""),
+    toolName: z.string().max(240).optional(),
+    toolDescription: z.string().max(4000).optional(),
+    teamName: z.string().max(240).optional(),
+    teamId: z.string().max(80).optional(),
+    escalationMode: z.string().max(64).optional(),
+    escalationKeywords: z.string().max(2000).optional(),
+    escalationTransferMessage: z.string().max(2000).optional(),
+  });
+
+  app.post(
+    "/prompt-builder/suggest-instruction",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      if (!isTenantAdminLike(request.user)) {
+        return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+      }
+      const parsed = promptBuilderSuggestSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const d = parsed.data;
+      const apiKey = config.openAiPromptPreviewKey.trim();
+      if (!apiKey) {
+        return reply.status(503).send({
+          error: "Service Unavailable",
+          message: "OPENAI_PROMPT_PREVIEW_KEY is not configured on the server.",
+          statusCode: 503,
+        });
+      }
+      const lang = d.locale === "en" ? "English" : "Portuguese (Brazil)";
+      const ctx = (d.agentContextSnippet ?? "").trim().slice(0, 6000);
+      let userContent = "";
+      if (d.kind === "connected_tool") {
+        userContent = [
+          "Generate system-instruction lines for a customer-facing AI agent (concise, imperative).",
+          `Output language: ${lang}.`,
+          `Tool name: ${d.toolName ?? "unknown"}`,
+          `Tool description / contract: ${(d.toolDescription ?? "").trim() || "(none)"}`,
+          `Agent core context (may be partial):\n${ctx || "(none)"}`,
+          "",
+          "Reply with ONLY the instruction text (2–6 short sentences), no markdown fences, no JSON.",
+        ].join("\n");
+      } else if (d.kind === "team_transfer") {
+        userContent = [
+          "Generate when-to-transfer instructions for a support agent that may call transfer_to_team with a UUID.",
+          `Output language: ${lang}.`,
+          `Team name: ${d.teamName ?? "team"}`,
+          `Team UUID: ${d.teamId ?? "(not set)"}`,
+          `Agent core context:\n${ctx || "(none)"}`,
+          "",
+          "Reply with ONLY the instruction paragraph(s) (when to route to this team, tone, confirm to customer).",
+        ].join("\n");
+      } else {
+        userContent = [
+          "Generate escalation instructions for an AI agent: when rules trigger, how to hand off to humans.",
+          `Output language: ${lang}.`,
+          `Escalation mode: ${d.escalationMode ?? "(unspecified)"}`,
+          `Keywords / triggers: ${(d.escalationKeywords ?? "").trim() || "(none)"}`,
+          `Message template: ${(d.escalationTransferMessage ?? "").trim() || "(none)"}`,
+          d.teamId && d.teamName
+            ? `Destination team UUID ${d.teamId} (${d.teamName}) — use transfer_to_team with this team_id when escalating.`
+            : "If a destination team UUID exists in settings, use transfer_to_team with that id when escalating.",
+          `Agent context:\n${ctx || "(none)"}`,
+          "",
+          "Reply with ONLY the instruction paragraph(s).",
+        ].join("\n");
+      }
+
+      const system =
+        "You help configure AI agents for OpenConduit CRM. Be practical and specific. No preamble or closing.";
+
+      try {
+        const r = await callOpenAiCompatibleChat({
+          baseUrl: "https://api.openai.com/v1",
+          apiKey,
+          model: "gpt-4o-mini",
+          temperature: 0.35,
+          maxTokens: 512,
+          system,
+          history: [] as PreviewChatTurn[],
+          userMessage: userContent,
+          signal: AbortSignal.timeout(25_000),
+        });
+        const instruction = (r.text ?? "").trim().slice(0, 4000);
+        if (!instruction) {
+          return reply.status(502).send({ error: "Bad Gateway", message: "Empty model response", statusCode: 502 });
+        }
+        return { instruction };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "suggestion_failed";
+        return reply.status(502).send({ error: "Bad Gateway", message: msg.slice(0, 1200), statusCode: 502 });
+      }
     },
   );
 

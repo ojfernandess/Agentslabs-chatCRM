@@ -213,6 +213,10 @@ export const messages = {
       agentEscalationConditions: "Condições / notas (texto livre ou JSON)",
       agentEscalationTransfer: "Mensagem ao pedir humano / transferir",
       agentEscalationTransferPh: "Mensagem mostrada ao cliente ao escalar.",
+      agentEscalationTeam: "Equipa de destino ao escalar",
+      agentEscalationTeamNone: "— sem equipa definida —",
+      agentEscalationSuggestHelp:
+        "Gera texto nas «Condições / notas» com base no modo, palavras-chave, mensagem e equipa de destino (útil para o bloco automático do prompt).",
       agentNativeTools: "Capacidades expostas ao modelo",
       agentNativeToolsHelp:
         "Ative as funções que o integrador expõe ao modelo: base de conhecimento, API agent-bot (equipas, funil, conversas), Google Calendar, Outlook, etc. Os schemas completos estão no separador Ferramentas.",
@@ -252,6 +256,7 @@ export const messages = {
       agentTool_list_teams: "listar_equipas",
       agentTool_list_pipeline_stages: "listar_etapas_funil",
       agentTool_assign_team_to_conversation: "atribuir_equipa",
+      agentTool_transfer_to_team: "transferir_equipa",
       agentTool_set_conversation_status: "estado_conversa",
       agentTool_list_google_calendars: "consultar_agendas",
       agentTool_scheduling_google: "agendar_google",
@@ -318,7 +323,9 @@ export const messages = {
         "Chame listar_equipas para listar equipas com UUID; use esses ids em transfer_to_team ou atribuir_equipa.",
       promptBuilderHint_list_pipeline_stages: "Use para saber ids de etapas do funil ao mover oportunidades.",
       promptBuilderHint_assign_team_to_conversation:
-        "Para transferir, use transfer_to_team com team_id UUID (nunca números fictícios). Se não souber o id, liste equipas primeiro.",
+        "Para definir a equipa principal da conversa, use atribuir_equipa com o team_id UUID correcto. Se não souber o id, liste equipas primeiro.",
+      promptBuilderHint_transfer_to_team:
+        "Para transferir a conversa para outra equipa humana, use transfer_to_team com team_id (UUID). Nunca invente ids — use listar_equipas se precisar de confirmar.",
       promptBuilderHint_set_conversation_status:
         "OPEN coloca a conversa em atendimento humano; PENDING devolve à fila do bot.",
       promptBuilderHint_list_google_calendars: "Lista agendas configuradas antes de marcar eventos.",
@@ -327,6 +334,29 @@ export const messages = {
       promptBuilderHint_call_human: "Quando o cliente pedir humano, chame call_human e confirme a transferência.",
       promptBuilderHint_end_conversation: "Use apenas quando o fluxo pedir encerramento explícito.",
       promptBuilderHint_ping: "Diagnóstico de latência / teste de integração.",
+      promptBuilderConnectedInstrSection: "Instruções por ferramenta personalizada (uso no modelo):",
+      promptBuilderTeamHintsSection: "Transferência para equipas (transfer_to_team):",
+      promptBuilderEscalationSection: "Escalonamento e transferência humana:",
+      promptBuilderEscalationTeamLine: "Equipa de destino: **{name}** — `team_id`: `{id}`",
+      promptBuilderEscalationModeLabel: "Modo",
+      promptBuilderEscalationKeywordsLabel: "Palavras-chave / gatilhos",
+      promptBuilderEscalationConditionsLabel: "Condições",
+      promptBuilderEscalationTransferLabel: "Mensagem ao escalar",
+      promptBuilderEscalationActionHint:
+        "Quando as regras de escalonamento forem satisfeitas, use transfer_to_team com o team_id acima (se existir) em conjunto com call_human / fluxo do integrador.",
+      promptBuilderSuggestInstruction: "Gerar com IA",
+      promptBuilderSuggestBusy: "A gerar…",
+      promptBuilderSuggestError: "Não foi possível gerar a instrução. Verifique a chave OPENAI_PROMPT_PREVIEW_KEY no servidor e tente novamente.",
+      agentConnectedToolInstruction: "Instruções para o agente (prompt automático)",
+      agentConnectedToolInstructionHint:
+        "Texto injectado no bloco automático quando grava — descreva quando e como usar esta ferramenta.",
+      agentTeamTransferSection: "Transferência para equipas",
+      agentTeamTransferHelp:
+        "Por equipa, indique quando o agente deve chamar transfer_to_team com o UUID indicado. O bloco só entra no prompt se listar_equipas, atribuir_equipa ou transferir_equipa estiverem activos.",
+      agentTeamTransferEmpty: "Nenhuma equipa listada. Recarregue ou crie equipas na organização.",
+      agentTeamTransferNativeOff:
+        "Active pelo menos uma capacidade: listar_equipas, atribuir_equipa ou transferir_equipa — caso contrário estas instruções não são incluídas no prompt automático.",
+      agentTeamTransferInstructionLabel: "Quando transferir para esta equipa",
       promptsIntro: "Módulos reutilizáveis para compor instruções de sistema ou anexar a agentes.",
       promptNewTitle: "Novo módulo",
       promptEditTitle: "Editar módulo",
@@ -2141,6 +2171,10 @@ export const messages = {
       agentEscalationConditions: "Conditions / notes (free text or JSON)",
       agentEscalationTransfer: "Message when escalating / transferring",
       agentEscalationTransferPh: "Shown to the customer when asking for a human.",
+      agentEscalationTeam: "Destination team on escalation",
+      agentEscalationTeamNone: "— no team selected —",
+      agentEscalationSuggestHelp:
+        "Fills «Conditions / notes» from mode, keywords, message, and destination team (helps the auto prompt block).",
       agentNativeTools: "Capabilities exposed to the model",
       agentNativeToolsHelp:
         "Toggle capabilities your integrator exposes to the model: knowledge base, agent-bot API (teams, pipeline, conversations), Google Calendar, Outlook, etc. Full schemas are under Tools.",
@@ -2179,6 +2213,7 @@ export const messages = {
       agentTool_list_teams: "list_teams",
       agentTool_list_pipeline_stages: "list_pipeline_stages",
       agentTool_assign_team_to_conversation: "assign_team",
+      agentTool_transfer_to_team: "transfer_to_team",
       agentTool_set_conversation_status: "conversation_status",
       agentTool_list_google_calendars: "list_calendars",
       agentTool_scheduling_google: "google_calendar",
@@ -2243,7 +2278,9 @@ export const messages = {
         "Call listar_equipas to list teams with UUIDs; use those ids in transfer_to_team or assign team.",
       promptBuilderHint_list_pipeline_stages: "Use to discover pipeline stage ids when moving deals.",
       promptBuilderHint_assign_team_to_conversation:
-        "To transfer, use transfer_to_team with a real team_id UUID (never placeholder numbers). If unknown, list teams first.",
+        "To set the primary team on the conversation, use assign_team_to_conversation with the correct team_id UUID. If unknown, list teams first.",
+      promptBuilderHint_transfer_to_team:
+        "To hand off to another human team, use transfer_to_team with team_id (UUID). Never invent ids — call list_teams when needed.",
       promptBuilderHint_set_conversation_status:
         "OPEN hands the thread to humans; PENDING returns it to the bot queue.",
       promptBuilderHint_list_google_calendars: "Lists configured calendars before creating events.",
@@ -2252,6 +2289,29 @@ export const messages = {
       promptBuilderHint_call_human: "When the customer asks for a person, call call_human and confirm handoff.",
       promptBuilderHint_end_conversation: "Use only when the flow requires an explicit closure.",
       promptBuilderHint_ping: "Latency / connectivity diagnostic for integrations.",
+      promptBuilderConnectedInstrSection: "Per custom tool — agent instructions (model-facing):",
+      promptBuilderTeamHintsSection: "Team transfers (transfer_to_team):",
+      promptBuilderEscalationSection: "Escalation and human handoff:",
+      promptBuilderEscalationTeamLine: "Destination team: **{name}** — `team_id`: `{id}`",
+      promptBuilderEscalationModeLabel: "Mode",
+      promptBuilderEscalationKeywordsLabel: "Keywords / triggers",
+      promptBuilderEscalationConditionsLabel: "Conditions",
+      promptBuilderEscalationTransferLabel: "Escalation message",
+      promptBuilderEscalationActionHint:
+        "When escalation rules match, use transfer_to_team with the team_id above (if set) together with call_human / your integrator flow.",
+      promptBuilderSuggestInstruction: "Generate with AI",
+      promptBuilderSuggestBusy: "Generating…",
+      promptBuilderSuggestError: "Could not generate instructions. Ensure OPENAI_PROMPT_PREVIEW_KEY is set on the server and try again.",
+      agentConnectedToolInstruction: "Agent instructions (auto prompt block)",
+      agentConnectedToolInstructionHint:
+        "Text merged into the auto block on save — describe when and how to use this tool.",
+      agentTeamTransferSection: "Transfer to teams",
+      agentTeamTransferHelp:
+        "Per team, describe when the agent should call transfer_to_team with the UUID shown. The block is only emitted if list_teams, assign_team, or transfer_to_team is enabled.",
+      agentTeamTransferEmpty: "No teams returned. Reload or create teams in the organization.",
+      agentTeamTransferNativeOff:
+        "Enable at least one of: list_teams, assign_team, or transfer_to_team — otherwise these hints are not included in the auto prompt.",
+      agentTeamTransferInstructionLabel: "When to transfer to this team",
       promptsIntro: "Reusable modules to compose system instructions or attach to agents.",
       promptNewTitle: "New module",
       promptEditTitle: "Edit module",

@@ -81,6 +81,7 @@ const NATIVE_TOOL_KEYS = [
   "list_teams",
   "list_pipeline_stages",
   "assign_team_to_conversation",
+  "transfer_to_team",
   "set_conversation_status",
   "list_google_calendars",
   "scheduling_google",
@@ -206,6 +207,7 @@ function normalizeConnectedTools(raw: unknown): AgentConnectedToolRow[] {
             : null,
       priority: typeof o.priority === "number" ? o.priority : 0,
       runMode: o.runMode === "manual" ? "manual" : "auto",
+      agentInstruction: typeof o.agentInstruction === "string" ? o.agentInstruction : undefined,
     });
   }
   return out;
@@ -218,6 +220,7 @@ const defaultBehavior = {
     transferMessage: "",
     mode: "keyword",
     keywords: "",
+    transferTeamId: null as string | null,
   },
   inactivity: {
     automationEnabled: false,
@@ -247,6 +250,8 @@ export type AgentConnectedToolRow = {
   maxCallsPerConversation: number | null;
   priority: number;
   runMode: "auto" | "manual";
+  /** Instruções injectadas no bloco automático do prompt para o modelo usar esta ferramenta. */
+  agentInstruction?: string;
 };
 
 type AgentFormFields = {
@@ -279,9 +284,12 @@ type AgentFormFields = {
   escalationConditions: string;
   escalationTransferMessage: string;
   escalationKeywords: string;
+  escalationTeamId: string;
   nativeTools: Record<NativeToolKey, boolean>;
   promptModuleIds: string[];
   connectedTools: AgentConnectedToolRow[];
+  /** Instruções por equipa (UUID) para transfer_to_team — guardado em promptBuilder.teamTransferHints. */
+  teamTransferHints: Array<{ teamId: string; instruction: string }>;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -313,9 +321,11 @@ function emptyAgentForm(): AgentFormFields {
     escalationConditions: "",
     escalationTransferMessage: "",
     escalationKeywords: "",
+    escalationTeamId: "",
     nativeTools: defaultNativeTools(),
     promptModuleIds: [],
     connectedTools: defaultConnectedTools(),
+    teamTransferHints: [],
   };
 }
 
@@ -339,6 +349,19 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const linkedRaw = pb.linkedKnowledgeArticleIds;
   const promptLinkedKnowledgeIds = Array.isArray(linkedRaw)
     ? linkedRaw.filter((x): x is string => typeof x === "string" && x.length >= 32)
+    : [];
+  const hintsRaw = pb.teamTransferHints;
+  const teamTransferHints: Array<{ teamId: string; instruction: string }> = Array.isArray(hintsRaw)
+    ? hintsRaw
+        .map((x) => {
+          if (!x || typeof x !== "object") return null;
+          const o = x as Record<string, unknown>;
+          const teamId = typeof o.teamId === "string" ? o.teamId.trim() : "";
+          const instruction = typeof o.instruction === "string" ? o.instruction : "";
+          if (!teamId) return null;
+          return { teamId, instruction };
+        })
+        .filter((x): x is { teamId: string; instruction: string } => x != null)
     : [];
   const userFromPb = typeof pb.userCore === "string" ? pb.userCore : null;
   const fullInstr = String(llm.systemInstructions ?? "");
@@ -378,9 +401,14 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     escalationConditions: String(esc.conditions ?? ""),
     escalationTransferMessage: String(esc.transferMessage ?? ""),
     escalationKeywords: String(esc.keywords ?? ""),
+    escalationTeamId: (() => {
+      const raw = (esc as Record<string, unknown>).transferTeamId;
+      return typeof raw === "string" ? raw : "";
+    })(),
     nativeTools,
     promptModuleIds,
     connectedTools: normalizeConnectedTools(beh.connectedTools),
+    teamTransferHints,
   };
 }
 
@@ -389,6 +417,7 @@ function formToPayload(
   ctx: {
     knowledgeArticles: KnowledgeArticle[];
     customTools: AutomationCustomToolRow[];
+    orgTeams: Array<{ id: string; name: string }>;
     t: (key: string) => string;
   },
 ): {
@@ -404,10 +433,46 @@ function formToPayload(
     .filter((x) => x.enabled)
     .map((x) => ctx.customTools.find((tl) => tl.id === x.toolId)?.name)
     .filter((x): x is string => Boolean(x));
+  const connectedInstructions = form.connectedTools
+    .filter((x) => x.enabled)
+    .map((x) => {
+      const tl = ctx.customTools.find((c) => c.id === x.toolId);
+      const name = tl?.name;
+      const ins = (x.agentInstruction ?? "").trim();
+      if (!name || !ins) return null;
+      return { name, instruction: ins };
+    })
+    .filter((x): x is { name: string; instruction: string } => x != null);
+  const teamHintsResolved = form.teamTransferHints
+    .filter((h) => h.instruction.trim())
+    .map((h) => ({
+      teamId: h.teamId,
+      teamName: ctx.orgTeams.find((o) => o.id === h.teamId)?.name ?? h.teamId,
+      instruction: h.instruction.trim(),
+    }));
+  const escTeamId = form.escalationTeamId.trim();
+  const escTeamName = escTeamId ? (ctx.orgTeams.find((o) => o.id === escTeamId)?.name ?? null) : null;
+  const hasEsc =
+    Boolean(escTeamId) ||
+    Boolean(form.escalationKeywords.trim()) ||
+    Boolean(form.escalationConditions.trim()) ||
+    Boolean(form.escalationTransferMessage.trim());
   const autoInner = buildPromptAutoInstructionBlock({
     nativeTools: form.nativeTools as Record<string, boolean>,
     linkedArticleTitles: linkedTitles,
     connectedToolNames: connectedNames,
+    connectedToolInstructions: connectedInstructions,
+    teamTransferHints: teamHintsResolved,
+    escalation: hasEsc
+      ? {
+          mode: form.escalationMode,
+          targetTeamId: escTeamId || null,
+          targetTeamName: escTeamName,
+          keywords: form.escalationKeywords,
+          conditions: form.escalationConditions,
+          transferMessage: form.escalationTransferMessage,
+        }
+      : null,
     t: ctx.t,
   });
   const mergedInstructions = mergeSystemWithAutoBlock(form.promptUserCore, autoInner);
@@ -445,6 +510,7 @@ function formToPayload(
       conditions: form.escalationConditions,
       transferMessage: form.escalationTransferMessage,
       keywords: form.escalationKeywords,
+      transferTeamId: escTeamId || null,
     },
     inactivity: {
       ...defaultBehavior.inactivity,
@@ -468,6 +534,7 @@ function formToPayload(
     promptBuilder: {
       userCore: form.promptUserCore,
       linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
+      teamTransferHints: form.teamTransferHints.filter((h) => h.instruction.trim()),
     },
   };
 
@@ -521,6 +588,7 @@ function applyPromptModuleSelectionToAgentForm(
           maxCallsPerConversation: null,
           priority: 0,
           runMode: "auto" as const,
+          agentInstruction: undefined,
         },
       ];
     }
@@ -552,7 +620,7 @@ function applyPromptModuleSelectionToAgentForm(
 }
 
 export function AutomationPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [tab, setTab] = useState<Tab>("overview");
@@ -578,6 +646,7 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
+  const [orgTeamsForAgent, setOrgTeamsForAgent] = useState<Array<{ id: string; name: string }>>([]);
 
   const [ctxRows, setCtxRows] = useState<
     Array<{
@@ -591,6 +660,22 @@ export function AutomationPage() {
   const [ctxManualId, setCtxManualId] = useState("");
   const [ctxView, setCtxView] = useState<unknown>(null);
   const [editingToolId, setEditingToolId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!agentModalOpen) return;
+    let cancelled = false;
+    void api
+      .get<{ data: { id: string; name: string }[] }>("/teams")
+      .then((res) => {
+        if (!cancelled) setOrgTeamsForAgent(res.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrgTeamsForAgent([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentModalOpen]);
 
   const loadBots = useCallback(async () => {
     const res = await api.get<{ data: BotRow[] }>("/bots");
@@ -757,6 +842,7 @@ export function AutomationPage() {
       const payload = formToPayload(agentForm, {
         knowledgeArticles: articles,
         customTools: tools,
+        orgTeams: orgTeamsForAgent,
         t,
       });
       if (agentForm.mode === "edit" && agentForm.editBotId) {
@@ -1052,6 +1138,8 @@ export function AutomationPage() {
               setAgentModalOpen(false);
               setTab("knowledge");
             }}
+            orgTeams={orgTeamsForAgent}
+            suggestionLocale={locale}
           />
         ) : null}
 
@@ -1224,6 +1312,8 @@ function AgentsTab({
   onOpenToolsTab,
   applyPromptModulesSelection,
   onOpenKnowledgeTab,
+  orgTeams,
+  suggestionLocale,
 }: {
   t: Translate;
   loading: boolean;
@@ -1244,6 +1334,8 @@ function AgentsTab({
   onOpenToolsTab: () => void;
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
   onOpenKnowledgeTab: () => void;
+  orgTeams: Array<{ id: string; name: string }>;
+  suggestionLocale: string;
 }) {
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
@@ -1254,6 +1346,8 @@ function AgentsTab({
   const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
   const [promptEditorTab, setPromptEditorTab] = useState<"builder" | "merged">("builder");
   const [kbArticleFilter, setKbArticleFilter] = useState("");
+  const [instructionSuggestBusy, setInstructionSuggestBusy] = useState<string | null>(null);
+  const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   useEffect(() => {
     if (!agentModalOpen) {
@@ -1311,33 +1405,97 @@ function AgentsTab({
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
 
-  const promptAutoPreview = useMemo(
-    () =>
-      buildPromptAutoInstructionBlock({
-        nativeTools: agentForm.nativeTools as Record<string, boolean>,
-        linkedArticleTitles: agentForm.promptLinkedKnowledgeIds
-          .map((id) => articles.find((a) => a.id === id)?.title)
-          .filter((x): x is string => Boolean(x)),
-        connectedToolNames: agentForm.connectedTools
-          .filter((c) => c.enabled)
-          .map((c) => tools.find((tl) => tl.id === c.toolId)?.name)
-          .filter((x): x is string => Boolean(x)),
-        t,
-      }),
-    [
-      agentForm.connectedTools,
-      agentForm.nativeTools,
-      agentForm.promptLinkedKnowledgeIds,
-      articles,
-      tools,
+  const promptAutoPreview = useMemo(() => {
+    const linkedTitles = agentForm.promptLinkedKnowledgeIds
+      .map((id) => articles.find((a) => a.id === id)?.title)
+      .filter((x): x is string => Boolean(x));
+    const connectedNames = agentForm.connectedTools
+      .filter((c) => c.enabled)
+      .map((c) => tools.find((tl) => tl.id === c.toolId)?.name)
+      .filter((x): x is string => Boolean(x));
+    const connectedInstructions = agentForm.connectedTools
+      .filter((x) => x.enabled)
+      .map((x) => {
+        const tl = tools.find((c) => c.id === x.toolId);
+        const name = tl?.name;
+        const ins = (x.agentInstruction ?? "").trim();
+        if (!name || !ins) return null;
+        return { name, instruction: ins };
+      })
+      .filter((x): x is { name: string; instruction: string } => x != null);
+    const teamHintsResolved = agentForm.teamTransferHints
+      .filter((h) => h.instruction.trim())
+      .map((h) => ({
+        teamId: h.teamId,
+        teamName: orgTeams.find((o) => o.id === h.teamId)?.name ?? h.teamId,
+        instruction: h.instruction.trim(),
+      }));
+    const escTeamId = agentForm.escalationTeamId.trim();
+    const escTeamName = escTeamId ? (orgTeams.find((o) => o.id === escTeamId)?.name ?? null) : null;
+    const hasEsc =
+      Boolean(escTeamId) ||
+      Boolean(agentForm.escalationKeywords.trim()) ||
+      Boolean(agentForm.escalationConditions.trim()) ||
+      Boolean(agentForm.escalationTransferMessage.trim());
+    return buildPromptAutoInstructionBlock({
+      nativeTools: agentForm.nativeTools as Record<string, boolean>,
+      linkedArticleTitles: linkedTitles,
+      connectedToolNames: connectedNames,
+      connectedToolInstructions: connectedInstructions,
+      teamTransferHints: teamHintsResolved,
+      escalation: hasEsc
+        ? {
+            mode: agentForm.escalationMode,
+            targetTeamId: escTeamId || null,
+            targetTeamName: escTeamName,
+            keywords: agentForm.escalationKeywords,
+            conditions: agentForm.escalationConditions,
+            transferMessage: agentForm.escalationTransferMessage,
+          }
+        : null,
       t,
-    ],
-  );
+    });
+  }, [
+    agentForm.connectedTools,
+    agentForm.escalationConditions,
+    agentForm.escalationKeywords,
+    agentForm.escalationMode,
+    agentForm.escalationTeamId,
+    agentForm.escalationTransferMessage,
+    agentForm.nativeTools,
+    agentForm.promptLinkedKnowledgeIds,
+    agentForm.teamTransferHints,
+    articles,
+    orgTeams,
+    tools,
+    t,
+  ]);
 
   const mergedPromptPreview = useMemo(
     () => mergeSystemWithAutoBlock(agentForm.promptUserCore, promptAutoPreview),
     [agentForm.promptUserCore, promptAutoPreview],
   );
+
+  const runSuggestInstruction = useCallback(
+    async (busyKey: string, body: Record<string, unknown>): Promise<string> => {
+      setInstructionSuggestBusy(busyKey);
+      try {
+        const res = await api.post<{ instruction: string }>("/automation/prompt-builder/suggest-instruction", {
+          locale: suggestLocaleApi,
+          ...body,
+        });
+        return (res.instruction ?? "").trim();
+      } finally {
+        setInstructionSuggestBusy(null);
+      }
+    },
+    [suggestLocaleApi],
+  );
+
+  const canTeamTransferHints =
+    agentForm.nativeTools.list_teams === true ||
+    agentForm.nativeTools.assign_team_to_conversation === true ||
+    agentForm.nativeTools.transfer_to_team === true;
 
   const kbScopeBotId =
     agentForm.editBotId ||
@@ -2033,6 +2191,21 @@ function AgentsTab({
                   </select>
                 </label>
                 <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.agentEscalationTeam")}
+                  <select
+                    value={agentForm.escalationTeamId}
+                    onChange={(e) => setAgentForm((f) => ({ ...f, escalationTeamId: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  >
+                    <option value="">{t("automationPage.agentEscalationTeamNone")}</option>
+                    {orgTeams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="mt-2 block text-xs font-medium text-ink-700 dark:text-ink-300">
                   {t("automationPage.agentEscalationKeywords")}
                   <input
                     value={agentForm.escalationKeywords}
@@ -2060,6 +2233,42 @@ function AgentsTab({
                     className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
                   />
                 </label>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    disabled={Boolean(instructionSuggestBusy)}
+                    onClick={() => {
+                      void (async () => {
+                        const tid = agentForm.escalationTeamId.trim();
+                        const teamName = tid ? orgTeams.find((o) => o.id === tid)?.name : undefined;
+                        try {
+                          const text = await runSuggestInstruction("escalation", {
+                            kind: "escalation",
+                            agentContextSnippet: agentForm.promptUserCore,
+                            escalationMode: agentForm.escalationMode,
+                            escalationKeywords: agentForm.escalationKeywords,
+                            escalationTransferMessage: agentForm.escalationTransferMessage,
+                            teamId: tid || undefined,
+                            teamName: teamName || undefined,
+                          });
+                          if (!text) return;
+                          setAgentForm((f) => ({ ...f, escalationConditions: text }));
+                        } catch (err) {
+                          window.alert(
+                            `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
+                          );
+                        }
+                      })();
+                    }}
+                    className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-brand-800 shadow-sm hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {instructionSuggestBusy === "escalation"
+                      ? t("automationPage.promptBuilderSuggestBusy")
+                      : t("automationPage.promptBuilderSuggestInstruction")}
+                  </button>
+                  <p className="text-[10px] text-ink-500">{t("automationPage.agentEscalationSuggestHelp")}</p>
+                </div>
               </div>
 
               <div className="rounded-2xl border border-brand-200/50 bg-gradient-to-br from-brand-50/40 via-white to-ink-50/90 p-4 shadow-sm dark:border-brand-900/30 dark:from-brand-950/25 dark:via-ink-900/30 dark:to-ink-950/80">
@@ -2311,6 +2520,7 @@ function AgentsTab({
                                           maxCallsPerConversation: null,
                                           priority: 0,
                                           runMode: "auto",
+                                          agentInstruction: undefined,
                                         },
                                       ],
                                     };
@@ -2398,8 +2608,152 @@ function AgentsTab({
                                   }}
                                 />
                               </label>
+                              <div className="sm:col-span-2">
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedToolInstruction")}
+                                  <textarea
+                                    rows={3}
+                                    value={row.agentInstruction ?? ""}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTools: f.connectedTools.map((x) =>
+                                          x.toolId === tl.id ? { ...x, agentInstruction: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                    placeholder={t("automationPage.agentConnectedToolInstructionHint")}
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
+                                  />
+                                </label>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(instructionSuggestBusy)}
+                                    onClick={() => {
+                                      void (async () => {
+                                        const busyKey = `tool:${tl.id}`;
+                                        const schema =
+                                          tl.config && typeof tl.config === "object" && "parametersSchema" in tl.config
+                                            ? JSON.stringify((tl.config as { parametersSchema?: unknown }).parametersSchema).slice(
+                                                0,
+                                                3500,
+                                              )
+                                            : "";
+                                        try {
+                                          const text = await runSuggestInstruction(busyKey, {
+                                            kind: "connected_tool",
+                                            agentContextSnippet: agentForm.promptUserCore,
+                                            toolName: tl.name,
+                                            toolDescription: [tl.description, schema ? `parameters_schema:\n${schema}` : ""]
+                                              .filter(Boolean)
+                                              .join("\n\n"),
+                                          });
+                                          if (!text) return;
+                                          setAgentForm((f) => ({
+                                            ...f,
+                                            connectedTools: f.connectedTools.map((x) =>
+                                              x.toolId === tl.id ? { ...x, agentInstruction: text } : x,
+                                            ),
+                                          }));
+                                        } catch (err) {
+                                          window.alert(
+                                            `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
+                                          );
+                                        }
+                                      })();
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                                  >
+                                    <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                                    {instructionSuggestBusy === `tool:${tl.id}`
+                                      ? t("automationPage.promptBuilderSuggestBusy")
+                                      : t("automationPage.promptBuilderSuggestInstruction")}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  {t("automationPage.agentTeamTransferSection")}
+                </p>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentTeamTransferHelp")}</p>
+                {!canTeamTransferHints ? (
+                  <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                    {t("automationPage.agentTeamTransferNativeOff")}
+                  </p>
+                ) : null}
+                {orgTeams.length === 0 ? (
+                  <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentTeamTransferEmpty")}</p>
+                ) : (
+                  <ul className="mt-3 max-h-64 space-y-3 overflow-y-auto">
+                    {orgTeams.map((team) => {
+                      const hintText =
+                        agentForm.teamTransferHints.find((h) => h.teamId === team.id)?.instruction ?? "";
+                      const busyKey = `team:${team.id}`;
+                      return (
+                        <li
+                          key={team.id}
+                          className="rounded-lg border border-ink-200 bg-white px-2 py-2 text-xs dark:border-ink-600 dark:bg-ink-950/50"
+                        >
+                          <div className="font-medium text-ink-800 dark:text-ink-200">{team.name}</div>
+                          <code className="mt-0.5 block break-all text-[10px] text-ink-500">{team.id}</code>
+                          <label className="mt-2 block text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                            {t("automationPage.agentTeamTransferInstructionLabel")}
+                            <textarea
+                              rows={3}
+                              value={hintText}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setAgentForm((f) => {
+                                  const rest = f.teamTransferHints.filter((h) => h.teamId !== team.id);
+                                  if (!v.trim()) return { ...f, teamTransferHints: rest };
+                                  return { ...f, teamTransferHints: [...rest, { teamId: team.id, instruction: v }] };
+                                });
+                              }}
+                              className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={Boolean(instructionSuggestBusy)}
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  const text = await runSuggestInstruction(busyKey, {
+                                    kind: "team_transfer",
+                                    teamId: team.id,
+                                    teamName: team.name,
+                                    agentContextSnippet: agentForm.promptUserCore,
+                                  });
+                                  if (!text) return;
+                                  setAgentForm((f) => {
+                                    const rest = f.teamTransferHints.filter((h) => h.teamId !== team.id);
+                                    return { ...f, teamTransferHints: [...rest, { teamId: team.id, instruction: text }] };
+                                  });
+                                } catch (err) {
+                                  window.alert(
+                                    `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
+                                  );
+                                }
+                              })();
+                            }}
+                            className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                          >
+                            <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                            {instructionSuggestBusy === busyKey
+                              ? t("automationPage.promptBuilderSuggestBusy")
+                              : t("automationPage.promptBuilderSuggestInstruction")}
+                          </button>
                         </li>
                       );
                     })}
