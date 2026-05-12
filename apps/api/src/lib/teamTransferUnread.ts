@@ -19,7 +19,7 @@ export async function getUnseenTeamTransferCounts(
     FROM conversations c
     INNER JOIN team_members tm ON tm.team_id = c.team_id AND tm.user_id = ${userId}::uuid
     WHERE c.organization_id = ${organizationId}::uuid
-      AND c.team_id IN (${Prisma.join(teamIds)})
+      AND c.team_id::text IN (${Prisma.join(teamIds)})
       AND c.team_transfer_pulse_at IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM conversation_user_read_states r
