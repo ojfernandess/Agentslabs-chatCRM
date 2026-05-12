@@ -23,6 +23,10 @@ import {
   EVOLUTION_PLATFORM_KEY,
   parseEvolutionPlatformValue,
 } from "../lib/evolutionPlatform.js";
+import {
+  RESEND_EMAIL_PLATFORM_KEY,
+  parseResendEmailValue,
+} from "../lib/resendEmailSettings.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 
@@ -73,6 +77,12 @@ const evolutionPlatformPutSchema = z.object({
   tenantQrOnly: z.boolean().optional(),
   baseUrl: z.string().max(512),
   globalApiKey: z.string().max(512).optional(),
+});
+
+const resendEmailPutSchema = z.object({
+  apiKey: z.string().max(512).optional(),
+  fromEmail: z.string().email(),
+  fromName: z.string().min(1).max(120).optional(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -612,7 +622,17 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.get("/platform-settings", async () => {
-    return prisma.platformSetting.findMany({ orderBy: { key: "asc" } });
+    const rows = await prisma.platformSetting.findMany({ orderBy: { key: "asc" } });
+    return rows.map((r) => {
+      if (r.key === RESEND_EMAIL_PLATFORM_KEY && r.value && typeof r.value === "object" && r.value !== null) {
+        const v = { ...(r.value as Record<string, unknown>) };
+        if (typeof v.apiKey === "string" && v.apiKey.length > 0) {
+          v.apiKey = "••••••••";
+        }
+        return { ...r, value: v };
+      }
+      return r;
+    });
   });
 
   app.put("/platform-settings", async (request, reply) => {
@@ -795,6 +815,73 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       baseUrl: v?.baseUrl ?? "",
       globalApiKeyMasked: v?.globalApiKey ? "••••••••" : "",
       configured: !!(v && v.enabled && v.baseUrl && v.globalApiKey),
+    };
+  });
+
+  app.get("/resend-email", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: RESEND_EMAIL_PLATFORM_KEY },
+    });
+    const parsed = parseResendEmailValue(row?.value);
+    if (!parsed) {
+      return {
+        configured: false,
+        fromEmail: "",
+        fromName: "OpenNexo CRM",
+        apiKeyMasked: "",
+      };
+    }
+    return {
+      configured: true,
+      fromEmail: parsed.fromEmail,
+      fromName: parsed.fromName,
+      apiKeyMasked: "••••••••",
+    };
+  });
+
+  app.put("/resend-email", async (request, reply) => {
+    const parsed = resendEmailPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: RESEND_EMAIL_PLATFORM_KEY },
+    });
+    let apiKey = parsed.data.apiKey?.trim() ?? "";
+    if (!apiKey && existing?.value && typeof existing.value === "object" && existing.value !== null) {
+      apiKey = String((existing.value as Record<string, unknown>).apiKey ?? "").trim();
+    }
+    if (!apiKey) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "apiKey is required (omit only when updating and a key is already stored)",
+        statusCode: 400,
+      });
+    }
+    const fromName = (parsed.data.fromName?.trim() || "OpenNexo CRM").slice(0, 120);
+    const value = {
+      apiKey,
+      fromEmail: parsed.data.fromEmail.trim().toLowerCase(),
+      fromName,
+    };
+    await prisma.platformSetting.upsert({
+      where: { key: RESEND_EMAIL_PLATFORM_KEY },
+      create: { key: RESEND_EMAIL_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.resend_email.upsert",
+      resourceType: "platform_setting",
+      resourceId: RESEND_EMAIL_PLATFORM_KEY,
+      metadata: { fromEmail: value.fromEmail },
+      ip: clientIp(request),
+    });
+    return {
+      configured: true,
+      fromEmail: value.fromEmail,
+      fromName: value.fromName,
+      apiKeyMasked: "••••••••",
     };
   });
 }

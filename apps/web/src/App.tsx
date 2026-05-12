@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { LoginPage } from "@/pages/LoginPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { ConversationsPage } from "@/pages/ConversationsPage";
@@ -90,6 +91,7 @@ export function App() {
     <Routes>
       <Route path="/csat/:token" element={<CsatPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
+      <Route path="/login/reset" element={<ResetPasswordPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"

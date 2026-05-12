@@ -329,9 +329,23 @@ model User {
   broadcastCampaignsCreated    BroadcastCampaign[]           @relation("BroadcastCampaignCreator")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
   conversationReadStates       ConversationUserReadState[]
+  passwordResetTokens          PasswordResetToken[]
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Token de recuperação de senha (hash SHA-256 do segredo enviado por email).
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 /// Última vez que o utilizador abriu a conversa no painel — para ocultar badge de transferência de equipa.

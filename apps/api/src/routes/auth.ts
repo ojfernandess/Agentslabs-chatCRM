@@ -1,12 +1,15 @@
 import { FastifyInstance } from "fastify";
 import bcrypt from "bcrypt";
 import { z } from "zod";
+import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { getOrganizationFeatureMap } from "../lib/featureFlags.js";
 import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
-import { config } from "../config.js";
+import { config, getWebAppPublicOrigin } from "../config.js";
+import { getResendEmailConfigFromDb } from "../lib/resendEmailSettings.js";
+import { sendPasswordResetEmail } from "../lib/sendPasswordResetEmail.js";
 import {
   generateUserApiAccessTokenParts,
   hashUserApiAccessToken,
@@ -29,6 +32,15 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8).max(128),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(16).max(512),
+  newPassword: z.string().min(8).max(128),
+});
+
 function canManageProfileApiToken(user: {
   role: string;
   actingOrganizationId?: string | null;
@@ -37,6 +49,71 @@ function canManageProfileApiToken(user: {
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  app.post("/forgot-password", async (request, reply) => {
+    const parsed = forgotPasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid email format",
+        statusCode: 400,
+      });
+    }
+    const email = parsed.data.email.trim().toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return { ok: true };
+    }
+    const cfg = await getResendEmailConfigFromDb();
+    if (!cfg) {
+      request.log.warn("password_reset_skipped_no_resend_config");
+      return { ok: true };
+    }
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await prisma.$transaction([
+      prisma.passwordResetToken.deleteMany({ where: { userId: user.id } }),
+      prisma.passwordResetToken.create({
+        data: { userId: user.id, tokenHash, expiresAt },
+      }),
+    ]);
+    const resetUrl = `${getWebAppPublicOrigin()}/login/reset?token=${encodeURIComponent(token)}`;
+    const sent = await sendPasswordResetEmail(cfg, user.email, resetUrl);
+    if (!sent.ok) {
+      request.log.error({ err: sent.error }, "password_reset_email_failed");
+    }
+    return { ok: true };
+  });
+
+  app.post("/reset-password", async (request, reply) => {
+    const parsed = resetPasswordSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+    const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+    const row = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+    if (!row || row.expiresAt < new Date()) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid or expired reset link",
+        statusCode: 400,
+      });
+    }
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, config.bcryptCostFactor);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: row.userId }, data: { passwordHash } }),
+      prisma.passwordResetToken.deleteMany({ where: { userId: row.userId } }),
+    ]);
+    return { ok: true };
+  });
+
   app.post("/login", async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {

@@ -181,6 +181,13 @@ interface SuperEvolutionPlatformPayload {
   configured: boolean;
 }
 
+interface SuperResendPayload {
+  configured: boolean;
+  fromEmail: string;
+  fromName: string;
+  apiKeyMasked: string;
+}
+
 type SuperSection =
   | "overview"
   | "usageMetrics"
@@ -264,6 +271,18 @@ export function SuperAdminPage() {
   const [evoPlEnabled, setEvoPlEnabled] = useState(false);
   const [evoPlBaseUrl, setEvoPlBaseUrl] = useState("");
   const [evoPlGlobalApiKey, setEvoPlGlobalApiKey] = useState("");
+
+  const [resendLoad, setResendLoad] = useState(false);
+  const [resendSnapshot, setResendSnapshot] = useState<SuperResendPayload>({
+    configured: false,
+    fromEmail: "",
+    fromName: "OpenNexo CRM",
+    apiKeyMasked: "",
+  });
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [resendFromEmail, setResendFromEmail] = useState("");
+  const [resendFromName, setResendFromName] = useState("OpenNexo CRM");
+  const [resendSaving, setResendSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -425,6 +444,39 @@ export function SuperAdminPage() {
   useEffect(() => {
     if (section === "globalSettings") void fetchPlatformSettingsList();
   }, [section, fetchPlatformSettingsList]);
+
+  useEffect(() => {
+    if (section !== "globalSettings") return;
+    let cancelled = false;
+    setResendLoad(true);
+    void api
+      .get<SuperResendPayload>("/super/resend-email")
+      .then((d) => {
+        if (cancelled) return;
+        setResendSnapshot(d);
+        setResendFromEmail(d.fromEmail);
+        setResendFromName(d.fromName || "OpenNexo CRM");
+        setResendApiKey("");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResendSnapshot({
+            configured: false,
+            fromEmail: "",
+            fromName: "OpenNexo CRM",
+            apiKeyMasked: "",
+          });
+          setResendFromEmail("");
+          setResendFromName("OpenNexo CRM");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setResendLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
 
   useEffect(() => {
     if (section !== "whatsappEmbedded") return;
@@ -664,6 +716,26 @@ export function SuperAdminPage() {
     }
   };
 
+  const saveResend = async (e: FormEvent) => {
+    e.preventDefault();
+    setResendSaving(true);
+    setError("");
+    try {
+      const body: { fromEmail: string; fromName: string; apiKey?: string } = {
+        fromEmail: resendFromEmail.trim(),
+        fromName: (resendFromName.trim() || "OpenNexo CRM").slice(0, 120),
+      };
+      if (resendApiKey.trim()) body.apiKey = resendApiKey.trim();
+      const d = await api.put<SuperResendPayload>("/super/resend-email", body);
+      setResendSnapshot(d);
+      setResendApiKey("");
+    } catch {
+      setError("Não foi possível guardar as definições Resend.");
+    } finally {
+      setResendSaving(false);
+    }
+  };
+
   const patchOrgUserRole = async (userId: string, role: "ADMIN" | "AGENT") => {
     if (!usersOrg) return;
     setUserRoleBusy(userId);
@@ -804,7 +876,7 @@ export function SuperAdminPage() {
           {navItem("featureFlags", t("superAdmin.featureFlags"), ToggleLeft)}
         </nav>
         <div className="mt-auto border-t border-ink-100 p-3">
-          <p className="px-3 py-2 text-xs text-ink-500">OpenConduit · consola de administrador</p>
+          <p className="px-3 py-2 text-xs text-ink-500">OpenNexo CRM · consola de administrador</p>
         </div>
       </aside>
 
@@ -945,6 +1017,72 @@ export function SuperAdminPage() {
                     </a>
                   ) : null}
                 </div>
+              </section>
+              <section className="card-surface p-6">
+                <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.resendEmailTitle")}</h2>
+                <p className="mb-2 text-sm text-ink-600">{t("superAdmin.resendEmailSubtitle")}</p>
+                <a
+                  href="https://resend.com/docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-4 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {t("superAdmin.resendDocLink")} →
+                </a>
+                {resendLoad ? (
+                  <p className="text-sm text-ink-500">{t("common.loading")}</p>
+                ) : (
+                  <form onSubmit={(e) => void saveResend(e)} className="space-y-4">
+                    {resendSnapshot.configured ? (
+                      <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-100">
+                        {t("superAdmin.resendConfigured")}
+                      </p>
+                    ) : (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                        {t("superAdmin.resendIncomplete")}
+                      </p>
+                    )}
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.resendFromEmail")}</label>
+                      <input
+                        type="email"
+                        required
+                        value={resendFromEmail}
+                        onChange={(e) => setResendFromEmail(e.target.value)}
+                        className="input-field mt-1"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.resendFromName")}</label>
+                      <input
+                        value={resendFromName}
+                        onChange={(e) => setResendFromName(e.target.value)}
+                        className="input-field mt-1"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.resendApiKey")}</label>
+                      <p className="mt-0.5 text-xs text-ink-500">{t("superAdmin.resendApiKeyHint")}</p>
+                      <input
+                        type="password"
+                        value={resendApiKey}
+                        onChange={(e) => setResendApiKey(e.target.value)}
+                        placeholder={
+                          resendSnapshot.apiKeyMasked
+                            ? `•••••••• (${resendSnapshot.apiKeyMasked})`
+                            : undefined
+                        }
+                        className="input-field mt-2"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={resendSaving}>
+                      {resendSaving ? t("common.saving") : t("superAdmin.resendSave")}
+                    </button>
+                  </form>
+                )}
               </section>
               <section className="card-surface p-6">
                 <h2 className="mb-4 font-semibold text-ink-900">{t("superAdmin.tenantPermissions")}</h2>

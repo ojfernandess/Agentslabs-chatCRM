@@ -135,8 +135,8 @@ export function Layout() {
     <div className="flex h-screen">
       <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28]">
         <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
-          <img src="/logo.svg" alt="OpenConduit" className="h-7" />
-          <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenConduit</span>
+          <img src="/logo.svg" alt="OpenNexo CRM" className="h-7" />
+          <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
