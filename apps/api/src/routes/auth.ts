@@ -78,7 +78,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }),
     ]);
     const resetUrl = `${getWebAppPublicOrigin()}/login/reset?token=${encodeURIComponent(token)}`;
-    const sent = await sendPasswordResetEmail(cfg, user.email, resetUrl);
+    const sent = await sendPasswordResetEmail(cfg, user.email, resetUrl, user.name);
     if (!sent.ok) {
       request.log.error({ err: sent.error }, "password_reset_email_failed");
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -29,6 +29,7 @@ interface AdminTeam {
   businessHours?: unknown;
   members: TeamMemberRow[];
   _count: { members: number; conversations: number };
+  unseenTransferCount?: number;
 }
 
 export function TeamsPage() {
@@ -50,14 +51,14 @@ export function TeamsPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const loadTeams = async () => {
+  const loadTeams = useCallback(async () => {
     try {
       const res = await api.get<{ data: AdminTeam[] }>("/teams");
       setTeams(res.data);
     } catch {
       setTeams([]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -75,7 +76,14 @@ export function TeamsPage() {
         setLoading(false);
       }
     })();
-  }, [isAdmin]);
+  }, [isAdmin, loadTeams]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const onTransfer = () => void loadTeams();
+    window.addEventListener("openconduit:conversation-transferred", onTransfer);
+    return () => window.removeEventListener("openconduit:conversation-transferred", onTransfer);
+  }, [isAdmin, loadTeams]);
 
   const roleLabel = (role: TeamMemberRole) => t(`teams.roles.${role}`);
 
@@ -331,6 +339,15 @@ export function TeamsPage() {
                         {t("teams.memberCount")}: {team._count.members} · {t("teams.conversations")}: {team._count.conversations}
                       </p>
                     </div>
+                    {(team.unseenTransferCount ?? 0) > 0 ? (
+                      <span
+                        className="shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold leading-none text-white shadow-sm"
+                        title={t("teams.unseenTransferBadge")}
+                        aria-label={`${t("teams.unseenTransferBadge")}: ${team.unseenTransferCount}`}
+                      >
+                        {(team.unseenTransferCount ?? 0) > 99 ? "99+" : team.unseenTransferCount}
+                      </span>
+                    ) : null}
                   </button>
                   {open ? (
                     <div className="border-t border-ink-100 space-y-4 bg-ink-50/50 px-4 py-3">

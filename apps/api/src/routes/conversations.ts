@@ -880,6 +880,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           type: "conversation.transferred",
           conversationId: conversation.id,
           teamId: conversation.teamId,
+          teamName: conversation.team?.name ?? null,
           previousTeamId: prevTeamId,
           assignedToId: conversation.assignedToId,
           previousAssignedToId: prevAssignedToId,

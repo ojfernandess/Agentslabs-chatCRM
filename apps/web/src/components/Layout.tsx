@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { NavLink, Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -52,6 +52,11 @@ export function Layout() {
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
+
+  const teamTransferTotalUnseen = useMemo(
+    () => sidebarTeams.reduce((sum, t) => sum + (t.unseenTransferCount ?? 0), 0),
+    [sidebarTeams],
+  );
 
   const conversationTeamId =
     location.pathname === "/conversations" ? new URLSearchParams(location.search).get("teamId") : null;
@@ -156,7 +161,16 @@ export function Layout() {
                   )}
                 >
                   <MessageSquare className="h-5 w-5 shrink-0" />
-                  {t("nav.conversations")}
+                  <span className="min-w-0 flex-1">{t("nav.conversations")}</span>
+                  {teamTransferTotalUnseen > 0 ? (
+                    <span
+                      className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
+                      title={t("nav.teamTransferUnreadBadge")}
+                      aria-label={`${t("nav.teamTransferUnreadBadge")}: ${teamTransferTotalUnseen}`}
+                    >
+                      {teamTransferTotalUnseen > 99 ? "99+" : teamTransferTotalUnseen}
+                    </span>
+                  ) : null}
                 </Link>
                 {sidebarTeams.length > 0 ? (
                   <div className="mb-1 mt-0.5 space-y-0.5">
@@ -178,7 +192,7 @@ export function Layout() {
                         <span className="min-w-0 flex-1 truncate">{team.name}</span>
                         {n > 0 ? (
                           <span
-                            className="shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-brand-500"
+                            className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
                             title={t("nav.teamTransferUnreadBadge")}
                             aria-label={`${t("nav.teamTransferUnreadBadge")}: ${n}`}
                           >

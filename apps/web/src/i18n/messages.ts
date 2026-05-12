@@ -32,8 +32,9 @@ export const messages = {
       actor: "Super admin",
     },
     workspace: {
-      transferTitle: "Conversa transferida",
-      transferToast: "A conversa foi atribuída ao time {name}.",
+      transferTitle: "Nova transferência",
+      transferToast: "O cliente {contact} foi transferido para o time «{team}».",
+      transferUnknownTeam: "time destino",
     },
     publicDocs: {
       title: "Documentação da API",
@@ -964,6 +965,7 @@ export const messages = {
         SUPERVISOR: "Supervisor",
         MEMBER: "Membro",
       },
+      unseenTransferBadge: "Transferências por ver neste time",
     },
     inboxesPage: {
       title: "Caixas de entrada",
@@ -2004,6 +2006,10 @@ export const messages = {
       resendConfigured: "Resend configurado. Os utilizadores podem recuperar a palavra-passe na página de login.",
       resendIncomplete: "Preencha a chave API e o e-mail remetente (domínio verificado na Resend).",
       resendDocLink: "Documentação Resend",
+      resendPasswordResetSubject: "Assunto (recuperação de senha)",
+      resendPasswordResetHtml: "Modelo HTML (recuperação de senha)",
+      resendPasswordResetPlaceholders:
+        "Variáveis: {{resetUrl}}, {{appName}} (nome do remetente), {{userName}}. Opcional: {{resetUrlText}} (mesmo URL, para texto).",
       publicApiDocsTitle: "Documentação pública da API",
       publicApiDocsSubtitle:
         "Quando ativa, qualquer visitante pode abrir /docs e ver a lista de rotas (sem segredos). O endpoint JSON público devolve 404 quando está desativada.",
@@ -2047,8 +2053,9 @@ export const messages = {
       actor: "Super admin",
     },
     workspace: {
-      transferTitle: "Conversation transferred",
-      transferToast: "The conversation was assigned to team {name}.",
+      transferTitle: "New transfer",
+      transferToast: "Customer {contact} was transferred to team «{team}».",
+      transferUnknownTeam: "destination team",
     },
     publicDocs: {
       title: "API documentation",
@@ -2971,6 +2978,7 @@ export const messages = {
         SUPERVISOR: "Supervisor",
         MEMBER: "Member",
       },
+      unseenTransferBadge: "Pending transfers for this team",
     },
     inboxesPage: {
       title: "Inboxes",
@@ -4008,6 +4016,10 @@ export const messages = {
       resendConfigured: "Resend is configured. Users can reset their password from the login page.",
       resendIncomplete: "Enter the API key and from email (verified domain on Resend).",
       resendDocLink: "Resend documentation",
+      resendPasswordResetSubject: "Subject (password recovery)",
+      resendPasswordResetHtml: "HTML template (password recovery)",
+      resendPasswordResetPlaceholders:
+        "Variables: {{resetUrl}}, {{appName}} (sender display name), {{userName}}. Optional: {{resetUrlText}} (same URL, for plain text).",
       publicApiDocsTitle: "Public API documentation",
       publicApiDocsSubtitle:
         "When enabled, anyone can open /docs and see the route catalog (no secrets). The public JSON endpoint returns 404 when disabled.",

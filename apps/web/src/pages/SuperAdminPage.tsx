@@ -186,6 +186,8 @@ interface SuperResendPayload {
   fromEmail: string;
   fromName: string;
   apiKeyMasked: string;
+  passwordResetSubject: string;
+  passwordResetHtmlTemplate: string;
 }
 
 type SuperSection =
@@ -278,11 +280,15 @@ export function SuperAdminPage() {
     fromEmail: "",
     fromName: "OpenNexo CRM",
     apiKeyMasked: "",
+    passwordResetSubject: "",
+    passwordResetHtmlTemplate: "",
   });
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFromEmail, setResendFromEmail] = useState("");
   const [resendFromName, setResendFromName] = useState("OpenNexo CRM");
   const [resendSaving, setResendSaving] = useState(false);
+  const [resendPasswordResetSubject, setResendPasswordResetSubject] = useState("");
+  const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -456,6 +462,8 @@ export function SuperAdminPage() {
         setResendSnapshot(d);
         setResendFromEmail(d.fromEmail);
         setResendFromName(d.fromName || "OpenNexo CRM");
+        setResendPasswordResetSubject(d.passwordResetSubject);
+        setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
         setResendApiKey("");
       })
       .catch(() => {
@@ -465,6 +473,8 @@ export function SuperAdminPage() {
             fromEmail: "",
             fromName: "OpenNexo CRM",
             apiKeyMasked: "",
+            passwordResetSubject: "",
+            passwordResetHtmlTemplate: "",
           });
           setResendFromEmail("");
           setResendFromName("OpenNexo CRM");
@@ -721,13 +731,23 @@ export function SuperAdminPage() {
     setResendSaving(true);
     setError("");
     try {
-      const body: { fromEmail: string; fromName: string; apiKey?: string } = {
+      const body: {
+        fromEmail: string;
+        fromName: string;
+        apiKey?: string;
+        passwordResetSubject: string;
+        passwordResetHtmlTemplate: string;
+      } = {
         fromEmail: resendFromEmail.trim(),
         fromName: (resendFromName.trim() || "OpenNexo CRM").slice(0, 120),
+        passwordResetSubject: resendPasswordResetSubject.trim(),
+        passwordResetHtmlTemplate: resendPasswordResetHtml,
       };
       if (resendApiKey.trim()) body.apiKey = resendApiKey.trim();
       const d = await api.put<SuperResendPayload>("/super/resend-email", body);
       setResendSnapshot(d);
+      setResendPasswordResetSubject(d.passwordResetSubject);
+      setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
       setResendApiKey("");
     } catch {
       setError("Não foi possível guardar as definições Resend.");
@@ -1076,6 +1096,26 @@ export function SuperAdminPage() {
                         }
                         className="input-field mt-2"
                         autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="border-t border-ink-100 pt-4 dark:border-ink-700">
+                      <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetSubject")}</h3>
+                      <p className="mb-2 text-xs text-ink-500">{t("superAdmin.resendPasswordResetPlaceholders")}</p>
+                      <input
+                        type="text"
+                        value={resendPasswordResetSubject}
+                        onChange={(e) => setResendPasswordResetSubject(e.target.value)}
+                        className="input-field mb-4 w-full"
+                        maxLength={200}
+                        autoComplete="off"
+                      />
+                      <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetHtml")}</h3>
+                      <textarea
+                        value={resendPasswordResetHtml}
+                        onChange={(e) => setResendPasswordResetHtml(e.target.value)}
+                        rows={14}
+                        spellCheck={false}
+                        className="input-field w-full font-mono text-xs"
                       />
                     </div>
                     <button type="submit" className="btn-primary" disabled={resendSaving}>

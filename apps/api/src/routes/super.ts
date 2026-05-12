@@ -25,6 +25,7 @@ import {
 } from "../lib/evolutionPlatform.js";
 import {
   RESEND_EMAIL_PLATFORM_KEY,
+  getPasswordResetTemplatesForEditor,
   parseResendEmailValue,
 } from "../lib/resendEmailSettings.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
@@ -83,6 +84,8 @@ const resendEmailPutSchema = z.object({
   apiKey: z.string().max(512).optional(),
   fromEmail: z.string().email(),
   fromName: z.string().min(1).max(120).optional(),
+  passwordResetSubject: z.string().max(200).optional(),
+  passwordResetHtmlTemplate: z.string().max(100_000).optional(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -629,6 +632,9 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         if (typeof v.apiKey === "string" && v.apiKey.length > 0) {
           v.apiKey = "••••••••";
         }
+        if (typeof v.passwordResetHtmlTemplate === "string" && v.passwordResetHtmlTemplate.length > 0) {
+          v.passwordResetHtmlTemplate = `[HTML ${v.passwordResetHtmlTemplate.length} chars — edit in Super admin → Resend]`;
+        }
         return { ...r, value: v };
       }
       return r;
@@ -822,6 +828,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const row = await prisma.platformSetting.findUnique({
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
     });
+    const tpl = getPasswordResetTemplatesForEditor(row?.value);
     const parsed = parseResendEmailValue(row?.value);
     if (!parsed) {
       return {
@@ -829,6 +836,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         fromEmail: "",
         fromName: "OpenNexo CRM",
         apiKeyMasked: "",
+        passwordResetSubject: tpl.subject,
+        passwordResetHtmlTemplate: tpl.html,
       };
     }
     return {
@@ -836,6 +845,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       fromEmail: parsed.fromEmail,
       fromName: parsed.fromName,
       apiKeyMasked: "••••••••",
+      passwordResetSubject: tpl.subject,
+      passwordResetHtmlTemplate: tpl.html,
     };
   });
 
@@ -859,10 +870,27 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const fromName = (parsed.data.fromName?.trim() || "OpenNexo CRM").slice(0, 120);
+    const existingVal =
+      existing?.value && typeof existing.value === "object" && existing.value !== null
+        ? (existing.value as Record<string, unknown>)
+        : {};
+    const passwordResetSubject =
+      parsed.data.passwordResetSubject !== undefined
+        ? parsed.data.passwordResetSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.passwordResetSubject === "string" ? existingVal.passwordResetSubject : null) ??
+          null;
+    const passwordResetHtmlTemplate =
+      parsed.data.passwordResetHtmlTemplate !== undefined
+        ? parsed.data.passwordResetHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.passwordResetHtmlTemplate === "string"
+            ? existingVal.passwordResetHtmlTemplate
+            : null) ?? null;
     const value = {
       apiKey,
       fromEmail: parsed.data.fromEmail.trim().toLowerCase(),
       fromName,
+      passwordResetSubject,
+      passwordResetHtmlTemplate,
     };
     await prisma.platformSetting.upsert({
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
@@ -877,11 +905,14 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       metadata: { fromEmail: value.fromEmail },
       ip: clientIp(request),
     });
+    const tpl = getPasswordResetTemplatesForEditor(value);
     return {
       configured: true,
       fromEmail: value.fromEmail,
       fromName: value.fromName,
       apiKeyMasked: "••••••••",
+      passwordResetSubject: tpl.subject,
+      passwordResetHtmlTemplate: tpl.html,
     };
   });
 }

@@ -1,39 +1,71 @@
 import { Resend } from "resend";
 import type { ResendEmailConfig } from "./resendEmailSettings.js";
+import { resolvePasswordResetTemplates } from "./resendEmailSettings.js";
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function sanitizeOneLine(s: string): string {
+  return s.replace(/\r?\n/g, " ").trim().slice(0, 300);
+}
+
+function fillPlaceholders(tpl: string, vars: { resetUrl: string; appName: string; userName: string }): string {
+  const safeUrl = escapeHtml(vars.resetUrl);
+  const safeApp = escapeHtml(vars.appName);
+  const safeUser = escapeHtml(vars.userName);
+  return tpl
+    .split("{{resetUrl}}")
+    .join(safeUrl)
+    .split("{{resetUrlText}}")
+    .join(safeUrl)
+    .split("{{appName}}")
+    .join(safeApp)
+    .split("{{userName}}")
+    .join(safeUser);
 }
 
 export async function sendPasswordResetEmail(
   cfg: ResendEmailConfig,
   toEmail: string,
   resetUrl: string,
+  userName: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const resend = new Resend(cfg.apiKey);
-  const href = escapeAttr(resetUrl);
-  const textUrl = escapeAttr(resetUrl);
-  const html = `
-<!DOCTYPE html>
-<html lang="pt">
-<head><meta charset="utf-8" /></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #1f2937;">
-  <p>Recebemos um pedido para redefinir a palavra-passe da sua conta no <strong>OpenNexo CRM</strong>.</p>
-  <p><a href="${href}" style="color: #6366f1;">Redefinir palavra-passe</a></p>
-  <p style="font-size: 12px; color: #6b7280;">Se não foi você, ignore este email. O link expira em breve.</p>
-  <p style="font-size: 12px; color: #9ca3af; word-break: break-all;">${textUrl}</p>
-</body>
-</html>`;
+  const { subjectTpl, htmlTpl } = resolvePasswordResetTemplates(cfg);
+  const vars = { resetUrl, appName: cfg.fromName, userName: userName.trim() || "—" };
+  const html = fillPlaceholders(htmlTpl, vars);
+  const subject = sanitizeOneLine(
+    subjectTpl
+      .split("{{resetUrl}}")
+      .join(resetUrl)
+      .split("{{resetUrlText}}")
+      .join(resetUrl)
+      .split("{{appName}}")
+      .join(cfg.fromName)
+      .split("{{userName}}")
+      .join(vars.userName),
+  );
 
   const { data, error } = await resend.emails.send({
     from: `${cfg.fromName} <${cfg.fromEmail}>`,
     to: [toEmail],
-    subject: "OpenNexo CRM — recuperação de palavra-passe",
+    subject,
     html,
   });
 
   if (error) {
-    return { ok: false, error: typeof error === "object" && error && "message" in error ? String((error as { message: unknown }).message) : "resend_error" };
+    return {
+      ok: false,
+      error:
+        typeof error === "object" && error && "message" in error
+          ? String((error as { message: unknown }).message)
+          : "resend_error",
+    };
   }
   if (!data?.id) {
     return { ok: false, error: "no_message_id" };

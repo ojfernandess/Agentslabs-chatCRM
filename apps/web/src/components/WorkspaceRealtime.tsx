@@ -57,12 +57,17 @@ export function WorkspaceRealtime() {
           type?: string;
           contact?: { name?: string };
           teamId?: string | null;
+          teamName?: string | null;
           conversationId?: string;
           awaitingHumanHandoff?: boolean;
         };
         if (data.type === "conversation.transferred") {
-          const name = data.contact?.name ?? "—";
-          pushToast(translate(locale, "workspace.transferToast").replace("{name}", name));
+          const contact = data.contact?.name ?? "—";
+          const team = (data.teamName ?? "").trim() || translate(locale, "workspace.transferUnknownTeam");
+          const msg = translate(locale, "workspace.transferToast")
+            .replace("{contact}", contact)
+            .replace("{team}", team);
+          pushToast(msg);
           playTransferChime();
           window.dispatchEvent(
             new CustomEvent("openconduit:conversation-transferred", { detail: data }),
@@ -98,9 +103,9 @@ export function WorkspaceRealtime() {
             initial={{ opacity: 0, x: 40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 40 }}
-            className="pointer-events-auto rounded-lg border border-brand-200 bg-white px-4 py-3 text-sm shadow-lg ring-2 ring-brand-500/20"
+            className="pointer-events-auto rounded-lg border border-red-200 bg-white px-4 py-3 text-sm shadow-lg ring-2 ring-red-500/20 dark:border-red-900/40 dark:bg-ink-900"
           >
-            <p className="font-medium text-ink-900">{t("workspace.transferTitle")}</p>
+            <p className="font-medium text-red-800 dark:text-red-200">{t("workspace.transferTitle")}</p>
             <p className="mt-1 text-ink-600">{x.text}</p>
           </motion.div>
         ))}
