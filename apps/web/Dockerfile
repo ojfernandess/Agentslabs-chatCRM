@@ -17,6 +17,8 @@ RUN npm run build -w packages/shared
 # Build frontend
 FROM build-shared AS build
 COPY apps/web/ apps/web/
+ARG VITE_PUBLIC_ASSETS_VERSION=
+ENV VITE_PUBLIC_ASSETS_VERSION=$VITE_PUBLIC_ASSETS_VERSION
 RUN npm run build -w apps/web
 
 # Serve with nginx

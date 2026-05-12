@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 
 const REMEMBER_EMAIL_KEY = "opennexo_login_email";
 
@@ -100,7 +101,7 @@ export function LoginPage() {
     <div className="relative flex min-h-screen flex-col lg:flex-row">
       <div
         className="relative min-h-[220px] flex-1 bg-ink-800 bg-cover bg-center lg:min-h-screen"
-        style={{ backgroundImage: "url(/bg-login.png)" }}
+        style={{ backgroundImage: `url(${brandAssetUrl("/bg-login.png")})` }}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-black/10 lg:bg-gradient-to-r" />
       </div>
@@ -114,7 +115,7 @@ export function LoginPage() {
         >
           <div className="mb-8 text-center">
             <motion.img
-              src="/logo.svg"
+              src={brandAssetUrl("/logo.svg")}
               alt="OpenNexo CRM"
               className="mx-auto mb-5 h-14 w-auto"
               initial={{ opacity: 0, scale: 0.92 }}

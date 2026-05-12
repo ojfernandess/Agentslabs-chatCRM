@@ -1,33 +1,7 @@
 import { Resend } from "resend";
+import { buildPasswordResetEmailContent } from "@openconduit/shared";
 import type { ResendEmailConfig } from "./resendEmailSettings.js";
 import { resolvePasswordResetTemplates } from "./resendEmailSettings.js";
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function sanitizeOneLine(s: string): string {
-  return s.replace(/\r?\n/g, " ").trim().slice(0, 300);
-}
-
-function fillPlaceholders(tpl: string, vars: { resetUrl: string; appName: string; userName: string }): string {
-  const safeUrl = escapeHtml(vars.resetUrl);
-  const safeApp = escapeHtml(vars.appName);
-  const safeUser = escapeHtml(vars.userName);
-  return tpl
-    .split("{{resetUrl}}")
-    .join(safeUrl)
-    .split("{{resetUrlText}}")
-    .join(safeUrl)
-    .split("{{appName}}")
-    .join(safeApp)
-    .split("{{userName}}")
-    .join(safeUser);
-}
 
 export async function sendPasswordResetEmail(
   cfg: ResendEmailConfig,
@@ -38,18 +12,7 @@ export async function sendPasswordResetEmail(
   const resend = new Resend(cfg.apiKey);
   const { subjectTpl, htmlTpl } = resolvePasswordResetTemplates(cfg);
   const vars = { resetUrl, appName: cfg.fromName, userName: userName.trim() || "—" };
-  const html = fillPlaceholders(htmlTpl, vars);
-  const subject = sanitizeOneLine(
-    subjectTpl
-      .split("{{resetUrl}}")
-      .join(resetUrl)
-      .split("{{resetUrlText}}")
-      .join(resetUrl)
-      .split("{{appName}}")
-      .join(cfg.fromName)
-      .split("{{userName}}")
-      .join(vars.userName),
-  );
+  const { subject, html } = buildPasswordResetEmailContent(subjectTpl, htmlTpl, vars);
 
   const { data, error } = await resend.emails.send({
     from: `${cfg.fromName} <${cfg.fromEmail}>`,

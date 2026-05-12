@@ -120,6 +120,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        VITE_PUBLIC_ASSETS_VERSION: ${VITE_PUBLIC_ASSETS_VERSION:-}
     restart: unless-stopped
     depends_on:
       api:

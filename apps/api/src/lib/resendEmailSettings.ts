@@ -1,4 +1,8 @@
 import { prisma } from "../db.js";
+import {
+  DEFAULT_PASSWORD_RESET_HTML,
+  DEFAULT_PASSWORD_RESET_SUBJECT,
+} from "@openconduit/shared";
 
 /** Chave em `platform_settings` — configurável no painel super admin. */
 export const RESEND_EMAIL_PLATFORM_KEY = "resend_email";
@@ -11,20 +15,7 @@ export type ResendEmailConfig = {
   passwordResetHtmlTemplate?: string | null;
 };
 
-export const DEFAULT_PASSWORD_RESET_SUBJECT = "OpenNexo CRM — recuperação de palavra-passe";
-
-/** Placeholders: {{resetUrl}}, {{appName}}, {{userName}} */
-export const DEFAULT_PASSWORD_RESET_HTML = `<!DOCTYPE html>
-<html lang="pt">
-<head><meta charset="utf-8" /></head>
-<body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #1f2937;">
-  <p>Olá {{userName}},</p>
-  <p>Recebemos um pedido para redefinir a palavra-passe da sua conta no <strong>{{appName}}</strong>.</p>
-  <p><a href="{{resetUrl}}" style="color: #6366f1;">Redefinir palavra-passe</a></p>
-  <p style="font-size: 12px; color: #6b7280;">Se não foi você, ignore este email. O link expira em breve.</p>
-  <p style="font-size: 12px; color: #9ca3af; word-break: break-all;">{{resetUrl}}</p>
-</body>
-</html>`;
+export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
 
 export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
   if (!raw || typeof raw !== "object" || raw === null) return null;

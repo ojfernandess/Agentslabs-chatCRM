@@ -2010,6 +2010,13 @@ export const messages = {
       resendPasswordResetHtml: "Modelo HTML (recuperação de senha)",
       resendPasswordResetPlaceholders:
         "Variáveis: {{resetUrl}}, {{appName}} (nome do remetente), {{userName}}. Opcional: {{resetUrlText}} (mesmo URL, para texto).",
+      resendTemplateTabEdit: "Editar",
+      resendTemplateTabPreview: "Pré-visualizar",
+      resendTemplateRestoreDefaults: "Restaurar textos padrão",
+      resendTemplatePreviewNote:
+        "Pré-visualização com URL e nome de exemplo; o email enviado usa os dados reais do destinatário.",
+      resendTemplateInsertLabel: "Inserir na posição do cursor:",
+      resendTemplatePreviewSubject: "Assunto",
       publicApiDocsTitle: "Documentação pública da API",
       publicApiDocsSubtitle:
         "Quando ativa, qualquer visitante pode abrir /docs e ver a lista de rotas (sem segredos). O endpoint JSON público devolve 404 quando está desativada.",
@@ -4020,6 +4027,13 @@ export const messages = {
       resendPasswordResetHtml: "HTML template (password recovery)",
       resendPasswordResetPlaceholders:
         "Variables: {{resetUrl}}, {{appName}} (sender display name), {{userName}}. Optional: {{resetUrlText}} (same URL, for plain text).",
+      resendTemplateTabEdit: "Edit",
+      resendTemplateTabPreview: "Preview",
+      resendTemplateRestoreDefaults: "Restore default copy",
+      resendTemplatePreviewNote:
+        "Preview uses sample URL and name; the sent email uses the recipient’s real details.",
+      resendTemplateInsertLabel: "Insert at cursor:",
+      resendTemplatePreviewSubject: "Subject",
       publicApiDocsTitle: "Public API documentation",
       publicApiDocsSubtitle:
         "When enabled, anyone can open /docs and see the route catalog (no secrets). The public JSON endpoint returns 404 when disabled.",

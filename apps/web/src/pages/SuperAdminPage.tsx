@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
+import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 
 interface OrgRow {
   id: string;
@@ -1098,26 +1099,13 @@ export function SuperAdminPage() {
                         autoComplete="new-password"
                       />
                     </div>
-                    <div className="border-t border-ink-100 pt-4 dark:border-ink-700">
-                      <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetSubject")}</h3>
-                      <p className="mb-2 text-xs text-ink-500">{t("superAdmin.resendPasswordResetPlaceholders")}</p>
-                      <input
-                        type="text"
-                        value={resendPasswordResetSubject}
-                        onChange={(e) => setResendPasswordResetSubject(e.target.value)}
-                        className="input-field mb-4 w-full"
-                        maxLength={200}
-                        autoComplete="off"
-                      />
-                      <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetHtml")}</h3>
-                      <textarea
-                        value={resendPasswordResetHtml}
-                        onChange={(e) => setResendPasswordResetHtml(e.target.value)}
-                        rows={14}
-                        spellCheck={false}
-                        className="input-field w-full font-mono text-xs"
-                      />
-                    </div>
+                    <ResendPasswordResetTemplateEditor
+                      fromName={resendFromName}
+                      subject={resendPasswordResetSubject}
+                      html={resendPasswordResetHtml}
+                      onSubjectChange={setResendPasswordResetSubject}
+                      onHtmlChange={setResendPasswordResetHtml}
+                    />
                     <button type="submit" className="btn-primary" disabled={resendSaving}>
                       {resendSaving ? t("common.saving") : t("superAdmin.resendSave")}
                     </button>

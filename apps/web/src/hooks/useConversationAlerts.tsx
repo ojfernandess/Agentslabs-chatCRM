@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -167,7 +168,8 @@ export function useConversationAlerts() {
 
       try {
         const icon =
-          notificationIconUrl(c.contact.profilePictureUrl ?? null) ?? `${window.location.origin}/logo.svg`;
+          notificationIconUrl(c.contact.profilePictureUrl ?? null) ??
+          `${window.location.origin}${brandAssetUrl("/logo.svg")}`;
         const n = new Notification(`${c.contact.name}`, {
           body: messagePreview(last),
           tag: key,

@@ -21,6 +21,7 @@ import {
   Inbox,
 } from "lucide-react";
 import clsx from "clsx";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
@@ -140,7 +141,7 @@ export function Layout() {
     <div className="flex h-screen">
       <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28]">
         <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
-          <img src="/logo.svg" alt="OpenNexo CRM" className="h-7" />
+          <img src={brandAssetUrl("/logo.svg")} alt="OpenNexo CRM" className="h-7" />
           <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
         </div>
 
