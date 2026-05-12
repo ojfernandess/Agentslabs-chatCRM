@@ -214,7 +214,8 @@ export const messages = {
       agentEscalationKeywordsPh: "ex.: humano, atendente, reclamação",
       agentEscalationConditions: "Condições / notas (texto livre ou JSON)",
       agentEscalationTransfer: "Mensagem ao pedir humano / transferir",
-      agentEscalationTransferPh: "Mensagem mostrada ao cliente ao escalar.",
+      agentEscalationTransferPh:
+        "Texto enviado por WhatsApp ao cliente quando o agente nativo pede humano ou transfere (call_human / equipa). Se ficar vazio, nada é enviado nessa altura.",
       agentEscalationTeam: "Equipa de destino ao escalar",
       agentEscalationTeamNone: "— sem equipa definida —",
       agentEscalationSuggestHelp:
@@ -2242,7 +2243,8 @@ export const messages = {
       agentEscalationKeywordsPh: "e.g. human, agent, complaint",
       agentEscalationConditions: "Conditions / notes (free text or JSON)",
       agentEscalationTransfer: "Message when escalating / transferring",
-      agentEscalationTransferPh: "Shown to the customer when asking for a human.",
+      agentEscalationTransferPh:
+        "WhatsApp text sent to the customer when the native agent hands off to a human (call_human / team transfer). If empty, nothing is sent at handoff.",
       agentEscalationTeam: "Destination team on escalation",
       agentEscalationTeamNone: "— no team selected —",
       agentEscalationSuggestHelp:

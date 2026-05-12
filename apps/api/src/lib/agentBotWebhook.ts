@@ -170,6 +170,16 @@ function botManagedByOpenConduit(config: unknown): boolean {
   return v === true;
 }
 
+/** Texto em `behaviorConfig.escalationRules.transferMessage` (Regras de escalonamento no painel). */
+function parseEscalationTransferMessage(behaviorConfig: unknown): string {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
+  const esc = (behaviorConfig as Record<string, unknown>).escalationRules;
+  if (!esc || typeof esc !== "object") return "";
+  const tm = (esc as Record<string, unknown>).transferMessage;
+  if (typeof tm !== "string") return "";
+  return tm.trim().slice(0, 4000);
+}
+
 async function upsertAutomationConversationContextForNative(params: {
   organizationId: string;
   conversationId: string;
@@ -265,6 +275,50 @@ async function dispatchAgentBotNativeFallback(input: {
       select: { awaitingHumanHandoff: true },
     });
     if (handoffAfter?.awaitingHumanHandoff) {
+      const profileEsc = await prisma.automationAgentProfile.findUnique({
+        where: { botId: bot.id },
+        select: { behaviorConfig: true },
+      });
+      const transferConfigured = parseEscalationTransferMessage(profileEsc?.behaviorConfig);
+      if (transferConfigured) {
+        try {
+          await deliverOutboundWhatsAppMessage({
+            organizationId,
+            data: {
+              contactId: contact.id,
+              conversationId: conversation.id,
+              type: "TEXT",
+              body: transferConfigured,
+            },
+            actor: { kind: "agent_bot", botId: bot.id },
+            log,
+            newConversation: { status: "PENDING", assignedToId: null },
+          });
+        } catch (err) {
+          log.warn({ err, botId: bot.id }, "Agent bot escalation transfer message send failed");
+          await exLog.completeError(err);
+          return;
+        }
+        exLog.info(
+          { id: "outbound", name: "Resposta" },
+          "Transferência para humano — mensagem das regras de escalonamento enviada ao cliente",
+          { output: { chars: transferConfigured.length, modelReplyChars: replyText.length } },
+        );
+        await prisma.automationInteraction
+          .create({
+            data: {
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              userMessage,
+              assistantMessage: transferConfigured,
+              responseType: "native_fallback",
+            },
+          })
+          .catch(() => {});
+        await exLog.completeSuccess();
+        return;
+      }
       exLog.info(
         { id: "outbound", name: "Resposta" },
         "Transferência para humano — resposta do modelo não enviada ao cliente",
