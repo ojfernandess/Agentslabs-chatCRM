@@ -30,6 +30,13 @@ if [ "$code" -ne 0 ]; then
       recovered=1
     fi
 
+    STUCK_REMINDERS_FIX=20260513193100_reminders_hub_fields_fix
+    if grep -q "$STUCK_REMINDERS_FIX" /tmp/prisma_migrate.out; then
+      echo "[docker-entrypoint] Recovering reminders hub fix migration record (rolled-back): $STUCK_REMINDERS_FIX"
+      npx prisma migrate resolve --rolled-back "$STUCK_REMINDERS_FIX" --schema="$SCHEMA"
+      recovered=1
+    fi
+
     if [ "$recovered" -eq 1 ]; then
       npx prisma migrate deploy --schema="$SCHEMA"
     else

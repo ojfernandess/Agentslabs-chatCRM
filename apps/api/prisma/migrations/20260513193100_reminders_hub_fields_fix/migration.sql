@@ -20,16 +20,16 @@ ALTER TABLE "reminders" ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP(3);
 
 -- Backfill
 UPDATE "reminders"
-SET "status" = CASE WHEN "completed" = TRUE THEN 'DONE' ELSE 'TODO' END
+SET "status" = CASE WHEN "completed" = TRUE THEN 'DONE'::"ReminderStatus" ELSE 'TODO'::"ReminderStatus" END
 WHERE "status" IS NULL;
 
 UPDATE "reminders"
 SET "priority" = CASE
-  WHEN "completed" = TRUE THEN 'LOW'
-  WHEN "due_at" < CURRENT_TIMESTAMP THEN 'URGENT'
-  WHEN "due_at" < (CURRENT_DATE + INTERVAL '1 day') THEN 'HIGH'
-  WHEN "due_at" < (CURRENT_DATE + INTERVAL '3 day') THEN 'MEDIUM'
-  ELSE 'LOW'
+  WHEN "completed" = TRUE THEN 'LOW'::"ReminderPriority"
+  WHEN "due_at" < CURRENT_TIMESTAMP THEN 'URGENT'::"ReminderPriority"
+  WHEN "due_at" < (CURRENT_DATE + INTERVAL '1 day') THEN 'HIGH'::"ReminderPriority"
+  WHEN "due_at" < (CURRENT_DATE + INTERVAL '3 day') THEN 'MEDIUM'::"ReminderPriority"
+  ELSE 'LOW'::"ReminderPriority"
 END
 WHERE "priority" IS NULL;
 
@@ -40,12 +40,11 @@ WHERE "updated_at" IS NULL;
 -- Enforce constraints/defaults
 ALTER TABLE "reminders" ALTER COLUMN "status" SET NOT NULL;
 ALTER TABLE "reminders" ALTER COLUMN "priority" SET NOT NULL;
-ALTER TABLE "reminders" ALTER COLUMN "status" SET DEFAULT 'TODO';
-ALTER TABLE "reminders" ALTER COLUMN "priority" SET DEFAULT 'MEDIUM';
+ALTER TABLE "reminders" ALTER COLUMN "status" SET DEFAULT 'TODO'::"ReminderStatus";
+ALTER TABLE "reminders" ALTER COLUMN "priority" SET DEFAULT 'MEDIUM'::"ReminderPriority";
 ALTER TABLE "reminders" ALTER COLUMN "updated_at" SET NOT NULL;
 ALTER TABLE "reminders" ALTER COLUMN "updated_at" SET DEFAULT CURRENT_TIMESTAMP;
 
 -- Indexes (idempotent)
 CREATE INDEX IF NOT EXISTS "reminders_organization_id_status_due_at_idx" ON "reminders"("organization_id", "status", "due_at");
 CREATE INDEX IF NOT EXISTS "reminders_organization_id_priority_due_at_idx" ON "reminders"("organization_id", "priority", "due_at");
-
