@@ -11,8 +11,9 @@ export function RemindersKanban(props: {
   onToggleComplete: (r: ReminderCardModel) => void;
   onAi: (r: ReminderCardModel) => void;
   onMoveStatus: (id: string, status: ReminderStatus) => void;
+  onDelete: (r: ReminderCardModel) => void;
 }) {
-  const { reminders, dateLocale, onOpen, onToggleComplete, onAi, onMoveStatus } = props;
+  const { reminders, dateLocale, onOpen, onToggleComplete, onAi, onMoveStatus, onDelete } = props;
   const lanes: Record<ReminderStatus, ReminderCardModel[]> = {
     TODO: [],
     DOING: [],
@@ -48,6 +49,7 @@ export function RemindersKanban(props: {
                   onOpen={() => onOpen(r)}
                   onToggleComplete={() => onToggleComplete(r)}
                   onAi={() => onAi(r)}
+                  onDelete={() => onDelete(r)}
                 />
               </div>
             ))}

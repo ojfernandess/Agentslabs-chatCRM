@@ -1,4 +1,5 @@
-import { Check, Clock, AlertCircle, Sparkles, MessageSquare, UserCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Check, Clock, AlertCircle, Sparkles, MessageSquare, UserCircle, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import { motion } from "@/components/Motion";
 import {
@@ -28,8 +29,9 @@ export function ReminderCard(props: {
   onOpen: () => void;
   onToggleComplete: () => void;
   onAi: () => void;
+  onDelete?: () => void;
 }) {
-  const { reminder, dateLocale, onOpen, onToggleComplete, onAi } = props;
+  const { reminder, dateLocale, onOpen, onToggleComplete, onAi, onDelete } = props;
   const due = new Date(reminder.dueAt);
   const overdue = !reminder.completed && Date.now() > due.getTime();
   const aiScore = computeAiScore(due, reminder.completed);
@@ -93,10 +95,20 @@ export function ReminderCard(props: {
             <div className="flex items-center gap-1">
               <button
                 type="button"
+                onClick={onToggleComplete}
+                className="btn-secondary min-h-11 px-3 py-2 text-xs"
+              >
+                <span className="inline-flex items-center gap-1">
+                  {reminder.completed ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                  {reminder.completed ? "Reabrir" : "Concluir"}
+                </span>
+              </button>
+              <button
+                type="button"
                 onClick={onOpen}
                 className="btn-secondary min-h-11 px-3 py-2 text-xs"
               >
-                Abrir
+                Editar
               </button>
               <button
                 type="button"
@@ -108,6 +120,17 @@ export function ReminderCard(props: {
                   IA
                 </span>
               </button>
+              {onDelete ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="btn-ghost min-h-11 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
+                  title="Excluir"
+                  aria-label="Excluir"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -122,10 +145,15 @@ export function ReminderCard(props: {
                   {aiScore}%
                 </span>
               </div>
-              <span className="inline-flex items-center gap-1 text-ink-500 dark:text-ink-400">
+              <Link
+                to={`/conversations?q=${encodeURIComponent(reminder.contact.phone || reminder.contact.name)}`}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-ink-500 hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+                title="Ir para conversas"
+                aria-label="Ir para conversas"
+              >
                 <MessageSquare className="h-3.5 w-3.5" />
                 WhatsApp
-              </span>
+              </Link>
             </div>
           </div>
         </div>

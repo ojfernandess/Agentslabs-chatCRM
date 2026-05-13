@@ -9,8 +9,9 @@ export function RemindersAgenda(props: {
   onOpen: (r: ReminderCardModel) => void;
   onToggleComplete: (r: ReminderCardModel) => void;
   onAi: (r: ReminderCardModel) => void;
+  onDelete: (r: ReminderCardModel) => void;
 }) {
-  const { reminders, dateLocale, onOpen, onToggleComplete, onAi } = props;
+  const { reminders, dateLocale, onOpen, onToggleComplete, onAi, onDelete } = props;
   const days = next7Days();
   const byDay = new Map<string, ReminderCardModel[]>();
   for (const r of reminders) {
@@ -45,6 +46,7 @@ export function RemindersAgenda(props: {
                     onOpen={() => onOpen(r)}
                     onToggleComplete={() => onToggleComplete(r)}
                     onAi={() => onAi(r)}
+                    onDelete={() => onDelete(r)}
                   />
                 ))}
               </div>

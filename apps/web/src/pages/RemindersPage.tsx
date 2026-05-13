@@ -415,9 +415,10 @@ export function RemindersPage() {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-ink-800"
+                  className="btn-ghost h-11 w-11"
+                  aria-label={t("reminders.cancel")}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
               {contactsBanner === "error" ? (
@@ -658,6 +659,7 @@ export function RemindersPage() {
                       onOpen={() => openDetail(r)}
                       onToggleComplete={() => void toggleComplete(r.id, r.completed)}
                       onAi={() => openPlannerFor(r.contact.id, r.note)}
+                      onDelete={() => void deleteReminder(r.id)}
                     />
                   ))}
               </div>
@@ -669,6 +671,7 @@ export function RemindersPage() {
                 onToggleComplete={(r) => void toggleComplete(r.id, r.completed)}
                 onAi={(r) => openPlannerFor(r.contact.id, r.note)}
                 onMoveStatus={(id, st) => void moveStatus(id, st)}
+                onDelete={(r) => void deleteReminder(r.id)}
               />
             ) : viewMode === "agenda" ? (
               <RemindersAgenda
@@ -677,6 +680,7 @@ export function RemindersPage() {
                 onOpen={(r) => openDetail(r)}
                 onToggleComplete={(r) => void toggleComplete(r.id, r.completed)}
                 onAi={(r) => openPlannerFor(r.contact.id, r.note)}
+                onDelete={(r) => void deleteReminder(r.id)}
               />
             ) : (
               <div className="space-y-4">
@@ -718,6 +722,7 @@ export function RemindersPage() {
                           onOpen={() => openDetail(r)}
                           onToggleComplete={() => void toggleComplete(r.id, r.completed)}
                           onAi={() => openPlannerFor(r.contact.id, r.note)}
+                          onDelete={() => void deleteReminder(r.id)}
                         />
                       ))}
                   </div>
