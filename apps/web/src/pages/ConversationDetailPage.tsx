@@ -2093,18 +2093,9 @@ export function ConversationDetailPage() {
               /* Agrupamento de mensagens: ~4px até a próxima do mesmo grupo; ~24px ao fim do bloco. */
               const rowSpacing = groupedNext ? "mb-1" : "mb-6";
               const bubbleRadius = clsx(
-                groupedPrev && groupedNext && "rounded-lg",
-                groupedPrev &&
-                  !groupedNext &&
-                  (inbound
-                    ? "rounded-bl-2xl rounded-br-2xl rounded-tl-md rounded-tr-2xl"
-                    : "rounded-bl-2xl rounded-br-2xl rounded-tl-2xl rounded-tr-md"),
-                !groupedPrev &&
-                  groupedNext &&
-                  (inbound
-                    ? "rounded-bl-md rounded-br-2xl rounded-tl-2xl rounded-tr-2xl"
-                    : "rounded-bl-2xl rounded-br-md rounded-tl-2xl rounded-tr-2xl"),
-                !groupedPrev && !groupedNext && "rounded-2xl",
+                "rounded-2xl",
+                inbound ? groupedPrev && "rounded-tl-md" : groupedPrev && "rounded-tr-md",
+                inbound ? groupedNext && "rounded-bl-md" : groupedNext && "rounded-br-md",
               );
 
               const avatarCol = (
@@ -2143,7 +2134,7 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "wa-bubble max-w-[min(calc(100%-2.5rem),28rem)] px-3 py-2.5 shadow-sm",
+                    "wa-bubble relative overflow-visible max-w-[min(calc(100%-2.5rem),28rem)] px-3 py-2.5 shadow-sm",
                     bubbleRadius,
                     msg.isPrivate
                       ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
