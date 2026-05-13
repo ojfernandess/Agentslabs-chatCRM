@@ -28,6 +28,7 @@ import { brandAssetUrl } from "@/lib/brandingAssets";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
+import { useReminderNotifications } from "@/hooks/useReminderNotifications";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -58,6 +59,8 @@ export function Layout() {
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
+
+  useReminderNotifications(!!user);
 
   const teamTransferTotalUnseen = useMemo(
     () => sidebarTeams.reduce((sum, t) => sum + (t.unseenTransferCount ?? 0), 0),

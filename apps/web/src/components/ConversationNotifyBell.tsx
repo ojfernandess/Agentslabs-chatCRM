@@ -24,7 +24,10 @@ const MIN_USEFUL_SPACE = 96;
  * Evita o clamp antigo (`min(top, vh - estHeight)`) que deslocava o painel para o fundo da viewport,
  * longe do ícone.
  */
-function computePanelPosition(anchor: DOMRect): { top: number; left: number; width: number; maxHeight: number } {
+function computePanelPosition(
+  anchor: DOMRect,
+  panelHeight?: number,
+): { top: number; left: number; width: number; maxHeight: number; placement: "above" | "below" } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(PANEL_W, vw - MARGIN * 2);
@@ -36,13 +39,17 @@ function computePanelPosition(anchor: DOMRect): { top: number; left: number; wid
 
   let top: number;
   let maxHeight: number;
+  let placement: "above" | "below";
 
   if (spaceBelow >= MIN_USEFUL_SPACE) {
     top = anchor.bottom + GAP;
     maxHeight = Math.min(PANEL_MAX, spaceBelow);
+    placement = "below";
   } else if (spaceAbove >= MIN_USEFUL_SPACE) {
     maxHeight = Math.min(PANEL_MAX, spaceAbove);
-    top = anchor.top - GAP - maxHeight;
+    placement = "above";
+    const effectiveH = panelHeight != null ? Math.min(panelHeight, maxHeight) : maxHeight;
+    top = anchor.top - GAP - effectiveH;
     if (top < MARGIN) {
       const shift = MARGIN - top;
       top = MARGIN;
@@ -51,15 +58,18 @@ function computePanelPosition(anchor: DOMRect): { top: number; left: number; wid
   } else {
     if (spaceAbove >= spaceBelow) {
       maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceAbove));
-      top = anchor.top - GAP - maxHeight;
+      placement = "above";
+      const effectiveH = panelHeight != null ? Math.min(panelHeight, maxHeight) : maxHeight;
+      top = anchor.top - GAP - effectiveH;
       top = Math.max(MARGIN, top);
     } else {
       top = anchor.bottom + GAP;
       maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceBelow));
+      placement = "below";
     }
   }
 
-  return { top, left, width, maxHeight };
+  return { top, left, width, maxHeight, placement };
 }
 
 export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }: ConversationNotifyBellProps) {
@@ -67,11 +77,21 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: PANEL_W, maxHeight: PANEL_MAX });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+    placement: "above" | "below";
+  }>({ top: 0, left: 0, width: PANEL_W, maxHeight: PANEL_MAX, placement: "below" });
 
   useLayoutEffect(() => {
-    if (!open || !anchorRef.current) return;
-    setPos(computePanelPosition(anchorRef.current.getBoundingClientRect()));
+    if (!open) return;
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const h = panelRef.current?.getBoundingClientRect().height;
+    setPos(computePanelPosition(anchor.getBoundingClientRect(), h));
   }, [open, alertPreviews.length]);
 
   useEffect(() => {
@@ -79,7 +99,8 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
     const on = () => {
       const el = anchorRef.current;
       if (!el) return;
-      setPos(computePanelPosition(el.getBoundingClientRect()));
+      const h = panelRef.current?.getBoundingClientRect().height;
+      setPos(computePanelPosition(el.getBoundingClientRect(), h));
     };
     window.addEventListener("resize", on);
     window.addEventListener("scroll", on, true);
@@ -105,6 +126,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
       id="openconduit-notify-panel"
       role="menu"
       style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
+      ref={panelRef}
       className={clsx(
         "fixed z-[1000] flex flex-col overflow-hidden rounded-xl border shadow-xl",
         "border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-800",

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { Bell, Plus, Search, CalendarDays, LayoutGrid, List, Sparkles, Filter, Workflow, X } from "lucide-react";
 import clsx from "clsx";
@@ -18,13 +18,22 @@ import { RemindersAgenda } from "@/components/reminders/RemindersAgenda";
 import { RemindersCalendar } from "@/components/reminders/RemindersCalendar";
 import { ReminderDetailDrawer, type ReminderDetailModel } from "@/components/reminders/ReminderDetailDrawer";
 import { AiPlannerDrawer } from "@/components/reminders/AiPlannerDrawer";
-import { computeAiScore, computePriority, isWithinDateRange } from "@/components/reminders/reminderUtils";
+import {
+  computeAiScore,
+  isWithinDateRange,
+  priorityFromLegacy,
+  statusFromLegacy,
+  type ReminderPriorityDb,
+  type ReminderStatus,
+} from "@/components/reminders/reminderUtils";
 
 interface Reminder {
   id: string;
   note: string;
   dueAt: string;
   completed: boolean;
+  status?: ReminderStatus;
+  priority?: ReminderPriorityDb;
   contact: { id: string; name: string; phone: string };
 }
 
@@ -73,6 +82,7 @@ function localDueToIso(dueDate: string, dueTime: string): string {
 
 export function RemindersPage() {
   const { t, dateLocale } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -89,8 +99,8 @@ export function RemindersPage() {
     }
   });
 
-  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("open");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high" | "urgent">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | ReminderStatus>("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | ReminderPriorityDb>("all");
   const [iaMinScore, setIaMinScore] = useState(0);
   const [rangeStart, setRangeStart] = useState<string>("");
   const [rangeEnd, setRangeEnd] = useState<string>("");
@@ -131,6 +141,8 @@ export function RemindersPage() {
       const params = new URLSearchParams();
       if (filter !== "all") params.set("filter", filter);
       if (search.trim()) params.set("search", search.trim());
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
       const qs = params.toString();
       const data = await api.get<Reminder[]>(`/reminders${qs ? `?${qs}` : ""}`);
       setReminders(Array.isArray(data) ? data : []);
@@ -147,7 +159,24 @@ export function RemindersPage() {
     if (!hasAnimated.current) hasAnimated.current = true;
     void fetchReminders(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- search changes use debounced effect below
-  }, [filter]);
+  }, [filter, statusFilter, priorityFilter]);
+
+  useEffect(() => {
+    const id = searchParams.get("open");
+    if (!id) return;
+    const r = reminders.find((x) => x.id === id);
+    if (!r) return;
+    openDetail(r);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("open");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, reminders]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -165,12 +194,10 @@ export function RemindersPage() {
     const q = search.trim().toLowerCase();
     return (r: Reminder): boolean => {
       const due = new Date(r.dueAt);
-      if (statusFilter === "open" && r.completed) return false;
-      if (statusFilter === "done" && !r.completed) return false;
-      if (priorityFilter !== "all") {
-        const p = computePriority(due, r.completed);
-        if (p !== priorityFilter) return false;
-      }
+      const st = statusFromLegacy(r.completed, r.status);
+      const pr = priorityFromLegacy(r.completed, due, r.priority);
+      if (statusFilter !== "all" && st !== statusFilter) return false;
+      if (priorityFilter !== "all" && pr !== priorityFilter) return false;
       if (iaMinScore > 0) {
         const s = computeAiScore(due, r.completed);
         if (s < iaMinScore) return false;
@@ -190,6 +217,8 @@ export function RemindersPage() {
       note: r.note,
       dueAt: r.dueAt,
       completed: r.completed,
+      status: r.status,
+      priority: r.priority,
       contact: r.contact,
     }));
   }, [reminders, applyFilters]);
@@ -282,7 +311,12 @@ export function RemindersPage() {
     }
   };
 
-  const saveReminder = async (id: string, patch: { note?: string; dueAt?: string }) => {
+  const moveStatus = async (id: string, status: ReminderStatus) => {
+    await api.put(`/reminders/${id}`, { status });
+    await fetchReminders(false);
+  };
+
+  const saveReminder = async (id: string, patch: { note?: string; dueAt?: string; status?: ReminderStatus; priority?: ReminderPriorityDb }) => {
     await api.put(`/reminders/${id}`, patch);
     await fetchReminders(false);
   };
@@ -536,8 +570,9 @@ export function RemindersPage() {
                     <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Status</label>
                     <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="input-field mt-2">
                       <option value="all">Todos</option>
-                      <option value="open">Abertos</option>
-                      <option value="done">Concluídos</option>
+                      <option value="TODO">A fazer</option>
+                      <option value="DOING">Em progresso</option>
+                      <option value="DONE">Concluído</option>
                     </select>
                   </div>
 
@@ -545,10 +580,10 @@ export function RemindersPage() {
                     <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Prioridade</label>
                     <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as any)} className="input-field mt-2">
                       <option value="all">Todas</option>
-                      <option value="low">Baixa</option>
-                      <option value="medium">Média</option>
-                      <option value="high">Alta</option>
-                      <option value="urgent">Urgente</option>
+                      <option value="LOW">Baixa</option>
+                      <option value="MEDIUM">Média</option>
+                      <option value="HIGH">Alta</option>
+                      <option value="URGENT">Urgente</option>
                     </select>
                   </div>
 
@@ -572,7 +607,7 @@ export function RemindersPage() {
                     type="button"
                     className="btn-ghost min-h-11 px-3 py-2 text-sm"
                     onClick={() => {
-                      setStatusFilter("open");
+                      setStatusFilter("all");
                       setPriorityFilter("all");
                       setIaMinScore(0);
                       setRangeStart("");
@@ -633,6 +668,7 @@ export function RemindersPage() {
                 onOpen={(r) => openDetail(r)}
                 onToggleComplete={(r) => void toggleComplete(r.id, r.completed)}
                 onAi={(r) => openPlannerFor(r.contact.id, r.note)}
+                onMoveStatus={(id, st) => void moveStatus(id, st)}
               />
             ) : viewMode === "agenda" ? (
               <RemindersAgenda
