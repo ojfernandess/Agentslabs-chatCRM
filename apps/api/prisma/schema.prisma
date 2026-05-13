@@ -702,6 +702,10 @@ model Reminder {
   dueAt     DateTime @map("due_at")
   completed Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  status   ReminderStatus   @default(TODO)
+  priority ReminderPriority @default(MEDIUM)
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -716,6 +720,19 @@ model Reminder {
   @@index([userId])
   @@index([dueAt])
   @@map("reminders")
+}
+
+enum ReminderStatus {
+  TODO
+  DOING
+  DONE
+}
+
+enum ReminderPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
 model MessageTemplate {
