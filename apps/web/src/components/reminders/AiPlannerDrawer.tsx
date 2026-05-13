@@ -17,6 +17,12 @@ export type PlannerSuggestion = {
   reasons: string[];
 };
 
+function priorityFromScore(score: number): "LOW" | "MEDIUM" | "HIGH" {
+  if (score >= 80) return "HIGH";
+  if (score >= 60) return "MEDIUM";
+  return "LOW";
+}
+
 export function AiPlannerDrawer(props: {
   open: boolean;
   initialContactId?: string;
@@ -82,6 +88,7 @@ export function AiPlannerDrawer(props: {
       const res = await api.post<{ suggestions: PlannerSuggestion[] }>("/reminders/planner", {
         contactId,
         goal: goal.trim(),
+        language: "pt",
       });
       setSuggestions(Array.isArray(res.suggestions) ? res.suggestions : localFallback);
     } catch (e) {
@@ -99,7 +106,13 @@ export function AiPlannerDrawer(props: {
     setError("");
     try {
       for (const s of suggestions) {
-        await api.post("/reminders", { contactId, note: s.note, dueAt: s.dueAt });
+        await api.post("/reminders", {
+          contactId,
+          note: s.note,
+          dueAt: s.dueAt,
+          status: "TODO",
+          priority: priorityFromScore(s.score),
+        });
       }
       onApplied();
       onClose();

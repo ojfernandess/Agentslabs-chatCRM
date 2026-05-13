@@ -3,13 +3,24 @@ import { Link } from "react-router-dom";
 import { X, Trash2, Check, Clock, Sparkles, MessageSquare } from "lucide-react";
 import clsx from "clsx";
 import type { Locale } from "date-fns";
-import { aiInsightLines, computeAiScore, computePriority, formatShortDue } from "./reminderUtils";
+import {
+  aiInsightLines,
+  computeAiScore,
+  formatShortDue,
+  priorityFromLegacy,
+  priorityLabelDb,
+  statusFromLegacy,
+  type ReminderPriorityDb,
+  type ReminderStatus,
+} from "./reminderUtils";
 
 export type ReminderDetailModel = {
   id: string;
   note: string;
   dueAt: string;
   completed: boolean;
+  status?: ReminderStatus;
+  priority?: ReminderPriorityDb;
   contact: { id: string; name: string; phone: string };
 };
 
@@ -20,7 +31,7 @@ export function ReminderDetailDrawer(props: {
   onClose: () => void;
   onToggleComplete: (id: string, completed: boolean) => void;
   onDelete: (id: string) => void;
-  onSave: (id: string, patch: { note?: string; dueAt?: string }) => Promise<void>;
+  onSave: (id: string, patch: { note?: string; dueAt?: string; status?: ReminderStatus; priority?: ReminderPriorityDb }) => Promise<void>;
   onOpenPlanner: (reminder: ReminderDetailModel) => void;
 }) {
   const { open, reminder, dateLocale, onClose, onToggleComplete, onDelete, onSave, onOpenPlanner } = props;
@@ -28,6 +39,8 @@ export function ReminderDetailDrawer(props: {
   const [draftNote, setDraftNote] = useState("");
   const [draftDate, setDraftDate] = useState("");
   const [draftTime, setDraftTime] = useState("");
+  const [draftStatus, setDraftStatus] = useState<ReminderStatus>("TODO");
+  const [draftPriority, setDraftPriority] = useState<ReminderPriorityDb>("MEDIUM");
 
   useEffect(() => {
     if (!open || !reminder) return;
@@ -40,13 +53,15 @@ export function ReminderDetailDrawer(props: {
     const mi = String(d.getMinutes()).padStart(2, "0");
     setDraftDate(`${yy}-${mm}-${dd}`);
     setDraftTime(`${hh}:${mi}`);
+    setDraftStatus(statusFromLegacy(reminder.completed, reminder.status));
+    setDraftPriority(priorityFromLegacy(reminder.completed, d, reminder.priority));
   }, [open, reminder]);
 
   const snapshot = useMemo(() => {
     if (!reminder) return null;
     const due = new Date(reminder.dueAt);
     const aiScore = computeAiScore(due, reminder.completed);
-    const priority = computePriority(due, reminder.completed);
+    const priority = priorityFromLegacy(reminder.completed, due, reminder.priority);
     const insights = aiInsightLines(due, reminder.completed, dateLocale);
     return { due, aiScore, priority, insights };
   }, [reminder, dateLocale]);
@@ -55,25 +70,20 @@ export function ReminderDetailDrawer(props: {
 
   if (!show) return null;
 
-  const priorityLabel =
-    snapshot.priority === "urgent"
-      ? "Urgente"
-      : snapshot.priority === "high"
-        ? "Alta"
-        : snapshot.priority === "medium"
-          ? "Média"
-          : "Baixa";
+  const priorityLabel = priorityLabelDb(snapshot.priority);
 
   const close = () => {
     setDraftNote("");
     setDraftDate("");
     setDraftTime("");
+    setDraftStatus("TODO");
+    setDraftPriority("MEDIUM");
     onClose();
   };
 
   const save = async () => {
     if (!reminder) return;
-    const patch: { note?: string; dueAt?: string } = {};
+    const patch: { note?: string; dueAt?: string; status?: ReminderStatus; priority?: ReminderPriorityDb } = {};
     const n = draftNote.trim();
     if (n && n !== reminder.note) patch.note = n;
     const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(draftDate.trim());
@@ -88,7 +98,17 @@ export function ReminderDetailDrawer(props: {
       const iso = local.toISOString();
       if (iso !== reminder.dueAt) patch.dueAt = iso;
     }
+    const stNow = statusFromLegacy(reminder.completed, reminder.status);
+    if (draftStatus !== stNow) patch.status = draftStatus;
+    const prNow = priorityFromLegacy(reminder.completed, new Date(reminder.dueAt), reminder.priority);
+    if (draftPriority !== prNow) patch.priority = draftPriority;
     if (!patch.note && !patch.dueAt) {
+      if (!patch.status && !patch.priority) {
+        close();
+        return;
+      }
+    }
+    if (!patch.note && !patch.dueAt && !patch.status && !patch.priority) {
       close();
       return;
     }
@@ -201,6 +221,25 @@ export function ReminderDetailDrawer(props: {
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <input type="date" value={draftDate} onChange={(e) => setDraftDate(e.target.value)} className="input-field" />
                     <input type="time" value={draftTime} onChange={(e) => setDraftTime(e.target.value)} className="input-field" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-semibold text-ink-900 dark:text-ink-50">Status</label>
+                    <select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value as ReminderStatus)} className="input-field mt-2">
+                      <option value="TODO">A fazer</option>
+                      <option value="DOING">Em progresso</option>
+                      <option value="DONE">Concluído</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-ink-900 dark:text-ink-50">Prioridade</label>
+                    <select value={draftPriority} onChange={(e) => setDraftPriority(e.target.value as ReminderPriorityDb)} className="input-field mt-2">
+                      <option value="LOW">Baixa</option>
+                      <option value="MEDIUM">Média</option>
+                      <option value="HIGH">Alta</option>
+                      <option value="URGENT">Urgente</option>
+                    </select>
                   </div>
                 </div>
               </div>

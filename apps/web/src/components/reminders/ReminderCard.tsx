@@ -1,7 +1,15 @@
 import { Check, Clock, AlertCircle, Sparkles, MessageSquare, UserCircle } from "lucide-react";
 import clsx from "clsx";
 import { motion } from "@/components/Motion";
-import { formatShortDue, computeAiScore, computePriority } from "./reminderUtils";
+import {
+  formatShortDue,
+  computeAiScore,
+  priorityFromLegacy,
+  priorityLabelDb,
+  statusFromLegacy,
+  type ReminderPriorityDb,
+  type ReminderStatus,
+} from "./reminderUtils";
 import type { Locale } from "date-fns";
 
 export type ReminderCardModel = {
@@ -9,6 +17,8 @@ export type ReminderCardModel = {
   note: string;
   dueAt: string;
   completed: boolean;
+  status?: ReminderStatus;
+  priority?: ReminderPriorityDb;
   contact: { id: string; name: string; phone: string };
 };
 
@@ -23,15 +33,10 @@ export function ReminderCard(props: {
   const due = new Date(reminder.dueAt);
   const overdue = !reminder.completed && Date.now() > due.getTime();
   const aiScore = computeAiScore(due, reminder.completed);
-  const priority = computePriority(due, reminder.completed);
-  const priorityLabel =
-    priority === "urgent"
-      ? "Urgente"
-      : priority === "high"
-        ? "Alta"
-        : priority === "medium"
-          ? "Média"
-          : "Baixa";
+  const status = statusFromLegacy(reminder.completed, reminder.status);
+  const priority = priorityFromLegacy(reminder.completed, due, reminder.priority);
+  const priorityLabel = priorityLabelDb(priority);
+  const statusLabel = status === "DONE" ? "Concluído" : status === "DOING" ? "Em progresso" : "A fazer";
 
   return (
     <div
@@ -78,6 +83,9 @@ export function ReminderCard(props: {
                 </span>
                 <span className={clsx("rounded-full px-2 py-0.5 font-semibold", overdue ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200" : "bg-ink-50 text-ink-700 dark:bg-ink-800 dark:text-ink-200")}>
                   {priorityLabel}
+                </span>
+                <span className={clsx("rounded-full px-2 py-0.5 font-semibold", status === "DONE" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : status === "DOING" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-ink-50 text-ink-700 dark:bg-ink-800 dark:text-ink-200")}>
+                  {statusLabel}
                 </span>
               </div>
             </div>

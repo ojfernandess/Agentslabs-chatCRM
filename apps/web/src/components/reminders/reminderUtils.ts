@@ -4,6 +4,30 @@ import type { Locale } from "date-fns";
 export type ReminderPriority = "low" | "medium" | "high" | "urgent";
 export type ReminderLane = "overdue" | "today" | "upcoming" | "done";
 
+export type ReminderStatus = "TODO" | "DOING" | "DONE";
+export type ReminderPriorityDb = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+
+export function statusFromLegacy(completed: boolean, status?: string | null): ReminderStatus {
+  if (status === "TODO" || status === "DOING" || status === "DONE") return status;
+  return completed ? "DONE" : "TODO";
+}
+
+export function priorityFromLegacy(completed: boolean, dueAt: Date, priority?: string | null): ReminderPriorityDb {
+  if (priority === "LOW" || priority === "MEDIUM" || priority === "HIGH" || priority === "URGENT") return priority;
+  if (completed) return "LOW";
+  if (isPast(dueAt) && !isToday(dueAt)) return "URGENT";
+  if (isToday(dueAt)) return "HIGH";
+  if (isTomorrow(dueAt)) return "MEDIUM";
+  return "LOW";
+}
+
+export function priorityLabelDb(p: ReminderPriorityDb): string {
+  if (p === "URGENT") return "Urgente";
+  if (p === "HIGH") return "Alta";
+  if (p === "MEDIUM") return "Média";
+  return "Baixa";
+}
+
 export function ymdLocal(d: Date): string {
   const yy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
