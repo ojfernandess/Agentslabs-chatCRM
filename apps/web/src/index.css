@@ -10,6 +10,8 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    @apply bg-ink-50;
+    @apply dark:bg-[#0e1624];
   }
 
   body {
@@ -24,6 +26,10 @@
       radial-gradient(900px 500px at 85% 10%, rgba(255, 122, 89, 0.10), transparent 60%),
       radial-gradient(1000px 700px at 50% 110%, rgba(59, 130, 246, 0.10), transparent 55%);
     background-attachment: fixed;
+  }
+
+  #root {
+    min-height: 100dvh;
   }
 
   img,

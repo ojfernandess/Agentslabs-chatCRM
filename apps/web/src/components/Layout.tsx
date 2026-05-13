@@ -32,6 +32,7 @@ import { useReminderNotifications } from "@/hooks/useReminderNotifications";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
+import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
 type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
 type SidebarInbox = { id: string; name: string };
@@ -152,6 +153,20 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate, location.pathname, location.search]);
 
+  useEffect(() => {
+    const on = () => {
+      void unlockAudioAlerts();
+      window.removeEventListener("pointerdown", on);
+      window.removeEventListener("keydown", on);
+    };
+    window.addEventListener("pointerdown", on);
+    window.addEventListener("keydown", on);
+    return () => {
+      window.removeEventListener("pointerdown", on);
+      window.removeEventListener("keydown", on);
+    };
+  }, []);
+
   const teamTransferTotalUnseen = useMemo(
     () => sidebarTeams.reduce((sum, t) => sum + (t.unseenTransferCount ?? 0), 0),
     [sidebarTeams],
@@ -253,7 +268,7 @@ export function Layout() {
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navItems
           .filter((item) => {
             if (item.to === "/crm") return showCrmKanban;
@@ -493,7 +508,7 @@ export function Layout() {
 
   return (
     <div className="flex h-[100dvh]">
-      <aside className="hidden w-64 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
         {sidebarContent}
       </aside>
 
@@ -505,7 +520,7 @@ export function Layout() {
             onClick={() => setMobileNavOpen(false)}
             aria-label={t("common.close")}
           />
-          <aside className="relative flex h-full w-80 max-w-[85vw] flex-col border-r border-ink-200 bg-white shadow-xl dark:border-white/10 dark:bg-ink-950">
+          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-white/10 dark:bg-ink-950">
             <div className="absolute right-2 top-2">
               <button
                 type="button"

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { User, Building2 } from "lucide-react";
+import { User, Building2, Volume2 } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,8 +14,16 @@ import {
   readSendShortcutPref,
   setSendShortcutPref,
   type SendShortcutPref,
+  type AudioAlertSoundPref,
+  readAudioAlertOnlyWhenHiddenPref,
+  readAudioAlertRepeatPref,
+  readAudioAlertSoundPref,
+  setAudioAlertOnlyWhenHiddenPref,
+  setAudioAlertRepeatPref,
+  setAudioAlertSoundPref,
 } from "@/lib/profilePrefs";
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
+import { playAudioAlert, unlockAudioAlerts } from "@/lib/audioAlerts";
 
 function initials(name: string): string {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -35,6 +43,9 @@ export function ProfilePage() {
   const [fontSize, setFontSize] = useState<FontSizePref>("default");
   const [theme, setTheme] = useState<ThemePref>("system");
   const [sendShortcut, setSendShortcut] = useState<SendShortcutPref>("enter");
+  const [audioSound, setAudioSound] = useState<AudioAlertSoundPref>("none");
+  const [audioOnlyWhenHidden, setAudioOnlyWhenHidden] = useState(true);
+  const [audioRepeat, setAudioRepeat] = useState(false);
 
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
@@ -57,6 +68,9 @@ export function ProfilePage() {
     setFontSize(readFontSizePref());
     setTheme(getThemePreference());
     setSendShortcut(readSendShortcutPref());
+    setAudioSound(readAudioAlertSoundPref());
+    setAudioOnlyWhenHidden(readAudioAlertOnlyWhenHiddenPref());
+    setAudioRepeat(readAudioAlertRepeatPref());
   }, [user]);
 
   const onSaveProfile = async (e: FormEvent) => {
@@ -269,6 +283,91 @@ export function ProfilePage() {
                   <option value="dark">{t("profileMenu.themeDark")}</option>
                   <option value="system">{t("profileMenu.themeSystem")}</option>
                 </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-ink-200 pt-6 dark:border-ink-600">
+            <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("profilePage.audioAlertsTitle")}</h2>
+            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("profilePage.audioAlertsSubtitle")}</p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+                  {t("profilePage.audioAlertsSoundLabel")}
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <select
+                    className="input-field dark:border-ink-600 dark:bg-ink-800"
+                    value={audioSound}
+                    onChange={(e) => {
+                      const v = e.target.value as AudioAlertSoundPref;
+                      setAudioSound(v);
+                      setAudioAlertSoundPref(v);
+                    }}
+                  >
+                    <option value="none">{t("profilePage.audioAlertsSoundNone")}</option>
+                    <option value="ding">{t("profilePage.audioAlertsSoundDing")}</option>
+                    <option value="bell">{t("profilePage.audioAlertsSoundBell")}</option>
+                    <option value="chime">{t("profilePage.audioAlertsSoundChime")}</option>
+                    <option value="magic">{t("profilePage.audioAlertsSoundMagic")}</option>
+                    <option value="ping">{t("profilePage.audioAlertsSoundPing")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className={clsx(
+                      "flex h-11 w-11 items-center justify-center rounded-lg border transition-colors",
+                      "border-ink-200 bg-white text-ink-700 hover:bg-ink-50",
+                      "dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10",
+                    )}
+                    aria-label={t("profilePage.audioAlertsTest")}
+                    title={t("profilePage.audioAlertsTest")}
+                    onClick={() => {
+                      void unlockAudioAlerts().then(() => playAudioAlert(audioSound, 0.9));
+                    }}
+                    disabled={audioSound === "none"}
+                  >
+                    <Volume2 className="h-5 w-5" />
+                  </button>
+                </div>
+                {audioSound === "none" ? (
+                  <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("profilePage.audioAlertsNoneHint")}</p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-ink-700 dark:text-ink-200">
+                  {t("profilePage.audioAlertsConditions")}
+                </div>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-800"
+                    checked={audioOnlyWhenHidden}
+                    onChange={(e) => {
+                      setAudioOnlyWhenHidden(e.target.checked);
+                      setAudioAlertOnlyWhenHiddenPref(e.target.checked);
+                    }}
+                  />
+                  <span className="text-sm text-ink-700 dark:text-ink-200">
+                    {t("profilePage.audioAlertsOnlyWhenHidden")}
+                  </span>
+                </label>
+
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-800"
+                    checked={audioRepeat}
+                    onChange={(e) => {
+                      setAudioRepeat(e.target.checked);
+                      setAudioAlertRepeatPref(e.target.checked);
+                    }}
+                  />
+                  <span className="text-sm text-ink-700 dark:text-ink-200">
+                    {t("profilePage.audioAlertsRepeat")}
+                  </span>
+                </label>
               </div>
             </div>
           </div>

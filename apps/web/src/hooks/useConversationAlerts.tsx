@@ -3,10 +3,17 @@ import { api } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  readAudioAlertOnlyWhenHiddenPref,
+  readAudioAlertRepeatPref,
+  readAudioAlertSoundPref,
+} from "@/lib/profilePrefs";
+import { playAudioAlert } from "@/lib/audioAlerts";
 
 const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
 const SHOWN_CAP = 400;
+const AUDIO_REPEAT_MS = 30_000;
 
 export interface ConversationNotificationPrefs {
   notifyConversationOpen: boolean;
@@ -109,6 +116,13 @@ export function useConversationAlerts() {
   const [alertPreviews, setAlertPreviews] = useState<ConversationAlertPreview[]>([]);
   const lastSinceRef = useRef<string>(new Date().toISOString());
   const shownKeysRef = useRef(new Set<string>());
+  const badgeCountRef = useRef(0);
+  const audioRepeatIdRef = useRef<number | null>(null);
+
+  const clearAudioRepeat = useCallback(() => {
+    if (audioRepeatIdRef.current != null) window.clearInterval(audioRepeatIdRef.current);
+    audioRepeatIdRef.current = null;
+  }, []);
 
   const poll = useCallback(async () => {
     if (!user || (isSuperAdminRole(user.role) && !user.actingOrganizationId)) return;
@@ -147,7 +161,9 @@ export function useConversationAlerts() {
 
     const clearedRaw = localStorage.getItem(BELL_CLEARED_KEY);
     const clearedAt = clearedRaw ? new Date(clearedRaw).getTime() : 0;
-    setBadgeCount(countBadge(full.data, prefs, clearedAt));
+    const nextBadge = countBadge(full.data, prefs, clearedAt);
+    badgeCountRef.current = nextBadge;
+    setBadgeCount(nextBadge);
     setAlertPreviews(buildAlertPreviews(full.data, prefs, clearedAt));
 
     for (const c of delta.data) {
@@ -161,6 +177,27 @@ export function useConversationAlerts() {
       if (shownKeysRef.current.size > SHOWN_CAP) {
         const arr = [...shownKeysRef.current];
         shownKeysRef.current = new Set(arr.slice(-200));
+      }
+
+      const sound = readAudioAlertSoundPref();
+      const onlyWhenHidden = readAudioAlertOnlyWhenHiddenPref();
+      const repeat = readAudioAlertRepeatPref();
+      const canPlayNow = !onlyWhenHidden || document.visibilityState !== "visible";
+      if (sound !== "none" && canPlayNow) {
+        void playAudioAlert(sound, 0.9);
+        if (repeat && audioRepeatIdRef.current == null) {
+          audioRepeatIdRef.current = window.setInterval(() => {
+            const s = readAudioAlertSoundPref();
+            const ow = readAudioAlertOnlyWhenHiddenPref();
+            const ok = !ow || document.visibilityState !== "visible";
+            if (!ok || s === "none") return;
+            if (badgeCountRef.current <= 0) {
+              clearAudioRepeat();
+              return;
+            }
+            void playAudioAlert(s, 0.9);
+          }, AUDIO_REPEAT_MS);
+        }
       }
 
       if (typeof Notification === "undefined") continue;
@@ -184,7 +221,7 @@ export function useConversationAlerts() {
         // ignore
       }
     }
-  }, [user]);
+  }, [user, clearAudioRepeat]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -193,11 +230,21 @@ export function useConversationAlerts() {
     return () => window.clearInterval(id);
   }, [authLoading, user, poll]);
 
+  useEffect(() => {
+    const on = () => {
+      if (document.visibilityState === "visible") clearAudioRepeat();
+    };
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, [clearAudioRepeat]);
+
   const clearBadge = useCallback(() => {
     localStorage.setItem(BELL_CLEARED_KEY, new Date().toISOString());
+    badgeCountRef.current = 0;
     setBadgeCount(0);
     setAlertPreviews([]);
-  }, []);
+    clearAudioRepeat();
+  }, [clearAudioRepeat]);
 
   const requestDesktopPermission = useCallback(async () => {
     if (typeof Notification === "undefined") return false;
