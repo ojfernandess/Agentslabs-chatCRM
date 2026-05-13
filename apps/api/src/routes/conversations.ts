@@ -448,6 +448,19 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ error: "Unauthorized", message: "Authentication required", statusCode: 401 });
     }
 
+    const aiEnabledRow = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { assistantAiEnabled: true },
+    });
+    if (aiEnabledRow?.assistantAiEnabled === false) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "AI features disabled",
+        statusCode: 403,
+        code: "ai_disabled",
+      });
+    }
+
     const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
     if (!creds) {
       return reply.status(503).send({
@@ -566,6 +579,19 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const user = (request as { user?: { id: string; role: string } }).user;
     if (!user) {
       return reply.status(401).send({ error: "Unauthorized", message: "Authentication required", statusCode: 401 });
+    }
+
+    const aiEnabledRow = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { assistantAiEnabled: true },
+    });
+    if (aiEnabledRow?.assistantAiEnabled === false) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "AI features disabled",
+        statusCode: 403,
+        code: "ai_disabled",
+      });
     }
 
     const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);

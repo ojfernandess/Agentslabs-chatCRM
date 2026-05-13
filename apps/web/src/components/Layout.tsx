@@ -59,8 +59,76 @@ export function Layout() {
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
+  const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
 
   useReminderNotifications(!!user);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) return;
+    void api
+      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .then((res) => {
+        if (!cancelled) setPilotFlags(res);
+      })
+      .catch(() => {
+        if (!cancelled) setPilotFlags({ assistantAiEnabled: true, aiPilotAccessEnabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
+      if (typing) return;
+
+      if (!e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "c") {
+        e.preventDefault();
+        navigate("/conversations");
+        return;
+      }
+      if (k === "v") {
+        e.preventDefault();
+        navigate("/contacts");
+        return;
+      }
+      if (k === "r") {
+        e.preventDefault();
+        navigate("/reports");
+        return;
+      }
+      if (k === "s") {
+        e.preventDefault();
+        navigate("/settings");
+        return;
+      }
+      if (k === "o") {
+        e.preventDefault();
+        setMobileNavOpen((v) => !v);
+        return;
+      }
+      if (k === "n") {
+        if (!location.pathname.startsWith("/conversations")) return;
+        e.preventDefault();
+        const params = new URLSearchParams(location.search);
+        const cur = params.get("status") || "";
+        const cycle = ["OPEN", "PENDING", "RESOLVED", ""];
+        const idx = Math.max(0, cycle.indexOf(cur));
+        const next = cycle[(idx + 1) % cycle.length] || "";
+        if (next) params.set("status", next);
+        else params.delete("status");
+        navigate(`/conversations?${params.toString()}`);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate, location.pathname, location.search]);
 
   const teamTransferTotalUnseen = useMemo(
     () => sidebarTeams.reduce((sum, t) => sum + (t.unseenTransferCount ?? 0), 0),
@@ -330,20 +398,6 @@ export function Layout() {
               {t("nav.bots")}
             </NavLink>
             <NavLink
-              to="/automation"
-              className={({ isActive }) =>
-                clsx(
-                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "nav-link-active"
-                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                )
-              }
-            >
-              <Sparkles className="h-5 w-5" />
-              {t("nav.automation")}
-            </NavLink>
-            <NavLink
               to="/broadcasts"
               className={({ isActive }) =>
                 clsx(
@@ -358,6 +412,23 @@ export function Layout() {
               {t("nav.broadcast")}
             </NavLink>
           </>
+        ) : null}
+
+        {tenantAdmin || pilotFlags?.aiPilotAccessEnabled ? (
+          <NavLink
+            to="/automation"
+            className={({ isActive }) =>
+              clsx(
+                "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "nav-link-active"
+                  : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+              )
+            }
+          >
+            <Sparkles className="h-5 w-5" />
+            {t("nav.automation")}
+          </NavLink>
         ) : null}
       </nav>
 

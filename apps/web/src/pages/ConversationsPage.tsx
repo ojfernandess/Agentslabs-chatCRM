@@ -142,6 +142,13 @@ export function ConversationsPage() {
       if (mineActive) params.set("mine", "1");
       const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
       setConversations(res.data);
+      try {
+        localStorage.setItem(
+          "openconduit_conversation_list_ids",
+          JSON.stringify(res.data.map((c) => c.id)),
+        );
+      } catch {
+      }
     } catch {
       /* failed */
     } finally {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Keyboard,
@@ -68,6 +68,36 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
       document.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
+      if (typing) return;
+
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "/") {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const Keycap = ({ children }: { children: ReactNode }) => (
+    <kbd className="rounded-md border border-ink-700/70 bg-ink-800/70 px-2 py-1 text-[11px] font-semibold text-ink-100 shadow-sm">
+      {children}
+    </kbd>
+  );
+
+  const ShortcutRow = ({ label, keys }: { label: string; keys: ReactNode }) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-ink-200">{label}</span>
+      <span className="flex items-center gap-1.5">{keys}</span>
+    </div>
+  );
 
   useEffect(() => {
     if (!autoOffline) return;
@@ -284,34 +314,161 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               className={clsx(
-                "relative w-full max-w-sm rounded-lg border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-600 dark:bg-ink-800",
+                "relative w-full max-w-4xl rounded-xl border border-ink-800 bg-ink-900 p-6 shadow-xl",
               )}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">
-                  {t("profileMenu.shortcutsTitle")}
-                </h2>
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="text-base font-semibold text-ink-50">{t("profileMenu.shortcutsTitle")}</h2>
                 <button
                   type="button"
-                  className="rounded p-1 text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-700"
+                  className="rounded-md p-1 text-ink-300 hover:bg-ink-800"
                   onClick={() => setShortcutsOpen(false)}
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <ul className="space-y-2 text-sm text-ink-600 dark:text-ink-300">
-                <li className="flex justify-between gap-2">
-                  <span>{t("profileMenu.shortcutCloseModal")}</span>
-                  <kbd className="rounded border border-ink-200 bg-ink-50 px-2 py-0.5 text-xs font-mono dark:border-ink-600 dark:bg-ink-900">
-                    Esc
-                  </kbd>
-                </li>
-                <li className="flex justify-between gap-2">
-                  <span>{t("profileMenu.shortcutNavigate")}</span>
-                  <span className="text-xs text-ink-500">{t("profileMenu.shortcutNavigateHint")}</span>
-                </li>
-              </ul>
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-3">
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutToggleModal")}
+                    keys={
+                      <>
+                        <Keycap>Win / ⌘</Keycap>
+                        <Keycap>/</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutOpenConversation")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>J</Keycap>
+                        <span className="px-1 text-xs text-ink-400">/</span>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>K</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutDropdownNav")}
+                    keys={
+                      <>
+                        <Keycap>Up</Keycap>
+                        <Keycap>Down</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutGoConversations")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>C</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutGoContacts")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>V</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutGoReports")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>R</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutGoSettings")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>S</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutReply")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>L</Keycap>
+                      </>
+                    }
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutResolveNext")}
+                    keys={
+                      <>
+                        <Keycap>Win / ⌘</Keycap>
+                        <Keycap>E</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutResolve")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>E</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutAddAttachment")}
+                    keys={
+                      <>
+                        <Keycap>Win / ⌘</Keycap>
+                        <Keycap>A</Keycap>
+                        <span className="px-1 text-xs text-ink-400">ou</span>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>A</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutToggleSidebar")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>O</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutNextConversationTab")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>N</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutPrivateNote")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>P</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow label={t("profileMenu.shortcutCloseModal")} keys={<Keycap>Esc</Keycap>} />
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         ) : null}

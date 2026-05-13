@@ -91,6 +91,8 @@ const settingsSchema = z.object({
   silentTransferToAgentBot: z.boolean().optional(),
   assistantOpenaiApiKey: z.union([z.string().max(500), z.null()]).optional(),
   assistantOpenaiApiBaseUrl: z.union([z.string().url().max(512), z.literal(""), z.null()]).optional(),
+  assistantAiEnabled: z.boolean().optional(),
+  aiPilotAccessEnabled: z.boolean().optional(),
   aiAlertWebhookUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
   aiAlertWebhookSecret: z.union([z.string().max(500), z.null()]).optional(),
 });
@@ -102,6 +104,8 @@ function maskSettings<
     assistantOpenaiApiKey?: string | null;
     assistantOpenaiApiBaseUrl?: string | null;
     aiAlertWebhookSecret?: string | null;
+    assistantAiEnabled?: boolean;
+    aiPilotAccessEnabled?: boolean;
   },
 >(settings: T, organizationId: string) {
   return {
@@ -182,6 +186,21 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       agentBotTriageActive,
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
       evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+    };
+  });
+
+  app.get("/pilot", { preHandler: [authenticate] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    let settings = await prisma.settings.findUnique({ where: { organizationId } });
+    if (!settings) {
+      settings = await prisma.settings.create({ data: { organizationId } });
+    }
+
+    return {
+      assistantAiEnabled: settings.assistantAiEnabled,
+      aiPilotAccessEnabled: settings.aiPilotAccessEnabled,
     };
   });
 

@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import {
   Send,
@@ -187,6 +187,7 @@ function messageGroupedWithNext(messages: Message[], index: number): boolean {
 
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
@@ -243,6 +244,7 @@ export function ConversationDetailPage() {
   const [tagFormError, setTagFormError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resolveNextIdRef = useRef<string | null>(null);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
 
@@ -257,6 +259,97 @@ export function ConversationDetailPage() {
   useEffect(() => {
     stickToBottomRef.current = true;
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    try {
+      localStorage.setItem("openconduit_conversation_last_opened_id", id);
+    } catch {
+    }
+  }, [id]);
+
+  const nextConversationId = useCallback(
+    (direction: "next" | "prev") => {
+      if (!id) return null;
+      try {
+        const raw = localStorage.getItem("openconduit_conversation_list_ids");
+        if (!raw) return null;
+        const list = JSON.parse(raw) as unknown;
+        if (!Array.isArray(list)) return null;
+        const ids = list.filter((x): x is string => typeof x === "string");
+        const idx = ids.indexOf(id);
+        if (idx < 0) return null;
+        const nextIdx = direction === "next" ? idx + 1 : idx - 1;
+        return ids[nextIdx] ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [id],
+  );
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!id) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
+
+      const k = e.key.toLowerCase();
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (e.altKey && k === "l") {
+        e.preventDefault();
+        setPrivateNote(false);
+        return;
+      }
+      if (e.altKey && k === "p") {
+        e.preventDefault();
+        setPrivateNote(true);
+        return;
+      }
+
+      if (e.altKey && k === "a") {
+        e.preventDefault();
+        if (!typing) fileInputRef.current?.click();
+        return;
+      }
+      if (mod && k === "a") {
+        e.preventDefault();
+        if (!typing) fileInputRef.current?.click();
+        return;
+      }
+
+      if (e.altKey && k === "e") {
+        e.preventDefault();
+        resolveNextIdRef.current = null;
+        setResolveOpen(true);
+        return;
+      }
+      if (mod && k === "e") {
+        e.preventDefault();
+        resolveNextIdRef.current = nextConversationId("next");
+        setResolveOpen(true);
+        return;
+      }
+
+      if (e.altKey && k === "j") {
+        const nextId = nextConversationId("next");
+        if (!nextId) return;
+        e.preventDefault();
+        navigate(`/conversations/${nextId}`);
+        return;
+      }
+      if (e.altKey && k === "k") {
+        const prevId = nextConversationId("prev");
+        if (!prevId) return;
+        e.preventDefault();
+        navigate(`/conversations/${prevId}`);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [id, navigate, nextConversationId]);
 
   const onMessagesViewportScroll = useCallback(() => {
     const el = messagesViewportRef.current;
@@ -739,6 +832,11 @@ export function ConversationDetailPage() {
       setClosureReason("");
       setClosureAmount("");
       setLeadTypeId("");
+      if (status === "RESOLVED" && resolveNextIdRef.current) {
+        const nextId = resolveNextIdRef.current;
+        resolveNextIdRef.current = null;
+        navigate(`/conversations/${nextId}`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (status === "RESOLVED") {

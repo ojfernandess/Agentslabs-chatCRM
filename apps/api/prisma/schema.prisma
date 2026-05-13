@@ -881,6 +881,11 @@ model Settings {
   /// Base URL API compatível com OpenAI (ex. Azure). Se null, usa `OPENAI_API_BASE_URL` do servidor.
   assistantOpenaiApiBaseUrl String? @map("assistant_openai_api_base_url") @db.VarChar(512)
 
+  /// Ativar/desativar IA & Insights e sugestão de resposta (painel humano).
+  assistantAiEnabled Boolean @default(true) @map("assistant_ai_enabled")
+  /// Permitir acesso (piloto) à Base de conhecimento IA e ferramentas.
+  aiPilotAccessEnabled Boolean @default(false) @map("ai_pilot_access_enabled")
+
   /// Ao passar a conversa para a fila do bot (PENDING), não voltar a disparar o webhook com a última mensagem do cliente.
   silentTransferToAgentBot Boolean @default(false) @map("silent_transfer_to_agent_bot")
 

@@ -624,6 +624,7 @@ export function AutomationPage() {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const [pilotAccessEnabled, setPilotAccessEnabled] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -647,6 +648,32 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
+
+  const canAccess = tenantAdmin || pilotAccessEnabled;
+  const pilotView = pilotAccessEnabled && !tenantAdmin;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) return;
+    void api
+      .get<{ aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .then((res) => {
+        if (!cancelled) setPilotAccessEnabled(!!res.aiPilotAccessEnabled);
+      })
+      .catch(() => {
+        if (!cancelled) setPilotAccessEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!pilotView) return;
+    if (tab !== "knowledge" && tab !== "tools") {
+      setTab("knowledge");
+    }
+  }, [pilotView, tab]);
   const [orgTeamsForAgent, setOrgTeamsForAgent] = useState<Array<{ id: string; name: string }>>([]);
 
   const [ctxRows, setCtxRows] = useState<
@@ -732,41 +759,50 @@ export function AutomationPage() {
   }, []);
 
   const refreshTab = useCallback(async () => {
-    if (!tenantAdmin) return;
+    if (!canAccess) return;
     setLoading(true);
     setError("");
     try {
-      if (tab === "overview") await loadDashboard();
-      if (tab === "knowledge") {
-        await loadKnowledge();
-        await loadBots();
+      if (!pilotView) {
+        if (tab === "overview") await loadDashboard();
+        if (tab === "knowledge") {
+          await loadKnowledge();
+          await loadBots();
+        }
+        if (tab === "agents") {
+          await loadBots();
+          await loadAgentProfiles();
+          await loadPrompts();
+          await loadTools();
+          await loadKnowledge();
+        }
+        if (tab === "tools") {
+          await loadTools();
+          await loadToolPresets();
+          await loadBots();
+        }
+        if (tab === "prompts") {
+          await loadPrompts();
+          await loadTools();
+        }
+        if (tab === "interactions") await loadInteractions();
+        if (tab === "executions") await loadBots();
+        if (tab === "context") await loadContextRows();
+      } else {
+        if (tab === "knowledge") await loadKnowledge();
+        if (tab === "tools") {
+          await loadTools();
+          await loadToolPresets();
+        }
       }
-      if (tab === "agents") {
-        await loadBots();
-        await loadAgentProfiles();
-        await loadPrompts();
-        await loadTools();
-        await loadKnowledge();
-      }
-      if (tab === "tools") {
-        await loadTools();
-        await loadToolPresets();
-        await loadBots();
-      }
-      if (tab === "prompts") {
-        await loadPrompts();
-        await loadTools();
-      }
-      if (tab === "interactions") await loadInteractions();
-      if (tab === "executions") await loadBots();
-      if (tab === "context") await loadContextRows();
     } catch {
       setError("load_failed");
     } finally {
       setLoading(false);
     }
   }, [
-    tenantAdmin,
+    canAccess,
+    pilotView,
     tab,
     loadDashboard,
     loadKnowledge,
@@ -784,7 +820,7 @@ export function AutomationPage() {
     void refreshTab();
   }, [refreshTab]);
 
-  if (!tenantAdmin) {
+  if (!canAccess) {
     return (
       <PageTransition>
       <div className="p-4 sm:p-6 lg:p-8">
@@ -994,16 +1030,21 @@ export function AutomationPage() {
   const presetInstalled = (presetKey: string) =>
     tools.some((x) => (x.config as Record<string, unknown> | undefined)?.presetKey === presetKey);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "overview", label: t("automationPage.tabOverview") },
-    { id: "knowledge", label: t("automationPage.tabKnowledge") },
-    { id: "agents", label: t("automationPage.tabAgents") },
-    { id: "tools", label: t("automationPage.tabTools") },
-    { id: "prompts", label: t("automationPage.tabPrompts") },
-    { id: "interactions", label: t("automationPage.tabInteractions") },
-    { id: "executions", label: t("automationPage.tabExecutions") },
-    { id: "context", label: t("automationPage.tabContext") },
-  ];
+  const tabs: { id: Tab; label: string }[] = pilotView
+    ? [
+        { id: "knowledge", label: t("automationPage.tabKnowledge") },
+        { id: "tools", label: t("automationPage.tabTools") },
+      ]
+    : [
+        { id: "overview", label: t("automationPage.tabOverview") },
+        { id: "knowledge", label: t("automationPage.tabKnowledge") },
+        { id: "agents", label: t("automationPage.tabAgents") },
+        { id: "tools", label: t("automationPage.tabTools") },
+        { id: "prompts", label: t("automationPage.tabPrompts") },
+        { id: "interactions", label: t("automationPage.tabInteractions") },
+        { id: "executions", label: t("automationPage.tabExecutions") },
+        { id: "context", label: t("automationPage.tabContext") },
+      ];
 
   return (
     <PageTransition>
@@ -1099,15 +1140,40 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "knowledge" ? (
-          <AutomationKnowledgeHub
-            t={t}
-            loading={loading}
-            setLoading={setLoading}
-            setError={setError}
-            bots={bots}
-            articles={articles}
-            onRefresh={loadKnowledge}
-          />
+          pilotView ? (
+            <div className="card-surface p-6">
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("automationPage.pilotReadOnlyBanner")}
+              </div>
+              {articles.length === 0 ? (
+                <p className="text-sm text-ink-600 dark:text-ink-400">{t("automationPage.pilotKnowledgeEmpty")}</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {articles.map((a) => (
+                    <div key={a.id} className="rounded-lg border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                      <div className="text-sm font-semibold text-ink-900 dark:text-ink-50">{a.title}</div>
+                      <div className="mt-1 text-xs text-ink-500">{a.category || "—"}</div>
+                      <div className="mt-2 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
+                        <span>{a.isActive ? t("automationPage.kbActive") : t("automationPage.kbHubChipInactive")}</span>
+                        <span className="text-ink-400">•</span>
+                        <span>{a.syncToAi ? t("automationPage.kbSyncAi") : t("automationPage.kbHubChipNoSyncAi")}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <AutomationKnowledgeHub
+              t={t}
+              loading={loading}
+              setLoading={setLoading}
+              setError={setError}
+              bots={bots}
+              articles={articles}
+              onRefresh={loadKnowledge}
+            />
+          )
         ) : null}
 
         {tab === "agents" ? (
@@ -1174,21 +1240,42 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "tools" ? (
-          <AutomationToolsHub
-            t={t}
-            loading={loading}
-            tools={tools}
-            toolPresets={toolPresets}
-            installToolPreset={(k) => installToolPreset(k)}
-            presetInstalled={presetInstalled}
-            deleteCustomToolRow={(id) => deleteCustomToolRow(id)}
-            saveToolConfigPatch={(id, p) => saveToolConfigPatch(id, p)}
-            patchTool={(id, p) => patchAutomationTool(id, p)}
-            editingToolId={editingToolId}
-            setEditingToolId={setEditingToolId}
-            CredentialEditor={ToolCredentialEditor}
-            onToolsUpdated={loadTools}
-          />
+          pilotView ? (
+            <div className="card-surface p-6">
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+                {t("automationPage.pilotReadOnlyBanner")}
+              </div>
+              {tools.length === 0 ? (
+                <p className="text-sm text-ink-600 dark:text-ink-400">{t("automationPage.pilotToolsEmpty")}</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {tools.map((tool) => (
+                    <div key={tool.id} className="rounded-lg border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+                      <div className="text-sm font-semibold text-ink-900 dark:text-ink-50">{tool.name}</div>
+                      <div className="mt-1 text-xs text-ink-500">{tool.toolType}</div>
+                      <div className="mt-2 text-xs text-ink-600 dark:text-ink-300">{tool.description || ""}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <AutomationToolsHub
+              t={t}
+              loading={loading}
+              tools={tools}
+              toolPresets={toolPresets}
+              installToolPreset={(k) => installToolPreset(k)}
+              presetInstalled={presetInstalled}
+              deleteCustomToolRow={(id) => deleteCustomToolRow(id)}
+              saveToolConfigPatch={(id, p) => saveToolConfigPatch(id, p)}
+              patchTool={(id, p) => patchAutomationTool(id, p)}
+              editingToolId={editingToolId}
+              setEditingToolId={setEditingToolId}
+              CredentialEditor={ToolCredentialEditor}
+              onToolsUpdated={loadTools}
+            />
+          )
         ) : null}
 
         {tab === "interactions" ? (

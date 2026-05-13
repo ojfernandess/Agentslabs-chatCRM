@@ -37,6 +37,20 @@ function isTenantAdminLike(user: { role: string; actingOrganizationId?: string |
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
 }
 
+async function aiPilotAccessEnabled(organizationId: string): Promise<boolean> {
+  const row = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { aiPilotAccessEnabled: true },
+  });
+  return row?.aiPilotAccessEnabled ?? false;
+}
+
+async function canPilotAutomation(user: { role: string; actingOrganizationId?: string | null }, organizationId: string): Promise<boolean> {
+  if (isTenantAdminLike(user)) return true;
+  if (user.role !== "AGENT") return false;
+  return aiPilotAccessEnabled(organizationId);
+}
+
 function asJson(v: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 }
@@ -410,7 +424,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/knowledge-articles", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
 
@@ -598,7 +612,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/knowledge-sources", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
     const rows = await prisma.automationKnowledgeSource.findMany({
@@ -933,7 +947,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/knowledge-articles/hub-metrics", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
 
@@ -1289,7 +1303,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/prompt-modules", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
     const data = await prisma.automationPromptModule.findMany({
@@ -1484,7 +1498,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/tool-presets", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
     return {
@@ -1503,7 +1517,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   app.get("/custom-tools", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    if (!isTenantAdminLike(request.user)) {
+    if (!(await canPilotAutomation(request.user, organizationId))) {
       return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
     }
     const data = await prisma.automationCustomTool.findMany({

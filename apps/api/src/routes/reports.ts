@@ -530,6 +530,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     const handoffEvents = handoffEventsRows[0]?.n ?? 0;
     const handoffsToHuman = handoffsToHumanRows[0]?.n ?? 0;
 
+    const botTelemetryEnabled =
+      agentBotRow != null ||
+      messagesOutboundBot > 0 ||
+      conversationsWithBotReplies > 0 ||
+      handoffEvents > 0 ||
+      pendingBotQueueCount > 0;
+
     return {
       meta: {
         from: from.toISOString(),
@@ -541,9 +548,9 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
           firstResponsePairsInBusinessHours: firstResponseBizN,
         },
         agentBot: {
-          enabled: agentBotRow != null,
+          enabled: botTelemetryEnabled,
           botId: agentBotRow?.id ?? null,
-          name: agentBotRow?.name ?? null,
+          name: agentBotRow?.name ?? (botTelemetryEnabled ? "Bot nativo" : null),
         },
       },
       summary: {
@@ -602,6 +609,19 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.post("/ai-health", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    const aiEnabledRow = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { assistantAiEnabled: true },
+    });
+    if (aiEnabledRow?.assistantAiEnabled === false) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "AI features disabled",
+        statusCode: 403,
+        code: "ai_disabled",
+      });
+    }
 
     const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
     if (!creds) {

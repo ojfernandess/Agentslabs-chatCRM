@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { PageTransition, motion } from "@/components/Motion";
+import { useAuth } from "@/hooks/useAuth";
+import { isTenantAdmin } from "@/lib/authRole";
 import {
   Brain,
   Loader2,
@@ -30,6 +32,8 @@ type InsightPayload = {
 
 export function AiInsightsPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<ConversationListRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -37,6 +41,51 @@ export function AiInsightsPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [insights, setInsights] = useState<InsightPayload | null>(null);
+  const [assistantAiEnabled, setAssistantAiEnabled] = useState(true);
+  const [aiPilotAccessEnabled, setAiPilotAccessEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) return;
+    void api
+      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .then((res) => {
+        if (!cancelled) setAssistantAiEnabled(res.assistantAiEnabled);
+        if (!cancelled) setAiPilotAccessEnabled(res.aiPilotAccessEnabled);
+      })
+      .catch(() => {
+        if (!cancelled) setAssistantAiEnabled(true);
+        if (!cancelled) setAiPilotAccessEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const toggleAi = useCallback(async () => {
+    if (!tenantAdmin) return;
+    const next = !assistantAiEnabled;
+    try {
+      await api.put("/settings", { assistantAiEnabled: next });
+      setAssistantAiEnabled(next);
+      setError("");
+      setInsights(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+    }
+  }, [assistantAiEnabled, tenantAdmin, t]);
+
+  const togglePilot = useCallback(async () => {
+    if (!tenantAdmin) return;
+    const next = !aiPilotAccessEnabled;
+    try {
+      await api.put("/settings", { aiPilotAccessEnabled: next });
+      setAiPilotAccessEnabled(next);
+      setError("");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+    }
+  }, [aiPilotAccessEnabled, tenantAdmin, t]);
 
   useEffect(() => {
     const c = searchParams.get("conversation");
@@ -71,6 +120,7 @@ export function AiInsightsPage() {
 
   const runAnalyze = useCallback(async () => {
     if (!selectedId.trim()) return;
+    if (!assistantAiEnabled) return;
     setAnalyzing(true);
     setError("");
     setInsights(null);
@@ -78,11 +128,16 @@ export function AiInsightsPage() {
       const res = await api.post<{ insights: InsightPayload }>(`/conversations/${selectedId.trim()}/insights`, {});
       setInsights(res.insights);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+      if (e instanceof ApiError && (e as unknown as { code?: string }).code === "ai_disabled") {
+        setAssistantAiEnabled(false);
+        setError(t("aiInsightsPage.aiDisabled"));
+      } else {
+        setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+      }
     } finally {
       setAnalyzing(false);
     }
-  }, [selectedId, t]);
+  }, [selectedId, t, assistantAiEnabled]);
 
   const sentimentClass = (s: string) => {
     switch (s) {
@@ -104,11 +159,32 @@ export function AiInsightsPage() {
             <Brain className="h-3.5 w-3.5" />
             {t("aiInsightsPage.badge")}
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("aiInsightsPage.title")}</h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("aiInsightsPage.title")}</h1>
+            {tenantAdmin ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleAi()}
+                  className={assistantAiEnabled ? "btn-secondary" : "btn-primary"}
+                >
+                  {assistantAiEnabled ? t("aiInsightsPage.disableAi") : t("aiInsightsPage.enableAi")}
+                </button>
+                <button type="button" onClick={() => void togglePilot()} className={aiPilotAccessEnabled ? "btn-secondary" : "btn-ghost"}>
+                  {aiPilotAccessEnabled ? t("aiInsightsPage.pilotOn") : t("aiInsightsPage.pilotOff")}
+                </button>
+              </div>
+            ) : null}
+          </div>
           <p className="max-w-2xl text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("aiInsightsPage.subtitle")}</p>
         </header>
 
         <section className="card-surface space-y-4 p-6">
+          {!assistantAiEnabled ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+              {t("aiInsightsPage.aiDisabled")}
+            </div>
+          ) : null}
           <h2 className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
             <MessageSquare className="h-4 w-4 text-brand-500" />
             {t("aiInsightsPage.analyzeSectionTitle")}
