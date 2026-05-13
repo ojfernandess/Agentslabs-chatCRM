@@ -16,10 +16,12 @@ import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js"
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { markConversationReadForUser } from "../lib/teamTransferUnread.js";
+import { clientIp, recordAuditLog } from "../lib/audit.js";
+import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
   analyzeConversationForInsights,
   buildPublicConversationTranscript,
-  openAiKeyForAssistFeatures,
+  getAssistOpenAiCredentialsForOrganization,
   suggestAgentReplyText,
 } from "../lib/agentAssistLlm.js";
 
@@ -420,15 +422,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     currentDraft: z.string().max(16_000).optional(),
   });
 
-  /** Sugestão de resposta ao cliente (OpenAI no servidor — `OPENAI_API_KEY` / `OPENAI_PROMPT_PREVIEW_KEY`). */
-  app.post<{ Params: { id: string } }>("/:id/suggest-reply", async (request, reply) => {
+  /** Sugestão de resposta (chave OpenAI da organização em Configurações, ou chave global do servidor). */
+  app.post<{ Params: { id: string } }>(
+    "/:id/suggest-reply",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          keyGenerator: (request) => {
+            // Limite por utilizador dentro da organização
+            return `${request.user.id}-${request.user.actingOrganizationId || request.user.organizationId}`;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!openAiKeyForAssistFeatures()) {
+    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
+    if (!creds) {
       return reply.status(503).send({
         error: "Service Unavailable",
-        message: "OpenAI API key is not configured on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+        message:
+          "No OpenAI API key available: configure it for this organization in Settings, or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY on the server.",
         code: "missing_openai_key",
         statusCode: 503,
       });
@@ -445,7 +463,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         id: true,
         teamId: true,
         inboxId: true,
-        contact: { select: { name: true } },
+        contact: {
+          select: {
+            name: true,
+            pipelineStage: { select: { name: true } },
+            tags: { select: { tag: { select: { name: true } } } },
+            dealsPrimary: {
+              where: { status: "OPEN" },
+              select: { name: true, amountCents: true, status: true, currency: true },
+              take: 5,
+            },
+          },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           select: { direction: true, body: true, isPrivate: true },
@@ -463,12 +492,36 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const transcript = buildPublicConversationTranscript(existing.messages);
+    const lang = (request.headers["accept-language"]?.split(",")[0]?.split("-")[0] || "pt") as string;
     try {
-      const suggestion = await suggestAgentReplyText({
-        contactName: existing.contact.name ?? "",
-        transcript,
-        currentDraft: parsedBody.data.currentDraft,
+      const suggestion = await suggestAgentReplyText(
+        {
+          contactName: existing.contact.name ?? "",
+          transcript,
+          currentDraft: parsedBody.data.currentDraft,
+          language: lang,
+          crmContext: {
+            tags: existing.contact.tags.map((t) => t.tag.name),
+            pipelineStage: existing.contact.pipelineStage?.name,
+            recentDeals: existing.contact.dealsPrimary,
+          },
+        },
+        creds,
+      );
+
+      void recordAuditLog({
+        actorUserId: request.user.id,
+        organizationId,
+        action: "ai.suggest_reply",
+        resourceType: "CONVERSATION",
+        resourceId: existing.id,
+        ip: clientIp(request),
+        metadata: {
+          contactName: existing.contact.name,
+          hasDraft: !!parsedBody.data.currentDraft,
+        },
       });
+
       return { suggestion };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -482,15 +535,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  /** Análise IA da conversa (resumo, intenção, sentimento, sugestões) — mesma chave OpenAI do servidor. */
-  app.post<{ Params: { id: string } }>("/:id/insights", async (request, reply) => {
+  /** Análise IA da conversa — chave da organização ou do servidor. */
+  app.post<{ Params: { id: string } }>(
+    "/:id/insights",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+          keyGenerator: (request) => {
+            // Limite por utilizador dentro da organização
+            return `${request.user.id}-${request.user.actingOrganizationId || request.user.organizationId}`;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!openAiKeyForAssistFeatures()) {
+    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
+    if (!creds) {
       return reply.status(503).send({
         error: "Service Unavailable",
-        message: "OpenAI API key is not configured on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+        message:
+          "No OpenAI API key available: configure it for this organization in Settings, or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY on the server.",
         code: "missing_openai_key",
         statusCode: 503,
       });
@@ -502,7 +571,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         id: true,
         teamId: true,
         inboxId: true,
-        contact: { select: { name: true } },
+        contact: {
+          select: {
+            name: true,
+            pipelineStage: { select: { name: true } },
+            tags: { select: { tag: { select: { name: true } } } },
+            dealsPrimary: {
+              where: { status: "OPEN" },
+              select: { name: true, amountCents: true, status: true, currency: true },
+              take: 5,
+            },
+          },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           select: { direction: true, body: true, isPrivate: true },
@@ -520,11 +600,37 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const transcript = buildPublicConversationTranscript(existing.messages);
+    const lang = (request.headers["accept-language"]?.split(",")[0]?.split("-")[0] || "pt") as string;
     try {
-      const insights = await analyzeConversationForInsights({
-        contactName: existing.contact.name ?? "",
-        transcript,
+      const insights = await analyzeConversationForInsights(
+        {
+          contactName: existing.contact.name ?? "",
+          transcript,
+          language: lang,
+          crmContext: {
+            tags: existing.contact.tags.map((t) => t.tag.name),
+            pipelineStage: existing.contact.pipelineStage?.name,
+            recentDeals: existing.contact.dealsPrimary,
+          },
+        },
+        creds,
+      );
+
+      void recordAuditLog({
+        actorUserId: request.user.id,
+        organizationId,
+        action: "ai.analyze_insights",
+        resourceType: "CONVERSATION",
+        resourceId: existing.id,
+        ip: clientIp(request),
+        metadata: {
+          contactName: existing.contact.name,
+        },
       });
+
+      // Disparar webhook de alerta se houver riscos ou sentimento negativo
+      void dispatchAiAlertWebhook(organizationId, existing.id, insights);
+
       return { insights };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

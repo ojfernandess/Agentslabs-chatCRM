@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
+import { encrypt } from "../lib/encryption.js";
 import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -88,16 +89,27 @@ const settingsSchema = z.object({
   resolveRequireLeadType: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
   silentTransferToAgentBot: z.boolean().optional(),
+  assistantOpenaiApiKey: z.union([z.string().max(500), z.null()]).optional(),
+  assistantOpenaiApiBaseUrl: z.union([z.string().url().max(512), z.literal(""), z.null()]).optional(),
+  aiAlertWebhookUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
+  aiAlertWebhookSecret: z.union([z.string().max(500), z.null()]).optional(),
 });
 
-function maskSettings<T extends { whatsappApiKey: string | null; whatsappWebhookSecret: string | null }>(
-  settings: T,
-  organizationId: string,
-) {
+function maskSettings<
+  T extends {
+    whatsappApiKey: string | null;
+    whatsappWebhookSecret: string | null;
+    assistantOpenaiApiKey?: string | null;
+    assistantOpenaiApiBaseUrl?: string | null;
+    aiAlertWebhookSecret?: string | null;
+  },
+>(settings: T, organizationId: string) {
   return {
     ...settings,
     whatsappApiKey: settings.whatsappApiKey ? "••••••••" : null,
     whatsappWebhookSecret: settings.whatsappWebhookSecret ? "••••••••" : null,
+    assistantOpenaiApiKey: settings.assistantOpenaiApiKey ? "••••••••" : null,
+    aiAlertWebhookSecret: settings.aiAlertWebhookSecret ? "••••••••" : null,
     webhookUrl: webhookUrlForOrganization(organizationId),
   };
 }
@@ -208,6 +220,53 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.autoResolveCustomerMessage === "") data.autoResolveCustomerMessage = null;
       if (data.autoResolveTagId === "") data.autoResolveTagId = null;
       if (data.autoResolveLeadTypeId === "") data.autoResolveLeadTypeId = null;
+      if (data.assistantOpenaiApiBaseUrl === "") data.assistantOpenaiApiBaseUrl = null;
+
+      if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {
+        const t = data.whatsappApiKey.trim();
+        if (t && t !== "••••••••" && t !== "***") {
+          data.whatsappApiKey = encrypt(t);
+        } else {
+          delete data.whatsappApiKey;
+        }
+      }
+
+      if (data.whatsappWebhookSecret !== undefined && typeof data.whatsappWebhookSecret === "string") {
+        const t = data.whatsappWebhookSecret.trim();
+        if (t && t !== "••••••••" && t !== "***") {
+          data.whatsappWebhookSecret = encrypt(t);
+        } else {
+          delete data.whatsappWebhookSecret;
+        }
+      }
+
+      if (data.assistantOpenaiApiKey !== undefined) {
+        const raw = data.assistantOpenaiApiKey;
+        if (raw === null) {
+          /* explicit clear */
+        } else if (typeof raw === "string") {
+          const t = raw.trim();
+          if (!t || t === "••••••••" || t === "***") {
+            delete data.assistantOpenaiApiKey;
+          } else {
+            data.assistantOpenaiApiKey = encrypt(t.slice(0, 500));
+          }
+        }
+      }
+
+      if (data.aiAlertWebhookSecret !== undefined) {
+        const raw = data.aiAlertWebhookSecret;
+        if (raw === null) {
+          /* clear */
+        } else if (typeof raw === "string") {
+          const t = raw.trim();
+          if (!t || t === "••••••••" || t === "***") {
+            delete data.aiAlertWebhookSecret;
+          } else {
+            data.aiAlertWebhookSecret = encrypt(t.slice(0, 500));
+          }
+        }
+      }
 
       const mergedAutoEnabled =
         (data.autoResolveConversationsEnabled as boolean | undefined) ??

@@ -16,6 +16,7 @@ import {
   Star,
   FileText,
   GitBranch,
+  Sparkles,
 } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -28,7 +29,15 @@ import {
 } from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
 
-type SettingsSection = "channel" | "notifications" | "csat" | "workflow" | "crm" | "templates" | "team";
+type SettingsSection =
+  | "channel"
+  | "notifications"
+  | "csat"
+  | "workflow"
+  | "assistant"
+  | "crm"
+  | "templates"
+  | "team";
 
 interface AppSettings {
   whatsappProvider: string | null;
@@ -55,6 +64,8 @@ interface AppSettings {
   autoResolveLeadTypeId?: string | null;
   resolveRequireClosureReason?: boolean;
   resolveRequireLeadType?: boolean;
+  assistantOpenaiApiKey?: string | null;
+  assistantOpenaiApiBaseUrl?: string | null;
 }
 
 interface AgentBotOption {
@@ -195,6 +206,10 @@ export function SettingsPage() {
   const [wfRequireClosure, setWfRequireClosure] = useState(true);
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
   const [workflowError, setWorkflowError] = useState("");
+
+  const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
+  const [assistantOpenaiBaseUrl, setAssistantOpenaiBaseUrl] = useState("");
+  const [assistantSaveError, setAssistantSaveError] = useState("");
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
   const [embeddedBusy, setEmbeddedBusy] = useState(false);
@@ -405,6 +420,9 @@ export function SettingsPage() {
         setWfRequireClosure(data.resolveRequireClosureReason ?? true);
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWorkflowError("");
+        setAssistantOpenaiKey("");
+        setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
+        setAssistantSaveError("");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setTeamUsers(users);
@@ -609,6 +627,44 @@ export function SettingsPage() {
     }
   };
 
+  const handleSaveAssistant = async (e: FormEvent) => {
+    e.preventDefault();
+    setAssistantSaveError("");
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        assistantOpenaiApiBaseUrl: assistantOpenaiBaseUrl.trim() || null,
+      };
+      if (assistantOpenaiKey.trim()) {
+        body.assistantOpenaiApiKey = assistantOpenaiKey.trim();
+      }
+      const data = await api.put<AppSettings>("/settings", body);
+      setSettings(data);
+      setAssistantOpenaiKey("");
+      setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
+    } catch (err) {
+      setAssistantSaveError(err instanceof Error ? err.message : t("settings.assistantSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveOrgAssistantKey = async () => {
+    if (!window.confirm(t("settings.assistantRemoveKeyConfirm"))) return;
+    setAssistantSaveError("");
+    setSaving(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", { assistantOpenaiApiKey: null });
+      setSettings(data);
+      setAssistantOpenaiKey("");
+      setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
+    } catch (err) {
+      setAssistantSaveError(err instanceof Error ? err.message : t("settings.assistantSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveNotifications = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -721,6 +777,8 @@ export function SettingsPage() {
     }
   };
 
+  const assistantKeyMasked = settings?.assistantOpenaiApiKey === "••••••••";
+
   if (!isAdmin) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -757,6 +815,7 @@ export function SettingsPage() {
                   ["notifications", t("settings.sectionNotifications"), Bell],
                   ["csat", t("settings.sectionCsat"), Star],
                   ["workflow", t("settings.sectionWorkflow"), GitBranch],
+                  ["assistant", t("settings.sectionAssistant"), Sparkles],
                   ["crm", t("settings.sectionCrm"), Tag],
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -1492,6 +1551,80 @@ export function SettingsPage() {
                   >
                     {saving ? t("common.loading") : t("settings.workflowSave")}
                   </button>
+                </motion.form>
+              )}
+
+              {section === "assistant" && (
+                <motion.form
+                  onSubmit={(e) => void handleSaveAssistant(e)}
+                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  variants={staggerItem}
+                >
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                    <Sparkles className="h-5 w-5" />
+                    {t("settings.assistantTitle")}
+                  </h2>
+                  <p className="mb-6 text-sm text-gray-500">{t("settings.assistantIntro")}</p>
+                  {assistantKeyMasked ? (
+                    <p className="mb-4 rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2 text-sm text-brand-900">
+                      {t("settings.assistantKeyActiveHint")}
+                    </p>
+                  ) : null}
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="assistantOpenaiKey" className="block text-sm font-medium text-gray-700">
+                        {t("settings.assistantApiKeyLabel")}
+                      </label>
+                      <input
+                        id="assistantOpenaiKey"
+                        type="password"
+                        autoComplete="off"
+                        value={assistantOpenaiKey}
+                        onChange={(e) => setAssistantOpenaiKey(e.target.value)}
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        placeholder={assistantKeyMasked ? "••••••••" : ""}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">{t("settings.assistantApiKeyHint")}</p>
+                    </div>
+                    <div>
+                      <label htmlFor="assistantOpenaiBaseUrl" className="block text-sm font-medium text-gray-700">
+                        {t("settings.assistantApiBaseUrlLabel")}
+                      </label>
+                      <input
+                        id="assistantOpenaiBaseUrl"
+                        type="url"
+                        value={assistantOpenaiBaseUrl}
+                        onChange={(e) => setAssistantOpenaiBaseUrl(e.target.value)}
+                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        placeholder="https://api.openai.com/v1"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">{t("settings.assistantApiBaseUrlHint")}</p>
+                    </div>
+                  </div>
+                  {assistantSaveError ? (
+                    <p className="mt-4 text-sm text-red-600" role="alert">
+                      {assistantSaveError}
+                    </p>
+                  ) : null}
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                    >
+                      {saving ? t("common.loading") : t("settings.assistantSave")}
+                    </button>
+                    {assistantKeyMasked ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleRemoveOrgAssistantKey()}
+                        className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {t("settings.assistantRemoveKey")}
+                      </button>
+                    ) : null}
+                  </div>
                 </motion.form>
               )}
 

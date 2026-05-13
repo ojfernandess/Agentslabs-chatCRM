@@ -859,8 +859,18 @@ model Settings {
   /// Transcrever mensagens de áudio recebidas (WhatsApp / caixas) para texto — requer chave OpenAI no servidor.
   audioTranscriptionEnabled Boolean @default(false) @map("audio_transcription_enabled")
 
+  /// Chave OpenAI opcional da organização para «Gerar resposta» e IA & Insights (painel humano). Se null, usa a chave do servidor.
+  assistantOpenaiApiKey      String? @map("assistant_openai_api_key") @db.Text
+  /// Base URL API compatível com OpenAI (ex. Azure). Se null, usa `OPENAI_API_BASE_URL` do servidor.
+  assistantOpenaiApiBaseUrl String? @map("assistant_openai_api_base_url") @db.VarChar(512)
+
   /// Ao passar a conversa para a fila do bot (PENDING), não voltar a disparar o webhook com a última mensagem do cliente.
   silentTransferToAgentBot Boolean @default(false) @map("silent_transfer_to_agent_bot")
+
+  /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
+  aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)
+  /// Segredo opcional para assinatura HMAC-SHA256 do webhook de alertas de IA.
+  aiAlertWebhookSecret String? @map("ai_alert_webhook_secret") @db.Text
 
   @@map("settings")
 }

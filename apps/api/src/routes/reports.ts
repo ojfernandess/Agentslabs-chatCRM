@@ -5,6 +5,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { businessMinutesBetween, parseTeamBusinessHours, type ParsedBusinessSchedule } from "../lib/businessHours.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import {
+  analyzeAggregateHealth,
+  analyzeConversationForInsights,
+  buildPublicConversationTranscript,
+  getAssistOpenAiCredentialsForOrganization,
+} from "../lib/agentAssistLlm.js";
+import { clientIp, recordAuditLog } from "../lib/audit.js";
 
 const querySchema = z.object({
   from: z.string().datetime().optional(),
@@ -589,6 +596,71 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         conversationsCount: r.n,
       })),
     };
+  });
+
+  /** Análise agregada de IA para saúde da fila. */
+  app.post("/ai-health", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
+    if (!creds) {
+      return reply.status(503).send({
+        error: "Service Unavailable",
+        message: "OpenAI API key not configured",
+        statusCode: 503,
+      });
+    }
+
+    const conversations = await prisma.conversation.findMany({
+      where: { organizationId, status: "OPEN" },
+      orderBy: { updatedAt: "desc" },
+      take: 15,
+      include: {
+        contact: { select: { name: true } },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          select: { direction: true, body: true, isPrivate: true },
+        },
+      },
+    });
+
+    if (conversations.length === 0) {
+      return {
+        overallHealth: "neutral",
+        summary: "Não há conversas abertas para analisar.",
+        topIssues: [],
+        recommendations: [],
+      };
+    }
+
+    const lang = (request.headers["accept-language"]?.split(",")[0]?.split("-")[0] || "pt") as string;
+    const insights = await Promise.all(
+      conversations.map(async (c) => {
+        const transcript = buildPublicConversationTranscript(c.messages);
+        return analyzeConversationForInsights(
+          {
+            contactName: c.contact.name ?? "",
+            transcript,
+            language: lang,
+          },
+          creds,
+        );
+      }),
+    );
+
+    const report = await analyzeAggregateHealth(insights, creds, lang);
+
+    void recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "ai.aggregate_health",
+      resourceType: "REPORT",
+      ip: clientIp(request),
+      metadata: { conversationCount: conversations.length },
+    });
+
+    return report;
   });
 }
 

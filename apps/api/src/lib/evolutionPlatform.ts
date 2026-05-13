@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import type { Settings } from "@prisma/client";
+import { decrypt } from "./encryption.js";
 
 export const EVOLUTION_PLATFORM_KEY = "evolution_platform";
 
@@ -80,8 +81,11 @@ export async function resolveEvolutionApiCredentials(
   }
 
   const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
-  const apiKey = settings.whatsappApiKey?.trim() ?? "";
-  if (!baseUrl || !apiKey) return null;
+  const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
+  if (!baseUrl || !apiKeyEncrypted) return null;
+
+  const apiKey = decrypt(apiKeyEncrypted) ?? "";
+  if (!apiKey) return null;
 
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),

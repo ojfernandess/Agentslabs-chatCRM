@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { decrypt } from "../lib/encryption.js";
 import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
 import { WhatsAppProviderInterface } from "./types.js";
 import { MetaCloudApiProvider } from "./meta.js";
@@ -18,7 +19,7 @@ export async function getWhatsAppProvider(organizationId: string): Promise<Whats
         return null;
       }
       return new MetaCloudApiProvider(
-        settings.whatsappApiKey,
+        decrypt(settings.whatsappApiKey) ?? "",
         settings.whatsappPhoneNumberId ?? "",
       );
     case "twilio":
@@ -38,5 +39,5 @@ export async function getWhatsAppProvider(organizationId: string): Promise<Whats
 
 export async function getWebhookSecret(organizationId: string): Promise<string | null> {
   const settings = await prisma.settings.findUnique({ where: { organizationId } });
-  return settings?.whatsappWebhookSecret ?? null;
+  return decrypt(settings?.whatsappWebhookSecret) ?? null;
 }

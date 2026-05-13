@@ -1798,6 +1798,22 @@ export const messages = {
       sectionTeam: "Equipe",
       sectionCsat: "Satisfação (CSAT)",
       sectionWorkflow: "Fluxos de conversa",
+      sectionAssistant: "IA e assistência",
+      assistantTitle: "OpenAI (sugestão de resposta e insights)",
+      assistantIntro:
+        "Opcional: chave API só para esta organização. «Gerar resposta» na conversa e a página IA & Insights usam esta chave e URL base; se estiverem vazias, usa-se a chave global do servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY).",
+      assistantApiKeyLabel: "Chave API da organização",
+      assistantApiKeyHint:
+        "Deixe em branco ao guardar para manter a chave actual. Para definir uma chave nova, cole o valor completo.",
+      assistantApiBaseUrlLabel: "URL base da API (opcional)",
+      assistantApiBaseUrlHint:
+        "Por omissão segue a do servidor (OPENAI_API_BASE_URL). Use apenas se esta organização apontar para um endpoint compatível com a API OpenAI (ex.: proxy).",
+      assistantSave: "Guardar IA",
+      assistantRemoveKey: "Remover chave da organização",
+      assistantRemoveKeyConfirm:
+        "As funções de IA passam a usar só a chave global do servidor (se existir). Continuar?",
+      assistantSaveError: "Não foi possível guardar estas definições.",
+      assistantKeyActiveHint: "Já existe uma chave guardada para esta organização.",
       workflowTitle: "Fluxos de conversa",
       workflowIntro:
         "Configure a resolução automática por inatividade e quais campos são obrigatórios quando um agente finaliza manualmente.",
@@ -3852,6 +3868,22 @@ export const messages = {
       sectionTeam: "Team",
       sectionCsat: "Satisfaction (CSAT)",
       sectionWorkflow: "Conversation workflows",
+      sectionAssistant: "AI & assistance",
+      assistantTitle: "OpenAI (reply suggestions & insights)",
+      assistantIntro:
+        "Optional: an API key used only for this organization. \"Generate reply\" on a conversation and the IA & Insights page use this key and base URL; when empty, the server-wide key applies (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+      assistantApiKeyLabel: "Organization API key",
+      assistantApiKeyHint:
+        "Leave blank when saving to keep the current key. Paste a full new key only when you want to replace it.",
+      assistantApiBaseUrlLabel: "API base URL (optional)",
+      assistantApiBaseUrlHint:
+        "Defaults to the server value (OPENAI_API_BASE_URL). Set only if this org uses a compatible OpenAI-style endpoint (e.g. a proxy).",
+      assistantSave: "Save AI settings",
+      assistantRemoveKey: "Remove organization key",
+      assistantRemoveKeyConfirm:
+        "IA features will fall back to the global server key only (if configured). Continue?",
+      assistantSaveError: "Could not save these settings.",
+      assistantKeyActiveHint: "A key is already stored for this organization.",
       workflowTitle: "Conversation workflows",
       workflowIntro:
         "Configure automatic resolution after inactivity and which fields agents must fill when resolving manually.",
