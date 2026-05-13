@@ -260,11 +260,11 @@ export function Layout() {
         <Link to="/" className="flex items-center gap-3">
           <img
             src={brandAssetUrl("/logo.svg")}
-            alt="OpenConduit"
+            alt="OpenNexo CRM"
             className="h-9 w-9"
             decoding="async"
           />
-          <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">OpenConduit</span>
+          <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
         </Link>
       </div>
 
