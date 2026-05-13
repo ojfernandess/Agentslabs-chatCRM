@@ -267,7 +267,7 @@ export function ContactDetailPage() {
 
   return (
     <PageTransition>
-    <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex items-center gap-4">
         <Link
           to="/contacts"
@@ -278,7 +278,13 @@ export function ContactDetailPage() {
         <div className="flex flex-1 items-start gap-4">
           <div className="flex h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-lg font-bold text-brand-800 dark:from-brand-900/40 dark:to-brand-800/30 dark:text-brand-100">
             {contact.profilePictureUrl ? (
-              <img src={contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+              <img
+                src={contact.profilePictureUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
             ) : (
               <span className="flex h-full w-full items-center justify-center">
                 {contact.name.charAt(0).toUpperCase()}

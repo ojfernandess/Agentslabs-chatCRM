@@ -171,7 +171,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           type="button"
           onClick={() => setOpen((o) => !o)}
           className={clsx(
-            "relative flex h-10 w-10 items-center justify-center rounded-lg border transition-colors",
+            "relative flex h-11 w-11 items-center justify-center rounded-lg border transition-colors",
             badgeCount > 0
               ? "border-brand-200 bg-brand-50 text-brand-800 hover:bg-brand-100"
               : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800",

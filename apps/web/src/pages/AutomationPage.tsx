@@ -787,7 +787,7 @@ export function AutomationPage() {
   if (!tenantAdmin) {
     return (
       <PageTransition>
-        <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
           <p className="text-ink-600 dark:text-ink-400">{t("automationPage.adminOnly")}</p>
         </div>
       </PageTransition>

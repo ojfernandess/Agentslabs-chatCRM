@@ -17,6 +17,21 @@
     @apply dark:bg-ink-950 dark:text-ink-100;
   }
 
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  @media (pointer: coarse) {
+    button,
+    input,
+    select,
+    textarea {
+      min-height: 44px;
+    }
+  }
+
   html.font-size-comfortable body {
     font-size: 106.25%;
   }

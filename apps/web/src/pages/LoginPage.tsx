@@ -118,6 +118,7 @@ export function LoginPage() {
               src={brandAssetUrl("/logo.svg")}
               alt="OpenNexo CRM"
               className="mx-auto mb-5 h-14 w-auto"
+              decoding="async"
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.35, delay: 0.05 }}

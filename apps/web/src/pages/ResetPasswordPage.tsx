@@ -76,7 +76,12 @@ export function ResetPasswordPage() {
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="mb-8 text-center">
-            <img src={brandAssetUrl("/logo.svg")} alt="OpenNexo CRM" className="mx-auto mb-5 h-14 w-auto" />
+            <img
+              src={brandAssetUrl("/logo.svg")}
+              alt="OpenNexo CRM"
+              className="mx-auto mb-5 h-14 w-auto"
+              decoding="async"
+            />
             <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("login.resetTitle")}</h1>
             <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">{t("login.resetSubtitle")}</p>
           </div>

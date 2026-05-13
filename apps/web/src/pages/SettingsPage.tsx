@@ -1032,7 +1032,13 @@ export function SettingsPage() {
                           ) : null}
                           {evoQrDataUrl ? (
                             <div className="flex justify-center">
-                              <img src={evoQrDataUrl} alt="WhatsApp QR" className="h-56 w-56 rounded-lg border border-gray-200 bg-white p-2" />
+                              <img
+                                src={evoQrDataUrl}
+                                alt="WhatsApp QR"
+                                className="h-56 w-56 rounded-lg border border-gray-200 bg-white p-2"
+                                loading="lazy"
+                                decoding="async"
+                              />
                             </div>
                           ) : null}
                           <div className="flex flex-wrap gap-2">

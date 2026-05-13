@@ -312,7 +312,7 @@ export function InboxesPage() {
 
   return (
     <PageTransition>
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">

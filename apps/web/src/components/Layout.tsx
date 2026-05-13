@@ -20,6 +20,8 @@ import {
   Megaphone,
   Inbox,
   Brain,
+  Menu,
+  X,
 } from "lucide-react";
 import clsx from "clsx";
 import { brandAssetUrl } from "@/lib/brandingAssets";
@@ -49,6 +51,7 @@ export function Layout() {
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const showCrmKanban = user?.organizationFeatures?.crm_kanban ?? true;
   const showDeals = user?.organizationFeatures?.crm_deals ?? true;
@@ -90,6 +93,10 @@ export function Layout() {
   }, [fetchSidebarTeams]);
 
   useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
     const refresh = () => fetchSidebarTeams();
     window.addEventListener("openconduit:conversation-transferred", refresh);
     window.addEventListener("openconduit:team-transfer-badges-refresh", refresh);
@@ -120,7 +127,7 @@ export function Layout() {
 
   const navItemClass = (active: boolean) =>
     clsx(
-      "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+      "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
       active
         ? "nav-link-active"
         : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
@@ -128,7 +135,7 @@ export function Layout() {
 
   const teamNavItemClass = (active: boolean) =>
     clsx(
-      "flex min-h-0 items-center gap-2 rounded py-2 pl-9 pr-3 text-sm font-medium transition-colors",
+      "flex min-h-11 items-center gap-2 rounded py-2 pl-9 pr-3 text-sm font-medium transition-colors",
       active
         ? "nav-link-active"
         : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
@@ -139,22 +146,26 @@ export function Layout() {
     navigate("/login");
   };
 
-  return (
-    <div className="flex h-screen">
-      <aside className="flex w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28]">
-        <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
-          <img src={brandAssetUrl("/logo.svg")} alt="OpenNexo CRM" className="h-7" />
-          <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
-        </div>
+  const sidebarContent = (
+    <>
+      <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
+        <img
+          src={brandAssetUrl("/logo.svg")}
+          alt="OpenNexo CRM"
+          className="h-7"
+          decoding="async"
+        />
+        <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
+      </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems
-            .filter((item) => {
-              if (item.to === "/crm") return showCrmKanban;
-              if (item.to === "/deals") return showDeals;
-              return true;
-            })
-            .map((item) =>
+      <nav className="flex-1 space-y-1 px-3 py-4">
+        {navItems
+          .filter((item) => {
+            if (item.to === "/crm") return showCrmKanban;
+            if (item.to === "/deals") return showDeals;
+            return true;
+          })
+          .map((item) =>
             item.to === "/conversations" ? (
               <Fragment key="conversations-tree">
                 <Link
@@ -183,26 +194,24 @@ export function Layout() {
                     {sidebarTeams.map((team) => {
                       const n = team.unseenTransferCount ?? 0;
                       return (
-                      <Link
-                        key={team.id}
-                        to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
-                        className={teamNavItemClass(
-                          conversationTeamId === team.id && !conversationInboxId,
-                        )}
-                        title={team.name}
-                      >
-                        <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
-                        <span className="min-w-0 flex-1 truncate">{team.name}</span>
-                        {n > 0 ? (
-                          <span
-                            className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
-                            title={t("nav.teamTransferUnreadBadge")}
-                            aria-label={`${t("nav.teamTransferUnreadBadge")}: ${n}`}
-                          >
-                            {n > 99 ? "99+" : n}
-                          </span>
-                        ) : null}
-                      </Link>
+                        <Link
+                          key={team.id}
+                          to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
+                          className={teamNavItemClass(conversationTeamId === team.id && !conversationInboxId)}
+                          title={team.name}
+                        >
+                          <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
+                          <span className="min-w-0 flex-1 truncate">{team.name}</span>
+                          {n > 0 ? (
+                            <span
+                              className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
+                              title={t("nav.teamTransferUnreadBadge")}
+                              aria-label={`${t("nav.teamTransferUnreadBadge")}: ${n}`}
+                            >
+                              {n > 99 ? "99+" : n}
+                            </span>
+                          ) : null}
+                        </Link>
                       );
                     })}
                   </div>
@@ -233,8 +242,10 @@ export function Layout() {
                 end={item.to === "/"}
                 className={({ isActive }) =>
                   clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                    "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive
+                      ? "nav-link-active"
+                      : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
                   )
                 }
               >
@@ -243,135 +254,195 @@ export function Layout() {
               </NavLink>
             ),
           )}
-          <NavLink
-            to="/inboxes"
-            className={({ isActive }) =>
-              clsx(
-                "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-              )
-            }
-          >
-            <Inbox className="h-5 w-5" />
-            {t("nav.inboxes")}
-          </NavLink>
-          <NavLink
-            to="/my-attendance"
-            className={({ isActive }) =>
-              clsx(
-                "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-              )
-            }
-          >
-            <ClipboardCheck className="h-5 w-5" />
-            {t("nav.myAttendance")}
-          </NavLink>
-          {tenantAdmin ? (
-            <>
-              <NavLink
-                to="/conversation-audit"
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                  )
-                }
-              >
-                <FileSearch className="h-5 w-5" />
-                {t("nav.conversationAudit")}
-              </NavLink>
-              <NavLink
-                to="/teams"
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                  )
-                }
-              >
-                <UsersRound className="h-5 w-5" />
-                {t("nav.teams")}
-              </NavLink>
-              <NavLink
-                to="/bots"
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                  )
-                }
-              >
-                <Bot className="h-5 w-5" />
-                {t("nav.bots")}
-              </NavLink>
-              <NavLink
-                to="/automation"
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                  )
-                }
-              >
-                <Sparkles className="h-5 w-5" />
-                {t("nav.automation")}
-              </NavLink>
-              <NavLink
-                to="/broadcasts"
-                className={({ isActive }) =>
-                  clsx(
-                    "flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "nav-link-active" : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                  )
-                }
-              >
-                <Megaphone className="h-5 w-5" />
-                {t("nav.broadcast")}
-              </NavLink>
-            </>
-          ) : null}
-        </nav>
+        <NavLink
+          to="/inboxes"
+          className={({ isActive }) =>
+            clsx(
+              "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+              isActive
+                ? "nav-link-active"
+                : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+            )
+          }
+        >
+          <Inbox className="h-5 w-5" />
+          {t("nav.inboxes")}
+        </NavLink>
+        <NavLink
+          to="/my-attendance"
+          className={({ isActive }) =>
+            clsx(
+              "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+              isActive
+                ? "nav-link-active"
+                : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+            )
+          }
+        >
+          <ClipboardCheck className="h-5 w-5" />
+          {t("nav.myAttendance")}
+        </NavLink>
+        {tenantAdmin ? (
+          <>
+            <NavLink
+              to="/conversation-audit"
+              className={({ isActive }) =>
+                clsx(
+                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "nav-link-active"
+                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                )
+              }
+            >
+              <FileSearch className="h-5 w-5" />
+              {t("nav.conversationAudit")}
+            </NavLink>
+            <NavLink
+              to="/teams"
+              className={({ isActive }) =>
+                clsx(
+                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "nav-link-active"
+                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                )
+              }
+            >
+              <UsersRound className="h-5 w-5" />
+              {t("nav.teams")}
+            </NavLink>
+            <NavLink
+              to="/bots"
+              className={({ isActive }) =>
+                clsx(
+                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "nav-link-active"
+                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                )
+              }
+            >
+              <Bot className="h-5 w-5" />
+              {t("nav.bots")}
+            </NavLink>
+            <NavLink
+              to="/automation"
+              className={({ isActive }) =>
+                clsx(
+                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "nav-link-active"
+                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                )
+              }
+            >
+              <Sparkles className="h-5 w-5" />
+              {t("nav.automation")}
+            </NavLink>
+            <NavLink
+              to="/broadcasts"
+              className={({ isActive }) =>
+                clsx(
+                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "nav-link-active"
+                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+                )
+              }
+            >
+              <Megaphone className="h-5 w-5" />
+              {t("nav.broadcast")}
+            </NavLink>
+          </>
+        ) : null}
+      </nav>
 
-        <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-800">
-          <div className="flex items-end gap-2">
-            <ConversationNotifyBell
-              badgeCount={badgeCount}
-              alertPreviews={alertPreviews}
-              clearBadge={clearBadge}
-            />
-            {user ? (
-              <UserProfileMenu user={user} onLogout={() => handleLogout()} className="min-w-0 flex-1" />
-            ) : null}
-          </div>
-          {typeof Notification !== "undefined" && Notification.permission === "default" ? (
-            <button
-              type="button"
-              onClick={() => void requestDesktopPermission()}
-              className="w-full rounded-lg py-1 text-center text-[11px] text-brand-600 hover:text-brand-800 dark:text-brand-400"
-            >
-              {t("nav.enableDesktopNotifications")}
-            </button>
+      <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-800">
+        <div className="flex items-end gap-2">
+          <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
+          {user ? (
+            <UserProfileMenu user={user} onLogout={() => handleLogout()} className="min-w-0 flex-1" />
           ) : null}
-          <div className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-900/50">
-            <Languages className="h-4 w-4 shrink-0 text-ink-500" />
-            <label htmlFor="locale" className="sr-only">
-              {t("common.language")}
-            </label>
-            <select
-              id="locale"
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as LocaleCode)}
-              className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-ink-700 focus:ring-0 dark:text-ink-200"
-            >
-              <option value="pt-BR">{t("common.ptBR")}</option>
-              <option value="en">{t("common.en")}</option>
-            </select>
-          </div>
         </div>
+        {typeof Notification !== "undefined" && Notification.permission === "default" ? (
+          <button
+            type="button"
+            onClick={() => void requestDesktopPermission()}
+            className="w-full rounded-lg py-1 text-center text-[11px] text-brand-600 hover:text-brand-800 dark:text-brand-400"
+          >
+            {t("nav.enableDesktopNotifications")}
+          </button>
+        ) : null}
+        <div className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-900/50">
+          <Languages className="h-4 w-4 shrink-0 text-ink-500" />
+          <label htmlFor="locale" className="sr-only">
+            {t("common.language")}
+          </label>
+          <select
+            id="locale"
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as LocaleCode)}
+            className="w-full min-w-0 flex-1 border-0 bg-transparent text-xs font-medium text-ink-700 focus:ring-0 dark:text-ink-200"
+          >
+            <option value="pt-BR">{t("common.ptBR")}</option>
+            <option value="en">{t("common.en")}</option>
+          </select>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-[100dvh]">
+      <aside className="hidden w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28] lg:flex">
+        {sidebarContent}
       </aside>
 
+      {mobileNavOpen ? (
+        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/35"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label={t("common.close")}
+          />
+          <aside className="relative flex h-full w-80 max-w-[85vw] flex-col border-r border-ink-200 bg-white shadow-xl dark:border-ink-800 dark:bg-[#151d28]">
+            <div className="absolute right-2 top-2">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="btn-ghost h-11 w-11"
+                aria-label={t("common.close")}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {sidebarContent}
+          </aside>
+        </div>
+      ) : null}
+
       <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-ink-800 dark:bg-[#151d28] lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="btn-ghost h-11 w-11"
+            aria-label={t("common.openMenu")}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">OpenNexo CRM</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
+            {user ? (
+              <UserProfileMenu user={user} onLogout={() => handleLogout()} className="min-w-0" />
+            ) : null}
+          </div>
+        </div>
         {user?.superAdminActorId ? (
           <div
             role="status"

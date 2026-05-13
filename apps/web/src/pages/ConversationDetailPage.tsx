@@ -1497,7 +1497,13 @@ export function ConversationDetailPage() {
             <div className="relative h-12 w-12 shrink-0 overflow-visible rounded-2xl text-sm font-semibold text-ink-700 dark:text-ink-100">
               <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 dark:from-ink-700 dark:to-ink-800">
                 {conversation.contact.profilePictureUrl ? (
-                  <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={conversation.contact.profilePictureUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center">
                     {conversation.contact.name.charAt(0).toUpperCase()}
@@ -1791,7 +1797,13 @@ export function ConversationDetailPage() {
                     inbound ? (
                       <div className="flex h-8 w-8 overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold text-ink-700 dark:bg-ink-700 dark:text-ink-100">
                         {conversation.contact.profilePictureUrl ? (
-                          <img src={conversation.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                          <img
+                            src={conversation.contact.profilePictureUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
                           <span className="flex h-full w-full items-center justify-center">
                             {conversation.contact.name.charAt(0).toUpperCase()}
@@ -1851,6 +1863,8 @@ export function ConversationDetailPage() {
                           "max-h-64 max-w-full rounded-lg object-contain",
                           msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
                         )}
+                        loading="lazy"
+                        decoding="async"
                       />
                     </a>
                   )}

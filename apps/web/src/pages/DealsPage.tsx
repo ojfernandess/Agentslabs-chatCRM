@@ -345,7 +345,7 @@ export function DealsPage() {
 
   return (
     <PageTransition>
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Briefcase className="h-8 w-8 text-brand-600" />

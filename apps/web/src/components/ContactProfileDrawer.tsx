@@ -173,7 +173,13 @@ export function ContactProfileDrawer({
               {contact ? (
                 <div className="flex h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-lg font-bold text-brand-800 dark:from-brand-900/50 dark:to-brand-800/30 dark:text-brand-100">
                   {contact.profilePictureUrl ? (
-                    <img src={contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={contact.profilePictureUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ) : (
                     <span className="flex h-full w-full items-center justify-center">{contact.name.charAt(0).toUpperCase()}</span>
                   )}

@@ -141,7 +141,7 @@ export function ConversationAuditPage() {
 
   return (
     <PageTransition>
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex items-start gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
             <FileSearch className="h-5 w-5" />

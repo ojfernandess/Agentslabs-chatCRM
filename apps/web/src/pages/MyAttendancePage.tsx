@@ -64,7 +64,7 @@ export function MyAttendancePage() {
 
   return (
     <PageTransition>
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
