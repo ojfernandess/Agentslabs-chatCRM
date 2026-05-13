@@ -431,8 +431,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           max: 10,
           timeWindow: "1 minute",
           keyGenerator: (request) => {
-            // Limite por utilizador dentro da organização
-            return `${request.user.id}-${request.user.actingOrganizationId || request.user.organizationId}`;
+            const user = (request as { user?: { id: string; actingOrganizationId?: string | null; organizationId?: string | null } }).user;
+            const org = user?.actingOrganizationId || user?.organizationId || "anon";
+            const key = user?.id || request.ip || "anon";
+            return `${key}-${org}`;
           },
         },
       },
@@ -440,6 +442,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    const user = (request as { user?: { id: string; role: string } }).user;
+    if (!user) {
+      return reply.status(401).send({ error: "Unauthorized", message: "Authentication required", statusCode: 401 });
+    }
 
     const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
     if (!creds) {
@@ -484,8 +491,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }
-    if (request.user.role === "AGENT") {
-      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+    if (user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(user.id, organizationId, existing);
       if (!ok) {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
@@ -510,7 +517,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       );
 
       void recordAuditLog({
-        actorUserId: request.user.id,
+        actorUserId: user.id,
         organizationId,
         action: "ai.suggest_reply",
         resourceType: "CONVERSATION",
@@ -544,8 +551,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           max: 5,
           timeWindow: "1 minute",
           keyGenerator: (request) => {
-            // Limite por utilizador dentro da organização
-            return `${request.user.id}-${request.user.actingOrganizationId || request.user.organizationId}`;
+            const user = (request as { user?: { id: string; actingOrganizationId?: string | null; organizationId?: string | null } }).user;
+            const org = user?.actingOrganizationId || user?.organizationId || "anon";
+            const key = user?.id || request.ip || "anon";
+            return `${key}-${org}`;
           },
         },
       },
@@ -553,6 +562,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    const user = (request as { user?: { id: string; role: string } }).user;
+    if (!user) {
+      return reply.status(401).send({ error: "Unauthorized", message: "Authentication required", statusCode: 401 });
+    }
 
     const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
     if (!creds) {
@@ -592,8 +606,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }
-    if (request.user.role === "AGENT") {
-      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+    if (user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(user.id, organizationId, existing);
       if (!ok) {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
@@ -617,7 +631,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       );
 
       void recordAuditLog({
-        actorUserId: request.user.id,
+        actorUserId: user.id,
         organizationId,
         action: "ai.analyze_insights",
         resourceType: "CONVERSATION",
