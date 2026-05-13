@@ -129,7 +129,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
       ref={panelRef}
       className={clsx(
         "fixed z-[1000] flex flex-col overflow-hidden rounded-xl border shadow-xl",
-        "border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-800",
+        "border-ink-200 bg-white dark:border-white/10 dark:bg-[#111C2B]/85",
       )}
     >
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
@@ -169,7 +169,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           ))
         )}
       </div>
-      <div className="shrink-0 border-t border-ink-100 p-2 dark:border-ink-600">
+      <div className="shrink-0 border-t border-ink-100 p-2 dark:border-white/10">
         <button
           type="button"
           className="w-full rounded-lg py-1.5 text-center text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
@@ -196,7 +196,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
             "relative flex h-11 w-11 items-center justify-center rounded-lg border transition-colors",
             badgeCount > 0
               ? "border-brand-200 bg-brand-50 text-brand-800 hover:bg-brand-100"
-              : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800",
+              : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-200 dark:hover:bg-white/10",
           )}
           title={t("nav.alerts")}
           aria-expanded={open}

@@ -14,7 +14,16 @@
 
   body {
     @apply min-h-screen bg-ink-50 font-sans text-ink-900;
-    @apply dark:bg-ink-950 dark:text-ink-100;
+    @apply dark:text-ink-100;
+  }
+
+  .dark body {
+    background-color: #0e1624;
+    background-image:
+      radial-gradient(1200px 600px at 30% 0%, rgba(123, 92, 255, 0.22), transparent 55%),
+      radial-gradient(900px 500px at 85% 10%, rgba(255, 122, 89, 0.10), transparent 60%),
+      radial-gradient(1000px 700px at 50% 110%, rgba(59, 130, 246, 0.10), transparent 55%);
+    background-attachment: fixed;
   }
 
   img,
@@ -113,7 +122,7 @@
 
   .card-surface {
     @apply rounded border border-ink-200 bg-white shadow-sm;
-    @apply dark:border-ink-700 dark:bg-ink-900;
+    @apply dark:border-white/10 dark:bg-[#111C2B]/70;
   }
 
   .nav-link-active {

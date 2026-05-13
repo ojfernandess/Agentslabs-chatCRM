@@ -2614,7 +2614,7 @@ export function ConversationDetailPage() {
         </motion.div>
 
         <div className="pointer-events-auto absolute right-3 top-28 z-30 hidden xl:block">
-          <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-[#0F1B2B]/70 p-1 shadow-lg shadow-black/30 backdrop-blur">
+          <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-white/10 dark:bg-[#0F1B2B]/70 dark:shadow-black/30">
             <button
               type="button"
               onClick={() => setCrmDesktopOpen((o) => !o)}
@@ -2622,7 +2622,9 @@ export function ConversationDetailPage() {
               aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
               className={clsx(
                 "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
-                crmDesktopOpen ? "bg-white/10 text-ink-50" : "text-ink-200 hover:bg-white/5",
+                crmDesktopOpen
+                  ? "bg-ink-100 text-ink-900 dark:bg-white/10 dark:text-ink-50"
+                  : "text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5",
               )}
             >
               <User className="h-5 w-5" />
@@ -2635,7 +2637,9 @@ export function ConversationDetailPage() {
                 aria-label={t("conversationDetail.copilotToggle")}
                 className={clsx(
                   "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
-                  copilotDesktopOpen ? "bg-violet-500/15 text-violet-200" : "text-ink-200 hover:bg-white/5",
+                  copilotDesktopOpen
+                    ? "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200"
+                    : "text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5",
                 )}
               >
                 <Sparkles className="h-5 w-5" />
@@ -2645,7 +2649,7 @@ export function ConversationDetailPage() {
               to="/crm"
               title={t("conversationDetail.openKanban")}
               aria-label={t("conversationDetail.openKanban")}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-200 transition-colors hover:bg-white/5"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5"
             >
               <Kanban className="h-5 w-5" />
             </Link>

@@ -243,14 +243,12 @@ export function Layout() {
     <>
       <div className="px-5 pt-6 pb-5">
         <Link to="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 to-brand-500/25 ring-1 ring-black/5 dark:ring-white/10">
-            <img
-              src={brandAssetUrl("/logo.svg")}
-              alt="OpenConduit"
-              className="h-6 w-6"
-              decoding="async"
-            />
-          </div>
+          <img
+            src={brandAssetUrl("/logo.svg")}
+            alt="OpenConduit"
+            className="h-9 w-9"
+            decoding="async"
+          />
           <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">OpenConduit</span>
         </Link>
       </div>
@@ -458,7 +456,7 @@ export function Layout() {
         ) : null}
       </nav>
 
-      <div className="space-y-2 border-t border-ink-200 p-3 dark:border-ink-800">
+      <div className="space-y-2 border-t border-ink-200 p-3 dark:border-white/10">
         <div className="flex items-end gap-2">
           <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
           {user ? (
@@ -474,8 +472,8 @@ export function Layout() {
             {t("nav.enableDesktopNotifications")}
           </button>
         ) : null}
-        <div className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-900/50">
-          <Languages className="h-4 w-4 shrink-0 text-ink-500" />
+        <div className="flex items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-white/10 dark:bg-white/5">
+          <Languages className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-300" />
           <label htmlFor="locale" className="sr-only">
             {t("common.language")}
           </label>
@@ -495,7 +493,7 @@ export function Layout() {
 
   return (
     <div className="flex h-[100dvh]">
-      <aside className="hidden w-64 flex-col border-r border-ink-200 bg-white dark:border-ink-800 dark:bg-[#151d28] lg:flex">
+      <aside className="hidden w-64 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
         {sidebarContent}
       </aside>
 
@@ -507,7 +505,7 @@ export function Layout() {
             onClick={() => setMobileNavOpen(false)}
             aria-label={t("common.close")}
           />
-          <aside className="relative flex h-full w-80 max-w-[85vw] flex-col border-r border-ink-200 bg-white shadow-xl dark:border-ink-800 dark:bg-[#151d28]">
+          <aside className="relative flex h-full w-80 max-w-[85vw] flex-col border-r border-ink-200 bg-white shadow-xl dark:border-white/10 dark:bg-ink-950">
             <div className="absolute right-2 top-2">
               <button
                 type="button"
@@ -524,7 +522,7 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-ink-800 dark:bg-[#151d28] lg:hidden">
+        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-white/10 dark:bg-ink-950 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
@@ -567,7 +565,7 @@ export function Layout() {
             </button>
           </div>
         ) : null}
-        <main className="min-h-0 flex-1 overflow-auto bg-ink-50 dark:bg-ink-950">
+        <main className="min-h-0 flex-1 overflow-auto bg-ink-50 dark:bg-transparent">
           <Outlet />
         </main>
       </div>
