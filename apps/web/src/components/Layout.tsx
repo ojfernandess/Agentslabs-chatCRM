@@ -80,6 +80,16 @@ export function Layout() {
   }, [user]);
 
   useEffect(() => {
+    const on = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | undefined;
+      if (!detail) return;
+      setPilotFlags(detail);
+    };
+    window.addEventListener("openconduit:pilot-flags-updated", on as EventListener);
+    return () => window.removeEventListener("openconduit:pilot-flags-updated", on as EventListener);
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName?.toLowerCase();

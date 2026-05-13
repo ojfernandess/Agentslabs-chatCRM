@@ -192,6 +192,17 @@ export function ConversationsPage() {
     return s;
   };
 
+  const counts = useMemo(() => {
+    const c = { all: 0, open: 0, pending: 0, resolved: 0 };
+    c.all = conversations.length;
+    for (const row of conversations) {
+      if (row.status === "OPEN") c.open += 1;
+      else if (row.status === "PENDING") c.pending += 1;
+      else if (row.status === "RESOLVED") c.resolved += 1;
+    }
+    return c;
+  }, [conversations]);
+
   const filters: { key: string; label: string }[] = [
     { key: "", label: t("common.all") },
     { key: "OPEN", label: t("conversations.filterOpen") },
@@ -201,249 +212,260 @@ export function ConversationsPage() {
 
   return (
     <PageTransition>
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{t("conversations.title")}</h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("conversations.subtitle")}</p>
-          </div>
-          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-[280px] sm:max-w-md sm:flex-row sm:items-center">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-ink-500" />
-              <input
-                type="search"
-                value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                placeholder={t("conversations.searchListPlaceholder")}
-                className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-3 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500"
-                aria-label={t("conversations.searchListPlaceholder")}
-              />
+      <div className="relative h-full min-h-0">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(124,152,182,0.16),transparent_60%)]" />
+        <div className="relative mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 p-4 sm:p-6 lg:p-8">
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("conversations.title")}</h1>
+              <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("conversations.subtitle")}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setComposeOpen(true)}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-brand-950/40 dark:hover:text-brand-200"
-              title={t("conversations.newMessageTooltip")}
-              aria-label={t("conversations.newMessageTooltip")}
-            >
-              <SquarePen className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setMineParam(false)}
-            className={clsx(
-              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-              !mineActive
-                ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-            )}
-          >
-            <MessageSquare className="h-4 w-4 opacity-90" />
-            {t("conversations.scopeOrg")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMineParam(true)}
-            className={clsx(
-              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-              mineActive
-                ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-            )}
-          >
-            <UserCircle className="h-4 w-4 opacity-90" />
-            {t("conversations.myAssignments")}
-          </button>
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap gap-2">
-            {filters.map((f) => (
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[340px] sm:flex-row sm:items-center">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
+                <input
+                  type="search"
+                  value={listSearch}
+                  onChange={(e) => setListSearch(e.target.value)}
+                  placeholder={t("conversations.searchListPlaceholder")}
+                  className="input-field h-11 pl-10"
+                  aria-label={t("conversations.searchListPlaceholder")}
+                />
+              </div>
               <button
-                key={f.key || "all"}
                 type="button"
-                onClick={() => setStatusFilter(f.key)}
-                className={clsx(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  statusFilter === f.key
-                    ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                    : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                )}
+                onClick={() => setComposeOpen(true)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-ink-900"
+                title={t("conversations.newMessageTooltip")}
+                aria-label={t("conversations.newMessageTooltip")}
               >
-                {f.label}
+                <SquarePen className="h-5 w-5" />
               </button>
-            ))}
-          </div>
-          <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-2 sm:max-w-xs sm:ml-auto">
-            <UsersRound className="h-4 w-4 shrink-0 text-gray-400 dark:text-ink-500" />
-            <label htmlFor="conv-team-filter" className="sr-only">
-              {t("conversations.filterTeam")}
-            </label>
-            <select
-              id="conv-team-filter"
-              value={teamFilter}
-              onChange={(e) => setTeamFilterUrl(e.target.value)}
-              className="min-w-[140px] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-            >
-              <option value="">{t("conversations.allTeams")}</option>
-              {teamOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-            <Inbox className="h-4 w-4 shrink-0 text-gray-400 dark:text-ink-500" />
-            <label htmlFor="conv-inbox-filter" className="sr-only">
-              {t("conversations.filterInbox")}
-            </label>
-            <select
-              id="conv-inbox-filter"
-              value={inboxFilter}
-              onChange={(e) => setInboxFilterUrl(e.target.value)}
-              className="min-w-[140px] flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-            >
-              <option value="">{t("conversations.allInboxes")}</option>
-              {inboxOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            </div>
+          </header>
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
-          </div>
-        ) : filteredConversations.length === 0 ? (
-          <motion.div
-            className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white py-16 dark:border-ink-600 dark:bg-[#161f2c]/80"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <MessageSquare className="mb-3 h-12 w-12 text-gray-300 dark:text-ink-600" />
-            <p className="text-sm text-gray-500 dark:text-ink-400">
-              {listSearch.trim() && conversations.length > 0
-                ? t("conversations.emptySearchTitle")
-                : mineActive
-                  ? t("conversations.emptyMineTitle")
-                  : t("conversations.emptyTitle")}
-            </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-ink-500">
-              {listSearch.trim() && conversations.length > 0
-                ? t("conversations.emptySearchHint")
-                : mineActive
-                  ? t("conversations.emptyMineHint")
-                  : t("conversations.emptyHint")}
-            </p>
-          </motion.div>
-        ) : (
-          <div className="space-y-2">
-            {filteredConversations.map((conv) => {
-              const lastMessage = conv.messages[0];
-              return (
-                <div key={conv.id}>
-                  <Link
-                    to={`/conversations/${conv.id}`}
-                    className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-ink-700 dark:bg-[#161f2c] dark:shadow-none dark:hover:border-ink-600 dark:hover:bg-[#1a2532] dark:hover:shadow-lg dark:hover:shadow-black/20"
-                  >
-                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:ring-1 dark:ring-brand-500/20">
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-                        {conv.contact.profilePictureUrl ? (
-                          <img
-                            src={conv.contact.profilePictureUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          conv.contact.name.charAt(0).toUpperCase()
-                        )}
-                      </div>
-                      {conv.inbox?.channelType === "WHATSAPP" ? (
-                        <span
-                          className="absolute -left-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-white shadow ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
-                          title="WhatsApp"
-                        >
-                          <WhatsAppBrandIcon className="h-3 w-3" />
+          <section className="card-surface overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMineParam(false)}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    !mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {t("conversations.scopeOrg")}
+                  <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMineParam(true)}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <UserCircle className="h-3.5 w-3.5" />
+                  {t("conversations.myAssignments")}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap gap-1 rounded-full bg-ink-100 p-1 dark:bg-ink-900/60">
+                  {filters.map((f) => (
+                    <button
+                      key={f.key || "all"}
+                      type="button"
+                      onClick={() => setStatusFilter(f.key)}
+                      className={clsx(
+                        "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                        statusFilter === f.key
+                          ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
+                          : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900",
+                      )}
+                    >
+                      {f.label}
+                      {f.key === "OPEN" ? (
+                        <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-200">
+                          {counts.open}
+                        </span>
+                      ) : f.key === "PENDING" ? (
+                        <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
+                          {counts.pending}
+                        </span>
+                      ) : f.key === "RESOLVED" ? (
+                        <span className="ml-2 rounded-full bg-ink-300/30 px-1.5 py-0.5 text-[10px] font-bold text-ink-700 dark:bg-ink-700/50 dark:text-ink-200">
+                          {counts.resolved}
                         </span>
                       ) : null}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-gray-900 dark:text-ink-50">{conv.contact.name}</span>
-                        <span
+                    </button>
+                  ))}
+                </div>
+
+                <div className="hidden items-center gap-2 md:flex">
+                  <UsersRound className="h-4 w-4 shrink-0 text-ink-400 dark:text-ink-500" />
+                  <label htmlFor="conv-team-filter" className="sr-only">
+                    {t("conversations.filterTeam")}
+                  </label>
+                  <select
+                    id="conv-team-filter"
+                    value={teamFilter}
+                    onChange={(e) => setTeamFilterUrl(e.target.value)}
+                    className="h-10 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
+                  >
+                    <option value="">{t("conversations.allTeams")}</option>
+                    {teamOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Inbox className="h-4 w-4 shrink-0 text-ink-400 dark:text-ink-500" />
+                  <label htmlFor="conv-inbox-filter" className="sr-only">
+                    {t("conversations.filterInbox")}
+                  </label>
+                  <select
+                    id="conv-inbox-filter"
+                    value={inboxFilter}
+                    onChange={(e) => setInboxFilterUrl(e.target.value)}
+                    className="h-10 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
+                  >
+                    <option value="">{t("conversations.allInboxes")}</option>
+                    {inboxOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 sm:p-4">
+              {loading ? (
+                <div className="flex justify-center py-12">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <motion.div
+                  className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-ink-200 bg-white/70 py-16 backdrop-blur-sm dark:border-ink-700 dark:bg-ink-950/20"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.22 }}
+                >
+                  <MessageSquare className="mb-3 h-12 w-12 text-ink-300 dark:text-ink-600" />
+                  <p className="text-sm text-ink-600 dark:text-ink-400">
+                    {listSearch.trim() && conversations.length > 0
+                      ? t("conversations.emptySearchTitle")
+                      : mineActive
+                        ? t("conversations.emptyMineTitle")
+                        : t("conversations.emptyTitle")}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
+                    {listSearch.trim() && conversations.length > 0
+                      ? t("conversations.emptySearchHint")
+                      : mineActive
+                        ? t("conversations.emptyMineHint")
+                        : t("conversations.emptyHint")}
+                  </p>
+                </motion.div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredConversations.map((conv) => {
+                    const lastMessage = conv.messages[0];
+                    return (
+                      <div key={conv.id}>
+                        <Link
+                          to={`/conversations/${conv.id}`}
                           className={clsx(
-                            "rounded-full px-2 py-0.5 text-xs font-medium",
-                            statusColors[conv.status],
+                            "group flex items-center gap-3 rounded-2xl border p-4 transition-all",
+                            "border-ink-200 bg-white/80 shadow-sm hover:-translate-y-0.5 hover:shadow-md",
+                            "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
                           )}
                         >
-                          {statusLabel(conv.status)}
-                        </span>
-                        {conv.inbox ? (
-                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200">
-                            {conv.inbox.name}
-                          </span>
-                        ) : null}
-                        {conv.awaitingHumanHandoff ? (
-                          <span
-                            className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-900 dark:bg-red-950/55 dark:text-red-100"
-                            title={t("conversationDetail.awaitingHumanBanner")}
-                          >
-                            {t("conversationDetail.awaitingHumanBadge")}
-                          </span>
-                        ) : null}
-                        {conv.agentBotTriageActive &&
-                        !conv.awaitingHumanHandoff &&
-                        (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200"
-                            title={t("conversationDetail.botTriageBanner")}
-                          >
-                            <Bot className="h-3 w-3" />
-                            {typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0
-                              ? t("conversationDetail.transferToBot")
-                              : t("conversationDetail.botInAttendance")}
-                          </span>
-                        ) : null}
-                        {conv.status === "RESOLVED" && conv.leadType && (
-                          <span
-                            className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                            style={{ backgroundColor: conv.leadType.color }}
-                          >
-                            {conv.leadType.name}
-                          </span>
-                        )}
-                        {conv.status === "RESOLVED" &&
-                        conv.closureValue != null &&
-                        conv.closureValue > 0 ? (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                            {fmtMoney(conv.closureValue)}
-                          </span>
-                        ) : null}
+                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
+                            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl">
+                              {conv.contact.profilePictureUrl ? (
+                                <img src={conv.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                conv.contact.name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            {conv.inbox?.channelType === "WHATSAPP" ? (
+                              <span
+                                className="absolute -left-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-white shadow ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
+                                title="WhatsApp"
+                              >
+                                <WhatsAppBrandIcon className="h-3 w-3" />
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate font-semibold text-ink-900 dark:text-ink-50">{conv.contact.name}</span>
+                              <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-semibold", statusColors[conv.status])}>
+                                {statusLabel(conv.status)}
+                              </span>
+                              {conv.inbox ? (
+                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200">
+                                  {conv.inbox.name}
+                                </span>
+                              ) : null}
+                              {conv.awaitingHumanHandoff ? (
+                                <span
+                                  className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-900 dark:bg-red-950/45 dark:text-red-100"
+                                  title={t("conversationDetail.awaitingHumanBanner")}
+                                >
+                                  {t("conversationDetail.awaitingHumanBadge")}
+                                </span>
+                              ) : null}
+                              {conv.agentBotTriageActive && !conv.awaitingHumanHandoff && (conv.status === "OPEN" || conv.status === "PENDING") ? (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                                  title={t("conversationDetail.botTriageBanner")}
+                                >
+                                  <Bot className="h-3.5 w-3.5" />
+                                  {typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0
+                                    ? t("conversationDetail.transferToBot")
+                                    : t("conversationDetail.botInAttendance")}
+                                </span>
+                              ) : null}
+                              {conv.status === "RESOLVED" && conv.leadType ? (
+                                <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: conv.leadType.color }}>
+                                  {conv.leadType.name}
+                                </span>
+                              ) : null}
+                              {conv.status === "RESOLVED" && conv.closureValue != null && conv.closureValue > 0 ? (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200">
+                                  {fmtMoney(conv.closureValue)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-sm text-ink-600 dark:text-ink-400">
+                              {lastMessage?.body || t("conversations.noMessages")}
+                            </p>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-500 dark:text-ink-500">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
+                          </div>
+                        </Link>
                       </div>
-                      <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-ink-400">
-                        {lastMessage?.body || t("conversations.noMessages")}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1 text-xs text-gray-400 dark:text-ink-500">
-                      <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(conv.updatedAt), {
-                        addSuffix: true,
-                        locale: dateLocale,
-                      })}
-                    </div>
-                  </Link>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          </section>
+        </div>
       </div>
       <ConversationsStartChatModal
         open={composeOpen}

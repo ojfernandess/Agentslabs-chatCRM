@@ -68,12 +68,17 @@ export function AiInsightsPage() {
     try {
       await api.put("/settings", { assistantAiEnabled: next });
       setAssistantAiEnabled(next);
+      window.dispatchEvent(
+        new CustomEvent("openconduit:pilot-flags-updated", {
+          detail: { assistantAiEnabled: next, aiPilotAccessEnabled },
+        }),
+      );
       setError("");
       setInsights(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
     }
-  }, [assistantAiEnabled, tenantAdmin, t]);
+  }, [assistantAiEnabled, tenantAdmin, t, aiPilotAccessEnabled]);
 
   const togglePilot = useCallback(async () => {
     if (!tenantAdmin) return;
@@ -81,11 +86,16 @@ export function AiInsightsPage() {
     try {
       await api.put("/settings", { aiPilotAccessEnabled: next });
       setAiPilotAccessEnabled(next);
+      window.dispatchEvent(
+        new CustomEvent("openconduit:pilot-flags-updated", {
+          detail: { assistantAiEnabled, aiPilotAccessEnabled: next },
+        }),
+      );
       setError("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
     }
-  }, [aiPilotAccessEnabled, tenantAdmin, t]);
+  }, [aiPilotAccessEnabled, tenantAdmin, t, assistantAiEnabled]);
 
   useEffect(() => {
     const c = searchParams.get("conversation");

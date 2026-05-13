@@ -291,8 +291,27 @@ export function ConversationDetailPage() {
     };
   }, [user]);
 
+  useEffect(() => {
+    const on = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | undefined;
+      if (!detail) return;
+      setPilotFlags(detail);
+    };
+    window.addEventListener("openconduit:pilot-flags-updated", on as EventListener);
+    return () => window.removeEventListener("openconduit:pilot-flags-updated", on as EventListener);
+  }, []);
+
   const assistantAiEnabled = pilotFlags?.assistantAiEnabled ?? true;
   const copilotEnabled = assistantAiEnabled && (tenantAdmin || (pilotFlags?.aiPilotAccessEnabled ?? false));
+
+  useEffect(() => {
+    if (copilotEnabled) return;
+    setCopilotDesktopOpen(false);
+    setCopilotMobileOpen(false);
+    setCopilotBusy(false);
+    setCopilotError("");
+    setCopilotInsights(null);
+  }, [copilotEnabled]);
 
   const toggleCopilotPanel = () => {
     if (!copilotEnabled) return;
@@ -844,6 +863,7 @@ export function ConversationDetailPage() {
   };
 
   const handleAiSuggestReply = useCallback(async () => {
+    if (!assistantAiEnabled) return;
     if (!id || privateNote || !conversation) return;
     setSuggestReplyBusy(true);
     setFlowError("");
@@ -864,7 +884,7 @@ export function ConversationDetailPage() {
     } finally {
       setSuggestReplyBusy(false);
     }
-  }, [id, privateNote, conversation, newMessage, t]);
+  }, [assistantAiEnabled, id, privateNote, conversation, newMessage, t]);
 
   const applyStatus = async (
     status: "OPEN" | "PENDING" | "RESOLVED",
@@ -1644,10 +1664,11 @@ export function ConversationDetailPage() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-ink-100/90 dark:bg-ink-950 lg:flex-row">
+    <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-ink-950 lg:flex-row">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(124,152,182,0.16),transparent_60%)]" />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <motion.div
-          className="shrink-0 border-b border-ink-200/80 bg-white/95 px-3 py-3 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 lg:px-5"
+          className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-ink-800 dark:bg-ink-950/25 lg:px-5"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
@@ -1722,15 +1743,17 @@ export function ConversationDetailPage() {
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
-              <p className="mt-1">
-                <Link
-                  to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
-                >
-                  <Brain className="h-3.5 w-3.5" />
-                  {t("conversationDetail.linkAiInsights")}
-                </Link>
-              </p>
+              {assistantAiEnabled ? (
+                <p className="mt-1">
+                  <Link
+                    to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
+                  >
+                    <Brain className="h-3.5 w-3.5" />
+                    {t("conversationDetail.linkAiInsights")}
+                  </Link>
+                </p>
+              ) : null}
               {clientWaitLabel ? (
                 <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-200/90">
                   <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -1900,7 +1923,7 @@ export function ConversationDetailPage() {
           onScroll={onMessagesViewportScroll}
           className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5"
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_40%_at_50%_0%,rgba(255,255,255,0.04),transparent_55%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           <div className="relative w-full min-w-0 space-y-0">
             {conversation.awaitingHumanHandoff ? (
               <div
@@ -1986,8 +2009,8 @@ export function ConversationDetailPage() {
                     msg.isPrivate
                       ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
                       : inbound
-                        ? "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:shadow-md dark:shadow-black/20 dark:ring-1 dark:ring-white/5"
-                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:bg-none dark:bg-[#1e2a3a] dark:text-ink-50 dark:shadow-lg dark:shadow-black/25 dark:ring-1 dark:ring-brand-400/25",
+                        ? "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-800 dark:bg-ink-900/65 dark:text-ink-100 dark:shadow-md dark:shadow-black/25 dark:ring-1 dark:ring-white/5"
+                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:from-brand-600 dark:to-brand-700 dark:shadow-lg dark:shadow-black/25",
                   )}
                 >
                   {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
@@ -2177,27 +2200,29 @@ export function ConversationDetailPage() {
                   </button>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 pb-0.5">
-                  <motion.button
-                    type="button"
-                    disabled={
-                      (isOutsideWindow && !privateNote) ||
-                      recording ||
-                      sending ||
-                      !!voicePreview ||
-                      suggestReplyBusy ||
-                      privateNote
-                    }
-                    onClick={() => void handleAiSuggestReply()}
-                    title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200/80 bg-violet-50 text-violet-800 hover:bg-violet-100/90 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
-                    whileTap={{ scale: 0.94 }}
-                  >
-                    {suggestReplyBusy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                  </motion.button>
+                  {assistantAiEnabled ? (
+                    <motion.button
+                      type="button"
+                      disabled={
+                        (isOutsideWindow && !privateNote) ||
+                        recording ||
+                        sending ||
+                        !!voicePreview ||
+                        suggestReplyBusy ||
+                        privateNote
+                      }
+                      onClick={() => void handleAiSuggestReply()}
+                      title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200/80 bg-violet-50 text-violet-800 hover:bg-violet-100/90 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                      whileTap={{ scale: 0.94 }}
+                    >
+                      {suggestReplyBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                    </motion.button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setComposerExpanded((e) => !e)}
@@ -2213,9 +2238,9 @@ export function ConversationDetailPage() {
               <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
                   <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
-                ) : (
+                ) : assistantAiEnabled ? (
                   <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
-                )}
+                ) : null}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (
                   <p className="mb-2 rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-950 dark:border-sky-800/50 dark:bg-sky-950/40 dark:text-sky-100">
                     {t("conversationDetail.composerSignatureBanner")}{" "}
