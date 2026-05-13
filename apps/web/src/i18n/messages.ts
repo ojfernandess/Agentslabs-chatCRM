@@ -923,6 +923,7 @@ export const messages = {
       shortcutToggleSidebar: "Alternar barra lateral",
       shortcutNextConversationTab: "Mover para a próxima aba da lista de conversas",
       shortcutPrivateNote: "Mudar para Nota Privada",
+      shortcutToggleSnooze: "Ativar/desativar soneca",
     },
     profilePage: {
       title: "Configurações do perfil",
@@ -3016,6 +3017,7 @@ export const messages = {
       shortcutToggleSidebar: "Toggle sidebar",
       shortcutNextConversationTab: "Next conversations tab",
       shortcutPrivateNote: "Switch to private note",
+      shortcutToggleSnooze: "Toggle snooze",
     },
     profilePage: {
       title: "Profile settings",

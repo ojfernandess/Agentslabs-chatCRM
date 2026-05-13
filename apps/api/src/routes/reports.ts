@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { businessMinutesBetween, parseTeamBusinessHours, type ParsedBusinessSchedule } from "../lib/businessHours.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
 import {
   analyzeAggregateHealth,
   analyzeConversationForInsights,
@@ -509,20 +510,9 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
     const settingsBot = await prisma.settings.findUnique({
       where: { organizationId: org },
-      select: { agentBotId: true },
+      include: { agentBot: true },
     });
-    const agentBotRow =
-      settingsBot?.agentBotId != null
-        ? await prisma.bot.findFirst({
-            where: {
-              id: settingsBot.agentBotId,
-              organizationId: org,
-              isActive: true,
-              webhookUrl: { not: null },
-            },
-            select: { id: true, name: true },
-          })
-        : null;
+    const configuredBot = await resolveAgentBotFromOrgSettingsRow(org, settingsBot);
 
     const messagesOutboundBot = botOutboundTotalRows[0]?.n ?? 0;
     const messagesOutboundHuman = humanOutboundTotalRows[0]?.n ?? 0;
@@ -530,12 +520,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     const handoffEvents = handoffEventsRows[0]?.n ?? 0;
     const handoffsToHuman = handoffsToHumanRows[0]?.n ?? 0;
 
-    const botTelemetryEnabled =
-      agentBotRow != null ||
+    const botTelemetryDetected =
       messagesOutboundBot > 0 ||
       conversationsWithBotReplies > 0 ||
       handoffEvents > 0 ||
       pendingBotQueueCount > 0;
+
+    const botTelemetryEnabled = configuredBot != null || botTelemetryDetected;
 
     return {
       meta: {
@@ -549,8 +540,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         },
         agentBot: {
           enabled: botTelemetryEnabled,
-          botId: agentBotRow?.id ?? null,
-          name: agentBotRow?.name ?? (botTelemetryEnabled ? "Bot nativo" : null),
+          botId: configuredBot?.agentBotId ?? null,
+          name: configuredBot?.agentBot.name ?? (botTelemetryEnabled ? "Bot nativo" : null),
         },
       },
       summary: {

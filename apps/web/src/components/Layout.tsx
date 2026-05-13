@@ -113,6 +113,18 @@ export function Layout() {
         setMobileNavOpen((v) => !v);
         return;
       }
+      if (k === "m") {
+        e.preventDefault();
+        try {
+          const storageKey = "openconduit_availability";
+          const cur = localStorage.getItem(storageKey);
+          const next = cur === "away" ? "online" : "away";
+          localStorage.setItem(storageKey, next);
+          window.dispatchEvent(new CustomEvent("openconduit:availability-changed"));
+        } catch {
+        }
+        return;
+      }
       if (k === "n") {
         if (!location.pathname.startsWith("/conversations")) return;
         e.preventDefault();

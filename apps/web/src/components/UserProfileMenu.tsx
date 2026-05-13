@@ -86,6 +86,14 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    const onAvail = () => {
+      setAvailability(readAvailability());
+    };
+    window.addEventListener("openconduit:availability-changed", onAvail);
+    return () => window.removeEventListener("openconduit:availability-changed", onAvail);
+  }, []);
+
   const Keycap = ({ children }: { children: ReactNode }) => (
     <kbd className="rounded-md border border-ink-700/70 bg-ink-800/70 px-2 py-1 text-[11px] font-semibold text-ink-100 shadow-sm">
       {children}
@@ -114,6 +122,7 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
   const setAvail = useCallback((v: Availability) => {
     setAvailability(v);
     localStorage.setItem(AVAIL_STORAGE, v);
+    window.dispatchEvent(new CustomEvent("openconduit:availability-changed"));
   }, []);
 
   const setAutoOff = useCallback((on: boolean) => {
@@ -463,6 +472,15 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                       <>
                         <Keycap>Alt / ⌥</Keycap>
                         <Keycap>P</Keycap>
+                      </>
+                    }
+                  />
+                  <ShortcutRow
+                    label={t("profileMenu.shortcutToggleSnooze")}
+                    keys={
+                      <>
+                        <Keycap>Alt / ⌥</Keycap>
+                        <Keycap>M</Keycap>
                       </>
                     }
                   />
