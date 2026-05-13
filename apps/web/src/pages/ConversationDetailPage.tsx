@@ -88,6 +88,15 @@ interface LeadTypeRow {
   color: string;
 }
 
+type CopilotInsights = {
+  summary: string;
+  intent: string;
+  sentiment: "positive" | "neutral" | "negative" | "frustrated";
+  suggestedActions: string[];
+  conversionOutlook: string;
+  alerts: string[];
+};
+
 interface ContactTimelineEvent {
   id: string;
   occurredAt: string;
@@ -222,6 +231,12 @@ export function ConversationDetailPage() {
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
+  const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
+  const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
+  const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
+  const [copilotBusy, setCopilotBusy] = useState(false);
+  const [copilotError, setCopilotError] = useState("");
+  const [copilotInsights, setCopilotInsights] = useState<CopilotInsights | null>(null);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
@@ -259,6 +274,58 @@ export function ConversationDetailPage() {
   useEffect(() => {
     stickToBottomRef.current = true;
   }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) return;
+    void api
+      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .then((res) => {
+        if (!cancelled) setPilotFlags(res);
+      })
+      .catch(() => {
+        if (!cancelled) setPilotFlags({ assistantAiEnabled: true, aiPilotAccessEnabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const assistantAiEnabled = pilotFlags?.assistantAiEnabled ?? true;
+  const copilotEnabled = assistantAiEnabled && (tenantAdmin || (pilotFlags?.aiPilotAccessEnabled ?? false));
+
+  const toggleCopilotPanel = () => {
+    if (!copilotEnabled) return;
+    if (window.matchMedia && window.matchMedia("(min-width: 1280px)").matches) {
+      setCopilotDesktopOpen((o) => !o);
+      return;
+    }
+    setCopilotMobileOpen(true);
+  };
+
+  const loadCopilotInsights = useCallback(
+    async (mode: "summary" | "evaluate") => {
+      if (!id || !copilotEnabled) return;
+      setCopilotBusy(true);
+      setCopilotError("");
+      try {
+        const res = await api.post<{ insights: CopilotInsights }>(`/conversations/${id}/insights`, {});
+        setCopilotInsights(res.insights);
+        if (mode === "summary") return;
+      } catch (e) {
+        if (e instanceof ApiError && (e as unknown as { code?: string }).code === "ai_disabled") {
+          setPilotFlags((prev) => (prev ? { ...prev, assistantAiEnabled: false } : { assistantAiEnabled: false, aiPilotAccessEnabled: false }));
+          setCopilotError(t("aiInsightsPage.aiDisabled"));
+        } else {
+          setCopilotError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+        }
+        setCopilotInsights(null);
+      } finally {
+        setCopilotBusy(false);
+      }
+    },
+    [id, copilotEnabled, t],
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -1578,7 +1645,7 @@ export function ConversationDetailPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-ink-100/90 dark:bg-ink-950 lg:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <motion.div
           className="shrink-0 border-b border-ink-200/80 bg-white/95 px-3 py-3 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 lg:px-5"
           initial={{ opacity: 0, y: -8 }}
@@ -1707,17 +1774,6 @@ export function ConversationDetailPage() {
             >
               <LayoutGrid className="h-5 w-5" />
             </button>
-            {!crmDesktopOpen ? (
-              <button
-                type="button"
-                className="ml-auto mt-1 hidden rounded-xl border border-ink-200 bg-ink-50 p-2 text-ink-600 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700 xl:inline-flex"
-                onClick={() => setCrmDesktopOpen(true)}
-                title={t("conversationDetail.crmPanelExpand")}
-                aria-label={t("conversationDetail.crmPanelExpand")}
-              >
-                <LayoutGrid className="h-5 w-5" />
-              </button>
-            ) : null}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
@@ -2392,6 +2448,37 @@ export function ConversationDetailPage() {
             </div>
           </form>
         </motion.div>
+
+        <div className="pointer-events-auto absolute right-3 top-28 z-30 hidden flex-col gap-2 xl:flex">
+          <button
+            type="button"
+            onClick={() => setCrmDesktopOpen((o) => !o)}
+            title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+            aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+            className={clsx(
+              "flex h-10 w-10 items-center justify-center rounded-full border text-ink-200 shadow-sm transition-colors",
+              "border-ink-800 bg-ink-950/60 hover:bg-ink-900",
+            )}
+          >
+            <User className="h-5 w-5" />
+          </button>
+          {copilotEnabled ? (
+            <button
+              type="button"
+              onClick={toggleCopilotPanel}
+              title={t("conversationDetail.copilotToggle")}
+              aria-label={t("conversationDetail.copilotToggle")}
+              className={clsx(
+                "flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition-colors",
+                copilotDesktopOpen
+                  ? "border-violet-700/60 bg-violet-950/60 text-violet-200 hover:bg-violet-900/40"
+                  : "border-ink-800 bg-ink-950/60 text-ink-200 hover:bg-ink-900",
+              )}
+            >
+              <Sparkles className="h-5 w-5" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <aside
@@ -2420,6 +2507,95 @@ export function ConversationDetailPage() {
         {crmDesktopOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-4">{renderCrmPanel()}</div> : null}
       </aside>
 
+      {copilotDesktopOpen ? (
+        <aside className="hidden min-h-0 w-[min(100%,360px)] shrink-0 flex-col border-l border-ink-200/90 bg-white/95 dark:border-ink-800 dark:bg-ink-900/95 xl:flex">
+          <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-2 dark:border-ink-800">
+            <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+              onClick={() => setCopilotDesktopOpen(false)}
+              aria-label={t("common.close")}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {!assistantAiEnabled ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/35 dark:text-amber-100">
+                {t("aiInsightsPage.aiDisabled")}
+              </div>
+            ) : (
+              <>
+                <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotStart")}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("conversationDetail.copilotStartHint")}</p>
+                <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("conversationDetail.copilotTry")}</p>
+                <div className="mt-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadCopilotInsights("summary")}
+                    disabled={copilotBusy}
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                  >
+                    <span>{t("conversationDetail.copilotCmdSummarize")}</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrivateNote(false);
+                      void handleAiSuggestReply();
+                    }}
+                    disabled={copilotBusy || suggestReplyBusy || privateNote}
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                  >
+                    <span>{t("conversationDetail.copilotCmdSuggest")}</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadCopilotInsights("evaluate")}
+                    disabled={copilotBusy}
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                  >
+                    <span>{t("conversationDetail.copilotCmdEvaluate")}</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {copilotError ? (
+              <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
+                {copilotError}
+              </p>
+            ) : null}
+
+            {copilotBusy ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-ink-600 dark:text-ink-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("aiInsightsPage.analyzing")}
+              </div>
+            ) : null}
+
+            {copilotInsights ? (
+              <div className="mt-6 space-y-4">
+                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-700 dark:bg-ink-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.summary")}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-800 dark:text-ink-100">{copilotInsights.summary}</p>
+                </div>
+                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-700 dark:bg-ink-800">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.sentiment")}</p>
+                  <p className="mt-2 text-sm text-ink-800 dark:text-ink-100">{copilotInsights.sentiment}</p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.intent")}</p>
+                  <p className="mt-2 text-sm text-ink-800 dark:text-ink-100">{copilotInsights.intent}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
+
       <AnimatePresence>
         {crmMobileOpen ? (
           <motion.div
@@ -2438,6 +2614,106 @@ export function ConversationDetailPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-4">{renderCrmPanel({ showMobileClose: true })}</div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {copilotMobileOpen ? (
+          <motion.div
+            className="fixed inset-0 z-40 flex justify-end bg-black/40 xl:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setCopilotMobileOpen(false)}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.22 }}
+              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
+                <button
+                  type="button"
+                  className="rounded-lg p-1.5 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+                  onClick={() => setCopilotMobileOpen(false)}
+                  aria-label={t("common.close")}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-4">
+                {!assistantAiEnabled ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/35 dark:text-amber-100">
+                    {t("aiInsightsPage.aiDisabled")}
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotStart")}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("conversationDetail.copilotStartHint")}</p>
+                    <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("conversationDetail.copilotTry")}</p>
+                    <div className="mt-2 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadCopilotInsights("summary")}
+                        disabled={copilotBusy}
+                        className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                      >
+                        <span>{t("conversationDetail.copilotCmdSummarize")}</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrivateNote(false);
+                          void handleAiSuggestReply();
+                        }}
+                        disabled={copilotBusy || suggestReplyBusy || privateNote}
+                        className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                      >
+                        <span>{t("conversationDetail.copilotCmdSuggest")}</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void loadCopilotInsights("evaluate")}
+                        disabled={copilotBusy}
+                        className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                      >
+                        <span>{t("conversationDetail.copilotCmdEvaluate")}</span>
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {copilotError ? (
+                  <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
+                    {copilotError}
+                  </p>
+                ) : null}
+
+                {copilotBusy ? (
+                  <div className="mt-4 flex items-center gap-2 text-sm text-ink-600 dark:text-ink-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("aiInsightsPage.analyzing")}
+                  </div>
+                ) : null}
+
+                {copilotInsights ? (
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-700 dark:bg-ink-800">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.summary")}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-800 dark:text-ink-100">{copilotInsights.summary}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </motion.div>
           </motion.div>
         ) : null}
