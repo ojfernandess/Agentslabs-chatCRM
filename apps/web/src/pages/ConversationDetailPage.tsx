@@ -50,6 +50,9 @@ import {
   Circle,
   Loader2,
   Brain,
+  Phone,
+  Mail,
+  MoreHorizontal,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -231,6 +234,7 @@ export function ConversationDetailPage() {
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
+  const [crmTab, setCrmTab] = useState<"contact" | "crm" | "activity">("contact");
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
   const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
@@ -1269,15 +1273,50 @@ export function ConversationDetailPage() {
       : null;
 
   const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3 dark:border-ink-800">
-        <p className="text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
-          {t("conversationDetail.crmPanelTitle")}
-        </p>
+    <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 rounded-xl bg-ink-100 p-1 dark:bg-ink-900/40 dark:ring-1 dark:ring-white/10">
+          <button
+            type="button"
+            onClick={() => setCrmTab("contact")}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+              crmTab === "contact"
+                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
+                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
+            )}
+          >
+            {t("conversationDetail.crmTabContact")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCrmTab("crm")}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+              crmTab === "crm"
+                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
+                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
+            )}
+          >
+            {t("conversationDetail.crmTabCrm")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCrmTab("activity")}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+              crmTab === "activity"
+                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
+                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
+            )}
+          >
+            {t("conversationDetail.crmTabActivities")}
+          </button>
+        </div>
         {opts?.showMobileClose ? (
           <button
             type="button"
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
+            className="shrink-0 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-950/40 dark:text-ink-200 dark:hover:bg-ink-900/60"
             onClick={() => setCrmMobileOpen(false)}
           >
             {t("common.close")}
@@ -1285,7 +1324,8 @@ export function ConversationDetailPage() {
         ) : null}
       </div>
 
-      <div className="rounded-xl border border-ink-200/80 bg-ink-50/60 p-3 dark:border-ink-700 dark:bg-ink-900/50">
+      {crmTab === "contact" ? (
+        <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
         <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
         <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{conversation.contact.phone}</p>
         {conversation.contact.email ? (
@@ -1298,6 +1338,55 @@ export function ConversationDetailPage() {
             <span className="font-medium">{t("conversationDetail.email")}:</span> {t("conversationDetail.noDealValue")}
           </p>
         )}
+        {(() => {
+          const phone = conversation.contact.phone ?? "";
+          const phoneDigits = phone.replace(/\D/g, "");
+          const hasPhone = phoneDigits.length > 0;
+          const hasEmail = Boolean(conversation.contact.email?.trim());
+          const btnClass =
+            "flex h-9 w-9 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10";
+          const disabledClass =
+            "pointer-events-none opacity-40";
+          return (
+            <div className="mt-3 flex items-center gap-2">
+              <a
+                href={hasPhone ? `https://wa.me/${phoneDigits}` : undefined}
+                target={hasPhone ? "_blank" : undefined}
+                rel={hasPhone ? "noreferrer" : undefined}
+                className={clsx(btnClass, !hasPhone && disabledClass)}
+                aria-label="WhatsApp"
+                title="WhatsApp"
+              >
+                <WhatsAppBrandIcon className="h-4 w-4" />
+              </a>
+              <a
+                href={hasPhone ? `tel:${phoneDigits}` : undefined}
+                className={clsx(btnClass, !hasPhone && disabledClass)}
+                aria-label={t("conversationDetail.call")}
+                title={t("conversationDetail.call")}
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+              <a
+                href={hasEmail ? `mailto:${conversation.contact.email}` : undefined}
+                className={clsx(btnClass, !hasEmail && disabledClass)}
+                aria-label={t("conversationDetail.email")}
+                title={t("conversationDetail.email")}
+              >
+                <Mail className="h-4 w-4" />
+              </a>
+              <Link
+                to={`/contacts/${conversation.contact.id}`}
+                onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+                className={btnClass}
+                aria-label={t("conversationDetail.openContactCrm")}
+                title={t("conversationDetail.openContactCrm")}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Link>
+            </div>
+          );
+        })()}
         {(() => {
           const assigned = conversation.contact.tags ?? [];
           const assignedIds = new Set(assigned.map((x) => x.tag.id));
@@ -1409,8 +1498,11 @@ export function ConversationDetailPage() {
           </p>
         ) : null}
       </div>
+      ) : null}
 
-      <div className="rounded-xl border border-ink-200/80 bg-white p-3 shadow-sm dark:border-ink-700 dark:bg-ink-900/40">
+      {crmTab === "crm" ? (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
           {t("conversationDetail.dealValue")} / {t("conversationDetail.pipelineStage")}
         </p>
@@ -1479,7 +1571,7 @@ export function ConversationDetailPage() {
       </div>
 
       {tenantAdmin ? (
-        <div className="rounded-xl border border-ink-200/80 bg-ink-50/50 p-3 dark:border-ink-700 dark:bg-ink-900/35">
+        <div className="rounded-2xl border border-ink-200/80 bg-white/70 p-4 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/20">
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">{t("conversationDetail.team")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <label htmlFor="conv-team-aside" className="sr-only">
@@ -1516,7 +1608,7 @@ export function ConversationDetailPage() {
         conversation.csatScore != null ||
         conversation.csatSurveyPending ||
         (conversation.closureValue != null && conversation.closureValue > 0)) ? (
-        <div className="rounded-xl border border-brand-200/60 bg-brand-50/40 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+        <div className="rounded-2xl border border-brand-200/60 bg-brand-50/40 p-4 dark:border-brand-900/40 dark:bg-brand-950/20">
           <p className="text-[11px] font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
             {t("conversationDetail.resolvedSummary")}
           </p>
@@ -1571,8 +1663,11 @@ export function ConversationDetailPage() {
           ) : null}
         </div>
       ) : null}
+        </div>
+      ) : null}
 
-      <div className="rounded-xl border border-ink-200/80 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-900/40">
+      {crmTab === "activity" ? (
+      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
         <div className="flex items-start justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
             {t("conversationDetail.recentHistoryTitle")}
@@ -1660,15 +1755,16 @@ export function ConversationDetailPage() {
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-ink-950 lg:flex-row">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(124,152,182,0.16),transparent_60%)]" />
+    <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(123,92,255,0.16),transparent_60%)]" />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <motion.div
-          className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-ink-800 dark:bg-ink-950/25 lg:px-5"
+          className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55 lg:px-5"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
@@ -2009,8 +2105,8 @@ export function ConversationDetailPage() {
                     msg.isPrivate
                       ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
                       : inbound
-                        ? "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-ink-800 dark:bg-ink-900/65 dark:text-ink-100 dark:shadow-md dark:shadow-black/25 dark:ring-1 dark:ring-white/5"
-                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:from-brand-600 dark:to-brand-700 dark:shadow-lg dark:shadow-black/25",
+                        ? "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-white/10 dark:bg-[#111C2B]/85 dark:text-ink-100 dark:shadow-md dark:shadow-black/25 dark:ring-1 dark:ring-white/5"
+                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:from-violet-600 dark:to-violet-700 dark:shadow-lg dark:shadow-black/25",
                   )}
                 >
                   {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
@@ -2164,14 +2260,14 @@ export function ConversationDetailPage() {
         </div>
 
         <motion.div
-          className="w-full min-w-0 shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-ink-800 dark:bg-ink-900/95 sm:px-5"
+          className="w-full min-w-0 shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/65 sm:px-5"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
           <form onSubmit={handleSend} className="w-full min-w-0">
-            <div className="w-full min-w-0 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-950/90">
-              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-ink-800">
+            <div className="w-full min-w-0 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111C2B]/70">
+              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-white/10">
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                   <button
                     type="button"
@@ -2179,8 +2275,8 @@ export function ConversationDetailPage() {
                     className={clsx(
                       "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
                       !privateNote
-                        ? "bg-ink-200 text-ink-900 dark:bg-ink-700 dark:text-ink-50"
-                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200",
+                        ? "bg-ink-200 text-ink-900 dark:bg-white/10 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-white/5 dark:hover:text-ink-50",
                     )}
                   >
                     {t("conversationDetail.composerReplyTab")}
@@ -2191,8 +2287,8 @@ export function ConversationDetailPage() {
                     className={clsx(
                       "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
                       privateNote
-                        ? "bg-ink-200 text-ink-900 dark:bg-ink-700 dark:text-ink-50"
-                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-200",
+                        ? "bg-ink-200 text-ink-900 dark:bg-white/10 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-white/5 dark:hover:text-ink-50",
                     )}
                   >
                     <Lock className="h-3 w-3 opacity-70" />
@@ -2508,13 +2604,13 @@ export function ConversationDetailPage() {
 
       <aside
         className={clsx(
-          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-ink-800 dark:bg-ink-900/95 xl:flex",
+          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex",
           crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden",
         )}
       >
         <div
           className={clsx(
-            "flex shrink-0 items-center border-b border-ink-100 dark:border-ink-800",
+            "flex shrink-0 items-center border-b border-ink-100 dark:border-white/10",
             crmDesktopOpen ? "justify-end px-1 py-2" : "justify-center border-0 py-2",
           )}
         >
@@ -2533,8 +2629,8 @@ export function ConversationDetailPage() {
       </aside>
 
       {copilotDesktopOpen ? (
-        <aside className="hidden min-h-0 w-[min(100%,360px)] shrink-0 flex-col border-l border-ink-200/90 bg-white/95 dark:border-ink-800 dark:bg-ink-900/95 xl:flex">
-          <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-2 dark:border-ink-800">
+        <aside className="hidden min-h-0 w-[min(100%,360px)] shrink-0 flex-col border-l border-ink-200/90 bg-white/95 dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex">
+          <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-2 dark:border-white/10">
             <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
             <button
               type="button"
@@ -2560,7 +2656,7 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => void loadCopilotInsights("summary")}
                     disabled={copilotBusy}
-                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white/80 px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10"
                   >
                     <span>{t("conversationDetail.copilotCmdSummarize")}</span>
                     <ChevronRight className="h-4 w-4" />
@@ -2572,7 +2668,7 @@ export function ConversationDetailPage() {
                       void handleAiSuggestReply();
                     }}
                     disabled={copilotBusy || suggestReplyBusy || privateNote}
-                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white/80 px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10"
                   >
                     <span>{t("conversationDetail.copilotCmdSuggest")}</span>
                     <ChevronRight className="h-4 w-4" />
@@ -2581,7 +2677,7 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => void loadCopilotInsights("evaluate")}
                     disabled={copilotBusy}
-                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                    className="flex w-full items-center justify-between rounded-xl border border-ink-200 bg-white/80 px-3 py-2 text-left text-sm text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10"
                   >
                     <span>{t("conversationDetail.copilotCmdEvaluate")}</span>
                     <ChevronRight className="h-4 w-4" />
@@ -2605,11 +2701,11 @@ export function ConversationDetailPage() {
 
             {copilotInsights ? (
               <div className="mt-6 space-y-4">
-                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-700 dark:bg-ink-800">
+                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-white/10 dark:bg-[#111C2B]/70">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.summary")}</p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-800 dark:text-ink-100">{copilotInsights.summary}</p>
                 </div>
-                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-700 dark:bg-ink-800">
+                <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-white/10 dark:bg-[#111C2B]/70">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.sentiment")}</p>
                   <p className="mt-2 text-sm text-ink-800 dark:text-ink-100">{copilotInsights.sentiment}</p>
                   <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-500">{t("aiInsightsPage.intent")}</p>
@@ -2635,7 +2731,7 @@ export function ConversationDetailPage() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "tween", duration: 0.22 }}
-              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-900"
+              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0F1B2B]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-4">{renderCrmPanel({ showMobileClose: true })}</div>
@@ -2658,10 +2754,10 @@ export function ConversationDetailPage() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "tween", duration: 0.22 }}
-              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-900"
+              className="h-full w-full max-w-md overflow-y-auto border-l border-ink-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0F1B2B]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-white/10">
                 <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
                 <button
                   type="button"

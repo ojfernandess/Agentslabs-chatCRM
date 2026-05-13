@@ -214,7 +214,7 @@ export function ConversationsPage() {
     <PageTransition>
       <div className="relative h-full min-h-0">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(124,152,182,0.16),transparent_60%)]" />
-        <div className="relative mx-auto flex h-full min-h-0 max-w-6xl flex-col gap-4 p-4 sm:p-6 lg:p-8">
+        <div className="relative flex h-full min-h-0 w-full flex-col gap-4 p-4 sm:p-6 lg:p-8">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("conversations.title")}</h1>
@@ -244,7 +244,7 @@ export function ConversationsPage() {
             </div>
           </header>
 
-          <section className="card-surface overflow-hidden">
+          <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -347,9 +347,9 @@ export function ConversationsPage() {
               </div>
             </div>
 
-            <div className="p-3 sm:p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
               {loading ? (
-                <div className="flex justify-center py-12">
+                <div className="flex items-center justify-center py-12">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
                 </div>
               ) : filteredConversations.length === 0 ? (
