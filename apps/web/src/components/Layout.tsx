@@ -241,14 +241,18 @@ export function Layout() {
 
   const sidebarContent = (
     <>
-      <div className="flex h-16 items-center gap-3 border-b border-ink-200 px-6 dark:border-ink-800">
-        <img
-          src={brandAssetUrl("/logo.svg")}
-          alt="OpenNexo CRM"
-          className="h-7"
-          decoding="async"
-        />
-        <span className="text-lg font-bold text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
+      <div className="px-5 pt-6 pb-5">
+        <Link to="/" className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 to-brand-500/25 ring-1 ring-black/5 dark:ring-white/10">
+            <img
+              src={brandAssetUrl("/logo.svg")}
+              alt="OpenConduit"
+              className="h-6 w-6"
+              decoding="async"
+            />
+          </div>
+          <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">OpenConduit</span>
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">

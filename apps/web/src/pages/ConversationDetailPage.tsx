@@ -308,7 +308,8 @@ export function ConversationDetailPage() {
   }, []);
 
   const assistantAiEnabled = pilotFlags?.assistantAiEnabled ?? true;
-  const copilotEnabled = assistantAiEnabled && (tenantAdmin || (pilotFlags?.aiPilotAccessEnabled ?? false));
+  const aiPilotAccessEnabled = pilotFlags?.aiPilotAccessEnabled ?? false;
+  const copilotEnabled = assistantAiEnabled && aiPilotAccessEnabled;
 
   useEffect(() => {
     if (copilotEnabled) return;
@@ -877,7 +878,7 @@ export function ConversationDetailPage() {
   };
 
   const handleAiSuggestReply = useCallback(async () => {
-    if (!assistantAiEnabled) return;
+    if (!copilotEnabled) return;
     if (!id || privateNote || !conversation) return;
     setSuggestReplyBusy(true);
     setFlowError("");
@@ -898,7 +899,7 @@ export function ConversationDetailPage() {
     } finally {
       setSuggestReplyBusy(false);
     }
-  }, [assistantAiEnabled, id, privateNote, conversation, newMessage, t]);
+  }, [copilotEnabled, id, privateNote, conversation, newMessage, t]);
 
   const applyStatus = async (
     status: "OPEN" | "PENDING" | "RESOLVED",
@@ -1816,93 +1817,128 @@ export function ConversationDetailPage() {
               ) : null}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h2 className="truncate text-base font-semibold tracking-tight text-ink-900 dark:text-ink-50">
-                  {conversation.contact.name}
-                </h2>
-                <span
-                  className={clsx(
-                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                    conversation.status === "OPEN" &&
-                      "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
-                    conversation.status === "PENDING" &&
-                      "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
-                    conversation.status === "RESOLVED" &&
-                      "bg-ink-200 text-ink-700 dark:bg-ink-800 dark:text-ink-300",
-                  )}
-                >
-                  {statusLabel(conversation.status)}
-                </span>
-                {conversation.awaitingHumanHandoff ? (
-                  <span
-                    className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"
-                    title={t("conversationDetail.awaitingHumanBanner")}
-                  >
-                    {t("conversationDetail.awaitingHumanBadge")}
-                  </span>
-                ) : null}
-                <span className="text-[11px] text-ink-500 dark:text-ink-400">
-                  {presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
-                </span>
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-base font-semibold tracking-tight text-ink-900 dark:text-ink-50">
+                        {conversation.contact.name}
+                      </h2>
+                      <span
+                        className={clsx(
+                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          conversation.status === "OPEN" &&
+                            "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
+                          conversation.status === "PENDING" &&
+                            "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
+                          conversation.status === "RESOLVED" &&
+                            "bg-ink-200 text-ink-700 dark:bg-white/10 dark:text-ink-200",
+                        )}
+                      >
+                        {statusLabel(conversation.status)}
+                      </span>
+                      {conversation.awaitingHumanHandoff ? (
+                        <span
+                          className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"
+                          title={t("conversationDetail.awaitingHumanBanner")}
+                        >
+                          {t("conversationDetail.awaitingHumanBadge")}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500 dark:text-ink-300">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="truncate">{conversation.contact.phone}</span>
+                        {isWhatsappInbox ? (
+                          <span
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5"
+                            title="WhatsApp"
+                            aria-hidden
+                          >
+                            <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className={clsx(
+                            "h-1.5 w-1.5 rounded-full",
+                            presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+                          )}
+                          aria-hidden
+                        />
+                        <span>{presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-ink-400 dark:text-ink-500">•</span>
+                        <span>
+                          {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {copilotEnabled ? (
+                      <Link
+                        to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
+                      >
+                        <Brain className="h-4 w-4" />
+                        {t("conversationDetail.linkAiInsights")}
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="rounded-xl border border-ink-200 bg-white p-2 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10 xl:hidden"
+                      onClick={() => setCrmMobileOpen(true)}
+                      aria-label={t("conversationDetail.crmDrawerToggle")}
+                    >
+                      <LayoutGrid className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {conversation.contact.tags?.map((ct) => (
+                    <span
+                      key={ct.tag.id}
+                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                      style={{ backgroundColor: ct.tag.color }}
+                    >
+                      {ct.tag.name}
+                    </span>
+                  ))}
+                  {conversation.status === "RESOLVED" && conversation.leadType ? (
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: conversation.leadType.color }}
+                    >
+                      {conversation.leadType.name}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-ink-600 dark:text-ink-400">
+                    <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.conversationAssignee")}:</span>{" "}
+                    {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
+                  </p>
+                  {clientWaitLabel ? (
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-amber-800 dark:text-amber-200/90">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {t("conversationDetail.waitingSince")} {clientWaitLabel}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{conversation.contact.phone}</p>
-              {assistantAiEnabled ? (
-                <p className="mt-1">
-                  <Link
-                    to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
-                  >
-                    <Brain className="h-3.5 w-3.5" />
-                    {t("conversationDetail.linkAiInsights")}
-                  </Link>
-                </p>
-              ) : null}
-              {clientWaitLabel ? (
-                <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-200/90">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  <span>
-                    {t("conversationDetail.waitingSince")} {clientWaitLabel}
-                  </span>
-                </p>
-              ) : null}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {conversation.contact.tags?.map((ct) => (
-                  <span
-                    key={ct.tag.id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
-                    style={{ backgroundColor: ct.tag.color }}
-                  >
-                    {ct.tag.name}
-                  </span>
-                ))}
-                {conversation.status === "RESOLVED" && conversation.leadType ? (
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                    style={{ backgroundColor: conversation.leadType.color }}
-                  >
-                    {conversation.leadType.name}
-                  </span>
-                ) : null}
-                <span className="rounded-full bg-ink-200/90 px-2 py-0.5 text-[10px] font-medium text-ink-800 dark:bg-ink-700 dark:text-ink-200">
-                  {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
-                </span>
-              </div>
-              <p className="mt-2 text-[11px] text-ink-600 dark:text-ink-400">
-                <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.conversationAssignee")}:</span>{" "}
-                {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
-              </p>
             </div>
-            <button
-              type="button"
-              className="ml-auto mt-1 rounded-xl border border-ink-200 bg-ink-50 p-2 text-ink-600 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700 xl:hidden"
-              onClick={() => setCrmMobileOpen(true)}
-              aria-label={t("conversationDetail.crmDrawerToggle")}
-            >
-              <LayoutGrid className="h-5 w-5" />
-            </button>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-ink-800 lg:mt-4 lg:border-t-0 lg:pt-0">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0">
             {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
@@ -2303,7 +2339,7 @@ export function ConversationDetailPage() {
                   </button>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 pb-0.5">
-                  {assistantAiEnabled ? (
+                  {copilotEnabled ? (
                     <motion.button
                       type="button"
                       disabled={
@@ -2341,7 +2377,7 @@ export function ConversationDetailPage() {
               <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
                   <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
-                ) : assistantAiEnabled ? (
+                ) : copilotEnabled ? (
                   <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
                 ) : null}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (
