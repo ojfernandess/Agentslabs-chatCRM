@@ -135,4 +135,53 @@
     @apply bg-brand-50 text-brand-700 font-semibold;
     @apply dark:bg-brand-950/50 dark:text-brand-300;
   }
+
+  .wa-bubble {
+    --wa-bubble-bg: #ffffff;
+    background-color: var(--wa-bubble-bg);
+  }
+
+  .dark .wa-bubble {
+    --wa-bubble-bg: #202c33;
+  }
+
+  .wa-bubble-in {
+    --wa-bubble-bg: #ffffff;
+    @apply text-ink-900 shadow-sm;
+  }
+
+  .dark .wa-bubble-in {
+    --wa-bubble-bg: #202c33;
+    @apply text-ink-50 shadow-black/20;
+  }
+
+  .wa-bubble-out {
+    --wa-bubble-bg: #d9fdd3;
+    @apply text-ink-900 shadow-sm;
+  }
+
+  .dark .wa-bubble-out {
+    --wa-bubble-bg: #005c4b;
+    @apply text-ink-50 shadow-black/25;
+  }
+
+  .wa-tail-in::after,
+  .wa-tail-out::after {
+    content: "";
+    position: absolute;
+    bottom: 6px;
+    width: 12px;
+    height: 16px;
+    background: var(--wa-bubble-bg);
+  }
+
+  .wa-tail-in::after {
+    left: -6px;
+    clip-path: polygon(100% 0, 0 75%, 100% 100%);
+  }
+
+  .wa-tail-out::after {
+    right: -6px;
+    clip-path: polygon(0 0, 100% 75%, 0 100%);
+  }
 }

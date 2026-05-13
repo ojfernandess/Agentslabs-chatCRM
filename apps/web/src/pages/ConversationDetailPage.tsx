@@ -2143,13 +2143,13 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "max-w-[min(calc(100%-2.5rem),28rem)] px-4 py-3",
+                    "wa-bubble max-w-[min(calc(100%-2.5rem),28rem)] px-3 py-2.5 shadow-sm",
                     bubbleRadius,
                     msg.isPrivate
                       ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
                       : inbound
-                        ? "border border-white/80 bg-white/95 text-ink-900 shadow-sm ring-1 ring-ink-900/5 dark:border-white/10 dark:bg-[#111C2B]/85 dark:text-ink-100 dark:shadow-md dark:shadow-black/25 dark:ring-1 dark:ring-white/5"
-                        : "bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md shadow-brand-500/15 dark:from-violet-600 dark:to-violet-700 dark:shadow-lg dark:shadow-black/25",
+                        ? clsx("wa-bubble-in", !groupedNext && "wa-tail-in")
+                        : clsx("wa-bubble-out", !groupedNext && "wa-tail-out"),
                   )}
                 >
                   {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
@@ -2158,7 +2158,9 @@ export function ConversationDetailPage() {
                         "mb-1 text-[11px] font-semibold leading-tight",
                         msg.isPrivate
                           ? "text-amber-900/90 dark:text-amber-100/95"
-                          : "text-white/95 dark:text-ink-100",
+                          : inbound
+                            ? "text-ink-700 dark:text-ink-200"
+                            : "text-ink-700 dark:text-ink-100",
                       )}
                     >
                       {msg.actorUser.displayName?.trim() || msg.actorUser.name}
@@ -2228,25 +2230,25 @@ export function ConversationDetailPage() {
                   )}
                   <div
                     className={clsx(
-                      "mt-2 flex items-center gap-1 text-[10px] tabular-nums",
+                      "mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
                       msg.isPrivate
                         ? "text-amber-800/80 dark:text-amber-300/80"
-                        : msg.direction === "OUTBOUND"
-                          ? "text-brand-100/90 dark:text-ink-300"
-                          : "text-ink-500 dark:text-ink-400",
+                        : inbound
+                          ? "text-ink-500 dark:text-ink-300"
+                          : "text-ink-500 dark:text-ink-200",
                     )}
                   >
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (
-                          <AlertTriangle className="h-3 w-3 text-red-200 dark:text-red-400" aria-hidden />
+                          <AlertTriangle className="h-3 w-3 text-red-500 dark:text-red-300" aria-hidden />
                         ) : msg.status === "READ" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100 dark:text-brand-300" aria-hidden />
+                          <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-3 w-3 text-brand-100/70 dark:text-brand-400/80" aria-hidden />
+                          <CheckCheck className="h-3 w-3 text-ink-500/70 dark:text-ink-200/70" aria-hidden />
                         ) : (
-                          <Check className="h-3 w-3 text-brand-100/90 dark:text-brand-300/90" aria-hidden />
+                          <Check className="h-3 w-3 text-ink-500/80 dark:text-ink-200/80" aria-hidden />
                         )}
                       </span>
                     )}

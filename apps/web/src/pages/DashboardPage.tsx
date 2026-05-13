@@ -34,6 +34,7 @@ const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
   const { t, dateLocale } = useI18n();
 
   useEffect(() => {
@@ -50,6 +51,13 @@ export function DashboardPage() {
     loadDashboard();
   }, []);
 
+  useEffect(() => {
+    const el = document.documentElement;
+    const obs = new MutationObserver(() => setIsDark(el.classList.contains("dark")));
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -58,33 +66,44 @@ export function DashboardPage() {
     );
   }
 
+  const inkSubtle = isDark ? "rgba(255,255,255,0.10)" : "#f3f4f6";
+  const axisTick = isDark ? "rgba(226,232,240,0.85)" : "#9ca3af";
+  const axisTickStrong = isDark ? "rgba(226,232,240,0.92)" : "#4b5563";
+  const tooltipStyle = {
+    borderRadius: "12px",
+    border: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(0,0,0,0.06)",
+    backgroundColor: isDark ? "rgba(17, 28, 43, 0.95)" : "rgba(255,255,255,0.98)",
+    color: isDark ? "rgba(241,245,249,0.96)" : "rgba(17,24,39,0.92)",
+    boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.18)",
+  } as const;
+
   const statCards = [
     {
       labelKey: "dashboard.openConversations",
       value: data?.stats.openConversations ?? 0,
       icon: MessageSquare,
-      color: "text-blue-600 bg-blue-50",
+      color: "text-blue-600 bg-blue-50 dark:text-blue-300 dark:bg-blue-500/10",
       link: "/conversations?status=OPEN",
     },
     {
       labelKey: "dashboard.pendingConversations",
       value: data?.stats.pendingConversations ?? 0,
       icon: PauseCircle,
-      color: "text-amber-600 bg-amber-50",
+      color: "text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-500/10",
       link: "/conversations?status=PENDING",
     },
     {
       labelKey: "dashboard.totalContacts",
       value: data?.stats.totalContacts ?? 0,
       icon: Users,
-      color: "text-green-600 bg-green-50",
+      color: "text-green-600 bg-green-50 dark:text-green-300 dark:bg-green-500/10",
       link: "/contacts",
     },
     {
       labelKey: "dashboard.remindersToday",
       value: data?.stats.remindersDueToday ?? 0,
       icon: Bell,
-      color: "text-violet-600 bg-violet-50",
+      color: "text-violet-600 bg-violet-50 dark:text-violet-300 dark:bg-violet-500/10",
       link: "/reminders",
     },
   ];
@@ -93,8 +112,8 @@ export function DashboardPage() {
     <PageTransition>
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.title")}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t("dashboard.subtitle")}</p>
+          <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("dashboard.title")}</h1>
+          <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("dashboard.subtitle")}</p>
         </div>
 
         {/* Top Stats */}
@@ -108,7 +127,7 @@ export function DashboardPage() {
             <motion.div key={card.labelKey} variants={staggerItem}>
               <Link
                 to={card.link}
-                className="block rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-1"
+                className="card-surface block rounded-xl p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-md dark:bg-ink-900/80"
               >
                 <div className="flex items-center gap-4">
                   <div
@@ -117,8 +136,8 @@ export function DashboardPage() {
                     <card.icon className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">{t(card.labelKey)}</p>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-sm font-medium text-ink-500 dark:text-ink-400">{t(card.labelKey)}</p>
+                    <p className="text-2xl font-bold text-ink-900 dark:text-ink-50">
                       {card.value}
                     </p>
                   </div>
@@ -133,14 +152,14 @@ export function DashboardPage() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="card-surface lg:col-span-2 rounded-xl p-6 shadow-sm dark:bg-ink-900/80"
           >
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">{t("dashboard.messageVolume")}</h3>
+                <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.messageVolume")}</h3>
               </div>
-              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+              <span className="rounded-md bg-ink-100 px-2 py-1 text-xs font-medium text-ink-600 dark:bg-white/5 dark:text-ink-200">
                 {t("dashboard.last7Days")}
               </span>
             </div>
@@ -157,21 +176,21 @@ export function DashboardPage() {
                       <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={inkSubtle} />
                   <XAxis 
                     dataKey="name" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fontSize: 12, fill: "#9ca3af" }}
+                    tick={{ fontSize: 12, fill: axisTick }}
                     dy={10}
                   />
                   <YAxis 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fontSize: 12, fill: "#9ca3af" }}
+                    tick={{ fontSize: 12, fill: axisTick }}
                   />
                   <Tooltip 
-                    contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                    contentStyle={tooltipStyle}
                   />
                   <Area 
                     type="monotone" 
@@ -201,12 +220,12 @@ export function DashboardPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm flex flex-col"
+            className="card-surface flex flex-col rounded-xl p-6 shadow-sm dark:bg-ink-900/80"
           >
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">{t("dashboard.activeChats")}</h3>
+                <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.activeChats")}</h3>
               </div>
               <Link to="/conversations" className="text-xs font-semibold text-brand-600 hover:text-brand-700">
                 {t("dashboard.viewAll")}
@@ -217,34 +236,34 @@ export function DashboardPage() {
                 <Link 
                   key={chat.id} 
                   to={`/conversations/${chat.id}`}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                  className="group flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-ink-50 dark:hover:bg-white/5"
                 >
-                  <div className="h-10 w-10 flex-shrink-0 rounded-full bg-brand-100 flex items-center justify-center text-xs font-bold text-brand-700">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-200">
                     {chat.contactName[0]}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{chat.contactName}</p>
-                      <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                      <p className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">{chat.contactName}</p>
+                      <span className="whitespace-nowrap text-[10px] text-ink-400 dark:text-ink-500">
                         {formatDistanceToNow(new Date(chat.time), {
                           addSuffix: true,
                           locale: dateLocale,
                         })}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate">{chat.lastMessage}</p>
+                    <p className="truncate text-xs text-ink-500 dark:text-ink-400">{chat.lastMessage}</p>
                   </div>
                 </Link>
               ))}
               {data?.recentConversations.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full py-8 text-center">
-                  <p className="text-sm text-gray-400">{t("dashboard.noActiveConversations")}</p>
+                  <p className="text-sm text-ink-400 dark:text-ink-500">{t("dashboard.noActiveConversations")}</p>
                 </div>
               )}
             </div>
             <Link 
               to="/contacts" 
-              className="mt-6 flex items-center justify-center gap-2 rounded-lg bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 hover:bg-brand-50 hover:text-brand-600 transition-all"
+              className="mt-6 flex items-center justify-center gap-2 rounded-lg bg-ink-50 px-4 py-2.5 text-xs font-semibold text-ink-600 transition-all hover:bg-brand-50 hover:text-brand-600 dark:bg-white/5 dark:text-ink-200 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
             >
               {t("dashboard.startNewChat")} <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -257,29 +276,29 @@ export function DashboardPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="card-surface rounded-xl p-6 shadow-sm dark:bg-ink-900/80"
           >
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">{t("dashboard.pipelineFunnel")}</h3>
+                <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.pipelineFunnel")}</h3>
               </div>
             </div>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data?.pipeline} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={inkSubtle} />
                   <XAxis type="number" hide />
                   <YAxis 
                     dataKey="name" 
                     type="category" 
                     axisLine={false} 
                     tickLine={false}
-                    tick={{ fontSize: 12, fill: "#4b5563", fontWeight: 500 }}
+                    tick={{ fontSize: 12, fill: axisTickStrong, fontWeight: 500 }}
                   />
                   <Tooltip 
-                    cursor={{ fill: "#f9fafb" }}
-                    contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                    cursor={{ fill: isDark ? "rgba(255,255,255,0.06)" : "#f9fafb" }}
+                    contentStyle={tooltipStyle}
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={32} name="Contacts" />
                 </BarChart>
@@ -292,12 +311,12 @@ export function DashboardPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="card-surface rounded-xl p-6 shadow-sm dark:bg-ink-900/80"
           >
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <PieChart className="h-5 w-5 text-brand-500" />
-                <h3 className="font-semibold text-gray-900">{t("dashboard.topTags")}</h3>
+                <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.topTags")}</h3>
               </div>
             </div>
             <div className="h-72 w-full">
@@ -317,9 +336,9 @@ export function DashboardPage() {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+                    contentStyle={tooltipStyle}
                   />
-                  <Legend verticalAlign="bottom" height={36}/>
+                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: axisTickStrong }} />
                 </RePieChart>
               </ResponsiveContainer>
             </div>
