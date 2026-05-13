@@ -44,7 +44,7 @@ export function ConversationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [listSearch, setListSearch] = useState("");
+  const [listSearch, setListSearch] = useState(() => searchParams.get("q") ?? "");
   const [composeOpen, setComposeOpen] = useState(false);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");

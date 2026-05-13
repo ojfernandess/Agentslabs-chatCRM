@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
-import { Bell, Check, Clock, AlertCircle, Plus, X, Search } from "lucide-react";
+import { Bell, Plus, Search, CalendarDays, LayoutGrid, List, Sparkles, Filter, Workflow, X } from "lucide-react";
 import clsx from "clsx";
-import { format, isPast } from "date-fns";
+import { startOfMonth, isPast, isToday } from "date-fns";
 import {
   PageTransition,
   motion,
@@ -11,6 +11,14 @@ import {
   expandVariants,
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { RemindersViewSwitch, type RemindersViewMode } from "@/components/reminders/RemindersViewSwitch";
+import { ReminderCard, type ReminderCardModel } from "@/components/reminders/ReminderCard";
+import { RemindersKanban } from "@/components/reminders/RemindersKanban";
+import { RemindersAgenda } from "@/components/reminders/RemindersAgenda";
+import { RemindersCalendar } from "@/components/reminders/RemindersCalendar";
+import { ReminderDetailDrawer, type ReminderDetailModel } from "@/components/reminders/ReminderDetailDrawer";
+import { AiPlannerDrawer } from "@/components/reminders/AiPlannerDrawer";
+import { computeAiScore, computePriority, isWithinDateRange } from "@/components/reminders/reminderUtils";
 
 interface Reminder {
   id: string;
@@ -71,6 +79,23 @@ export function RemindersPage() {
   const [search, setSearch] = useState("");
   const [listError, setListError] = useState("");
 
+  const [viewMode, setViewMode] = useState<RemindersViewMode>(() => {
+    try {
+      const raw = localStorage.getItem("openconduit_reminders_view") ?? "";
+      if (raw === "list" || raw === "kanban" || raw === "agenda" || raw === "calendar") return raw;
+      return "list";
+    } catch {
+      return "list";
+    }
+  });
+
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "done">("open");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high" | "urgent">("all");
+  const [iaMinScore, setIaMinScore] = useState(0);
+  const [rangeStart, setRangeStart] = useState<string>("");
+  const [rangeEnd, setRangeEnd] = useState<string>("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [selectedContactId, setSelectedContactId] = useState("");
@@ -83,6 +108,21 @@ export function RemindersPage() {
 
   const hasAnimated = useRef(false);
   const isFirstRender = useRef(true);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailReminder, setDetailReminder] = useState<ReminderDetailModel | null>(null);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [plannerInitial, setPlannerInitial] = useState<{ contactId?: string; goal?: string }>({});
+
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+  const [calendarDay, setCalendarDay] = useState<Date | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("openconduit_reminders_view", viewMode);
+    } catch {
+    }
+  }, [viewMode]);
 
   async function fetchReminders(showSpinner: boolean) {
     if (showSpinner) setLoading(true);
@@ -119,6 +159,54 @@ export function RemindersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filter-only loads handled above
   }, [search]);
 
+  const applyFilters = useMemo(() => {
+    const start = rangeStart ? new Date(`${rangeStart}T00:00:00`) : undefined;
+    const end = rangeEnd ? new Date(`${rangeEnd}T23:59:59`) : undefined;
+    const q = search.trim().toLowerCase();
+    return (r: Reminder): boolean => {
+      const due = new Date(r.dueAt);
+      if (statusFilter === "open" && r.completed) return false;
+      if (statusFilter === "done" && !r.completed) return false;
+      if (priorityFilter !== "all") {
+        const p = computePriority(due, r.completed);
+        if (p !== priorityFilter) return false;
+      }
+      if (iaMinScore > 0) {
+        const s = computeAiScore(due, r.completed);
+        if (s < iaMinScore) return false;
+      }
+      if (!isWithinDateRange(due, start, end)) return false;
+      if (q) {
+        const hay = `${r.note} ${r.contact?.name ?? ""} ${r.contact?.phone ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    };
+  }, [rangeStart, rangeEnd, search, statusFilter, priorityFilter, iaMinScore]);
+
+  const displayReminders: ReminderCardModel[] = useMemo(() => {
+    return reminders.filter(applyFilters).map((r) => ({
+      id: r.id,
+      note: r.note,
+      dueAt: r.dueAt,
+      completed: r.completed,
+      contact: r.contact,
+    }));
+  }, [reminders, applyFilters]);
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const todayOpen = reminders.filter((r) => !r.completed && isToday(new Date(r.dueAt))).length;
+    const overdue = reminders.filter((r) => !r.completed && isPast(new Date(r.dueAt)) && !isToday(new Date(r.dueAt))).length;
+    const aiPrioritized = reminders.filter((r) => !r.completed && computeAiScore(new Date(r.dueAt), r.completed) >= 75).length;
+    const total = reminders.length;
+    const done = reminders.filter((r) => r.completed).length;
+    const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
+    const lostFollowups = reminders.filter((r) => !r.completed && isPast(new Date(r.dueAt))).length;
+    const avgTime = "—";
+    return { now, todayOpen, overdue, aiPrioritized, completionRate, lostFollowups, avgTime };
+  }, [reminders]);
+
   const openForm = async () => {
     setFormSaveError("");
     setContactsBanner("none");
@@ -142,6 +230,16 @@ export function RemindersPage() {
     setNote("");
     setSelectedContactId("");
     setShowForm(true);
+  };
+
+  const openDetail = (r: ReminderDetailModel) => {
+    setDetailReminder(r);
+    setDetailOpen(true);
+  };
+
+  const openPlannerFor = (contactId?: string, goal?: string) => {
+    setPlannerInitial({ contactId, goal });
+    setPlannerOpen(true);
   };
 
   const handleCreate = async () => {
@@ -184,6 +282,11 @@ export function RemindersPage() {
     }
   };
 
+  const saveReminder = async (id: string, patch: { note?: string; dueAt?: string }) => {
+    await api.put(`/reminders/${id}`, patch);
+    await fetchReminders(false);
+  };
+
   const filters: { key: string; labelKey: string }[] = [
     { key: "all", labelKey: "reminders.filterAll" },
     { key: "today", labelKey: "reminders.filterToday" },
@@ -194,20 +297,74 @@ export function RemindersPage() {
   return (
     <PageTransition>
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{t("reminders.title")}</h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("reminders.subtitle")}</p>
           </div>
-          <motion.button
-            type="button"
-            onClick={() => void openForm()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-            whileTap={{ scale: 0.97 }}
-          >
-            <Plus className="h-4 w-4" />
-            {t("reminders.newReminder")}
-          </motion.button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setViewMode("calendar")}
+              className="btn-secondary min-h-11 px-3 py-2 text-sm"
+            >
+              <span className="inline-flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" />
+                Calendário
+              </span>
+            </button>
+            <Link to="/automation" className="btn-secondary min-h-11 px-3 py-2 text-sm">
+              <span className="inline-flex items-center gap-2">
+                <Workflow className="h-4 w-4" />
+                Automação
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => openPlannerFor()}
+              className="btn-secondary min-h-11 px-3 py-2 text-sm"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                IA Planner
+              </span>
+            </button>
+            <motion.button
+              type="button"
+              onClick={() => void openForm()}
+              className="btn-primary min-h-11 px-4 py-2 text-sm"
+              whileTap={{ scale: 0.97 }}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                {t("reminders.newReminder")}
+              </span>
+            </motion.button>
+          </div>
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="card-surface rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Hoje</div>
+            <div className="mt-2 text-2xl font-bold text-ink-900 dark:text-ink-50">{stats.todayOpen}</div>
+          </div>
+          <div className="card-surface rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Atrasados</div>
+            <div className="mt-2 text-2xl font-bold text-ink-900 dark:text-ink-50">{stats.overdue}</div>
+          </div>
+          <div className="card-surface rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">IA prioritários</div>
+            <div className="mt-2 text-2xl font-bold text-ink-900 dark:text-ink-50">{stats.aiPrioritized}</div>
+          </div>
+          <div className="card-surface rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Taxa de conclusão</div>
+            <div className="mt-2 text-2xl font-bold text-ink-900 dark:text-ink-50">{stats.completionRate}%</div>
+          </div>
+          <div className="card-surface rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Follow-ups perdidos</div>
+            <div className="mt-2 text-2xl font-bold text-ink-900 dark:text-ink-50">{stats.lostFollowups}</div>
+            <div className="mt-1 text-xs text-ink-500 dark:text-ink-400">Tempo médio: {stats.avgTime}</div>
+          </div>
         </div>
 
         <AnimatePresence>
@@ -313,34 +470,122 @@ export function RemindersPage() {
           )}
         </AnimatePresence>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="flex gap-2">
-            {filters.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setFilter(f.key)}
-                className={clsx(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  filter === f.key
-                    ? "bg-brand-500 text-white"
-                    : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                )}
-              >
-                {t(f.labelKey)}
-              </button>
-            ))}
-          </div>
-          <div className="relative min-w-[200px] max-w-sm flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("reminders.searchPlaceholder")}
-              className="w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-9 pr-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <RemindersViewSwitch
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { key: "list", label: (<span className="inline-flex items-center gap-2"><List className="h-4 w-4" />Lista</span>) },
+                { key: "kanban", label: (<span className="inline-flex items-center gap-2"><LayoutGrid className="h-4 w-4" />Kanban</span>) },
+                { key: "agenda", label: (<span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" />Agenda</span>) },
+                { key: "calendar", label: (<span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4" />Calendário</span>) },
+              ]}
             />
+
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <div className="relative min-w-[200px] max-w-xl flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("reminders.searchPlaceholder")}
+                  className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={clsx("btn-secondary min-h-11 px-3 py-2 text-sm", filtersOpen && "border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-500/40 dark:bg-brand-950/40 dark:text-brand-200")}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Filter className="h-4 w-4" />
+                  Filtros
+                </span>
+              </button>
+            </div>
           </div>
+
+          <AnimatePresence>
+            {filtersOpen ? (
+              <motion.div className="rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30" variants={expandVariants} initial="hidden" animate="show" exit="exit">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Período</label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {filters.map((f) => (
+                        <button
+                          key={f.key}
+                          type="button"
+                          onClick={() => setFilter(f.key)}
+                          className={clsx(
+                            "rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                            filter === f.key
+                              ? "bg-brand-500 text-white"
+                              : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-200 dark:hover:bg-ink-900",
+                          )}
+                        >
+                          {t(f.labelKey)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Status</label>
+                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="input-field mt-2">
+                      <option value="all">Todos</option>
+                      <option value="open">Abertos</option>
+                      <option value="done">Concluídos</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Prioridade</label>
+                    <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as any)} className="input-field mt-2">
+                      <option value="all">Todas</option>
+                      <option value="low">Baixa</option>
+                      <option value="medium">Média</option>
+                      <option value="high">Alta</option>
+                      <option value="urgent">Urgente</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">IA Score mínimo</label>
+                    <input type="number" min={0} max={100} value={iaMinScore} onChange={(e) => setIaMinScore(Number(e.target.value) || 0)} className="input-field mt-2" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Intervalo</label>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} className="input-field" />
+                      <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} className="input-field" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-ink-500 dark:text-ink-400">Pipeline e Responsável: em evolução (mantendo compatibilidade do modelo atual).</div>
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-11 px-3 py-2 text-sm"
+                    onClick={() => {
+                      setStatusFilter("open");
+                      setPriorityFilter("all");
+                      setIaMinScore(0);
+                      setRangeStart("");
+                      setRangeEnd("");
+                      setFilter("all");
+                    }}
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
 
         {listError ? (
@@ -353,7 +598,7 @@ export function RemindersPage() {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
-        ) : reminders.length === 0 ? (
+        ) : displayReminders.length === 0 ? (
           <motion.div
             className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white py-16 dark:border-ink-600 dark:bg-ink-900/40"
             initial={{ opacity: 0, scale: 0.95 }}
@@ -364,72 +609,107 @@ export function RemindersPage() {
             <p className="text-sm text-gray-500 dark:text-ink-400">{t("reminders.empty")}</p>
           </motion.div>
         ) : (
-          <div className="space-y-2">
-            {reminders.map((reminder) => {
-              const due = new Date(reminder.dueAt);
-              const overdue = isPast(due) && !reminder.completed;
-
-              return (
-                <div
-                  key={reminder.id}
-                  className={clsx(
-                    "flex items-start gap-4 rounded-xl border bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-ink-900/60",
-                    overdue ? "border-red-200 dark:border-red-900/50" : "border-gray-200 dark:border-ink-700",
-                  )}
-                >
-                  <motion.button
-                    type="button"
-                    onClick={() => void toggleComplete(reminder.id, reminder.completed)}
-                    className={clsx(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-                      reminder.completed
-                        ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-gray-300 hover:border-brand-400 dark:border-ink-500",
-                    )}
-                    whileTap={{ scale: 0.85 }}
-                  >
-                    {reminder.completed && <Check className="h-3 w-3" />}
-                  </motion.button>
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className={clsx(
-                        "text-sm transition-all",
-                        reminder.completed ? "text-gray-400 line-through dark:text-ink-500" : "text-gray-900 dark:text-ink-100",
-                      )}
-                    >
-                      {reminder.note}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-3">
-                      <Link
-                        to={`/contacts/${reminder.contact.id}`}
-                        className="text-xs text-brand-600 hover:underline dark:text-brand-400"
-                      >
-                        {reminder.contact.name}
-                      </Link>
-                      <span
-                        className={clsx(
-                          "flex items-center gap-1 text-xs",
-                          overdue ? "text-red-500" : "text-gray-400 dark:text-ink-400",
-                        )}
-                      >
-                        {overdue ? <AlertCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                        {format(due, "PPp", { locale: dateLocale })}
-                      </span>
-                    </div>
+          <div>
+            {viewMode === "list" ? (
+              <div className="space-y-3">
+                {displayReminders
+                  .slice()
+                  .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+                  .map((r) => (
+                    <ReminderCard
+                      key={r.id}
+                      reminder={r}
+                      dateLocale={dateLocale}
+                      onOpen={() => openDetail(r)}
+                      onToggleComplete={() => void toggleComplete(r.id, r.completed)}
+                      onAi={() => openPlannerFor(r.contact.id, r.note)}
+                    />
+                  ))}
+              </div>
+            ) : viewMode === "kanban" ? (
+              <RemindersKanban
+                reminders={displayReminders}
+                dateLocale={dateLocale}
+                onOpen={(r) => openDetail(r)}
+                onToggleComplete={(r) => void toggleComplete(r.id, r.completed)}
+                onAi={(r) => openPlannerFor(r.contact.id, r.note)}
+              />
+            ) : viewMode === "agenda" ? (
+              <RemindersAgenda
+                reminders={displayReminders}
+                dateLocale={dateLocale}
+                onOpen={(r) => openDetail(r)}
+                onToggleComplete={(r) => void toggleComplete(r.id, r.completed)}
+                onAi={(r) => openPlannerFor(r.contact.id, r.note)}
+              />
+            ) : (
+              <div className="space-y-4">
+                <RemindersCalendar
+                  month={calendarMonth}
+                  dateLocale={dateLocale}
+                  reminders={displayReminders}
+                  selectedDay={calendarDay}
+                  onChangeMonth={setCalendarMonth}
+                  onSelectDay={(d) => setCalendarDay(d)}
+                />
+                <div className="rounded-2xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/30">
+                  <div className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                    {calendarDay ? "Itens do dia" : "Itens (mês atual)"}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void deleteReminder(reminder.id)}
-                    className="rounded-md p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-ink-500 dark:hover:bg-red-950/40"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="mt-3 space-y-3">
+                    {(calendarDay
+                      ? displayReminders.filter((r) => {
+                          const d = new Date(r.dueAt);
+                          return (
+                            d.getFullYear() === calendarDay.getFullYear() &&
+                            d.getMonth() === calendarDay.getMonth() &&
+                            d.getDate() === calendarDay.getDate()
+                          );
+                        })
+                      : displayReminders.filter((r) => {
+                          const d = new Date(r.dueAt);
+                          return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
+                        })
+                    )
+                      .slice()
+                      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+                      .slice(0, 20)
+                      .map((r) => (
+                        <ReminderCard
+                          key={r.id}
+                          reminder={r}
+                          dateLocale={dateLocale}
+                          onOpen={() => openDetail(r)}
+                          onToggleComplete={() => void toggleComplete(r.id, r.completed)}
+                          onAi={() => openPlannerFor(r.contact.id, r.note)}
+                        />
+                      ))}
+                  </div>
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      <ReminderDetailDrawer
+        open={detailOpen}
+        reminder={detailReminder}
+        dateLocale={dateLocale}
+        onClose={() => setDetailOpen(false)}
+        onToggleComplete={(id, completed) => void toggleComplete(id, completed)}
+        onDelete={(id) => void deleteReminder(id)}
+        onSave={saveReminder}
+        onOpenPlanner={(r) => openPlannerFor(r.contact.id, r.note)}
+      />
+
+      <AiPlannerDrawer
+        open={plannerOpen}
+        initialContactId={plannerInitial.contactId}
+        initialGoal={plannerInitial.goal}
+        onClose={() => setPlannerOpen(false)}
+        onApplied={() => void fetchReminders(false)}
+      />
     </PageTransition>
   );
 }

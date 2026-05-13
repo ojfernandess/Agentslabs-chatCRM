@@ -23,6 +23,23 @@ const updateReminderSchema = z.object({
   completed: z.boolean().optional(),
 });
 
+const plannerSchema = z.object({
+  contactId: z.string().uuid(),
+  goal: z.string().min(3).max(400),
+});
+
+function aiScoreForDue(dueAt: Date): number {
+  const now = Date.now();
+  const dt = dueAt.getTime() - now;
+  const hours = dt / (1000 * 60 * 60);
+  if (hours <= -24) return 92;
+  if (hours < 0) return 86;
+  if (hours <= 6) return 78;
+  if (hours <= 24) return 66;
+  if (hours <= 72) return 52;
+  return 38;
+}
+
 export async function reminderRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -97,6 +114,53 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.status(201).send(reminder);
+  });
+
+  app.post("/planner", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsed = plannerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: parsed.data.contactId, organizationId },
+      select: { id: true },
+    });
+    if (!contact) {
+      return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
+    }
+
+    const goal = parsed.data.goal.trim();
+    const now = new Date();
+    const due1 = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const due2 = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+    const due3 = new Date(now.getTime() + 74 * 60 * 60 * 1000);
+
+    const suggestions = [
+      {
+        note: `${goal} — primeiro contato`,
+        dueAt: due1.toISOString(),
+        score: aiScoreForDue(due1),
+        reasons: ["Recomendado agir hoje", "Reduz risco de esquecimento"],
+      },
+      {
+        note: `${goal} — follow-up`,
+        dueAt: due2.toISOString(),
+        score: aiScoreForDue(due2),
+        reasons: ["Sem resposta é comum em 24h", "Mantém ritmo do atendimento"],
+      },
+      {
+        note: `${goal} — último lembrete`,
+        dueAt: due3.toISOString(),
+        score: aiScoreForDue(due3),
+        reasons: ["Evita perder timing", "Aumenta chance de conversão"],
+      },
+    ];
+
+    return reply.send({ suggestions });
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
