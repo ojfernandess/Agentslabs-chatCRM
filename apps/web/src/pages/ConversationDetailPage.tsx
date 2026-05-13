@@ -50,7 +50,6 @@ import {
   Circle,
   Loader2,
   Brain,
-  Phone,
   Mail,
   MoreHorizontal,
 } from "lucide-react";
@@ -234,7 +233,6 @@ export function ConversationDetailPage() {
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
-  const [crmTab, setCrmTab] = useState<"contact" | "crm" | "activity">("contact");
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
   const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
@@ -261,6 +259,10 @@ export function ConversationDetailPage() {
   const [tagFormName, setTagFormName] = useState("");
   const [tagFormColor, setTagFormColor] = useState("#6366f1");
   const [tagFormError, setTagFormError] = useState("");
+  const [contactNotesDraft, setContactNotesDraft] = useState("");
+  const [contactNotesDirty, setContactNotesDirty] = useState(false);
+  const [contactNotesBusy, setContactNotesBusy] = useState(false);
+  const [contactNotesError, setContactNotesError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resolveNextIdRef = useRef<string | null>(null);
@@ -469,6 +471,14 @@ export function ConversationDetailPage() {
       setLoading(false);
     }
   }, [id]);
+
+  useEffect(() => {
+    const notes = conversation?.contact.notes ?? "";
+    setContactNotesDraft(notes);
+    setContactNotesDirty(false);
+    setContactNotesError("");
+    setContactNotesBusy(false);
+  }, [conversation?.contact.id]);
 
   useEffect(() => {
     async function loadChannel() {
@@ -1272,51 +1282,31 @@ export function ConversationDetailPage() {
       ? formatDistanceToNow(new Date(lastInbound.createdAt), { locale: dateLocale, addSuffix: true })
       : null;
 
+  const saveContactNotes = async () => {
+    if (!conversation) return;
+    setContactNotesBusy(true);
+    setContactNotesError("");
+    try {
+      await api.put(`/contacts/${conversation.contact.id}`, { notes: contactNotesDraft });
+      setConversation((c) => (c ? { ...c, contact: { ...c.contact, notes: contactNotesDraft } } : c));
+      setContactNotesDirty(false);
+    } catch {
+      setContactNotesError(t("conversationDetail.contactNotesSaveFailed"));
+    } finally {
+      setContactNotesBusy(false);
+    }
+  };
+
   const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => (
     <div className="flex min-h-0 flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-xl bg-ink-100 p-1 dark:bg-ink-900/40 dark:ring-1 dark:ring-white/10">
-          <button
-            type="button"
-            onClick={() => setCrmTab("contact")}
-            className={clsx(
-              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-              crmTab === "contact"
-                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
-                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
-            )}
-          >
-            {t("conversationDetail.crmTabContact")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCrmTab("crm")}
-            className={clsx(
-              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-              crmTab === "crm"
-                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
-                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
-            )}
-          >
-            {t("conversationDetail.crmTabCrm")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCrmTab("activity")}
-            className={clsx(
-              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-              crmTab === "activity"
-                ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
-                : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900/70",
-            )}
-          >
-            {t("conversationDetail.crmTabActivities")}
-          </button>
-        </div>
+      <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3 dark:border-white/10">
+        <p className="text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+          {t("conversationDetail.crmPanelTitle")}
+        </p>
         {opts?.showMobileClose ? (
           <button
             type="button"
-            className="shrink-0 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-950/40 dark:text-ink-200 dark:hover:bg-ink-900/60"
+            className="shrink-0 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-200 dark:shadow-none dark:hover:bg-white/10"
             onClick={() => setCrmMobileOpen(false)}
           >
             {t("common.close")}
@@ -1324,13 +1314,33 @@ export function ConversationDetailPage() {
         ) : null}
       </div>
 
-      {crmTab === "contact" ? (
-        <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
         <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
-        <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{conversation.contact.phone}</p>
+        {(() => {
+          const phone = conversation.contact.phone ?? "";
+          const phoneDigits = phone.replace(/\D/g, "");
+          const hasPhone = phoneDigits.length > 0;
+          return (
+            <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
+              <span>{phone}</span>
+              {hasPhone ? (
+                <a
+                  href={`https://wa.me/${phoneDigits}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-ink-200 bg-white/80 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
+                  aria-label="WhatsApp"
+                  title="WhatsApp"
+                >
+                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
+            </div>
+          );
+        })()}
         {conversation.contact.email ? (
-          <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
-            <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.email")}:</span>{" "}
+          <p className="mt-1 text-xs text-ink-600 dark:text-ink-300">
+            <span className="font-medium text-ink-700 dark:text-ink-200">{t("conversationDetail.email")}:</span>{" "}
             {conversation.contact.email}
           </p>
         ) : (
@@ -1339,34 +1349,12 @@ export function ConversationDetailPage() {
           </p>
         )}
         {(() => {
-          const phone = conversation.contact.phone ?? "";
-          const phoneDigits = phone.replace(/\D/g, "");
-          const hasPhone = phoneDigits.length > 0;
           const hasEmail = Boolean(conversation.contact.email?.trim());
           const btnClass =
             "flex h-9 w-9 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10";
-          const disabledClass =
-            "pointer-events-none opacity-40";
+          const disabledClass = "pointer-events-none opacity-40";
           return (
             <div className="mt-3 flex items-center gap-2">
-              <a
-                href={hasPhone ? `https://wa.me/${phoneDigits}` : undefined}
-                target={hasPhone ? "_blank" : undefined}
-                rel={hasPhone ? "noreferrer" : undefined}
-                className={clsx(btnClass, !hasPhone && disabledClass)}
-                aria-label="WhatsApp"
-                title="WhatsApp"
-              >
-                <WhatsAppBrandIcon className="h-4 w-4" />
-              </a>
-              <a
-                href={hasPhone ? `tel:${phoneDigits}` : undefined}
-                className={clsx(btnClass, !hasPhone && disabledClass)}
-                aria-label={t("conversationDetail.call")}
-                title={t("conversationDetail.call")}
-              >
-                <Phone className="h-4 w-4" />
-              </a>
               <a
                 href={hasEmail ? `mailto:${conversation.contact.email}` : undefined}
                 className={clsx(btnClass, !hasEmail && disabledClass)}
@@ -1491,18 +1479,40 @@ export function ConversationDetailPage() {
           <span className="font-medium text-ink-700 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
           {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
         </p>
-        {conversation.contact.notes ? (
-          <p className="mt-2 border-t border-ink-200/80 pt-2 text-[11px] text-ink-600 dark:border-ink-700 dark:text-ink-400">
-            <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.contactNotes")}:</span>{" "}
-            <span className="whitespace-pre-wrap">{conversation.contact.notes}</span>
-          </p>
-        ) : null}
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-white/10">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+              {t("conversationDetail.contactNotes")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void saveContactNotes()}
+              disabled={contactNotesBusy || !contactNotesDirty}
+              className="rounded-lg bg-brand-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+            >
+              {contactNotesBusy ? t("common.saving") : t("common.save")}
+            </button>
+          </div>
+          <textarea
+            value={contactNotesDraft}
+            onChange={(e) => {
+              setContactNotesDraft(e.target.value);
+              setContactNotesDirty(true);
+            }}
+            rows={4}
+            placeholder={t("conversationDetail.contactNotesPlaceholder")}
+            className="mt-2 w-full resize-y rounded-xl border border-ink-200 bg-white/90 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 shadow-sm focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/5 dark:text-ink-50 dark:placeholder:text-ink-500 dark:shadow-none"
+          />
+          {contactNotesError ? (
+            <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
+              {contactNotesError}
+            </p>
+          ) : null}
+        </div>
       </div>
-      ) : null}
 
-      {crmTab === "crm" ? (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
           {t("conversationDetail.dealValue")} / {t("conversationDetail.pipelineStage")}
         </p>
@@ -1663,11 +1673,8 @@ export function ConversationDetailPage() {
           ) : null}
         </div>
       ) : null}
-        </div>
-      ) : null}
 
-      {crmTab === "activity" ? (
-      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25 dark:shadow-none">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
         <div className="flex items-start justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
             {t("conversationDetail.recentHistoryTitle")}
@@ -1755,7 +1762,7 @@ export function ConversationDetailPage() {
           </div>
         )}
       </div>
-      ) : null}
+      </div>
     </div>
   );
 
@@ -2570,35 +2577,43 @@ export function ConversationDetailPage() {
           </form>
         </motion.div>
 
-        <div className="pointer-events-auto absolute right-3 top-28 z-30 hidden flex-col gap-2 xl:flex">
-          <button
-            type="button"
-            onClick={() => setCrmDesktopOpen((o) => !o)}
-            title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
-            aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
-            className={clsx(
-              "flex h-10 w-10 items-center justify-center rounded-full border text-ink-200 shadow-sm transition-colors",
-              "border-ink-800 bg-ink-950/60 hover:bg-ink-900",
-            )}
-          >
-            <User className="h-5 w-5" />
-          </button>
-          {copilotEnabled ? (
+        <div className="pointer-events-auto absolute right-3 top-28 z-30 hidden xl:block">
+          <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-[#0F1B2B]/70 p-1 shadow-lg shadow-black/30 backdrop-blur">
             <button
               type="button"
-              onClick={toggleCopilotPanel}
-              title={t("conversationDetail.copilotToggle")}
-              aria-label={t("conversationDetail.copilotToggle")}
+              onClick={() => setCrmDesktopOpen((o) => !o)}
+              title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+              aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
               className={clsx(
-                "flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition-colors",
-                copilotDesktopOpen
-                  ? "border-violet-700/60 bg-violet-950/60 text-violet-200 hover:bg-violet-900/40"
-                  : "border-ink-800 bg-ink-950/60 text-ink-200 hover:bg-ink-900",
+                "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
+                crmDesktopOpen ? "bg-white/10 text-ink-50" : "text-ink-200 hover:bg-white/5",
               )}
             >
-              <Sparkles className="h-5 w-5" />
+              <User className="h-5 w-5" />
             </button>
-          ) : null}
+            {copilotEnabled ? (
+              <button
+                type="button"
+                onClick={toggleCopilotPanel}
+                title={t("conversationDetail.copilotToggle")}
+                aria-label={t("conversationDetail.copilotToggle")}
+                className={clsx(
+                  "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
+                  copilotDesktopOpen ? "bg-violet-500/15 text-violet-200" : "text-ink-200 hover:bg-white/5",
+                )}
+              >
+                <Sparkles className="h-5 w-5" />
+              </button>
+            ) : null}
+            <Link
+              to="/crm"
+              title={t("conversationDetail.openKanban")}
+              aria-label={t("conversationDetail.openKanban")}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-200 transition-colors hover:bg-white/5"
+            >
+              <Kanban className="h-5 w-5" />
+            </Link>
+          </div>
         </div>
       </div>
 
