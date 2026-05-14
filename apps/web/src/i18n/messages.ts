@@ -763,7 +763,7 @@ export const messages = {
       toolsTestPanel: "Testar ferramenta",
       toolsLogsPanel: "Histórico",
       toolsTestHelp:
-        "Use `query` com os parâmetros da API (ex.: arrival_date, departure_date, adults, kids). Eles preenchem `{{variáveis}}` no Path e em Query predefinida. Opcional: pathParams, headers, body, sampleContext.",
+        "Use `query` com os parâmetros da API (ex.: arrival_date, departure_date, adults, kids, \"ages[0]\"). Eles preenchem `{{variáveis}}` no Path e em Query predefinida. Também pode enviar valores como chaves no topo do JSON. Opcional: pathParams, headers, body, sampleContext.",
       toolsTestPayload: "Payload do teste (JSON)",
       toolsTestContext: "Contexto de exemplo (JSON)",
       toolsRunTest: "Executar pedido",
@@ -771,7 +771,7 @@ export const messages = {
       toolsExportLogs: "Exportar JSON",
       toolsLogsEmpty: "Sem execuções registadas ainda.",
       toolHttpEditorHelp:
-        "Path: só o caminho (ex. /rooms/availability) ou com query em `{{chave}}` (ex. ?arrival_date={{arrival_date}}). Preferível: Path sem query + JSON «Query predefinida» com valores `{{chave}}` ou fixos — o teste envia valores reais no campo «Payload» em `query`.",
+        "Path: só o caminho (ex. /rooms/availability) ou com query em `{{chave}}` (ex. ?arrival_date={{arrival_date}}&\"ages[0]\"={{ages_0}}). Preferível: Path sem query + JSON «Query predefinida» com valores `{{chave}}` ou fixos — o teste envia valores reais no campo «Payload» em `query`.",
       toolDefaultQueryJson: "Query predefinida (JSON)",
       toolDefaultQueryHint:
         "Chaves = nomes na query string; valores string podem usar {{arrival_date}} etc. Valores do «Payload».query substituem após expandir templates.",

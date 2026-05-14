@@ -1685,13 +1685,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     });
   }
 
-  const toolTestBodySchema = z.object({
-    pathParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
-    query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
-    headers: z.record(z.string()).optional(),
-    body: z.unknown().optional(),
-    sampleContext: z.record(z.unknown()).optional(),
-  });
+  const toolTestBodySchema = z
+    .object({
+      pathParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+      headers: z.record(z.string()).optional(),
+      body: z.unknown().optional(),
+      sampleContext: z.record(z.unknown()).optional(),
+    })
+    .passthrough();
 
   app.get<{ Params: { id: string } }>("/custom-tools/:id/executions", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
@@ -1754,6 +1756,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       };
       mergeIntoFlat(parsed.data.query);
       mergeIntoFlat(parsed.data.pathParams);
+      const reserved = new Set(["pathParams", "query", "headers", "body", "sampleContext"]);
+      for (const [k, v] of Object.entries(parsed.data as Record<string, unknown>)) {
+        if (reserved.has(k)) continue;
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          flat[k] = String(v);
+        }
+      }
 
       let method = String(cfg.httpMethod ?? "GET").toUpperCase();
       let pathPart = expandTemplateString(String(cfg.httpPath ?? "/"), flat);
