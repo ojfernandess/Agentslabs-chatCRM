@@ -56,6 +56,7 @@ interface AppSettings {
   csatEnabled: boolean;
   csatSurveyMessage: string | null;
   evolutionPlatformQrMode?: boolean;
+  evolutionGoPlatformMode?: boolean;
   autoResolveConversationsEnabled?: boolean;
   autoResolveInactivityMinutes?: number;
   autoResolveCustomerMessage?: string | null;
@@ -218,6 +219,7 @@ export function SettingsPage() {
   const authCodeRef = useRef<string | null>(null);
 
   const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
+  const [evolutionGoPlatformMode, setEvolutionGoPlatformMode] = useState(false);
   const [evoQrBusy, setEvoQrBusy] = useState(false);
   const [evoQrError, setEvoQrError] = useState("");
   const [evoQrNewInstanceName, setEvoQrNewInstanceName] = useState("");
@@ -342,6 +344,7 @@ export function SettingsPage() {
       const data = await api.get<AppSettings>("/settings");
       setSettings(data);
       setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+      setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
     } catch (err) {
       setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
     } finally {
@@ -438,6 +441,7 @@ export function SettingsPage() {
         setProvider(data.whatsappProvider ?? "");
         setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
         setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+        setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
         if (data.whatsappProvider === "evolution" && (data.evolutionPlatformQrMode ?? false)) {
           setEvoQrNewInstanceName(data.whatsappPhoneNumberId ?? "");
         } else {
@@ -738,7 +742,7 @@ export function SettingsPage() {
         silentTransferToAgentBot,
       };
       if (provider) body.whatsappProvider = provider;
-      if (!(evolutionPlatformQrMode && provider === "evolution")) {
+      if (!((provider === "evolution" && evolutionPlatformQrMode) || (provider === "evolution_go" && evolutionGoPlatformMode))) {
         if (apiKey) body.whatsappApiKey = apiKey;
       }
       if (phoneNumberId) body.whatsappPhoneNumberId = phoneNumberId;
@@ -746,7 +750,7 @@ export function SettingsPage() {
       if (provider === "evolution" && !evolutionPlatformQrMode) {
         body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
       } else if (provider === "evolution_go") {
-        body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
+        body.evolutionApiBaseUrl = evolutionGoPlatformMode ? null : (evolutionBaseUrl.trim() || null);
       } else if (provider && provider !== "evolution" && provider !== "evolution_go") {
         body.evolutionApiBaseUrl = null;
       }
@@ -755,6 +759,7 @@ export function SettingsPage() {
       const data = await api.put<AppSettings>("/settings", body);
       setSettings(data);
       setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+      setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
       setApiKey("");
       setWebhookSecret("");
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
@@ -1111,7 +1116,8 @@ export function SettingsPage() {
                         </div>
                       ) : null}
 
-                      {(provider === "evolution" && !evolutionPlatformQrMode) || provider === "evolution_go" ? (
+                      {(provider === "evolution" && !evolutionPlatformQrMode) ||
+                      (provider === "evolution_go" && !evolutionGoPlatformMode) ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-700">
                             {provider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
@@ -1143,7 +1149,7 @@ export function SettingsPage() {
                         </div>
                       ) : null}
 
-                      {!(provider === "evolution" && evolutionPlatformQrMode) && (
+                      {!((provider === "evolution" && evolutionPlatformQrMode) || (provider === "evolution_go" && evolutionGoPlatformMode)) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           {provider === "evolution" ? "API key" : "API Key"}

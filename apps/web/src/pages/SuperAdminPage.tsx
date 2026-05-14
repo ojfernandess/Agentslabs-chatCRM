@@ -182,6 +182,13 @@ interface SuperEvolutionPlatformPayload {
   configured: boolean;
 }
 
+interface SuperEvolutionGoPlatformPayload {
+  enabled: boolean;
+  baseUrl: string;
+  globalApiKeyMasked: string;
+  configured: boolean;
+}
+
 interface SuperResendPayload {
   configured: boolean;
   fromEmail: string;
@@ -198,6 +205,7 @@ type SuperSection =
   | "globalSettings"
   | "whatsappEmbedded"
   | "evolutionPlatform"
+  | "evolutionGoPlatform"
   | "monitoring"
   | "platformApps"
   | "auditLog"
@@ -274,6 +282,15 @@ export function SuperAdminPage() {
   const [evoPlEnabled, setEvoPlEnabled] = useState(false);
   const [evoPlBaseUrl, setEvoPlBaseUrl] = useState("");
   const [evoPlGlobalApiKey, setEvoPlGlobalApiKey] = useState("");
+
+  const [evoGoLoad, setEvoGoLoad] = useState(false);
+  const [evoGoLoadFailed, setEvoGoLoadFailed] = useState(false);
+  const [evoGoRefresh, setEvoGoRefresh] = useState(0);
+  const [evoGoSave, setEvoGoSave] = useState(false);
+  const [evoGoSnapshot, setEvoGoSnapshot] = useState<SuperEvolutionGoPlatformPayload | null>(null);
+  const [evoGoEnabled, setEvoGoEnabled] = useState(false);
+  const [evoGoBaseUrl, setEvoGoBaseUrl] = useState("");
+  const [evoGoGlobalApiKey, setEvoGoGlobalApiKey] = useState("");
 
   const [resendLoad, setResendLoad] = useState(false);
   const [resendSnapshot, setResendSnapshot] = useState<SuperResendPayload>({
@@ -542,6 +559,32 @@ export function SuperAdminPage() {
       cancelled = true;
     };
   }, [section, evoPlRefresh]);
+
+  useEffect(() => {
+    if (section !== "evolutionGoPlatform") return;
+    let cancelled = false;
+    setEvoGoLoad(true);
+    setEvoGoLoadFailed(false);
+    setError("");
+    void api
+      .get<SuperEvolutionGoPlatformPayload>("/super/evolution-go-platform")
+      .then((d) => {
+        if (cancelled) return;
+        setEvoGoSnapshot(d);
+        setEvoGoEnabled(d.enabled);
+        setEvoGoBaseUrl(d.baseUrl);
+        setEvoGoGlobalApiKey("");
+      })
+      .catch(() => {
+        if (!cancelled) setEvoGoLoadFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setEvoGoLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section, evoGoRefresh]);
 
   useEffect(() => {
     if (!usersOrg) {
@@ -843,6 +886,31 @@ export function SuperAdminPage() {
     }
   };
 
+  const saveEvolutionGoPlatform = async (e: FormEvent) => {
+    e.preventDefault();
+    setEvoGoSave(true);
+    setError("");
+    try {
+      const body: {
+        enabled: boolean;
+        baseUrl: string;
+        globalApiKey?: string;
+      } = {
+        enabled: evoGoEnabled,
+        baseUrl: evoGoBaseUrl.trim(),
+      };
+      const key = evoGoGlobalApiKey.trim();
+      if (key) body.globalApiKey = key;
+      const d = await api.put<SuperEvolutionGoPlatformPayload>("/super/evolution-go-platform", body);
+      setEvoGoSnapshot(d);
+      setEvoGoGlobalApiKey("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível guardar.");
+    } finally {
+      setEvoGoSave(false);
+    }
+  };
+
   const copyWaEmbCallback = async () => {
     const url = waEmbSnapshot?.metaWebhookCallbackUrl;
     if (!url) return;
@@ -891,6 +959,7 @@ export function SuperAdminPage() {
           {navItem("globalSettings", t("superAdmin.globalSettings"), Settings2)}
           {navItem("whatsappEmbedded", t("superAdmin.whatsappEmbedded"), MessageCircle)}
           {navItem("evolutionPlatform", t("superAdmin.evolutionPlatform"), QrCode)}
+          {navItem("evolutionGoPlatform", t("superAdmin.evolutionGoPlatform"), Settings2)}
           {navItem("monitoring", t("superAdmin.monitoring"), Activity)}
           {navItem("platformApps", t("superAdmin.platformApps"), Box)}
           {navItem("auditLog", t("superAdmin.auditLog"), ScrollText)}
@@ -1373,6 +1442,94 @@ export function SuperAdminPage() {
                   </div>
                   <button type="submit" className="btn-primary" disabled={evoPlSave}>
                     {evoPlSave ? t("common.loading") : t("superAdmin.evolutionPlatformSave")}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {section === "evolutionGoPlatform" && (
+            <div className="mx-auto max-w-3xl space-y-8">
+              <div>
+                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.evolutionGoPlatform")}</h1>
+                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.evolutionGoPlatformSubtitle")}</p>
+                <a
+                  href="https://docs.evolutionfoundation.com.br/evolution-go/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"
+                >
+                  {t("superAdmin.evolutionGoPlatformDocLink")} →
+                </a>
+              </div>
+              {evoGoLoad ? (
+                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+              ) : evoGoLoadFailed || !evoGoSnapshot ? (
+                <div className="card-surface space-y-3 p-6">
+                  <p className="text-sm text-ink-700">{t("superAdmin.evolutionGoPlatformLoadError")}</p>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    onClick={() => setEvoGoRefresh((n) => n + 1)}
+                  >
+                    {t("superAdmin.evolutionGoPlatformRetry")}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={(e) => void saveEvolutionGoPlatform(e)} className="card-surface space-y-5 p-6">
+                  {evoGoSnapshot.configured ? (
+                    <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+                      {t("superAdmin.evolutionGoPlatformConfigured")}
+                    </p>
+                  ) : (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                      {t("superAdmin.evolutionGoPlatformIncomplete")}
+                    </p>
+                  )}
+                  <label className="flex items-center gap-2 text-sm text-ink-800">
+                    <input
+                      type="checkbox"
+                      checked={evoGoEnabled}
+                      onChange={(e) => setEvoGoEnabled(e.target.checked)}
+                      className="rounded border-ink-300"
+                    />
+                    {t("superAdmin.evolutionGoPlatformEnabled")}
+                  </label>
+                  <p className="text-xs text-ink-500">{t("superAdmin.evolutionGoPlatformEnabledHint")}</p>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.evolutionGoPlatformBaseUrl")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.evolutionGoPlatformBaseUrlHint")}</p>
+                    <input
+                      type="url"
+                      value={evoGoBaseUrl}
+                      onChange={(e) => setEvoGoBaseUrl(e.target.value)}
+                      placeholder="https://evolution-go.example.com"
+                      className="input-field mt-2"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">
+                      {t("superAdmin.evolutionGoPlatformGlobalApiKey")}
+                    </label>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.evolutionGoPlatformGlobalApiKeyHint")}</p>
+                    <input
+                      type="password"
+                      value={evoGoGlobalApiKey}
+                      onChange={(e) => setEvoGoGlobalApiKey(e.target.value)}
+                      placeholder={
+                        evoGoSnapshot.globalApiKeyMasked
+                          ? `${t("superAdmin.evolutionGoPlatformSecretKeep")} (${evoGoSnapshot.globalApiKeyMasked})`
+                          : undefined
+                      }
+                      className="input-field mt-2"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={evoGoSave}>
+                    {evoGoSave ? t("common.loading") : t("superAdmin.evolutionGoPlatformSave")}
                   </button>
                 </form>
               )}

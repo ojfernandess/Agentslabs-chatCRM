@@ -15,6 +15,7 @@ import {
   isEvolutionQrModeActive,
   resolveEvolutionApiCredentials,
 } from "../lib/evolutionPlatform.js";
+import { evolutionGoPlatformModeActive, resolveEvolutionGoApiConnection } from "../lib/evolutionGoPlatform.js";
 import {
   evolutionApiCreateInstance,
   evolutionApiFetchConnect,
@@ -187,6 +188,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       agentBotTriageActive,
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
       evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+      /** Evolution Go gerida pela plataforma: tenants usam credenciais globais e guardam apenas instanceId. */
+      evolutionGoPlatformMode: await evolutionGoPlatformModeActive(),
     };
   });
 
@@ -220,6 +223,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       return {
         ...maskSettings(settings, organizationId),
         evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+        evolutionGoPlatformMode: await evolutionGoPlatformModeActive(),
       };
     });
 
@@ -322,8 +326,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const qrMode = await evolutionPlatformQrModeActive();
+      const goPlatformMode = await evolutionGoPlatformModeActive();
       const effectiveProvider = (data.whatsappProvider ?? settings?.whatsappProvider) ?? null;
-      if (qrMode && effectiveProvider === "evolution") {
+      if ((qrMode && effectiveProvider === "evolution") || (goPlatformMode && effectiveProvider === "evolution_go")) {
         delete data.evolutionApiBaseUrl;
         delete data.whatsappApiKey;
       }
@@ -351,6 +356,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       return {
         ...maskSettings(settings, organizationId),
         evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
+        evolutionGoPlatformMode: await evolutionGoPlatformModeActive(),
       };
     });
 
@@ -386,16 +392,15 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
-      const apiKey = decrypt(settings.whatsappApiKey) ?? "";
-      if (!baseUrl || !apiKey) {
+      const api = await resolveEvolutionGoApiConnection(settings);
+      if (!api) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go base URL / API key not configured",
           statusCode: 400,
         });
       }
-      const instances = await evolutionGoFetchAllInstances({ baseUrl, apiKey });
+      const instances = await evolutionGoFetchAllInstances({ baseUrl: api.baseUrl, apiKey: api.apiKey });
       if (!instances) {
         return reply.status(502).send({
           error: "Bad Gateway",
@@ -418,10 +423,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
-      const apiKey = decrypt(settings.whatsappApiKey) ?? "";
       const instanceId = settings.whatsappPhoneNumberId?.trim() ?? "";
-      if (!baseUrl || !apiKey || !instanceId) {
+      const api = await resolveEvolutionGoApiConnection(settings);
+      if (!api || !instanceId) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go base URL / API key / instanceId not configured",
@@ -429,8 +433,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       const ok = await evolutionGoConnectInstance({
-        baseUrl,
-        apiKey,
+        baseUrl: api.baseUrl,
+        apiKey: api.apiKey,
         instanceId,
         webhookUrl: webhookUrlForOrganization(organizationId),
         subscribe: ["ALL"],

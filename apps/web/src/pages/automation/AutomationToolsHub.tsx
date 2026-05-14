@@ -1084,7 +1084,7 @@ export function AutomationToolsHub({
               </label>
 
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">{t("automationPage.toolsCreateParamsJson")}</p>
+                <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">{t("automationPage.toolParamsJson")}</p>
                 <button
                   type="button"
                   onClick={() => {

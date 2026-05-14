@@ -759,6 +759,7 @@ export const messages = {
       toolsCreateIcon: "Ícone",
       toolsCreateColor: "Cor (token UI)",
       toolsCreateConfigJson: "Configuração (JSON)",
+      toolsCreateParamsJson: "Schema de parâmetros (JSON)",
       toolsJsonBeautify: "Formatar JSON",
       toolsCreateSubmit: "Criar ferramenta",
       toolsSaving: "A guardar…",
@@ -2085,6 +2086,27 @@ export const messages = {
         "A mesma do Evolution (ex.: AUTHENTICATION_API_KEY). Nunca é enviada ao browser do tenant.",
       evolutionPlatformSecretKeep: "Deixe vazio para manter a chave existente",
       evolutionPlatformSave: "Guardar",
+      evolutionGoPlatform: "Evolution Go (plataforma)",
+      evolutionGoPlatformSubtitle:
+        "URL do servidor Evolution Go e chave global da API. Quando ativo, os tenants não preenchem URL/chave — apenas associam o Instance ID nas configurações do canal.",
+      evolutionGoPlatformDocLink: "Documentação Evolution Go",
+      evolutionGoPlatformLoadError: "Não foi possível carregar as configurações.",
+      evolutionGoPlatformRetry: "Tentar novamente",
+      evolutionGoPlatformConfigured:
+        "Modo gerido ativo. Os tenants usam apenas Instance ID nas configurações do canal.",
+      evolutionGoPlatformIncomplete:
+        "Ligue a opção acima e preencha o URL base e a chave API global para ativar o modo gerido nos tenants.",
+      evolutionGoPlatformEnabled: "Evolution Go gerido pela plataforma",
+      evolutionGoPlatformEnabledHint:
+        "Com esta opção ligada, URL e chave abaixo aplicam-se a todos os tenants; nas configurações do canal escolhem Evolution Go e indicam só o Instance ID.",
+      evolutionGoPlatformBaseUrl: "URL público do Evolution Go",
+      evolutionGoPlatformBaseUrlHint:
+        "Raiz do servidor, sem path. O backend chama rotas como /send/text e /send/media.",
+      evolutionGoPlatformGlobalApiKey: "Chave API global (header apikey)",
+      evolutionGoPlatformGlobalApiKeyHint:
+        "A mesma configurada no Evolution Go. Nunca é enviada ao browser do tenant.",
+      evolutionGoPlatformSecretKeep: "Deixe vazio para manter a chave existente",
+      evolutionGoPlatformSave: "Guardar",
       tenantPermissions: "Permissões por tenant",
       tenantPermissionsSubtitle:
         "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular de permissões por capacidade). Ajuste funções na lista de usuários.",
@@ -2887,6 +2909,7 @@ export const messages = {
       toolsCreateIcon: "Icon",
       toolsCreateColor: "Color (UI token)",
       toolsCreateConfigJson: "Configuration (JSON)",
+      toolsCreateParamsJson: "Parameters schema (JSON)",
       toolsJsonBeautify: "Beautify JSON",
       toolsCreateSubmit: "Create tool",
       toolsSaving: "Saving…",
@@ -4208,6 +4231,26 @@ export const messages = {
         "Same as on the Evolution server (e.g. AUTHENTICATION_API_KEY). Never sent to the tenant browser.",
       evolutionPlatformSecretKeep: "Leave blank to keep the existing key",
       evolutionPlatformSave: "Save",
+      evolutionGoPlatform: "Evolution Go (platform)",
+      evolutionGoPlatformSubtitle:
+        "Evolution Go server URL and global API key. When enabled, tenants don’t fill URL/key — they only provide the Instance ID in channel settings.",
+      evolutionGoPlatformDocLink: "Evolution Go documentation",
+      evolutionGoPlatformLoadError: "Could not load settings.",
+      evolutionGoPlatformRetry: "Try again",
+      evolutionGoPlatformConfigured: "Platform-managed mode is on. Tenants only use Instance ID in channel settings.",
+      evolutionGoPlatformIncomplete:
+        "Turn on the option above and fill in the base URL and global API key to enable the managed mode for tenants.",
+      evolutionGoPlatformEnabled: "Platform-managed Evolution Go",
+      evolutionGoPlatformEnabledHint:
+        "When on, the URL and key below apply to all tenants; in channel settings they select Evolution Go and only provide the Instance ID.",
+      evolutionGoPlatformBaseUrl: "Evolution Go public URL",
+      evolutionGoPlatformBaseUrlHint:
+        "Server root, no path. The backend calls routes like /send/text and /send/media.",
+      evolutionGoPlatformGlobalApiKey: "Global API key (apikey header)",
+      evolutionGoPlatformGlobalApiKeyHint:
+        "Same as configured on Evolution Go. Never sent to the tenant browser.",
+      evolutionGoPlatformSecretKeep: "Leave blank to keep the existing key",
+      evolutionGoPlatformSave: "Save",
       tenantPermissions: "Tenant permissions",
       tenantPermissionsSubtitle:
         "This product uses ADMIN and AGENT per organization (no fine-grained capability matrix). Adjust roles from the user list.",

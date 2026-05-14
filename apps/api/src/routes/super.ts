@@ -23,6 +23,7 @@ import {
   EVOLUTION_PLATFORM_KEY,
   parseEvolutionPlatformValue,
 } from "../lib/evolutionPlatform.js";
+import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib/evolutionGoPlatform.js";
 import {
   RESEND_EMAIL_PLATFORM_KEY,
   getPasswordResetTemplatesForEditor,
@@ -76,6 +77,12 @@ const whatsappEmbeddedPutSchema = z.object({
 const evolutionPlatformPutSchema = z.object({
   enabled: z.boolean(),
   tenantQrOnly: z.boolean().optional(),
+  baseUrl: z.string().max(512),
+  globalApiKey: z.string().max(512).optional(),
+});
+
+const evolutionGoPlatformPutSchema = z.object({
+  enabled: z.boolean(),
   baseUrl: z.string().max(512),
   globalApiKey: z.string().max(512).optional(),
 });
@@ -818,6 +825,81 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     return {
       enabled: v?.enabled ?? false,
       tenantQrOnly: v?.tenantQrOnly ?? false,
+      baseUrl: v?.baseUrl ?? "",
+      globalApiKeyMasked: v?.globalApiKey ? "••••••••" : "",
+      configured: !!(v && v.enabled && v.baseUrl && v.globalApiKey),
+    };
+  });
+
+  app.get("/evolution-go-platform", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: EVOLUTION_GO_PLATFORM_KEY },
+    });
+    const v = parseEvolutionGoPlatformValue(row?.value);
+    if (!v) {
+      return {
+        enabled: false,
+        baseUrl: "",
+        globalApiKeyMasked: "",
+        configured: false,
+      };
+    }
+    return {
+      enabled: v.enabled,
+      baseUrl: v.baseUrl,
+      globalApiKeyMasked: v.globalApiKey ? "••••••••" : "",
+      configured: !!(v.enabled && v.baseUrl && v.globalApiKey),
+    };
+  });
+
+  app.put("/evolution-go-platform", async (request, reply) => {
+    const parsed = evolutionGoPlatformPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: EVOLUTION_GO_PLATFORM_KEY },
+    });
+    let globalApiKey = parsed.data.globalApiKey?.trim() ?? "";
+    if (!globalApiKey && existing?.value && typeof existing.value === "object" && existing.value !== null) {
+      globalApiKey = String((existing.value as Record<string, unknown>).globalApiKey ?? "").trim();
+    }
+
+    const baseUrl = parsed.data.baseUrl.trim();
+    if (parsed.data.enabled) {
+      if (!baseUrl || !globalApiKey) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "When enabling platform Evolution Go, baseUrl and globalApiKey are required (omit globalApiKey only to keep the existing key).",
+          statusCode: 400,
+        });
+      }
+    }
+
+    const stored = {
+      enabled: parsed.data.enabled,
+      baseUrl,
+      globalApiKey,
+    };
+
+    const row = await prisma.platformSetting.upsert({
+      where: { key: EVOLUTION_GO_PLATFORM_KEY },
+      create: { key: EVOLUTION_GO_PLATFORM_KEY, value: stored as Prisma.InputJsonValue },
+      update: { value: stored as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.evolution_go_platform.upsert",
+      resourceType: "platform_setting",
+      resourceId: EVOLUTION_GO_PLATFORM_KEY,
+      metadata: { enabled: stored.enabled },
+      ip: clientIp(request),
+    });
+    const v = parseEvolutionGoPlatformValue(row.value);
+    return {
+      enabled: v?.enabled ?? false,
       baseUrl: v?.baseUrl ?? "",
       globalApiKeyMasked: v?.globalApiKey ? "••••••••" : "",
       configured: !!(v && v.enabled && v.baseUrl && v.globalApiKey),
