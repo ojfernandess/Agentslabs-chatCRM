@@ -23,6 +23,11 @@ import {
   syncKnowledgeArticleBotsFromPromptBuilder,
 } from "../lib/knowledgeRetrieval.js";
 import { parseNativeToolsFromBehavior } from "../lib/agentNativeLlm.js";
+import {
+  buildSyncedPromptAutoInstructionBlock,
+  mergeSystemWithAutoBlock,
+  splitStoredSystemInstructions,
+} from "../lib/agentPromptSync.js";
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
 import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
 import {
@@ -2274,6 +2279,178 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
     return { ...row, llmConfig: redactLlmConfig(row.llmConfig) };
   });
+
+  app.post<{ Params: { botId: string } }>(
+    "/agent-profiles/:botId/sync-prompt",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const profile = await prisma.automationAgentProfile.findFirst({
+        where: { organizationId, botId: request.params.botId },
+        include: {
+          bot: {
+            select: { id: true, name: true, description: true, isActive: true, webhookUrl: true, config: true },
+          },
+        },
+      });
+      if (!profile) {
+        return reply.status(404).send({ error: "Not Found", message: "Agent profile not found", statusCode: 404 });
+      }
+
+      const llm = (profile.llmConfig as Record<string, unknown>) ?? {};
+      const behavior = (profile.behaviorConfig as Record<string, unknown>) ?? {};
+      const pbRaw = behavior.promptBuilder;
+      const pb = pbRaw && typeof pbRaw === "object" ? (pbRaw as Record<string, unknown>) : {};
+
+      const userCore =
+        typeof pb.userCore === "string"
+          ? pb.userCore
+          : splitStoredSystemInstructions(String(llm.systemInstructions ?? "")).userCore;
+
+      const linkedIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
+      const linkedArticles = linkedIds.length
+        ? await prisma.automationKnowledgeArticle.findMany({
+            where: { organizationId, id: { in: linkedIds }, isActive: true, syncToAi: true },
+            select: { id: true, title: true },
+          })
+        : [];
+      const titleById = new Map(linkedArticles.map((a) => [a.id, a.title]));
+      const linkedTitles = linkedIds.map((id) => titleById.get(id)).filter((x): x is string => Boolean(x));
+
+      const connected = Array.isArray(behavior.connectedTools)
+        ? (behavior.connectedTools as Array<Record<string, unknown>>)
+        : [];
+      const enabledConnected = connected.filter(
+        (x) => x && x.enabled === true && typeof x.toolId === "string" && x.toolId.trim(),
+      );
+      const toolIds = enabledConnected.map((x) => String(x.toolId).trim());
+      const toolRows = toolIds.length
+        ? await prisma.automationCustomTool.findMany({
+            where: { organizationId, id: { in: toolIds }, isActive: true },
+            select: { id: true, name: true },
+          })
+        : [];
+      const toolNameById = new Map(toolRows.map((t) => [t.id, t.name]));
+      const connectedToolNames = toolIds.map((id) => toolNameById.get(id)).filter((x): x is string => Boolean(x));
+      const connectedToolInstructions = enabledConnected
+        .map((x) => {
+          const toolId = String(x.toolId).trim();
+          const name = toolNameById.get(toolId);
+          const instruction = typeof x.agentInstruction === "string" ? x.agentInstruction.trim() : "";
+          if (!name || !instruction) return null;
+          return { name, instruction, toolId };
+        })
+        .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
+
+      const hintsRaw = pb.teamTransferHints;
+      const teamHintBase: Array<{ teamId: string; instruction: string }> = Array.isArray(hintsRaw)
+        ? hintsRaw
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const teamId = typeof o.teamId === "string" ? o.teamId.trim() : "";
+              const instruction = typeof o.instruction === "string" ? o.instruction.trim() : "";
+              if (!teamId || !instruction) return null;
+              return { teamId, instruction };
+            })
+            .filter((x): x is { teamId: string; instruction: string } => x != null)
+        : [];
+      const teamIds = teamHintBase.map((h) => h.teamId);
+      const teamRows = teamIds.length
+        ? await prisma.team.findMany({
+            where: { organizationId, id: { in: teamIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const teamNameById = new Map(teamRows.map((t) => [t.id, t.name]));
+      const teamTransferHints = teamHintBase.map((h) => ({
+        teamId: h.teamId,
+        teamName: teamNameById.get(h.teamId) ?? h.teamId,
+        instruction: h.instruction,
+      }));
+
+      const escRaw = behavior.escalationRules;
+      const esc = escRaw && typeof escRaw === "object" ? (escRaw as Record<string, unknown>) : {};
+      const escTeamId = typeof esc.transferTeamId === "string" ? esc.transferTeamId.trim() : "";
+      const escTeamName = escTeamId ? teamNameById.get(escTeamId) ?? null : null;
+      const escalation =
+        escTeamId ||
+        (typeof esc.keywords === "string" && esc.keywords.trim()) ||
+        (typeof esc.conditions === "string" && esc.conditions.trim()) ||
+        (typeof esc.transferMessage === "string" && esc.transferMessage.trim())
+          ? {
+              mode: typeof esc.mode === "string" ? esc.mode : "",
+              targetTeamId: escTeamId || null,
+              targetTeamName: escTeamName,
+              keywords: typeof esc.keywords === "string" ? esc.keywords : "",
+              conditions: typeof esc.conditions === "string" ? esc.conditions : "",
+              transferMessage: typeof esc.transferMessage === "string" ? esc.transferMessage : "",
+            }
+          : null;
+
+      const nativeTools = (() => {
+        const n: Record<string, boolean> = {};
+        const raw = behavior.nativeTools;
+        if (raw && typeof raw === "object") {
+          for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+            if (typeof v === "boolean") n[k] = v;
+          }
+        }
+        return n;
+      })();
+
+      const autoInner = buildSyncedPromptAutoInstructionBlock({
+        nativeTools,
+        linkedArticleTitles: linkedTitles,
+        connectedToolNames,
+        connectedToolInstructions,
+        teamTransferHints,
+        escalation,
+      });
+
+      const nextLlm = { ...llm, systemInstructions: mergeSystemWithAutoBlock(userCore, autoInner) };
+
+      await prisma.automationAgentProfile.update({
+        where: { botId: profile.botId },
+        data: { llmConfig: asJson(nextLlm) },
+      });
+
+      await syncKnowledgeArticleBotsFromPromptBuilder({
+        organizationId,
+        botId: profile.botId,
+        behaviorConfig: profile.behaviorConfig,
+      });
+
+      const refreshed = await prisma.automationAgentProfile.findFirst({
+        where: { organizationId, botId: profile.botId },
+        include: {
+          bot: {
+            select: { id: true, name: true, description: true, isActive: true, webhookUrl: true, config: true },
+          },
+        },
+      });
+      if (!refreshed) {
+        return reply.status(404).send({ error: "Not Found", message: "Agent profile not found", statusCode: 404 });
+      }
+      const src = deriveBotAutomationSource({ webhookUrl: refreshed.bot.webhookUrl, config: refreshed.bot.config });
+      const { bot: b, ...rest } = refreshed;
+      return {
+        ...rest,
+        bot: {
+          id: b.id,
+          name: b.name,
+          description: b.description,
+          isActive: b.isActive,
+          webhookUrl: b.webhookUrl,
+          editInExternalAutomation: src.editInExternalAutomation,
+          managedByOpenConduit: src.managedByOpenConduit,
+        },
+        llmConfig: redactLlmConfig(refreshed.llmConfig),
+      };
+    },
+  );
 
   app.post<{ Params: { botId: string } }>(
     "/agent-profiles/:botId/test-chat",

@@ -201,6 +201,10 @@ export const messages = {
       agentBehaviorJson: "Comportamento / ferramentas nativas / inatividade / voz (JSON)",
       agentPromptModules: "IDs dos módulos de prompt (JSON array)",
       agentSaveProfile: "Guardar perfil",
+      agentSyncPrompt: "Sincronizar prompt",
+      agentSyncPromptBusy: "A sincronizar…",
+      agentSyncPromptOk: "Sincronizado.",
+      agentSyncPromptFailed: "Não foi possível sincronizar.",
       agentHint:
         "Pode criar um bot novo para a organização ou ligar um bot existente. Se o bot tiver webhook para outro sistema de automação, as alterações de conversação devem ser feitas nessa origem; aqui guarda-se a configuração e a base de conhecimento do OpenConduit.",
       agentsHeading: "Agentes",
@@ -2357,6 +2361,10 @@ export const messages = {
       agentBehaviorJson: "Behavior / native tools / inactivity / voice (JSON)",
       agentPromptModules: "Prompt module IDs (JSON array)",
       agentSaveProfile: "Save profile",
+      agentSyncPrompt: "Sync prompt",
+      agentSyncPromptBusy: "Syncing…",
+      agentSyncPromptOk: "Synced.",
+      agentSyncPromptFailed: "Could not sync.",
       agentHint:
         "You can create a new organization bot or link an existing one. If the bot webhooks to another automation stack, change conversation flow there; OpenConduit stores configuration and knowledge here.",
       agentsHeading: "Agents",

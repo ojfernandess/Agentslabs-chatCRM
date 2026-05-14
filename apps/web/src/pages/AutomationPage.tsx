@@ -1434,6 +1434,8 @@ function AgentsTab({
   const elevenLabsTools = tools.filter((x) => x.toolType === "ELEVENLABS");
   const [promptEditorTab, setPromptEditorTab] = useState<"builder" | "merged">("builder");
   const [kbArticleFilter, setKbArticleFilter] = useState("");
+  const [promptSyncBusy, setPromptSyncBusy] = useState(false);
+  const [promptSyncStatus, setPromptSyncStatus] = useState<"ok" | "error" | null>(null);
   const [instructionSuggestBusy, setInstructionSuggestBusy] = useState<string | null>(null);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
@@ -1441,6 +1443,8 @@ function AgentsTab({
     if (!agentModalOpen) {
       setPromptEditorTab("builder");
       setKbArticleFilter("");
+      setPromptSyncBusy(false);
+      setPromptSyncStatus(null);
     }
   }, [agentModalOpen]);
 
@@ -1463,6 +1467,21 @@ function AgentsTab({
     setTestChatDraft("");
     setTestChatTurns([]);
     setTestChatBusy(false);
+  };
+
+  const syncAgentPrompt = async () => {
+    if (agentForm.mode !== "edit" || !agentForm.editBotId) return;
+    if (promptSyncBusy) return;
+    setPromptSyncBusy(true);
+    setPromptSyncStatus(null);
+    try {
+      await api.post(`/automation/agent-profiles/${agentForm.editBotId}/sync-prompt`, {});
+      setPromptSyncStatus("ok");
+    } catch {
+      setPromptSyncStatus("error");
+    } finally {
+      setPromptSyncBusy(false);
+    }
   };
 
   const sendAgentTestChat = async () => {
@@ -2893,6 +2912,23 @@ function AgentsTab({
             </div>
 
             <div className="flex shrink-0 justify-end gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
+              {agentForm.mode === "edit" && agentForm.editBotId ? (
+                <div className="mr-auto flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={loading || promptSyncBusy}
+                    onClick={() => void syncAgentPrompt()}
+                    className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium dark:border-ink-600 disabled:opacity-50"
+                  >
+                    {promptSyncBusy ? t("automationPage.agentSyncPromptBusy") : t("automationPage.agentSyncPrompt")}
+                  </button>
+                  {promptSyncStatus === "ok" ? (
+                    <span className="text-xs font-medium text-green-700">{t("automationPage.agentSyncPromptOk")}</span>
+                  ) : promptSyncStatus === "error" ? (
+                    <span className="text-xs font-medium text-red-600">{t("automationPage.agentSyncPromptFailed")}</span>
+                  ) : null}
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setAgentModalOpen(false)}
