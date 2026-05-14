@@ -11,6 +11,7 @@ import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensureConversationForWhatsAppContact } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
+import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
 
 // Fastify: raw body for signature verification (Evolution / Meta)
@@ -334,6 +335,30 @@ async function handleWhatsAppPost(
             { organizationId, waMessageId: msg.waMessageId },
             "Evolution inbound audio: getBase64FromMediaMessage failed — using original URL if any",
           );
+        }
+      }
+      if (
+        channelSettings.whatsappProvider === "evolution_go" &&
+        msg.evolutionWebMessage &&
+        typeof msg.evolutionWebMessage.base64 === "string" &&
+        msg.evolutionWebMessage.base64.trim()
+      ) {
+        const mimetype =
+          typeof msg.evolutionWebMessage.mimetype === "string" && msg.evolutionWebMessage.mimetype.trim()
+            ? msg.evolutionWebMessage.mimetype.trim()
+            : resolvedMediaType ?? "application/octet-stream";
+        const fileName =
+          typeof msg.evolutionWebMessage.fileName === "string" && msg.evolutionWebMessage.fileName.trim()
+            ? msg.evolutionWebMessage.fileName.trim()
+            : undefined;
+        const local = await persistEvolutionGoInboundMediaAsLocalUrl({
+          base64: msg.evolutionWebMessage.base64.trim(),
+          mimetype,
+          fileName,
+        });
+        if (local) {
+          resolvedMediaUrl = local.mediaUrl;
+          resolvedMediaType = local.mediaType;
         }
       }
 

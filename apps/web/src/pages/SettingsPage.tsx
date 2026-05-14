@@ -225,6 +225,12 @@ export function SettingsPage() {
   const [evoQrDataUrl, setEvoQrDataUrl] = useState<string | null>(null);
   const [evoPairingCode, setEvoPairingCode] = useState<string | null>(null);
   const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
+  const [evoGoBusy, setEvoGoBusy] = useState(false);
+  const [evoGoError, setEvoGoError] = useState("");
+  const [evoGoInstances, setEvoGoInstances] = useState<Array<{ id: string; name: string; connected: boolean }> | null>(
+    null,
+  );
+  const [evoGoConnectOk, setEvoGoConnectOk] = useState<boolean | null>(null);
   const businessDataRef = useRef<{
     business_id: string;
     waba_id: string;
@@ -294,6 +300,14 @@ export function SettingsPage() {
   }, [provider]);
 
   useEffect(() => {
+    if (provider !== "evolution_go") {
+      setEvoGoError("");
+      setEvoGoInstances(null);
+      setEvoGoConnectOk(null);
+    }
+  }, [provider]);
+
+  useEffect(() => {
     if (!isAdmin || !evolutionPlatformQrMode || provider !== "evolution") {
       setEvoConnPoll(null);
       return;
@@ -350,6 +364,36 @@ export function SettingsPage() {
       setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
     } finally {
       setEvoQrBusy(false);
+    }
+  };
+
+  const fetchEvolutionGoInstances = async () => {
+    setEvoGoBusy(true);
+    setEvoGoError("");
+    try {
+      const r = await api.get<{ instances: Array<{ id: string; name: string; connected: boolean }> }>(
+        "/settings/evolution-go/instances",
+      );
+      setEvoGoInstances(r.instances);
+    } catch (err) {
+      setEvoGoError(err instanceof Error ? err.message : "Falha ao buscar instâncias do Evolution Go");
+    } finally {
+      setEvoGoBusy(false);
+    }
+  };
+
+  const connectEvolutionGoWebhook = async () => {
+    setEvoGoBusy(true);
+    setEvoGoError("");
+    setEvoGoConnectOk(null);
+    try {
+      await api.post("/settings/evolution-go/connect", {});
+      setEvoGoConnectOk(true);
+    } catch (err) {
+      setEvoGoConnectOk(false);
+      setEvoGoError(err instanceof Error ? err.message : "Falha ao conectar e configurar webhook no Evolution Go");
+    } finally {
+      setEvoGoBusy(false);
     }
   };
 
@@ -701,7 +745,9 @@ export function SettingsPage() {
       if (webhookSecret) body.whatsappWebhookSecret = webhookSecret;
       if (provider === "evolution" && !evolutionPlatformQrMode) {
         body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
-      } else if (provider && provider !== "evolution") {
+      } else if (provider === "evolution_go") {
+        body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
+      } else if (provider && provider !== "evolution" && provider !== "evolution_go") {
         body.evolutionApiBaseUrl = null;
       }
       body.agentBotId = agentBotId.trim() ? agentBotId.trim() : null;
@@ -972,6 +1018,7 @@ export function SettingsPage() {
                           <option value="360dialog">360dialog</option>
                           <option value="twilio">Twilio</option>
                           <option value="evolution">Evolution API</option>
+                          <option value="evolution_go">Evolution Go</option>
                         </select>
                       </div>
 
@@ -1064,25 +1111,37 @@ export function SettingsPage() {
                         </div>
                       ) : null}
 
-                      {provider === "evolution" && !evolutionPlatformQrMode && (
+                      {(provider === "evolution" && !evolutionPlatformQrMode) || provider === "evolution_go" ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-700">
-                            Evolution API base URL
+                            {provider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
                           </label>
                           <input
                             type="url"
                             value={evolutionBaseUrl}
                             onChange={(e) => setEvolutionBaseUrl(e.target.value)}
-                            placeholder="https://evolution.example.com"
+                            placeholder={
+                              provider === "evolution_go"
+                                ? "https://evolution-go.example.com"
+                                : "https://evolution.example.com"
+                            }
                             className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                           <p className="mt-1 text-xs text-gray-500">
-                            Public URL of your Evolution API v2 server (no trailing path; uses REST routes such as{" "}
-                            <code className="rounded bg-gray-100 px-1">/message/sendText/…</code>
-                            ).
+                            {provider === "evolution_go" ? (
+                              <>
+                                Public URL of your Evolution Go server (no trailing path; uses routes such as{" "}
+                                <code className="rounded bg-gray-100 px-1">/send/text</code>).
+                              </>
+                            ) : (
+                              <>
+                                Public URL of your Evolution API v2 server (no trailing path; uses REST routes such as{" "}
+                                <code className="rounded bg-gray-100 px-1">/message/sendText/…</code>).
+                              </>
+                            )}
                           </p>
                         </div>
-                      )}
+                      ) : null}
 
                       {!(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
@@ -1109,7 +1168,11 @@ export function SettingsPage() {
                       {!(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
-                          {provider === "evolution" ? "Instance name" : "Phone Number ID"}
+                          {provider === "evolution"
+                            ? "Instance name"
+                            : provider === "evolution_go"
+                              ? "Instance ID"
+                              : "Phone Number ID"}
                         </label>
                         <input
                           type="text"
@@ -1118,12 +1181,69 @@ export function SettingsPage() {
                           placeholder={
                             provider === "evolution"
                               ? "Instance name (as in /instance/create)"
+                              : provider === "evolution_go"
+                                ? "Instance UUID (as in /instance/all)"
                               : "Enter phone number ID"
                           }
                           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
                       )}
+
+                      {provider === "evolution_go" ? (
+                        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={evoGoBusy}
+                              onClick={() => void fetchEvolutionGoInstances()}
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {evoGoBusy ? "Buscando..." : "Buscar instâncias"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={evoGoBusy}
+                              onClick={() => void connectEvolutionGoWebhook()}
+                              className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                            >
+                              {evoGoBusy ? "Conectando..." : "Conectar e configurar webhook"}
+                            </button>
+                            {evoGoConnectOk === true ? (
+                              <span className="text-sm text-green-700">Conectado</span>
+                            ) : evoGoConnectOk === false ? (
+                              <span className="text-sm text-red-600">Falha</span>
+                            ) : null}
+                          </div>
+
+                          {evoGoError ? (
+                            <p className="text-sm text-red-600" role="alert">
+                              {evoGoError}
+                            </p>
+                          ) : null}
+
+                          {evoGoInstances?.length ? (
+                            <div className="max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white">
+                              <ul className="divide-y divide-gray-100 text-sm">
+                                {evoGoInstances.map((inst) => (
+                                  <li key={inst.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setPhoneNumberId(inst.id)}
+                                      className="text-left font-medium text-gray-900 hover:underline"
+                                    >
+                                      {inst.name}
+                                    </button>
+                                    <span className={inst.connected ? "text-green-700" : "text-amber-800"}>
+                                      {inst.connected ? "connected" : "offline"}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Webhook secret</label>
@@ -1148,6 +1268,13 @@ export function SettingsPage() {
                             the webhook JSON or manager UI) with name{" "}
                             <code className="rounded bg-gray-100 px-1">x-openconduit-token</code> and value identical to
                             this field. If this field is filled, requests without that header are rejected with 401.
+                          </p>
+                        ) : provider === "evolution_go" ? (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Optional verification for Evolution Go webhooks. If filled, incoming webhook payloads must
+                            include an <code className="rounded bg-gray-100 px-1">instanceToken</code> equal to this
+                            value (or a matching <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>{" "}
+                            header).
                           </p>
                         ) : (
                           <p className="mt-1 text-xs text-gray-500">

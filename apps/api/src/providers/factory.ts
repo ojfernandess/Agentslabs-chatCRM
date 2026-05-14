@@ -4,6 +4,7 @@ import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
 import { WhatsAppProviderInterface } from "./types.js";
 import { MetaCloudApiProvider } from "./meta.js";
 import { EvolutionApiProvider } from "./evolution.js";
+import { EvolutionGoProvider } from "./evolutionGo.js";
 
 export async function getWhatsAppProvider(organizationId: string): Promise<WhatsAppProviderInterface | null> {
   const settings = await prisma.settings.findUnique({ where: { organizationId } });
@@ -31,6 +32,13 @@ export async function getWhatsAppProvider(organizationId: string): Promise<Whats
         return null;
       }
       return new EvolutionApiProvider(creds.baseUrl, creds.apiKey, creds.instanceName);
+    }
+    case "evolution_go": {
+      const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
+      const apiKey = decrypt(settings.whatsappApiKey) ?? "";
+      const instanceId = settings.whatsappPhoneNumberId?.trim() ?? "";
+      if (!baseUrl || !apiKey || !instanceId) return null;
+      return new EvolutionGoProvider(baseUrl, apiKey, instanceId);
     }
     default:
       return null;
