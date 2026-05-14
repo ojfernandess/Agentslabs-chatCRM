@@ -136,53 +136,66 @@
     @apply dark:bg-brand-950/50 dark:text-brand-300;
   }
 
-  .wa-bubble {
-    --wa-bubble-bg: #ffffff;
-    background-color: var(--wa-bubble-bg);
+  .crm-bubble {
+    --crm-bubble-bg: #ffffff;
+    --crm-bubble-border: rgba(15, 23, 42, 0.10);
+    --crm-bubble-text: #0f172a;
+    --crm-bubble-meta: rgba(15, 23, 42, 0.60);
+    --crm-bubble-shadow: 0 10px 22px -18px rgba(2, 6, 23, 0.45);
+    background-color: var(--crm-bubble-bg);
+    border-color: var(--crm-bubble-border);
+    color: var(--crm-bubble-text);
+    box-shadow: var(--crm-bubble-shadow);
   }
 
-  .dark .wa-bubble {
-    --wa-bubble-bg: #202c33;
+  .dark .crm-bubble {
+    --crm-bubble-bg: rgba(17, 28, 43, 0.92);
+    --crm-bubble-border: rgba(255, 255, 255, 0.10);
+    --crm-bubble-text: rgba(248, 250, 252, 0.96);
+    --crm-bubble-meta: rgba(226, 232, 240, 0.70);
+    --crm-bubble-shadow: 0 14px 26px -22px rgba(0, 0, 0, 0.75);
   }
 
-  .wa-bubble-in {
-    --wa-bubble-bg: #ffffff;
-    @apply text-ink-900 shadow-sm;
+  .crm-bubble-in {
+    --crm-bubble-bg: rgba(255, 255, 255, 0.96);
+    --crm-bubble-border: rgba(15, 23, 42, 0.10);
   }
 
-  .dark .wa-bubble-in {
-    --wa-bubble-bg: #202c33;
-    @apply text-ink-50 shadow-black/20;
+  .dark .crm-bubble-in {
+    --crm-bubble-bg: rgba(17, 28, 43, 0.92);
+    --crm-bubble-border: rgba(255, 255, 255, 0.10);
   }
 
-  .wa-bubble-out {
-    --wa-bubble-bg: #d9fdd3;
-    @apply text-ink-900 shadow-sm;
+  .crm-bubble-out {
+    --crm-bubble-bg: rgba(255, 122, 89, 0.10);
+    --crm-bubble-border: rgba(255, 122, 89, 0.22);
   }
 
-  .dark .wa-bubble-out {
-    --wa-bubble-bg: #005c4b;
-    @apply text-ink-50 shadow-black/25;
+  .dark .crm-bubble-out {
+    --crm-bubble-bg: rgba(255, 122, 89, 0.14);
+    --crm-bubble-border: rgba(255, 122, 89, 0.25);
   }
 
-  .wa-tail-in::after,
-  .wa-tail-out::after {
-    content: "";
-    position: absolute;
-    bottom: 4px;
-    width: 18px;
-    height: 18px;
-    background: var(--wa-bubble-bg);
-    border-radius: 0 0 14px 0;
+  .crm-bubble-unread {
+    @apply ring-2 ring-brand-500/35;
+    @apply dark:ring-brand-400/30;
   }
 
-  .wa-tail-in::after {
-    left: -8px;
-    transform: rotate(45deg);
+  .crm-bubble-meta {
+    color: var(--crm-bubble-meta);
   }
 
-  .wa-tail-out::after {
-    right: -8px;
-    transform: rotate(-45deg);
+  .crm-bubble-private {
+    --crm-bubble-bg: rgba(251, 191, 36, 0.14);
+    --crm-bubble-border: rgba(245, 158, 11, 0.35);
+    --crm-bubble-text: rgba(120, 53, 15, 0.98);
+    --crm-bubble-meta: rgba(120, 53, 15, 0.70);
+  }
+
+  .dark .crm-bubble-private {
+    --crm-bubble-bg: rgba(120, 53, 15, 0.35);
+    --crm-bubble-border: rgba(245, 158, 11, 0.30);
+    --crm-bubble-text: rgba(255, 251, 235, 0.95);
+    --crm-bubble-meta: rgba(254, 243, 199, 0.70);
   }
 }

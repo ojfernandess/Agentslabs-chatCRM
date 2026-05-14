@@ -2134,13 +2134,10 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "wa-bubble relative overflow-visible max-w-[min(calc(100%-2.5rem),28rem)] px-3 py-2.5 shadow-sm",
+                    "crm-bubble relative max-w-[min(calc(100%-2.5rem),28rem)] border px-3.5 py-2.5",
                     bubbleRadius,
-                    msg.isPrivate
-                      ? "border border-amber-400/60 bg-amber-50/95 text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-100"
-                      : inbound
-                        ? clsx("wa-bubble-in", !groupedNext && "wa-tail-in")
-                        : clsx("wa-bubble-out", !groupedNext && "wa-tail-out"),
+                    isNew && "crm-bubble-unread",
+                    msg.isPrivate ? "crm-bubble-private" : inbound ? "crm-bubble-in" : "crm-bubble-out",
                   )}
                 >
                   {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
@@ -2149,9 +2146,7 @@ export function ConversationDetailPage() {
                         "mb-1 text-[11px] font-semibold leading-tight",
                         msg.isPrivate
                           ? "text-amber-900/90 dark:text-amber-100/95"
-                          : inbound
-                            ? "text-ink-700 dark:text-ink-200"
-                            : "text-ink-700 dark:text-ink-100",
+                          : "text-ink-700 dark:text-ink-200",
                       )}
                     >
                       {msg.actorUser.displayName?.trim() || msg.actorUser.name}
@@ -2221,15 +2216,15 @@ export function ConversationDetailPage() {
                   )}
                   <div
                     className={clsx(
-                      "mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
-                      msg.isPrivate
-                        ? "text-amber-800/80 dark:text-amber-300/80"
-                        : inbound
-                          ? "text-ink-500 dark:text-ink-300"
-                          : "text-ink-500 dark:text-ink-200",
+                      "crm-bubble-meta mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
                     )}
                   >
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
+                    {inbound && isNew ? (
+                      <span className="ml-1 inline-flex h-2 w-2 items-center justify-center">
+                        <span className="h-1.5 w-1.5 rounded-full bg-brand-500/80 dark:bg-brand-300/80" />
+                      </span>
+                    ) : null}
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (
@@ -2237,9 +2232,9 @@ export function ConversationDetailPage() {
                         ) : msg.status === "READ" ? (
                           <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-3 w-3 text-ink-500/70 dark:text-ink-200/70" aria-hidden />
+                          <CheckCheck className="h-3 w-3 text-ink-500/70 dark:text-ink-300/70" aria-hidden />
                         ) : (
-                          <Check className="h-3 w-3 text-ink-500/80 dark:text-ink-200/80" aria-hidden />
+                          <Check className="h-3 w-3 text-ink-500/80 dark:text-ink-300/80" aria-hidden />
                         )}
                       </span>
                     )}
