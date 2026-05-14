@@ -6,6 +6,7 @@ export type AutomationCustomToolRow = {
   isActive: boolean;
   botId: string | null;
   config?: Record<string, unknown>;
+  parametersSchema?: Record<string, unknown>;
   lastExecutedAt?: string | null;
   executionCount?: number;
   avgDurationMs?: number | null;

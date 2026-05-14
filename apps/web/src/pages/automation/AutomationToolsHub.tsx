@@ -10,6 +10,7 @@ import {
   Heart,
   LayoutGrid,
   Loader2,
+  Pencil,
   Play,
   Plus,
   Search,
@@ -165,6 +166,75 @@ export function AutomationToolsHub({
   const [createParamsJson, setCreateParamsJson] = useState("{}");
   const [createSaving, setCreateSaving] = useState(false);
   const [createErr, setCreateErr] = useState("");
+
+  const [editTool, setEditTool] = useState<AutomationCustomToolRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editCategory, setEditCategory] = useState("AUTOMATION");
+  const [editIcon, setEditIcon] = useState("Globe");
+  const [editColor, setEditColor] = useState("cyan");
+  const [editParamsJson, setEditParamsJson] = useState("{}");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState("");
+
+  const openEditTool = (tool: AutomationCustomToolRow) => {
+    const c = (tool.config ?? {}) as Record<string, unknown>;
+    const ui = (c.ui ?? {}) as Record<string, unknown>;
+    setEditTool(tool);
+    setEditErr("");
+    setEditName(tool.name ?? "");
+    setEditDesc(tool.description ?? "");
+    setEditTags((tool.tags ?? []).join(", "));
+    setEditCategory(String(ui.category ?? "AUTOMATION"));
+    setEditIcon(String(ui.icon ?? "Globe"));
+    setEditColor(String(ui.accent ?? "cyan"));
+    setEditParamsJson(JSON.stringify(tool.parametersSchema ?? {}, null, 2));
+  };
+
+  const saveToolEdits = async () => {
+    if (!editTool) return;
+    setEditErr("");
+    if (!editName.trim() || !editDesc.trim()) {
+      setEditErr(t("automationPage.toolsCreateValidation"));
+      return;
+    }
+    let parametersSchema: Record<string, unknown>;
+    try {
+      parametersSchema = JSON.parse(editParamsJson || "{}") as Record<string, unknown>;
+    } catch {
+      setEditErr(t("automationPage.toolsCreateParamsInvalid"));
+      return;
+    }
+    const tagsArr = editTags
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 32);
+
+    setEditSaving(true);
+    try {
+      await patchTool(editTool.id, {
+        name: editName.trim(),
+        description: editDesc.trim(),
+        tags: tagsArr,
+        parametersSchema,
+        config: {
+          ui: {
+            category: editCategory,
+            icon: editIcon,
+            accent: editColor,
+          },
+        },
+      });
+      await onToolsUpdated();
+      setEditTool(null);
+    } catch {
+      setEditErr(t("automationPage.loadError"));
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const toggleFavorite = (presetKey: string) => {
     setFavorites((prev) => {
@@ -616,6 +686,14 @@ export function AutomationToolsHub({
                       >
                         {editingToolId === tool.id ? t("automationPage.toolCloseEditor") : t("automationPage.toolEditSecrets")}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditTool(tool)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold dark:border-ink-600"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        {t("automationPage.toolEditTool")}
+                      </button>
                       {canTest ? (
                         <button
                           type="button"
@@ -919,6 +997,134 @@ export function AutomationToolsHub({
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editTool ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
+            <div className="flex items-center justify-between border-b border-ink-200 px-5 py-4 dark:border-ink-800">
+              <div>
+                <p className="text-xs font-semibold uppercase text-ink-500">{editTool.toolType}</p>
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.toolEditTool")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditTool(null)}
+                className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="max-h-[75vh] space-y-4 overflow-y-auto p-5">
+              {editErr ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                  {editErr}
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.toolName")}
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.toolsCreateCategory")}
+                  <input
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+              </div>
+
+              <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                {t("automationPage.toolDesc")}
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.toolsCreateIcon")} (Lucide)
+                  <input
+                    value={editIcon}
+                    onChange={(e) => setEditIcon(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  {t("automationPage.toolsCreateColor")}
+                  <input
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                  />
+                </label>
+              </div>
+
+              <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                {t("automationPage.toolTagsLabel")}
+                <input
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+                />
+              </label>
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">{t("automationPage.toolsCreateParamsJson")}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      setEditParamsJson(JSON.stringify(JSON.parse(editParamsJson || "{}"), null, 2));
+                    } catch {
+                      setEditErr(t("automationPage.toolsCreateParamsInvalid"));
+                    }
+                  }}
+                  className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {t("automationPage.toolsJsonBeautify")}
+                </button>
+              </div>
+              <textarea
+                value={editParamsJson}
+                onChange={(e) => setEditParamsJson(e.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-ink-200 bg-ink-950/90 p-2 font-mono text-xs text-ink-100 dark:border-ink-700"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-ink-200 px-5 py-4 dark:border-ink-800">
+              <button
+                type="button"
+                onClick={() => setEditTool(null)}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-xs font-semibold dark:border-ink-700 dark:text-ink-200"
+              >
+                {t("automationPage.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={editSaving}
+                onClick={() => void saveToolEdits()}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {t("automationPage.save")}
+              </button>
             </div>
           </div>
         </div>
