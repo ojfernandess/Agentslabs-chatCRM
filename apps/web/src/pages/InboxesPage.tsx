@@ -42,6 +42,7 @@ type ChannelSettings = {
   whatsappPhoneNumberId: string | null;
   evolutionApiBaseUrl: string | null;
   evolutionPlatformQrMode?: boolean;
+  evolutionGoPlatformMode?: boolean;
 };
 
 function nativeUrlsForChannel(channelType: string, token: string, baseNative: string): { key: string; labelKey: string; url: string }[] {
@@ -268,7 +269,7 @@ export function InboxesPage() {
           whatsappPhoneNumberId: editProviderPhoneId.trim() || undefined,
         };
         if (editProviderApiKey.trim()) providerBody.whatsappApiKey = editProviderApiKey.trim();
-        if (editProvider === "evolution") {
+        if (editProvider === "evolution" || editProvider === "evolution_go") {
           providerBody.evolutionApiBaseUrl = editProviderEvoBaseUrl.trim() || null;
         } else {
           providerBody.evolutionApiBaseUrl = null;
@@ -526,26 +527,31 @@ export function InboxesPage() {
                                 <option value="360dialog">360dialog</option>
                                 <option value="twilio">Twilio</option>
                                 <option value="evolution">Evolution API</option>
+                                <option value="evolution_go">Evolution Go</option>
                               </select>
                               <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                {editProvider === "evolution" ? "Instance name" : "Phone Number ID"}
+                                {editProvider === "evolution" || editProvider === "evolution_go" ? "Instance name" : "Phone Number ID"}
                               </label>
                               <input
                                 value={editProviderPhoneId}
                                 onChange={(e) => setEditProviderPhoneId(e.target.value)}
                                 className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                                placeholder={editProvider === "evolution" ? "instance-name" : "phone_number_id"}
+                                placeholder={editProvider === "evolution" || editProvider === "evolution_go" ? "instance-name" : "phone_number_id"}
                               />
-                              {editProvider === "evolution" ? (
+                              {editProvider === "evolution" || editProvider === "evolution_go" ? (
                                 <>
                                   <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                    Evolution API base URL
+                                    {editProvider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
                                   </label>
                                   <input
                                     type="url"
                                     value={editProviderEvoBaseUrl}
                                     onChange={(e) => setEditProviderEvoBaseUrl(e.target.value)}
-                                    placeholder="https://evolution.example.com"
+                                    placeholder={
+                                      editProvider === "evolution_go"
+                                        ? "https://evolution-go.example.com"
+                                        : "https://evolution.example.com"
+                                    }
                                     className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                                   />
                                 </>

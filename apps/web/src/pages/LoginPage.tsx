@@ -116,7 +116,7 @@ export function LoginPage() {
           <div className="mb-8 text-center">
             <motion.img
               src={brandAssetUrl("/logo.svg")}
-              alt="OpenNexo CRM"
+              alt="Logo"
               className="mx-auto mb-5 h-14 w-auto"
               decoding="async"
               initial={{ opacity: 0, scale: 0.92 }}

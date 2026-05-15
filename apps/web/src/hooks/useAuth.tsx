@@ -16,6 +16,7 @@ export interface AuthUser {
   email: string;
   role: string;
   organizationId?: string | null;
+  organization?: { id: string; name: string; slug: string } | null;
   messageSignature?: string | null;
   showAgentNameInChat?: boolean;
   actingOrganizationId?: string | null;

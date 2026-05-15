@@ -11,7 +11,6 @@ import {
   Bell,
   Tag,
   Smartphone,
-  MessageCircle,
   Pencil,
   Star,
   FileText,
@@ -21,6 +20,7 @@ import {
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
   createEmbeddedSignupMessageHandler,
   initWhatsAppEmbeddedSignup,
@@ -1012,7 +1012,7 @@ export function SettingsPage() {
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                          <MessageCircle className="h-6 w-6 text-green-600" aria-hidden />
+                          <WhatsAppBrandIcon className="h-6 w-6" />
                         </div>
                         <div className="min-w-0 flex-1 space-y-3">
                           <div>

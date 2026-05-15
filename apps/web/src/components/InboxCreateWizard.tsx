@@ -1,5 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useState, useEffect, type FormEvent, type ComponentType } from "react";
 import {
   MessageSquare,
   Share2,
@@ -14,6 +13,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
+import { InstagramBrandIcon } from "@/components/InstagramBrandIcon";
+import { TelegramBrandIcon } from "@/components/TelegramBrandIcon";
 
 /** Ordem e IDs alinhados à UX do [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings). */
 export const INBOX_CHANNEL_ORDER = [
@@ -31,16 +33,16 @@ export const INBOX_CHANNEL_ORDER = [
 
 export type InboxChannelId = (typeof INBOX_CHANNEL_ORDER)[number];
 
-const CHANNEL_ICONS: Record<InboxChannelId, LucideIcon> = {
+const CHANNEL_ICONS: Record<InboxChannelId, ComponentType<{ className?: string }>> = {
   WEBSITE: PanelTop,
   FACEBOOK: Share2,
-  WHATSAPP: MessageSquare,
+  WHATSAPP: WhatsAppBrandIcon,
   SMS: Smartphone,
   EMAIL: Mail,
   API: Code2,
-  TELEGRAM: Send,
+  TELEGRAM: TelegramBrandIcon,
   LINE: Globe,
-  INSTAGRAM: ImageIcon,
+  INSTAGRAM: InstagramBrandIcon,
   VOICE: Phone,
 };
 
@@ -146,6 +148,12 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     channelType: string;
   } | null>(null);
   const [createAgentBotId, setCreateAgentBotId] = useState("");
+  const [waProvider, setWaProvider] = useState("meta");
+  const [waProviderPhoneId, setWaProviderPhoneId] = useState("");
+  const [waProviderApiKey, setWaProviderApiKey] = useState("");
+  const [waProviderBaseUrl, setWaProviderBaseUrl] = useState("");
+  const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
+  const [evolutionGoPlatformMode, setEvolutionGoPlatformMode] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -160,6 +168,29 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setError(null);
     setCreatedInbox(null);
     setCreateAgentBotId("");
+    setWaProvider("meta");
+    setWaProviderPhoneId("");
+    setWaProviderApiKey("");
+    setWaProviderBaseUrl("");
+    setEvolutionPlatformQrMode(false);
+    setEvolutionGoPlatformMode(false);
+    void (async () => {
+      try {
+        const cfg = await api.get<{
+          whatsappProvider: string | null;
+          whatsappPhoneNumberId: string | null;
+          evolutionApiBaseUrl: string | null;
+          evolutionPlatformQrMode?: boolean;
+          evolutionGoPlatformMode?: boolean;
+        }>("/settings");
+        if (cfg.whatsappProvider) setWaProvider(cfg.whatsappProvider);
+        if (cfg.whatsappPhoneNumberId) setWaProviderPhoneId(cfg.whatsappPhoneNumberId);
+        if (cfg.evolutionApiBaseUrl) setWaProviderBaseUrl(cfg.evolutionApiBaseUrl);
+        setEvolutionPlatformQrMode(cfg.evolutionPlatformQrMode ?? false);
+        setEvolutionGoPlatformMode(cfg.evolutionGoPlatformMode ?? false);
+      } catch {
+      }
+    })();
   }, [open]);
 
   if (!open) return null;
@@ -192,7 +223,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setChannel(ch);
     setName(t(`inboxesPage.wizard.channels.${ch}.title`));
     setNativeCfg(emptyNativeCfg());
-    setStep(2);
+    if (ch !== "WHATSAPP") {
+      setStep(2);
+    }
   };
 
   const toggleAgent = (id: string) => {
@@ -234,6 +267,19 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
         } catch {
           /* ignore individual member failures */
         }
+      }
+      if (channel === "WHATSAPP") {
+        const providerBody: Record<string, unknown> = {
+          whatsappProvider: waProvider,
+          whatsappPhoneNumberId: waProviderPhoneId.trim() || undefined,
+        };
+        if (waProviderApiKey.trim()) providerBody.whatsappApiKey = waProviderApiKey.trim();
+        if (waProvider === "evolution" || waProvider === "evolution_go") {
+          providerBody.evolutionApiBaseUrl = waProviderBaseUrl.trim() || null;
+        } else {
+          providerBody.evolutionApiBaseUrl = null;
+        }
+        await api.put("/settings", providerBody);
       }
       setCreatedInbox(inbox);
       setStep(4);
@@ -492,7 +538,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       >
                         <div className="flex w-full items-start justify-between gap-2">
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                            <Icon className="h-5 w-5" strokeWidth={1.75} />
+                            <Icon className="h-5 w-5" />
                           </div>
                           {channelBadge(ch)}
                         </div>
@@ -506,6 +552,86 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                     );
                   })}
                 </div>
+                {channel === "WHATSAPP" ? (
+                  <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    <div className="mb-3 flex items-center gap-2">
+                      <WhatsAppBrandIcon className="h-5 w-5" />
+                      <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                        Configuração do canal WhatsApp
+                      </p>
+                    </div>
+                    <p className="mb-4 text-xs text-ink-600 dark:text-ink-300">
+                      Defina o provedor do WhatsApp para esta organização. Isso mantém as integrações e regras atuais, apenas muda o local da configuração.
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
+                          Provedor
+                        </label>
+                        <select
+                          value={waProvider}
+                          onChange={(e) => setWaProvider(e.target.value)}
+                          className="input-field"
+                        >
+                          <option value="meta">Meta Cloud API</option>
+                          <option value="360dialog">360dialog</option>
+                          <option value="twilio">Twilio</option>
+                          <option value="evolution">Evolution API</option>
+                          <option value="evolution_go">Evolution Go</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
+                          {waProvider === "evolution" || waProvider === "evolution_go" ? "Nome da instância" : "Phone Number ID"}
+                        </label>
+                        <input
+                          value={waProviderPhoneId}
+                          onChange={(e) => setWaProviderPhoneId(e.target.value)}
+                          className="input-field"
+                          placeholder={waProvider === "evolution" || waProvider === "evolution_go" ? "ex.: vendas" : "ex.: 1234567890"}
+                        />
+                      </div>
+                      {(waProvider === "evolution" && !evolutionPlatformQrMode) ||
+                      (waProvider === "evolution_go" && !evolutionGoPlatformMode) ? (
+                        <div className="md:col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
+                            {waProvider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
+                          </label>
+                          <input
+                            type="url"
+                            value={waProviderBaseUrl}
+                            onChange={(e) => setWaProviderBaseUrl(e.target.value)}
+                            className="input-field"
+                            placeholder="https://"
+                          />
+                        </div>
+                      ) : null}
+                      {!((waProvider === "evolution" && evolutionPlatformQrMode) || (waProvider === "evolution_go" && evolutionGoPlatformMode)) ? (
+                        <div className="md:col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
+                            API Key (opcional; preencha só para atualizar)
+                          </label>
+                          <input
+                            type="password"
+                            value={waProviderApiKey}
+                            onChange={(e) => setWaProviderApiKey(e.target.value)}
+                            className="input-field"
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setStep(2)}
+                        className="btn-primary"
+                      >
+                        {t("inboxesPage.wizard.next")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
 

@@ -55,6 +55,10 @@ export function Layout() {
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const orgLabel =
+    user?.actingOrganization?.name ??
+    user?.organization?.name ??
+    (user?.role === "SUPER_ADMIN" ? "Console" : "—");
   const showCrmKanban = user?.organizationFeatures?.crm_kanban ?? true;
   const showDeals = user?.organizationFeatures?.crm_deals ?? true;
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
@@ -63,6 +67,12 @@ export function Layout() {
   const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
 
   useReminderNotifications(!!user);
+
+  useEffect(() => {
+    if (orgLabel && orgLabel !== "—") {
+      document.title = orgLabel;
+    }
+  }, [orgLabel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,11 +270,11 @@ export function Layout() {
         <Link to="/" className="flex items-center gap-3">
           <img
             src={brandAssetUrl("/logo.svg")}
-            alt="OpenNexo CRM"
+            alt={orgLabel}
             className="h-9 w-9"
             decoding="async"
           />
-          <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">OpenNexo CRM</span>
+          <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{orgLabel}</span>
         </Link>
       </div>
 
@@ -547,7 +557,7 @@ export function Layout() {
             <Menu className="h-5 w-5" />
           </button>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">OpenNexo CRM</div>
+            <div className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">{orgLabel}</div>
           </div>
           <div className="flex items-center gap-2">
             <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />

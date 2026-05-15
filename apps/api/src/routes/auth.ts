@@ -207,6 +207,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (org) actingOrganization = org;
     }
 
+    const orgId = actingId ?? user.organizationId ?? null;
+    let organization: { id: string; name: string; slug: string } | null = null;
+    if (orgId) {
+      organization =
+        actingOrganization && actingOrganization.id === orgId
+          ? actingOrganization
+          : await prisma.organization.findUnique({
+              where: { id: orgId },
+              select: { id: true, name: true, slug: true },
+            });
+    }
+
     const superAdminActorId = request.user.superAdminActorId ?? null;
     let superAdminActor: { id: string; email: string; name: string } | null = null;
     if (superAdminActorId) {
@@ -231,6 +243,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       role: user.role as string,
       actingOrganizationId: actingId,
       actingOrganization,
+      organization,
       superAdminActorId,
       superAdminActor,
       organizationFeatures,

@@ -966,7 +966,9 @@ export function SuperAdminPage() {
           {navItem("featureFlags", t("superAdmin.featureFlags"), ToggleLeft)}
         </nav>
         <div className="mt-auto border-t border-ink-100 p-3">
-          <p className="px-3 py-2 text-xs text-ink-500">OpenNexo CRM · consola de administrador</p>
+          <p className="px-3 py-2 text-xs text-ink-500">
+            {(user?.actingOrganization?.name ?? user?.organization?.name ?? "Console")} · consola de administrador
+          </p>
         </div>
       </aside>
 
