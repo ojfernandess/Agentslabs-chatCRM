@@ -340,14 +340,14 @@ export function SettingsPage() {
   }, [isAdmin, evolutionPlatformQrMode, provider]);
 
   useEffect(() => {
-    if (!isAdmin || provider !== "evolution_go" || !phoneNumberId) {
+    if (!isAdmin || provider !== "evolution_go" || settings?.whatsappProvider !== "evolution_go" || !phoneNumberId) {
       setEvoGoStatus(null);
       return;
     }
     void refreshEvolutionGoStatus();
     const id = window.setInterval(() => void refreshEvolutionGoStatus(), 4000);
     return () => clearInterval(id);
-  }, [isAdmin, provider, phoneNumberId]);
+  }, [isAdmin, provider, settings?.whatsappProvider, phoneNumberId]);
 
   const startEvolutionQr = async () => {
     setEvoQrBusy(true);
