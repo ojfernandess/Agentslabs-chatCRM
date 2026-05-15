@@ -14,6 +14,12 @@ export type EvolutionGoInstanceInfo = {
   connected: boolean;
 };
 
+export type EvolutionGoCreatedInstance = {
+  id: string;
+  name: string;
+  token: string;
+};
+
 export async function evolutionGoFetchAllInstances(options: {
   baseUrl: string;
   apiKey: string;
@@ -47,10 +53,139 @@ export async function evolutionGoFetchAllInstances(options: {
   return out;
 }
 
+export async function evolutionGoCreateInstance(options: {
+  baseUrl: string;
+  apiKey: string;
+  name: string;
+  token: string;
+}): Promise<EvolutionGoCreatedInstance | null> {
+  const base = normalizeBaseUrl(options.baseUrl);
+  const res = await fetch(`${base}/instance/create`, {
+    method: "POST",
+    headers: {
+      apikey: options.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: options.name,
+      token: options.token,
+    }),
+  });
+  if (!res.ok) return null;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const root = asRecord(json);
+  const data = asRecord(root?.data);
+  const id = typeof data?.id === "string" ? data.id.trim() : "";
+  const name = typeof data?.name === "string" ? data.name.trim() : "";
+  const token = typeof data?.token === "string" ? data.token.trim() : "";
+  if (!id || !name || !token) return null;
+  return { id, name, token };
+}
+
+export async function evolutionGoGetQr(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceId?: string;
+}): Promise<{ qrDataUrl: string; code: string } | null> {
+  const base = normalizeBaseUrl(options.baseUrl);
+  const res = await fetch(`${base}/instance/qr`, {
+    headers: {
+      apikey: options.apiKey,
+      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
+    },
+  });
+  if (!res.ok) return null;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const root = asRecord(json);
+  const data = asRecord(root?.data);
+  const qrDataUrl =
+    typeof data?.Qrcode === "string"
+      ? data.Qrcode.trim()
+      : typeof data?.qrcode === "string"
+        ? data.qrcode.trim()
+        : "";
+  const code =
+    typeof data?.Code === "string" ? data.Code.trim() : typeof data?.code === "string" ? data.code.trim() : "";
+  if (!qrDataUrl && !code) return null;
+  return { qrDataUrl, code };
+}
+
+export async function evolutionGoGetStatus(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceId?: string;
+}): Promise<{ connected: boolean; loggedIn: boolean; name: string } | null> {
+  const base = normalizeBaseUrl(options.baseUrl);
+  const res = await fetch(`${base}/instance/status`, {
+    headers: {
+      apikey: options.apiKey,
+      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
+    },
+  });
+  if (!res.ok) return null;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const root = asRecord(json);
+  const data = asRecord(root?.data);
+  const connected = data?.Connected === true || data?.connected === true;
+  const loggedIn = data?.LoggedIn === true || data?.loggedIn === true;
+  const name = typeof data?.Name === "string" ? data.Name.trim() : typeof data?.name === "string" ? data.name.trim() : "";
+  return { connected, loggedIn, name };
+}
+
+export async function evolutionGoRequestPairingCode(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceId?: string;
+  phone: string;
+  subscribe: string[];
+}): Promise<string | null> {
+  const base = normalizeBaseUrl(options.baseUrl);
+  const res = await fetch(`${base}/instance/pair`, {
+    method: "POST",
+    headers: {
+      apikey: options.apiKey,
+      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ phone: options.phone, subscribe: options.subscribe }),
+  });
+  if (!res.ok) return null;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  const root = asRecord(json);
+  const data = asRecord(root?.data);
+  const code =
+    typeof data?.PairingCode === "string"
+      ? data.PairingCode.trim()
+      : typeof data?.pairingCode === "string"
+        ? data.pairingCode.trim()
+        : "";
+  return code || null;
+}
+
 export async function evolutionGoConnectInstance(options: {
   baseUrl: string;
   apiKey: string;
-  instanceId: string;
+  instanceId?: string;
   webhookUrl: string;
   subscribe: string[];
   immediate: boolean;
@@ -61,7 +196,7 @@ export async function evolutionGoConnectInstance(options: {
     method: "POST",
     headers: {
       apikey: options.apiKey,
-      instanceId: options.instanceId,
+      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -73,4 +208,3 @@ export async function evolutionGoConnectInstance(options: {
   });
   return res.ok;
 }
-

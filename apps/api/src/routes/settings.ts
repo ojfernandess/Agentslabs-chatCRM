@@ -1,4 +1,5 @@
 import { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
@@ -8,14 +9,25 @@ import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js"
 import { getWhatsAppProvider } from "../providers/factory.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
-import { evolutionGoConnectInstance, evolutionGoFetchAllInstances } from "../lib/evolutionGoApi.js";
+import {
+  evolutionGoConnectInstance,
+  evolutionGoCreateInstance,
+  evolutionGoFetchAllInstances,
+  evolutionGoGetQr,
+  evolutionGoGetStatus,
+  evolutionGoRequestPairingCode,
+} from "../lib/evolutionGoApi.js";
 import {
   evolutionPlatformQrModeActive,
   getEvolutionPlatformConfig,
   isEvolutionQrModeActive,
   resolveEvolutionApiCredentials,
 } from "../lib/evolutionPlatform.js";
-import { evolutionGoPlatformModeActive, resolveEvolutionGoApiConnection } from "../lib/evolutionGoPlatform.js";
+import {
+  evolutionGoPlatformModeActive,
+  resolveEvolutionGoApiConnection,
+  resolveEvolutionGoInstanceConnection,
+} from "../lib/evolutionGoPlatform.js";
 import {
   evolutionApiCreateInstance,
   evolutionApiFetchConnect,
@@ -408,7 +420,14 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 502,
         });
       }
-      return { instances };
+      const selected = settings.whatsappPhoneNumberId?.trim() ?? "";
+      return {
+        selectedInstance: selected || null,
+        instances: instances.map((x) => ({
+          ...x,
+          selected: !!selected && (x.name === selected || x.id === selected),
+        })),
+      };
     });
 
     admin.post("/evolution-go/connect", async (request, reply) => {
@@ -423,19 +442,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instanceId = settings.whatsappPhoneNumberId?.trim() ?? "";
-      const api = await resolveEvolutionGoApiConnection(settings);
-      if (!api || !instanceId) {
+      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
+      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
+      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
+      if (!api || (!instanceApi && !instanceId)) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go base URL / API key / instanceId not configured",
+          message: "Evolution Go base URL / API key not configured",
           statusCode: 400,
         });
       }
       const ok = await evolutionGoConnectInstance({
         baseUrl: api.baseUrl,
         apiKey: api.apiKey,
-        instanceId,
+        ...(instanceId ? { instanceId } : {}),
         webhookUrl: webhookUrlForOrganization(organizationId),
         subscribe: ["ALL"],
         immediate: true,
@@ -448,6 +468,175 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       return { connected: true };
+    });
+
+    const evolutionGoCreateSchema = z.object({
+      name: z.string().min(3).max(80),
+    });
+
+    admin.post("/evolution-go/create", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = evolutionGoCreateSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution_go") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go provider not selected",
+          statusCode: 400,
+        });
+      }
+      const api = await resolveEvolutionGoApiConnection(settings);
+      if (!api) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go base URL / API key not configured",
+          statusCode: 400,
+        });
+      }
+      const token = randomUUID();
+      const created = await evolutionGoCreateInstance({
+        baseUrl: api.baseUrl,
+        apiKey: api.apiKey,
+        name: parsed.data.name.trim(),
+        token,
+      });
+      if (!created) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: "Evolution Go create instance failed",
+          statusCode: 502,
+        });
+      }
+
+      await prisma.settings.update({
+        where: { organizationId },
+        data: {
+          whatsappProvider: "evolution_go",
+          whatsappPhoneNumberId: created.name,
+          whatsappApiKey: encrypt(created.token),
+        },
+      });
+      return { instance: { id: created.id, name: created.name, connected: false } };
+    });
+
+    admin.get("/evolution-go/qr", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution_go") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go provider not selected",
+          statusCode: 400,
+        });
+      }
+      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
+      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
+      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
+      if (!api || (!instanceApi && !instanceId)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go base URL / API key not configured",
+          statusCode: 400,
+        });
+      }
+      const qr = await evolutionGoGetQr({ baseUrl: api.baseUrl, apiKey: api.apiKey, ...(instanceId ? { instanceId } : {}) });
+      if (!qr) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: "Evolution Go get QR failed",
+          statusCode: 502,
+        });
+      }
+      return { qrDataUrl: qr.qrDataUrl, code: qr.code };
+    });
+
+    admin.get("/evolution-go/status", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution_go") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go provider not selected",
+          statusCode: 400,
+        });
+      }
+      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
+      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
+      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
+      if (!api || (!instanceApi && !instanceId)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go base URL / API key not configured",
+          statusCode: 400,
+        });
+      }
+      const st = await evolutionGoGetStatus({ baseUrl: api.baseUrl, apiKey: api.apiKey, ...(instanceId ? { instanceId } : {}) });
+      if (!st) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: "Evolution Go get status failed",
+          statusCode: 502,
+        });
+      }
+      return st;
+    });
+
+    const evolutionGoPairSchema = z.object({
+      phone: z.string().min(8).max(32),
+    });
+
+    admin.post("/evolution-go/pair", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = evolutionGoPairSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (settings?.whatsappProvider !== "evolution_go") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go provider not selected",
+          statusCode: 400,
+        });
+      }
+      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
+      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
+      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
+      if (!api || (!instanceApi && !instanceId)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Evolution Go base URL / API key not configured",
+          statusCode: 400,
+        });
+      }
+      const code = await evolutionGoRequestPairingCode({
+        baseUrl: api.baseUrl,
+        apiKey: api.apiKey,
+        ...(instanceId ? { instanceId } : {}),
+        phone: parsed.data.phone.trim(),
+        subscribe: ["ALL"],
+      });
+      if (!code) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: "Evolution Go pairing code failed",
+          statusCode: 502,
+        });
+      }
+      return { pairingCode: code };
     });
 
     admin.get("/whatsapp-embedded", async (request, reply) => {

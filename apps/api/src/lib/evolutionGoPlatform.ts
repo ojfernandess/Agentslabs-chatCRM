@@ -48,16 +48,33 @@ export async function evolutionGoPlatformModeActive(): Promise<boolean> {
 
 export async function resolveEvolutionGoCredentials(
   settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey" | "whatsappPhoneNumberId">,
-): Promise<{ baseUrl: string; apiKey: string; instanceId: string } | null> {
+): Promise<{ baseUrl: string; apiKey: string; instanceId?: string } | null> {
   if (settings.whatsappProvider !== "evolution_go") return null;
 
+  const platform = await getEvolutionGoPlatformConfig();
   const instanceId = settings.whatsappPhoneNumberId?.trim() ?? "";
-  if (!instanceId) return null;
 
-  const api = await resolveEvolutionGoApiConnection(settings);
-  if (!api) return null;
+  if (isEvolutionGoPlatformModeActive(platform)) {
+    const instanceToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
+    if (instanceToken) {
+      return { baseUrl: platform.baseUrl.replace(/\/+$/, ""), apiKey: instanceToken };
+    }
+    if (!instanceId) return null;
+    return { baseUrl: platform.baseUrl.replace(/\/+$/, ""), apiKey: platform.globalApiKey.trim(), instanceId };
+  }
 
-  return { ...api, instanceId };
+  const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
+  const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
+  if (!baseUrl || !apiKeyEncrypted) return null;
+
+  const apiKey = decrypt(apiKeyEncrypted)?.trim() ?? "";
+  if (!apiKey) return null;
+
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    apiKey,
+    ...(instanceId ? { instanceId } : {}),
+  };
 }
 
 export async function resolveEvolutionGoApiConnection(
@@ -78,6 +95,31 @@ export async function resolveEvolutionGoApiConnection(
   if (!baseUrl || !apiKeyEncrypted) return null;
 
   const apiKey = decrypt(apiKeyEncrypted) ?? "";
+  if (!apiKey) return null;
+
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    apiKey,
+  };
+}
+
+export async function resolveEvolutionGoInstanceConnection(
+  settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey">,
+): Promise<{ baseUrl: string; apiKey: string } | null> {
+  if (settings.whatsappProvider !== "evolution_go") return null;
+
+  const platform = await getEvolutionGoPlatformConfig();
+  if (isEvolutionGoPlatformModeActive(platform)) {
+    const instanceToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
+    if (!instanceToken) return null;
+    return { baseUrl: platform.baseUrl.replace(/\/+$/, ""), apiKey: instanceToken };
+  }
+
+  const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
+  const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
+  if (!baseUrl || !apiKeyEncrypted) return null;
+
+  const apiKey = decrypt(apiKeyEncrypted)?.trim() ?? "";
   if (!apiKey) return null;
 
   return {

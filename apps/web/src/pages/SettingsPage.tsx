@@ -229,10 +229,18 @@ export function SettingsPage() {
   const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
   const [evoGoBusy, setEvoGoBusy] = useState(false);
   const [evoGoError, setEvoGoError] = useState("");
-  const [evoGoInstances, setEvoGoInstances] = useState<Array<{ id: string; name: string; connected: boolean }> | null>(
+  const [evoGoInstances, setEvoGoInstances] = useState<
+    Array<{ id: string; name: string; connected: boolean; selected?: boolean }> | null
+  >(
     null,
   );
   const [evoGoConnectOk, setEvoGoConnectOk] = useState<boolean | null>(null);
+  const [evoGoNewInstanceName, setEvoGoNewInstanceName] = useState("");
+  const [evoGoQrDataUrl, setEvoGoQrDataUrl] = useState<string | null>(null);
+  const [evoGoQrCode, setEvoGoQrCode] = useState<string | null>(null);
+  const [evoGoPairPhone, setEvoGoPairPhone] = useState("");
+  const [evoGoPairingCode, setEvoGoPairingCode] = useState<string | null>(null);
+  const [evoGoStatus, setEvoGoStatus] = useState<{ connected: boolean; loggedIn: boolean; name: string } | null>(null);
   const businessDataRef = useRef<{
     business_id: string;
     waba_id: string;
@@ -306,6 +314,12 @@ export function SettingsPage() {
       setEvoGoError("");
       setEvoGoInstances(null);
       setEvoGoConnectOk(null);
+      setEvoGoNewInstanceName("");
+      setEvoGoQrDataUrl(null);
+      setEvoGoQrCode(null);
+      setEvoGoPairPhone("");
+      setEvoGoPairingCode(null);
+      setEvoGoStatus(null);
     }
   }, [provider]);
 
@@ -324,6 +338,16 @@ export function SettingsPage() {
     const id = window.setInterval(tick, 4000);
     return () => clearInterval(id);
   }, [isAdmin, evolutionPlatformQrMode, provider]);
+
+  useEffect(() => {
+    if (!isAdmin || provider !== "evolution_go" || !phoneNumberId) {
+      setEvoGoStatus(null);
+      return;
+    }
+    void refreshEvolutionGoStatus();
+    const id = window.setInterval(() => void refreshEvolutionGoStatus(), 4000);
+    return () => clearInterval(id);
+  }, [isAdmin, provider, phoneNumberId]);
 
   const startEvolutionQr = async () => {
     setEvoQrBusy(true);
@@ -374,10 +398,16 @@ export function SettingsPage() {
     setEvoGoBusy(true);
     setEvoGoError("");
     try {
-      const r = await api.get<{ instances: Array<{ id: string; name: string; connected: boolean }> }>(
+      const r = await api.get<{
+        selectedInstance?: string | null;
+        instances: Array<{ id: string; name: string; connected: boolean; selected?: boolean }>;
+      }>(
         "/settings/evolution-go/instances",
       );
       setEvoGoInstances(r.instances);
+      if (!phoneNumberId && r.selectedInstance) {
+        setPhoneNumberId(r.selectedInstance);
+      }
     } catch (err) {
       setEvoGoError(err instanceof Error ? err.message : "Falha ao buscar instâncias do Evolution Go");
     } finally {
@@ -392,9 +422,75 @@ export function SettingsPage() {
     try {
       await api.post("/settings/evolution-go/connect", {});
       setEvoGoConnectOk(true);
+      try {
+        const qr = await api.get<{ qrDataUrl: string; code: string }>("/settings/evolution-go/qr");
+        setEvoGoQrDataUrl(qr.qrDataUrl || null);
+        setEvoGoQrCode(qr.code || null);
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       setEvoGoConnectOk(false);
       setEvoGoError(err instanceof Error ? err.message : "Falha ao conectar e configurar webhook no Evolution Go");
+    } finally {
+      setEvoGoBusy(false);
+    }
+  };
+
+  const createEvolutionGoInstance = async () => {
+    const name = evoGoNewInstanceName.trim();
+    if (!name) return;
+    setEvoGoBusy(true);
+    setEvoGoError("");
+    setEvoGoConnectOk(null);
+    try {
+      const r = await api.post<{ instance: { id: string; name: string } }>("/settings/evolution-go/create", { name });
+      setPhoneNumberId(r.instance.name);
+      setEvoGoNewInstanceName(r.instance.name);
+      setEvoGoQrDataUrl(null);
+      setEvoGoQrCode(null);
+      setEvoGoPairingCode(null);
+      setEvoGoStatus(null);
+    } catch (err) {
+      setEvoGoError(err instanceof Error ? err.message : "Falha ao criar instância no Evolution Go");
+    } finally {
+      setEvoGoBusy(false);
+    }
+  };
+
+  const refreshEvolutionGoQr = async () => {
+    setEvoGoBusy(true);
+    setEvoGoError("");
+    try {
+      const qr = await api.get<{ qrDataUrl: string; code: string }>("/settings/evolution-go/qr");
+      setEvoGoQrDataUrl(qr.qrDataUrl || null);
+      setEvoGoQrCode(qr.code || null);
+    } catch (err) {
+      setEvoGoError(err instanceof Error ? err.message : "Falha ao obter QR do Evolution Go");
+    } finally {
+      setEvoGoBusy(false);
+    }
+  };
+
+  const refreshEvolutionGoStatus = async () => {
+    try {
+      const st = await api.get<{ connected: boolean; loggedIn: boolean; name: string }>("/settings/evolution-go/status");
+      setEvoGoStatus(st);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const requestEvolutionGoPairing = async () => {
+    const phone = evoGoPairPhone.trim();
+    if (!phone) return;
+    setEvoGoBusy(true);
+    setEvoGoError("");
+    try {
+      const r = await api.post<{ pairingCode: string }>("/settings/evolution-go/pair", { phone });
+      setEvoGoPairingCode(r.pairingCode || null);
+    } catch (err) {
+      setEvoGoError(err instanceof Error ? err.message : "Falha ao gerar código de pareamento no Evolution Go");
     } finally {
       setEvoGoBusy(false);
     }
@@ -1177,7 +1273,7 @@ export function SettingsPage() {
                           {provider === "evolution"
                             ? "Instance name"
                             : provider === "evolution_go"
-                              ? "Instance ID"
+                              ? "Instance name"
                               : "Phone Number ID"}
                         </label>
                         <input
@@ -1188,7 +1284,7 @@ export function SettingsPage() {
                             provider === "evolution"
                               ? "Instance name (as in /instance/create)"
                               : provider === "evolution_go"
-                                ? "Instance UUID (as in /instance/all)"
+                                ? "Instance name (as in /instance/create)"
                               : "Enter phone number ID"
                           }
                           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -1198,6 +1294,30 @@ export function SettingsPage() {
 
                       {provider === "evolution_go" ? (
                         <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                          <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                            <p className="text-sm font-medium text-gray-900">Criar e conectar instância</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                type="text"
+                                value={evoGoNewInstanceName}
+                                onChange={(e) => setEvoGoNewInstanceName(e.target.value)}
+                                placeholder="Nome da instância (ex.: vendas)"
+                                className="min-w-[220px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                              />
+                              <button
+                                type="button"
+                                disabled={evoGoBusy || !evoGoNewInstanceName.trim()}
+                                onClick={() => void createEvolutionGoInstance()}
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                              >
+                                {evoGoBusy ? "Criando..." : "Criar instância"}
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              Este fluxo usa a configuração global do Super Admin (URL + API key) quando o modo plataforma estiver ativo.
+                            </p>
+                          </div>
+
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
@@ -1222,6 +1342,106 @@ export function SettingsPage() {
                             ) : null}
                           </div>
 
+                          {phoneNumberId ? (
+                            <div className="rounded-lg border border-gray-200 bg-white p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-medium text-gray-900">Status da instância</p>
+                                <button
+                                  type="button"
+                                  disabled={evoGoBusy}
+                                  onClick={() => void refreshEvolutionGoStatus()}
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                  Atualizar status
+                                </button>
+                              </div>
+                              <p className="mt-1 text-xs text-gray-600">
+                                Instance: <span className="font-mono">{phoneNumberId}</span>
+                              </p>
+                              {evoGoStatus ? (
+                                <p className="mt-2 text-sm text-gray-800">
+                                  {evoGoStatus.connected ? "Connected" : "Offline"}{" "}
+                                  <span className="opacity-60">·</span>{" "}
+                                  {evoGoStatus.loggedIn ? "Logged in" : "Not logged in"}
+                                  {evoGoStatus.name ? (
+                                    <>
+                                      {" "}
+                                      <span className="opacity-60">·</span> {evoGoStatus.name}
+                                    </>
+                                  ) : null}
+                                </p>
+                              ) : (
+                                <p className="mt-2 text-sm text-gray-500">Aguardando status…</p>
+                              )}
+                            </div>
+                          ) : null}
+
+                          {phoneNumberId ? (
+                            <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-medium text-gray-900">QR Code</p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={evoGoBusy}
+                                    onClick={() => void refreshEvolutionGoQr()}
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    Atualizar QR
+                                  </button>
+                                </div>
+                              </div>
+                              {evoGoQrDataUrl ? (
+                                <div className="flex justify-center">
+                                  <img
+                                    src={evoGoQrDataUrl}
+                                    alt="Evolution Go QR"
+                                    className="h-56 w-56 rounded-lg border border-gray-200 bg-white p-2"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-600">
+                                  Conecte o webhook e depois clique em “Atualizar QR” para obter o QR Code.
+                                </p>
+                              )}
+                              {evoGoQrCode ? (
+                                <p className="text-xs text-gray-600">
+                                  Code: <span className="font-mono break-all">{evoGoQrCode}</span>
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {phoneNumberId ? (
+                            <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                              <p className="text-sm font-medium text-gray-900">Código de pareamento</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={evoGoPairPhone}
+                                  onChange={(e) => setEvoGoPairPhone(e.target.value)}
+                                  placeholder="Telefone com DDI (ex.: 5511999999999)"
+                                  className="min-w-[220px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={evoGoBusy || !evoGoPairPhone.trim()}
+                                  onClick={() => void requestEvolutionGoPairing()}
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                  {evoGoBusy ? "Gerando..." : "Gerar código"}
+                                </button>
+                              </div>
+                              {evoGoPairingCode ? (
+                                <p className="text-sm text-gray-900">
+                                  Pairing code: <span className="font-mono">{evoGoPairingCode}</span>
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+
                           {evoGoError ? (
                             <p className="text-sm text-red-600" role="alert">
                               {evoGoError}
@@ -1235,11 +1455,16 @@ export function SettingsPage() {
                                   <li key={inst.id} className="flex items-center justify-between gap-3 px-3 py-2">
                                     <button
                                       type="button"
-                                      onClick={() => setPhoneNumberId(inst.id)}
+                                      onClick={() => setPhoneNumberId(inst.name)}
                                       className="text-left font-medium text-gray-900 hover:underline"
                                     >
                                       {inst.name}
                                     </button>
+                                    {inst.selected ? (
+                                      <span className="rounded bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+                                        selecionada
+                                      </span>
+                                    ) : null}
                                     <span className={inst.connected ? "text-green-700" : "text-amber-800"}>
                                       {inst.connected ? "connected" : "offline"}
                                     </span>

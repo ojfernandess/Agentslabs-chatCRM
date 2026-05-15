@@ -5,7 +5,7 @@ import {
   IncomingMessage,
   StatusUpdate,
 } from "./types.js";
-import { evolutionGoFetchAllInstances } from "../lib/evolutionGoApi.js";
+import { evolutionGoGetStatus } from "../lib/evolutionGoApi.js";
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -80,9 +80,9 @@ function extractSendMessageId(payload: unknown): string | null {
 export class EvolutionGoProvider implements WhatsAppProviderInterface {
   private baseUrl: string;
   private apiKey: string;
-  private instanceId: string;
+  private instanceId?: string;
 
-  constructor(baseUrl: string, apiKey: string, instanceId: string) {
+  constructor(baseUrl: string, apiKey: string, instanceId?: string) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.apiKey = apiKey;
     this.instanceId = instanceId;
@@ -91,8 +91,8 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
   private headers(extra?: Record<string, string>): Record<string, string> {
     return {
       apikey: this.apiKey,
-      instanceId: this.instanceId,
       "Content-Type": "application/json",
+      ...(this.instanceId ? { instanceId: this.instanceId } : {}),
       ...(extra ?? {}),
     };
   }
@@ -330,9 +330,11 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
   }
 
   async healthCheck(): Promise<boolean> {
-    const r = await evolutionGoFetchAllInstances({ baseUrl: this.baseUrl, apiKey: this.apiKey });
-    if (!r) return false;
-    const hit = r.find((x) => x.id === this.instanceId || x.name === this.instanceId);
-    return hit ? hit.connected : false;
+    const st = await evolutionGoGetStatus({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      ...(this.instanceId ? { instanceId: this.instanceId } : {}),
+    });
+    return st ? st.connected : false;
   }
 }
