@@ -305,24 +305,30 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     rawBody: string,
     secret: string,
   ): boolean {
-    const token = headers["x-openconduit-token"];
-    if (token) {
-      if (token.length !== secret.length) return false;
+    const timingEqual = (a: string, b: string): boolean => {
+      if (a.length !== b.length) return false;
       try {
-        return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(secret));
+        return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
       } catch {
         return false;
       }
-    }
+    };
+
+    const token = headers["x-openconduit-token"];
+    if (token && timingEqual(token, secret)) return true;
+
     try {
       const parsed = JSON.parse(rawBody) as unknown;
       const env = asRecord(parsed);
-      const it = typeof env?.instanceToken === "string" ? env.instanceToken : "";
-      if (!it || it.length !== secret.length) return false;
-      return crypto.timingSafeEqual(Buffer.from(it), Buffer.from(secret));
+      const it = typeof env?.instanceToken === "string" ? env.instanceToken.trim() : "";
+      if (it) {
+        if (timingEqual(it, secret)) return true;
+        if (this.apiKey && timingEqual(it, this.apiKey)) return true;
+      }
     } catch {
       return false;
     }
+    return false;
   }
 
   handleVerification(_query: Record<string, string>): string | null {

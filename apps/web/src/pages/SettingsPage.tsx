@@ -394,10 +394,35 @@ export function SettingsPage() {
     }
   };
 
+  const ensureEvolutionGoProviderSaved = async (): Promise<boolean> => {
+    if (settings?.whatsappProvider === "evolution_go") return true;
+    if (provider !== "evolution_go") return false;
+    try {
+      const body: Record<string, unknown> = { whatsappProvider: "evolution_go" };
+      if (!evolutionGoPlatformMode) {
+        if (evolutionBaseUrl.trim()) body.evolutionApiBaseUrl = evolutionBaseUrl.trim();
+        if (apiKey.trim()) body.whatsappApiKey = apiKey.trim();
+      } else {
+        body.evolutionApiBaseUrl = null;
+      }
+      const data = await api.put<AppSettings>("/settings", body);
+      setSettings(data);
+      setProvider("evolution_go");
+      setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
+      return data.whatsappProvider === "evolution_go";
+    } catch {
+      return false;
+    }
+  };
+
   const fetchEvolutionGoInstances = async () => {
     setEvoGoBusy(true);
     setEvoGoError("");
     try {
+      if (!(await ensureEvolutionGoProviderSaved())) {
+        setEvoGoError("Selecione Evolution Go e guarde as definições antes de continuar.");
+        return;
+      }
       const r = await api.get<{
         selectedInstance?: string | null;
         instances: Array<{ id: string; name: string; connected: boolean; selected?: boolean }>;
@@ -420,6 +445,10 @@ export function SettingsPage() {
     setEvoGoError("");
     setEvoGoConnectOk(null);
     try {
+      if (!(await ensureEvolutionGoProviderSaved())) {
+        setEvoGoError("Selecione Evolution Go e guarde as definições antes de continuar.");
+        return;
+      }
       await api.post("/settings/evolution-go/connect", {});
       setEvoGoConnectOk(true);
       try {
@@ -444,9 +473,18 @@ export function SettingsPage() {
     setEvoGoError("");
     setEvoGoConnectOk(null);
     try {
-      const r = await api.post<{ instance: { id: string; name: string } }>("/settings/evolution-go/create", { name });
-      setPhoneNumberId(r.instance.name);
+      if (!(await ensureEvolutionGoProviderSaved())) {
+        setEvoGoError("Selecione Evolution Go e guarde as definições antes de continuar.");
+        return;
+      }
+      const r = await api.post<{ instance: { id: string; name: string; webhookConfigured?: boolean } }>(
+        "/settings/evolution-go/create",
+        { name },
+      );
+      setPhoneNumberId(r.instance.id);
+      setProvider("evolution_go");
       setEvoGoNewInstanceName(r.instance.name);
+      if (r.instance.webhookConfigured) setEvoGoConnectOk(true);
       setEvoGoQrDataUrl(null);
       setEvoGoQrCode(null);
       setEvoGoPairingCode(null);
@@ -1273,7 +1311,9 @@ export function SettingsPage() {
                           {provider === "evolution"
                             ? "Instance name"
                             : provider === "evolution_go"
-                              ? "Instance name"
+                              ? evolutionGoPlatformMode
+                                ? "Instance ID (UUID)"
+                                : "Instance name or ID"
                               : "Phone Number ID"}
                         </label>
                         <input
@@ -1284,7 +1324,9 @@ export function SettingsPage() {
                             provider === "evolution"
                               ? "Instance name (as in /instance/create)"
                               : provider === "evolution_go"
-                                ? "Instance name (as in /instance/create)"
+                                ? evolutionGoPlatformMode
+                                  ? "UUID da instância (preenchido ao criar ou selecionar)"
+                                  : "Nome ou UUID da instância"
                               : "Enter phone number ID"
                           }
                           className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -1356,7 +1398,13 @@ export function SettingsPage() {
                                 </button>
                               </div>
                               <p className="mt-1 text-xs text-gray-600">
-                                Instance: <span className="font-mono">{phoneNumberId}</span>
+                                Instance ID: <span className="font-mono">{phoneNumberId}</span>
+                                {evoGoStatus?.name ? (
+                                  <>
+                                    {" "}
+                                    <span className="opacity-60">·</span> {evoGoStatus.name}
+                                  </>
+                                ) : null}
                               </p>
                               {evoGoStatus ? (
                                 <p className="mt-2 text-sm text-gray-800">
@@ -1455,7 +1503,7 @@ export function SettingsPage() {
                                   <li key={inst.id} className="flex items-center justify-between gap-3 px-3 py-2">
                                     <button
                                       type="button"
-                                      onClick={() => setPhoneNumberId(inst.name)}
+                                      onClick={() => setPhoneNumberId(inst.id)}
                                       className="text-left font-medium text-gray-900 hover:underline"
                                     >
                                       {inst.name}
@@ -1502,10 +1550,10 @@ export function SettingsPage() {
                           </p>
                         ) : provider === "evolution_go" ? (
                           <p className="mt-1 text-xs text-gray-500">
-                            Optional verification for Evolution Go webhooks. If filled, incoming webhook payloads must
-                            include an <code className="rounded bg-gray-100 px-1">instanceToken</code> equal to this
-                            value (or a matching <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>{" "}
-                            header).
+                            Opcional. Deixe vazio para aceitar o <code className="rounded bg-gray-100 px-1">instanceToken</code>{" "}
+                            enviado pelo Evolution Go (token da instância). Se preencher, o valor deve coincidir com o
+                            token da instância ou use o header{" "}
+                            <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>.
                           </p>
                         ) : (
                           <p className="mt-1 text-xs text-gray-500">

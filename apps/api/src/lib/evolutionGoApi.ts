@@ -38,7 +38,7 @@ export async function evolutionGoFetchAllInstances(options: {
     return null;
   }
   const root = asRecord(json);
-  const data = root ? root.data : null;
+  const data = root?.data ?? root?.instances;
   if (!Array.isArray(data)) return null;
   const out: EvolutionGoInstanceInfo[] = [];
   for (const row of data) {

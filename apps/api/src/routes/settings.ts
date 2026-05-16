@@ -24,6 +24,7 @@ import {
   resolveEvolutionApiCredentials,
 } from "../lib/evolutionPlatform.js";
 import {
+  ensureEvolutionGoProviderSelected,
   evolutionGoPlatformModeActive,
   resolveEvolutionGoApiConnection,
   resolveEvolutionGoInstanceConnection,
@@ -396,8 +397,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go provider not selected",
@@ -434,8 +435,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go provider not selected",
@@ -483,11 +484,11 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
       }
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go provider not selected",
+          message: "Evolution Go provider not selected — save Evolution Go as the WhatsApp provider first",
           statusCode: 400,
         });
       }
@@ -514,23 +515,33 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      await prisma.settings.update({
+      const updated = await prisma.settings.update({
         where: { organizationId },
         data: {
           whatsappProvider: "evolution_go",
-          whatsappPhoneNumberId: created.name,
+          whatsappPhoneNumberId: created.id,
           whatsappApiKey: encrypt(created.token),
         },
       });
-      return { instance: { id: created.id, name: created.name, connected: false } };
+      const instanceApi = await resolveEvolutionGoInstanceConnection(updated);
+      if (instanceApi) {
+        await evolutionGoConnectInstance({
+          baseUrl: instanceApi.baseUrl,
+          apiKey: instanceApi.apiKey,
+          webhookUrl: webhookUrlForOrganization(organizationId),
+          subscribe: ["ALL"],
+          immediate: true,
+        });
+      }
+      return { instance: { id: created.id, name: created.name, connected: false, webhookConfigured: !!instanceApi } };
     });
 
     admin.get("/evolution-go/qr", async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go provider not selected",
@@ -562,8 +573,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go provider not selected",
@@ -604,8 +615,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
       }
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution_go") {
+      const settings = await ensureEvolutionGoProviderSelected(organizationId);
+      if (!settings) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Evolution Go provider not selected",

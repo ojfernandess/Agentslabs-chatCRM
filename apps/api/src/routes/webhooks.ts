@@ -139,6 +139,15 @@ async function handleWhatsAppPost(
         },
         "Evolution webhook: nothing parsed — enable MESSAGES_UPSERT, MESSAGES_UPDATE and CONTACTS_* on the instance webhook; POST URL must be https://<seu-dominio>/webhooks/whatsapp/<uuid-da-organizacao> (Evolution may append /messages-upsert if webhook by events is enabled).",
       );
+    } else if (settingsRow?.whatsappProvider === "evolution_go") {
+      app.log.warn(
+        {
+          event: env.event,
+          url: request.url,
+          organizationId,
+        },
+        "Evolution Go webhook: nothing parsed — use POST /instance/connect with webhookUrl https://<seu-dominio>/webhooks/whatsapp/<uuid-da-organizacao> and subscribe ALL; inbound events must be Message (not Evolution API v2 MESSAGES_UPSERT).",
+      );
     }
   }
 

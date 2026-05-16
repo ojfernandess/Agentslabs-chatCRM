@@ -2,6 +2,8 @@ import type { Settings } from "@prisma/client";
 import { prisma } from "../db.js";
 import { decrypt } from "./encryption.js";
 
+const EVOLUTION_GO_PROVIDER = "evolution_go" as const;
+
 export const EVOLUTION_GO_PLATFORM_KEY = "evolution_go_platform";
 
 export type EvolutionGoPlatformConfig = {
@@ -46,11 +48,28 @@ export async function evolutionGoPlatformModeActive(): Promise<boolean> {
   return isEvolutionGoPlatformModeActive(cfg);
 }
 
+/** Ensures tenant settings exist with evolution_go selected (required before Evolution Go API routes). */
+export async function ensureEvolutionGoProviderSelected(organizationId: string): Promise<Settings | null> {
+  let settings = await prisma.settings.findUnique({ where: { organizationId } });
+  if (settings?.whatsappProvider === EVOLUTION_GO_PROVIDER) return settings;
+
+  const platformActive = await evolutionGoPlatformModeActive();
+  if (!platformActive) return null;
+
+  if (!settings) {
+    return prisma.settings.create({
+      data: { organizationId, whatsappProvider: EVOLUTION_GO_PROVIDER },
+    });
+  }
+  return prisma.settings.update({
+    where: { organizationId },
+    data: { whatsappProvider: EVOLUTION_GO_PROVIDER },
+  });
+}
+
 export async function resolveEvolutionGoCredentials(
   settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey" | "whatsappPhoneNumberId">,
 ): Promise<{ baseUrl: string; apiKey: string; instanceId?: string } | null> {
-  if (settings.whatsappProvider !== "evolution_go") return null;
-
   const platform = await getEvolutionGoPlatformConfig();
   const instanceId = settings.whatsappPhoneNumberId?.trim() ?? "";
 
@@ -62,6 +81,8 @@ export async function resolveEvolutionGoCredentials(
     if (!instanceId) return null;
     return { baseUrl: platform.baseUrl.replace(/\/+$/, ""), apiKey: platform.globalApiKey.trim(), instanceId };
   }
+
+  if (settings.whatsappProvider !== EVOLUTION_GO_PROVIDER) return null;
 
   const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
   const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
@@ -80,8 +101,6 @@ export async function resolveEvolutionGoCredentials(
 export async function resolveEvolutionGoApiConnection(
   settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey">,
 ): Promise<{ baseUrl: string; apiKey: string } | null> {
-  if (settings.whatsappProvider !== "evolution_go") return null;
-
   const platform = await getEvolutionGoPlatformConfig();
   if (isEvolutionGoPlatformModeActive(platform)) {
     return {
@@ -89,6 +108,8 @@ export async function resolveEvolutionGoApiConnection(
       apiKey: platform.globalApiKey.trim(),
     };
   }
+
+  if (settings.whatsappProvider !== EVOLUTION_GO_PROVIDER) return null;
 
   const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
   const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
@@ -106,14 +127,14 @@ export async function resolveEvolutionGoApiConnection(
 export async function resolveEvolutionGoInstanceConnection(
   settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey">,
 ): Promise<{ baseUrl: string; apiKey: string } | null> {
-  if (settings.whatsappProvider !== "evolution_go") return null;
-
   const platform = await getEvolutionGoPlatformConfig();
   if (isEvolutionGoPlatformModeActive(platform)) {
     const instanceToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
     if (!instanceToken) return null;
     return { baseUrl: platform.baseUrl.replace(/\/+$/, ""), apiKey: instanceToken };
   }
+
+  if (settings.whatsappProvider !== EVOLUTION_GO_PROVIDER) return null;
 
   const baseUrl = settings.evolutionApiBaseUrl?.trim() ?? "";
   const apiKeyEncrypted = settings.whatsappApiKey?.trim() ?? "";
