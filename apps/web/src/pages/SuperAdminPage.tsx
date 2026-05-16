@@ -21,8 +21,12 @@ import {
   Settings2,
   MessageCircle,
   QrCode,
+  Search,
+  Crown,
+  Pencil,
 } from "lucide-react";
 import clsx from "clsx";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 
@@ -164,6 +168,30 @@ interface OrgUserRow {
   createdAt: string;
 }
 
+interface PlatformUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  organizationId: string | null;
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+  } | null;
+}
+
+interface PlatformUsersPage {
+  data: PlatformUserRow[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  summary: { superAdminTotal: number; unassignedTotal: number };
+}
+
 interface SuperWhatsAppEmbeddedPayload {
   configured: boolean;
   appId: string;
@@ -202,6 +230,7 @@ type SuperSection =
   | "overview"
   | "usageMetrics"
   | "organizations"
+  | "platformUsers"
   | "globalSettings"
   | "whatsappEmbedded"
   | "evolutionPlatform"
@@ -261,6 +290,19 @@ export function SuperAdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userRoleBusy, setUserRoleBusy] = useState<string | null>(null);
   const [impersonateBusy, setImpersonateBusy] = useState<string | null>(null);
+
+  const [platformUsersPage, setPlatformUsersPage] = useState(1);
+  const [platformUsersQ, setPlatformUsersQ] = useState("");
+  const [platformUsersRole, setPlatformUsersRole] = useState("");
+  const [platformUsersOrgId, setPlatformUsersOrgId] = useState("");
+  const [platformUsersUnassigned, setPlatformUsersUnassigned] = useState(false);
+  const [platformUsersData, setPlatformUsersData] = useState<PlatformUsersPage | null>(null);
+  const [platformUsersLoading, setPlatformUsersLoading] = useState(false);
+  const [editPlatformUser, setEditPlatformUser] = useState<PlatformUserRow | null>(null);
+  const [editUserRole, setEditUserRole] = useState<"SUPER_ADMIN" | "ADMIN" | "AGENT">("AGENT");
+  const [editUserOrgId, setEditUserOrgId] = useState("");
+  const [editUserSaving, setEditUserSaving] = useState(false);
+  const [platformUsersSuccess, setPlatformUsersSuccess] = useState("");
 
   const [waEmbLoad, setWaEmbLoad] = useState(false);
   const [waEmbLoadFailed, setWaEmbLoadFailed] = useState(false);
@@ -426,6 +468,40 @@ export function SuperAdminPage() {
   useEffect(() => {
     if (section === "featureFlags" && flagsOrgId) void fetchFlags(flagsOrgId);
   }, [section, flagsOrgId, fetchFlags]);
+
+  const fetchPlatformUsers = useCallback(async () => {
+    setPlatformUsersLoading(true);
+    setPlatformUsersSuccess("");
+    try {
+      const params = new URLSearchParams({
+        page: String(platformUsersPage),
+        limit: "25",
+      });
+      const q = platformUsersQ.trim();
+      if (q) params.set("q", q);
+      if (platformUsersRole) params.set("role", platformUsersRole);
+      if (platformUsersOrgId) params.set("organizationId", platformUsersOrgId);
+      if (platformUsersUnassigned) params.set("unassigned", "true");
+      const data = await api.get<PlatformUsersPage>(`/super/users?${params.toString()}`);
+      setPlatformUsersData(data);
+    } catch {
+      setPlatformUsersData(null);
+      setError("Não foi possível carregar utilizadores.");
+    } finally {
+      setPlatformUsersLoading(false);
+    }
+  }, [
+    platformUsersPage,
+    platformUsersQ,
+    platformUsersRole,
+    platformUsersOrgId,
+    platformUsersUnassigned,
+  ]);
+
+  useEffect(() => {
+    if (section !== "platformUsers") return;
+    void fetchPlatformUsers();
+  }, [section, fetchPlatformUsers]);
 
   const fetchUsageMetrics = useCallback(async () => {
     setUsageLoading(true);
@@ -816,6 +892,62 @@ export function SuperAdminPage() {
     }
   };
 
+  const openEditPlatformUser = (u: PlatformUserRow) => {
+    setEditPlatformUser(u);
+    setEditUserRole(u.role as "SUPER_ADMIN" | "ADMIN" | "AGENT");
+    setEditUserOrgId(u.organizationId ?? "");
+    setPlatformUsersSuccess("");
+  };
+
+  const savePlatformUser = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editPlatformUser) return;
+    setEditUserSaving(true);
+    setError("");
+    setPlatformUsersSuccess("");
+    try {
+      const body: { role: "SUPER_ADMIN" | "ADMIN" | "AGENT"; organizationId?: string | null } = {
+        role: editUserRole,
+      };
+      if (editUserRole === "SUPER_ADMIN") {
+        body.organizationId = null;
+      } else {
+        if (!editUserOrgId.trim()) {
+          setError("Selecione uma organização para administradores e agentes.");
+          return;
+        }
+        body.organizationId = editUserOrgId.trim();
+      }
+      await api.patch(`/super/users/${editPlatformUser.id}`, body);
+      setEditPlatformUser(null);
+      setPlatformUsersSuccess(t("superAdmin.platformUsersSaved"));
+      await fetchPlatformUsers();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar o utilizador.");
+    } finally {
+      setEditUserSaving(false);
+    }
+  };
+
+  const userInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+    return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
+  };
+
+  const roleBadgeClass = (role: string) => {
+    if (role === "SUPER_ADMIN") return "bg-violet-100 text-violet-800 ring-violet-200";
+    if (role === "ADMIN") return "bg-brand-50 text-brand-800 ring-brand-200";
+    return "bg-ink-100 text-ink-700 ring-ink-200";
+  };
+
+  const roleLabel = (role: string) => {
+    if (role === "SUPER_ADMIN") return t("superAdmin.roleSuperAdmin");
+    if (role === "ADMIN") return t("superAdmin.roleAdmin");
+    return t("superAdmin.roleAgent");
+  };
+
   const impersonateOrgUser = async (orgId: string, userId: string) => {
     setImpersonateBusy(userId);
     setError("");
@@ -945,17 +1077,26 @@ export function SuperAdminPage() {
   return (
     <div className="flex min-h-screen bg-ink-50">
       <aside className="flex w-56 shrink-0 flex-col border-r border-ink-200 bg-white">
-        <div className="flex h-16 items-center gap-2 border-b border-ink-100 px-4">
-          <Shield className="h-7 w-7 shrink-0 text-brand-600" />
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink-500">Plataforma</p>
-            <p className="truncate text-sm font-bold text-ink-900">Super admin</p>
+        <div className="border-b border-ink-100 px-4 py-4">
+          <img
+            src={brandAssetUrl("/logo.svg")}
+            alt="Logo"
+            className="h-10 w-auto max-w-full"
+            decoding="async"
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <Shield className="h-4 w-4 shrink-0 text-brand-600" />
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink-500">Plataforma</p>
+              <p className="truncate text-sm font-bold text-ink-900">Super admin</p>
+            </div>
           </div>
         </div>
         <nav className="flex flex-col gap-0.5 p-3">
           {navItem("overview", t("superAdmin.overview"), LayoutDashboard)}
           {navItem("usageMetrics", t("superAdmin.usageMetrics"), BarChart3)}
           {navItem("organizations", t("superAdmin.organizations"), Building2)}
+          {navItem("platformUsers", t("superAdmin.platformUsers"), Users)}
           {navItem("globalSettings", t("superAdmin.globalSettings"), Settings2)}
           {navItem("whatsappEmbedded", t("superAdmin.whatsappEmbedded"), MessageCircle)}
           {navItem("evolutionPlatform", t("superAdmin.evolutionPlatform"), QrCode)}
@@ -974,7 +1115,15 @@ export function SuperAdminPage() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-ink-200 bg-white px-6">
-          <p className="text-sm text-ink-600">{t("superAdmin.consoleSubtitle")}</p>
+          <div className="flex items-center gap-3">
+            <img
+              src={brandAssetUrl("/logo.svg")}
+              alt=""
+              className="hidden h-8 w-auto sm:block"
+              decoding="async"
+            />
+            <p className="text-sm text-ink-600">{t("superAdmin.consoleSubtitle")}</p>
+          </div>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-ink-600 sm:inline">{user?.email}</span>
             <button
@@ -1069,6 +1218,127 @@ export function SuperAdminPage() {
                           <td className="px-4 py-3 text-right tabular-nums">{row.messagesLast7Days}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{row.messagesLast30Days}</td>
                           <td className="px-4 py-3">{row.isActive ? "Ativa" : "Suspensa"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {section === "platformUsers" && (
+            <div className="mx-auto max-w-6xl space-y-6">
+              <div>
+                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.platformUsers")}</h1>
+                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.platformUsersSubtitle")}</p>
+              </div>
+              {platformUsersSuccess ? (
+                <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+                  {platformUsersSuccess}
+                </p>
+              ) : null}
+              <div className="rounded-xl border border-ink-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                  <label className="min-w-0 flex-1">
+                    <span className="mb-1 block text-xs font-medium text-ink-600">
+                      {t("superAdmin.platformUsersSearch")}
+                    </span>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                      <input
+                        type="search"
+                        value={platformUsersQ}
+                        onChange={(e) => {
+                          setPlatformUsersQ(e.target.value);
+                          setPlatformUsersPage(1);
+                        }}
+                        className="input-field w-full pl-9"
+                      />
+                    </div>
+                  </label>
+                  <label className="w-full lg:w-44">
+                    <span className="mb-1 block text-xs font-medium text-ink-600">
+                      {t("superAdmin.platformUsersFilterRole")}
+                    </span>
+                    <select
+                      value={platformUsersRole}
+                      onChange={(e) => {
+                        setPlatformUsersRole(e.target.value);
+                        setPlatformUsersPage(1);
+                      }}
+                      className="input-field w-full"
+                    >
+                      <option value="">{t("superAdmin.platformUsersFilterAllRoles")}</option>
+                      <option value="SUPER_ADMIN">{t("superAdmin.roleSuperAdmin")}</option>
+                      <option value="ADMIN">{t("superAdmin.roleAdmin")}</option>
+                      <option value="AGENT">{t("superAdmin.roleAgent")}</option>
+                    </select>
+                  </label>
+                  <label className="min-w-0 flex-1 lg:max-w-xs">
+                    <span className="mb-1 block text-xs font-medium text-ink-600">
+                      {t("superAdmin.platformUsersFilterOrg")}
+                    </span>
+                    <select
+                      value={platformUsersOrgId}
+                      onChange={(e) => {
+                        setPlatformUsersOrgId(e.target.value);
+                        setPlatformUsersUnassigned(false);
+                        setPlatformUsersPage(1);
+                      }}
+                      className="input-field w-full"
+                      disabled={platformUsersUnassigned}
+                    >
+                      <option value="">{t("superAdmin.platformUsersFilterAllOrgs")}</option>
+                      {orgs.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => void fetchPlatformUsers()} className="btn-secondary shrink-0">
+                    {t("common.refresh")}
+                  </button>
+                </div>
+              </div>
+              {platformUsersLoading || !platformUsersData ? (
+                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+                  <table className="w-full min-w-[720px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-ink-100 bg-ink-50 text-xs font-semibold uppercase text-ink-600">
+                        <th className="px-4 py-3">{t("superAdmin.platformUsersColUser")}</th>
+                        <th className="px-4 py-3">{t("superAdmin.platformUsersColRole")}</th>
+                        <th className="px-4 py-3">{t("superAdmin.platformUsersColOrg")}</th>
+                        <th className="px-4 py-3 text-right">{t("superAdmin.platformUsersColActions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-ink-100">
+                      {platformUsersData.data.map((u) => (
+                        <tr key={u.id}>
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-ink-900">{u.name}</p>
+                            <p className="text-xs text-ink-500">{u.email}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={clsx("rounded-full px-2 py-0.5 text-xs font-medium", roleBadgeClass(u.role))}>
+                              {roleLabel(u.role)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-ink-700">
+                            {u.organization?.name ?? t("superAdmin.platformUsersUnassigned")}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => openEditPlatformUser(u)}
+                              className="text-xs font-medium text-brand-600 hover:underline"
+                            >
+                              {t("superAdmin.platformUsersEdit")}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -2023,6 +2293,96 @@ export function SuperAdminPage() {
                   </button>
                   <button type="submit" className="btn-primary" disabled={billingSaving}>
                     {t("superAdmin.saveBilling")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {editPlatformUser ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.target === e.currentTarget && setEditPlatformUser(null)}
+          >
+            <div
+              className="card-surface w-full max-w-md overflow-auto p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.platformUsersEditTitle")}</h3>
+              <p className="mt-1 text-sm text-ink-600">
+                {editPlatformUser.name} · {editPlatformUser.email}
+              </p>
+              <form onSubmit={(e) => void savePlatformUser(e)} className="mt-5 space-y-4">
+                <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={editUserRole === "SUPER_ADMIN"}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEditUserRole("SUPER_ADMIN");
+                          setEditUserOrgId("");
+                        } else {
+                          setEditUserRole("ADMIN");
+                        }
+                      }}
+                      className="mt-1 rounded border-ink-300"
+                    />
+                    <span>
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-ink-900">
+                        <Crown className="h-4 w-4 text-violet-700" />
+                        {t("superAdmin.platformUsersGrantSuperAdmin")}
+                      </span>
+                      <span className="mt-1 block text-xs text-ink-600">
+                        {t("superAdmin.platformUsersGrantSuperAdminHint")}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                {editUserRole !== "SUPER_ADMIN" ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">
+                        {t("superAdmin.platformUsersFilterRole")}
+                      </label>
+                      <select
+                        value={editUserRole}
+                        onChange={(e) => setEditUserRole(e.target.value as "ADMIN" | "AGENT")}
+                        className="input-field mt-1 w-full"
+                      >
+                        <option value="ADMIN">{t("superAdmin.roleAdmin")}</option>
+                        <option value="AGENT">{t("superAdmin.roleAgent")}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">
+                        {t("superAdmin.platformUsersAssignOrg")}
+                      </label>
+                      <select
+                        value={editUserOrgId}
+                        onChange={(e) => setEditUserOrgId(e.target.value)}
+                        className="input-field mt-1 w-full"
+                        required
+                      >
+                        <option value="">{t("superAdmin.platformUsersNoOrg")}</option>
+                        {orgs.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" className="btn-secondary" onClick={() => setEditPlatformUser(null)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={editUserSaving}>
+                    {editUserSaving ? t("common.loading") : t("superAdmin.platformUsersSave")}
                   </button>
                 </div>
               </form>

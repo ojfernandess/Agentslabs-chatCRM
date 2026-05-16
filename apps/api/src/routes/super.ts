@@ -61,6 +61,24 @@ const superUserPatchSchema = z.object({
   role: z.enum(["ADMIN", "AGENT"]).optional(),
 });
 
+const superUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  q: z.string().max(200).optional(),
+  organizationId: z.string().uuid().optional(),
+  role: z.enum(["SUPER_ADMIN", "ADMIN", "AGENT"]).optional(),
+  unassigned: z
+    .union([z.literal("true"), z.literal("false"), z.literal("1"), z.literal("0")])
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+});
+
+const superPlatformUserPatchSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  role: z.enum(["SUPER_ADMIN", "ADMIN", "AGENT"]).optional(),
+  organizationId: z.union([z.string().uuid(), z.null()]).optional(),
+});
+
 const platformSettingUpsertSchema = z.object({
   key: z.string().min(1).max(120),
   value: z.unknown(),
@@ -527,6 +545,148 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         messagesLast30Days: map30.get(o.id) ?? 0,
       })),
     };
+  });
+
+  app.get("/users", async (request, reply) => {
+    const parsed = superUsersQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const { page, limit, q, organizationId, role, unassigned } = parsed.data;
+    const where: Prisma.UserWhereInput = {};
+    if (role) where.role = role;
+    if (organizationId) where.organizationId = organizationId;
+    if (unassigned) where.organizationId = null;
+    const qTrim = q?.trim();
+    if (qTrim) {
+      where.OR = [
+        { email: { contains: qTrim, mode: "insensitive" } },
+        { name: { contains: qTrim, mode: "insensitive" } },
+      ];
+    }
+    const skip = (page - 1) * limit;
+    const [total, superAdminTotal, unassignedTotal, data] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.count({ where: { role: "SUPER_ADMIN" } }),
+      prisma.user.count({ where: { organizationId: null, role: { in: ["ADMIN", "AGENT"] } } }),
+      prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ role: "asc" }, { createdAt: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+          organizationId: true,
+          organization: {
+            select: { id: true, name: true, slug: true, isActive: true },
+          },
+        },
+      }),
+    ]);
+    return {
+      data,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      summary: { superAdminTotal, unassignedTotal },
+    };
+  });
+
+  app.patch<{ Params: { userId: string } }>("/users/:userId", async (request, reply) => {
+    const parsed = superPlatformUserPatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const target = await prisma.user.findUnique({ where: { id: request.params.userId } });
+    if (!target) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+    }
+
+    const nextRole = parsed.data.role ?? target.role;
+    let nextOrgId =
+      parsed.data.organizationId !== undefined ? parsed.data.organizationId : target.organizationId;
+
+    if (nextRole === "SUPER_ADMIN") {
+      nextOrgId = null;
+    } else if (!nextOrgId) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "organizationId is required for ADMIN and AGENT users",
+        statusCode: 400,
+      });
+    }
+
+    if (nextOrgId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: nextOrgId },
+        select: { id: true, isActive: true },
+      });
+      if (!org) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Organization not found",
+          statusCode: 400,
+        });
+      }
+    }
+
+    if (target.role === "SUPER_ADMIN" && nextRole !== "SUPER_ADMIN") {
+      const superCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      if (superCount <= 1) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Cannot remove the last Super Admin on the platform",
+          statusCode: 400,
+        });
+      }
+    }
+
+    const data: { name?: string; role?: "SUPER_ADMIN" | "ADMIN" | "AGENT"; organizationId?: string | null } = {};
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.role !== undefined) data.role = parsed.data.role;
+    if (parsed.data.role !== undefined || parsed.data.organizationId !== undefined || nextRole === "SUPER_ADMIN") {
+      data.organizationId = nextOrgId;
+    }
+    if (Object.keys(data).length === 0) {
+      return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        organizationId: true,
+        organization: {
+          select: { id: true, name: true, slug: true, isActive: true },
+        },
+      },
+    });
+
+    if (updated.role === "AGENT" && updated.organizationId) {
+      await addAgentToAllOrganizationTeams(updated.organizationId, updated.id);
+    }
+
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      organizationId: updated.organizationId,
+      action: "super.platform_user.update",
+      resourceType: "user",
+      resourceId: updated.id,
+      metadata: { patch: parsed.data, email: updated.email },
+      ip: clientIp(request),
+    });
+
+    return updated;
   });
 
   app.get<{ Params: { id: string } }>("/organizations/:id/users", async (request, reply) => {
