@@ -75,6 +75,7 @@ const superUsersQuerySchema = z.object({
 
 const superPlatformUserPatchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
+  email: z.string().email().max(255).optional(),
   role: z.enum(["SUPER_ADMIN", "ADMIN", "AGENT"]).optional(),
   organizationId: z.union([z.string().uuid(), z.null()]).optional(),
 });
@@ -646,8 +647,31 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const data: { name?: string; role?: "SUPER_ADMIN" | "ADMIN" | "AGENT"; organizationId?: string | null } = {};
+    if (parsed.data.email !== undefined && parsed.data.email.toLowerCase() !== target.email.toLowerCase()) {
+      const emailTaken = await prisma.user.findFirst({
+        where: {
+          email: { equals: parsed.data.email, mode: "insensitive" },
+          NOT: { id: target.id },
+        },
+        select: { id: true },
+      });
+      if (emailTaken) {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "Email is already in use",
+          statusCode: 409,
+        });
+      }
+    }
+
+    const data: {
+      name?: string;
+      email?: string;
+      role?: "SUPER_ADMIN" | "ADMIN" | "AGENT";
+      organizationId?: string | null;
+    } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.email !== undefined) data.email = parsed.data.email.trim().toLowerCase();
     if (parsed.data.role !== undefined) data.role = parsed.data.role;
     if (parsed.data.role !== undefined || parsed.data.organizationId !== undefined || nextRole === "SUPER_ADMIN") {
       data.organizationId = nextOrgId;
@@ -687,6 +711,63 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return updated;
+  });
+
+  app.delete<{ Params: { userId: string } }>("/users/:userId", async (request, reply) => {
+    const target = await prisma.user.findUnique({ where: { id: request.params.userId } });
+    if (!target) {
+      return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+    }
+    if (target.id === request.user.id) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Cannot delete your own account",
+        statusCode: 400,
+      });
+    }
+    if (target.role === "SUPER_ADMIN") {
+      const superCount = await prisma.user.count({ where: { role: "SUPER_ADMIN" } });
+      if (superCount <= 1) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Cannot delete the last Super Admin on the platform",
+          statusCode: 400,
+        });
+      }
+    }
+
+    const reassignTo = request.user.id;
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.updateMany({
+        where: { actorUserId: target.id },
+        data: { actorUserId: reassignTo },
+      });
+      await tx.platformApplication.updateMany({
+        where: { createdById: target.id },
+        data: { createdById: reassignTo },
+      });
+      await tx.broadcastCampaign.updateMany({
+        where: { createdById: target.id },
+        data: { createdById: reassignTo },
+      });
+      await tx.automationKnowledgeRevision.updateMany({
+        where: { editorUserId: target.id },
+        data: { editorUserId: reassignTo },
+      });
+      await tx.user.delete({ where: { id: target.id } });
+    });
+
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      organizationId: target.organizationId,
+      action: "super.platform_user.delete",
+      resourceType: "user",
+      resourceId: target.id,
+      metadata: { email: target.email, name: target.name, role: target.role },
+      ip: clientIp(request),
+    });
+
+    return reply.status(204).send();
   });
 
   app.get<{ Params: { id: string } }>("/organizations/:id/users", async (request, reply) => {

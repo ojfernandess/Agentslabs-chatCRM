@@ -7,26 +7,22 @@ import {
   Building2,
   Copy,
   Check,
-  LayoutDashboard,
-  LogOut,
-  Shield,
   Users,
   MessagesSquare,
   UserCircle,
-  Activity,
-  Box,
-  ScrollText,
-  ToggleLeft,
-  BarChart3,
-  Settings2,
-  MessageCircle,
-  QrCode,
   Search,
   Crown,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import clsx from "clsx";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import {
+  SuperAdminShell,
+  SuperAdminPageHeader,
+  SuperAdminMetricCard,
+  SuperAdminPanel,
+  type SuperSection,
+} from "@/components/super-admin/SuperAdminShell";
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 
@@ -226,20 +222,6 @@ interface SuperResendPayload {
   passwordResetHtmlTemplate: string;
 }
 
-type SuperSection =
-  | "overview"
-  | "usageMetrics"
-  | "organizations"
-  | "platformUsers"
-  | "globalSettings"
-  | "whatsappEmbedded"
-  | "evolutionPlatform"
-  | "evolutionGoPlatform"
-  | "monitoring"
-  | "platformApps"
-  | "auditLog"
-  | "featureFlags";
-
 export function SuperAdminPage() {
   const { t } = useI18n();
   const { user, logout, enterOrganization, applySessionToken } = useAuth();
@@ -299,9 +281,13 @@ export function SuperAdminPage() {
   const [platformUsersData, setPlatformUsersData] = useState<PlatformUsersPage | null>(null);
   const [platformUsersLoading, setPlatformUsersLoading] = useState(false);
   const [editPlatformUser, setEditPlatformUser] = useState<PlatformUserRow | null>(null);
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserRole, setEditUserRole] = useState<"SUPER_ADMIN" | "ADMIN" | "AGENT">("AGENT");
   const [editUserOrgId, setEditUserOrgId] = useState("");
   const [editUserSaving, setEditUserSaving] = useState(false);
+  const [editUserDeleting, setEditUserDeleting] = useState(false);
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<PlatformUserRow | null>(null);
   const [platformUsersSuccess, setPlatformUsersSuccess] = useState("");
 
   const [waEmbLoad, setWaEmbLoad] = useState(false);
@@ -894,6 +880,8 @@ export function SuperAdminPage() {
 
   const openEditPlatformUser = (u: PlatformUserRow) => {
     setEditPlatformUser(u);
+    setEditUserName(u.name);
+    setEditUserEmail(u.email);
     setEditUserRole(u.role as "SUPER_ADMIN" | "ADMIN" | "AGENT");
     setEditUserOrgId(u.organizationId ?? "");
     setPlatformUsersSuccess("");
@@ -902,11 +890,24 @@ export function SuperAdminPage() {
   const savePlatformUser = async (e: FormEvent) => {
     e.preventDefault();
     if (!editPlatformUser) return;
+    const name = editUserName.trim();
+    const email = editUserEmail.trim();
+    if (!name || !email) {
+      setError("Nome e e-mail são obrigatórios.");
+      return;
+    }
     setEditUserSaving(true);
     setError("");
     setPlatformUsersSuccess("");
     try {
-      const body: { role: "SUPER_ADMIN" | "ADMIN" | "AGENT"; organizationId?: string | null } = {
+      const body: {
+        name: string;
+        email: string;
+        role: "SUPER_ADMIN" | "ADMIN" | "AGENT";
+        organizationId?: string | null;
+      } = {
+        name,
+        email,
         role: editUserRole,
       };
       if (editUserRole === "SUPER_ADMIN") {
@@ -927,6 +928,24 @@ export function SuperAdminPage() {
       setError(err instanceof Error ? err.message : "Não foi possível atualizar o utilizador.");
     } finally {
       setEditUserSaving(false);
+    }
+  };
+
+  const deletePlatformUser = async (u: PlatformUserRow) => {
+    setEditUserDeleting(true);
+    setError("");
+    setPlatformUsersSuccess("");
+    try {
+      await api.delete(`/super/users/${u.id}`);
+      setDeleteConfirmUser(null);
+      setEditPlatformUser(null);
+      setPlatformUsersSuccess(t("superAdmin.platformUsersDeleted"));
+      await fetchPlatformUsers();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível eliminar o utilizador.");
+    } finally {
+      setEditUserDeleting(false);
     }
   };
 
@@ -1057,149 +1076,85 @@ export function SuperAdminPage() {
 
   const flagTitle = (key: string) => t(`superAdmin.flag.${key}`);
 
-  const navItem = (id: SuperSection, label: string, Icon: typeof LayoutDashboard) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setSection(id)}
-      className={clsx(
-        "flex w-full items-center gap-3 rounded px-3 py-2.5 text-left text-sm font-medium transition-colors",
-        section === id
-          ? "bg-brand-50 font-semibold text-brand-700"
-          : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 active:bg-ink-100",
-      )}
-    >
-      <Icon className="h-5 w-5 shrink-0" />
-      {label}
-    </button>
-  );
-
   return (
-    <div className="flex min-h-screen bg-ink-50">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-ink-200 bg-white">
-        <div className="border-b border-ink-100 px-4 py-4">
-          <img
-            src={brandAssetUrl("/logo.svg")}
-            alt="Logo"
-            className="h-10 w-auto max-w-full"
-            decoding="async"
-          />
-          <div className="mt-3 flex items-center gap-2">
-            <Shield className="h-4 w-4 shrink-0 text-brand-600" />
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink-500">Plataforma</p>
-              <p className="truncate text-sm font-bold text-ink-900">Super admin</p>
-            </div>
-          </div>
-        </div>
-        <nav className="flex flex-col gap-0.5 p-3">
-          {navItem("overview", t("superAdmin.overview"), LayoutDashboard)}
-          {navItem("usageMetrics", t("superAdmin.usageMetrics"), BarChart3)}
-          {navItem("organizations", t("superAdmin.organizations"), Building2)}
-          {navItem("platformUsers", t("superAdmin.platformUsers"), Users)}
-          {navItem("globalSettings", t("superAdmin.globalSettings"), Settings2)}
-          {navItem("whatsappEmbedded", t("superAdmin.whatsappEmbedded"), MessageCircle)}
-          {navItem("evolutionPlatform", t("superAdmin.evolutionPlatform"), QrCode)}
-          {navItem("evolutionGoPlatform", t("superAdmin.evolutionGoPlatform"), Settings2)}
-          {navItem("monitoring", t("superAdmin.monitoring"), Activity)}
-          {navItem("platformApps", t("superAdmin.platformApps"), Box)}
-          {navItem("auditLog", t("superAdmin.auditLog"), ScrollText)}
-          {navItem("featureFlags", t("superAdmin.featureFlags"), ToggleLeft)}
-        </nav>
-        <div className="mt-auto border-t border-ink-100 p-3">
-          <p className="px-3 py-2 text-xs text-ink-500">
-            {(user?.actingOrganization?.name ?? user?.organization?.name ?? "Console")} · consola de administrador
-          </p>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-ink-200 bg-white px-6">
-          <div className="flex items-center gap-3">
-            <img
-              src={brandAssetUrl("/logo.svg")}
-              alt=""
-              className="hidden h-8 w-auto sm:block"
-              decoding="async"
-            />
-            <p className="text-sm text-ink-600">{t("superAdmin.consoleSubtitle")}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-ink-600 sm:inline">{user?.email}</span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="btn-secondary gap-2 py-2 text-sm"
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto p-6 lg:p-8">
-          {error && (
-            <p className="card-surface mb-6 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-              {error}
-            </p>
-          )}
-
-          {section === "overview" && (
-            <div className="mx-auto max-w-5xl space-y-8">
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">{t("superAdmin.overview")}</h1>
-                <p className="mt-1 text-sm text-gray-500">{t("superAdmin.overviewSubtitle")}</p>
-              </div>
+    <>
+    <SuperAdminShell
+      section={section}
+      onSectionChange={setSection}
+      userEmail={user?.email}
+      onLogout={handleLogout}
+      error={error}
+    >
+{section === "overview" && (
+            <div className="space-y-8">
+              <SuperAdminPageHeader
+                title={t("superAdmin.overview")}
+                subtitle={t("superAdmin.overviewSubtitle")}
+              />
               {loading || !stats ? (
-                <p className="text-sm text-gray-500">{t("common.loading")}</p>
+                <p className="text-sm text-slate-500">{t("common.loading")}</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Organizações</p>
-                    <p className="mt-2 text-3xl font-bold text-gray-900">{stats.organizationTotal}</p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {stats.organizationActive} ativas · {stats.organizationSuspended} suspensas
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Utilizadores</p>
-                    <p className="mt-2 text-3xl font-bold text-gray-900">{stats.userTotal}</p>
-                    <p className="mt-1 text-sm text-gray-600">Admins e agentes (todos os tenants)</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Contactos</p>
-                    <p className="mt-2 text-3xl font-bold text-gray-900">{stats.contactTotal}</p>
-                    <p className="mt-1 text-sm text-gray-600">Todos os tenants</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:col-span-2 lg:col-span-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Conversas abertas</p>
-                    <p className="mt-2 text-3xl font-bold text-gray-900">
-                      {stats.conversationOpen === null ? "—" : stats.conversationOpen}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {stats.conversationOpen === null
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.organizations")}
+                    value={stats.organizationTotal}
+                    hint={`${stats.organizationActive} ativas · ${stats.organizationSuspended} suspensas`}
+                    accent="violet"
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.platformUsers")}
+                    value={stats.userTotal}
+                    hint="Admins e agentes (todos os tenants)"
+                    accent="emerald"
+                  />
+                  <SuperAdminMetricCard label="Contactos" value={stats.contactTotal} hint="Todos os tenants" />
+                  <SuperAdminMetricCard
+                    className="sm:col-span-2 lg:col-span-3"
+                    label="Conversas abertas"
+                    value={stats.conversationOpen === null ? "—" : stats.conversationOpen}
+                    hint={
+                      stats.conversationOpen === null
                         ? t("superAdmin.openConversationsHint")
-                        : t("superAdmin.openConversationsOk")}
-                    </p>
-                  </div>
+                        : t("superAdmin.openConversationsOk")
+                    }
+                    accent="amber"
+                  />
                 </div>
               )}
             </div>
           )}
 
           {section === "usageMetrics" && (
-            <div className="mx-auto max-w-6xl space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.usageMetrics")}</h1>
-                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.usageMetricsSubtitle")}</p>
-              </div>
+            <div className="space-y-6">
+              <SuperAdminPageHeader
+                title={t("superAdmin.usageMetrics")}
+                subtitle={t("superAdmin.usageMetricsSubtitle")}
+              />
               {usageLoading || !usageMetrics ? (
-                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+                <p className="text-sm text-slate-500">{t("common.loading")}</p>
               ) : (
-                <div className="overflow-x-auto card-surface">
+                <>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <SuperAdminMetricCard
+                      label={t("superAdmin.usageMetricsStatTenants")}
+                      value={usageMetrics.organizations.length}
+                      accent="violet"
+                    />
+                    <SuperAdminMetricCard
+                      label={t("superAdmin.usageMetricsStatMsgs7d")}
+                      value={usageMetrics.organizations.reduce((s, o) => s + o.messagesLast7Days, 0)}
+                      accent="emerald"
+                    />
+                    <SuperAdminMetricCard
+                      label={t("superAdmin.usageMetricsStatMsgs30d")}
+                      value={usageMetrics.organizations.reduce((s, o) => s + o.messagesLast30Days, 0)}
+                      accent="amber"
+                    />
+                  </div>
+                  <SuperAdminPanel className="overflow-x-auto p-0">
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead>
-                      <tr className="border-b border-ink-100 bg-ink-50 text-xs font-semibold uppercase text-ink-600">
+                      <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-600">
                         <th className="px-4 py-3">{t("superAdmin.org")}</th>
                         <th className="px-4 py-3">{t("superAdmin.planColumn")}</th>
                         <th className="px-4 py-3 text-right">{t("superAdmin.msgs7d")}</th>
@@ -1222,23 +1177,43 @@ export function SuperAdminPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </SuperAdminPanel>
+                </>
               )}
             </div>
           )}
 
           {section === "platformUsers" && (
-            <div className="mx-auto max-w-6xl space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.platformUsers")}</h1>
-                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.platformUsersSubtitle")}</p>
-              </div>
+            <div className="space-y-6">
+              <SuperAdminPageHeader
+                title={t("superAdmin.platformUsers")}
+                subtitle={t("superAdmin.platformUsersSubtitle")}
+              />
               {platformUsersSuccess ? (
-                <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
                   {platformUsersSuccess}
                 </p>
               ) : null}
-              <div className="rounded-xl border border-ink-200 bg-white p-4 shadow-sm">
+              {platformUsersData ? (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.platformUsersStatTotal")}
+                    value={platformUsersData.total}
+                    accent="violet"
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.platformUsersStatSuper")}
+                    value={platformUsersData.summary.superAdminTotal}
+                    accent="amber"
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.platformUsersStatUnassigned")}
+                    value={platformUsersData.summary.unassignedTotal}
+                    accent="emerald"
+                  />
+                </div>
+              ) : null}
+              <SuperAdminPanel className="p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
                   <label className="min-w-0 flex-1">
                     <span className="mb-1 block text-xs font-medium text-ink-600">
@@ -1301,21 +1276,21 @@ export function SuperAdminPage() {
                     {t("common.refresh")}
                   </button>
                 </div>
-              </div>
+              </SuperAdminPanel>
               {platformUsersLoading || !platformUsersData ? (
                 <p className="text-sm text-ink-500">{t("common.loading")}</p>
               ) : (
-                <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+                <SuperAdminPanel className="overflow-hidden p-0">
                   <table className="w-full min-w-[720px] text-left text-sm">
                     <thead>
-                      <tr className="border-b border-ink-100 bg-ink-50 text-xs font-semibold uppercase text-ink-600">
+                      <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-600">
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColUser")}</th>
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColRole")}</th>
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColOrg")}</th>
                         <th className="px-4 py-3 text-right">{t("superAdmin.platformUsersColActions")}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-ink-100">
+                    <tbody className="divide-y divide-slate-100">
                       {platformUsersData.data.map((u) => (
                         <tr key={u.id}>
                           <td className="px-4 py-3">
@@ -1331,19 +1306,31 @@ export function SuperAdminPage() {
                             {u.organization?.name ?? t("superAdmin.platformUsersUnassigned")}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => openEditPlatformUser(u)}
-                              className="text-xs font-medium text-brand-600 hover:underline"
-                            >
-                              {t("superAdmin.platformUsersEdit")}
-                            </button>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditPlatformUser(u)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                {t("superAdmin.platformUsersEdit")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmUser(u)}
+                                disabled={u.id === user?.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {t("superAdmin.platformUsersDelete")}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </SuperAdminPanel>
               )}
             </div>
           )}
@@ -1809,49 +1796,43 @@ export function SuperAdminPage() {
           )}
 
           {section === "monitoring" && (
-            <div className="mx-auto max-w-5xl space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">{t("superAdmin.monitoring")}</h1>
-                <p className="mt-1 text-sm text-gray-500">{t("superAdmin.monitoringSubtitle")}</p>
-              </div>
+            <div className="space-y-6">
+              <SuperAdminPageHeader
+                title={t("superAdmin.monitoring")}
+                subtitle={t("superAdmin.monitoringSubtitle")}
+              />
               {monitoringLoading || !monitoring ? (
                 <p className="text-sm text-gray-500">{t("common.loading")}</p>
               ) : (
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium uppercase text-gray-500">{t("superAdmin.db")}</p>
-                    <p className={clsx("mt-2 text-lg font-semibold", monitoring.database.ok ? "text-green-700" : "text-red-600")}>
-                      {monitoring.database.ok ? "OK" : "Erro"}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {t("superAdmin.latency")}: {monitoring.database.latencyMs} ms
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <p className="text-xs font-medium uppercase text-gray-500">{t("superAdmin.redis")}</p>
-                    <p className={clsx("mt-2 text-lg font-semibold", monitoring.redis.ok ? "text-green-700" : "text-red-600")}>
-                      {monitoring.redis.ok ? "OK" : "Erro"}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {t("superAdmin.latency")}: {monitoring.redis.latencyMs} ms
-                      {monitoring.redis.error ? ` — ${monitoring.redis.error}` : ""}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm md:col-span-1">
-                    <p className="text-xs font-medium uppercase text-gray-500">{t("superAdmin.jobs")}</p>
-                    <p className="mt-2 text-sm font-medium text-gray-900">{monitoring.backgroundJobs.mode}</p>
-                    <p className="mt-1 text-sm text-gray-600">{monitoring.backgroundJobs.note}</p>
-                  </div>
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.db")}
+                    value={monitoring.database.ok ? "OK" : "Erro"}
+                    hint={`${t("superAdmin.latency")}: ${monitoring.database.latencyMs} ms`}
+                    accent={monitoring.database.ok ? "emerald" : "amber"}
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.redis")}
+                    value={monitoring.redis.ok ? "OK" : "Erro"}
+                    hint={`${t("superAdmin.latency")}: ${monitoring.redis.latencyMs} ms${monitoring.redis.error ? ` — ${monitoring.redis.error}` : ""}`}
+                    accent={monitoring.redis.ok ? "emerald" : "amber"}
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.jobs")}
+                    value={monitoring.backgroundJobs.mode}
+                    hint={monitoring.backgroundJobs.note}
+                    accent="violet"
+                  />
                 </div>
               )}
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-                <p className="font-medium text-gray-900">{t("superAdmin.platformApiHint")}</p>
-                <code className="mt-2 block overflow-x-auto rounded bg-white px-3 py-2 text-xs">
+              <SuperAdminPanel className="p-4 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">{t("superAdmin.platformApiHint")}</p>
+                <code className="mt-2 block overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
                   GET {window.location.origin}/api/v1/platform/me
                   <br />
                   Authorization: Bearer ocp_…
                 </code>
-              </div>
+              </SuperAdminPanel>
             </div>
           )}
 
@@ -1945,19 +1926,31 @@ export function SuperAdminPage() {
           )}
 
           {section === "auditLog" && (
-            <div className="mx-auto max-w-6xl space-y-6">
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">{t("superAdmin.auditLog")}</h1>
-                <p className="mt-1 text-sm text-gray-500">{t("superAdmin.auditSubtitle")}</p>
-              </div>
+            <div className="space-y-6">
+              <SuperAdminPageHeader
+                title={t("superAdmin.auditLog")}
+                subtitle={t("superAdmin.auditSubtitle")}
+              />
               {auditLoading || !auditData ? (
-                <p className="text-sm text-gray-500">{t("common.loading")}</p>
+                <p className="text-sm text-slate-500">{t("common.loading")}</p>
               ) : (
                 <>
-                  <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <SuperAdminMetricCard
+                      label={t("superAdmin.auditStatTotal")}
+                      value={auditData.total}
+                      accent="violet"
+                    />
+                    <SuperAdminMetricCard
+                      label={t("superAdmin.auditStatPage")}
+                      value={`${auditData.page} / ${auditData.totalPages}`}
+                      accent="emerald"
+                    />
+                  </div>
+                  <SuperAdminPanel className="overflow-x-auto p-0">
                     <table className="w-full min-w-[800px] text-left text-sm">
                       <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50 text-xs font-medium uppercase text-gray-500">
+                        <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-600">
                           <th className="px-4 py-2">{t("superAdmin.when")}</th>
                           <th className="px-4 py-2">{t("superAdmin.actor")}</th>
                           <th className="px-4 py-2">{t("superAdmin.org")}</th>
@@ -1965,7 +1958,7 @@ export function SuperAdminPage() {
                           <th className="px-4 py-2">{t("superAdmin.resource")}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-slate-100">
                         {auditData.data.map((row) => (
                           <tr key={row.id}>
                             <td className="whitespace-nowrap px-4 py-2 text-gray-600">
@@ -1982,9 +1975,9 @@ export function SuperAdminPage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </SuperAdminPanel>
                   <div className="flex items-center justify-between gap-4">
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-slate-600">
                       {t("superAdmin.page")} {auditData.page} / {auditData.totalPages} ({auditData.total})
                     </p>
                     <div className="flex gap-2">
@@ -2071,16 +2064,33 @@ export function SuperAdminPage() {
           )}
 
           {section === "organizations" && (
-            <div className="mx-auto max-w-5xl space-y-8">
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">{t("superAdmin.organizations")}</h1>
-                <p className="mt-1 text-sm text-gray-500">
-                  Crie tenants, copie o webhook, suspenda contas ou entre no painel como essa organização.
-                </p>
-              </div>
+            <div className="space-y-6">
+              <SuperAdminPageHeader
+                title={t("superAdmin.organizations")}
+                subtitle={t("superAdmin.organizationsSubtitle")}
+              />
+              {stats && !loading ? (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.organizationsStatTotal")}
+                    value={stats.organizationTotal}
+                    accent="violet"
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.organizationsStatActive")}
+                    value={stats.organizationActive}
+                    accent="emerald"
+                  />
+                  <SuperAdminMetricCard
+                    label={t("superAdmin.organizationsStatSuspended")}
+                    value={stats.organizationSuspended}
+                    accent="amber"
+                  />
+                </div>
+              ) : null}
 
-              <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
+              <SuperAdminPanel className="p-6">
+                <h2 className="mb-4 flex items-center gap-2 font-semibold text-slate-900">
                   <Building2 className="h-5 w-5" />
                   Nova organização
                 </h2>
@@ -2116,10 +2126,10 @@ export function SuperAdminPage() {
                     {submitting ? "A criar…" : "Criar"}
                   </button>
                 </form>
-              </section>
+              </SuperAdminPanel>
 
-              <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-4 font-semibold text-gray-900">Lista de organizações</h2>
+              <SuperAdminPanel className="p-6">
+                <h2 className="mb-4 font-semibold text-slate-900">Lista de organizações</h2>
                 {loading ? (
                   <p className="text-sm text-gray-500">{t("common.loading")}</p>
                 ) : orgs.length === 0 ? (
@@ -2240,10 +2250,10 @@ export function SuperAdminPage() {
                     </table>
                   </div>
                 )}
-              </section>
+              </SuperAdminPanel>
             </div>
           )}
-        </main>
+      </SuperAdminShell>
 
         {billingOrg ? (
           <div
@@ -2311,11 +2321,28 @@ export function SuperAdminPage() {
               className="card-surface w-full max-w-md overflow-auto p-6 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.platformUsersEditTitle")}</h3>
-              <p className="mt-1 text-sm text-ink-600">
-                {editPlatformUser.name} · {editPlatformUser.email}
-              </p>
+              <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.platformUsersEditTitle")}</h3>
               <form onSubmit={(e) => void savePlatformUser(e)} className="mt-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600">{t("superAdmin.platformUsersName")}</label>
+                  <input
+                    type="text"
+                    value={editUserName}
+                    onChange={(e) => setEditUserName(e.target.value)}
+                    className="input-field mt-1 w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600">{t("superAdmin.platformUsersEmail")}</label>
+                  <input
+                    type="email"
+                    value={editUserEmail}
+                    onChange={(e) => setEditUserEmail(e.target.value)}
+                    className="input-field mt-1 w-full"
+                    required
+                  />
+                </div>
                 <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
                   <label className="flex cursor-pointer items-start gap-3">
                     <input
@@ -2377,20 +2404,68 @@ export function SuperAdminPage() {
                     </div>
                   </>
                 ) : null}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" className="btn-secondary" onClick={() => setEditPlatformUser(null)}>
-                    {t("common.cancel")}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteConfirmUser(editPlatformUser);
+                      setEditPlatformUser(null);
+                    }}
+                    disabled={editPlatformUser.id === user?.id || editUserSaving}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t("superAdmin.platformUsersDelete")}
                   </button>
-                  <button type="submit" className="btn-primary" disabled={editUserSaving}>
-                    {editUserSaving ? t("common.loading") : t("superAdmin.platformUsersSave")}
-                  </button>
+                  <div className="flex gap-2">
+                    <button type="button" className="btn-secondary" onClick={() => setEditPlatformUser(null)}>
+                      {t("common.cancel")}
+                    </button>
+                    <button type="submit" className="btn-primary" disabled={editUserSaving}>
+                      {editUserSaving ? t("common.loading") : t("superAdmin.platformUsersSave")}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
           </div>
         ) : null}
 
-        {usersOrg ? (
+        {deleteConfirmUser ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.target === e.currentTarget && setDeleteConfirmUser(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.platformUsersDeleteTitle")}</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-900">{deleteConfirmUser.name}</span> (
+                {deleteConfirmUser.email})
+              </p>
+              <p className="mt-3 text-sm text-slate-600">{t("superAdmin.platformUsersDeleteConfirm")}</p>
+              <div className="mt-6 flex justify-end gap-2">
+                <button type="button" className="btn-secondary" onClick={() => setDeleteConfirmUser(null)}>
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  disabled={editUserDeleting}
+                  onClick={() => void deletePlatformUser(deleteConfirmUser)}
+                >
+                  {editUserDeleting ? t("common.loading") : t("superAdmin.platformUsersDelete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+                {usersOrg ? (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
             role="dialog"
@@ -2444,7 +2519,6 @@ export function SuperAdminPage() {
             </div>
           </div>
         ) : null}
-      </div>
-    </div>
+    </>
   );
 }
