@@ -64,6 +64,12 @@ import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
+  ChatImageThumbnail,
+  DocumentAttachmentCard,
+  isLikelyDocumentCaption,
+} from "@/components/conversation/MessageAttachmentViews";
+import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
+import {
   timelineChannelLabel,
   timelineEventSummary,
   timelineEventTitle,
@@ -115,6 +121,12 @@ interface MessageTemplateRow {
   bodyVariableCount: number;
   metaCategory?: string | null;
   templateLanguage?: string;
+}
+
+interface CannedResponseRow {
+  id: string;
+  shortcut: string;
+  content: string;
 }
 
 interface OrgTagRow {
@@ -240,9 +252,12 @@ export function ConversationDetailPage() {
   const [copilotError, setCopilotError] = useState("");
   const [copilotInsights, setCopilotInsights] = useState<CopilotInsights | null>(null);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [cannedMenuOpen, setCannedMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
+  const [cannedResponses, setCannedResponses] = useState<CannedResponseRow[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [suggestReplyBusy, setSuggestReplyBusy] = useState(false);
   const [voicePreview, setVoicePreview] = useState<{ blob: Blob; ext: string } | null>(null);
   const voicePreviewUrl = useMemo(
@@ -268,6 +283,7 @@ export function ConversationDetailPage() {
   const resolveNextIdRef = useRef<string | null>(null);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
+  const cannedWrapRef = useRef<HTMLDivElement>(null);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -569,15 +585,61 @@ export function ConversationDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!emojiOpen && !templateMenuOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await api.get<CannedResponseRow[]>("/canned-responses");
+        if (!cancelled) setCannedResponses(Array.isArray(rows) ? rows : []);
+      } catch {
+        if (!cancelled) setCannedResponses([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyCannedResponse = useCallback((row: CannedResponseRow) => {
+    setNewMessage(row.content);
+    setCannedMenuOpen(false);
+    setTemplateMenuOpen(false);
+    setEmojiOpen(false);
+  }, []);
+
+  const onComposerChange = useCallback(
+    (value: string) => {
+      const match = value.match(/\/([a-zA-Z0-9_-]+)\s$/);
+      if (match) {
+        const key = match[1].toLowerCase();
+        const found = cannedResponses.find((c) => c.shortcut === key);
+        if (found) {
+          setNewMessage(value.replace(/\/[a-zA-Z0-9_-]+\s$/, found.content));
+          return;
+        }
+      }
+      setNewMessage(value);
+    },
+    [cannedResponses],
+  );
+
+  const cannedSlashFilter = useMemo(() => {
+    const m = newMessage.match(/\/([a-zA-Z0-9_-]*)$/);
+    if (!m) return null;
+    const q = m[1].toLowerCase();
+    return cannedResponses.filter((c) => c.shortcut.startsWith(q));
+  }, [newMessage, cannedResponses]);
+
+  useEffect(() => {
+    if (!emojiOpen && !templateMenuOpen && !cannedMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const node = e.target as Node;
       if (emojiOpen && emojiWrapRef.current && !emojiWrapRef.current.contains(node)) setEmojiOpen(false);
       if (templateMenuOpen && templateWrapRef.current && !templateWrapRef.current.contains(node)) setTemplateMenuOpen(false);
+      if (cannedMenuOpen && cannedWrapRef.current && !cannedWrapRef.current.contains(node)) setCannedMenuOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [emojiOpen, templateMenuOpen]);
+  }, [emojiOpen, templateMenuOpen, cannedMenuOpen]);
 
   useEffect(() => {
     if (!transferOpen || !transferTeamId) {
@@ -2158,40 +2220,34 @@ export function ConversationDetailPage() {
                       {t("conversationDetail.internalNoteLabel")}
                     </p>
                   ) : null}
-                  {msg.type === "IMAGE" && msg.mediaUrl && (
-                    <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={msg.mediaUrl}
-                        alt=""
-                        className={clsx(
-                          "max-h-64 max-w-full rounded-lg object-contain",
-                          msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                        )}
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    </a>
-                  )}
-                  {msg.type === "DOCUMENT" && msg.mediaUrl && (
-                    <a
+                  {msg.type === "IMAGE" && msg.mediaUrl ? (
+                    <ChatImageThumbnail
+                      src={msg.mediaUrl}
+                      alt=""
+                      outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                      onOpen={() => setLightboxSrc(msg.mediaUrl!)}
+                    />
+                  ) : null}
+                  {msg.type === "DOCUMENT" && msg.mediaUrl ? (
+                    <DocumentAttachmentCard
                       href={msg.mediaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
+                      body={msg.body}
+                      downloadLabel={t("conversationDetail.downloadAttachment")}
+                      inbound={inbound}
+                    />
+                  ) : null}
+                  {msg.body?.trim() && msg.type !== "DOCUMENT" ? (
+                    <p
                       className={clsx(
-                        "mt-1 inline-block text-sm underline",
-                        msg.direction === "OUTBOUND" && !msg.isPrivate
-                          ? "text-brand-100 dark:text-brand-200"
-                          : "text-brand-700 dark:text-brand-400",
+                        "whitespace-pre-wrap text-sm leading-snug",
+                        msg.type === "IMAGE" && msg.mediaUrl && "mt-2",
                       )}
                     >
-                      {msg.body?.trim() || t("conversationDetail.downloadAttachment")}
-                    </a>
-                  )}
-                  {msg.body && msg.type !== "DOCUMENT" ? (
-                    <p className={clsx("whitespace-pre-wrap text-sm leading-snug", msg.type === "IMAGE" && msg.mediaUrl && "mt-2")}>
                       {msg.body}
                     </p>
+                  ) : null}
+                  {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-snug">{msg.body}</p>
                   ) : null}
                   {msg.type === "VIDEO" && msg.mediaUrl && (
                     <video
@@ -2406,7 +2462,7 @@ export function ConversationDetailPage() {
                   <>
                     <textarea
                       value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
+                      onChange={(e) => onComposerChange(e.target.value)}
                       onKeyDown={composerKeyDown}
                       rows={composerExpanded ? 7 : 3}
                       placeholder={
@@ -2448,6 +2504,41 @@ export function ConversationDetailPage() {
 
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-ink-50/60 px-2 py-2 dark:border-ink-800 dark:bg-ink-900/50">
                 <div className="flex min-w-0 flex-wrap items-center gap-0.5">
+                  {cannedResponses.length > 0 ? (
+                    <div className="relative" ref={cannedWrapRef}>
+                      <motion.button
+                        type="button"
+                        disabled={recording || !!voicePreview || (isOutsideWindow && !privateNote)}
+                        onClick={() => {
+                          setCannedMenuOpen((o) => !o);
+                          setTemplateMenuOpen(false);
+                          setEmojiOpen(false);
+                        }}
+                        title={t("conversationDetail.cannedResponses")}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                        whileTap={{ scale: 0.94 }}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </motion.button>
+                      {cannedMenuOpen || (cannedSlashFilter && cannedSlashFilter.length > 0) ? (
+                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
+                          {(cannedSlashFilter ?? cannedResponses).map((cr) => (
+                            <button
+                              key={cr.id}
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
+                              onClick={() => applyCannedResponse(cr)}
+                            >
+                              <span className="font-mono font-semibold text-brand-700">/{cr.shortcut}</span>
+                              <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                                {cr.content}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {messageTemplates.length > 0 ? (
                     <div className="relative" ref={templateWrapRef}>
                       <motion.button
@@ -2455,6 +2546,7 @@ export function ConversationDetailPage() {
                         disabled={recording || !!voicePreview || ((isOutsideWindow && !privateNote) && !isWaba)}
                         onClick={() => {
                           setTemplateMenuOpen((o) => !o);
+                          setCannedMenuOpen(false);
                           setEmojiOpen(false);
                         }}
                         title={t("conversationDetail.templates")}
@@ -3204,6 +3296,16 @@ export function ConversationDetailPage() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {lightboxSrc ? (
+          <ImageLightboxModal
+            src={lightboxSrc}
+            downloadLabel={t("conversationDetail.downloadImage")}
+            closeLabel={t("common.close")}
+            onClose={() => setLightboxSrc(null)}
+          />
+        ) : null}
       </AnimatePresence>
       <TemplateSendModal
         open={templateModalTemplate !== null}

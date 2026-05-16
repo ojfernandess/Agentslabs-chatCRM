@@ -94,6 +94,7 @@ const settingsSchema = z.object({
   agentBotId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   csatEnabled: z.boolean().optional(),
   csatSurveyMessage: z.union([z.string().max(4000), z.literal(""), z.null()]).optional(),
+  csatRatingType: z.enum(["number", "star", "emoji"]).optional(),
   autoResolveConversationsEnabled: z.boolean().optional(),
   autoResolveInactivityMinutes: z.number().int().min(1).max(43_200).optional(),
   autoResolveCustomerMessage: z.union([z.string().max(4000), z.literal(""), z.null()]).optional(),

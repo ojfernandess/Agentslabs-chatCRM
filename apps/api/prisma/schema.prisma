@@ -132,6 +132,8 @@ model Organization {
   bots               Bot[]
   broadcastCampaigns BroadcastCampaign[]
   inboxes            Inbox[]
+  slaPolicies        SlaPolicy[]
+  cannedResponses    CannedResponse[]
 
   automationKnowledgeArticles    AutomationKnowledgeArticle[]
   automationKnowledgeSources     AutomationKnowledgeSource[]
@@ -854,6 +856,8 @@ model Settings {
   /// Inquérito CSAT: ao resolver, envia ao contacto um link para avaliar (1–5).
   csatEnabled       Boolean @default(false) @map("csat_enabled")
   csatSurveyMessage String? @map("csat_survey_message") @db.Text
+  /// Formato da avaliação na página pública: number | star | emoji.
+  csatRatingType    String  @default("number") @map("csat_rating_type") @db.VarChar(16)
 
   /// Resolução automática por inatividade (regras ao estilo «fluxos de conversa»).
   autoResolveConversationsEnabled Boolean   @default(false) @map("auto_resolve_conversations_enabled")
@@ -895,6 +899,42 @@ model Settings {
   aiAlertWebhookSecret String? @map("ai_alert_webhook_secret") @db.Text
 
   @@map("settings")
+}
+
+/// Políticas SLA da organização (configuração; aplicação em conversas pode evoluir depois).
+model SlaPolicy {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(200)
+  description    String?  @db.Text
+  /// Tempos armazenados em minutos (1–43200).
+  firstResponseTimeMinutes  Int     @default(5) @map("first_response_time_minutes")
+  nextResponseTimeMinutes   Int     @default(5) @map("next_response_time_minutes")
+  resolutionTimeMinutes     Int     @default(60) @map("resolution_time_minutes")
+  onlyDuringBusinessHours   Boolean @default(false) @map("only_during_business_hours")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("sla_policies")
+}
+
+/// Respostas prontas (atalho + mensagem) para uso rápido no composer.
+model CannedResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  shortcut       String   @db.VarChar(50)
+  content        String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, shortcut])
+  @@index([organizationId])
+  @@map("canned_responses")
 }
 
 model PlatformApplication {

@@ -14,6 +14,7 @@ import { substituteBodyPlaceholders } from "./templateVariables.js";
 import { sendTelegramNativeMessage } from "./telegramNativeSend.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
+import { prefixOutboundBodyForExternalChannel } from "./outboundAgentFormatting.js";
 
 function outboundWebhookUrlFromConfig(config: unknown): string | null {
   if (config == null || typeof config !== "object") return null;
@@ -231,6 +232,16 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
+  let bodyForExternal = messageBody ?? "";
+  if (!isPrivate && actor.kind === "user") {
+    bodyForExternal = await prefixOutboundBodyForExternalChannel(
+      organizationId,
+      actor.userId,
+      messageBody,
+      Boolean(isPrivate),
+    );
+  }
+
   let providerMsgId: string | undefined;
   if (!isPrivate && inboxChannelType === "WHATSAPP") {
     try {
@@ -241,7 +252,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         providerMsgId = await provider.sendMessage({
           to,
           type,
-          body: messageBody ?? "",
+          body: bodyForExternal,
           mediaUrl,
           mediaType,
           ...(type === "TEMPLATE" && isMetaProvider && templateRow?.providerTemplateId
@@ -261,7 +272,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
-    const text = (messageBody ?? "").trim();
+    const text = bodyForExternal.trim();
     if (token && chatId && text) {
       const tgId = await sendTelegramNativeMessage({ botToken: token, chatId, text, log });
       providerMsgId = tgId;

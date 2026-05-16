@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { normalizeCsatRatingType } from "../lib/csatRatingType.js";
 import { defaultCsatSurveyIntro } from "../lib/csatSurvey.js";
 
 const postSchema = z.object({
@@ -31,14 +32,16 @@ export async function publicCsatRoutes(app: FastifyInstance): Promise<void> {
 
     const settings = await prisma.settings.findUnique({
       where: { organizationId: conv.organizationId },
-      select: { csatSurveyMessage: true },
+      select: { csatSurveyMessage: true, csatRatingType: true },
     });
     const intro = settings?.csatSurveyMessage?.trim() || defaultCsatSurveyIntro();
+    const ratingType = normalizeCsatRatingType(settings?.csatRatingType);
 
     if (conv.csatScore != null) {
       return {
         organizationName: conv.organization.name,
         introText: intro,
+        ratingType,
         alreadySubmitted: true as const,
         score: conv.csatScore,
         comment: conv.csatComment,
@@ -48,6 +51,7 @@ export async function publicCsatRoutes(app: FastifyInstance): Promise<void> {
     return {
       organizationName: conv.organization.name,
       introText: intro,
+      ratingType,
       alreadySubmitted: false as const,
     };
   });

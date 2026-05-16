@@ -16,7 +16,11 @@ import {
   FileText,
   GitBranch,
   Sparkles,
+  Clock,
+  MessageSquare,
 } from "lucide-react";
+import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
+import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -33,11 +37,15 @@ type SettingsSection =
   | "channel"
   | "notifications"
   | "csat"
+  | "sla"
+  | "canned"
   | "workflow"
   | "assistant"
   | "crm"
   | "templates"
   | "team";
+
+type CsatRatingType = "number" | "star" | "emoji";
 
 interface AppSettings {
   whatsappProvider: string | null;
@@ -55,6 +63,7 @@ interface AppSettings {
   agentBotId?: string | null;
   csatEnabled: boolean;
   csatSurveyMessage: string | null;
+  csatRatingType?: CsatRatingType;
   evolutionPlatformQrMode?: boolean;
   evolutionGoPlatformMode?: boolean;
   autoResolveConversationsEnabled?: boolean;
@@ -161,6 +170,7 @@ export function SettingsPage() {
   const [notifyPending, setNotifyPending] = useState(true);
   const [csatEnabled, setCsatEnabled] = useState(false);
   const [csatSurveyMessage, setCsatSurveyMessage] = useState("");
+  const [csatRatingType, setCsatRatingType] = useState<CsatRatingType>("number");
 
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
   const [newUserName, setNewUserName] = useState("");
@@ -590,6 +600,7 @@ export function SettingsPage() {
         setNotifyPending(data.notifyConversationPending ?? true);
         setCsatEnabled(data.csatEnabled ?? false);
         setCsatSurveyMessage(data.csatSurveyMessage ?? "");
+        setCsatRatingType(data.csatRatingType === "star" || data.csatRatingType === "emoji" ? data.csatRatingType : "number");
         setWorkflowTags(tags);
         setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
         const disp = workflowDisplayFromMinutes(data.autoResolveInactivityMinutes ?? 10);
@@ -798,6 +809,7 @@ export function SettingsPage() {
       const data = await api.put<AppSettings>("/settings", {
         csatEnabled,
         csatSurveyMessage: csatSurveyMessage.trim() || null,
+        csatRatingType,
       });
       setSettings(data);
       setCsatEnabled(data.csatEnabled ?? false);
@@ -999,6 +1011,8 @@ export function SettingsPage() {
                   ["channel", t("settings.sectionChannel"), Smartphone],
                   ["notifications", t("settings.sectionNotifications"), Bell],
                   ["csat", t("settings.sectionCsat"), Star],
+                  ["sla", t("settings.sectionSla"), Clock],
+                  ["canned", t("settings.sectionCanned"), MessageSquare],
                   ["workflow", t("settings.sectionWorkflow"), GitBranch],
                   ["assistant", t("settings.sectionAssistant"), Sparkles],
                   ["crm", t("settings.sectionCrm"), Tag],
@@ -1764,6 +1778,22 @@ export function SettingsPage() {
                       />
                       <p className="mt-1 text-xs text-gray-500">{t("settings.csatMessageHint")}</p>
                     </div>
+                    <div>
+                      <label htmlFor="csatRatingType" className="block text-sm font-medium text-gray-700">
+                        {t("settings.csatRatingTypeLabel")}
+                      </label>
+                      <select
+                        id="csatRatingType"
+                        value={csatRatingType}
+                        onChange={(e) => setCsatRatingType(e.target.value as CsatRatingType)}
+                        className="mt-1 block w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="number">{t("settings.csatRatingTypeNumber")}</option>
+                        <option value="star">{t("settings.csatRatingTypeStar")}</option>
+                        <option value="emoji">{t("settings.csatRatingTypeEmoji")}</option>
+                      </select>
+                      <p className="mt-1 text-xs text-gray-500">{t("settings.csatRatingTypeHint")}</p>
+                    </div>
                   </div>
                   <button
                     type="submit"
@@ -1774,6 +1804,18 @@ export function SettingsPage() {
                   </button>
                 </motion.form>
               )}
+
+              {section === "sla" && isAdmin ? (
+                <motion.div variants={staggerItem}>
+                  <SlaPoliciesSettings />
+                </motion.div>
+              ) : null}
+
+              {section === "canned" && isAdmin ? (
+                <motion.div variants={staggerItem}>
+                  <CannedResponsesSettings />
+                </motion.div>
+              ) : null}
 
               {section === "workflow" && (
                 <motion.form

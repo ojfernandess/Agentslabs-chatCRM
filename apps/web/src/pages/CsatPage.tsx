@@ -4,10 +4,21 @@ import { useI18n } from "@/i18n/I18nProvider";
 import clsx from "clsx";
 import { Star } from "lucide-react";
 
+const CSAT_EMOJIS: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: "😡",
+  2: "😕",
+  3: "😐",
+  4: "🙂",
+  5: "😍",
+};
+
+type CsatRatingType = "number" | "star" | "emoji";
+
 type CsatGetOk =
   | {
       organizationName: string;
       introText: string;
+      ratingType: CsatRatingType;
       alreadySubmitted: true;
       score: number;
       comment: string | null;
@@ -15,8 +26,137 @@ type CsatGetOk =
   | {
       organizationName: string;
       introText: string;
+      ratingType: CsatRatingType;
       alreadySubmitted: false;
     };
+
+function CsatScoreDisplay({ score, ratingType }: { score: number; ratingType: CsatRatingType }) {
+  if (ratingType === "emoji") {
+    return (
+      <span className="text-4xl" aria-label={String(score)}>
+        {CSAT_EMOJIS[score as 1 | 2 | 3 | 4 | 5] ?? score}
+      </span>
+    );
+  }
+  if (ratingType === "star") {
+    return (
+      <CsatStarPicker score={score} interactive={false} onSelect={() => {}} />
+    );
+  }
+  return <span className="text-2xl font-bold text-amber-600">{score}</span>;
+}
+
+function CsatStarPicker({
+  score,
+  interactive,
+  onSelect,
+}: {
+  score: number | null;
+  interactive: boolean;
+  onSelect: (n: number) => void;
+}) {
+  return (
+    <div className="flex justify-center gap-1">
+      {([1, 2, 3, 4, 5] as const).map((i) => (
+        <button
+          key={i}
+          type="button"
+          disabled={!interactive}
+          onClick={interactive ? () => onSelect(score === i ? 0 : i) : undefined}
+          className={clsx(
+            interactive && "rounded-lg p-1 transition-transform hover:scale-110",
+            !interactive && "pointer-events-none",
+          )}
+        >
+          <Star
+            className={clsx(
+              "h-8 w-8",
+              score != null && i <= score
+                ? "fill-amber-400 text-amber-400"
+                : "text-ink-300 dark:text-ink-600",
+            )}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CsatRatingPicker({
+  ratingType,
+  score,
+  onSelect,
+  rateLabel,
+}: {
+  ratingType: CsatRatingType;
+  score: number | null;
+  onSelect: (n: number | null) => void;
+  rateLabel: string;
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink-700 dark:text-ink-300">{rateLabel}</p>
+      {ratingType === "emoji" ? (
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
+          {([1, 2, 3, 4, 5] as const).map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onSelect(score === n ? null : n)}
+              className={clsx(
+                "flex h-14 w-14 items-center justify-center rounded-xl border text-3xl transition-colors",
+                score === n
+                  ? "border-amber-400 bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40"
+                  : "border-ink-200 bg-white hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:hover:bg-ink-700",
+              )}
+              title={String(n)}
+            >
+              {CSAT_EMOJIS[n]}
+            </button>
+          ))}
+        </div>
+      ) : ratingType === "star" ? (
+        <div className="mt-3">
+          <CsatStarPicker
+            score={score}
+            interactive
+            onSelect={(n: number) => onSelect(n === 0 ? null : n)}
+          />
+        </div>
+      ) : (
+        <CsatNumberPicker score={score} onSelect={onSelect} />
+      )}
+    </div>
+  );
+}
+
+function CsatNumberPicker({
+  score,
+  onSelect,
+}: {
+  score: number | null;
+  onSelect: (n: number | null) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+      {([1, 2, 3, 4, 5] as const).map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onSelect(score === n ? null : n)}
+          className={clsx(
+            "flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
+            score === n
+              ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100"
+              : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+          )}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function CsatPage() {
   const { token: rawToken } = useParams<{ token: string }>();
@@ -104,6 +244,14 @@ export function CsatPage() {
         ? t("csatPage.errorBadLink")
         : null;
 
+  const ratingType = data?.ratingType ?? "number";
+  const rateLabel =
+    ratingType === "emoji"
+      ? t("csatPage.rateLabelEmoji")
+      : ratingType === "star"
+        ? t("csatPage.rateLabelStar")
+        : t("csatPage.rateLabel");
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50/90 to-ink-100/90 px-4 py-10 dark:from-ink-950 dark:to-ink-900">
       <div className="mx-auto max-w-md rounded-2xl border border-ink-200/80 bg-white/95 p-6 shadow-lg dark:border-ink-700 dark:bg-ink-900/95">
@@ -119,18 +267,8 @@ export function CsatPage() {
             <p className="text-sm font-medium text-ink-800 dark:text-ink-200">{data.organizationName}</p>
             <p className="mt-4 text-sm text-ink-600 dark:text-ink-400">{t("csatPage.thankYou")}</p>
             {submittedScore != null ? (
-              <div className="mt-3 flex justify-center gap-0.5">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Star
-                    key={i}
-                    className={clsx(
-                      "h-6 w-6",
-                      i <= submittedScore
-                        ? "fill-amber-400 text-amber-400"
-                        : "text-ink-300 dark:text-ink-600",
-                    )}
-                  />
-                ))}
+              <div className="mt-3 flex justify-center">
+                <CsatScoreDisplay score={submittedScore} ratingType={data.ratingType} />
               </div>
             ) : null}
           </div>
@@ -138,26 +276,12 @@ export function CsatPage() {
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <p className="text-center text-sm font-medium text-ink-800 dark:text-ink-200">{data.organizationName}</p>
             <p className="text-sm text-ink-600 dark:text-ink-400">{data.introText}</p>
-            <div>
-              <p className="text-sm font-medium text-ink-700 dark:text-ink-300">{t("csatPage.rateLabel")}</p>
-              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                {([1, 2, 3, 4, 5] as const).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setScore((prev) => (prev === n ? null : n))}
-                    className={clsx(
-                      "flex h-10 min-w-[2.5rem] items-center justify-center rounded-lg border text-sm font-semibold transition-colors",
-                      score === n
-                        ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100"
-                        : "border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <CsatRatingPicker
+              ratingType={data.ratingType}
+              score={score}
+              onSelect={setScore}
+              rateLabel={rateLabel}
+            />
             <div>
               <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                 {t("csatPage.commentLabel")}
