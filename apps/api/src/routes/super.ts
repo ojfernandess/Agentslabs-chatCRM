@@ -55,6 +55,7 @@ const createOrgSchema = z.object({
 
 const patchOrgSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  slug: z.string().min(1).max(80).optional(),
   isActive: z.boolean().optional(),
   planTier: z.enum(["free", "growth", "enterprise"]).optional(),
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
@@ -503,6 +504,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       const p = parsed.data;
       const data: Prisma.OrganizationUpdateInput = {};
       if (p.name !== undefined) data.name = p.name;
+      if (p.slug !== undefined) data.slug = slugify(p.slug);
       if (p.isActive !== undefined) data.isActive = p.isActive;
       if (p.planTier !== undefined) data.planTier = p.planTier;
       if (p.billingEmail !== undefined) {
@@ -526,6 +528,72 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return org;
+  });
+
+  app.delete<{ Params: { id: string } }>("/organizations/:id", async (request, reply) => {
+    const orgId = request.params.id;
+    const org = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+
+    const members = await prisma.user.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, role: true, email: true },
+    });
+    const reassignTo = request.user.id;
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const u of members) {
+          if (u.role === "SUPER_ADMIN") {
+            await tx.user.update({
+              where: { id: u.id },
+              data: { organizationId: null },
+            });
+            continue;
+          }
+          await tx.auditLog.updateMany({
+            where: { actorUserId: u.id },
+            data: { actorUserId: reassignTo },
+          });
+          await tx.platformApplication.updateMany({
+            where: { createdById: u.id },
+            data: { createdById: reassignTo },
+          });
+          await tx.broadcastCampaign.updateMany({
+            where: { createdById: u.id },
+            data: { createdById: reassignTo },
+          });
+          await tx.automationKnowledgeRevision.updateMany({
+            where: { editorUserId: u.id },
+            data: { editorUserId: reassignTo },
+          });
+          await tx.user.delete({ where: { id: u.id } });
+        }
+        await tx.organization.delete({ where: { id: orgId } });
+      });
+    } catch (err) {
+      request.log.error(err, "super.organization.delete failed");
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Não foi possível eliminar a organização (dependências em uso).",
+        statusCode: 400,
+      });
+    }
+
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.organization.delete",
+      resourceType: "organization",
+      resourceId: orgId,
+      metadata: { name: org.name, slug: org.slug },
+      ip: clientIp(request),
+    });
+    return reply.status(204).send();
   });
 
   app.get("/usage-metrics", async () => {

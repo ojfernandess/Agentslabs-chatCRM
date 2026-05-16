@@ -7,10 +7,26 @@ import type { InboxChannelType } from "@prisma/client";
  * Ref.: https://www.chatwoot.com/docs/product/channels/live-chat
  * https://developers.chatwoot.com/api-reference/introduction
  */
-export type ChannelNativeConfig = {
+export type WebsiteWidgetPosition = "left" | "right";
+export type WebsiteWidgetBubbleType = "standard" | "expanded";
+
+/** Configuração do widget de chat ao vivo (canal WEBSITE), estilo Chatwoot. */
+export type WebsiteWidgetConfig = {
   websiteUrl?: string;
-  /** Cor do widget (hex), quando existir UI de widget. */
   widgetColor?: string;
+  siteName?: string;
+  welcomeTitle?: string;
+  welcomeMessage?: string;
+  welcomeTagline?: string;
+  avatarUrl?: string;
+  widgetPosition?: WebsiteWidgetPosition;
+  bubbleType?: WebsiteWidgetBubbleType;
+  bubbleLauncherTitle?: string;
+  greetingEnabled?: boolean;
+  responseTimeLabel?: string;
+};
+
+export type ChannelNativeConfig = WebsiteWidgetConfig & {
   /** Telegram Bot API */
   telegramBotToken?: string;
   /** Facebook Messenger (Graph) */

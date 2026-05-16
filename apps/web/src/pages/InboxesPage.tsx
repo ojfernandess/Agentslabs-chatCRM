@@ -6,6 +6,12 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
 import { Inbox, ChevronDown, ChevronRight, Pencil, Trash2, Check, Copy } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER } from "@/components/InboxCreateWizard";
+import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
+import {
+  websiteWidgetFromChannelConfig,
+  websiteWidgetToChannelConfig,
+  type WebsiteWidgetForm,
+} from "@/lib/websiteWidget";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "";
@@ -100,6 +106,7 @@ export function InboxesPage() {
   const [editProviderPhoneId, setEditProviderPhoneId] = useState("");
   const [editProviderEvoBaseUrl, setEditProviderEvoBaseUrl] = useState("");
   const [providerSaving, setProviderSaving] = useState(false);
+  const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -231,10 +238,16 @@ export function InboxesPage() {
     setEditProviderPhoneId(channelSettings?.whatsappPhoneNumberId ?? "");
     setEditProviderEvoBaseUrl(channelSettings?.evolutionApiBaseUrl ?? "");
     setEditProviderApiKey("");
+    setEditWebsiteWidget(
+      row.channelType === "WEBSITE"
+        ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
+        : null,
+    );
   };
 
   const cancelEdit = () => {
     setEditingId(null);
+    setEditWebsiteWidget(null);
   };
 
   const saveEdit = async (inboxId: string) => {
@@ -253,6 +266,13 @@ export function InboxesPage() {
           : {};
       if (wh) prev.outboundWebhookUrl = wh;
       else delete prev.outboundWebhookUrl;
+      if (editChannel === "WEBSITE" && editWebsiteWidget) {
+        const widgetCfg = websiteWidgetToChannelConfig({
+          ...editWebsiteWidget,
+          siteName: editWebsiteWidget.siteName.trim() || n,
+        });
+        Object.assign(prev, widgetCfg);
+      }
       const channelConfigPayload = Object.keys(prev).length > 0 ? prev : null;
 
       await api.patch(`/inboxes/${inboxId}`, {
@@ -277,6 +297,7 @@ export function InboxesPage() {
         await api.put("/settings", providerBody);
       }
       setEditingId(null);
+      setEditWebsiteWidget(null);
       await load();
     } catch {
       window.alert(t("inboxesPage.editSaveFailed"));
@@ -593,6 +614,20 @@ export function InboxesPage() {
                             ))}
                           </select>
                           <p className="mb-3 text-[11px] text-gray-500 dark:text-ink-500">{t("inboxesPage.agentBotHint")}</p>
+                          {editChannel === "WEBSITE" && editWebsiteWidget && row.ingestToken ? (
+                            <div className="mb-4 rounded-lg border border-ink-200 bg-white p-4 dark:border-ink-600 dark:bg-ink-900/50">
+                              <h4 className="mb-3 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                                {t("inboxesPage.wizard.widget.builderTitle")}
+                              </h4>
+                              <WebsiteWidgetBuilder
+                                form={editWebsiteWidget}
+                                onChange={(patch) =>
+                                  setEditWebsiteWidget((w) => (w ? { ...w, ...patch } : w))
+                                }
+                                ingestToken={row.ingestToken}
+                              />
+                            </div>
+                          ) : null}
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"

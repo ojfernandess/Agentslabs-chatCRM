@@ -28,6 +28,7 @@ import { agentBotInboxRoutes } from "./routes/agentBotInbox.js";
 import { botRoutes } from "./routes/bots.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { publicMessageMediaRoutes } from "./routes/publicMessageMedia.js";
+import { widgetPublicRoutes } from "./routes/widgetPublic.js";
 import { publicCsatRoutes } from "./routes/publicCsat.js";
 import { broadcastRoutes } from "./routes/broadcasts.js";
 import { inboxRoutes } from "./routes/inboxes.js";
@@ -78,6 +79,7 @@ await app.register(rateLimit, {
           path.startsWith("/api/v1/public/csat/") ||
           path.startsWith("/api/v1/public/inbox/") ||
           path.startsWith("/api/v1/public/channels/") ||
+          path.startsWith("/api/v1/public/widget/") ||
           path.startsWith("/api/v1/public/system-documentation") ||
           path.startsWith("/api/v1/public/knowledge-source-push/")
         );
@@ -96,6 +98,7 @@ app.decorate("prisma", prisma);
 
 // Leitura pública de áudio carregado (WhatsApp obtém o ficheiro antes de entregar ao cliente)
 await app.register(publicMessageMediaRoutes);
+await app.register(widgetPublicRoutes);
 await app.register(publicSystemDocumentationRoutes, { prefix: "/api/v1/public" });
 await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
 await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" });

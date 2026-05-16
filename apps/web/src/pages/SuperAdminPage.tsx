@@ -281,6 +281,14 @@ export function SuperAdminPage() {
   const [billingEmailState, setBillingEmailState] = useState("");
   const [billingQuota, setBillingQuota] = useState("");
   const [billingSaving, setBillingSaving] = useState(false);
+  const [editOrg, setEditOrg] = useState<OrgRow | null>(null);
+  const [editOrgName, setEditOrgName] = useState("");
+  const [editOrgSlug, setEditOrgSlug] = useState("");
+  const [editOrgActive, setEditOrgActive] = useState(true);
+  const [editOrgPlan, setEditOrgPlan] = useState("free");
+  const [editOrgSaving, setEditOrgSaving] = useState(false);
+  const [deleteOrgConfirm, setDeleteOrgConfirm] = useState<OrgRow | null>(null);
+  const [deleteOrgBusy, setDeleteOrgBusy] = useState(false);
   const [usersOrg, setUsersOrg] = useState<OrgRow | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -846,6 +854,50 @@ export function SuperAdminPage() {
     setBillingPlanTier(o.planTier ?? "free");
     setBillingEmailState(o.billingEmail ?? "");
     setBillingQuota(o.monthlyMessageQuota != null ? String(o.monthlyMessageQuota) : "");
+  };
+
+  const openEditOrg = (o: OrgRow) => {
+    setEditOrg(o);
+    setEditOrgName(o.name);
+    setEditOrgSlug(o.slug);
+    setEditOrgActive(o.isActive);
+    setEditOrgPlan(o.planTier ?? "free");
+  };
+
+  const saveEditOrg = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editOrg) return;
+    setEditOrgSaving(true);
+    setError("");
+    try {
+      await api.patch(`/super/organizations/${editOrg.id}`, {
+        name: editOrgName.trim(),
+        slug: editOrgSlug.trim(),
+        isActive: editOrgActive,
+        planTier: editOrgPlan,
+      });
+      setEditOrg(null);
+      await load();
+    } catch {
+      setError(t("superAdmin.orgSaveFailed"));
+    } finally {
+      setEditOrgSaving(false);
+    }
+  };
+
+  const deleteOrganization = async () => {
+    if (!deleteOrgConfirm) return;
+    setDeleteOrgBusy(true);
+    setError("");
+    try {
+      await api.delete(`/super/organizations/${deleteOrgConfirm.id}`);
+      setDeleteOrgConfirm(null);
+      await load();
+    } catch {
+      setError(t("superAdmin.orgDeleteFailed"));
+    } finally {
+      setDeleteOrgBusy(false);
+    }
   };
 
   const submitBilling = async (e: FormEvent) => {
@@ -2462,6 +2514,22 @@ export function SuperAdminPage() {
                               <div className="flex flex-col items-end gap-1">
                                 <button
                                   type="button"
+                                  onClick={() => openEditOrg(o)}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  {t("superAdmin.orgEdit")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteOrgConfirm(o)}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  {t("superAdmin.orgDelete")}
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => {
                                     setFlagsOrgId(o.id);
                                     setSection("featureFlags");
@@ -2557,6 +2625,64 @@ export function SuperAdminPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        ) : null}
+
+        {editOrg ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+            <div className="card-surface w-full max-w-md p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.orgEditTitle")}</h3>
+              <form onSubmit={(e) => void saveEditOrg(e)} className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-ink-600">Nome</label>
+                  <input value={editOrgName} onChange={(e) => setEditOrgName(e.target.value)} className="input-field mt-1" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600">{t("superAdmin.orgSlug")}</label>
+                  <input value={editOrgSlug} onChange={(e) => setEditOrgSlug(e.target.value)} className="input-field mt-1" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
+                  <select value={editOrgPlan} onChange={(e) => setEditOrgPlan(e.target.value)} className="input-field mt-1">
+                    <option value="free">{t("superAdmin.planFree")}</option>
+                    <option value="growth">{t("superAdmin.planGrowth")}</option>
+                    <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
+                  </select>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" checked={editOrgActive} onChange={(e) => setEditOrgActive(e.target.checked)} />
+                  Organização ativa
+                </label>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn-secondary" onClick={() => setEditOrg(null)}>{t("common.cancel")}</button>
+                  <button type="submit" className="btn-primary" disabled={editOrgSaving}>
+                    {editOrgSaving ? t("common.saving") : t("superAdmin.orgSave")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {deleteOrgConfirm ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+            <div className="card-surface w-full max-w-md p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-red-800">{t("superAdmin.orgDeleteTitle")}</h3>
+              <p className="mt-2 text-sm text-ink-600">
+                {t("superAdmin.orgDeleteConfirm").replace("{name}", deleteOrgConfirm.name)}
+              </p>
+              <div className="mt-6 flex justify-end gap-2">
+                <button type="button" className="btn-secondary" onClick={() => setDeleteOrgConfirm(null)}>{t("common.cancel")}</button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  disabled={deleteOrgBusy}
+                  onClick={() => void deleteOrganization()}
+                >
+                  {deleteOrgBusy ? t("common.loading") : t("superAdmin.orgDelete")}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}

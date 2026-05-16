@@ -16,6 +16,13 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { InstagramBrandIcon } from "@/components/InstagramBrandIcon";
 import { TelegramBrandIcon } from "@/components/TelegramBrandIcon";
+import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
+import {
+  emptyWebsiteWidgetForm,
+  websiteWidgetToChannelConfig,
+  buildWebsiteEmbedScript,
+  type WebsiteWidgetForm,
+} from "@/lib/websiteWidget";
 
 /** Ordem e IDs alinhados à UX do [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings). */
 export const INBOX_CHANNEL_ORDER = [
@@ -140,6 +147,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [isDefault, setIsDefault] = useState(false);
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   const [nativeCfg, setNativeCfg] = useState<NativeCfgForm>(emptyNativeCfg);
+  const [websiteWidget, setWebsiteWidget] = useState<WebsiteWidgetForm>(emptyWebsiteWidgetForm());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdInbox, setCreatedInbox] = useState<{
@@ -164,6 +172,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setIsDefault(false);
     setSelectedAgentIds(new Set());
     setNativeCfg(emptyNativeCfg());
+    setWebsiteWidget(emptyWebsiteWidgetForm());
     setCreating(false);
     setError(null);
     setCreatedInbox(null);
@@ -251,7 +260,13 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setCreating(true);
     setError(null);
     try {
-      const channelConfig = buildChannelConfigPayload(channel, nativeCfg);
+      const channelConfig =
+        channel === "WEBSITE"
+          ? websiteWidgetToChannelConfig({
+              ...websiteWidget,
+              siteName: websiteWidget.siteName.trim() || n,
+            })
+          : buildChannelConfigPayload(channel, nativeCfg);
       const inbox = await api.post<{ id: string; ingestToken: string | null; channelType: string }>("/inboxes", {
         name: n,
         description: description.trim() || null,
@@ -319,7 +334,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const channelConfigFields = channel ? (
     <div className="mt-4 space-y-3 rounded-lg border border-ink-200 bg-ink-50/50 p-4 dark:border-ink-600 dark:bg-ink-950/30">
       <p className="text-xs font-medium text-ink-600 dark:text-ink-400">{t("inboxesPage.wizard.nativeCredentials")}</p>
-      {(channel === "WEBSITE" || channel === "API") && (
+      {channel === "API" && (
         <>
           <label className="block">
             <span className="mb-1 block text-xs text-ink-500">{t("inboxesPage.wizard.fieldWebsiteUrl")}</span>
@@ -328,15 +343,6 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
               onChange={(e) => updateCfg({ websiteUrl: e.target.value })}
               className="input-field"
               placeholder="https://"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-500">{t("inboxesPage.wizard.fieldWidgetColor")}</span>
-            <input
-              value={nativeCfg.widgetColor}
-              onChange={(e) => updateCfg({ widgetColor: e.target.value })}
-              className="input-field"
-              placeholder="#1a73e8"
             />
           </label>
         </>
@@ -636,11 +642,17 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
             )}
 
             {step === 2 && channel && (
-              <form onSubmit={submitDetails} className="max-w-lg">
+              <form onSubmit={submitDetails} className={channel === "WEBSITE" ? "max-w-5xl" : "max-w-lg"}>
                 <h3 className="mb-1 text-xl font-semibold text-ink-900 dark:text-ink-50">
-                  {t("inboxesPage.wizard.step2Title")}
+                  {channel === "WEBSITE"
+                    ? t("inboxesPage.wizard.websiteChannelTitle")
+                    : t("inboxesPage.wizard.step2Title")}
                 </h3>
-                <p className="mb-2 text-sm text-ink-600 dark:text-ink-400">{t("inboxesPage.wizard.step2Subtitle")}</p>
+                <p className="mb-2 text-sm text-ink-600 dark:text-ink-400">
+                  {channel === "WEBSITE"
+                    ? t("inboxesPage.wizard.websiteChannelSubtitle")
+                    : t("inboxesPage.wizard.step2Subtitle")}
+                </p>
                 <div
                   className={`mb-4 rounded-lg px-3 py-2 text-xs ${
                     channel === "WHATSAPP"
@@ -657,7 +669,13 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                 </label>
                 <input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setName(v);
+                    if (channel === "WEBSITE" && !websiteWidget.siteName.trim()) {
+                      setWebsiteWidget((w) => ({ ...w, siteName: v }));
+                    }
+                  }}
                   className="input-field mb-4"
                   required
                 />
@@ -690,7 +708,20 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                     <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("inboxesPage.agentBotHint")}</p>
                   </div>
                 ) : null}
-                {channelConfigFields}
+                {channel === "WEBSITE" ? (
+                  <div className="mb-4">
+                    <h4 className="mb-3 text-sm font-semibold text-ink-800 dark:text-ink-200">
+                      {t("inboxesPage.wizard.widget.builderTitle")}
+                    </h4>
+                    <WebsiteWidgetBuilder
+                      form={websiteWidget}
+                      onChange={(patch) => setWebsiteWidget((w) => ({ ...w, ...patch }))}
+                      showEmbed={false}
+                    />
+                  </div>
+                ) : (
+                  channelConfigFields
+                )}
                 <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-ink-700 dark:text-ink-300">
                   <input
                     type="checkbox"
@@ -762,7 +793,38 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                 <h3 className="mb-2 text-xl font-semibold text-ink-900 dark:text-ink-50">
                   {t("inboxesPage.wizard.step4Title")}
                 </h3>
-                <p className="mb-4 text-sm text-ink-600 dark:text-ink-300">{t("inboxesPage.wizard.step4Subtitle")}</p>
+                <p className="mb-4 text-sm text-ink-600 dark:text-ink-300">
+                  {createdInbox.channelType === "WEBSITE"
+                    ? t("inboxesPage.wizard.step4WebsiteSubtitle")
+                    : t("inboxesPage.wizard.step4Subtitle")}
+                </p>
+                {createdInbox.channelType === "WEBSITE" && createdInbox.ingestToken ? (
+                  <div className="card-surface mb-6 border p-4 dark:border-ink-600">
+                    <p className="mb-2 text-xs font-semibold uppercase text-ink-500">
+                      {t("inboxesPage.wizard.widget.tabScript")}
+                    </p>
+                    <pre className="mb-3 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink-50 p-3 text-xs dark:bg-ink-950">
+                      {buildWebsiteEmbedScript(
+                        typeof window !== "undefined" ? window.location.origin : "",
+                        createdInbox.ingestToken,
+                      )}
+                    </pre>
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      onClick={() =>
+                        void copyText(
+                          buildWebsiteEmbedScript(
+                            typeof window !== "undefined" ? window.location.origin : "",
+                            createdInbox.ingestToken!,
+                          ),
+                        )
+                      }
+                    >
+                      {t("inboxesPage.wizard.ingestCopy")}
+                    </button>
+                  </div>
+                ) : null}
                 {createdInbox.channelType === "WHATSAPP" ? (
                   <p className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-200/90">
                     {t("inboxesPage.wizard.ingestNoteWhatsApp")}
