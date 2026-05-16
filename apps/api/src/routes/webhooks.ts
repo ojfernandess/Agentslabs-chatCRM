@@ -323,8 +323,11 @@ async function handleWhatsAppPost(
       let resolvedMediaType: string | null = msg.mediaType ?? null;
       if (
         channelSettings.whatsappProvider === "evolution" &&
-        msg.type === "AUDIO" &&
-        msg.evolutionWebMessage
+        msg.evolutionWebMessage &&
+        (msg.type === "IMAGE" ||
+          msg.type === "VIDEO" ||
+          msg.type === "DOCUMENT" ||
+          msg.type === "AUDIO")
       ) {
         const tryPersist = () =>
           persistEvolutionInboundMediaAsLocalUrl({
@@ -341,8 +344,8 @@ async function handleWhatsAppPost(
           resolvedMediaType = local.mediaType;
         } else {
           app.log.warn(
-            { organizationId, waMessageId: msg.waMessageId },
-            "Evolution inbound audio: getBase64FromMediaMessage failed — using original URL if any",
+            { organizationId, waMessageId: msg.waMessageId, type: msg.type },
+            "Evolution inbound media: getBase64FromMediaMessage failed — using original URL if any",
           );
         }
       }

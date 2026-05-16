@@ -90,6 +90,14 @@ services:
       AGENT_KB_DEBUG: ${AGENT_KB_DEBUG:-}
       # Áudio/mídia enviada: ficheiros neste diretório; expostos como ${PUBLIC_URL}/api/v1/messages/media/…
       MEDIA_UPLOAD_DIR: /app/data/message-media
+      MEDIA_STORAGE_DRIVER: ${MEDIA_STORAGE_DRIVER:-local}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      MINIO_BUCKET: ${MINIO_BUCKET:-openconduit-media}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_PUBLIC_BASE_URL: ${MINIO_PUBLIC_BASE_URL:-}
       NODE_ENV: production
       # true apenas no primeiro arranque (ou ambientes controlados); depois definir false
       RUN_DB_SEED: ${RUN_DB_SEED:-false}

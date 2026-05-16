@@ -1,13 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { MultipartFile } from "@fastify/multipart";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { sendMessageSchema } from "../lib/messagePayload.js";
-import { config, getPublicOrigin } from "../config.js";
+import { putMessageMediaFile } from "../lib/mediaStorage.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 
 function extensionForUploadMimetype(mimetype: string, originalFilename?: string): string {
@@ -83,12 +81,12 @@ async function persistMultipartMedia(
   const ext = extensionForUploadMimetype(rawMime, file.filename ?? undefined);
   const token = randomBytes(16).toString("hex");
   const filename = `${token}.${ext}`;
-  const dir = config.mediaUploadDir;
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, filename), buf);
-
-  const mediaUrl = `${getPublicOrigin()}/api/v1/messages/media/${filename}`;
-  return { mediaUrl, mimeType: mime || "application/octet-stream" };
+  const stored = await putMessageMediaFile({
+    filename,
+    buffer: buf,
+    contentType: mime || "application/octet-stream",
+  });
+  return { mediaUrl: stored.mediaUrl, mimeType: mime || "application/octet-stream" };
 }
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {

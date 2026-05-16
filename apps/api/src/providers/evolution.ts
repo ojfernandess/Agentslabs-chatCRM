@@ -560,34 +560,55 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
       params.mediaType,
     );
 
-    const mediaMessage: Record<string, unknown> = {
+    const cap = params.body?.trim();
+    /** Evolution API v2: campos planos (`mediatype`, `media`, …). v1: objeto `mediaMessage`. */
+    const v2Body: Record<string, unknown> = {
+      number,
+      mediatype,
+      media: params.mediaUrl,
+    };
+    if (mimetype) v2Body.mimetype = mimetype;
+    if (cap) v2Body.caption = cap;
+    if (params.type === "DOCUMENT" && fileName) v2Body.fileName = fileName;
+
+    const v1MediaMessage: Record<string, unknown> = {
       mediaType: mediatype,
       media: params.mediaUrl,
     };
-    if (mimetype) mediaMessage.mimetype = mimetype;
-    if (params.type === "DOCUMENT" && fileName) {
-      mediaMessage.fileName = fileName;
-    }
-    const cap = params.body?.trim();
-    if (params.type !== "AUDIO" && cap) {
-      mediaMessage.caption = cap;
-    }
+    if (mimetype) v1MediaMessage.mimetype = mimetype;
+    if (params.type === "DOCUMENT" && fileName) v1MediaMessage.fileName = fileName;
+    if (cap) v1MediaMessage.caption = cap;
 
     const url = `${this.baseUrl}/message/sendMedia/${this.instanceName}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({
-        number,
-        mediaMessage,
-      }),
-    });
+    const postMedia = async (body: Record<string, unknown>) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+      });
+      let json: unknown = null;
+      try {
+        json = await res.json();
+      } catch {
+        /* body may be empty */
+      }
+      return { res, json };
+    };
+
+    let { res: response, json: data } = await postMedia(v2Body);
+    if (!response.ok) {
+      const fallback = await postMedia({ number, mediaMessage: v1MediaMessage });
+      response = fallback.res;
+      data = fallback.json;
+    }
 
     if (!response.ok) {
-      const err = await response.text();
+      const err =
+        data !== null && typeof data === "object"
+          ? JSON.stringify(data)
+          : await response.text().catch(() => "");
       throw new Error(`Evolution API error: ${response.status} ${err}`);
     }
-    const data = (await response.json()) as unknown;
     const id = extractEvolutionSendMessageId(data);
     if (!id) throw new Error("Evolution API: missing message id in response");
     return id;

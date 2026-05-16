@@ -222,6 +222,20 @@ interface SuperResendPayload {
   passwordResetHtmlTemplate: string;
 }
 
+interface SuperMediaStoragePayload {
+  configured: boolean;
+  enabled: boolean;
+  driver: "local" | "minio";
+  endpoint: string;
+  bucket: string;
+  accessKeyMasked: string;
+  secretKeyMasked: string;
+  useSsl: boolean;
+  region: string;
+  publicBaseUrl: string;
+  source: "env" | "platform";
+}
+
 export function SuperAdminPage() {
   const { t } = useI18n();
   const { user, logout, enterOrganization, applySessionToken } = useAuth();
@@ -335,6 +349,31 @@ export function SuperAdminPage() {
   const [resendSaving, setResendSaving] = useState(false);
   const [resendPasswordResetSubject, setResendPasswordResetSubject] = useState("");
   const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
+
+  const [mediaStorageLoad, setMediaStorageLoad] = useState(false);
+  const [mediaStorageSaving, setMediaStorageSaving] = useState(false);
+  const [mediaStorageSnapshot, setMediaStorageSnapshot] = useState<SuperMediaStoragePayload>({
+    configured: false,
+    enabled: false,
+    driver: "local",
+    endpoint: "",
+    bucket: "",
+    accessKeyMasked: "",
+    secretKeyMasked: "",
+    useSsl: false,
+    region: "us-east-1",
+    publicBaseUrl: "",
+    source: "env",
+  });
+  const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
+  const [mediaStorageDriver, setMediaStorageDriver] = useState<"local" | "minio">("local");
+  const [mediaStorageEndpoint, setMediaStorageEndpoint] = useState("");
+  const [mediaStorageBucket, setMediaStorageBucket] = useState("");
+  const [mediaStorageAccessKey, setMediaStorageAccessKey] = useState("");
+  const [mediaStorageSecretKey, setMediaStorageSecretKey] = useState("");
+  const [mediaStorageUseSsl, setMediaStorageUseSsl] = useState(false);
+  const [mediaStorageRegion, setMediaStorageRegion] = useState("us-east-1");
+  const [mediaStoragePublicBaseUrl, setMediaStoragePublicBaseUrl] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -562,6 +601,50 @@ export function SuperAdminPage() {
       })
       .finally(() => {
         if (!cancelled) setResendLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "globalSettings") return;
+    let cancelled = false;
+    setMediaStorageLoad(true);
+    void api
+      .get<SuperMediaStoragePayload>("/super/media-storage")
+      .then((d) => {
+        if (cancelled) return;
+        setMediaStorageSnapshot(d);
+        setMediaStorageEnabled(d.enabled);
+        setMediaStorageDriver(d.driver);
+        setMediaStorageEndpoint(d.endpoint);
+        setMediaStorageBucket(d.bucket);
+        setMediaStorageUseSsl(d.useSsl);
+        setMediaStorageRegion(d.region || "us-east-1");
+        setMediaStoragePublicBaseUrl(d.publicBaseUrl);
+        setMediaStorageAccessKey("");
+        setMediaStorageSecretKey("");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMediaStorageSnapshot({
+            configured: false,
+            enabled: false,
+            driver: "local",
+            endpoint: "",
+            bucket: "",
+            accessKeyMasked: "",
+            secretKeyMasked: "",
+            useSsl: false,
+            region: "us-east-1",
+            publicBaseUrl: "",
+            source: "env",
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMediaStorageLoad(false);
       });
     return () => {
       cancelled = true;
@@ -829,6 +912,50 @@ export function SuperAdminPage() {
       setError(t("superAdmin.publicApiDocsSaveError"));
     } finally {
       setPublicDocsBusy(false);
+    }
+  };
+
+  const saveMediaStorage = async (e: FormEvent) => {
+    e.preventDefault();
+    setMediaStorageSaving(true);
+    setError("");
+    try {
+      const body: {
+        enabled: boolean;
+        driver: "local" | "minio";
+        endpoint?: string;
+        bucket?: string;
+        accessKey?: string;
+        secretKey?: string;
+        useSsl?: boolean;
+        region?: string;
+        publicBaseUrl?: string;
+      } = {
+        enabled: mediaStorageEnabled,
+        driver: mediaStorageDriver,
+        endpoint: mediaStorageEndpoint.trim(),
+        bucket: mediaStorageBucket.trim(),
+        useSsl: mediaStorageUseSsl,
+        region: mediaStorageRegion.trim() || "us-east-1",
+        publicBaseUrl: mediaStoragePublicBaseUrl.trim(),
+      };
+      if (mediaStorageAccessKey.trim()) body.accessKey = mediaStorageAccessKey.trim();
+      if (mediaStorageSecretKey.trim()) body.secretKey = mediaStorageSecretKey.trim();
+      const d = await api.put<SuperMediaStoragePayload>("/super/media-storage", body);
+      setMediaStorageSnapshot(d);
+      setMediaStorageEnabled(d.enabled);
+      setMediaStorageDriver(d.driver);
+      setMediaStorageEndpoint(d.endpoint);
+      setMediaStorageBucket(d.bucket);
+      setMediaStorageUseSsl(d.useSsl);
+      setMediaStorageRegion(d.region);
+      setMediaStoragePublicBaseUrl(d.publicBaseUrl);
+      setMediaStorageAccessKey("");
+      setMediaStorageSecretKey("");
+    } catch {
+      setError(t("superAdmin.mediaStorageSaveError"));
+    } finally {
+      setMediaStorageSaving(false);
     }
   };
 
@@ -1366,6 +1493,130 @@ export function SuperAdminPage() {
                     </a>
                   ) : null}
                 </div>
+              </section>
+              <section className="card-surface p-6">
+                <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.mediaStorageTitle")}</h2>
+                <p className="mb-4 text-sm text-ink-600">{t("superAdmin.mediaStorageSubtitle")}</p>
+                {mediaStorageLoad ? (
+                  <p className="text-sm text-ink-500">{t("common.loading")}</p>
+                ) : (
+                  <form onSubmit={(e) => void saveMediaStorage(e)} className="space-y-4">
+                    {mediaStorageSnapshot.source === "env" && !mediaStorageSnapshot.enabled ? (
+                      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                        {t("superAdmin.mediaStorageEnvHint")}
+                      </p>
+                    ) : null}
+                    {mediaStorageSnapshot.configured ? (
+                      <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-100">
+                        {t("superAdmin.mediaStorageConfigured")}
+                      </p>
+                    ) : mediaStorageEnabled ? (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                        {t("superAdmin.mediaStorageIncomplete")}
+                      </p>
+                    ) : null}
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-800 dark:text-ink-200">
+                      <input
+                        type="checkbox"
+                        checked={mediaStorageEnabled}
+                        onChange={(e) => setMediaStorageEnabled(e.target.checked)}
+                        className="rounded border-ink-300 dark:border-ink-600"
+                      />
+                      {t("superAdmin.mediaStorageEnable")}
+                    </label>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageDriver")}</label>
+                      <select
+                        value={mediaStorageDriver}
+                        onChange={(e) => setMediaStorageDriver(e.target.value as "local" | "minio")}
+                        disabled={!mediaStorageEnabled}
+                        className="input-field mt-1 max-w-xs"
+                      >
+                        <option value="local">{t("superAdmin.mediaStorageDriverLocal")}</option>
+                        <option value="minio">{t("superAdmin.mediaStorageDriverMinio")}</option>
+                      </select>
+                    </div>
+                    {mediaStorageEnabled && mediaStorageDriver === "minio" ? (
+                      <>
+                        <div>
+                          <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageEndpoint")}</label>
+                          <input
+                            value={mediaStorageEndpoint}
+                            onChange={(e) => setMediaStorageEndpoint(e.target.value)}
+                            placeholder="http://minio:9000"
+                            className="input-field mt-1"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageBucket")}</label>
+                          <input
+                            value={mediaStorageBucket}
+                            onChange={(e) => setMediaStorageBucket(e.target.value)}
+                            className="input-field mt-1"
+                            required
+                          />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageAccessKey")}</label>
+                            <input
+                              type="password"
+                              value={mediaStorageAccessKey}
+                              onChange={(e) => setMediaStorageAccessKey(e.target.value)}
+                              placeholder={mediaStorageSnapshot.accessKeyMasked || undefined}
+                              className="input-field mt-1"
+                              autoComplete="new-password"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageSecretKey")}</label>
+                            <input
+                              type="password"
+                              value={mediaStorageSecretKey}
+                              onChange={(e) => setMediaStorageSecretKey(e.target.value)}
+                              placeholder={mediaStorageSnapshot.secretKeyMasked || undefined}
+                              className="input-field mt-1"
+                              autoComplete="new-password"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStorageRegion")}</label>
+                            <input
+                              value={mediaStorageRegion}
+                              onChange={(e) => setMediaStorageRegion(e.target.value)}
+                              className="input-field mt-1"
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-end gap-2 pb-2 text-sm text-ink-800 dark:text-ink-200">
+                            <input
+                              type="checkbox"
+                              checked={mediaStorageUseSsl}
+                              onChange={(e) => setMediaStorageUseSsl(e.target.checked)}
+                              className="rounded border-ink-300 dark:border-ink-600"
+                            />
+                            {t("superAdmin.mediaStorageUseSsl")}
+                          </label>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-ink-600">{t("superAdmin.mediaStoragePublicBaseUrl")}</label>
+                          <p className="mt-0.5 text-xs text-ink-500">{t("superAdmin.mediaStoragePublicBaseUrlHint")}</p>
+                          <input
+                            value={mediaStoragePublicBaseUrl}
+                            onChange={(e) => setMediaStoragePublicBaseUrl(e.target.value)}
+                            placeholder="https://cdn.example.com/openconduit-media"
+                            className="input-field mt-2"
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                    <button type="submit" className="btn-primary" disabled={mediaStorageSaving}>
+                      {mediaStorageSaving ? t("common.saving") : t("superAdmin.mediaStorageSave")}
+                    </button>
+                  </form>
+                )}
               </section>
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.resendEmailTitle")}</h2>

@@ -1,10 +1,8 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import type { Message } from "@prisma/client";
 import { config, getPublicOrigin } from "../config.js";
 import { prisma } from "../db.js";
+import { readMessageMediaFile } from "./mediaStorage.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -46,10 +44,8 @@ async function loadAudioBytesForTranscription(
     if (idx !== -1) {
       const name = u.pathname.slice(idx + LOCAL_MEDIA_PATH.length);
       if (LOCAL_MEDIA_FILENAME_RE.test(name)) {
-        const filePath = join(config.mediaUploadDir, name);
-        if (existsSync(filePath)) {
-          const buffer = await readFile(filePath);
-          if (buffer.length < 16) return null;
+        const buffer = await readMessageMediaFile(name);
+        if (buffer && buffer.length >= 16) {
           return { buffer, filename: name };
         }
       }

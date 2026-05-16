@@ -29,6 +29,11 @@ import {
   getPasswordResetTemplatesForEditor,
   parseResendEmailValue,
 } from "../lib/resendEmailSettings.js";
+import {
+  MEDIA_STORAGE_PLATFORM_KEY,
+  parseMediaStoragePlatformValue,
+} from "../lib/mediaStorageSettings.js";
+import { invalidateMediaStorageCache } from "../lib/mediaStorage.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 
@@ -112,6 +117,18 @@ const resendEmailPutSchema = z.object({
   fromName: z.string().min(1).max(120).optional(),
   passwordResetSubject: z.string().max(200).optional(),
   passwordResetHtmlTemplate: z.string().max(100_000).optional(),
+});
+
+const mediaStoragePutSchema = z.object({
+  enabled: z.boolean(),
+  driver: z.enum(["local", "minio"]),
+  endpoint: z.string().max(500).optional(),
+  bucket: z.string().max(120).optional(),
+  accessKey: z.string().max(256).optional(),
+  secretKey: z.string().max(256).optional(),
+  useSsl: z.boolean().optional(),
+  region: z.string().max(64).optional(),
+  publicBaseUrl: z.string().max(500).optional(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -1236,6 +1253,171 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       apiKeyMasked: "••••••••",
       passwordResetSubject: tpl.subject,
       passwordResetHtmlTemplate: tpl.html,
+    };
+  });
+
+  app.get("/media-storage", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: MEDIA_STORAGE_PLATFORM_KEY },
+    });
+    const parsed = parseMediaStoragePlatformValue(row?.value);
+    const envDriver = config.mediaStorageDriver.trim().toLowerCase() === "minio" ? "minio" : "local";
+    if (!parsed) {
+      return {
+        configured: false,
+        enabled: false,
+        driver: envDriver,
+        endpoint: config.minioEndpoint,
+        bucket: config.minioBucket,
+        accessKeyMasked: config.minioAccessKey ? "••••••••" : "",
+        secretKeyMasked: config.minioSecretKey ? "••••••••" : "",
+        useSsl: config.minioUseSsl,
+        region: config.minioRegion,
+        publicBaseUrl: config.minioPublicBaseUrl,
+        source: "env",
+      };
+    }
+    return {
+      configured: parsed.enabled && (parsed.driver === "local" || !!(parsed.endpoint && parsed.bucket)),
+      enabled: parsed.enabled,
+      driver: parsed.driver,
+      endpoint: parsed.endpoint ?? "",
+      bucket: parsed.bucket ?? "",
+      accessKeyMasked: parsed.accessKey ? "••••••••" : "",
+      secretKeyMasked: parsed.secretKey ? "••••••••" : "",
+      useSsl: parsed.useSsl === true,
+      region: parsed.region ?? "us-east-1",
+      publicBaseUrl: parsed.publicBaseUrl ?? "",
+      source: "platform",
+    };
+  });
+
+  app.put("/media-storage", async (request, reply) => {
+    const parsed = mediaStoragePutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: MEDIA_STORAGE_PLATFORM_KEY },
+    });
+    const existingVal =
+      existing?.value && typeof existing.value === "object" && existing.value !== null
+        ? (existing.value as Record<string, unknown>)
+        : {};
+
+    if (!parsed.data.enabled) {
+      const value = { enabled: false, driver: "local" as const };
+      await prisma.platformSetting.upsert({
+        where: { key: MEDIA_STORAGE_PLATFORM_KEY },
+        create: { key: MEDIA_STORAGE_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+        update: { value: value as Prisma.InputJsonValue },
+      });
+      invalidateMediaStorageCache();
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        action: "super.media_storage.upsert",
+        resourceType: "platform_setting",
+        resourceId: MEDIA_STORAGE_PLATFORM_KEY,
+        metadata: { enabled: false, driver: "local" },
+        ip: clientIp(request),
+      });
+      return {
+        configured: false,
+        enabled: false,
+        driver: "local",
+        endpoint: "",
+        bucket: "",
+        accessKeyMasked: "",
+        secretKeyMasked: "",
+        useSsl: false,
+        region: "us-east-1",
+        publicBaseUrl: "",
+        source: "platform",
+      };
+    }
+
+    if (parsed.data.driver === "local") {
+      const value = { enabled: true, driver: "local" as const };
+      await prisma.platformSetting.upsert({
+        where: { key: MEDIA_STORAGE_PLATFORM_KEY },
+        create: { key: MEDIA_STORAGE_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+        update: { value: value as Prisma.InputJsonValue },
+      });
+      invalidateMediaStorageCache();
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        action: "super.media_storage.upsert",
+        resourceType: "platform_setting",
+        resourceId: MEDIA_STORAGE_PLATFORM_KEY,
+        metadata: { enabled: true, driver: "local" },
+        ip: clientIp(request),
+      });
+      return {
+        configured: true,
+        enabled: true,
+        driver: "local",
+        endpoint: "",
+        bucket: "",
+        accessKeyMasked: "",
+        secretKeyMasked: "",
+        useSsl: false,
+        region: "us-east-1",
+        publicBaseUrl: "",
+        source: "platform",
+      };
+    }
+
+    const endpoint = (parsed.data.endpoint ?? "").trim();
+    const bucket = (parsed.data.bucket ?? "").trim();
+    let accessKey = (parsed.data.accessKey ?? "").trim();
+    let secretKey = (parsed.data.secretKey ?? "").trim();
+    if (!accessKey) accessKey = String(existingVal.accessKey ?? "").trim();
+    if (!secretKey) secretKey = String(existingVal.secretKey ?? "").trim();
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "endpoint, bucket, accessKey and secretKey are required for MinIO",
+        statusCode: 400,
+      });
+    }
+
+    const value = {
+      enabled: true,
+      driver: "minio" as const,
+      endpoint,
+      bucket,
+      accessKey,
+      secretKey,
+      useSsl: parsed.data.useSsl === true,
+      region: (parsed.data.region?.trim() || "us-east-1").slice(0, 64),
+      publicBaseUrl: (parsed.data.publicBaseUrl ?? "").trim().replace(/\/+$/, "") || null,
+    };
+    await prisma.platformSetting.upsert({
+      where: { key: MEDIA_STORAGE_PLATFORM_KEY },
+      create: { key: MEDIA_STORAGE_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    invalidateMediaStorageCache();
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.media_storage.upsert",
+      resourceType: "platform_setting",
+      resourceId: MEDIA_STORAGE_PLATFORM_KEY,
+      metadata: { enabled: true, driver: "minio", bucket, endpoint },
+      ip: clientIp(request),
+    });
+    return {
+      configured: true,
+      enabled: true,
+      driver: "minio",
+      endpoint,
+      bucket,
+      accessKeyMasked: "••••••••",
+      secretKeyMasked: "••••••••",
+      useSsl: value.useSsl,
+      region: value.region,
+      publicBaseUrl: value.publicBaseUrl ?? "",
+      source: "platform",
     };
   });
 }

@@ -1,7 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { createReadStream, existsSync } from "node:fs";
-import { join } from "node:path";
-import { config } from "../config.js";
+import { openMessageMediaReadStream, readMessageMediaFile } from "../lib/mediaStorage.js";
 
 /** Nome: 32 hex + extensão (ex.: gravações WebM/OGG do browser). */
 const FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
@@ -35,6 +33,7 @@ function contentTypeForFilename(name: string): string {
 /**
  * Leitura pública para o WhatsApp (Cloud API / parceiros) obterem o ficheiro do `link` JSON.
  * Não usar autenticação — os servidores da Meta fazem GET anónimo. O nome do ficheiro é um segredo de alta entropia.
+ * Com MinIO activo, faz proxy do objecto (ou redirecciona se `MINIO_PUBLIC_BASE_URL` estiver definido noutro fluxo).
  */
 export async function publicMessageMediaRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { name: string } }>("/api/v1/messages/media/:name", async (request, reply) => {
@@ -42,11 +41,20 @@ export async function publicMessageMediaRoutes(app: FastifyInstance): Promise<vo
     if (!FILENAME_RE.test(name)) {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid media name", statusCode: 400 });
     }
-    const filePath = join(config.mediaUploadDir, name);
-    if (!existsSync(filePath)) {
+
+    const opened = await openMessageMediaReadStream(name);
+    if (opened) {
+      reply.header("Cache-Control", "private, max-age=3600");
+      return reply
+        .type(opened.contentType !== "application/octet-stream" ? opened.contentType : contentTypeForFilename(name))
+        .send(opened.stream);
+    }
+
+    const buf = await readMessageMediaFile(name);
+    if (!buf || buf.length < 1) {
       return reply.status(404).send({ error: "Not Found", message: "Media not found", statusCode: 404 });
     }
     reply.header("Cache-Control", "private, max-age=3600");
-    return reply.type(contentTypeForFilename(name)).send(createReadStream(filePath));
+    return reply.type(contentTypeForFilename(name)).send(buf);
   });
 }

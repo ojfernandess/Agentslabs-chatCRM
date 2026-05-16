@@ -1,9 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { prisma } from "../db.js";
-import { config, getPublicOrigin } from "../config.js";
 import { resolveEvolutionApiCredentials } from "./evolutionPlatform.js";
+import { putMessageMediaFile } from "./mediaStorage.js";
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)
@@ -113,13 +111,14 @@ export async function persistEvolutionInboundMediaAsLocalUrl(options: {
   const ext = extensionForMimetype(extracted.mimetype, extracted.fileName);
   const token = randomBytes(16).toString("hex");
   const filename = `${token}.${ext}`;
-  const dir = config.mediaUploadDir;
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, filename), buf);
-
   const mime = extracted.mimetype.split(";")[0].trim().toLowerCase();
+  const stored = await putMessageMediaFile({
+    filename,
+    buffer: buf,
+    contentType: mime || "application/octet-stream",
+  });
   return {
-    mediaUrl: `${getPublicOrigin()}/api/v1/messages/media/${filename}`,
+    mediaUrl: stored.mediaUrl,
     mediaType: mime || "application/octet-stream",
   };
 }

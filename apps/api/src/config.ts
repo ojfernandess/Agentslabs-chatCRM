@@ -106,6 +106,16 @@ export const config = {
   host: optionalEnv("HOST", "0.0.0.0"),
   /** Ficheiros servidos em GET /api/v1/messages/media/:name (WhatsApp descarrega antes de entregar ao utilizador). */
   mediaUploadDir: optionalEnv("MEDIA_UPLOAD_DIR", join(process.cwd(), "uploads", "message-media")),
+  /** `local` (disco) ou `minio` (S3-compatível). Super admin pode sobrepor via `platform_settings.media_storage`. */
+  mediaStorageDriver: optionalEnv("MEDIA_STORAGE_DRIVER", "local"),
+  minioEndpoint: optionalEnv("MINIO_ENDPOINT", ""),
+  minioAccessKey: optionalEnv("MINIO_ACCESS_KEY", ""),
+  minioSecretKey: optionalEnv("MINIO_SECRET_KEY", ""),
+  minioBucket: optionalEnv("MINIO_BUCKET", "openconduit-media"),
+  minioRegion: optionalEnv("MINIO_REGION", "us-east-1"),
+  minioUseSsl: parseTruthyEnv("MINIO_USE_SSL"),
+  /** Opcional: URL pública do bucket (senão usa proxy API). */
+  minioPublicBaseUrl: optionalEnv("MINIO_PUBLIC_BASE_URL", ""),
   databaseUrl: requireEnv("DATABASE_URL"),
   jwtSecret: requireEnv("JWT_SECRET"),
   jwtExpiry: JWT_EXPIRY,
