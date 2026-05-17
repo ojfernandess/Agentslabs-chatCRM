@@ -7,6 +7,8 @@ import { InboxChannelType, Prisma } from "@prisma/client";
 import { newIngestToken } from "../lib/channelInboxIngest.js";
 import {
   assertUniqueWhatsappProviderInOrg,
+  isInboxWhatsappConfiguredFromChannelConfig,
+  isMetaCloudWhatsappProvider,
   maskInboxRowChannelConfig,
   prepareWhatsappChannelConfigForSave,
   parseInboxWhatsappFromChannelConfig,
@@ -463,8 +465,42 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     if (p.description !== undefined) data.description = p.description;
     if (p.channelType !== undefined) data.channelType = p.channelType;
     if (p.channelConfig !== undefined) {
-      data.channelConfig =
-        p.channelConfig === null ? Prisma.JsonNull : (p.channelConfig as Prisma.InputJsonValue);
+      const effectiveChannelType = p.channelType ?? inbox.channelType;
+      if (p.channelConfig === null) {
+        data.channelConfig = Prisma.JsonNull;
+      } else if (effectiveChannelType === InboxChannelType.WHATSAPP) {
+        const normalized = normalizeWhatsappInboxChannelConfig(inbox.channelConfig, p.channelConfig, false);
+        const provider = normalized
+          ? parseInboxWhatsappFromChannelConfig(normalized).whatsappProvider
+          : undefined;
+        if (provider) {
+          const unique = await assertUniqueWhatsappProviderInOrg(organizationId, provider, inbox.id);
+          if (unique.conflict) {
+            return reply.status(409).send({
+              error: "Conflict",
+              message: `A WhatsApp inbox for provider "${provider}" already exists (${unique.existingInboxName}).`,
+              statusCode: 409,
+            });
+          }
+        }
+        const parsed = parseInboxWhatsappFromChannelConfig(normalized);
+        if (
+          parsed.whatsappProvider &&
+          isMetaCloudWhatsappProvider(parsed.whatsappProvider) &&
+          !parsed.whatsappWebhookVerifyToken
+        ) {
+          const withToken = prepareWhatsappChannelConfigForSave({
+            existingConfig: normalized,
+            incoming: {},
+            ensureMetaVerifyToken: true,
+          });
+          data.channelConfig = withToken as Prisma.InputJsonValue;
+        } else {
+          data.channelConfig = (normalized ?? p.channelConfig) as Prisma.InputJsonValue;
+        }
+      } else {
+        data.channelConfig = p.channelConfig as Prisma.InputJsonValue;
+      }
     }
     if (p.agentBotId !== undefined) {
       if (p.agentBotId === null) {

@@ -28,6 +28,11 @@ import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import {
+  buildInboxWhatsappChannelConfig,
+  parseInboxWhatsappFromChannelConfig,
+} from "@/lib/inboxWhatsappConfig";
+import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
+import {
   createEmbeddedSignupMessageHandler,
   initWhatsAppEmbeddedSignup,
   isValidEmbeddedBusinessData,
@@ -165,6 +170,17 @@ export function SettingsPage() {
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [evolutionBaseUrl, setEvolutionBaseUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
+  const [waDisplayPhone, setWaDisplayPhone] = useState("");
+  const [waWabaId, setWaWabaId] = useState("");
+  const [defaultWaInbox, setDefaultWaInbox] = useState<{
+    id: string;
+    whatsappWebhookUrl?: string;
+    whatsappWebhookVerifyToken?: string | null;
+    channelConfig?: unknown;
+  } | null>(null);
+  const [metaTplSyncBusy, setMetaTplSyncBusy] = useState(false);
+  const [metaTplSyncResult, setMetaTplSyncResult] = useState<{ synced: number } | null>(null);
+  const [metaTplSyncError, setMetaTplSyncError] = useState("");
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
@@ -575,18 +591,47 @@ export function SettingsPage() {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, users, lt, tags, botList, emb] = await Promise.all([
+        const [data, users, lt, tags, botList, emb, inboxesRes] = await Promise.all([
           api.get<AppSettings>("/settings"),
           api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
           api.get<TagListRow[]>("/tags").catch(() => [] as TagListRow[]),
           api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
           api.get<WhatsappEmbeddedTenantInfo>("/settings/whatsapp-embedded").catch(() => null),
+          api
+            .get<{
+              data: {
+                id: string;
+                channelType: string;
+                isDefault: boolean;
+                channelConfig?: unknown;
+                whatsappWebhookUrl?: string;
+                whatsappWebhookVerifyToken?: string | null;
+              }[];
+            }>("/inboxes")
+            .catch(() => ({ data: [] })),
         ]);
         setEmbeddedInfo(emb ?? null);
         setSettings(data);
-        setProvider(data.whatsappProvider ?? "");
-        setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
+        const waInbox =
+          inboxesRes.data.find((i) => i.isDefault && i.channelType === "WHATSAPP") ??
+          inboxesRes.data.find((i) => i.channelType === "WHATSAPP") ??
+          null;
+        const waFromInbox = waInbox ? parseInboxWhatsappFromChannelConfig(waInbox.channelConfig) : {};
+        setDefaultWaInbox(
+          waInbox
+            ? {
+                id: waInbox.id,
+                whatsappWebhookUrl: waInbox.whatsappWebhookUrl,
+                whatsappWebhookVerifyToken: waInbox.whatsappWebhookVerifyToken,
+                channelConfig: waInbox.channelConfig,
+              }
+            : null,
+        );
+        setProvider(waFromInbox.whatsappProvider ?? data.whatsappProvider ?? "");
+        setPhoneNumberId(waFromInbox.whatsappPhoneNumberId ?? data.whatsappPhoneNumberId ?? "");
+        setWaDisplayPhone(waFromInbox.whatsappDisplayPhone ?? "");
+        setWaWabaId(waFromInbox.whatsappBusinessAccountId ?? "");
         setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
         setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
         if (data.whatsappProvider === "evolution" && (data.evolutionPlatformQrMode ?? false)) {
@@ -896,6 +941,8 @@ export function SettingsPage() {
       }
       if (phoneNumberId) body.whatsappPhoneNumberId = phoneNumberId;
       if (webhookSecret) body.whatsappWebhookSecret = webhookSecret;
+      if (waDisplayPhone.trim()) body.whatsappDisplayPhone = waDisplayPhone.trim();
+      if (waWabaId.trim()) body.whatsappBusinessAccountId = waWabaId.trim();
       if (provider === "evolution" && !evolutionPlatformQrMode) {
         body.evolutionApiBaseUrl = evolutionBaseUrl.trim() || null;
       } else if (provider === "evolution_go") {
@@ -911,6 +958,35 @@ export function SettingsPage() {
       setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
       setApiKey("");
       setWebhookSecret("");
+      const inboxesReload = await api
+        .get<{
+          data: {
+            id: string;
+            channelType: string;
+            isDefault: boolean;
+            channelConfig?: unknown;
+            whatsappWebhookUrl?: string;
+            whatsappWebhookVerifyToken?: string | null;
+          }[];
+        }>("/inboxes")
+        .catch(() => ({ data: [] }));
+      const waInbox =
+        inboxesReload.data.find((i) => i.isDefault && i.channelType === "WHATSAPP") ??
+        inboxesReload.data.find((i) => i.channelType === "WHATSAPP") ??
+        null;
+      if (waInbox) {
+        const wa = parseInboxWhatsappFromChannelConfig(waInbox.channelConfig);
+        setProvider(wa.whatsappProvider ?? data.whatsappProvider ?? "");
+        setPhoneNumberId(wa.whatsappPhoneNumberId ?? data.whatsappPhoneNumberId ?? "");
+        setWaDisplayPhone(wa.whatsappDisplayPhone ?? "");
+        setWaWabaId(wa.whatsappBusinessAccountId ?? "");
+        setDefaultWaInbox({
+          id: waInbox.id,
+          whatsappWebhookUrl: waInbox.whatsappWebhookUrl,
+          whatsappWebhookVerifyToken: waInbox.whatsappWebhookVerifyToken,
+          channelConfig: waInbox.channelConfig,
+        });
+      }
       setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
       setAgentBotId(data.agentBotId ?? "");
       setLockSingleConversation(data.lockSingleConversation ?? false);
@@ -927,12 +1003,43 @@ export function SettingsPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await api.post<{ connected: boolean }>("/settings/test-connection");
-      setTestResult(result.connected);
+      if (provider === "meta" || provider === "360dialog") {
+        const channelConfig = buildInboxWhatsappChannelConfig(defaultWaInbox?.channelConfig ?? null, {
+          whatsappProvider: provider,
+          whatsappPhoneNumberId: phoneNumberId,
+          whatsappApiKey: apiKey,
+          whatsappWebhookSecret: webhookSecret,
+          whatsappDisplayPhone: waDisplayPhone,
+          whatsappBusinessAccountId: waWabaId,
+        });
+        const result = await api.post<{ connected: boolean }>("/settings/test-whatsapp-draft", {
+          channelConfig,
+        });
+        setTestResult(result.connected);
+      } else {
+        const q = defaultWaInbox?.id ? `?inboxId=${encodeURIComponent(defaultWaInbox.id)}` : "";
+        const result = await api.post<{ connected: boolean }>(`/settings/test-connection${q}`);
+        setTestResult(result.connected);
+      }
     } catch {
       setTestResult(false);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const syncMetaTemplates = async () => {
+    setMetaTplSyncBusy(true);
+    setMetaTplSyncError("");
+    setMetaTplSyncResult(null);
+    try {
+      const q = defaultWaInbox?.id ? `?inboxId=${encodeURIComponent(defaultWaInbox.id)}` : "";
+      const result = await api.post<{ synced: number; wabaId: string | null }>(`/templates/meta/sync${q}`);
+      setMetaTplSyncResult({ synced: result.synced });
+    } catch (err) {
+      setMetaTplSyncError(err instanceof Error ? err.message : t("settings.templatesMetaSyncFailed"));
+    } finally {
+      setMetaTplSyncBusy(false);
     }
   };
 
@@ -1142,10 +1249,15 @@ export function SettingsPage() {
                     variants={staggerItem}
                   >
                     <p className="mb-4 text-sm text-gray-600">{t("settings.channelHint")}</p>
-                    {isMetaCloudSettingsProvider && settings?.whatsappWebhookVerifyToken ? (
+                    {isMetaCloudSettingsProvider &&
+                    (defaultWaInbox?.whatsappWebhookVerifyToken || settings?.whatsappWebhookVerifyToken) ? (
                       <WhatsAppMetaWebhookCopyPanel
-                        webhookUrl={webhookDisplay}
-                        verifyToken={settings.whatsappWebhookVerifyToken}
+                        webhookUrl={defaultWaInbox?.whatsappWebhookUrl ?? webhookDisplay}
+                        verifyToken={
+                          defaultWaInbox?.whatsappWebhookVerifyToken ??
+                          settings?.whatsappWebhookVerifyToken ??
+                          ""
+                        }
                         onRegenerateVerifyToken={() => void regenerateVerifyToken()}
                         regenerating={saving}
                       />
@@ -1327,23 +1439,33 @@ export function SettingsPage() {
                         <WhatsAppProviderConfigFields
                           waProvider={provider}
                           onProviderChange={setProvider}
-                          waDisplayPhone=""
-                          onDisplayPhoneChange={() => {}}
+                          waDisplayPhone={waDisplayPhone}
+                          onDisplayPhoneChange={setWaDisplayPhone}
                           waProviderPhoneId={phoneNumberId}
                           onPhoneNumberIdChange={setPhoneNumberId}
-                          waWabaId=""
-                          onWabaIdChange={() => {}}
+                          waWabaId={waWabaId}
+                          onWabaIdChange={setWaWabaId}
                           waProviderApiKey={apiKey}
                           onApiKeyChange={setApiKey}
                           waWebhookSecret={webhookSecret}
                           onWebhookSecretChange={setWebhookSecret}
-                          webhookSecretStored={!!settings?.whatsappWebhookSecret}
+                          webhookSecretStored={
+                            parseInboxWhatsappFromChannelConfig(defaultWaInbox?.channelConfig).whatsappWebhookSecret ===
+                              MASKED_WHATSAPP_SECRET || !!settings?.whatsappWebhookSecret
+                          }
                           waProviderBaseUrl=""
                           onBaseUrlChange={() => {}}
                           evolutionPlatformQrMode={evolutionPlatformQrMode}
                           evolutionGoPlatformMode={evolutionGoPlatformMode}
-                          metaFieldSet="credentials"
+                          apiKeyOptionalHint={
+                            parseInboxWhatsappFromChannelConfig(defaultWaInbox?.channelConfig).whatsappApiKey ===
+                              MASKED_WHATSAPP_SECRET || !!settings?.whatsappApiKey
+                          }
+                          metaFieldSet="full"
                           showProviderSelect={false}
+                          onTestConnection={() => void handleTestConnection()}
+                          testConnectionBusy={testing}
+                          testConnectionResult={testResult}
                         />
                       ) : null}
 
@@ -2346,6 +2468,31 @@ export function SettingsPage() {
                       {t("settings.templatesTitle")}
                     </h2>
                     <p className="text-sm text-gray-600">{t("settings.templatesMetaHint")}</p>
+                    {provider === "meta" || provider === "360dialog" ? (
+                      <motion.div className="mt-4" variants={staggerItem}>
+                        <button
+                          type="button"
+                          disabled={metaTplSyncBusy}
+                          onClick={() => void syncMetaTemplates()}
+                          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                        >
+                          {metaTplSyncBusy
+                            ? t("settings.templatesMetaSyncing")
+                            : t("settings.templatesMetaSync")}
+                        </button>
+                        {metaTplSyncResult ? (
+                          <p className="mt-2 text-sm text-green-700">
+                            {t("settings.templatesMetaSyncOk").replace(
+                              "{count}",
+                              String(metaTplSyncResult.synced),
+                            )}
+                          </p>
+                        ) : null}
+                        {metaTplSyncError ? (
+                          <p className="mt-2 text-sm text-red-600">{metaTplSyncError}</p>
+                        ) : null}
+                      </motion.div>
+                    ) : null}
                   </div>
 
                   {provider === "evolution" ? (
@@ -2431,7 +2578,7 @@ export function SettingsPage() {
                         {evoTplBusy ? t("common.loading") : t("settings.evoTplSubmit")}
                       </button>
                     </motion.form>
-                  ) : (
+                  ) : provider === "meta" || provider === "360dialog" ? null : (
                     <motion.div
                       className="rounded-xl border border-amber-100 bg-amber-50/80 p-4 text-sm text-amber-950"
                       variants={staggerItem}

@@ -2002,7 +2002,11 @@ export const messages = {
       sectionTemplates: "Modelos de mensagem",
       templatesTitle: "Modelos de mensagem (WhatsApp)",
       templatesMetaHint:
-        "Com Meta / WhatsApp Cloud API ou 360dialog, os modelos aprovados na conta comercial são sincronizados automaticamente quando alguém abre a lista de modelos (ex.: nesta página ou na conversa). Use variáveis na conversa, fora da janela de 24 h.",
+        "Com Meta / WhatsApp Cloud API ou 360dialog, importe os modelos aprovados na conta comercial (WABA). Também são sincronizados ao abrir a lista na conversa.",
+      templatesMetaSync: "Buscar modelos na Meta",
+      templatesMetaSyncing: "A buscar modelos…",
+      templatesMetaSyncOk: "{count} modelo(s) sincronizado(s) com a Meta.",
+      templatesMetaSyncFailed: "Não foi possível buscar modelos. Verifique Phone Number ID, token e WABA ID na caixa WhatsApp.",
       templatesEvolutionTitle: "Criar modelo na Evolution API",
       templatesEvolutionHint:
         "Envia um pedido à instância Evolution (`POST /template/create`). O modelo é também guardado localmente para escolha rápida. Variáveis no texto: {{1}}, {{2}}, …",
@@ -4379,7 +4383,11 @@ export const messages = {
       sectionTemplates: "Message templates",
       templatesTitle: "Message templates (WhatsApp)",
       templatesMetaHint:
-        "With Meta / WhatsApp Cloud API or 360dialog, approved templates sync automatically when someone loads the template list (e.g. here or in a conversation). Fill variables when sending outside the 24-hour session window.",
+        "With Meta / WhatsApp Cloud API or 360dialog, import approved templates from your business account (WABA). They also sync when opening the list in a conversation.",
+      templatesMetaSync: "Fetch templates from Meta",
+      templatesMetaSyncing: "Fetching templates…",
+      templatesMetaSyncOk: "{count} template(s) synced from Meta.",
+      templatesMetaSyncFailed: "Could not fetch templates. Check Phone Number ID, access token, and WABA ID on the WhatsApp inbox.",
       templatesEvolutionTitle: "Create template on Evolution API",
       templatesEvolutionHint:
         "Calls your Evolution instance (`POST /template/create`). The template is also saved locally for quick replies. Body variables: {{1}}, {{2}}, …",

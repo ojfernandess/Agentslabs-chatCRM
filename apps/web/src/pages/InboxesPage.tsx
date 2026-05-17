@@ -48,6 +48,7 @@ type InboxRow = {
   channelConfig?: unknown | null;
   whatsappWebhookUrl?: string;
   whatsappWebhookVerifyToken?: string | null;
+  whatsappConfigured?: boolean;
   agentBotId?: string | null;
   agentBot?: InboxBotSummary | null;
   members?: InboxMemberRow[];
@@ -474,7 +475,8 @@ export function InboxesPage() {
                         </p>
                         {row.channelType === "WHATSAPP" ? (() => {
                           const waRow = parseInboxWhatsappFromChannelConfig(row.channelConfig);
-                          const waOk = isInboxWhatsappConfigured(waRow);
+                          const waOk =
+                            row.whatsappConfigured ?? isInboxWhatsappConfigured(waRow);
                           return (
                             <p
                               className={`mt-0.5 text-[11px] font-medium ${

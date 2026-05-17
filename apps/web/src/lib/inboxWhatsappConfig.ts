@@ -44,13 +44,17 @@ export function parseInboxWhatsappFromChannelConfig(cfg: unknown): InboxWhatsapp
   };
 }
 
+function hasWhatsappApiKeyStored(fields: InboxWhatsappConfigFields): boolean {
+  const key = fields.whatsappApiKey?.trim() ?? "";
+  return key.length > 0;
+}
+
 export function isInboxWhatsappConfigured(fields: InboxWhatsappConfigFields): boolean {
   const p = fields.whatsappProvider;
   if (!p) return false;
   const hasInstance = Boolean(fields.whatsappPhoneNumberId?.trim());
   if (p === "meta" || p === "360dialog" || p === "twilio") {
-    const key = fields.whatsappApiKey?.trim() ?? "";
-    return hasInstance && key.length > 0 && key !== MASKED_WHATSAPP_SECRET;
+    return hasInstance && hasWhatsappApiKeyStored(fields);
   }
   return hasInstance;
 }

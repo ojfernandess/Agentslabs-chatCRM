@@ -14,6 +14,7 @@ import {
 } from "../providers/factory.js";
 import { prepareWhatsappChannelConfigForSave } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
+import { syncWhatsappCredentialsToDefaultInbox } from "../lib/syncWhatsappToDefaultInbox.js";
 import {
   generateWhatsappWebhookVerifyToken,
   isMetaCloudWhatsappProvider,
@@ -99,6 +100,9 @@ const settingsSchema = z.object({
   whatsappPhoneNumberId: z.string().max(100).optional(),
   evolutionApiBaseUrl: z.union([z.string().url().max(512), z.literal(""), z.null()]).optional(),
   whatsappWebhookSecret: z.string().max(500).optional(),
+  /** Guardados na caixa WhatsApp default (channelConfig), não na tabela Settings. */
+  whatsappDisplayPhone: z.string().max(32).optional(),
+  whatsappBusinessAccountId: z.string().max(64).optional(),
   whatsappRegenerateVerifyToken: z.boolean().optional(),
   autoOptInOnFirstMessage: z.boolean().optional(),
   notifyConversationOpen: z.boolean().optional(),
@@ -210,8 +214,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       where: { organizationId },
       select: { whatsappProvider: true },
     });
-    const p = settings?.whatsappProvider ?? null;
     const q = request.query as { inboxId?: string };
+    let p = settings?.whatsappProvider ?? null;
     let inboxChannelType: InboxChannelType = "WHATSAPP";
     if (q?.inboxId) {
       const inbox = await prisma.inbox.findFirst({
@@ -219,6 +223,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         select: { channelType: true },
       });
       if (inbox) inboxChannelType = inbox.channelType;
+      const inboxProvider = await getWhatsappProviderKindForInbox(organizationId, q.inboxId);
+      if (inboxProvider) p = inboxProvider;
     }
     const agentCtx = q?.inboxId
       ? await getAgentBotDispatchContextForInbox(organizationId, q.inboxId)
@@ -393,6 +399,13 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const inboxDisplayPhone =
+        typeof data.whatsappDisplayPhone === "string" ? data.whatsappDisplayPhone.trim() : undefined;
+      const inboxWabaId =
+        typeof data.whatsappBusinessAccountId === "string" ? data.whatsappBusinessAccountId.trim() : undefined;
+      delete data.whatsappDisplayPhone;
+      delete data.whatsappBusinessAccountId;
+
       const regenerateVerify = data.whatsappRegenerateVerifyToken === true;
       delete data.whatsappRegenerateVerifyToken;
       if (regenerateVerify && isMetaCloudWhatsappProvider(effectiveProvider)) {
@@ -423,6 +436,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
       if (settings.whatsappProvider?.trim()) {
         await ensureDefaultInboxForOrganization(organizationId);
+        try {
+          await syncWhatsappCredentialsToDefaultInbox(organizationId, {
+            whatsappProvider: settings.whatsappProvider,
+            whatsappPhoneNumberId: settings.whatsappPhoneNumberId ?? undefined,
+            whatsappApiKey: settings.whatsappApiKey ?? undefined,
+            whatsappWebhookSecret: settings.whatsappWebhookSecret ?? undefined,
+            evolutionApiBaseUrl: settings.evolutionApiBaseUrl ?? undefined,
+            whatsappDisplayPhone: inboxDisplayPhone,
+            whatsappBusinessAccountId: inboxWabaId,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "WhatsApp inbox sync failed";
+          return reply.status(409).send({ error: "Conflict", message: msg, statusCode: 409 });
+        }
       }
 
       return {

@@ -61,15 +61,26 @@ export function parseInboxWhatsappFromChannelConfig(cfg: unknown): InboxWhatsapp
   };
 }
 
+function hasWhatsappApiKeyStored(fields: InboxWhatsappConfigFields): boolean {
+  const key = fields.whatsappApiKey?.trim() ?? "";
+  if (!key) return false;
+  if (key === MASKED_WHATSAPP_SECRET) return true;
+  return true;
+}
+
 export function isInboxWhatsappConfigured(fields: InboxWhatsappConfigFields): boolean {
   const p = fields.whatsappProvider;
   if (!p) return false;
   const hasInstance = Boolean(fields.whatsappPhoneNumberId?.trim());
   if (isMetaCloudWhatsappProvider(p) || p === "twilio") {
-    const key = fields.whatsappApiKey?.trim() ?? "";
-    return hasInstance && (key.length > 0 && key !== MASKED_WHATSAPP_SECRET);
+    return hasInstance && hasWhatsappApiKeyStored(fields);
   }
   return hasInstance;
+}
+
+/** Avalia credenciais gravadas (inclui chave encriptada no JSON). */
+export function isInboxWhatsappConfiguredFromChannelConfig(cfg: unknown): boolean {
+  return isInboxWhatsappConfigured(parseInboxWhatsappFromChannelConfig(cfg));
 }
 
 function isMaskedSecret(v: string | undefined): boolean {

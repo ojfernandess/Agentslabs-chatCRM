@@ -4,60 +4,9 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { maxBodyPlaceholderIndex } from "../lib/templateVariables.js";
-import {
-  fetchWabaIdFromPhoneNumberId,
-  listApprovedWabaMessageTemplates,
-  metaTemplateToLocalFields,
-} from "../lib/metaWabaTemplates.js";
+import { syncWabaTemplatesForOrganization } from "../lib/syncWabaTemplates.js";
 import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
-
-async function syncWabaTemplatesForOrganization(organizationId: string, log: FastifyInstance["log"]): Promise<void> {
-  const settings = await prisma.settings.findUnique({ where: { organizationId } });
-  if (!settings?.whatsappApiKey?.trim() || !settings.whatsappPhoneNumberId?.trim()) return;
-  const p = settings.whatsappProvider;
-  if (p !== "meta" && p !== "360dialog") return;
-
-  try {
-    const wabaId = await fetchWabaIdFromPhoneNumberId(
-      settings.whatsappPhoneNumberId,
-      settings.whatsappApiKey,
-    );
-    if (!wabaId) {
-      log.warn({ organizationId }, "WABA template sync: phone number has no whatsapp_business_account");
-      return;
-    }
-    const list = await listApprovedWabaMessageTemplates(wabaId, settings.whatsappApiKey);
-    for (const row of list) {
-      const fields = metaTemplateToLocalFields(row);
-      const existing = await prisma.messageTemplate.findFirst({
-        where: {
-          organizationId,
-          providerTemplateId: fields.providerTemplateId,
-          templateLanguage: fields.templateLanguage,
-        },
-      });
-      if (existing) {
-        await prisma.messageTemplate.update({
-          where: { id: existing.id },
-          data: {
-            name: fields.name,
-            body: fields.body,
-            bodyVariableCount: fields.bodyVariableCount,
-            metaCategory: fields.metaCategory,
-            isApproved: fields.isApproved,
-          },
-        });
-      } else {
-        await prisma.messageTemplate.create({
-          data: { ...fields, organizationId },
-        });
-      }
-    }
-  } catch (err) {
-    log.warn({ err, organizationId }, "WABA template sync failed");
-  }
-}
 
 const templateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -81,11 +30,28 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    await syncWabaTemplatesForOrganization(organizationId, app.log);
+    const q = request.query as { inboxId?: string };
+    await syncWabaTemplatesForOrganization(organizationId, { inboxId: q?.inboxId, log: app.log });
     return prisma.messageTemplate.findMany({
       where: { organizationId },
       orderBy: { name: "asc" },
     });
+  });
+
+  app.post("/meta/sync", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const q = request.query as { inboxId?: string };
+    const result = await syncWabaTemplatesForOrganization(organizationId, { inboxId: q?.inboxId, log: app.log });
+    if (!result.source) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Configure Meta Cloud API or 360dialog on a WhatsApp inbox first",
+        statusCode: 400,
+      });
+    }
+    return result;
   });
 
   app.post("/evolution", { preHandler: [requireAdmin] }, async (request, reply) => {
