@@ -7,7 +7,7 @@ export function newCsatSurveyToken(): string {
 
 /** Texto pré-WhatsApp quando `Settings.csatSurveyMessage` está vazio. */
 export function defaultCsatSurveyIntro(): string {
-  return "Obrigado pelo contacto! Como classifica o nosso atendimento? Toque no link para deixar a sua avaliação (1 a 5).";
+  return "Obrigado pelo contato! Como você avalia nosso atendimento? Toque no link para deixar sua avaliação (de 1 a 5).";
 }
 
 export function csatSurveyPageUrl(token: string): string {

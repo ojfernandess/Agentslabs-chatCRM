@@ -10,11 +10,13 @@ import {
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
   private phoneNumberId: string;
+  private webhookVerifyToken: string | null;
   private baseUrl = "https://graph.facebook.com/v21.0";
 
-  constructor(apiKey: string, phoneNumberId: string) {
+  constructor(apiKey: string, phoneNumberId: string, webhookVerifyToken: string | null = null) {
     this.apiKey = apiKey;
     this.phoneNumberId = phoneNumberId;
+    this.webhookVerifyToken = webhookVerifyToken;
   }
 
   async sendMessage(params: SendMessageParams): Promise<string> {
@@ -191,10 +193,14 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
     const token = query["hub.verify_token"];
     const challenge = query["hub.challenge"];
 
-    if (mode === "subscribe" && token && challenge) {
-      return challenge;
+    if (mode !== "subscribe" || !token || !challenge) {
+      return null;
     }
-    return null;
+    const expected = this.webhookVerifyToken?.trim();
+    if (!expected || token !== expected) {
+      return null;
+    }
+    return challenge;
   }
 
   async healthCheck(): Promise<boolean> {

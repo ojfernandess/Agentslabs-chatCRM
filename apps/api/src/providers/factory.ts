@@ -23,6 +23,7 @@ export async function getWhatsAppProvider(organizationId: string): Promise<Whats
       return new MetaCloudApiProvider(
         decrypt(settings.whatsappApiKey) ?? "",
         settings.whatsappPhoneNumberId ?? "",
+        settings.whatsappWebhookVerifyToken ?? null,
       );
     case "twilio":
       // Twilio provider - to be implemented in v2

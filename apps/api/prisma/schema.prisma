@@ -843,6 +843,8 @@ model Settings {
   whatsappPhoneNumberId     String?      @map("whatsapp_phone_number_id")
   evolutionApiBaseUrl       String?      @map("evolution_api_base_url") @db.VarChar(512)
   whatsappWebhookSecret     String?      @map("whatsapp_webhook_secret")
+  /// Token hub.verify_token para verificação GET do webhook Meta Cloud API.
+  whatsappWebhookVerifyToken String?     @map("whatsapp_webhook_verify_token") @db.VarChar(128)
   autoOptInOnFirstMessage   Boolean      @default(false) @map("auto_opt_in_on_first_message")
   notifyConversationOpen    Boolean      @default(true) @map("notify_conversation_open")
   notifyConversationPending Boolean      @default(true) @map("notify_conversation_pending")

@@ -1073,7 +1073,7 @@ export const messages = {
         create: "Criar caixa",
         finish: "Concluir",
         chatwootHint:
-          "Modelo de canais inspirado no Chatwoot (add inbox). Documentação: chatwoot.com/docs/user-guide/add-inbox-settings.",
+          "Siga os passos para conectar cada canal à sua organização.",
         step1Title: "Escolha o Canal",
         step1Subtitle: "Escolha o provedor que deseja integrar com o OpenConduit.",
         step2Title: "Criar caixa de entrada",
@@ -1127,15 +1127,54 @@ export const messages = {
         fieldEmailFrom: "Endereço de envio",
         fieldEmailSmtpHost: "Servidor SMTP (referência)",
         channelNoteWhatsApp:
-          "A organização já pode usar WhatsApp (Evolution ou Cloud API nas configurações). Esta caixa agrupa conversas e equipes.",
+          "Informe os dados da API do WhatsApp (Meta Cloud API ou outro provedor). As credenciais são salvas nas configurações da organização; esta caixa agrupa conversas e equipes.",
         channelNoteNative:
-          "Este canal usa rotas públicas nativas (Client API e webhooks por plataforma), no modelo Chatwoot — sem JSON genérico como fluxo principal.",
+          "Este canal usa rotas públicas nativas (Client API e webhooks por plataforma), sem JSON genérico como fluxo principal.",
+        whatsappMeta: {
+          step2Subtitle: "Autentique sua conta e crie uma caixa de entrada.",
+          fieldProvider: "Provedor",
+          fieldPhoneNumber: "Número de telefone",
+          fieldPhoneNumberPlaceholder:
+            "Insira o número de telefone do qual a mensagem será enviada.",
+          fieldPhoneNumberId: "ID do número de telefone",
+          fieldPhoneNumberIdPlaceholder:
+            "Insira o ID do número de telefone obtido no painel Meta for Developers.",
+          fieldWabaId: "ID da conta do WhatsApp Business",
+          fieldWabaIdPlaceholder:
+            "Insira o ID da conta do WhatsApp Business obtido no painel Meta for Developers.",
+          fieldApiKey: "Chave da API",
+          fieldApiKeyPlaceholder: "Chave da API",
+          apiKeyUpdateHint: "Opcional: preencha apenas para atualizar a chave guardada.",
+          fieldInstance: "Nome da instância",
+          fieldInstanceGo: "Nome da instância (Evolution Go)",
+          fieldInstancePlaceholder: "ex.: vendas",
+          fieldEvoBaseUrl: "URL base da Evolution API",
+          fieldEvoGoBaseUrl: "URL base da Evolution Go",
+          validationPhoneNumberId: "Informe o ID do número de telefone.",
+          validationApiKey: "Informe a chave da API.",
+          editSectionTitle: "Provedor WhatsApp",
+          editSectionHint:
+            "Credenciais centralizadas na organização. A ligação rápida Meta/Evolution continua disponível em Configurações.",
+          fieldWebhookSecret: "Webhook secret",
+          fieldWebhookSecretPlaceholder: "App Secret do app Meta",
+          fieldWebhookSecretHint:
+            "App Secret usado na assinatura X-Hub-Signature-256 dos POST do webhook. O token de verificação é gerado automaticamente abaixo.",
+          webhookUrlLabel: "URL do webhook",
+          webhookVerifyTokenLabel: "Token de verificação do webhook",
+          webhookSetupIntro:
+            "Configure a URL do webhook e o token de verificação no painel Meta for Developers com os valores abaixo.",
+          regenerateVerifyToken: "Gerar novo token de verificação",
+          createChannelButton: "Criar canal do WhatsApp",
+          step4WhatsAppTitle: "Sua caixa de entrada está pronta!",
+          step4WhatsAppSubtitle:
+            "Agora você pode atender clientes pelo WhatsApp. Copie a URL e o token de verificação para o app Meta.",
+        },
         doneHint: "Filtre conversas por esta caixa no menu lateral ou na lista de conversas.",
         ingestNativeIntro:
           "Configure a plataforma para apontar para estes URLs (substitua PUBLIC_URL pela base pública da API, se for diferente deste painel).",
         ingestClientApiUrl: "Client API — mensagem do visitante",
         ingestClientApiHint:
-          "Substitua {visitor_uuid} por um UUID estável no browser (como no widget Chatwoot). Corpo POST: { \"content\": \"...\", \"name?\", \"email?\", \"echo_id?\" }.",
+          "Substitua {visitor_uuid} por um UUID estável no navegador. Corpo POST: { \"content\": \"...\", \"name?\", \"email?\", \"echo_id?\" }.",
         ingestFacebookUrl: "Facebook Messenger — webhook Graph",
         ingestInstagramUrl: "Instagram Messaging — webhook Graph",
         ingestLineUrl: "LINE — webhook Messaging API",
@@ -1420,15 +1459,15 @@ export const messages = {
     },
     csatPage: {
       title: "Avaliação do atendimento",
-      rateLabel: "De 1 a 5, como foi a sua experiência?",
-      rateLabelStar: "Toque nas estrelas para avaliar a sua experiência",
-      rateLabelEmoji: "Como foi a sua experiência?",
+      rateLabel: "De 1 a 5, como foi sua experiência?",
+      rateLabelStar: "Toque nas estrelas para avaliar sua experiência",
+      rateLabelEmoji: "Como foi sua experiência?",
       commentLabel: "Comentário (opcional)",
       commentPlaceholder: "Conte-nos em poucas palavras…",
       submit: "Enviar avaliação",
       thankYou: "Obrigado pela sua avaliação.",
-      errorBadLink: "Este link não é válido ou já não está disponível.",
-      errorGone: "Esta pesquisa já não está ativa.",
+      errorBadLink: "Este link não é válido ou não está mais disponível.",
+      errorGone: "Esta pesquisa não está mais ativa.",
     },
     conversations: {
       title: "Conversas",
@@ -1504,11 +1543,11 @@ export const messages = {
       csatHint:
         "Se CSAT estiver ativo nas configurações da organização, o cliente recebe um link por WhatsApp após finalizar para avaliar (1 a 5).",
       csatCommentPlaceholder: "Comentário opcional sobre a experiência do cliente…",
-      csatAddLater: "Inquérito enviado ao cliente",
-      csatOnlyTitle: "Registar CSAT",
-      csatSubmit: "Guardar avaliação",
+      csatAddLater: "Pesquisa enviada ao cliente",
+      csatOnlyTitle: "Registrar CSAT",
+      csatSubmit: "Salvar avaliação",
       csatRecordedPrefix: "Avaliação do cliente",
-      csatPendingCustomer: "À espera da avaliação do cliente (link enviado por WhatsApp).",
+      csatPendingCustomer: "Aguardando a avaliação do cliente (link enviado por WhatsApp).",
       reopenHint:
         "Ao reabrir, o motivo, o tipo de lead, o valor, a avaliação CSAT e o link de pesquisa anteriores serão limpos.",
       resolvedSummary: "Encerramento",
@@ -1960,8 +1999,8 @@ export const messages = {
       csatEnable: "Ativar pesquisa CSAT ao finalizar",
       csatMessageLabel: "Mensagem antes do link (opcional)",
       csatMessageHint:
-        "Se vazio, usamos um texto por omissão. O sistema acrescenta o link público na linha seguinte.",
-      csatSave: "Guardar CSAT",
+        "Se vazio, usamos um texto padrão. O sistema acrescenta o link público na linha seguinte.",
+      csatSave: "Salvar CSAT",
       csatRatingTypeLabel: "Formato da avaliação",
       csatRatingTypeNumber: "Números (1 a 5)",
       csatRatingTypeStar: "Estrelas",
@@ -1969,7 +2008,7 @@ export const messages = {
       csatRatingTypeHint: "Como o cliente vê a escala na página pública do link CSAT.",
       sectionSla: "SLA",
       slaIntro:
-        "Defina promessas de tempo para primeira resposta, respostas seguintes e resolução (estilo Chatwoot). As políticas ficam guardadas para a organização.",
+        "Defina metas de tempo para primeira resposta, respostas seguintes e resolução. As políticas ficam salvas para a organização.",
       slaAdd: "Adicionar SLA",
       slaAddTitle: "Adicionar SLA",
       slaEditTitle: "Editar SLA",
@@ -3442,9 +3481,45 @@ export const messages = {
         fieldEmailFrom: "From address",
         fieldEmailSmtpHost: "SMTP host (reference)",
         channelNoteWhatsApp:
-          "Your org can already use WhatsApp (Evolution or Cloud API in settings). This inbox groups conversations and teams.",
+          "Enter your WhatsApp API details (Meta Cloud API or another provider). Credentials are stored in organization settings; this inbox groups conversations and teams.",
         channelNoteNative:
-          "This channel uses native public routes (Client API and per-platform webhooks), Chatwoot-style — not a generic JSON webhook as the primary flow.",
+          "This channel uses native public routes (Client API and per-platform webhooks), not a generic JSON webhook as the primary flow.",
+        whatsappMeta: {
+          step2Subtitle: "Authenticate your account and create an inbox.",
+          fieldProvider: "Provider",
+          fieldPhoneNumber: "Phone number",
+          fieldPhoneNumberPlaceholder: "Enter the phone number messages will be sent from.",
+          fieldPhoneNumberId: "Phone number ID",
+          fieldPhoneNumberIdPlaceholder: "Enter the phone number ID from Meta for Developers.",
+          fieldWabaId: "WhatsApp Business account ID",
+          fieldWabaIdPlaceholder: "Enter the WhatsApp Business account ID from Meta for Developers.",
+          fieldApiKey: "API key",
+          fieldApiKeyPlaceholder: "API key",
+          apiKeyUpdateHint: "Optional: fill in only to update the stored key.",
+          fieldInstance: "Instance name",
+          fieldInstanceGo: "Instance name (Evolution Go)",
+          fieldInstancePlaceholder: "e.g. sales",
+          fieldEvoBaseUrl: "Evolution API base URL",
+          fieldEvoGoBaseUrl: "Evolution Go base URL",
+          validationPhoneNumberId: "Enter the phone number ID.",
+          validationApiKey: "Enter the API key.",
+          editSectionTitle: "WhatsApp provider",
+          editSectionHint:
+            "Credentials are centralized for the organization. Quick Meta/Evolution setup remains available in Settings.",
+          fieldWebhookSecret: "Webhook secret",
+          fieldWebhookSecretPlaceholder: "Meta app secret",
+          fieldWebhookSecretHint:
+            "App Secret for X-Hub-Signature-256 on webhook POSTs. The verify token is generated automatically below.",
+          webhookUrlLabel: "Webhook URL",
+          webhookVerifyTokenLabel: "Webhook verify token",
+          webhookSetupIntro:
+            "Set the webhook URL and verify token in Meta for Developers using the values below.",
+          regenerateVerifyToken: "Generate new verify token",
+          createChannelButton: "Create WhatsApp channel",
+          step4WhatsAppTitle: "Your inbox is ready!",
+          step4WhatsAppSubtitle:
+            "You can now serve customers on WhatsApp. Copy the URL and verify token into your Meta app.",
+        },
         doneHint: "Filter conversations by this inbox from the sidebar or conversation list.",
         ingestNativeIntro:
           "Point the platform at these URLs (replace PUBLIC_URL with your API base if it differs from this app).",

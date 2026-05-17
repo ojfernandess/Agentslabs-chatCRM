@@ -12,6 +12,8 @@ import {
   websiteWidgetToChannelConfig,
   type WebsiteWidgetForm,
 } from "@/lib/websiteWidget";
+import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
+import { mergeWhatsappMetaChannelConfig, whatsappMetaFromChannelConfig } from "@/lib/whatsappMetaConfig";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "";
@@ -46,6 +48,7 @@ type InboxRow = {
 type ChannelSettings = {
   whatsappProvider: string | null;
   whatsappPhoneNumberId: string | null;
+  whatsappWebhookSecret: string | null;
   evolutionApiBaseUrl: string | null;
   evolutionPlatformQrMode?: boolean;
   evolutionGoPlatformMode?: boolean;
@@ -102,7 +105,10 @@ export function InboxesPage() {
   const [copiedInboxId, setCopiedInboxId] = useState<string | null>(null);
   const [channelSettings, setChannelSettings] = useState<ChannelSettings | null>(null);
   const [editProvider, setEditProvider] = useState("meta");
+  const [editDisplayPhone, setEditDisplayPhone] = useState("");
+  const [editWabaId, setEditWabaId] = useState("");
   const [editProviderApiKey, setEditProviderApiKey] = useState("");
+  const [editWebhookSecret, setEditWebhookSecret] = useState("");
   const [editProviderPhoneId, setEditProviderPhoneId] = useState("");
   const [editProviderEvoBaseUrl, setEditProviderEvoBaseUrl] = useState("");
   const [providerSaving, setProviderSaving] = useState(false);
@@ -238,6 +244,10 @@ export function InboxesPage() {
     setEditProviderPhoneId(channelSettings?.whatsappPhoneNumberId ?? "");
     setEditProviderEvoBaseUrl(channelSettings?.evolutionApiBaseUrl ?? "");
     setEditProviderApiKey("");
+    setEditWebhookSecret("");
+    const meta = whatsappMetaFromChannelConfig(row.channelConfig);
+    setEditDisplayPhone(meta.whatsappDisplayPhone ?? "");
+    setEditWabaId(meta.whatsappBusinessAccountId ?? "");
     setEditWebsiteWidget(
       row.channelType === "WEBSITE"
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
@@ -273,6 +283,13 @@ export function InboxesPage() {
         });
         Object.assign(prev, widgetCfg);
       }
+      if (editChannel === "WHATSAPP") {
+        const merged = mergeWhatsappMetaChannelConfig(prev, {
+          whatsappDisplayPhone: editDisplayPhone,
+          whatsappBusinessAccountId: editWabaId,
+        });
+        Object.assign(prev, merged);
+      }
       const channelConfigPayload = Object.keys(prev).length > 0 ? prev : null;
 
       await api.patch(`/inboxes/${inboxId}`, {
@@ -289,6 +306,7 @@ export function InboxesPage() {
           whatsappPhoneNumberId: editProviderPhoneId.trim() || undefined,
         };
         if (editProviderApiKey.trim()) providerBody.whatsappApiKey = editProviderApiKey.trim();
+        if (editWebhookSecret.trim()) providerBody.whatsappWebhookSecret = editWebhookSecret.trim();
         if (editProvider === "evolution" || editProvider === "evolution_go") {
           providerBody.evolutionApiBaseUrl = editProviderEvoBaseUrl.trim() || null;
         } else {
@@ -529,72 +547,33 @@ export function InboxesPage() {
                             className="mb-3 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                           />
                           {editChannel === "WHATSAPP" ? (
-                            <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
-                                WhatsApp provider
+                            <div className="mb-3 max-w-md rounded-lg border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+                                {t("inboxesPage.wizard.whatsappMeta.editSectionTitle")}
                               </p>
-                              <p className="mb-2 text-[11px] text-gray-600 dark:text-ink-400">
-                                Centralizado na Caixa de entrada. A ligação rápida Meta/Evolution mantém-se em Configurações.
+                              <p className="mb-3 text-[11px] text-gray-600 dark:text-ink-400">
+                                {t("inboxesPage.wizard.whatsappMeta.editSectionHint")}
                               </p>
-                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                Provider
-                              </label>
-                              <select
-                                value={editProvider}
-                                onChange={(e) => setEditProvider(e.target.value)}
-                                className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                              >
-                                <option value="meta">Meta Cloud API</option>
-                                <option value="360dialog">360dialog</option>
-                                <option value="twilio">Twilio</option>
-                                <option value="evolution">Evolution API</option>
-                                <option value="evolution_go">Evolution Go</option>
-                              </select>
-                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                {editProvider === "evolution" || editProvider === "evolution_go" ? "Instance name" : "Phone Number ID"}
-                              </label>
-                              <input
-                                value={editProviderPhoneId}
-                                onChange={(e) => setEditProviderPhoneId(e.target.value)}
-                                className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                                placeholder={editProvider === "evolution" || editProvider === "evolution_go" ? "instance-name" : "phone_number_id"}
+                              <WhatsAppProviderConfigFields
+                                waProvider={editProvider}
+                                onProviderChange={setEditProvider}
+                                waDisplayPhone={editDisplayPhone}
+                                onDisplayPhoneChange={setEditDisplayPhone}
+                                waProviderPhoneId={editProviderPhoneId}
+                                onPhoneNumberIdChange={setEditProviderPhoneId}
+                                waWabaId={editWabaId}
+                                onWabaIdChange={setEditWabaId}
+                                waProviderApiKey={editProviderApiKey}
+                                onApiKeyChange={setEditProviderApiKey}
+                                waWebhookSecret={editWebhookSecret}
+                                onWebhookSecretChange={setEditWebhookSecret}
+                                webhookSecretStored={!!channelSettings?.whatsappWebhookSecret}
+                                waProviderBaseUrl={editProviderEvoBaseUrl}
+                                onBaseUrlChange={setEditProviderEvoBaseUrl}
+                                evolutionPlatformQrMode={channelSettings?.evolutionPlatformQrMode ?? false}
+                                evolutionGoPlatformMode={channelSettings?.evolutionGoPlatformMode ?? false}
+                                apiKeyOptionalHint
                               />
-                              {editProvider === "evolution" || editProvider === "evolution_go" ? (
-                                <>
-                                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                    {editProvider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
-                                  </label>
-                                  <input
-                                    type="url"
-                                    value={editProviderEvoBaseUrl}
-                                    onChange={(e) => setEditProviderEvoBaseUrl(e.target.value)}
-                                    placeholder={
-                                      editProvider === "evolution_go"
-                                        ? "https://evolution-go.example.com"
-                                        : "https://evolution.example.com"
-                                    }
-                                    className="mb-2 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                                  />
-                                </>
-                              ) : null}
-                              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
-                                API Key (opcional; preencha só para atualizar)
-                              </label>
-                              <input
-                                type="password"
-                                value={editProviderApiKey}
-                                onChange={(e) => setEditProviderApiKey(e.target.value)}
-                                className="w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                                placeholder="••••••••"
-                              />
-                              <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                                <a className="text-brand-600 hover:underline dark:text-brand-400" href="/settings">
-                                  Configuração rápida Meta
-                                </a>
-                                <a className="text-brand-600 hover:underline dark:text-brand-400" href="/settings">
-                                  Conexão rápida Evolution
-                                </a>
-                              </div>
                             </div>
                           ) : null}
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">

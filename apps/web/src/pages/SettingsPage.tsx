@@ -25,6 +25,8 @@ import { PageTransition, motion, staggerContainer, staggerItem } from "@/compone
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
+import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
+import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import {
   createEmbeddedSignupMessageHandler,
   initWhatsAppEmbeddedSignup,
@@ -53,6 +55,7 @@ interface AppSettings {
   whatsappPhoneNumberId: string | null;
   evolutionApiBaseUrl: string | null;
   whatsappWebhookSecret: string | null;
+  whatsappWebhookVerifyToken?: string | null;
   autoOptInOnFirstMessage: boolean;
   lockSingleConversation: boolean;
   audioTranscriptionEnabled?: boolean;
@@ -974,6 +977,20 @@ export function SettingsPage() {
     }
   };
 
+  const isMetaCloudSettingsProvider = provider === "meta" || provider === "360dialog";
+
+  const regenerateVerifyToken = async () => {
+    setSaving(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", { whatsappRegenerateVerifyToken: true });
+      setSettings(data);
+    } catch {
+      /* failed */
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const assistantKeyMasked = settings?.assistantOpenaiApiKey === "••••••••";
 
   if (!isAdmin) {
@@ -1127,27 +1144,38 @@ export function SettingsPage() {
                     variants={staggerItem}
                   >
                     <p className="mb-4 text-sm text-gray-600">{t("settings.channelHint")}</p>
-                    <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
-                      <Settings className="h-5 w-5" />
-                      Webhook URL
-                    </h2>
-                    <p className="mb-3 text-sm text-gray-500">{t("settings.webhookCopyHint")}</p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 overflow-x-auto rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                        {webhookDisplay || "—"}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={copyWebhookUrl}
-                        className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
-                      >
-                        {copied ? (
-                          <Check className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
+                    {isMetaCloudSettingsProvider && settings?.whatsappWebhookVerifyToken ? (
+                      <WhatsAppMetaWebhookCopyPanel
+                        webhookUrl={webhookDisplay}
+                        verifyToken={settings.whatsappWebhookVerifyToken}
+                        onRegenerateVerifyToken={() => void regenerateVerifyToken()}
+                        regenerating={saving}
+                      />
+                    ) : (
+                      <>
+                        <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
+                          <Settings className="h-5 w-5" />
+                          Webhook URL
+                        </h2>
+                        <p className="mb-3 text-sm text-gray-500">{t("settings.webhookCopyHint")}</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 overflow-x-auto rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                            {webhookDisplay || "—"}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={copyWebhookUrl}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
+                          >
+                            {copied ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </motion.div>
 
                   <motion.form
@@ -1297,7 +1325,32 @@ export function SettingsPage() {
                         </div>
                       ) : null}
 
-                      {!((provider === "evolution" && evolutionPlatformQrMode) || (provider === "evolution_go" && evolutionGoPlatformMode)) && (
+                      {isMetaCloudSettingsProvider ? (
+                        <WhatsAppProviderConfigFields
+                          waProvider={provider}
+                          onProviderChange={setProvider}
+                          waDisplayPhone=""
+                          onDisplayPhoneChange={() => {}}
+                          waProviderPhoneId={phoneNumberId}
+                          onPhoneNumberIdChange={setPhoneNumberId}
+                          waWabaId=""
+                          onWabaIdChange={() => {}}
+                          waProviderApiKey={apiKey}
+                          onApiKeyChange={setApiKey}
+                          waWebhookSecret={webhookSecret}
+                          onWebhookSecretChange={setWebhookSecret}
+                          webhookSecretStored={!!settings?.whatsappWebhookSecret}
+                          waProviderBaseUrl=""
+                          onBaseUrlChange={() => {}}
+                          evolutionPlatformQrMode={evolutionPlatformQrMode}
+                          evolutionGoPlatformMode={evolutionGoPlatformMode}
+                          metaFieldSet="credentials"
+                          showProviderSelect={false}
+                        />
+                      ) : null}
+
+                      {!isMetaCloudSettingsProvider &&
+                      !((provider === "evolution" && evolutionPlatformQrMode) || (provider === "evolution_go" && evolutionGoPlatformMode)) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           {provider === "evolution" ? "API key" : "API Key"}
@@ -1319,7 +1372,7 @@ export function SettingsPage() {
                       </div>
                       )}
 
-                      {!(provider === "evolution" && evolutionPlatformQrMode) && (
+                      {!isMetaCloudSettingsProvider && !(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           {provider === "evolution"
@@ -1538,44 +1591,41 @@ export function SettingsPage() {
                         </div>
                       ) : null}
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Webhook secret</label>
-                        <input
-                          type="password"
-                          value={webhookSecret}
-                          onChange={(e) => setWebhookSecret(e.target.value)}
-                          placeholder={
-                            provider === "evolution"
-                              ? "Optional — leave empty unless you add a custom header on Evolution"
-                              : settings?.whatsappWebhookSecret
-                                ? "••••••••"
-                                : "Enter webhook secret"
-                          }
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        />
-                        {provider === "evolution" ? (
-                          <p className="mt-1 text-xs text-gray-500">
-                            <strong>Evolution does not supply this.</strong> Leave it empty for the usual setup —
-                            webhooks work without it. For extra verification, invent any long random string, save it
-                            here, then in Evolution configure the instance webhook <strong>headers</strong> (e.g. in
-                            the webhook JSON or manager UI) with name{" "}
-                            <code className="rounded bg-gray-100 px-1">x-openconduit-token</code> and value identical to
-                            this field. If this field is filled, requests without that header are rejected with 401.
-                          </p>
-                        ) : provider === "evolution_go" ? (
-                          <p className="mt-1 text-xs text-gray-500">
-                            Opcional. Deixe vazio para aceitar o <code className="rounded bg-gray-100 px-1">instanceToken</code>{" "}
-                            enviado pelo Evolution Go (token da instância). Se preencher, o valor deve coincidir com o
-                            token da instância ou use o header{" "}
-                            <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>.
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-gray-500">
-                            For Meta / 360dialog, use the app verify token / HMAC secret as documented for the Cloud API
-                            webhook.
-                          </p>
-                        )}
-                      </div>
+                      {!isMetaCloudSettingsProvider ? (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Webhook secret</label>
+                          <input
+                            type="password"
+                            value={webhookSecret}
+                            onChange={(e) => setWebhookSecret(e.target.value)}
+                            placeholder={
+                              provider === "evolution"
+                                ? "Optional — leave empty unless you add a custom header on Evolution"
+                                : settings?.whatsappWebhookSecret
+                                  ? "••••••••"
+                                  : "Enter webhook secret"
+                            }
+                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          />
+                          {provider === "evolution" ? (
+                            <p className="mt-1 text-xs text-gray-500">
+                              <strong>Evolution does not supply this.</strong> Leave it empty for the usual setup —
+                              webhooks work without it. For extra verification, invent any long random string, save it
+                              here, then in Evolution configure the instance webhook <strong>headers</strong> (e.g. in
+                              the webhook JSON or manager UI) with name{" "}
+                              <code className="rounded bg-gray-100 px-1">x-openconduit-token</code> and value identical to
+                              this field. If this field is filled, requests without that header are rejected with 401.
+                            </p>
+                          ) : provider === "evolution_go" ? (
+                            <p className="mt-1 text-xs text-gray-500">
+                              Opcional. Deixe vazio para aceitar o <code className="rounded bg-gray-100 px-1">instanceToken</code>{" "}
+                              enviado pelo Evolution Go (token da instância). Se preencher, o valor deve coincidir com o
+                              token da instância ou use o header{" "}
+                              <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700">

@@ -7,6 +7,10 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { decrypt, encrypt } from "../lib/encryption.js";
 import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
 import { getWhatsAppProvider } from "../providers/factory.js";
+import {
+  generateWhatsappWebhookVerifyToken,
+  isMetaCloudWhatsappProvider,
+} from "../lib/whatsappWebhookVerify.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
@@ -87,6 +91,7 @@ const settingsSchema = z.object({
   whatsappPhoneNumberId: z.string().max(100).optional(),
   evolutionApiBaseUrl: z.union([z.string().url().max(512), z.literal(""), z.null()]).optional(),
   whatsappWebhookSecret: z.string().max(500).optional(),
+  whatsappRegenerateVerifyToken: z.boolean().optional(),
   autoOptInOnFirstMessage: z.boolean().optional(),
   notifyConversationOpen: z.boolean().optional(),
   notifyConversationPending: z.boolean().optional(),
@@ -128,10 +133,27 @@ function maskSettings<
     ...settings,
     whatsappApiKey: settings.whatsappApiKey ? "••••••••" : null,
     whatsappWebhookSecret: settings.whatsappWebhookSecret ? "••••••••" : null,
+    whatsappWebhookVerifyToken:
+      "whatsappWebhookVerifyToken" in settings
+        ? (settings as { whatsappWebhookVerifyToken?: string | null }).whatsappWebhookVerifyToken ?? null
+        : null,
     assistantOpenaiApiKey: settings.assistantOpenaiApiKey ? "••••••••" : null,
     aiAlertWebhookSecret: settings.aiAlertWebhookSecret ? "••••••••" : null,
     webhookUrl: webhookUrlForOrganization(organizationId),
   };
+}
+
+async function ensureWhatsappWebhookVerifyToken(
+  settings: { id: string; whatsappProvider: string | null; whatsappWebhookVerifyToken: string | null },
+): Promise<{ whatsappProvider: string | null; whatsappWebhookVerifyToken: string | null }> {
+  if (!isMetaCloudWhatsappProvider(settings.whatsappProvider) || settings.whatsappWebhookVerifyToken) {
+    return settings;
+  }
+  return prisma.settings.update({
+    where: { id: settings.id },
+    data: { whatsappWebhookVerifyToken: generateWhatsappWebhookVerifyToken() },
+    select: { whatsappProvider: true, whatsappWebhookVerifyToken: true },
+  });
 }
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
@@ -232,6 +254,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       let settings = await prisma.settings.findUnique({ where: { organizationId } });
       if (!settings) {
         settings = await prisma.settings.create({ data: { organizationId } });
+      }
+      if (isMetaCloudWhatsappProvider(settings.whatsappProvider)) {
+        const ensured = await ensureWhatsappWebhookVerifyToken(settings);
+        settings = { ...settings, ...ensured };
       }
 
       return {
@@ -341,7 +367,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
       const qrMode = await evolutionPlatformQrModeActive();
       const goPlatformMode = await evolutionGoPlatformModeActive();
-      const effectiveProvider = (data.whatsappProvider ?? settings?.whatsappProvider) ?? null;
+      const effectiveProvider: string | null =
+        typeof data.whatsappProvider === "string"
+          ? data.whatsappProvider
+          : (settings?.whatsappProvider ?? null);
       if ((qrMode && effectiveProvider === "evolution") || (goPlatformMode && effectiveProvider === "evolution_go")) {
         delete data.evolutionApiBaseUrl;
         delete data.whatsappApiKey;
@@ -356,6 +385,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const regenerateVerify = data.whatsappRegenerateVerifyToken === true;
+      delete data.whatsappRegenerateVerifyToken;
+      if (regenerateVerify && isMetaCloudWhatsappProvider(effectiveProvider)) {
+        data.whatsappWebhookVerifyToken = generateWhatsappWebhookVerifyToken();
+      } else if (
+        isMetaCloudWhatsappProvider(effectiveProvider) &&
+        !settings?.whatsappWebhookVerifyToken
+      ) {
+        data.whatsappWebhookVerifyToken = generateWhatsappWebhookVerifyToken();
+      }
+
       if (!settings) {
         settings = await prisma.settings.create({
           data: { organizationId, ...(data as typeof parsed.data) },
@@ -364,6 +404,12 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         settings = await prisma.settings.update({
           where: { id: settings.id },
           data: data as typeof parsed.data,
+        });
+      }
+      if (isMetaCloudWhatsappProvider(settings.whatsappProvider) && !settings.whatsappWebhookVerifyToken) {
+        settings = await prisma.settings.update({
+          where: { id: settings.id },
+          data: { whatsappWebhookVerifyToken: generateWhatsappWebhookVerifyToken() },
         });
       }
 
