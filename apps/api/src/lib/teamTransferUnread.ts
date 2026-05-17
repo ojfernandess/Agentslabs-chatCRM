@@ -36,6 +36,28 @@ export async function getUnseenTeamTransferCounts(
   return out;
 }
 
+/** Marca como não lida para o utilizador (última leitura antes da última atividade). */
+export async function markConversationUnreadForUser(
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string; conversationId: string },
+): Promise<boolean> {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: input.conversationId, organizationId: input.organizationId },
+    select: { id: true, updatedAt: true },
+  });
+  if (!conv) return false;
+
+  const markAt = new Date(conv.updatedAt.getTime() - 60_000);
+  await prisma.conversationUserReadState.upsert({
+    where: {
+      userId_conversationId: { userId: input.userId, conversationId: input.conversationId },
+    },
+    create: { userId: input.userId, conversationId: input.conversationId, lastReadAt: markAt },
+    update: { lastReadAt: markAt },
+  });
+  return true;
+}
+
 export async function markConversationReadForUser(
   prisma: PrismaClient,
   input: { organizationId: string; userId: string; conversationId: string },

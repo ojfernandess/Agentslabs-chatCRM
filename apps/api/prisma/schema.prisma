@@ -19,6 +19,13 @@ enum ConversationStatus {
   PENDING
 }
 
+enum ConversationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 enum MessageDirection {
   INBOUND
   OUTBOUND
@@ -619,6 +626,7 @@ model LeadType {
 model Conversation {
   id        String             @id @default(uuid()) @db.Uuid
   status    ConversationStatus @default(OPEN)
+  priority  ConversationPriority? @map("priority")
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 

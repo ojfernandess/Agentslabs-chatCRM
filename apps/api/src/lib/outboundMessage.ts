@@ -14,7 +14,11 @@ import { substituteBodyPlaceholders } from "./templateVariables.js";
 import { sendTelegramNativeMessage } from "./telegramNativeSend.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
-import { prefixOutboundBodyForExternalChannel } from "./outboundAgentFormatting.js";
+import {
+  agentNameOnlyPrefixForExternalChannel,
+  prefixOutboundBodyForExternalChannel,
+  telegramParseModeForAgentPrefix,
+} from "./outboundAgentFormatting.js";
 
 function outboundWebhookUrlFromConfig(config: unknown): string | null {
   if (config == null || typeof config !== "object") return null;
@@ -244,6 +248,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       actor.userId,
       messageBody,
       Boolean(isPrivate),
+      inboxChannelType,
     );
   }
 
@@ -254,6 +259,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
       if (provider) {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
+
+        if (actor.kind === "user" && type === "AUDIO" && !messageBody?.trim()) {
+          const nameOnly = await agentNameOnlyPrefixForExternalChannel(
+            organizationId,
+            actor.userId,
+            Boolean(isPrivate),
+            inboxChannelType,
+          );
+          if (nameOnly) {
+            try {
+              await provider.sendMessage({ to, type: "TEXT", body: nameOnly });
+            } catch (err) {
+              log.warn(err, "Failed to send agent name prefix before audio");
+            }
+          }
+        }
+
         providerMsgId = await provider.sendMessage({
           to,
           type,
@@ -273,14 +295,45 @@ export async function deliverOutboundWhatsAppMessage(options: {
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");
     }
-  } else if (!isPrivate && inboxChannelType === "TELEGRAM" && type === "TEXT") {
+  } else if (!isPrivate && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
-    const text = bodyForExternal.trim();
-    if (token && chatId && text) {
-      const tgId = await sendTelegramNativeMessage({ botToken: token, chatId, text, log });
-      providerMsgId = tgId;
+    if (token && chatId) {
+      if (actor.kind === "user" && type !== "TEXT" && !messageBody?.trim()) {
+        const nameOnly = await agentNameOnlyPrefixForExternalChannel(
+          organizationId,
+          actor.userId,
+          Boolean(isPrivate),
+          inboxChannelType,
+        );
+        if (nameOnly) {
+          try {
+            await sendTelegramNativeMessage({
+              botToken: token,
+              chatId,
+              text: nameOnly,
+              log,
+              parseMode: telegramParseModeForAgentPrefix(nameOnly),
+            });
+          } catch (err) {
+            log.warn(err, "Failed to send agent name prefix before telegram media");
+          }
+        }
+      }
+      if (type === "TEXT") {
+        const text = bodyForExternal.trim();
+        if (text) {
+          const tgId = await sendTelegramNativeMessage({
+            botToken: token,
+            chatId,
+            text,
+            log,
+            parseMode: telegramParseModeForAgentPrefix(text),
+          });
+          providerMsgId = tgId;
+        }
+      }
     }
   }
 
@@ -352,7 +405,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         messageId: message.id,
         inboxChannelType,
         type,
-        body: messageBody ?? null,
+        body: (bodyForExternal || messageBody) ?? null,
         mediaUrl: mediaUrl ?? null,
         mediaType: mediaType ?? null,
       },

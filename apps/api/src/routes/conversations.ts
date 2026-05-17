@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -15,7 +15,7 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
-import { markConversationReadForUser } from "../lib/teamTransferUnread.js";
+import { markConversationReadForUser, markConversationUnreadForUser } from "../lib/teamTransferUnread.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
@@ -57,6 +57,7 @@ const updateSchema = z.object({
   leadTypeId: z.union([z.string().uuid(), z.null()]).optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
   awaitingHumanHandoff: z.literal(false).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).nullable().optional(),
 });
 
 const CONTACT_TIMELINE_LIMIT = 80;
@@ -417,6 +418,56 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.status(204).send();
   });
+
+  app.post<{ Params: { id: string } }>("/:id/unread", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    await markConversationUnreadForUser(prisma, {
+      organizationId,
+      userId: request.user.id,
+      conversationId: existing.id,
+    });
+    return reply.status(204).send();
+  });
+
+  app.delete<{ Params: { id: string } }>(
+    "/:id",
+    { preHandler: [requireSuperAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const existing = await prisma.conversation.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: { id: true },
+      });
+      if (!existing) {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+      }
+
+      await prisma.conversation.delete({ where: { id: existing.id } });
+      broadcastToOrganization(organizationId, {
+        type: "conversation.deleted",
+        conversationId: existing.id,
+      });
+      return reply.status(204).send();
+    },
+  );
 
   const suggestReplyBodySchema = z.object({
     currentDraft: z.string().max(16_000).optional(),
@@ -886,8 +937,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       csatSurveyToken?: string | null;
       awaitingHumanHandoff?: boolean;
       teamTransferPulseAt?: Date | null;
+      priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | null;
     } = {};
 
+    if (parsed.data.priority !== undefined) {
+      data.priority = parsed.data.priority;
+    }
     if (parsed.data.status !== undefined) {
       data.status = parsed.data.status;
     }

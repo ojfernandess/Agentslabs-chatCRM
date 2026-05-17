@@ -1,28 +1,62 @@
+import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
 
+function formatAgentPrefix(label: string, channelType: InboxChannelType): string {
+  if (channelType === "WHATSAPP") return `*${label}*`;
+  if (channelType === "TELEGRAM") return `<b>${label}</b>`;
+  return `${label}:`;
+}
+
 /**
- * Prefixo WhatsApp (*bold*) com o nome do atendente — só para envio ao canal externo.
+ * Prefixo com o nome do atendente — só para envio ao canal externo.
  * O corpo guardado na BD mantém-se sem este prefixo para o painel não duplicar o cabeçalho.
  */
+async function agentNamePrefixForUser(
+  organizationId: string,
+  userId: string,
+  channelType: InboxChannelType,
+): Promise<string | null> {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, organizationId },
+    select: { name: true, displayName: true, showAgentNameInChat: true },
+  });
+  if (!user?.showAgentNameInChat) return null;
+  const label = user.displayName?.trim() || user.name?.trim();
+  if (!label) return null;
+  return formatAgentPrefix(label, channelType);
+}
+
+/** Prefixo com o nome do atendente — só para envio ao canal externo. */
 export async function prefixOutboundBodyForExternalChannel(
   organizationId: string,
   userId: string,
   body: string | null | undefined,
   isPrivate: boolean,
+  channelType: InboxChannelType,
 ): Promise<string> {
   const trimmed = (body ?? "").trim();
   if (isPrivate) return trimmed;
 
-  const user = await prisma.user.findFirst({
-    where: { id: userId, organizationId },
-    select: { name: true, displayName: true, showAgentNameInChat: true },
-  });
-  if (!user?.showAgentNameInChat) return trimmed;
+  const prefix = await agentNamePrefixForUser(organizationId, userId, channelType);
+  if (!prefix) return trimmed;
 
-  const label = user.displayName?.trim() || user.name?.trim();
-  if (!label) return trimmed;
-
-  const prefix = `*${label}*`;
   if (trimmed.startsWith(prefix)) return trimmed;
   return trimmed ? `${prefix}\n${trimmed}` : prefix;
+}
+
+/** Só o cabeçalho do atendente (útil antes de áudio/mídia sem legenda). */
+export async function agentNameOnlyPrefixForExternalChannel(
+  organizationId: string,
+  userId: string,
+  isPrivate: boolean,
+  channelType: InboxChannelType,
+): Promise<string | null> {
+  if (isPrivate) return null;
+  return agentNamePrefixForUser(organizationId, userId, channelType);
+}
+
+/** Telegram usa HTML quando o prefixo contém tags de formatação. */
+export function telegramParseModeForAgentPrefix(prefix: string | null | undefined): "HTML" | undefined {
+  if (!prefix?.includes("<b>")) return undefined;
+  return "HTML";
 }

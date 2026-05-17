@@ -10,6 +10,10 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
+import {
+  ConversationContextMenu,
+  type ConversationContextTarget,
+} from "@/components/ConversationContextMenu";
 
 interface Conversation {
   id: string;
@@ -52,6 +56,10 @@ export function ConversationsPage() {
   const [inboxFilter, setInboxFilter] = useState<string>(() => searchParams.get("inboxId") ?? "");
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const [inboxOptions, setInboxOptions] = useState<{ id: string; name: string }[]>([]);
+  const [contextMenu, setContextMenu] = useState<{
+    target: ConversationContextTarget;
+    position: { x: number; y: number };
+  } | null>(null);
   const hasAnimated = useRef(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
@@ -380,7 +388,20 @@ export function ConversationsPage() {
                   {filteredConversations.map((conv) => {
                     const lastMessage = conv.messages[0];
                     return (
-                      <div key={conv.id}>
+                      <div
+                        key={conv.id}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({
+                            target: {
+                              id: conv.id,
+                              status: conv.status,
+                              contact: { id: conv.contact.id, name: conv.contact.name },
+                            },
+                            position: { x: e.clientX, y: e.clientY },
+                          });
+                        }}
+                      >
                         <Link
                           to={`/conversations/${conv.id}`}
                           className={clsx(
@@ -481,6 +502,16 @@ export function ConversationsPage() {
         onClose={() => {
           setQuickContact(null);
           void loadConversations();
+        }}
+      />
+      <ConversationContextMenu
+        target={contextMenu?.target ?? null}
+        position={contextMenu?.position ?? null}
+        onClose={() => setContextMenu(null)}
+        onUpdated={() => void loadConversations()}
+        onDeleted={(conversationId) => {
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+          setContextMenu(null);
         }}
       />
     </PageTransition>
