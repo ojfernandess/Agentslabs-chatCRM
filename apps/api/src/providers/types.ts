@@ -30,6 +30,10 @@ export interface IncomingMessage {
   participantPushName?: string | null;
   /** Evolution messages.upsert: registo completo para POST getBase64FromMediaMessage. */
   evolutionWebMessage?: Record<string, unknown>;
+  /** Meta Cloud API: ID do media object para download via Graph API. */
+  metaMediaId?: string;
+  /** Nome de ficheiro em documentos Meta. */
+  metaFileName?: string;
 }
 
 export interface StatusUpdate {

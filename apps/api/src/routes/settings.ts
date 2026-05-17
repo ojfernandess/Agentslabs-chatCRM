@@ -14,7 +14,10 @@ import {
 } from "../providers/factory.js";
 import { prepareWhatsappChannelConfigForSave } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
-import { syncWhatsappCredentialsToDefaultInbox } from "../lib/syncWhatsappToDefaultInbox.js";
+import {
+  syncWhatsappCredentialsToInbox,
+  syncWhatsappInboxCredentialsToSettings,
+} from "../lib/whatsappOrgSync.js";
 import {
   generateWhatsappWebhookVerifyToken,
   isMetaCloudWhatsappProvider,
@@ -226,14 +229,23 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const inboxProvider = await getWhatsappProviderKindForInbox(organizationId, q.inboxId);
       if (inboxProvider) p = inboxProvider;
     }
+    let richChatProvider = p;
+    if (q?.inboxId) {
+      const inboxProvider = await getWhatsappProviderKindForInbox(organizationId, q.inboxId);
+      if (inboxProvider) richChatProvider = inboxProvider;
+    }
     const agentCtx = q?.inboxId
       ? await getAgentBotDispatchContextForInbox(organizationId, q.inboxId)
       : await getAgentBotDispatchContext(organizationId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, inboxChannelType);
     return {
       whatsappProvider: p,
-      /** Anexos / imagens na conversa — solicitado para Evolution API. */
-      evolutionRichChat: p === "evolution" || p === "evolution_go",
+      /** Anexos / imagens / áudio na conversa (Evolution, Meta Cloud API, 360dialog). */
+      evolutionRichChat:
+        richChatProvider === "evolution" ||
+        richChatProvider === "evolution_go" ||
+        richChatProvider === "meta" ||
+        richChatProvider === "360dialog",
       /** Há bot de canal configurado e pronto a receber webhooks (fila PENDING). */
       agentBotTriageActive,
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
@@ -437,7 +449,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (settings.whatsappProvider?.trim()) {
         await ensureDefaultInboxForOrganization(organizationId);
         try {
-          await syncWhatsappCredentialsToDefaultInbox(organizationId, {
+          const synced = await syncWhatsappCredentialsToInbox(organizationId, {
             whatsappProvider: settings.whatsappProvider,
             whatsappPhoneNumberId: settings.whatsappPhoneNumberId ?? undefined,
             whatsappApiKey: settings.whatsappApiKey ?? undefined,
@@ -446,6 +458,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
             whatsappDisplayPhone: inboxDisplayPhone,
             whatsappBusinessAccountId: inboxWabaId,
           });
+          if (synced) {
+            await syncWhatsappInboxCredentialsToSettings(organizationId, synced.inboxId);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : "WhatsApp inbox sync failed";
           return reply.status(409).send({ error: "Conflict", message: msg, statusCode: 409 });

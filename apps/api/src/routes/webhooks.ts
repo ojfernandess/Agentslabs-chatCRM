@@ -18,6 +18,8 @@ import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensureConversationForChannelInbox } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
+import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
+import { decrypt } from "../lib/encryption.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
@@ -453,6 +455,47 @@ async function handleWhatsAppPost(
         if (local) {
           resolvedMediaUrl = local.mediaUrl;
           resolvedMediaType = local.mediaType;
+        }
+      }
+      if (
+        (target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog") &&
+        msg.metaMediaId &&
+        (msg.type === "IMAGE" ||
+          msg.type === "VIDEO" ||
+          msg.type === "DOCUMENT" ||
+          msg.type === "AUDIO")
+      ) {
+        const inboxCreds = await resolveInboxWhatsappCredentials(organizationId, {
+          channelConfig: (
+            await prisma.inbox.findFirst({
+              where: { id: target.inboxId, organizationId },
+              select: { channelConfig: true },
+            })
+          )?.channelConfig,
+        });
+        const accessToken = decrypt(inboxCreds?.whatsappApiKey) ?? "";
+        if (accessToken) {
+          const tryPersist = () =>
+            persistMetaInboundMediaAsLocalUrl({
+              accessToken,
+              mediaId: msg.metaMediaId!,
+              mimeTypeHint: msg.mediaType,
+              fileName: msg.metaFileName,
+            });
+          let local = await tryPersist();
+          if (!local) {
+            await new Promise((r) => setTimeout(r, 800));
+            local = await tryPersist();
+          }
+          if (local) {
+            resolvedMediaUrl = local.mediaUrl;
+            resolvedMediaType = local.mediaType;
+          } else {
+            app.log.warn(
+              { organizationId, waMessageId: msg.waMessageId, type: msg.type },
+              "Meta inbound media: Graph download failed",
+            );
+          }
         }
       }
 

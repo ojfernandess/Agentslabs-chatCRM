@@ -15,6 +15,7 @@ import {
   whatsappWebhookMetaFromConfig,
 } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
+import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 
 const testWhatsappConnectionSchema = z.object({
@@ -244,6 +245,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         }
         return created;
       });
+    }
+
+    if (inbox.channelType === InboxChannelType.WHATSAPP && channelConfig) {
+      await syncWhatsappInboxCredentialsToSettings(organizationId, inbox.id);
     }
 
     return reply.status(201).send(enrichWhatsappInboxResponse(organizationId, inbox));
@@ -524,6 +529,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         }
         return next;
       });
+      const effectiveTypeDefault = p.channelType ?? inbox.channelType;
+      if (effectiveTypeDefault === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
+        await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
+      }
       return enrichWhatsappInboxResponse(organizationId, updated);
     }
     if (p.isDefault === false && inbox.isDefault) {
@@ -545,6 +554,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       }
       return next;
     });
+    const effectiveType = p.channelType ?? inbox.channelType;
+    if (effectiveType === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
+      await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
+    }
     return enrichWhatsappInboxResponse(organizationId, updated);
   });
 

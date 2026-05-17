@@ -51,16 +51,25 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       payload.template = tpl;
     } else if (params.type === "IMAGE" && params.mediaUrl) {
       payload.type = "image";
-      payload.image = { link: params.mediaUrl };
+      payload.image = {
+        link: params.mediaUrl,
+        ...(params.body?.trim() ? { caption: params.body.trim().slice(0, 1024) } : {}),
+      };
     } else if (params.type === "DOCUMENT" && params.mediaUrl) {
       payload.type = "document";
-      payload.document = { link: params.mediaUrl };
+      payload.document = {
+        link: params.mediaUrl,
+        ...(params.body?.trim() ? { caption: params.body.trim().slice(0, 1024) } : {}),
+      };
     } else if (params.type === "AUDIO" && params.mediaUrl) {
       payload.type = "audio";
       payload.audio = { link: params.mediaUrl };
     } else if (params.type === "VIDEO" && params.mediaUrl) {
       payload.type = "video";
-      payload.video = { link: params.mediaUrl };
+      payload.video = {
+        link: params.mediaUrl,
+        ...(params.body?.trim() ? { caption: params.body.trim().slice(0, 1024) } : {}),
+      };
     }
 
     if (!("type" in payload) || typeof payload.type !== "string") {
@@ -103,10 +112,10 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               id: string;
               type: string;
               text?: { body: string };
-              image?: { id: string; mime_type: string };
-              document?: { id: string; mime_type: string };
+              image?: { id: string; mime_type: string; caption?: string };
+              document?: { id: string; mime_type: string; filename?: string; caption?: string };
               audio?: { id: string; mime_type: string };
-              video?: { id: string; mime_type: string };
+              video?: { id: string; mime_type: string; caption?: string };
               timestamp: string;
             }[];
             statuses?: {
@@ -134,16 +143,23 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             video: "VIDEO",
           };
 
+          const metaMediaId =
+            msg.image?.id ?? msg.document?.id ?? msg.audio?.id ?? msg.video?.id ?? undefined;
+          const caption =
+            msg.image?.caption ?? msg.document?.caption ?? msg.video?.caption ?? undefined;
+
           messages.push({
             from: `+${msg.from}`,
             waMessageId: msg.id,
             type: typeMap[msg.type] ?? "TEXT",
-            body: msg.text?.body,
+            body: msg.text?.body ?? caption,
             mediaType:
               msg.image?.mime_type ??
               msg.document?.mime_type ??
               msg.audio?.mime_type ??
               msg.video?.mime_type,
+            metaMediaId,
+            metaFileName: msg.document?.filename,
             timestamp: new Date(parseInt(msg.timestamp) * 1000),
           });
         }
