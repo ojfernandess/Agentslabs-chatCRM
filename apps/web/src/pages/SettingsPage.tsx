@@ -1066,12 +1066,10 @@ export function SettingsPage() {
                     className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 text-sm text-brand-900"
                     variants={staggerItem}
                   >
-                    <p className="font-medium">Configuração de provider WhatsApp unificada em Caixas de entrada.</p>
-                    <p className="mt-1 text-brand-800/90">
-                      Use a edição da inbox WhatsApp para Meta, 360dialog, Twilio e Evolution. Os fluxos rápidos continuam disponíveis aqui.
-                    </p>
+                    <p className="font-medium">{t("settings.channelUnifiedTitle")}</p>
+                    <p className="mt-1 text-brand-800/90">{t("settings.channelUnifiedBody")}</p>
                     <a href="/inboxes" className="mt-2 inline-block font-medium text-brand-700 underline">
-                      Abrir Caixas de entrada
+                      {t("settings.channelUnifiedLink")}
                     </a>
                   </motion.div>
                   {embeddedInfo?.available ? (

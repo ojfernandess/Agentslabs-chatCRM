@@ -5,6 +5,13 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { InboxChannelType, Prisma } from "@prisma/client";
 import { newIngestToken } from "../lib/channelInboxIngest.js";
+import {
+  assertUniqueWhatsappProviderInOrg,
+  maskInboxRowChannelConfig,
+  prepareWhatsappChannelConfigForSave,
+  parseInboxWhatsappFromChannelConfig,
+  whatsappWebhookMetaFromConfig,
+} from "../lib/inboxWhatsappConfig.js";
 
 const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
 
@@ -36,6 +43,34 @@ const inboxAgentBotSelect = {
   type: true,
   isActive: true,
 } as const;
+
+function normalizeWhatsappInboxChannelConfig(
+  existingConfig: unknown,
+  incoming: unknown,
+  ensureMetaVerifyToken: boolean,
+): Record<string, unknown> | undefined {
+  if (incoming == null || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return undefined;
+  }
+  return prepareWhatsappChannelConfigForSave({
+    existingConfig,
+    incoming: incoming as Record<string, unknown>,
+    ensureMetaVerifyToken,
+  });
+}
+
+function enrichWhatsappInboxResponse<T extends { id: string; channelType: string; channelConfig?: unknown }>(
+  organizationId: string,
+  inbox: T,
+): T & { whatsappWebhookUrl?: string; whatsappWebhookVerifyToken?: string | null } {
+  if (inbox.channelType !== InboxChannelType.WHATSAPP) return inbox;
+  const meta = whatsappWebhookMetaFromConfig(inbox.channelConfig, organizationId, inbox.id);
+  return {
+    ...maskInboxRowChannelConfig(inbox),
+    whatsappWebhookUrl: meta.webhookUrl,
+    whatsappWebhookVerifyToken: meta.verifyToken,
+  };
+}
 
 async function assertAgentBotBelongsToOrg(
   organizationId: string,
@@ -108,7 +143,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         },
       orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     });
-    return { data: rows };
+    return {
+      data: rows.map((row) => enrichWhatsappInboxResponse(organizationId, row)),
+    };
   });
 
   app.post("/", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -129,10 +166,26 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const channelType = body.channelType ?? InboxChannelType.WHATSAPP;
-    const channelConfig =
-      body.channelConfig != null && typeof body.channelConfig === "object"
-        ? (body.channelConfig as Prisma.InputJsonValue)
+    let channelConfig: Prisma.InputJsonValue | undefined;
+    if (channelType === InboxChannelType.WHATSAPP && body.channelConfig != null) {
+      const prepared = normalizeWhatsappInboxChannelConfig(null, body.channelConfig, true);
+      const provider = prepared
+        ? parseInboxWhatsappFromChannelConfig(prepared).whatsappProvider
         : undefined;
+      if (provider) {
+        const unique = await assertUniqueWhatsappProviderInOrg(organizationId, provider);
+        if (unique.conflict) {
+          return reply.status(409).send({
+            error: "Conflict",
+            message: `A WhatsApp inbox for provider "${provider}" already exists (${unique.existingInboxName}).`,
+            statusCode: 409,
+          });
+        }
+      }
+      channelConfig = prepared as Prisma.InputJsonValue;
+    } else if (body.channelConfig != null && typeof body.channelConfig === "object") {
+      channelConfig = body.channelConfig as Prisma.InputJsonValue;
+    }
 
     if (body.isDefault) {
       inbox = await prisma.$transaction(async (tx) => {
@@ -183,7 +236,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    return reply.status(201).send(inbox);
+    return reply.status(201).send(enrichWhatsappInboxResponse(organizationId, inbox));
   });
 
   app.get<{ Params: { id: string } }>("/:id/members", async (request, reply) => {
@@ -326,7 +379,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       return rest;
     }
 
-    return inbox;
+    return enrichWhatsappInboxResponse(organizationId, inbox);
   });
 
   app.patch<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
@@ -380,7 +433,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         }
         return next;
       });
-      return updated;
+      return enrichWhatsappInboxResponse(organizationId, updated);
     }
     if (p.isDefault === false && inbox.isDefault) {
       return reply.status(400).send({
@@ -401,7 +454,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       }
       return next;
     });
-    return updated;
+    return enrichWhatsappInboxResponse(organizationId, updated);
   });
 
   app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {

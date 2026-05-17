@@ -1127,7 +1127,7 @@ export const messages = {
         fieldEmailFrom: "Endereço de envio",
         fieldEmailSmtpHost: "Servidor SMTP (referência)",
         channelNoteWhatsApp:
-          "Informe os dados da API do WhatsApp (Meta Cloud API ou outro provedor). As credenciais são salvas nas configurações da organização; esta caixa agrupa conversas e equipes.",
+          "Cada provedor WhatsApp (Meta Cloud API, Evolution API, etc.) usa uma caixa de entrada própria, com credenciais e webhook dedicados.",
         channelNoteNative:
           "Este canal usa rotas públicas nativas (Client API e webhooks por plataforma), sem JSON genérico como fluxo principal.",
         whatsappMeta: {
@@ -1154,7 +1154,12 @@ export const messages = {
           validationApiKey: "Informe a chave da API.",
           editSectionTitle: "Provedor WhatsApp",
           editSectionHint:
-            "Credenciais centralizadas na organização. A ligação rápida Meta/Evolution continua disponível em Configurações.",
+            "Credenciais e webhook desta caixa ficam no channelConfig da inbox. Cada provedor deve ter sua própria caixa WhatsApp.",
+          providerNewInboxNotice:
+            "Será criada uma nova caixa para {newProvider}. As caixas existentes ({existing}) serão mantidas com seus provedores atuais.",
+          providerAlreadyExists:
+            "Já existe uma caixa WhatsApp para este provedor ({name}). Edite essa caixa ou escolha outro provedor.",
+          validationInstance: "Informe o nome da instância.",
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "App Secret do app Meta",
           fieldWebhookSecretHint:
@@ -1168,6 +1173,13 @@ export const messages = {
           step4WhatsAppTitle: "Sua caixa de entrada está pronta!",
           step4WhatsAppSubtitle:
             "Agora você pode atender clientes pelo WhatsApp. Copie a URL e o token de verificação para o app Meta.",
+          orgConfiguredBanner:
+            "As credenciais WhatsApp já estão salvas nas configurações da organização. Esta caixa usa a mesma conexão — informe só o nome e dados opcionais da caixa.",
+          orgConfiguredEditLink: "Alterar credenciais em Configurações",
+          inboxStatusConfigured: "WhatsApp conectado nesta caixa",
+          inboxStatusNotConfigured: "WhatsApp sem credenciais nesta caixa — edite para configurar",
+          inboxOrgProviderLabel: "Provedor",
+          inboxOrgPhoneIdLabel: "ID do número",
         },
         doneHint: "Filtre conversas por esta caixa no menu lateral ou na lista de conversas.",
         ingestNativeIntro:
@@ -2050,7 +2062,11 @@ export const messages = {
       cannedSaveError: "Não foi possível guardar a resposta pronta.",
       cannedDeleteConfirm: "Eliminar esta resposta pronta?",
       channelHint:
-        "Configure o fornecedor, teste a ligação e copie o URL do webhook no painel do seu fornecedor WhatsApp.",
+        "As credenciais WhatsApp ficam aqui e valem para todas as caixas de entrada do tipo WhatsApp. Em Caixas de entrada, defina nome, equipes e dados opcionais (telefone exibido, WABA).",
+      channelUnifiedTitle: "Canal WhatsApp da organização",
+      channelUnifiedBody:
+        "Esta configuração é compartilhada por todas as caixas WhatsApp. Após salvar, abra Caixas de entrada para ver o status ou criar outra caixa.",
+      channelUnifiedLink: "Abrir Caixas de entrada",
       webhookCopyHint:
         "Copie este URL e utilize-o como URL de callback no painel do seu fornecedor WhatsApp.",
       agentBotWhatsApp: "Bot de agente no canal",
@@ -3481,7 +3497,7 @@ export const messages = {
         fieldEmailFrom: "From address",
         fieldEmailSmtpHost: "SMTP host (reference)",
         channelNoteWhatsApp:
-          "Enter your WhatsApp API details (Meta Cloud API or another provider). Credentials are stored in organization settings; this inbox groups conversations and teams.",
+          "Each WhatsApp provider (Meta Cloud API, Evolution API, etc.) uses its own inbox with dedicated credentials and webhook URL.",
         channelNoteNative:
           "This channel uses native public routes (Client API and per-platform webhooks), not a generic JSON webhook as the primary flow.",
         whatsappMeta: {
@@ -3505,7 +3521,12 @@ export const messages = {
           validationApiKey: "Enter the API key.",
           editSectionTitle: "WhatsApp provider",
           editSectionHint:
-            "Credentials are centralized for the organization. Quick Meta/Evolution setup remains available in Settings.",
+            "This inbox stores its own provider credentials and webhook. Use a separate WhatsApp inbox per provider.",
+          providerNewInboxNotice:
+            "A new inbox will be created for {newProvider}. Existing inboxes ({existing}) will be kept with their current providers.",
+          providerAlreadyExists:
+            "A WhatsApp inbox for this provider already exists ({name}). Edit that inbox or choose another provider.",
+          validationInstance: "Enter the instance name.",
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "Meta app secret",
           fieldWebhookSecretHint:
@@ -3519,6 +3540,13 @@ export const messages = {
           step4WhatsAppTitle: "Your inbox is ready!",
           step4WhatsAppSubtitle:
             "You can now serve customers on WhatsApp. Copy the URL and verify token into your Meta app.",
+          orgConfiguredBanner:
+            "WhatsApp credentials are already saved in organization settings. This inbox uses the same connection — set the inbox name and optional details only.",
+          orgConfiguredEditLink: "Change credentials in Settings",
+          inboxStatusConfigured: "WhatsApp connected on this inbox",
+          inboxStatusNotConfigured: "WhatsApp not configured on this inbox — edit to set up",
+          inboxOrgProviderLabel: "Provider",
+          inboxOrgPhoneIdLabel: "Phone number ID",
         },
         doneHint: "Filter conversations by this inbox from the sidebar or conversation list.",
         ingestNativeIntro:
@@ -4398,7 +4426,11 @@ export const messages = {
       cannedSaveError: "Could not save canned response.",
       cannedDeleteConfirm: "Delete this canned response?",
       channelHint:
-        "Configure the provider, test connectivity, and copy the webhook URL from your WhatsApp provider dashboard.",
+        "WhatsApp credentials live here and apply to every WhatsApp inbox. In Inboxes, set name, teams, and optional inbox fields (display phone, WABA).",
+      channelUnifiedTitle: "Organization WhatsApp channel",
+      channelUnifiedBody:
+        "This setup is shared by all WhatsApp inboxes. After saving, open Inboxes to see status or add another inbox.",
+      channelUnifiedLink: "Open Inboxes",
       webhookCopyHint:
         "Copy this URL and set it as the callback URL in your WhatsApp provider dashboard.",
       agentBotWhatsApp: "Agent bot on this channel",

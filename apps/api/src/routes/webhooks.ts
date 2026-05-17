@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
-import { getWhatsAppProvider, getWebhookSecret } from "../providers/factory.js";
+import { getWhatsAppProviderForInbox, getWebhookSecretForInbox } from "../providers/factory.js";
+import {
+  findOrganizationByMetaPhoneNumberId,
+  findWhatsappInboxByPhoneNumberId,
+  resolveInboxWhatsappCredentials,
+} from "../lib/inboxWhatsappConfig.js";
 import { MetaCloudApiProvider } from "../providers/meta.js";
 import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
@@ -9,7 +14,7 @@ import { maybeTranscribeInboundAudioMessage } from "../lib/audioTranscription.js
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
-import { ensureConversationForWhatsAppContact } from "../lib/conversationRouting.js";
+import { ensureConversationForChannelInbox } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
@@ -66,12 +71,55 @@ function extractMetaWebhookPhoneNumberId(body: unknown): string | null {
   return null;
 }
 
+type WhatsappWebhookTarget = {
+  inboxId: string;
+  whatsappProvider: string;
+};
+
+async function resolveWhatsappWebhookTarget(
+  organizationId: string,
+  options: { inboxId?: string; body?: unknown },
+): Promise<WhatsappWebhookTarget | null> {
+  let inboxId = options.inboxId;
+
+  if (!inboxId && options.body) {
+    const phoneId = extractMetaWebhookPhoneNumberId(options.body);
+    if (phoneId) {
+      const found = await findWhatsappInboxByPhoneNumberId(organizationId, phoneId);
+      if (found) inboxId = found.id;
+    }
+  }
+
+  if (inboxId) {
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: inboxId, organizationId },
+      select: { id: true, channelConfig: true },
+    });
+    if (!inbox) return null;
+    const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
+    if (!creds) return null;
+    return { inboxId: inbox.id, whatsappProvider: creds.whatsappProvider };
+  }
+
+  const defaultInboxId = await getDefaultInboxId(organizationId);
+  const creds = await resolveInboxWhatsappCredentials(organizationId, {
+    channelConfig: (
+      await prisma.inbox.findFirst({
+        where: { id: defaultInboxId, organizationId },
+        select: { channelConfig: true },
+      })
+    )?.channelConfig,
+  });
+  if (!creds) return null;
+  return { inboxId: defaultInboxId, whatsappProvider: creds.whatsappProvider };
+}
+
 async function handleWhatsAppPost(
   app: FastifyInstance,
   request: FastifyRequest,
   reply: FastifyReply,
   organizationId: string,
-  options?: { skipWebhookSignature?: boolean },
+  options?: { inboxId?: string; skipWebhookSignature?: boolean },
 ): Promise<void> {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -83,22 +131,39 @@ async function handleWhatsAppPost(
   }
 
   app.log.info(
-    { url: request.url, contentLength: request.headers["content-length"], organizationId },
+    {
+      url: request.url,
+      contentLength: request.headers["content-length"],
+      organizationId,
+      inboxId: options?.inboxId,
+    },
     "WhatsApp webhook POST received",
   );
-
-  const provider = await getWhatsAppProvider(organizationId);
-  if (!provider) {
-    app.log.warn({ organizationId }, "Webhook received but no provider configured for organization");
-    return reply.status(200).send();
-  }
 
   let body = normalizeJsonBody(request.body);
   if (body === null) {
     return reply.status(400).send({ error: "Invalid JSON body" });
   }
 
-  const secret = await getWebhookSecret(organizationId);
+  const target = await resolveWhatsappWebhookTarget(organizationId, {
+    inboxId: options?.inboxId,
+    body,
+  });
+  if (!target) {
+    app.log.warn({ organizationId }, "Webhook received but no WhatsApp inbox/provider resolved");
+    return reply.status(200).send();
+  }
+
+  const provider = await getWhatsAppProviderForInbox(organizationId, target.inboxId);
+  if (!provider) {
+    app.log.warn(
+      { organizationId, inboxId: target.inboxId },
+      "Webhook received but provider could not be built for inbox",
+    );
+    return reply.status(200).send();
+  }
+
+  const secret = await getWebhookSecretForInbox(organizationId, target.inboxId);
   if (secret && !options?.skipWebhookSignature) {
     const rawBody =
       typeof request.body === "string" ? request.body : JSON.stringify(request.body);
@@ -129,8 +194,7 @@ async function handleWhatsAppPost(
     !Array.isArray(body)
   ) {
     const env = body as Record<string, unknown>;
-    const settingsRow = await prisma.settings.findUnique({ where: { organizationId } });
-    if (settingsRow?.whatsappProvider === "evolution") {
+    if (target.whatsappProvider === "evolution") {
       app.log.warn(
         {
           event: env.event,
@@ -139,7 +203,7 @@ async function handleWhatsAppPost(
         },
         "Evolution webhook: nothing parsed — enable MESSAGES_UPSERT, MESSAGES_UPDATE and CONTACTS_* on the instance webhook; POST URL must be https://<seu-dominio>/webhooks/whatsapp/<uuid-da-organizacao> (Evolution may append /messages-upsert if webhook by events is enabled).",
       );
-    } else if (settingsRow?.whatsappProvider === "evolution_go") {
+    } else if (target.whatsappProvider === "evolution_go") {
       app.log.warn(
         {
           event: env.event,
@@ -193,9 +257,8 @@ async function handleWhatsAppPost(
       data: { organizationId },
     });
   }
-  const defaultInboxId = await getDefaultInboxId(organizationId);
-  const defaultInboxAgentCtx = await getAgentBotDispatchContextForInbox(organizationId, defaultInboxId);
-  const useAgentBotOnDefaultInbox = Boolean(defaultInboxAgentCtx);
+  const targetInboxAgentCtx = await getAgentBotDispatchContextForInbox(organizationId, target.inboxId);
+  const useAgentBotOnInbox = Boolean(targetInboxAgentCtx);
 
   const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");
 
@@ -308,13 +371,14 @@ async function handleWhatsAppPost(
         }
       }
 
-      let conversation = await ensureConversationForWhatsAppContact({
+      let conversation = await ensureConversationForChannelInbox({
         organizationId,
         contactId: contact.id,
+        inboxId: target.inboxId,
         lockSingleConversation: channelSettings.lockSingleConversation,
-        activeConversationStatus: useAgentBotOnDefaultInbox ? "PENDING" : "OPEN",
+        activeConversationStatus: useAgentBotOnInbox ? "PENDING" : "OPEN",
         createDefaults: {
-          status: useAgentBotOnDefaultInbox ? "PENDING" : "OPEN",
+          status: useAgentBotOnInbox ? "PENDING" : "OPEN",
           assignedToId: null,
         },
       });
@@ -322,7 +386,7 @@ async function handleWhatsAppPost(
       let resolvedMediaUrl: string | null = msg.mediaUrl ?? null;
       let resolvedMediaType: string | null = msg.mediaType ?? null;
       if (
-        channelSettings.whatsappProvider === "evolution" &&
+        target.whatsappProvider === "evolution" &&
         msg.evolutionWebMessage &&
         (msg.type === "IMAGE" ||
           msg.type === "VIDEO" ||
@@ -350,7 +414,7 @@ async function handleWhatsAppPost(
         }
       }
       if (
-        channelSettings.whatsappProvider === "evolution_go" &&
+        target.whatsappProvider === "evolution_go" &&
         msg.evolutionWebMessage &&
         typeof msg.evolutionWebMessage.base64 === "string" &&
         msg.evolutionWebMessage.base64.trim()
@@ -530,19 +594,23 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       app.log.info({ url: request.url }, "meta/whatsapp: no phone_number_id in payload");
       return reply.status(200).send();
     }
-    const row = await prisma.settings.findFirst({
-      where: { whatsappPhoneNumberId: phoneId },
-      select: { organizationId: true },
-    });
-    if (!row) {
+    const hit = await findOrganizationByMetaPhoneNumberId(phoneId);
+    if (!hit) {
       app.log.warn({ phoneId }, "meta/whatsapp: no organization for phone_number_id");
       return reply.status(200).send();
     }
-    return handleWhatsAppPost(app, request, reply, row.organizationId, { skipWebhookSignature: true });
+    return handleWhatsAppPost(app, request, reply, hit.organizationId, {
+      inboxId: hit.inboxId,
+      skipWebhookSignature: true,
+    });
   });
 
-  app.get<{ Params: { organizationId: string } }>("/whatsapp/:organizationId", async (request, reply) => {
-    const { organizationId } = request.params;
+  async function handleWhatsAppGet(
+    organizationId: string,
+    inboxId: string | undefined,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: { isActive: true },
@@ -550,21 +618,48 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     if (!org?.isActive) {
       return reply.status(503).send({ error: "Organization suspended" });
     }
-    const provider = await getWhatsAppProvider(organizationId);
+
+    const target = await resolveWhatsappWebhookTarget(organizationId, { inboxId });
+    if (!target) {
+      return reply.status(503).send({ error: "Provider not configured" });
+    }
+
+    const provider = await getWhatsAppProviderForInbox(organizationId, target.inboxId);
     if (!provider) {
       return reply.status(503).send({ error: "Provider not configured" });
     }
 
     const challenge = provider.handleVerification(request.query as Record<string, string>);
-
     if (challenge) {
       return reply.type("text/plain").send(challenge);
     }
-
     return reply.status(403).send({ error: "Verification failed" });
+  }
+
+  app.get<{ Params: { organizationId: string; inboxId: string } }>(
+    "/whatsapp/:organizationId/:inboxId",
+    async (request, reply) => {
+      return handleWhatsAppGet(request.params.organizationId, request.params.inboxId, request, reply);
+    },
+  );
+
+  app.get<{ Params: { organizationId: string } }>("/whatsapp/:organizationId", async (request, reply) => {
+    return handleWhatsAppGet(request.params.organizationId, undefined, request, reply);
   });
 
   for (const suffix of WHATSAPP_POST_SUFFIXES) {
+    app.post<{ Params: { organizationId: string; inboxId: string } }>(
+      `/whatsapp/:organizationId/:inboxId${suffix}`,
+      rawBodyPost,
+      async (
+        request: FastifyRequest<{ Params: { organizationId: string; inboxId: string } }>,
+        reply: FastifyReply,
+      ) => {
+        return handleWhatsAppPost(app, request, reply, request.params.organizationId, {
+          inboxId: request.params.inboxId,
+        });
+      },
+    );
     app.post<{ Params: { organizationId: string } }>(
       `/whatsapp/:organizationId${suffix}`,
       rawBodyPost,

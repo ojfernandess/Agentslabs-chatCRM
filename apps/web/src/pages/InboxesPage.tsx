@@ -13,7 +13,14 @@ import {
   type WebsiteWidgetForm,
 } from "@/lib/websiteWidget";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
-import { mergeWhatsappMetaChannelConfig, whatsappMetaFromChannelConfig } from "@/lib/whatsappMetaConfig";
+import {
+  buildInboxWhatsappChannelConfig,
+  isInboxWhatsappConfigured,
+  isWhatsAppCloudApiProvider,
+  parseInboxWhatsappFromChannelConfig,
+} from "@/lib/inboxWhatsappConfig";
+import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
+import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "";
@@ -39,6 +46,8 @@ type InboxRow = {
   isDefault: boolean;
   ingestToken?: string | null;
   channelConfig?: unknown | null;
+  whatsappWebhookUrl?: string;
+  whatsappWebhookVerifyToken?: string | null;
   agentBotId?: string | null;
   agentBot?: InboxBotSummary | null;
   members?: InboxMemberRow[];
@@ -46,10 +55,6 @@ type InboxRow = {
 };
 
 type ChannelSettings = {
-  whatsappProvider: string | null;
-  whatsappPhoneNumberId: string | null;
-  whatsappWebhookSecret: string | null;
-  evolutionApiBaseUrl: string | null;
   evolutionPlatformQrMode?: boolean;
   evolutionGoPlatformMode?: boolean;
 };
@@ -111,7 +116,6 @@ export function InboxesPage() {
   const [editWebhookSecret, setEditWebhookSecret] = useState("");
   const [editProviderPhoneId, setEditProviderPhoneId] = useState("");
   const [editProviderEvoBaseUrl, setEditProviderEvoBaseUrl] = useState("");
-  const [providerSaving, setProviderSaving] = useState(false);
   const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
 
   const basePublicInbox =
@@ -150,14 +154,22 @@ export function InboxesPage() {
     }
   };
 
+  const refreshChannelSettings = async (): Promise<ChannelSettings | null> => {
+    if (!isAdmin) return null;
+    try {
+      const cfg = await api.get<ChannelSettings>("/settings");
+      setChannelSettings(cfg);
+      return cfg;
+    } catch {
+      return null;
+    }
+  };
+
   const load = async () => {
     try {
       const res = await api.get<{ data: InboxRow[] }>("/inboxes");
       setRows(res.data);
-      if (isAdmin) {
-        const cfg = await api.get<ChannelSettings>("/settings");
-        setChannelSettings(cfg);
-      }
+      await refreshChannelSettings();
     } catch {
       setRows([]);
     }
@@ -184,6 +196,15 @@ export function InboxesPage() {
         setLoading(false);
       }
     })();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const onFocus = () => {
+      void refreshChannelSettings();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [isAdmin]);
 
   const toggle = (id: string) => {
@@ -232,7 +253,7 @@ export function InboxesPage() {
     }
   };
 
-  const startEdit = (row: InboxRow) => {
+  const startEdit = async (row: InboxRow) => {
     setExpanded((p) => ({ ...p, [row.id]: true }));
     setEditingId(row.id);
     setEditName(row.name);
@@ -240,14 +261,15 @@ export function InboxesPage() {
     setEditChannel(row.channelType);
     setEditWebhook(outboundWebhookFromConfig(row.channelConfig));
     setEditAgentBotId(row.agentBotId ?? "");
-    setEditProvider(channelSettings?.whatsappProvider ?? "meta");
-    setEditProviderPhoneId(channelSettings?.whatsappPhoneNumberId ?? "");
-    setEditProviderEvoBaseUrl(channelSettings?.evolutionApiBaseUrl ?? "");
+    await refreshChannelSettings();
+    const wa = parseInboxWhatsappFromChannelConfig(row.channelConfig);
+    setEditProvider(wa.whatsappProvider ?? "meta");
+    setEditProviderPhoneId(wa.whatsappPhoneNumberId ?? "");
+    setEditProviderEvoBaseUrl(wa.evolutionApiBaseUrl ?? "");
     setEditProviderApiKey("");
     setEditWebhookSecret("");
-    const meta = whatsappMetaFromChannelConfig(row.channelConfig);
-    setEditDisplayPhone(meta.whatsappDisplayPhone ?? "");
-    setEditWabaId(meta.whatsappBusinessAccountId ?? "");
+    setEditDisplayPhone(wa.whatsappDisplayPhone ?? "");
+    setEditWabaId(wa.whatsappBusinessAccountId ?? "");
     setEditWebsiteWidget(
       row.channelType === "WEBSITE"
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
@@ -284,7 +306,12 @@ export function InboxesPage() {
         Object.assign(prev, widgetCfg);
       }
       if (editChannel === "WHATSAPP") {
-        const merged = mergeWhatsappMetaChannelConfig(prev, {
+        const merged = buildInboxWhatsappChannelConfig(prev, {
+          whatsappProvider: editProvider,
+          whatsappPhoneNumberId: editProviderPhoneId,
+          whatsappApiKey: editProviderApiKey,
+          whatsappWebhookSecret: editWebhookSecret,
+          evolutionApiBaseUrl: editProviderEvoBaseUrl,
           whatsappDisplayPhone: editDisplayPhone,
           whatsappBusinessAccountId: editWabaId,
         });
@@ -299,21 +326,6 @@ export function InboxesPage() {
         channelConfig: channelConfigPayload,
         agentBotId: editAgentBotId.trim() ? editAgentBotId.trim() : null,
       });
-      if (editChannel === "WHATSAPP") {
-        setProviderSaving(true);
-        const providerBody: Record<string, unknown> = {
-          whatsappProvider: editProvider,
-          whatsappPhoneNumberId: editProviderPhoneId.trim() || undefined,
-        };
-        if (editProviderApiKey.trim()) providerBody.whatsappApiKey = editProviderApiKey.trim();
-        if (editWebhookSecret.trim()) providerBody.whatsappWebhookSecret = editWebhookSecret.trim();
-        if (editProvider === "evolution" || editProvider === "evolution_go") {
-          providerBody.evolutionApiBaseUrl = editProviderEvoBaseUrl.trim() || null;
-        } else {
-          providerBody.evolutionApiBaseUrl = null;
-        }
-        await api.put("/settings", providerBody);
-      }
       setEditingId(null);
       setEditWebsiteWidget(null);
       await load();
@@ -321,7 +333,6 @@ export function InboxesPage() {
       window.alert(t("inboxesPage.editSaveFailed"));
     } finally {
       setEditSavingId(null);
-      setProviderSaving(false);
     }
   };
 
@@ -377,7 +388,10 @@ export function InboxesPage() {
 
         <InboxCreateWizard
           open={wizardOpen}
-          onClose={() => setWizardOpen(false)}
+          onClose={() => {
+            setWizardOpen(false);
+            void refreshChannelSettings();
+          }}
           onCreated={() => void load()}
           orgUsers={orgUsers}
           agentBots={agentBots}
@@ -426,6 +440,23 @@ export function InboxesPage() {
                           {t("inboxesPage.memberCount")}: {row._count.members} · {t("inboxesPage.conversations")}:{" "}
                           {row._count.conversations}
                         </p>
+                        {row.channelType === "WHATSAPP" ? (() => {
+                          const waRow = parseInboxWhatsappFromChannelConfig(row.channelConfig);
+                          const waOk = isInboxWhatsappConfigured(waRow);
+                          return (
+                            <p
+                              className={`mt-0.5 text-[11px] font-medium ${
+                                waOk
+                                  ? "text-emerald-700 dark:text-emerald-300"
+                                  : "text-amber-800 dark:text-amber-200"
+                              }`}
+                            >
+                              {waOk
+                                ? `${t("inboxesPage.wizard.whatsappMeta.inboxStatusConfigured")} · ${whatsappProviderLabel(waRow.whatsappProvider)}`
+                                : t("inboxesPage.wizard.whatsappMeta.inboxStatusNotConfigured")}
+                            </p>
+                          );
+                        })() : null}
                         {row.agentBot ? (
                           <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300/90">
                             {t("inboxesPage.agentBotField")}: {row.agentBot.name}
@@ -468,7 +499,7 @@ export function InboxesPage() {
                       <div className="flex shrink-0 flex-col items-end justify-center gap-1 sm:flex-row sm:items-center">
                         <button
                           type="button"
-                          onClick={() => startEdit(row)}
+                          onClick={() => void startEdit(row)}
                           className="btn-secondary flex items-center gap-1 px-2 py-1 text-xs"
                           title={t("common.edit")}
                         >
@@ -567,12 +598,18 @@ export function InboxesPage() {
                                 onApiKeyChange={setEditProviderApiKey}
                                 waWebhookSecret={editWebhookSecret}
                                 onWebhookSecretChange={setEditWebhookSecret}
-                                webhookSecretStored={!!channelSettings?.whatsappWebhookSecret}
+                                webhookSecretStored={
+                                  parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappWebhookSecret ===
+                                  MASKED_WHATSAPP_SECRET
+                                }
                                 waProviderBaseUrl={editProviderEvoBaseUrl}
                                 onBaseUrlChange={setEditProviderEvoBaseUrl}
                                 evolutionPlatformQrMode={channelSettings?.evolutionPlatformQrMode ?? false}
                                 evolutionGoPlatformMode={channelSettings?.evolutionGoPlatformMode ?? false}
-                                apiKeyOptionalHint
+                                apiKeyOptionalHint={
+                                  parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappApiKey ===
+                                  MASKED_WHATSAPP_SECRET
+                                }
                               />
                             </div>
                           ) : null}
@@ -610,11 +647,11 @@ export function InboxesPage() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              disabled={editSavingId === row.id || providerSaving || !editName.trim()}
+                              disabled={editSavingId === row.id || !editName.trim()}
                               onClick={() => void saveEdit(row.id)}
                               className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                             >
-                              {editSavingId === row.id || providerSaving ? t("common.saving") : t("common.save")}
+                              {editSavingId === row.id ? t("common.saving") : t("common.save")}
                             </button>
                             <button
                               type="button"
@@ -631,10 +668,23 @@ export function InboxesPage() {
                           {t("inboxesPage.ingestTitle")}
                         </h3>
                         <p className="mb-2 text-xs text-gray-500 dark:text-ink-500">{t("inboxesPage.ingestPathsIntro")}</p>
-                        {row.channelType === "WHATSAPP" ? (
-                          <p className="mb-2 text-xs text-amber-800/90 dark:text-amber-200/85">
-                            {t("inboxesPage.wizard.ingestNoteWhatsApp")}
-                          </p>
+                        {row.channelType === "WHATSAPP" &&
+                        editingId !== row.id &&
+                        isWhatsAppCloudApiProvider(
+                          parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider ?? "",
+                        ) ? (
+                          row.whatsappWebhookUrl && row.whatsappWebhookVerifyToken ? (
+                            <div className="mb-3">
+                              <WhatsAppMetaWebhookCopyPanel
+                                webhookUrl={row.whatsappWebhookUrl}
+                                verifyToken={row.whatsappWebhookVerifyToken}
+                              />
+                            </div>
+                          ) : (
+                            <p className="mb-2 text-xs text-amber-800/90 dark:text-amber-200/85">
+                              {t("inboxesPage.wizard.whatsappMeta.inboxStatusNotConfigured")}
+                            </p>
+                          )
                         ) : null}
                         {row.ingestToken && row.channelType !== "WHATSAPP" && basePublicNative ? (
                           <>

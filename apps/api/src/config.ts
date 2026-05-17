@@ -44,6 +44,11 @@ export function webhookUrlForOrganization(organizationId: string): string {
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}`;
 }
 
+/** Webhook dedicado por caixa WhatsApp (um provider por caixa). */
+export function webhookUrlForInbox(organizationId: string, inboxId: string): string {
+  return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}/${inboxId}`;
+}
+
 /** Callback único para todas as organizações quando se usa WhatsApp Embedded (Meta). */
 export function metaEmbeddedWebhookUrl(): string {
   return `${getPublicOrigin()}/webhooks/meta/whatsapp`;

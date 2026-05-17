@@ -11,6 +11,7 @@ import {
   generateWhatsappWebhookVerifyToken,
   isMetaCloudWhatsappProvider,
 } from "../lib/whatsappWebhookVerify.js";
+import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
@@ -411,6 +412,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           where: { id: settings.id },
           data: { whatsappWebhookVerifyToken: generateWhatsappWebhookVerifyToken() },
         });
+      }
+
+      if (settings.whatsappProvider?.trim()) {
+        await ensureDefaultInboxForOrganization(organizationId);
       }
 
       return {

@@ -2,7 +2,7 @@ import type { Prisma, Message, Conversation, InboxChannelType } from "@prisma/cl
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
-import { getWhatsAppProvider } from "../providers/factory.js";
+import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import { ensureConversationForChannelInbox, ensureConversationForWhatsAppContact } from "./conversationRouting.js";
@@ -93,8 +93,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     where: { organizationId },
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
-  const providerKind = channelSettings?.whatsappProvider;
-  const isMetaProvider = providerKind === "meta" || providerKind === "360dialog";
+  let providerKind: string | null | undefined = channelSettings?.whatsappProvider;
 
   const targetConversationId = pinnedConversationId ?? dataConversationId;
 
@@ -114,6 +113,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     inboxChannelConfig = conv.inbox.channelConfig ?? null;
     const { inbox: _inbox, ...rest } = conv;
     conversation = rest;
+    providerKind =
+      (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
   } else {
     const explicitInboxId = dataConversationId ? undefined : dataInboxId;
     if (explicitInboxId) {
@@ -177,7 +178,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
       const { inbox: _inbox, ...rest } = conv;
       conversation = rest;
     }
+    providerKind =
+      (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
   }
+
+  const isMetaProvider = providerKind === "meta" || providerKind === "360dialog";
 
   if (type === "TEMPLATE" && !isPrivate && inboxChannelType !== "WHATSAPP") {
     throw new Error("WhatsApp message templates are only supported for WhatsApp inboxes");
@@ -245,7 +250,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let providerMsgId: string | undefined;
   if (!isPrivate && inboxChannelType === "WHATSAPP") {
     try {
-      const provider = await getWhatsAppProvider(organizationId);
+      const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
       if (provider) {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;

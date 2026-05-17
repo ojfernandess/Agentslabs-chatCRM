@@ -25,7 +25,13 @@ import {
 } from "@/lib/websiteWidget";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
-import { isWhatsAppCloudApiProvider, mergeWhatsappMetaChannelConfig } from "@/lib/whatsappMetaConfig";
+import {
+  buildInboxWhatsappChannelConfig,
+  isWhatsAppCloudApiProvider,
+  summarizeWhatsappInboxes,
+  type WhatsappInboxSummary,
+} from "@/lib/inboxWhatsappConfig";
+import { whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 
 /** Ordem e IDs alinhados à UX do [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings). */
 export const INBOX_CHANNEL_ORDER = [
@@ -170,6 +176,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [evolutionGoPlatformMode, setEvolutionGoPlatformMode] = useState(false);
   const [waSetupWebhookUrl, setWaSetupWebhookUrl] = useState("");
   const [waSetupVerifyToken, setWaSetupVerifyToken] = useState("");
+  const [existingWhatsappInboxes, setExistingWhatsappInboxes] = useState<WhatsappInboxSummary[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -196,26 +203,42 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setEvolutionGoPlatformMode(false);
     setWaSetupWebhookUrl("");
     setWaSetupVerifyToken("");
+    setExistingWhatsappInboxes([]);
     void (async () => {
       try {
-        const cfg = await api.get<{
-          whatsappProvider: string | null;
-          whatsappPhoneNumberId: string | null;
-          evolutionApiBaseUrl: string | null;
-          evolutionPlatformQrMode?: boolean;
-          evolutionGoPlatformMode?: boolean;
-        }>("/settings");
-        if (cfg.whatsappProvider) setWaProvider(cfg.whatsappProvider);
-        if (cfg.whatsappPhoneNumberId) setWaProviderPhoneId(cfg.whatsappPhoneNumberId);
-        if (cfg.evolutionApiBaseUrl) setWaProviderBaseUrl(cfg.evolutionApiBaseUrl);
+        const [cfg, inboxesRes] = await Promise.all([
+          api.get<{
+            evolutionPlatformQrMode?: boolean;
+            evolutionGoPlatformMode?: boolean;
+          }>("/settings"),
+          api.get<{ data: { id: string; name: string; channelType: string; channelConfig?: unknown }[] }>(
+            "/inboxes",
+          ).catch(() => ({ data: [] })),
+        ]);
         setEvolutionPlatformQrMode(cfg.evolutionPlatformQrMode ?? false);
         setEvolutionGoPlatformMode(cfg.evolutionGoPlatformMode ?? false);
+        setExistingWhatsappInboxes(summarizeWhatsappInboxes(inboxesRes.data));
       } catch {
       }
     })();
   }, [open]);
 
   if (!open) return null;
+
+  const otherWhatsappInboxes = existingWhatsappInboxes.filter(
+    (i) => i.provider && i.provider !== waProvider,
+  );
+  const providerNewInboxNotice =
+    channel === "WHATSAPP" && otherWhatsappInboxes.length > 0
+      ? t("inboxesPage.wizard.whatsappMeta.providerNewInboxNotice")
+          .replace("{newProvider}", whatsappProviderLabel(waProvider))
+          .replace(
+            "{existing}",
+            otherWhatsappInboxes
+              .map((i) => `${i.name} (${whatsappProviderLabel(i.provider)})`)
+              .join(", "),
+          )
+      : null;
 
   const nativeBase =
     typeof window !== "undefined"
@@ -266,8 +289,28 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
         setError(t("inboxesPage.wizard.whatsappMeta.validationPhoneNumberId"));
         return;
       }
+      const existingSame = existingWhatsappInboxes.find((i) => i.provider === waProvider);
+      if (existingSame) {
+        setError(
+          t("inboxesPage.wizard.whatsappMeta.providerAlreadyExists").replace("{name}", existingSame.name),
+        );
+        return;
+      }
       if (!waProviderApiKey.trim()) {
         setError(t("inboxesPage.wizard.whatsappMeta.validationApiKey"));
+        return;
+      }
+    }
+    if (channel === "WHATSAPP" && (waProvider === "evolution" || waProvider === "evolution_go")) {
+      const existingSame = existingWhatsappInboxes.find((i) => i.provider === waProvider);
+      if (existingSame) {
+        setError(
+          t("inboxesPage.wizard.whatsappMeta.providerAlreadyExists").replace("{name}", existingSame.name),
+        );
+        return;
+      }
+      if (!waProviderPhoneId.trim()) {
+        setError(t("inboxesPage.wizard.whatsappMeta.validationInstance"));
         return;
       }
     }
@@ -290,12 +333,23 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
             })
           : (buildChannelConfigPayload(channel, nativeCfg) ?? null);
       if (channel === "WHATSAPP") {
-        channelConfig = mergeWhatsappMetaChannelConfig(channelConfig, {
+        channelConfig = buildInboxWhatsappChannelConfig(channelConfig, {
+          whatsappProvider: waProvider,
+          whatsappPhoneNumberId: waProviderPhoneId,
+          whatsappApiKey: waProviderApiKey,
+          whatsappWebhookSecret: waWebhookSecret,
+          evolutionApiBaseUrl: waProviderBaseUrl,
           whatsappDisplayPhone: waDisplayPhone,
           whatsappBusinessAccountId: waWabaId,
         });
       }
-      const inbox = await api.post<{ id: string; ingestToken: string | null; channelType: string }>("/inboxes", {
+      const inbox = await api.post<{
+        id: string;
+        ingestToken: string | null;
+        channelType: string;
+        whatsappWebhookUrl?: string;
+        whatsappWebhookVerifyToken?: string | null;
+      }>("/inboxes", {
         name: n,
         description: description.trim() || null,
         isDefault: isDefault || undefined,
@@ -311,26 +365,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
           /* ignore individual member failures */
         }
       }
-      if (channel === "WHATSAPP") {
-        const providerBody: Record<string, unknown> = {
-          whatsappProvider: waProvider,
-          whatsappPhoneNumberId: waProviderPhoneId.trim() || undefined,
-        };
-        if (waProviderApiKey.trim()) providerBody.whatsappApiKey = waProviderApiKey.trim();
-        if (waWebhookSecret.trim()) providerBody.whatsappWebhookSecret = waWebhookSecret.trim();
-        if (waProvider === "evolution" || waProvider === "evolution_go") {
-          providerBody.evolutionApiBaseUrl = waProviderBaseUrl.trim() || null;
-        } else {
-          providerBody.evolutionApiBaseUrl = null;
-        }
-        const settingsRes = await api.put<{
-          webhookUrl: string;
-          whatsappWebhookVerifyToken?: string | null;
-        }>("/settings", providerBody);
-        if (isWhatsAppCloudApiProvider(waProvider)) {
-          setWaSetupWebhookUrl(settingsRes.webhookUrl ?? "");
-          setWaSetupVerifyToken(settingsRes.whatsappWebhookVerifyToken ?? "");
-        }
+      if (channel === "WHATSAPP" && isWhatsAppCloudApiProvider(waProvider)) {
+        setWaSetupWebhookUrl(inbox.whatsappWebhookUrl ?? "");
+        setWaSetupVerifyToken(inbox.whatsappWebhookVerifyToken ?? "");
       }
       setCreatedInbox(inbox);
       setStep(4);
@@ -679,6 +716,11 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                   </div>
                 ) : channel === "WHATSAPP" ? (
                   <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    {providerNewInboxNotice ? (
+                      <p className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
+                        {providerNewInboxNotice}
+                      </p>
+                    ) : null}
                     <WhatsAppProviderConfigFields
                       waProvider={waProvider}
                       onProviderChange={setWaProvider}
@@ -696,7 +738,6 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       onBaseUrlChange={setWaProviderBaseUrl}
                       evolutionPlatformQrMode={evolutionPlatformQrMode}
                       evolutionGoPlatformMode={evolutionGoPlatformMode}
-                      apiKeyOptionalHint={false}
                     />
                   </div>
                 ) : (
