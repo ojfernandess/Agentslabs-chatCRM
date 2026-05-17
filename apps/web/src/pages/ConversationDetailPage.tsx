@@ -87,7 +87,7 @@ interface Message {
   status: string;
   sentAt: string;
   createdAt: string;
-  actorUser?: { id: string; name: string; displayName: string | null } | null;
+  actorUser?: { id: string; name: string; displayName: string | null; showAgentNameInChat?: boolean } | null;
 }
 
 interface LeadTypeRow {
@@ -247,7 +247,11 @@ export function ConversationDetailPage() {
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
-  const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
+  const [pilotFlags, setPilotFlags] = useState<{
+    assistantAiEnabled: boolean;
+    aiPilotAccessEnabled: boolean;
+    openAiConfigured?: boolean;
+  } | null>(null);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotError, setCopilotError] = useState("");
   const [copilotInsights, setCopilotInsights] = useState<CopilotInsights | null>(null);
@@ -301,7 +305,9 @@ export function ConversationDetailPage() {
     let cancelled = false;
     if (!user) return;
     void api
-      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean; openAiConfigured?: boolean }>(
+        "/settings/pilot",
+      )
       .then((res) => {
         if (!cancelled) setPilotFlags(res);
       })
@@ -315,7 +321,9 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     const on = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | undefined;
+      const detail = (e as CustomEvent).detail as
+        | { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean; openAiConfigured?: boolean }
+        | undefined;
       if (!detail) return;
       setPilotFlags(detail);
     };
@@ -2152,8 +2160,8 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              /* Agrupamento de mensagens: ~4px até a próxima do mesmo grupo; ~24px ao fim do bloco. */
-              const rowSpacing = groupedNext ? "mb-1" : "mb-6";
+              /* Agrupamento: espaço visível entre balões do mesmo remetente; bloco maior ao mudar de remetente. */
+              const rowSpacing = groupedNext ? "mb-2.5" : "mb-6";
               const bubbleRadius = clsx(
                 "rounded-2xl",
                 inbound ? groupedPrev && "rounded-tl-md" : groupedPrev && "rounded-tr-md",
@@ -2202,7 +2210,7 @@ export function ConversationDetailPage() {
                     msg.isPrivate ? "crm-bubble-private" : inbound ? "crm-bubble-in" : "crm-bubble-out",
                   )}
                 >
-                  {msg.direction === "OUTBOUND" && user?.showAgentNameInChat && msg.actorUser ? (
+                  {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat ? (
                     <p
                       className={clsx(
                         "mb-1 text-[11px] font-semibold leading-tight",
@@ -2421,7 +2429,7 @@ export function ConversationDetailPage() {
               <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
                   <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
-                ) : copilotEnabled ? (
+                ) : copilotEnabled && pilotFlags?.openAiConfigured === false ? (
                   <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
                 ) : null}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (

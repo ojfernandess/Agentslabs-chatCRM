@@ -24,6 +24,7 @@ import {
 } from "../lib/whatsappWebhookVerify.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { getAssistOpenAiCredentialsForOrganization } from "../lib/agentAssistLlm.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
   evolutionGoConnectInstance,
@@ -264,9 +265,12 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       settings = await prisma.settings.create({ data: { organizationId } });
     }
 
+    const openAiConfigured = !!(await getAssistOpenAiCredentialsForOrganization(organizationId));
+
     return {
       assistantAiEnabled: settings.assistantAiEnabled,
       aiPilotAccessEnabled: settings.aiPilotAccessEnabled,
+      openAiConfigured,
     };
   });
 

@@ -11,19 +11,52 @@ function formatAgentPrefix(label: string, channelType: InboxChannelType): string
  * Prefixo com o nome do atendente — só para envio ao canal externo.
  * O corpo guardado na BD mantém-se sem este prefixo para o painel não duplicar o cabeçalho.
  */
+async function userCanShowAgentNameInOrg(
+  userId: string,
+  organizationId: string,
+): Promise<{ showAgentNameInChat: boolean; label: string } | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      name: true,
+      displayName: true,
+      showAgentNameInChat: true,
+      organizationId: true,
+      role: true,
+    },
+  });
+  if (!user?.showAgentNameInChat) return null;
+
+  const label = user.displayName?.trim() || user.name?.trim();
+  if (!label) return null;
+
+  if (user.role === "SUPER_ADMIN" || user.organizationId === organizationId) {
+    return { showAgentNameInChat: true, label };
+  }
+
+  const [inInbox, inTeam] = await Promise.all([
+    prisma.inboxMember.findFirst({
+      where: { userId, inbox: { organizationId } },
+      select: { id: true },
+    }),
+    prisma.teamMember.findFirst({
+      where: { userId, team: { organizationId } },
+      select: { id: true },
+    }),
+  ]);
+  if (!inInbox && !inTeam) return null;
+
+  return { showAgentNameInChat: true, label };
+}
+
 async function agentNamePrefixForUser(
   organizationId: string,
   userId: string,
   channelType: InboxChannelType,
 ): Promise<string | null> {
-  const user = await prisma.user.findFirst({
-    where: { id: userId, organizationId },
-    select: { name: true, displayName: true, showAgentNameInChat: true },
-  });
-  if (!user?.showAgentNameInChat) return null;
-  const label = user.displayName?.trim() || user.name?.trim();
-  if (!label) return null;
-  return formatAgentPrefix(label, channelType);
+  const row = await userCanShowAgentNameInOrg(userId, organizationId);
+  if (!row) return null;
+  return formatAgentPrefix(row.label, channelType);
 }
 
 /** Prefixo com o nome do atendente — só para envio ao canal externo. */

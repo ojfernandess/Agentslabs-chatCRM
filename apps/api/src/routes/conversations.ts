@@ -763,7 +763,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         messages: {
           orderBy: { createdAt: "asc" },
-          include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+          include: {
+            actorUser: {
+              select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+            },
+          },
         },
       },
     });
@@ -1029,7 +1033,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
             messages: {
               orderBy: { createdAt: "asc" },
-              include: { actorUser: { select: { id: true, name: true, displayName: true } } },
+              include: {
+                actorUser: {
+                  select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+                },
+              },
             },
           },
         });
