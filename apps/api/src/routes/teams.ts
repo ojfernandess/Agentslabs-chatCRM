@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { TeamMemberRole, Prisma } from "@prisma/client";
 import { getUnseenTeamTransferCounts } from "../lib/teamTransferUnread.js";
+import { teamHubRoutes } from "./teamHub.js";
 
 const createTeamSchema = z.object({
   name: z.string().min(1).max(120),
@@ -33,6 +34,8 @@ const patchMemberSchema = z.object({
 
 export async function teamRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
+
+  await app.register(teamHubRoutes);
 
   app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);

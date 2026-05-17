@@ -34,6 +34,26 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "broadcast_campaigns",
     defaultEnabled: true,
   },
+  {
+    key: "teams_collaboration_hub",
+    defaultEnabled: false,
+  },
+  {
+    key: "teams_channels",
+    defaultEnabled: false,
+  },
+  {
+    key: "teams_workspace",
+    defaultEnabled: false,
+  },
+  {
+    key: "teams_ai_copilot",
+    defaultEnabled: false,
+  },
+  {
+    key: "teams_realtime_ops",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

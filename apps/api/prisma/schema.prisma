@@ -79,6 +79,19 @@ enum TeamMemberRole {
   MEMBER
 }
 
+enum TeamChannelKind {
+  GENERAL
+  ANNOUNCEMENTS
+  OPS
+}
+
+enum TeamWorkspaceItemType {
+  NOTE
+  WIKI
+  SNIPPET
+  FILE_LINK
+}
+
 /// Como o valor à finalização (closure) entra nas somas e como negócios herdam o estado por etapa.
 enum LeadValueRollup {
   /// Conta em «Em negociação» / pipeline; negócio fica OPEN.
@@ -136,6 +149,8 @@ model Organization {
   auditLogs          AuditLog[]
   featureFlags       OrganizationFeatureFlag[]
   teams              Team[]
+  teamChannels       TeamChannel[]
+  teamWorkspaceItems TeamWorkspaceItem[]
   bots               Bot[]
   broadcastCampaigns BroadcastCampaign[]
   inboxes            Inbox[]
@@ -230,9 +245,72 @@ model Team {
 
   members       TeamMember[]
   conversations Conversation[]
+  channels      TeamChannel[]
+  workspaceItems TeamWorkspaceItem[]
 
   @@index([organizationId])
   @@map("teams")
+}
+
+model TeamChannel {
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?         @db.Text
+  kind           TeamChannelKind @default(GENERAL)
+  sortOrder      Int             @default(0) @map("sort_order")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  teamId String @map("team_id") @db.Uuid
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  messages TeamChannelMessage[]
+
+  @@unique([teamId, name])
+  @@index([organizationId])
+  @@map("team_channels")
+}
+
+model TeamChannelMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  channelId String      @map("channel_id") @db.Uuid
+  channel   TeamChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  authorUserId String @map("author_user_id") @db.Uuid
+  authorUser   User   @relation("TeamChannelMessageAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("team_channel_messages")
+}
+
+model TeamWorkspaceItem {
+  id        String                @id @default(uuid()) @db.Uuid
+  itemType  TeamWorkspaceItemType @map("item_type")
+  title     String
+  content   String?               @db.Text
+  fileUrl   String?               @map("file_url") @db.VarChar(2048)
+  pinned    Boolean               @default(false)
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  teamId String @map("team_id") @db.Uuid
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("TeamWorkspaceItemAuthor", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([teamId, itemType])
+  @@index([organizationId])
+  @@map("team_workspace_items")
 }
 
 model TeamMember {
@@ -339,6 +417,8 @@ model User {
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
   conversationReadStates       ConversationUserReadState[]
   passwordResetTokens          PasswordResetToken[]
+  teamChannelMessages          TeamChannelMessage[]          @relation("TeamChannelMessageAuthor")
+  teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
 
   @@index([organizationId])
   @@map("users")
