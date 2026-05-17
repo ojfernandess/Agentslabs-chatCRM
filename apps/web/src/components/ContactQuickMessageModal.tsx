@@ -2,10 +2,19 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, backdropVariants, modalVariants } from "@/components/Motion";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
-import { Bold, Italic, Code, Link as LinkIcon, Strikethrough, List, ListOrdered, Smile } from "lucide-react";
+import { Bold, Italic, Code, Link as LinkIcon, Strikethrough, List, ListOrdered, Smile, FileText } from "lucide-react";
 import clsx from "clsx";
+import { isWhatsAppCloudApiProvider } from "@/lib/inboxWhatsappConfig";
+import { parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
+import { TemplateSendModal, type TemplateSendModalTemplate } from "@/components/TemplateSendModal";
 
-type InboxOption = { id: string; name: string; channelType: string; isDefault?: boolean };
+type InboxOption = {
+  id: string;
+  name: string;
+  channelType: string;
+  isDefault?: boolean;
+  channelConfig?: unknown;
+};
 
 function wrapSelection(el: HTMLTextAreaElement, before: string, after: string) {
   const start = el.selectionStart;
@@ -50,6 +59,9 @@ export function ContactQuickMessageModal({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [messageTemplates, setMessageTemplates] = useState<TemplateSendModalTemplate[]>([]);
+  const [templateModal, setTemplateModal] = useState<TemplateSendModalTemplate | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const loadInboxes = useCallback(async () => {
     try {
@@ -73,10 +85,25 @@ export function ContactQuickMessageModal({
     setError("");
     setShowEmoji(false);
     setShowInboxList(false);
+    setTemplatePickerOpen(false);
+    setTemplateModal(null);
     void loadInboxes();
+    void (async () => {
+      try {
+        const rows = await api.get<TemplateSendModalTemplate[]>("/templates");
+        setMessageTemplates(rows ?? []);
+      } catch {
+        setMessageTemplates([]);
+      }
+    })();
   }, [open, loadInboxes, contact?.id]);
 
   const selectedInbox = inboxes.find((i) => i.id === inboxId);
+  const selectedWaProvider = selectedInbox
+    ? parseInboxWhatsappFromChannelConfig(selectedInbox.channelConfig).whatsappProvider
+    : null;
+  const isMetaInbox =
+    selectedInbox?.channelType === "WHATSAPP" && isWhatsAppCloudApiProvider(selectedWaProvider ?? "");
 
   const toolbarBtn =
     "rounded-md p-2 text-gray-500 transition hover:bg-gray-100 disabled:opacity-40 dark:text-ink-400 dark:hover:bg-ink-800";
@@ -191,6 +218,11 @@ export function ContactQuickMessageModal({
               </div>
 
               <div className="px-2 pt-2">
+                {isMetaInbox ? (
+                  <p className="mb-2 px-2 text-xs text-amber-800/90 dark:text-amber-200/90">
+                    {t("quickMessage.metaTemplatesOnly")}
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-0.5 border-b border-gray-100 px-2 pb-2 dark:border-ink-800">
                   <button
                     type="button"
@@ -252,7 +284,34 @@ export function ContactQuickMessageModal({
                   >
                     <ListOrdered className="h-4 w-4" />
                   </button>
+                  {isMetaInbox && messageTemplates.length > 0 ? (
+                    <button
+                      type="button"
+                      className={toolbarBtn}
+                      title={t("quickMessage.templates")}
+                      onClick={() => setTemplatePickerOpen((v) => !v)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </button>
+                  ) : null}
                 </div>
+                {templatePickerOpen && isMetaInbox ? (
+                  <div className="mx-2 mb-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 dark:border-ink-700 dark:bg-ink-900">
+                    {messageTemplates.map((tp) => (
+                      <button
+                        key={tp.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-ink-800"
+                        onClick={() => {
+                          setTemplatePickerOpen(false);
+                          setTemplateModal(tp);
+                        }}
+                      >
+                        <span className="font-semibold text-gray-900 dark:text-ink-100">{tp.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <textarea
                   ref={taRef}
                   value={body}
@@ -333,6 +392,17 @@ export function ContactQuickMessageModal({
           </motion.div>
         </motion.div>
       )}
+      <TemplateSendModal
+        open={templateModal !== null}
+        template={templateModal}
+        contactId={contact.id}
+        inboxId={inboxId || undefined}
+        onClose={() => setTemplateModal(null)}
+        onSent={() => {
+          setTemplateModal(null);
+          onClose();
+        }}
+      />
     </AnimatePresence>
   );
 }

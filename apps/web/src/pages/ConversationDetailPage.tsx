@@ -2460,6 +2460,11 @@ export function ConversationDetailPage() {
                   </div>
                 ) : (
                   <>
+                    {isOutsideWindow && isWaba && !privateNote ? (
+                      <p className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                        {t("conversationDetail.outsideWindowTemplateHint")}
+                      </p>
+                    ) : null}
                     <textarea
                       value={newMessage}
                       onChange={(e) => onComposerChange(e.target.value)}
@@ -2543,7 +2548,7 @@ export function ConversationDetailPage() {
                     <div className="relative" ref={templateWrapRef}>
                       <motion.button
                         type="button"
-                        disabled={recording || !!voicePreview || ((isOutsideWindow && !privateNote) && !isWaba)}
+                        disabled={recording || !!voicePreview || (!isWaba && isOutsideWindow && !privateNote)}
                         onClick={() => {
                           setTemplateMenuOpen((o) => !o);
                           setCannedMenuOpen(false);

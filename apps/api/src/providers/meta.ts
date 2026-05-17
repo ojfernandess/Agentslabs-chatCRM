@@ -182,10 +182,11 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       .update(rawBody)
       .digest("hex")}`;
 
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expected),
-    );
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length) return false;
+
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   }
 
   handleVerification(query: Record<string, string>): string | null {

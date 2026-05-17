@@ -177,6 +177,8 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [waSetupWebhookUrl, setWaSetupWebhookUrl] = useState("");
   const [waSetupVerifyToken, setWaSetupVerifyToken] = useState("");
   const [existingWhatsappInboxes, setExistingWhatsappInboxes] = useState<WhatsappInboxSummary[]>([]);
+  const [waTestBusy, setWaTestBusy] = useState(false);
+  const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -204,6 +206,8 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setWaSetupWebhookUrl("");
     setWaSetupVerifyToken("");
     setExistingWhatsappInboxes([]);
+    setWaTestBusy(false);
+    setWaTestResult(null);
     void (async () => {
       try {
         const [cfg, inboxesRes] = await Promise.all([
@@ -246,6 +250,30 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
       : "/api/v1/public/channels/inboxes";
   const legacyInboxBase =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "/api/v1/public/inbox";
+
+  const runWhatsappTestConnection = async () => {
+    setWaTestBusy(true);
+    setWaTestResult(null);
+    try {
+      const channelConfig = buildInboxWhatsappChannelConfig(null, {
+        whatsappProvider: waProvider,
+        whatsappPhoneNumberId: waProviderPhoneId,
+        whatsappApiKey: waProviderApiKey,
+        whatsappWebhookSecret: waWebhookSecret,
+        evolutionApiBaseUrl: waProviderBaseUrl,
+        whatsappDisplayPhone: waDisplayPhone,
+        whatsappBusinessAccountId: waWabaId,
+      });
+      const res = await api.post<{ connected: boolean }>("/settings/test-whatsapp-draft", {
+        channelConfig,
+      });
+      setWaTestResult(res.connected);
+    } catch {
+      setWaTestResult(false);
+    } finally {
+      setWaTestBusy(false);
+    }
+  };
 
   const copyText = async (text: string) => {
     try {
@@ -738,6 +766,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       onBaseUrlChange={setWaProviderBaseUrl}
                       evolutionPlatformQrMode={evolutionPlatformQrMode}
                       evolutionGoPlatformMode={evolutionGoPlatformMode}
+                      onTestConnection={runWhatsappTestConnection}
+                      testConnectionBusy={waTestBusy}
+                      testConnectionResult={waTestResult}
                     />
                   </div>
                 ) : (

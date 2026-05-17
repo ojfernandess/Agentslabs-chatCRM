@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { getWhatsAppProviderForInbox, getWebhookSecretForInbox } from "../providers/factory.js";
@@ -19,8 +20,24 @@ import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundM
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
 
-// Fastify: raw body for signature verification (Evolution / Meta)
-const rawBodyPost = { config: { rawBody: true } } as any;
+type WebhookRequest = FastifyRequest & { rawBody?: string };
+
+/** Captura o corpo bruto para validar X-Hub-Signature-256 (Meta) com os bytes originais. */
+async function captureWebhookRawBody(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+  payload: AsyncIterable<Buffer | string>,
+): Promise<Readable> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of payload) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8");
+  (request as WebhookRequest).rawBody = raw;
+  return Readable.from([raw]);
+}
+
+const webhookPostOpts = { preParsing: captureWebhookRawBody };
 
 /** Sufixos quando Evolution usa webhook_by_events: https://doc.evolution-api.com/v2/en/configuration/webhooks */
 const WHATSAPP_POST_SUFFIXES = [
@@ -166,7 +183,8 @@ async function handleWhatsAppPost(
   const secret = await getWebhookSecretForInbox(organizationId, target.inboxId);
   if (secret && !options?.skipWebhookSignature) {
     const rawBody =
-      typeof request.body === "string" ? request.body : JSON.stringify(request.body);
+      (request as WebhookRequest).rawBody ??
+      (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
 
     const valid = provider.validateWebhookSignature(
       request.headers as Record<string, string | undefined>,
@@ -569,7 +587,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(403).send({ error: "Verification failed" });
   });
 
-  app.post("/meta/whatsapp", rawBodyPost, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.post("/meta/whatsapp", webhookPostOpts, async (request: FastifyRequest, reply: FastifyReply) => {
     const cfg = await getWhatsAppEmbeddedConfig();
     if (!cfg) {
       return reply.status(503).send();
@@ -578,7 +596,9 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     if (body === null) {
       return reply.status(400).send({ error: "Invalid JSON body" });
     }
-    const rawBody = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
+    const rawBody =
+      (request as WebhookRequest).rawBody ??
+      (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
     const metaVerifier = new MetaCloudApiProvider("unused", "unused");
     const valid = metaVerifier.validateWebhookSignature(
       request.headers as Record<string, string | undefined>,
@@ -650,7 +670,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   for (const suffix of WHATSAPP_POST_SUFFIXES) {
     app.post<{ Params: { organizationId: string; inboxId: string } }>(
       `/whatsapp/:organizationId/:inboxId${suffix}`,
-      rawBodyPost,
+      webhookPostOpts,
       async (
         request: FastifyRequest<{ Params: { organizationId: string; inboxId: string } }>,
         reply: FastifyReply,
@@ -662,7 +682,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     );
     app.post<{ Params: { organizationId: string } }>(
       `/whatsapp/:organizationId${suffix}`,
-      rawBodyPost,
+      webhookPostOpts,
       async (
         request: FastifyRequest<{ Params: { organizationId: string } }>,
         reply: FastifyReply,

@@ -117,6 +117,8 @@ export function InboxesPage() {
   const [editProviderPhoneId, setEditProviderPhoneId] = useState("");
   const [editProviderEvoBaseUrl, setEditProviderEvoBaseUrl] = useState("");
   const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
+  const [waTestBusy, setWaTestBusy] = useState(false);
+  const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -270,6 +272,8 @@ export function InboxesPage() {
     setEditWebhookSecret("");
     setEditDisplayPhone(wa.whatsappDisplayPhone ?? "");
     setEditWabaId(wa.whatsappBusinessAccountId ?? "");
+    setWaTestBusy(false);
+    setWaTestResult(null);
     setEditWebsiteWidget(
       row.channelType === "WEBSITE"
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
@@ -280,6 +284,34 @@ export function InboxesPage() {
   const cancelEdit = () => {
     setEditingId(null);
     setEditWebsiteWidget(null);
+    setWaTestResult(null);
+  };
+
+  const runWhatsappTestForEdit = async (inboxId: string) => {
+    setWaTestBusy(true);
+    setWaTestResult(null);
+    try {
+      const channelConfig = buildInboxWhatsappChannelConfig(
+        rows.find((r) => r.id === inboxId)?.channelConfig,
+        {
+          whatsappProvider: editProvider,
+          whatsappPhoneNumberId: editProviderPhoneId,
+          whatsappApiKey: editProviderApiKey,
+          whatsappWebhookSecret: editWebhookSecret,
+          evolutionApiBaseUrl: editProviderEvoBaseUrl,
+          whatsappDisplayPhone: editDisplayPhone,
+          whatsappBusinessAccountId: editWabaId,
+        },
+      );
+      const res = await api.post<{ connected: boolean }>(`/inboxes/${inboxId}/test-whatsapp-connection`, {
+        channelConfig,
+      });
+      setWaTestResult(res.connected);
+    } catch {
+      setWaTestResult(false);
+    } finally {
+      setWaTestBusy(false);
+    }
   };
 
   const saveEdit = async (inboxId: string) => {
@@ -610,6 +642,9 @@ export function InboxesPage() {
                                   parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappApiKey ===
                                   MASKED_WHATSAPP_SECRET
                                 }
+                                onTestConnection={() => runWhatsappTestForEdit(row.id)}
+                                testConnectionBusy={waTestBusy}
+                                testConnectionResult={waTestResult}
                               />
                             </div>
                           ) : null}

@@ -1163,7 +1163,13 @@ export const messages = {
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "App Secret do app Meta",
           fieldWebhookSecretHint:
-            "App Secret usado na assinatura X-Hub-Signature-256 dos POST do webhook. O token de verificação é gerado automaticamente abaixo.",
+            "App Secret do app Meta (Developers → seu app → Configurações → Básico → «Chave secreta do app»). Necessário para validar POST do webhook e receber mensagens. O token de verificação é gerado automaticamente no passo final.",
+          fieldWebhookSecretOptionalNote:
+            "Opcional no cadastro, mas recomendado: sem o App Secret correto, mensagens recebidas podem ser rejeitadas (erro 401).",
+          testConnection: "Testar conexão",
+          testConnectionTesting: "A testar…",
+          testConnectionOk: "Conexão OK — API key e Phone Number ID válidos.",
+          testConnectionFail: "Falha na conexão. Verifique API key e Phone Number ID.",
           webhookUrlLabel: "URL do webhook",
           webhookVerifyTokenLabel: "Token de verificação do webhook",
           webhookSetupIntro:
@@ -1516,6 +1522,8 @@ export const messages = {
     },
     conversationDetail: {
       outsideWindow: "Fora da janela de 24h",
+      outsideWindowTemplateHint:
+        "A janela de 24 horas expirou. Use o ícone de modelos (📄) para enviar um template aprovado pela Meta.",
       viewContact: "Ver contato",
       placeholderNormal: "Digite uma mensagem…",
       placeholderTemplate: "Fora da sessão — use apenas modelos",
@@ -1818,6 +1826,9 @@ export const messages = {
       numbered: "Numerada",
       emoji: "Emoji",
       linkPrompt: "Cole o URL",
+      sendTemplate: "Enviar modelo",
+      templates: "Modelos WhatsApp",
+      metaTemplatesOnly: "Fora da janela de 24h — envie um modelo aprovado pela Meta.",
     },
     contactEdit: {
       title: "Editar contato",
@@ -3530,7 +3541,13 @@ export const messages = {
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "Meta app secret",
           fieldWebhookSecretHint:
-            "App Secret for X-Hub-Signature-256 on webhook POSTs. The verify token is generated automatically below.",
+            "Meta app secret (Developers → your app → Settings → Basic → «App secret»). Required to validate webhook POSTs and receive messages. The verify token is generated on the final step.",
+          fieldWebhookSecretOptionalNote:
+            "Optional when saving, but recommended: wrong or missing app secret may cause inbound webhooks to be rejected (401).",
+          testConnection: "Test connection",
+          testConnectionTesting: "Testing…",
+          testConnectionOk: "Connection OK — API key and Phone Number ID are valid.",
+          testConnectionFail: "Connection failed. Check API key and Phone Number ID.",
           webhookUrlLabel: "Webhook URL",
           webhookVerifyTokenLabel: "Webhook verify token",
           webhookSetupIntro:
@@ -3882,6 +3899,8 @@ export const messages = {
     },
     conversationDetail: {
       outsideWindow: "Outside 24h window",
+      outsideWindowTemplateHint:
+        "The 24-hour session window has expired. Use the templates icon to send a Meta-approved template.",
       viewContact: "View contact",
       placeholderNormal: "Type a message…",
       placeholderTemplate: "Outside session — templates only",
@@ -4184,6 +4203,9 @@ export const messages = {
       numbered: "Numbered list",
       emoji: "Emoji",
       linkPrompt: "Paste URL",
+      sendTemplate: "Send template",
+      templates: "WhatsApp templates",
+      metaTemplatesOnly: "Outside the 24-hour window — send a Meta-approved template.",
     },
     contactEdit: {
       title: "Edit contact",

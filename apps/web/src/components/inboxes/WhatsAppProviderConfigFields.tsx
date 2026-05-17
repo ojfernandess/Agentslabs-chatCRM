@@ -23,6 +23,9 @@ export interface WhatsAppProviderConfigFieldsProps {
   waWebhookSecret?: string;
   onWebhookSecretChange?: (value: string) => void;
   webhookSecretStored?: boolean;
+  onTestConnection?: () => void | Promise<void>;
+  testConnectionBusy?: boolean;
+  testConnectionResult?: boolean | null;
 }
 
 export function WhatsAppProviderConfigFields({
@@ -46,6 +49,9 @@ export function WhatsAppProviderConfigFields({
   waWebhookSecret = "",
   onWebhookSecretChange,
   webhookSecretStored = false,
+  onTestConnection,
+  testConnectionBusy = false,
+  testConnectionResult = null,
 }: WhatsAppProviderConfigFieldsProps) {
   const { t } = useI18n();
   const cloudApi = isWhatsAppCloudApiProvider(waProvider);
@@ -147,6 +153,9 @@ export function WhatsAppProviderConfigFields({
               <p className="mt-1 text-xs text-ink-500">
                 {t("inboxesPage.wizard.whatsappMeta.fieldWebhookSecretHint")}
               </p>
+              <p className="mt-1 text-xs text-amber-800/90 dark:text-amber-200/90">
+                {t("inboxesPage.wizard.whatsappMeta.fieldWebhookSecretOptionalNote")}
+              </p>
             </label>
           ) : null}
         </>
@@ -232,6 +241,30 @@ export function WhatsAppProviderConfigFields({
             ) : null}
           </label>
         </>
+      ) : null}
+
+      {onTestConnection ? (
+        <div className="pt-1">
+          <button
+            type="button"
+            disabled={testConnectionBusy}
+            onClick={() => void onTestConnection()}
+            className="btn-secondary text-xs disabled:opacity-50"
+          >
+            {testConnectionBusy
+              ? t("inboxesPage.wizard.whatsappMeta.testConnectionTesting")
+              : t("inboxesPage.wizard.whatsappMeta.testConnection")}
+          </button>
+          {testConnectionResult === true ? (
+            <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+              {t("inboxesPage.wizard.whatsappMeta.testConnectionOk")}
+            </p>
+          ) : testConnectionResult === false ? (
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+              {t("inboxesPage.wizard.whatsappMeta.testConnectionFail")}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

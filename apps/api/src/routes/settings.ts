@@ -6,7 +6,14 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { decrypt, encrypt } from "../lib/encryption.js";
 import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
-import { getWhatsAppProvider } from "../providers/factory.js";
+import {
+  getWhatsAppProvider,
+  getWhatsAppProviderForInbox,
+  getWhatsAppProviderFromChannelConfig,
+  getWhatsappProviderKindForInbox,
+} from "../providers/factory.js";
+import { prepareWhatsappChannelConfigForSave } from "../lib/inboxWhatsappConfig.js";
+import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
 import {
   generateWhatsappWebhookVerifyToken,
   isMetaCloudWhatsappProvider,
@@ -425,12 +432,52 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       };
     });
 
+    admin.post("/test-whatsapp-draft", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = z
+        .object({ channelConfig: z.record(z.unknown()) })
+        .safeParse(request.body ?? {});
+      if (!parsed.success || !parsed.data.channelConfig) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "channelConfig required",
+          statusCode: 400,
+        });
+      }
+
+      const prepared = prepareWhatsappChannelConfigForSave({
+        existingConfig: null,
+        incoming: parsed.data.channelConfig,
+        ensureMetaVerifyToken: false,
+      });
+      const provider = await getWhatsAppProviderFromChannelConfig(prepared);
+      if (!provider) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "WhatsApp provider credentials incomplete",
+          statusCode: 400,
+          connected: false,
+        });
+      }
+      try {
+        const connected = await provider.healthCheck();
+        return { connected };
+      } catch {
+        return { connected: false };
+      }
+    });
+
     admin.post("/test-connection", async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
+      const q = request.query as { inboxId?: string };
       try {
-        const provider = await getWhatsAppProvider(organizationId);
+        const provider = q.inboxId
+          ? await getWhatsAppProviderForInbox(organizationId, q.inboxId)
+          : await getWhatsAppProvider(organizationId);
         if (!provider) {
           return reply.status(400).send({
             error: "Bad Request",

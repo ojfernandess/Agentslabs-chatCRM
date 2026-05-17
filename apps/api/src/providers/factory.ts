@@ -3,6 +3,7 @@ import { decrypt } from "../lib/encryption.js";
 import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
 import { resolveEvolutionGoCredentials } from "../lib/evolutionGoPlatform.js";
 import {
+  parseInboxWhatsappFromChannelConfig,
   resolveInboxWhatsappCredentials,
   type InboxWhatsappCredentialSource,
 } from "../lib/inboxWhatsappConfig.js";
@@ -53,6 +54,22 @@ export async function getWhatsAppProvider(organizationId: string): Promise<Whats
     whatsappWebhookSecret: settings.whatsappWebhookSecret,
     whatsappWebhookVerifyToken: settings.whatsappWebhookVerifyToken ?? null,
     evolutionApiBaseUrl: settings.evolutionApiBaseUrl,
+  });
+}
+
+/** Testa credenciais a partir de `channelConfig` (rascunho ou gravado), sem fallback a Settings. */
+export async function getWhatsAppProviderFromChannelConfig(
+  channelConfig: unknown,
+): Promise<WhatsAppProviderInterface | null> {
+  const parsed = parseInboxWhatsappFromChannelConfig(channelConfig);
+  if (!parsed.whatsappProvider) return null;
+  return await buildProviderFromCredentials({
+    whatsappProvider: parsed.whatsappProvider,
+    whatsappPhoneNumberId: parsed.whatsappPhoneNumberId ?? null,
+    whatsappApiKey: parsed.whatsappApiKey ?? null,
+    whatsappWebhookSecret: parsed.whatsappWebhookSecret ?? null,
+    whatsappWebhookVerifyToken: parsed.whatsappWebhookVerifyToken ?? null,
+    evolutionApiBaseUrl: parsed.evolutionApiBaseUrl ?? null,
   });
 }
 

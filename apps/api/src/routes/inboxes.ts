@@ -12,6 +12,12 @@ import {
   parseInboxWhatsappFromChannelConfig,
   whatsappWebhookMetaFromConfig,
 } from "../lib/inboxWhatsappConfig.js";
+import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
+import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
+
+const testWhatsappConnectionSchema = z.object({
+  channelConfig: z.record(z.unknown()).optional(),
+});
 
 const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
 
@@ -121,6 +127,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
       return { data: rows };
     }
+
+    await migrateWhatsappSettingsToDefaultInbox(organizationId).catch(() => undefined);
 
     const rows = await prisma.inbox.findMany({
       where: { organizationId },
@@ -323,6 +331,53 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return { ok: true };
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/:id/test-whatsapp-connection",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: { id: true, channelType: true, channelConfig: true },
+      });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+      if (inbox.channelType !== InboxChannelType.WHATSAPP) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Inbox is not a WhatsApp channel",
+          statusCode: 400,
+        });
+      }
+
+      const parsed = testWhatsappConnectionSchema.safeParse(request.body ?? {});
+      const draftConfig =
+        parsed.success && parsed.data.channelConfig
+          ? normalizeWhatsappInboxChannelConfig(inbox.channelConfig, parsed.data.channelConfig, false)
+          : inbox.channelConfig;
+
+      const provider = await getWhatsAppProviderFromChannelConfig(draftConfig);
+      if (!provider) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "WhatsApp provider credentials incomplete",
+          statusCode: 400,
+          connected: false,
+        });
+      }
+
+      try {
+        const connected = await provider.healthCheck();
+        return { connected };
+      } catch {
+        return { connected: false };
+      }
     },
   );
 
