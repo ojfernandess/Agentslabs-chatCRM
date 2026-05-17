@@ -2213,10 +2213,10 @@ export function ConversationDetailPage() {
                   {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat ? (
                     <p
                       className={clsx(
-                        "mb-1 text-[11px] font-semibold leading-tight",
+                        "mb-2.5 border-b pb-2 text-[11px] font-semibold leading-tight",
                         msg.isPrivate
-                          ? "text-amber-900/90 dark:text-amber-100/95"
-                          : "text-ink-700 dark:text-ink-200",
+                          ? "border-amber-400/40 text-amber-900/90 dark:border-amber-500/30 dark:text-amber-100/95"
+                          : "border-ink-200/60 text-ink-700 dark:border-white/10 dark:text-ink-200",
                       )}
                     >
                       {msg.actorUser.displayName?.trim() || msg.actorUser.name}

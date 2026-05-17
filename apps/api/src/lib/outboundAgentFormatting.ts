@@ -74,7 +74,7 @@ export async function prefixOutboundBodyForExternalChannel(
   if (!prefix) return trimmed;
 
   if (trimmed.startsWith(prefix)) return trimmed;
-  return trimmed ? `${prefix}\n${trimmed}` : prefix;
+  return trimmed ? `${prefix}\n\n${trimmed}` : prefix;
 }
 
 /** Só o cabeçalho do atendente (útil antes de áudio/mídia sem legenda). */
