@@ -10,10 +10,12 @@ import {
   Hash,
   LayoutDashboard,
   MessageSquare,
+  Pencil,
   Plus,
   Send,
   Sparkles,
   StickyNote,
+  Trash2,
   UsersRound,
   Zap,
 } from "lucide-react";
@@ -23,7 +25,8 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition, motion } from "@/components/Motion";
 import { TeamCommandPalette, type CommandAction } from "./TeamCommandPalette";
-import { TeamsLegacyPage } from "@/pages/TeamsLegacyPage";
+import { TeamOperationalAdmin } from "./TeamOperationalAdmin";
+import { ChannelManageModal, type ChannelFormState } from "./ChannelManageModal";
 
 type HubTab = "overview" | "channels" | "workspace" | "admin";
 type WorkspaceFilter = "NOTE" | "WIKI" | "SNIPPET" | "FILE_LINK";
@@ -118,7 +121,10 @@ export function TeamsCollaborationHub() {
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [showLegacyAdmin, setShowLegacyAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [channelModal, setChannelModal] = useState<"create" | "edit" | null>(null);
+  const [channelModalBusy, setChannelModalBusy] = useState(false);
+  const [channelDeletingId, setChannelDeletingId] = useState<string | null>(null);
 
   const selected = teams.find((x) => x.id === selectedId) ?? teams[0] ?? null;
 
@@ -290,7 +296,7 @@ export function TeamsCollaborationHub() {
       list.push({ id: "tab-workspace", label: t("teamsHub.tabWorkspace"), onRun: () => setTab("workspace") });
     }
     if (isAdmin) {
-      list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setShowLegacyAdmin(true) });
+      list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setShowAdmin(true) });
     }
     for (const team of teams) {
       list.push({
@@ -303,19 +309,43 @@ export function TeamsCollaborationHub() {
     return list;
   }, [channelsOn, workspaceOn, isAdmin, teams, t]);
 
-  if (showLegacyAdmin && isAdmin) {
-    return (
-      <div className="relative h-full">
-        <button
-          type="button"
-          onClick={() => setShowLegacyAdmin(false)}
-          className="absolute right-6 top-4 z-10 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-semibold shadow-sm dark:border-ink-700 dark:bg-ink-900"
-        >
-          {t("teamsHub.backToHub")}
-        </button>
-        <TeamsLegacyPage />
-      </div>
-    );
+  const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
+
+  const submitChannelModal = async (data: ChannelFormState) => {
+    if (!selected?.id) return;
+    setChannelModalBusy(true);
+    try {
+      if (channelModal === "create") {
+        await api.post(`/teams/${selected.id}/channels`, data);
+      } else if (channelModal === "edit" && activeChannelId) {
+        await api.patch(`/teams/${selected.id}/channels/${activeChannelId}`, data);
+      }
+      setChannelModal(null);
+      await loadChannels(selected.id);
+    } catch {
+      window.alert(t("teamsHub.channelSaveError"));
+    } finally {
+      setChannelModalBusy(false);
+    }
+  };
+
+  const deleteChannel = async (channelId: string) => {
+    if (!selected?.id || !isAdmin) return;
+    if (!window.confirm(t("teamsHub.channelDeleteConfirm"))) return;
+    setChannelDeletingId(channelId);
+    try {
+      await api.delete(`/teams/${selected.id}/channels/${channelId}`);
+      if (activeChannelId === channelId) setActiveChannelId(null);
+      await loadChannels(selected.id);
+    } catch {
+      window.alert(t("teamsHub.channelDeleteError"));
+    } finally {
+      setChannelDeletingId(null);
+    }
+  };
+
+  if (showAdmin && isAdmin && selected) {
+    return <TeamOperationalAdmin teamId={selected.id} onBack={() => setShowAdmin(false)} />;
   }
 
   if (loading) {
@@ -418,12 +448,12 @@ export function TeamsCollaborationHub() {
                       key={item.id}
                       type="button"
                       onClick={() => {
-                        if (item.id === "admin") setShowLegacyAdmin(true);
+                        if (item.id === "admin") setShowAdmin(true);
                         else setTab(item.id);
                       }}
                       className={clsx(
                         "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                        tab === item.id
+                        (item.id === "admin" ? showAdmin : tab === item.id)
                           ? "bg-ink-900 text-white dark:bg-ink-100 dark:text-ink-900"
                           : "text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-900",
                       )}
@@ -504,23 +534,63 @@ export function TeamsCollaborationHub() {
 
                   {tab === "channels" && channelsOn && selected ? (
                     <div className="flex h-full min-h-[420px] gap-4">
-                      <div className="w-52 shrink-0 space-y-1 overflow-y-auto rounded-2xl border border-ink-200 bg-white/90 p-2 dark:border-ink-800 dark:bg-ink-950/60">
-                        {channels.map((ch) => (
-                          <button
-                            key={ch.id}
-                            type="button"
-                            onClick={() => setActiveChannelId(ch.id)}
-                            className={clsx(
-                              "flex w-full flex-col rounded-xl px-3 py-2 text-left text-sm transition",
-                              activeChannelId === ch.id
-                                ? "bg-violet-500/15 font-semibold text-violet-900 dark:text-violet-100"
-                                : "hover:bg-ink-100 dark:hover:bg-ink-900",
-                            )}
-                          >
-                            <span className="truncate">#{ch.name}</span>
-                            <span className="text-[10px] text-ink-500">{ch.messageCount} msgs</span>
-                          </button>
-                        ))}
+                      <div className="flex w-56 shrink-0 flex-col rounded-2xl border border-ink-200 bg-white/90 dark:border-ink-800 dark:bg-ink-950/60">
+                        {isAdmin ? (
+                          <div className="border-b border-ink-100 p-2 dark:border-ink-800">
+                            <button
+                              type="button"
+                              onClick={() => setChannelModal("create")}
+                              className="btn-primary flex w-full items-center justify-center gap-1.5 text-xs"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              {t("teamsHub.channelCreate")}
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                          {channels.map((ch) => (
+                            <div
+                              key={ch.id}
+                              className={clsx(
+                                "group flex items-start gap-1 rounded-xl transition",
+                                activeChannelId === ch.id ? "bg-violet-500/15 ring-1 ring-violet-500/25" : "hover:bg-ink-100 dark:hover:bg-ink-900",
+                              )}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setActiveChannelId(ch.id)}
+                                className="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+                              >
+                                <span className="block truncate font-semibold text-violet-900 dark:text-violet-100">#{ch.name}</span>
+                                <span className="text-[10px] text-ink-500">{ch.messageCount} msgs</span>
+                              </button>
+                              {isAdmin ? (
+                                <div className="flex shrink-0 flex-col gap-0.5 pr-1 pt-1 opacity-0 transition group-hover:opacity-100">
+                                  <button
+                                    type="button"
+                                    title={t("teamsHub.channelEdit")}
+                                    onClick={() => {
+                                      setActiveChannelId(ch.id);
+                                      setChannelModal("edit");
+                                    }}
+                                    className="rounded p-1 text-ink-500 hover:bg-white hover:text-violet-700 dark:hover:bg-ink-800"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title={t("teamsHub.channelDelete")}
+                                    disabled={channelDeletingId === ch.id}
+                                    onClick={() => void deleteChannel(ch.id)}
+                                    className="rounded p-1 text-ink-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div className="flex min-w-0 flex-1 flex-col rounded-2xl border border-ink-200 bg-white/90 dark:border-ink-800 dark:bg-ink-950/60">
                         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -685,6 +755,23 @@ export function TeamsCollaborationHub() {
         actions={paletteActions}
         placeholder={t("teamsHub.commandSearch")}
         emptyLabel={t("teamsHub.commandEmpty")}
+      />
+
+      <ChannelManageModal
+        open={channelModal != null}
+        mode={channelModal === "edit" ? "edit" : "create"}
+        initial={
+          channelModal === "edit" && activeChannel
+            ? {
+                name: activeChannel.name,
+                description: activeChannel.description ?? "",
+                kind: (activeChannel.kind as ChannelFormState["kind"]) ?? "GENERAL",
+              }
+            : undefined
+        }
+        busy={channelModalBusy}
+        onClose={() => setChannelModal(null)}
+        onSubmit={submitChannelModal}
       />
     </PageTransition>
   );

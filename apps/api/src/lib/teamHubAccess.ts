@@ -3,6 +3,23 @@ import { prisma } from "../db.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { isOrganizationFeatureEnabled, type FeatureFlagKey } from "./featureFlags.js";
 
+/** Admin do tenant (ADMIN ou super admin a impersonar organização). */
+export function isHubTenantAdmin(user: JwtPayload): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "SUPER_ADMIN" && user.actingOrganizationId) return true;
+  return false;
+}
+
+export function requireHubTenantAdmin(user: JwtPayload, reply: FastifyReply): boolean {
+  if (isHubTenantAdmin(user)) return true;
+  reply.status(403).send({
+    error: "Forbidden",
+    message: "Admin access required to manage team channels",
+    statusCode: 403,
+  });
+  return false;
+}
+
 export async function requireTeamHubFeature(
   organizationId: string,
   key: FeatureFlagKey,

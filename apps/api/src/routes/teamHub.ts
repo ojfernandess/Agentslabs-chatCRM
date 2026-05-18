@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { loadTeamForHub, requireTeamHubFeature } from "../lib/teamHubAccess.js";
+import { loadTeamForHub, requireHubTenantAdmin, requireTeamHubFeature } from "../lib/teamHubAccess.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { TeamChannelKind, TeamWorkspaceItemType } from "@prisma/client";
 import {
@@ -161,6 +161,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
+    if (!requireHubTenantAdmin(request.user, reply)) return;
     const team = await hubGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
@@ -184,6 +185,76 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     } catch {
       return reply.status(409).send({ error: "Conflict", message: "Channel name already exists", statusCode: 409 });
     }
+  });
+
+  app.patch<{ Params: { id: string; channelId: string } }>("/:id/channels/:channelId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
+    if (!requireHubTenantAdmin(request.user, reply)) return;
+    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    if (!team) return;
+
+    const parsed = channelBodySchema.partial().safeParse(request.body);
+    if (!parsed.success || Object.keys(parsed.data).length === 0) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error?.message ?? "No fields", statusCode: 400 });
+    }
+
+    const channel = await prisma.teamChannel.findFirst({
+      where: { id: request.params.channelId, teamId: team.id },
+    });
+    if (!channel) {
+      return reply.status(404).send({ error: "Not Found", message: "Channel not found", statusCode: 404 });
+    }
+
+    const data: { name?: string; description?: string | null; kind?: TeamChannelKind } = {};
+    if (parsed.data.name != null) {
+      data.name = parsed.data.name.trim().toLowerCase().replace(/\s+/g, "-");
+    }
+    if (parsed.data.description !== undefined) {
+      data.description = parsed.data.description?.trim() || null;
+    }
+    if (parsed.data.kind != null) {
+      data.kind = parsed.data.kind;
+    }
+
+    try {
+      const updated = await prisma.teamChannel.update({
+        where: { id: channel.id },
+        data,
+      });
+      return updated;
+    } catch {
+      return reply.status(409).send({ error: "Conflict", message: "Channel name already exists", statusCode: 409 });
+    }
+  });
+
+  app.delete<{ Params: { id: string; channelId: string } }>("/:id/channels/:channelId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
+    if (!requireHubTenantAdmin(request.user, reply)) return;
+    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    if (!team) return;
+
+    const channel = await prisma.teamChannel.findFirst({
+      where: { id: request.params.channelId, teamId: team.id },
+    });
+    if (!channel) {
+      return reply.status(404).send({ error: "Not Found", message: "Channel not found", statusCode: 404 });
+    }
+
+    const total = await prisma.teamChannel.count({ where: { teamId: team.id } });
+    if (total <= 1) {
+      return reply.status(409).send({
+        error: "Conflict",
+        message: "Cannot delete the last channel of a team",
+        statusCode: 409,
+      });
+    }
+
+    await prisma.teamChannel.delete({ where: { id: channel.id } });
+    return reply.status(204).send();
   });
 
   app.get<{ Params: { id: string; channelId: string } }>("/:id/channels/:channelId/messages", async (request, reply) => {
