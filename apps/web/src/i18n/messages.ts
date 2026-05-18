@@ -329,6 +329,9 @@ export const messages = {
         selectTeam: "Selecione a equipa…",
         customInstruction: "Instrução para o agente",
         customPlaceholder: "Ex.: Confirme o pedido e informe o prazo estimado.",
+        supplementalSteps: "Passos antes ou durante a transferência",
+        supplementalPlaceholderTeam:
+          "Ex.: Envie as coordenadas PIX e, em seguida, transfira para a equipa seleccionada.",
         action_transfer_human: "Transferir para atendimento humano",
         action_transfer_team: "Transferir para uma equipa",
         action_set_pending: "Marcar conversa como pendente",
@@ -2835,6 +2838,9 @@ export const messages = {
         selectTeam: "Select team…",
         customInstruction: "Instruction for the agent",
         customPlaceholder: "E.g. Confirm the request and share the estimated timeline.",
+        supplementalSteps: "Steps before or during the transfer",
+        supplementalPlaceholderTeam:
+          "E.g. Send PIX coordinates, then transfer to the selected team.",
         action_transfer_human: "Transfer to human support",
         action_transfer_team: "Transfer to a team",
         action_set_pending: "Mark conversation as pending",

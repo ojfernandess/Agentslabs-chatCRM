@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { GitBranchPlus, Pencil, Trash2, X } from "lucide-react";
 import {
@@ -20,6 +20,7 @@ interface Props {
 const ACTIONS: InstructionFallbackAction[] = ["transfer_human", "transfer_team", "set_pending", "custom"];
 
 export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, teams = [], t }: Props) {
+  const selectionRef = useRef<{ text: string } | null>(null);
   const [selection, setSelection] = useState<{ text: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -37,9 +38,13 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
     const end = el.selectionEnd;
     if (end > start) {
       const text = el.value.slice(start, end).trim();
-      if (text) setSelection({ text });
-      else setSelection(null);
-    } else {
+      if (text) {
+        selectionRef.current = { text };
+        setSelection({ text });
+      } else {
+        setSelection(null);
+      }
+    } else if (!selectionRef.current) {
       setSelection(null);
     }
   }, [textareaRef]);
@@ -47,19 +52,24 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    const onUp = () => readSelection();
-    el.addEventListener("mouseup", onUp);
-    el.addEventListener("keyup", onUp);
+    const onSelect = () => readSelection();
+    el.addEventListener("select", onSelect);
+    el.addEventListener("mouseup", onSelect);
+    el.addEventListener("keyup", onSelect);
     return () => {
-      el.removeEventListener("mouseup", onUp);
-      el.removeEventListener("keyup", onUp);
+      el.removeEventListener("select", onSelect);
+      el.removeEventListener("mouseup", onSelect);
+      el.removeEventListener("keyup", onSelect);
     };
   }, [textareaRef, readSelection]);
 
   const openCreateModal = () => {
-    if (!selection?.text) return;
+    const text = selectionRef.current?.text ?? selection?.text;
+    if (!text) return;
+    selectionRef.current = { text };
+    setSelection({ text });
     setEditingId(null);
-    setAction("transfer_human");
+    setAction("transfer_team");
     setTeamId(teams[0]?.id ?? "");
     setCustomInstruction("");
     setModalOpen(true);
@@ -70,24 +80,31 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
     setAction(fb.action);
     setTeamId(fb.teamId ?? "");
     setCustomInstruction(fb.customInstruction ?? "");
+    selectionRef.current = { text: fb.triggerText };
     setSelection({ text: fb.triggerText });
     setModalOpen(true);
   };
 
   const saveModal = () => {
-    const triggerText = selection?.text?.trim() ?? "";
+    const triggerText = (selectionRef.current?.text ?? selection?.text ?? "").trim();
     if (!triggerText) return;
     if (action === "transfer_team" && !teamId.trim()) return;
     if (action === "custom" && !customInstruction.trim()) return;
 
     const team = teams.find((x) => x.id === teamId);
+    const supplemental = customInstruction.trim();
     const row: InstructionFallback = {
       id: editingId ?? newFallbackId(),
       triggerText,
       action,
       teamId: action === "transfer_team" ? teamId : null,
       teamName: action === "transfer_team" ? team?.name ?? null : null,
-      customInstruction: action === "custom" ? customInstruction.trim() : null,
+      customInstruction:
+        action === "custom"
+          ? supplemental
+          : supplemental && (action === "transfer_team" || action === "transfer_human")
+            ? supplemental
+            : null,
     };
 
     if (editingId) {
@@ -98,11 +115,15 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
     setModalOpen(false);
     setEditingId(null);
     setSelection(null);
+    selectionRef.current = null;
   };
 
   const removeFallback = (id: string) => {
     onChange(fallbacks.filter((f) => f.id !== id));
   };
+
+  const showSupplementalField =
+    action === "custom" || action === "transfer_team" || action === "transfer_human";
 
   return (
     <div className="space-y-3">
@@ -114,6 +135,7 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
           </span>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={openCreateModal}
             className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-violet-700"
           >
@@ -133,14 +155,14 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
               className="flex flex-col gap-2 rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 text-xs dark:border-ink-800 dark:bg-ink-900/40 sm:flex-row sm:items-start sm:justify-between"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-ink-800 dark:text-ink-100">
-                  «{fb.triggerText}»
-                </p>
+                <p className="font-semibold text-ink-800 dark:text-ink-100">«{fb.triggerText}»</p>
                 <p className="mt-1 text-ink-600 dark:text-ink-400">
                   {t(`automationPage.instructionFallback.action_${fb.action}`)}
                   {fb.action === "transfer_team" && fb.teamName ? ` → ${fb.teamName}` : ""}
-                  {fb.action === "custom" && fb.customInstruction ? `: ${fb.customInstruction}` : ""}
                 </p>
+                {fb.customInstruction ? (
+                  <p className="mt-1 text-ink-500 dark:text-ink-400">{fb.customInstruction}</p>
+                ) : null}
               </div>
               <div className="flex shrink-0 gap-1">
                 <button
@@ -187,7 +209,7 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
 
             <p className="mb-3 rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-700 dark:bg-ink-900 dark:text-ink-200">
               <span className="font-semibold">{t("automationPage.instructionFallback.trigger")}:</span> «
-              {selection?.text ?? ""}»
+              {selectionRef.current?.text ?? selection?.text ?? ""}»
             </p>
 
             <p className="mb-2 text-xs font-semibold text-ink-600 dark:text-ink-400">
@@ -218,7 +240,9 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
 
             {action === "transfer_team" ? (
               <label className="mb-3 block text-xs">
-                <span className="font-semibold text-ink-600 dark:text-ink-400">{t("automationPage.instructionFallback.team")}</span>
+                <span className="font-semibold text-ink-600 dark:text-ink-400">
+                  {t("automationPage.instructionFallback.team")}
+                </span>
                 <select
                   value={teamId}
                   onChange={(e) => setTeamId(e.target.value)}
@@ -234,17 +258,23 @@ export function InstructionFallbacksEditor({ textareaRef, fallbacks, onChange, t
               </label>
             ) : null}
 
-            {action === "custom" ? (
+            {showSupplementalField ? (
               <label className="mb-3 block text-xs">
                 <span className="font-semibold text-ink-600 dark:text-ink-400">
-                  {t("automationPage.instructionFallback.customInstruction")}
+                  {action === "custom"
+                    ? t("automationPage.instructionFallback.customInstruction")
+                    : t("automationPage.instructionFallback.supplementalSteps")}
                 </span>
                 <textarea
                   value={customInstruction}
                   onChange={(e) => setCustomInstruction(e.target.value)}
                   rows={3}
                   className="input-field mt-1 w-full resize-y text-sm"
-                  placeholder={t("automationPage.instructionFallback.customPlaceholder")}
+                  placeholder={
+                    action === "transfer_team"
+                      ? t("automationPage.instructionFallback.supplementalPlaceholderTeam")
+                      : t("automationPage.instructionFallback.customPlaceholder")
+                  }
                 />
               </label>
             ) : null}

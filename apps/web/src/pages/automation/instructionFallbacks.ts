@@ -89,18 +89,52 @@ const LABELS_EN: FallbackBlockLabels = {
 };
 
 function describeAction(fb: InstructionFallback, L: FallbackBlockLabels): string {
+  const extra = fb.customInstruction?.trim();
+  const withExtra = (base: string) => (extra ? `${base} Antes ou durante: ${extra}` : base);
+
   switch (fb.action) {
     case "transfer_human":
-      return L.transferHuman;
+      return withExtra(L.transferHuman);
     case "transfer_team":
-      return L.transferTeam(fb.teamName ?? fb.teamId ?? "team", fb.teamId ?? "");
+      return withExtra(L.transferTeam(fb.teamName ?? fb.teamId ?? "team", fb.teamId ?? ""));
     case "set_pending":
-      return L.setPending;
+      return withExtra(L.setPending);
     case "custom":
       return L.custom(fb.customInstruction ?? "");
     default:
       return "";
   }
+}
+
+const FALLBACK_MARKER_PT = "[OpenConduit — fallbacks de instrução]";
+const FALLBACK_MARKER_EN = "[OpenConduit — instruction fallbacks]";
+
+/** Garante que fallbacks guardados em promptBuilder chegam ao system prompt em runtime. */
+export function mergeInstructionFallbacksIntoSystemPrompt(
+  systemInstructions: string,
+  fallbacks: InstructionFallback[],
+  locale: "pt" | "en" = "pt",
+): string {
+  const rows = fallbacks.filter((f) => f.triggerText.trim());
+  if (rows.length === 0) return systemInstructions;
+
+  const fbBlock = buildInstructionFallbackBlock(rows, locale);
+  if (!fbBlock) return systemInstructions;
+
+  if (
+    systemInstructions.includes(FALLBACK_MARKER_PT) ||
+    systemInstructions.includes(FALLBACK_MARKER_EN)
+  ) {
+    return systemInstructions;
+  }
+
+  const autoEnd = "\n<!-- /openconduit:auto-prompt -->";
+  const endIdx = systemInstructions.indexOf(autoEnd);
+  if (endIdx !== -1) {
+    return `${systemInstructions.slice(0, endIdx).trimEnd()}\n\n${fbBlock}\n${systemInstructions.slice(endIdx)}`;
+  }
+
+  return `${systemInstructions.trimEnd()}\n\n${fbBlock}`;
 }
 
 /** Bloco de texto injectado no prompt automático (só quando há fallbacks). */

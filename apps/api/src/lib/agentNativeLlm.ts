@@ -29,6 +29,10 @@ import {
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
+import {
+  mergeInstructionFallbacksIntoSystemPrompt,
+  parseInstructionFallbacks,
+} from "./instructionFallbacks.js";
 
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
@@ -503,9 +507,40 @@ export async function generateNativeAgentReply(input: {
     typeof temperatureRaw === "number" && Number.isFinite(temperatureRaw) ? temperatureRaw : 0.7;
   const maxTokens =
     typeof maxTokensRaw === "number" && Number.isFinite(maxTokensRaw) ? Math.trunc(maxTokensRaw) : 1024;
-  const systemInstructions =
+  let systemInstructions =
     llmString(llm, "systemInstructions") ||
     "Você é um agente de atendimento útil, objetivo e cordial. Responda de forma curta e prática.";
+
+  const pbNested = (() => {
+    const beh = profile.behaviorConfig;
+    if (!beh || typeof beh !== "object") return null;
+    const pb = (beh as Record<string, unknown>).promptBuilder;
+    return pb && typeof pb === "object" ? (pb as Record<string, unknown>) : null;
+  })();
+  let instructionFallbacks = parseInstructionFallbacks(pbNested?.instructionFallbacks);
+  if (instructionFallbacks.some((f) => f.action === "transfer_team" && f.teamId)) {
+    const teamIds = [
+      ...new Set(
+        instructionFallbacks
+          .filter((f) => f.action === "transfer_team" && f.teamId)
+          .map((f) => f.teamId as string),
+      ),
+    ];
+    if (teamIds.length > 0) {
+      const teamRows = await prisma.team.findMany({
+        where: { organizationId, id: { in: teamIds } },
+        select: { id: true, name: true },
+      });
+      const nameById = new Map(teamRows.map((t) => [t.id, t.name]));
+      instructionFallbacks = instructionFallbacks.map((f) =>
+        f.action === "transfer_team" && f.teamId
+          ? { ...f, teamName: nameById.get(f.teamId) ?? f.teamName ?? f.teamId }
+          : f,
+      );
+    }
+  }
+  systemInstructions = mergeInstructionFallbacksIntoSystemPrompt(systemInstructions, instructionFallbacks);
+
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
 
   const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);

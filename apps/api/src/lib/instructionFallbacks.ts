@@ -65,21 +65,30 @@ export function buildInstructionFallbackBlock(
     const triggerLabel = isEn ? "Trigger excerpt" : "Trecho gatilho";
     const actionLabel = isEn ? "Action" : "Ação";
     let actionText = "";
+    const extra = fb.customInstruction?.trim();
+    const withExtra = (base: string) => (extra ? `${base} Antes ou durante: ${extra}` : base);
+
     switch (fb.action) {
       case "transfer_human":
-        actionText = isEn
-          ? "Transfer to human support — invoke `call_human`."
-          : "Transferir para atendimento humano — invoque `call_human`.";
+        actionText = withExtra(
+          isEn
+            ? "Transfer to human support — invoke `call_human`."
+            : "Transferir para atendimento humano — invoque `call_human`.",
+        );
         break;
       case "transfer_team":
-        actionText = isEn
-          ? `Transfer to team «${fb.teamName ?? fb.teamId}» — invoke \`transfer_to_team\` with \`team_id\`: \`${fb.teamId}\`.`
-          : `Transferir para a equipa «${fb.teamName ?? fb.teamId}» — invoque \`transfer_to_team\` com \`team_id\`: \`${fb.teamId}\`.`;
+        actionText = withExtra(
+          isEn
+            ? `Transfer to team «${fb.teamName ?? fb.teamId}» — invoke \`transfer_to_team\` with \`team_id\`: \`${fb.teamId}\`.`
+            : `Transferir para a equipa «${fb.teamName ?? fb.teamId}» — invoque \`transfer_to_team\` com \`team_id\`: \`${fb.teamId}\`.`,
+        );
         break;
       case "set_pending":
-        actionText = isEn
-          ? "Mark conversation as pending — invoke `set_conversation_status` with status PENDING."
-          : "Marcar conversa como pendente — invoque `set_conversation_status` com status PENDING.";
+        actionText = withExtra(
+          isEn
+            ? "Mark conversation as pending — invoke `set_conversation_status` with status PENDING."
+            : "Marcar conversa como pendente — invoque `set_conversation_status` com status PENDING.",
+        );
         break;
       case "custom":
         actionText = fb.customInstruction ?? "";
@@ -91,4 +100,34 @@ export function buildInstructionFallbackBlock(
   });
 
   return lines.join("\n").trim();
+}
+
+const FALLBACK_MARKER_PT = "[OpenConduit — fallbacks de instrução]";
+const FALLBACK_MARKER_EN = "[OpenConduit — instruction fallbacks]";
+
+export function mergeInstructionFallbacksIntoSystemPrompt(
+  systemInstructions: string,
+  fallbacks: InstructionFallback[],
+  locale: "pt" | "en" = "pt",
+): string {
+  const rows = fallbacks.filter((f) => f.triggerText.trim());
+  if (rows.length === 0) return systemInstructions;
+
+  const fbBlock = buildInstructionFallbackBlock(rows, locale);
+  if (!fbBlock) return systemInstructions;
+
+  if (
+    systemInstructions.includes(FALLBACK_MARKER_PT) ||
+    systemInstructions.includes(FALLBACK_MARKER_EN)
+  ) {
+    return systemInstructions;
+  }
+
+  const autoEnd = "\n<!-- /openconduit:auto-prompt -->";
+  const endIdx = systemInstructions.indexOf(autoEnd);
+  if (endIdx !== -1) {
+    return `${systemInstructions.slice(0, endIdx).trimEnd()}\n\n${fbBlock}\n${systemInstructions.slice(endIdx)}`;
+  }
+
+  return `${systemInstructions.trimEnd()}\n\n${fbBlock}`;
 }

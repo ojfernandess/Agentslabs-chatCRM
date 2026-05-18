@@ -468,6 +468,14 @@ function formToPayload(
     Boolean(form.escalationKeywords.trim()) ||
     Boolean(form.escalationConditions.trim()) ||
     Boolean(form.escalationTransferMessage.trim());
+  const fallbacksResolved = form.instructionFallbacks.map((fb) => ({
+    ...fb,
+    teamName:
+      fb.action === "transfer_team" && fb.teamId
+        ? (ctx.orgTeams.find((o) => o.id === fb.teamId)?.name ?? fb.teamName ?? fb.teamId)
+        : fb.teamName,
+  }));
+
   const autoInner = buildPromptAutoInstructionBlock({
     nativeTools: form.nativeTools as Record<string, boolean>,
     linkedArticleTitles: linkedTitles,
@@ -484,6 +492,7 @@ function formToPayload(
           transferMessage: form.escalationTransferMessage,
         }
       : null,
+    instructionFallbacks: fallbacksResolved,
     t: ctx.t,
   });
   const mergedInstructions = mergeSystemWithAutoBlock(form.promptUserCore, autoInner);
@@ -546,7 +555,7 @@ function formToPayload(
       userCore: form.promptUserCore,
       linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
       teamTransferHints: form.teamTransferHints.filter((h) => h.instruction.trim()),
-      instructionFallbacks: form.instructionFallbacks,
+      instructionFallbacks: fallbacksResolved,
     },
   };
 
