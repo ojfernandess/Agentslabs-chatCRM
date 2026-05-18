@@ -266,8 +266,7 @@ export function ConversationDetailPage() {
   const [tagFormName, setTagFormName] = useState("");
   const [tagFormColor, setTagFormColor] = useState("#6366f1");
   const [tagFormError, setTagFormError] = useState("");
-  const [contactNotesDraft, setContactNotesDraft] = useState("");
-  const [contactNotesDirty, setContactNotesDirty] = useState(false);
+  const [newContactNoteDraft, setNewContactNoteDraft] = useState("");
   const [contactNotesBusy, setContactNotesBusy] = useState(false);
   const [contactNotesError, setContactNotesError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -487,9 +486,7 @@ export function ConversationDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    const notes = conversation?.contact.notes ?? "";
-    setContactNotesDraft(notes);
-    setContactNotesDirty(false);
+    setNewContactNoteDraft("");
     setContactNotesError("");
     setContactNotesBusy(false);
   }, [conversation?.contact.id]);
@@ -1342,14 +1339,21 @@ export function ConversationDetailPage() {
       ? formatDistanceToNow(new Date(lastInbound.createdAt), { locale: dateLocale, addSuffix: true })
       : null;
 
-  const saveContactNotes = async () => {
+  const addContactNote = async () => {
     if (!conversation) return;
+    const text = newContactNoteDraft.trim();
+    if (!text) return;
     setContactNotesBusy(true);
     setContactNotesError("");
     try {
-      await api.put(`/contacts/${conversation.contact.id}`, { notes: contactNotesDraft });
-      setConversation((c) => (c ? { ...c, contact: { ...c.contact, notes: contactNotesDraft } } : c));
-      setContactNotesDirty(false);
+      const when = format(new Date(), "dd/MM/yyyy HH:mm", { locale: dateLocale });
+      const who = user?.displayName?.trim() || user?.name || "—";
+      const block = `---\n${when} · ${who}\n${text}`;
+      const existing = (conversation.contact.notes ?? "").trim();
+      const nextNotes = existing ? `${existing}\n\n${block}` : block;
+      await api.put(`/contacts/${conversation.contact.id}`, { notes: nextNotes });
+      setConversation((c) => (c ? { ...c, contact: { ...c.contact, notes: nextNotes } } : c));
+      setNewContactNoteDraft("");
     } catch {
       setContactNotesError(t("conversationDetail.contactNotesSaveFailed"));
     } finally {
@@ -1540,29 +1544,37 @@ export function ConversationDetailPage() {
           {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
         </p>
         <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-white/10">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
-              {t("conversationDetail.contactNotes")}
-            </p>
-            <button
-              type="button"
-              onClick={() => void saveContactNotes()}
-              disabled={contactNotesBusy || !contactNotesDirty}
-              className="rounded-lg bg-brand-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-            >
-              {contactNotesBusy ? t("common.saving") : t("common.save")}
-            </button>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.contactNotes")}
+          </p>
+          <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-400">{t("conversationDetail.contactNotesAddHint")}</p>
+          <div className="mt-2 max-h-36 overflow-y-auto rounded-xl border border-ink-200/80 bg-ink-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+            {conversation.contact.notes?.trim() ? (
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink-700 dark:text-ink-200">
+                {conversation.contact.notes}
+              </p>
+            ) : (
+              <p className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.contactNotesEmpty")}</p>
+            )}
           </div>
           <textarea
-            value={contactNotesDraft}
-            onChange={(e) => {
-              setContactNotesDraft(e.target.value);
-              setContactNotesDirty(true);
-            }}
-            rows={4}
-            placeholder={t("conversationDetail.contactNotesPlaceholder")}
+            value={newContactNoteDraft}
+            onChange={(e) => setNewContactNoteDraft(e.target.value)}
+            rows={3}
+            placeholder={t("conversationDetail.contactNotesComposePlaceholder")}
             className="mt-2 w-full resize-y rounded-xl border border-ink-200 bg-white/90 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 shadow-sm focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/5 dark:text-ink-50 dark:placeholder:text-ink-500 dark:shadow-none"
           />
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void addContactNote()}
+              disabled={contactNotesBusy || !newContactNoteDraft.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {contactNotesBusy ? t("common.saving") : t("conversationDetail.contactNotesAdd")}
+            </button>
+          </div>
           {contactNotesError ? (
             <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
               {contactNotesError}
