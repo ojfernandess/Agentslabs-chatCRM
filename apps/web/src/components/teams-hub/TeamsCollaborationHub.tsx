@@ -12,7 +12,6 @@ import {
   MessageSquare,
   Pencil,
   Plus,
-  Send,
   Sparkles,
   StickyNote,
   Trash2,
@@ -27,6 +26,7 @@ import { PageTransition, motion } from "@/components/Motion";
 import { TeamCommandPalette, type CommandAction } from "./TeamCommandPalette";
 import { TeamOperationalAdmin } from "./TeamOperationalAdmin";
 import { ChannelManageModal, type ChannelFormState } from "./ChannelManageModal";
+import { TeamChannelChat } from "./TeamChannelChat";
 
 type HubTab = "overview" | "channels" | "workspace" | "admin";
 type WorkspaceFilter = "NOTE" | "WIKI" | "SNIPPET" | "FILE_LINK";
@@ -73,13 +73,6 @@ interface ChannelRow {
   lastMessage: { createdAt: string; body: string } | null;
 }
 
-interface ChannelMessage {
-  id: string;
-  body: string;
-  createdAt: string;
-  author: { id: string; name: string };
-}
-
 interface WorkspaceItem {
   id: string;
   itemType: WorkspaceFilter;
@@ -110,8 +103,6 @@ export function TeamsCollaborationHub() {
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-  const [channelMessages, setChannelMessages] = useState<ChannelMessage[]>([]);
-  const [channelDraft, setChannelDraft] = useState("");
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("NOTE");
   const [workspaceItems, setWorkspaceItems] = useState<WorkspaceItem[]>([]);
   const [wsTitle, setWsTitle] = useState("");
@@ -164,17 +155,6 @@ export function TeamsCollaborationHub() {
     }
   }, [channelsOn]);
 
-  const loadChannelMessages = useCallback(async (teamId: string, channelId: string) => {
-    try {
-      const res = await api.get<{ data: ChannelMessage[] }>(
-        `/teams/${teamId}/channels/${channelId}/messages`,
-      );
-      setChannelMessages(res.data);
-    } catch {
-      setChannelMessages([]);
-    }
-  }, []);
-
   const loadWorkspace = useCallback(
     async (teamId: string, type: WorkspaceFilter) => {
       if (!workspaceOn) return;
@@ -206,18 +186,13 @@ export function TeamsCollaborationHub() {
   }, [selected?.id, loadOverview, loadChannels, loadWorkspace, workspaceFilter, workspaceOn]);
 
   useEffect(() => {
-    if (!selected?.id || !activeChannelId) return;
-    void loadChannelMessages(selected.id, activeChannelId);
-  }, [selected?.id, activeChannelId, loadChannelMessages]);
-
-  useEffect(() => {
     if (!realtimeOn || !selected?.id) return;
     const id = window.setInterval(() => {
       void loadOverview(selected.id);
-      if (channelsOn && activeChannelId) void loadChannelMessages(selected.id, activeChannelId);
+      if (channelsOn) void loadChannels(selected.id);
     }, 15_000);
     return () => window.clearInterval(id);
-  }, [realtimeOn, selected?.id, activeChannelId, loadOverview, loadChannelMessages, channelsOn]);
+  }, [realtimeOn, selected?.id, loadOverview, loadChannels, channelsOn]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -242,16 +217,6 @@ export function TeamsCollaborationHub() {
     } finally {
       setCreating(false);
     }
-  };
-
-  const sendChannelMessage = async () => {
-    if (!selected?.id || !activeChannelId || !channelDraft.trim()) return;
-    await api.post(`/teams/${selected.id}/channels/${activeChannelId}/messages`, {
-      body: channelDraft.trim(),
-    });
-    setChannelDraft("");
-    await loadChannelMessages(selected.id, activeChannelId);
-    await loadChannels(selected.id);
   };
 
   const addWorkspaceItem = async (e: FormEvent) => {
@@ -592,35 +557,18 @@ export function TeamsCollaborationHub() {
                           ))}
                         </div>
                       </div>
-                      <div className="flex min-w-0 flex-1 flex-col rounded-2xl border border-ink-200 bg-white/90 dark:border-ink-800 dark:bg-ink-950/60">
-                        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                          {channelMessages.map((m) => (
-                            <div key={m.id} className="max-w-[85%] rounded-2xl rounded-tl-md bg-ink-100 px-3 py-2 dark:bg-ink-900">
-                              <p className="text-[11px] font-semibold text-violet-700 dark:text-violet-300">{m.author.name}</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-800 dark:text-ink-100">{m.body}</p>
-                              <p className="mt-1 text-[10px] text-ink-400">
-                                {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true, locale: dateLocale })}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex gap-2 border-t border-ink-100 p-3 dark:border-ink-800">
-                          <input
-                            value={channelDraft}
-                            onChange={(e) => setChannelDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                void sendChannelMessage();
-                              }
-                            }}
-                            placeholder={t("teamsHub.channelPlaceholder")}
-                            className="input-field min-w-0 flex-1"
-                          />
-                          <button type="button" onClick={() => void sendChannelMessage()} className="btn-primary shrink-0">
-                            <Send className="h-4 w-4" />
-                          </button>
-                        </div>
+                      <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-ink-200 bg-white/90 dark:border-ink-800 dark:bg-ink-950/60">
+                        <TeamChannelChat
+                          teamId={selected.id}
+                          channelId={activeChannelId}
+                          currentUserId={user?.id}
+                          dateLocale={dateLocale}
+                          t={t}
+                          onActivity={() => {
+                            void loadChannels(selected.id);
+                            void loadOverview(selected.id);
+                          }}
+                        />
                       </div>
                     </div>
                   ) : null}

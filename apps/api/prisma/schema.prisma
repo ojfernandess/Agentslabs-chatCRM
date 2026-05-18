@@ -92,6 +92,13 @@ enum TeamWorkspaceItemType {
   FILE_LINK
 }
 
+enum TeamChannelMessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  FILE
+}
+
 /// Como o valor à finalização (closure) entra nas somas e como negócios herdam o estado por etapa.
 enum LeadValueRollup {
   /// Conta em «Em negociação» / pipeline; negócio fica OPEN.
@@ -275,9 +282,13 @@ model TeamChannel {
 }
 
 model TeamChannelMessage {
-  id        String   @id @default(uuid()) @db.Uuid
-  body      String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String                 @id @default(uuid()) @db.Uuid
+  body      String                 @db.Text
+  messageType TeamChannelMessageType @default(TEXT) @map("message_type")
+  attachmentUrl      String? @map("attachment_url") @db.VarChar(2048)
+  attachmentName     String? @map("attachment_name") @db.VarChar(512)
+  attachmentMimeType String? @map("attachment_mime_type") @db.VarChar(128)
+  createdAt DateTime               @default(now()) @map("created_at")
 
   channelId String      @map("channel_id") @db.Uuid
   channel   TeamChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -285,8 +296,26 @@ model TeamChannelMessage {
   authorUserId String @map("author_user_id") @db.Uuid
   authorUser   User   @relation("TeamChannelMessageAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
 
+  reactions TeamChannelMessageReaction[]
+
   @@index([channelId, createdAt])
   @@map("team_channel_messages")
+}
+
+model TeamChannelMessageReaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  emoji     String   @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  messageId String             @map("message_id") @db.Uuid
+  message   TeamChannelMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation("TeamChannelMessageReactionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("team_channel_message_reactions")
 }
 
 model TeamWorkspaceItem {
@@ -418,6 +447,7 @@ model User {
   conversationReadStates       ConversationUserReadState[]
   passwordResetTokens          PasswordResetToken[]
   teamChannelMessages          TeamChannelMessage[]          @relation("TeamChannelMessageAuthor")
+  teamChannelMessageReactions  TeamChannelMessageReaction[]  @relation("TeamChannelMessageReactionUser")
   teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
 
   @@index([organizationId])

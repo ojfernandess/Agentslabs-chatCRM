@@ -4,13 +4,66 @@ import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { loadTeamForHub, requireHubTenantAdmin, requireTeamHubFeature } from "../lib/teamHubAccess.js";
 import type { JwtPayload } from "../middleware/auth.js";
-import { TeamChannelKind, TeamWorkspaceItemType } from "@prisma/client";
+import { TeamChannelKind, TeamChannelMessageType, TeamWorkspaceItemType } from "@prisma/client";
+import {
+  inferTeamChannelMessageType,
+  mapTeamChannelMessageReactions,
+} from "../lib/teamChannelMessagePayload.js";
 import {
   getAssistOpenAiCredentialsForOrganization,
   assistOpenAiModel,
   buildPublicConversationTranscript,
 } from "../lib/agentAssistLlm.js";
 import { callOpenAiCompatibleChat } from "../lib/promptModulePreviewLlm.js";
+
+const channelMessageBodySchema = z
+  .object({
+    body: z.string().max(16000).optional(),
+    messageType: z.nativeEnum(TeamChannelMessageType).optional(),
+    attachmentUrl: z.string().url().max(2048).optional(),
+    attachmentName: z.string().max(512).optional(),
+    attachmentMimeType: z.string().max(128).optional(),
+  })
+  .refine(
+    (d) => Boolean(d.body?.trim()) || Boolean(d.attachmentUrl?.trim()),
+    { message: "body or attachmentUrl required" },
+  );
+
+const reactionEmojiSchema = z.string().min(1).max(32);
+
+function serializeChannelMessage(
+  m: {
+    id: string;
+    body: string;
+    messageType: TeamChannelMessageType;
+    attachmentUrl: string | null;
+    attachmentName: string | null;
+    attachmentMimeType: string | null;
+    createdAt: Date;
+    authorUser: { id: string; name: string; displayName: string | null };
+    reactions: {
+      emoji: string;
+      userId: string;
+      user: { id: string; name: string; displayName: string | null };
+    }[];
+  },
+  currentUserId: string,
+) {
+  return {
+    id: m.id,
+    body: m.body,
+    messageType: m.messageType,
+    attachmentUrl: m.attachmentUrl,
+    attachmentName: m.attachmentName,
+    attachmentMimeType: m.attachmentMimeType,
+    createdAt: m.createdAt,
+    author: {
+      id: m.authorUser.id,
+      name: m.authorUser.displayName?.trim() || m.authorUser.name,
+    },
+    reactions: mapTeamChannelMessageReactions(m.reactions, currentUserId),
+  };
+}
 
 async function ensureDefaultChannel(teamId: string, organizationId: string) {
   const count = await prisma.teamChannel.count({ where: { teamId } });
@@ -277,19 +330,16 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       take: 200,
       include: {
         authorUser: { select: { id: true, name: true, displayName: true } },
+        reactions: {
+          include: {
+            user: { select: { id: true, name: true, displayName: true } },
+          },
+        },
       },
     });
 
     return {
-      data: messages.map((m) => ({
-        id: m.id,
-        body: m.body,
-        createdAt: m.createdAt,
-        author: {
-          id: m.authorUser.id,
-          name: m.authorUser.displayName?.trim() || m.authorUser.name,
-        },
-      })),
+      data: messages.map((m) => serializeChannelMessage(m, request.user.id)),
     };
   });
 
@@ -302,7 +352,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       const team = await hubGuard(organizationId, request.params.id, request.user, reply);
       if (!team) return;
 
-      const parsed = z.object({ body: z.string().min(1).max(16000) }).safeParse(request.body);
+      const parsed = channelMessageBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
       }
@@ -314,26 +364,85 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Not Found", message: "Channel not found", statusCode: 404 });
       }
 
+      const attachmentUrl = parsed.data.attachmentUrl?.trim() || null;
+      const attachmentMimeType = parsed.data.attachmentMimeType?.trim() || null;
+      const messageType =
+        parsed.data.messageType ??
+        (attachmentUrl ? inferTeamChannelMessageType(attachmentMimeType) : TeamChannelMessageType.TEXT);
+
       const message = await prisma.teamChannelMessage.create({
         data: {
           channelId: channel.id,
           authorUserId: request.user.id,
-          body: parsed.data.body.trim(),
+          body: parsed.data.body?.trim() ?? "",
+          messageType,
+          attachmentUrl,
+          attachmentName: parsed.data.attachmentName?.trim() || null,
+          attachmentMimeType,
         },
         include: {
           authorUser: { select: { id: true, name: true, displayName: true } },
+          reactions: {
+            include: {
+              user: { select: { id: true, name: true, displayName: true } },
+            },
+          },
         },
       });
 
-      return reply.status(201).send({
-        id: message.id,
-        body: message.body,
-        createdAt: message.createdAt,
-        author: {
-          id: message.authorUser.id,
-          name: message.authorUser.displayName?.trim() || message.authorUser.name,
+      return reply.status(201).send(serializeChannelMessage(message, request.user.id));
+    },
+  );
+
+  app.post<{ Params: { id: string; channelId: string; messageId: string } }>(
+    "/:id/channels/:channelId/messages/:messageId/reactions",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
+      const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+      if (!team) return;
+
+      const parsed = z.object({ emoji: reactionEmojiSchema }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const emoji = parsed.data.emoji.trim();
+      const message = await prisma.teamChannelMessage.findFirst({
+        where: {
+          id: request.params.messageId,
+          channelId: request.params.channelId,
+          channel: { teamId: team.id },
         },
       });
+      if (!message) {
+        return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
+      }
+
+      const existing = await prisma.teamChannelMessageReaction.findUnique({
+        where: {
+          messageId_userId_emoji: {
+            messageId: message.id,
+            userId: request.user.id,
+            emoji,
+          },
+        },
+      });
+
+      if (existing) {
+        await prisma.teamChannelMessageReaction.delete({ where: { id: existing.id } });
+        return { toggled: "removed" as const, emoji };
+      }
+
+      await prisma.teamChannelMessageReaction.create({
+        data: {
+          messageId: message.id,
+          userId: request.user.id,
+          emoji,
+        },
+      });
+      return { toggled: "added" as const, emoji };
     },
   );
 
