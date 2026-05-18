@@ -26,6 +26,7 @@ import { parseNativeToolsFromBehavior } from "../lib/agentNativeLlm.js";
 import {
   buildSyncedPromptAutoInstructionBlock,
   mergeSystemWithAutoBlock,
+  parseInstructionFallbacks,
   splitStoredSystemInstructions,
 } from "../lib/agentPromptSync.js";
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
@@ -2401,6 +2402,23 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         return n;
       })();
 
+      const instructionFallbacks = parseInstructionFallbacks(pb.instructionFallbacks);
+      const fbTeamIds = instructionFallbacks
+        .filter((f) => f.action === "transfer_team" && f.teamId)
+        .map((f) => f.teamId!);
+      if (fbTeamIds.length) {
+        const fbTeams = await prisma.team.findMany({
+          where: { organizationId, id: { in: fbTeamIds } },
+          select: { id: true, name: true },
+        });
+        const fbNameById = new Map(fbTeams.map((t) => [t.id, t.name]));
+        for (const fb of instructionFallbacks) {
+          if (fb.action === "transfer_team" && fb.teamId) {
+            fb.teamName = fbNameById.get(fb.teamId) ?? fb.teamName ?? fb.teamId;
+          }
+        }
+      }
+
       const autoInner = buildSyncedPromptAutoInstructionBlock({
         nativeTools,
         linkedArticleTitles: linkedTitles,
@@ -2408,6 +2426,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         connectedToolInstructions,
         teamTransferHints,
         escalation,
+        instructionFallbacks,
       });
 
       const nextLlm = { ...llm, systemInstructions: mergeSystemWithAutoBlock(userCore, autoInner) };

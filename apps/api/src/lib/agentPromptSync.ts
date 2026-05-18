@@ -1,3 +1,9 @@
+import {
+  buildInstructionFallbackBlock,
+  parseInstructionFallbacks,
+  type InstructionFallback,
+} from "./instructionFallbacks.js";
+
 export const OC_AUTO_PROMPT_START = "\n\n<!-- openconduit:auto-prompt v1 -->\n";
 export const OC_AUTO_PROMPT_END = "\n<!-- /openconduit:auto-prompt -->\n";
 
@@ -37,9 +43,17 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
   connectedToolInstructions?: SyncedConnectedToolInstructionRow[];
   teamTransferHints?: SyncedTeamTransferHint[];
   escalation?: SyncedEscalationPromptContext | null;
+  instructionFallbacks?: InstructionFallback[];
 }): string {
-  const { nativeTools, linkedArticleTitles, connectedToolNames, connectedToolInstructions, teamTransferHints, escalation } =
-    input;
+  const {
+    nativeTools,
+    linkedArticleTitles,
+    connectedToolNames,
+    connectedToolInstructions,
+    teamTransferHints,
+    escalation,
+    instructionFallbacks,
+  } = input;
   const lines: string[] = [];
 
   lines.push("Instruções automáticas (sincronizadas pelo OpenConduit)");
@@ -120,6 +134,14 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
     lines.push("");
   }
 
+  const fbBlock = buildInstructionFallbackBlock(instructionFallbacks ?? []);
+  if (fbBlock) {
+    lines.push(fbBlock);
+    lines.push("");
+  }
+
   return lines.join("\n").trim();
 }
+
+export { parseInstructionFallbacks };
 

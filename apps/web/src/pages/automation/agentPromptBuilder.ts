@@ -1,3 +1,8 @@
+import {
+  buildInstructionFallbackBlock,
+  type InstructionFallback,
+} from "./instructionFallbacks";
+
 /** Marker delimiting auto-generated prompt instructions (stripped on load for the “builder” textarea). */
 export const OC_AUTO_PROMPT_START = "\n\n<!-- openconduit:auto-prompt v1 -->\n";
 export const OC_AUTO_PROMPT_END = "\n<!-- /openconduit:auto-prompt -->\n";
@@ -43,10 +48,21 @@ export function buildPromptAutoInstructionBlock(input: {
   connectedToolInstructions?: ConnectedToolInstructionRow[];
   teamTransferHints?: TeamTransferHint[];
   escalation?: EscalationPromptContext | null;
+  instructionFallbacks?: InstructionFallback[];
+  locale?: "pt" | "en";
   t: Translate;
 }): string {
-  const { nativeTools, linkedArticleTitles, connectedToolNames, connectedToolInstructions, teamTransferHints, escalation, t } =
-    input;
+  const {
+    nativeTools,
+    linkedArticleTitles,
+    connectedToolNames,
+    connectedToolInstructions,
+    teamTransferHints,
+    escalation,
+    instructionFallbacks,
+    locale = "pt",
+    t,
+  } = input;
   const lines: string[] = [];
 
   lines.push(t("automationPage.promptBuilderAutoHeader"));
@@ -162,6 +178,12 @@ export function buildPromptAutoInstructionBlock(input: {
       lines.push("");
       lines.push(t("automationPage.promptBuilderEscalationActionHint"));
     }
+    lines.push("");
+  }
+
+  const fbBlock = buildInstructionFallbackBlock(instructionFallbacks ?? [], locale);
+  if (fbBlock) {
+    lines.push(fbBlock);
     lines.push("");
   }
 

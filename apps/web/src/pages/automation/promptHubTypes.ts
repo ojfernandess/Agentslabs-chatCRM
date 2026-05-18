@@ -1,3 +1,5 @@
+import { parseInstructionFallbacks, type InstructionFallback } from "./instructionFallbacks";
+
 export type PromptModuleRow = {
   id: string;
   name: string;
@@ -47,6 +49,8 @@ export type PromptLabels = {
   };
   /** Display name persisted on create / first save */
   createdByName?: string;
+  /** Fallbacks por trecho das instruções principais (metadados — não alteram o body). */
+  instructionFallbacks?: InstructionFallback[];
 };
 
 export function parseLlmDefaultsFromUnknown(raw: unknown): PromptLlmDefaults | undefined {
@@ -108,5 +112,6 @@ export function parsePromptLabels(raw: unknown): PromptLabels {
         ? (o.analytics as PromptLabels["analytics"])
         : undefined,
     createdByName: typeof o.createdByName === "string" ? o.createdByName : undefined,
+    instructionFallbacks: parseInstructionFallbacks(o.instructionFallbacks),
   };
 }

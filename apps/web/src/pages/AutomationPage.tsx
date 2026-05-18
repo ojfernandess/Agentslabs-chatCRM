@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -31,6 +31,11 @@ import {
   nativeOpenAiToolFunctionName,
   splitStoredSystemInstructions,
 } from "@/pages/automation/agentPromptBuilder";
+import {
+  parseInstructionFallbacks,
+  type InstructionFallback,
+} from "@/pages/automation/instructionFallbacks";
+import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -291,6 +296,8 @@ type AgentFormFields = {
   connectedTools: AgentConnectedToolRow[];
   /** Instruções por equipa (UUID) para transfer_to_team — guardado em promptBuilder.teamTransferHints. */
   teamTransferHints: Array<{ teamId: string; instruction: string }>;
+  /** Fallbacks por trecho seleccionado nas instruções principais. */
+  instructionFallbacks: InstructionFallback[];
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -327,6 +334,7 @@ function emptyAgentForm(): AgentFormFields {
     promptModuleIds: [],
     connectedTools: defaultConnectedTools(),
     teamTransferHints: [],
+    instructionFallbacks: [],
   };
 }
 
@@ -368,6 +376,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const fullInstr = String(llm.systemInstructions ?? "");
   const strippedCore = splitStoredSystemInstructions(fullInstr).userCore;
   const promptUserCore = userFromPb != null ? userFromPb : strippedCore;
+  const instructionFallbacks = parseInstructionFallbacks(pb.instructionFallbacks);
 
   return {
     mode: "edit",
@@ -410,6 +419,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     promptModuleIds,
     connectedTools: normalizeConnectedTools(beh.connectedTools),
     teamTransferHints,
+    instructionFallbacks,
   };
 }
 
@@ -536,6 +546,7 @@ function formToPayload(
       userCore: form.promptUserCore,
       linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
       teamTransferHints: form.teamTransferHints.filter((h) => h.instruction.trim()),
+      instructionFallbacks: form.instructionFallbacks,
     },
   };
 
@@ -567,10 +578,18 @@ function applyPromptModuleSelectionToAgentForm(
   const promptUserCore = ordered.length > 0 ? bodies.join("\n\n---\n\n") : f.promptUserCore;
 
   const toolIdSet = new Set<string>();
+  const mergedFallbacks: InstructionFallback[] = [];
+  const seenFb = new Set<string>();
   for (const pm of ordered) {
     const lb = parsePromptLabels(pm.labels);
     for (const tid of lb.connectedToolIds ?? []) {
       if (tid) toolIdSet.add(tid);
+    }
+    for (const fb of lb.instructionFallbacks ?? []) {
+      const key = `${fb.triggerText}::${fb.action}::${fb.teamId ?? ""}`;
+      if (seenFb.has(key)) continue;
+      seenFb.add(key);
+      mergedFallbacks.push(fb);
     }
   }
 
@@ -600,6 +619,8 @@ function applyPromptModuleSelectionToAgentForm(
     promptModuleIds: nextPromptModuleIds,
     promptUserCore,
     connectedTools,
+    instructionFallbacks:
+      mergedFallbacks.length > 0 ? mergedFallbacks : f.instructionFallbacks,
   };
 
   const firstLlm = ordered.map((pm) => parsePromptLabels(pm.labels).llmDefaults).find(Boolean);
@@ -1229,6 +1250,7 @@ export function AutomationPage() {
             prompts={prompts}
             tools={tools}
             agentProfiles={agentProfiles}
+            orgTeams={orgTeamsForAgent}
             userDisplayName={user?.name ?? null}
             onRefresh={async () => {
               await loadPrompts();
@@ -1425,6 +1447,7 @@ function AgentsTab({
   orgTeams: Array<{ id: string; name: string }>;
   suggestionLocale: string;
 }) {
+  const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
   const [testChatBot, setTestChatBot] = useState<{ id: string; name: string } | null>(null);
@@ -1560,10 +1583,12 @@ function AgentsTab({
             transferMessage: agentForm.escalationTransferMessage,
           }
         : null,
+      instructionFallbacks: agentForm.instructionFallbacks,
       t,
     });
   }, [
     agentForm.connectedTools,
+    agentForm.instructionFallbacks,
     agentForm.escalationConditions,
     agentForm.escalationKeywords,
     agentForm.escalationMode,
@@ -2434,6 +2459,7 @@ function AgentsTab({
                     <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                       {t("automationPage.promptUserCoreLabel")}
                       <textarea
+                        ref={promptUserCoreRef}
                         value={agentForm.promptUserCore}
                         onChange={(e) => setAgentForm((f) => ({ ...f, promptUserCore: e.target.value }))}
                         rows={4}
@@ -2442,6 +2468,15 @@ function AgentsTab({
                       />
                       <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptUserCoreHint")}</p>
                     </label>
+                    <InstructionFallbacksEditor
+                      textareaRef={promptUserCoreRef}
+                      fallbacks={agentForm.instructionFallbacks}
+                      onChange={(instructionFallbacks) =>
+                        setAgentForm((f) => ({ ...f, instructionFallbacks }))
+                      }
+                      teams={orgTeams}
+                      t={t}
+                    />
 
                     <div className="rounded-xl border border-ink-100 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-950/50">
                       <p className="text-xs font-semibold text-ink-900 dark:text-ink-100">{t("automationPage.promptKbSection")}</p>

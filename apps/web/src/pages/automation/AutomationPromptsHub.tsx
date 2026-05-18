@@ -32,6 +32,8 @@ import {
   type PromptModuleRow,
   type PromptStatus,
 } from "./promptHubTypes";
+import { buildInstructionFallbackBlock, type InstructionFallback } from "./instructionFallbacks";
+import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
 
 const CATEGORY_IDS = [
   "general",
@@ -189,6 +191,7 @@ export function AutomationPromptsHub({
   prompts,
   tools,
   agentProfiles,
+  orgTeams,
   userDisplayName,
   onRefresh,
   onNavigateAgents,
@@ -202,6 +205,7 @@ export function AutomationPromptsHub({
   prompts: PromptModuleRow[];
   tools: AutomationCustomToolRow[];
   agentProfiles: Array<{ promptModuleIds: unknown }>;
+  orgTeams: Array<{ id: string; name: string }>;
   userDisplayName: string | null;
   onRefresh: () => Promise<void>;
   onNavigateAgents: () => void;
@@ -260,6 +264,7 @@ export function AutomationPromptsHub({
   const importRef = useRef<HTMLInputElement | null>(null);
   const [slugTouched, setSlugTouched] = useState(false);
   const [createAgentAfterSave, setCreateAgentAfterSave] = useState(false);
+  const [draftInstructionFallbacks, setDraftInstructionFallbacks] = useState<InstructionFallback[]>([]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -318,6 +323,7 @@ export function AutomationPromptsHub({
     setPreviewRecordMetrics(false);
     setPreviewError("");
     setCreateAgentAfterSave(false);
+    setDraftInstructionFallbacks([]);
     setEditorOpen(true);
   }, []);
 
@@ -357,8 +363,16 @@ export function AutomationPromptsHub({
     setPreviewRecordMetrics(false);
     setPreviewError("");
     setCreateAgentAfterSave(false);
+    setDraftInstructionFallbacks(lb.instructionFallbacks ?? []);
     setEditorOpen(true);
   }, []);
+
+  const draftMergedBody = useMemo(() => {
+    const fb = buildInstructionFallbackBlock(draftInstructionFallbacks);
+    const core = draftBody.trim();
+    if (!fb) return core;
+    return `${core}\n\n${fb}`;
+  }, [draftBody, draftInstructionFallbacks]);
 
   useEffect(() => {
     if (!editorOpen || editorTab !== "preview") return;
@@ -427,6 +441,7 @@ export function AutomationPromptsHub({
         createdByName:
           prevLabels.createdByName ??
           (userDisplayName && userDisplayName.trim() ? userDisplayName.trim() : undefined),
+        instructionFallbacks: draftInstructionFallbacks,
       };
 
       let nextVersion: number;
@@ -577,7 +592,7 @@ export function AutomationPromptsHub({
   const sendPreview = async () => {
     const text = previewInput.trim();
     if (!text || previewBusy) return;
-    const resolved = resolveVariables(draftBody, sampleCtx as unknown as Record<string, string>);
+    const resolved = resolveVariables(draftMergedBody, sampleCtx as unknown as Record<string, string>);
 
     if (!previewLiveMode) {
       const simulated = t("automationPage.promptHub.previewSimulatedReply");
@@ -1254,7 +1269,7 @@ export function AutomationPromptsHub({
                             </p>
                             <p className="text-[11px] text-ink-500">{t("automationPage.promptHub.mergedModuleHelp")}</p>
                             <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl border border-ink-200 bg-ink-950/90 p-3 font-mono text-[11px] leading-relaxed text-ink-100 dark:border-ink-700">
-                              {draftBody.trim() || t("automationPage.agentSystemInstructionsPh")}
+                              {draftMergedBody || t("automationPage.agentSystemInstructionsPh")}
                             </pre>
                           </div>
                         ) : (
@@ -1291,6 +1306,13 @@ export function AutomationPromptsHub({
                               spellCheck={false}
                               className="min-h-[320px] w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-4 py-3 font-mono text-sm leading-relaxed text-ink-100 shadow-inner ring-1 ring-inset ring-white/10 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-ink-700"
                               placeholder={t("automationPage.agentSystemInstructionsPh")}
+                            />
+                            <InstructionFallbacksEditor
+                              textareaRef={bodyRef}
+                              fallbacks={draftInstructionFallbacks}
+                              onChange={setDraftInstructionFallbacks}
+                              teams={orgTeams}
+                              t={t}
                             />
                             <p className="text-[11px] text-ink-500">{t("automationPage.promptHub.editorHint")}</p>
                           </div>
