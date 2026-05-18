@@ -52,6 +52,75 @@ function safeOpenAiParametersSchema(schema: unknown): Record<string, unknown> {
   return { type: "object", properties: {} };
 }
 
+/** Verifica campos `required` do JSON Schema (níveis aninhados) antes de chamar a API externa. */
+export function collectMissingRequiredSchemaFields(schema: unknown, data: unknown, pathPrefix = ""): string[] {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [];
+  const s = schema as Record<string, unknown>;
+  const missing: string[] = [];
+
+  const isObjectSchema =
+    s.type === "object" || (s.properties != null && typeof s.properties === "object");
+  if (!isObjectSchema) return missing;
+
+  const obj =
+    data !== null && data !== undefined && typeof data === "object" && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : null;
+
+  const props =
+    s.properties && typeof s.properties === "object" && !Array.isArray(s.properties)
+      ? (s.properties as Record<string, unknown>)
+      : null;
+
+  const required = Array.isArray(s.required)
+    ? s.required.filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+
+  for (const key of required) {
+    const path = pathPrefix ? `${pathPrefix}.${key}` : key;
+    const val = obj?.[key];
+    if (val === undefined || val === null) {
+      missing.push(path);
+      continue;
+    }
+    const childSchema = props?.[key];
+    if (childSchema) {
+      missing.push(...collectMissingRequiredSchemaFields(childSchema, val, path));
+    }
+  }
+
+  // Objetos com chaves dinâmicas (ex.: room_units[room_type_id])
+  const additional = s.additionalProperties;
+  if (
+    additional &&
+    typeof additional === "object" &&
+    !Array.isArray(additional) &&
+    obj &&
+    typeof obj === "object"
+  ) {
+    for (const [dynKey, dynVal] of Object.entries(obj)) {
+      if (props && dynKey in props) continue;
+      const dynPath = pathPrefix ? `${pathPrefix}.${dynKey}` : dynKey;
+      missing.push(...collectMissingRequiredSchemaFields(additional, dynVal, dynPath));
+    }
+  }
+
+  return missing;
+}
+
+function buildValidationErrorPayload(missing: string[]): string {
+  return JSON.stringify({
+    ok: false,
+    validationError: true,
+    missingFields: missing,
+    message:
+      "Argumentos incompletos para a ferramenta HTTP. O modelo deve incluir todos os campos obrigatórios do schema antes de repetir a chamada. " +
+      (missing.includes("body.room_units") || missing.some((m) => m.endsWith(".room_units"))
+        ? "Para reservas: body.room_units é obrigatório — use um objeto cuja chave é o room_type_id devolvido pela consulta de disponibilidade, com adults, kids e guests em cada unidade."
+        : `Campos em falta: ${missing.join(", ")}.`),
+  });
+}
+
 export type AutomationHttpToolRow = {
   id: string;
   organizationId: string;
@@ -80,6 +149,37 @@ export async function runAutomationHttpLikeTool(input: {
   }
   if (tool.organizationId !== organizationId) {
     return { ok: false, statusCode: null, responseText: "", error: "organization_mismatch", durationMs: 0 };
+  }
+
+  const paramSchema = safeOpenAiParametersSchema(tool.parametersSchema);
+  const missingRequired = collectMissingRequiredSchemaFields(paramSchema, llmArgs);
+  if (missingRequired.length > 0) {
+    const responseText = buildValidationErrorPayload(missingRequired);
+    const durationMs = 0;
+    await prisma.$transaction(async (tx) => {
+      await tx.automationToolExecution.create({
+        data: {
+          organizationId,
+          toolId: tool.id,
+          source: executionSource.slice(0, 32),
+          ok: false,
+          statusCode: null,
+          durationMs,
+          requestSummary: asJson({ validation: true, missingFields: missingRequired }),
+          responseSummary: asJson({ preview: responseText.slice(0, 8000) }),
+          errorMessage: "schema_validation_failed",
+          tokensUsed: null,
+          botId,
+        },
+      });
+    });
+    return {
+      ok: false,
+      statusCode: null,
+      responseText,
+      error: "schema_validation_failed",
+      durationMs,
+    };
   }
 
   const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
