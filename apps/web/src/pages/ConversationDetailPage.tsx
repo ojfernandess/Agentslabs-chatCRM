@@ -10,6 +10,9 @@ import {
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
+import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
+import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
+import type { EmojiCategoryId } from "@/lib/emojiPickerData";
 import {
   Send,
   ArrowLeft,
@@ -177,21 +180,6 @@ interface ConversationDetail {
 const MSG_GROUP_MINUTES = 5;
 const PRESENCE_RECENT_MINUTES = 15;
 
-const QUICK_EMOJIS = [
-  "👍",
-  "😊",
-  "🙏",
-  "✅",
-  "❤️",
-  "😂",
-  "🎉",
-  "👋",
-  "🤔",
-  "😅",
-  "📎",
-  "⭐",
-];
-
 function messageGroupedWithPrevious(messages: Message[], index: number): boolean {
   if (index <= 0) return false;
   const prev = messages[index - 1];
@@ -286,6 +274,7 @@ export function ConversationDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resolveNextIdRef = useRef<string | null>(null);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
   const cannedWrapRef = useRef<HTMLDivElement>(null);
 
@@ -2474,6 +2463,7 @@ export function ConversationDetailPage() {
                       </p>
                     ) : null}
                     <textarea
+                      ref={composerTextareaRef}
                       value={newMessage}
                       onChange={(e) => onComposerChange(e.target.value)}
                       onKeyDown={composerKeyDown}
@@ -2609,23 +2599,14 @@ export function ConversationDetailPage() {
                     >
                       <Smile className="h-4 w-4" />
                     </motion.button>
-                    {emojiOpen ? (
-                      <div className="absolute bottom-full left-0 z-30 mb-2 grid w-48 grid-cols-6 gap-0.5 rounded-xl border border-ink-200 bg-white p-2 shadow-lg dark:border-ink-600 dark:bg-ink-900">
-                        {QUICK_EMOJIS.map((em) => (
-                          <button
-                            key={em}
-                            type="button"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
-                            onClick={() => {
-                              setNewMessage((prev) => prev + em);
-                              setEmojiOpen(false);
-                            }}
-                          >
-                            {em}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
+                    <EmojiPickerPopover
+                      open={emojiOpen}
+                      onSelect={(em) => {
+                        insertTextAtSelection(composerTextareaRef.current, newMessage, em, setNewMessage);
+                        setEmojiOpen(false);
+                      }}
+                      categoryLabel={(id: EmojiCategoryId) => t(`common.emojiCategory.${id}`)}
+                    />
                   </div>
                   {evolutionRichChat ? (
                     <>

@@ -4,7 +4,10 @@ import { formatDistanceToNow } from "date-fns";
 import type { Locale } from "date-fns";
 import { ImagePlus, Paperclip, Send, Smile, SmilePlus } from "lucide-react";
 import { api } from "@/lib/api";
-import { EMOJI_CATEGORIES, REACTION_QUICK_EMOJIS, type EmojiCategoryId } from "./emojiPickerData";
+import { REACTION_QUICK_EMOJIS } from "@/lib/emojiPickerData";
+import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
+import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
+import type { EmojiCategoryId } from "@/lib/emojiPickerData";
 
 export type ChannelMessageReaction = {
   emoji: string;
@@ -54,7 +57,6 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
   const [sending, setSending] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [emojiCategory, setEmojiCategory] = useState<EmojiCategoryId>("smileys");
   const [reactionForId, setReactionForId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -170,21 +172,11 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
   };
 
   const insertEmoji = (em: string) => {
-    const el = textareaRef.current;
-    if (el) {
-      const start = el.selectionStart ?? draft.length;
-      const end = el.selectionEnd ?? draft.length;
-      const next = draft.slice(0, start) + em + draft.slice(end);
-      setDraft(next);
-      requestAnimationFrame(() => {
-        el.focus();
-        const pos = start + em.length;
-        el.setSelectionRange(pos, pos);
-      });
-    } else {
-      setDraft((prev) => prev + em);
-    }
+    insertTextAtSelection(textareaRef.current, draft, em, setDraft);
+    setEmojiOpen(false);
   };
+
+  const emojiCategoryLabel = (id: EmojiCategoryId) => t(`common.emojiCategory.${id}`);
 
   if (!channelId) {
     return (
@@ -207,7 +199,7 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
             return (
               <div
                 key={m.id}
-                className={clsx("group relative flex max-w-[88%] flex-col", isMine ? "ml-auto items-end" : "items-start")}
+                className={clsx("group flex max-w-[88%] flex-col", isMine ? "ml-auto items-end" : "items-start")}
               >
                 <div
                   className={clsx(
@@ -268,31 +260,47 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
                   </div>
                 ) : null}
 
-                <div className="mt-0.5 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                  <button
-                    type="button"
-                    title={t("teamsHub.channelReact")}
-                    onClick={() => setReactionForId((id) => (id === m.id ? null : m.id))}
-                    className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+                <div
+                  className={clsx(
+                    "relative mt-0.5 flex",
+                    isMine ? "justify-end" : "justify-start",
+                  )}
+                >
+                  <div
+                    className={clsx(
+                      "flex items-center gap-1 transition",
+                      reactionForId === m.id ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                    )}
                   >
-                    <SmilePlus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-
-                {reactionForId === m.id ? (
-                  <div className="absolute bottom-full left-0 z-20 mb-1 flex gap-0.5 rounded-xl border border-ink-200 bg-white p-1 shadow-lg dark:border-ink-700 dark:bg-ink-900">
-                    {REACTION_QUICK_EMOJIS.map((em) => (
-                      <button
-                        key={em}
-                        type="button"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
-                        onClick={() => void toggleReaction(m.id, em)}
-                      >
-                        {em}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      title={t("teamsHub.channelReact")}
+                      onClick={() => setReactionForId((id) => (id === m.id ? null : m.id))}
+                      className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+                    >
+                      <SmilePlus className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                ) : null}
+                  {reactionForId === m.id ? (
+                    <div
+                      className={clsx(
+                        "absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-xl border border-ink-200 bg-white p-1 shadow-lg dark:border-ink-700 dark:bg-ink-900",
+                        isMine ? "right-0" : "left-0",
+                      )}
+                    >
+                      {REACTION_QUICK_EMOJIS.map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
+                          onClick={() => void toggleReaction(m.id, em)}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           })
@@ -312,41 +320,11 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
               >
                 <Smile className="h-4 w-4" />
               </button>
-              {emojiOpen ? (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xl dark:border-ink-600 dark:bg-ink-900">
-                  <div className="flex gap-0.5 overflow-x-auto border-b border-ink-100 p-1 dark:border-ink-800">
-                    {EMOJI_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setEmojiCategory(cat.id)}
-                        className={clsx(
-                          "shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold",
-                          emojiCategory === cat.id
-                            ? "bg-violet-500/15 text-violet-800 dark:text-violet-200"
-                            : "text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800",
-                        )}
-                      >
-                        {t(`teamsHub.emojiCategory.${cat.id}`)}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid max-h-44 grid-cols-8 gap-0.5 overflow-y-auto p-2">
-                    {(EMOJI_CATEGORIES.find((c) => c.id === emojiCategory) ?? EMOJI_CATEGORIES[0]).emojis.map(
-                      (em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-ink-100 dark:hover:bg-ink-800"
-                          onClick={() => insertEmoji(em)}
-                        >
-                          {em}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                </div>
-              ) : null}
+              <EmojiPickerPopover
+                open={emojiOpen}
+                onSelect={insertEmoji}
+                categoryLabel={emojiCategoryLabel}
+              />
             </div>
             <button
               type="button"
@@ -422,3 +400,4 @@ export function TeamChannelChat({ teamId, channelId, currentUserId, dateLocale, 
     </div>
   );
 }
+
