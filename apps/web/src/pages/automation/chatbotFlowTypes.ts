@@ -58,20 +58,20 @@ export const CHATBOT_BLOCK_TYPES = [
 export function defaultChatbotFlow(): ChatbotFlowDefinition {
   return {
     nodes: [
-      { id: "start", type: "start", position: { x: 20, y: 20 }, data: {} },
+      { id: "start", type: "start", position: { x: 80, y: 200 }, data: {} },
       {
         id: "welcome",
         type: "text",
-        position: { x: 20, y: 100 },
+        position: { x: 400, y: 180 },
         data: { content: "Olá {{contact.name}}! Como posso ajudar?" },
       },
       {
         id: "ask",
         type: "text_input",
-        position: { x: 20, y: 180 },
+        position: { x: 720, y: 160 },
         data: { variableName: "resposta", prompt: "Escreva a sua mensagem:" },
       },
-      { id: "end", type: "end", position: { x: 20, y: 260 }, data: {} },
+      { id: "end", type: "end", position: { x: 1040, y: 200 }, data: {} },
     ],
     edges: [
       { id: "e1", source: "start", target: "welcome" },

@@ -1,24 +1,63 @@
-import { useCallback, useState } from "react";
-import clsx from "clsx";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  type Connection,
+  type Edge,
+  type Node,
+  BackgroundVariant,
+  Panel,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { useI18n } from "@/i18n/I18nProvider";
-import { CHATBOT_BLOCK_TYPES, type ChatbotFlowDefinition, type ChatbotFlowNode } from "./chatbotFlowTypes";
+import { ChatbotBlockPalette } from "./ChatbotBlockPalette";
+import { ChatbotBlockSettingsPanel } from "./ChatbotBlockSettingsPanel";
+import { ChatbotFlowNodeCard, type ChatbotFlowNodeData } from "./ChatbotFlowNodeCard";
+import type { ChatbotFlowDefinition, ChatbotFlowNode } from "./chatbotFlowTypes";
 
-const BLOCK_LABEL: Record<string, string> = {
-  start: "chatbotPage.blockStart",
-  text: "chatbotPage.blockText",
-  image: "chatbotPage.blockImage",
-  text_input: "chatbotPage.blockTextInput",
-  choice_input: "chatbotPage.blockChoiceInput",
-  condition: "chatbotPage.blockCondition",
-  set_variable: "chatbotPage.blockSetVariable",
-  webhook: "chatbotPage.blockWebhook",
-  add_tag: "chatbotPage.blockAddTag",
-  handoff: "chatbotPage.blockHandoff",
-  wait: "chatbotPage.blockWait",
-  jump: "chatbotPage.blockJump",
-  end: "chatbotPage.blockEnd",
-};
+const nodeTypes = { chatbotBlock: ChatbotFlowNodeCard };
+
+function flowToRf(flow: ChatbotFlowDefinition): { nodes: Node<ChatbotFlowNodeData>[]; edges: Edge[] } {
+  const nodes: Node<ChatbotFlowNodeData>[] = flow.nodes.map((n) => ({
+    id: n.id,
+    type: "chatbotBlock",
+    position: n.position ?? { x: 0, y: 0 },
+    data: { blockType: n.type, blockData: n.data ?? {} },
+  }));
+  const edges: Edge[] = flow.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.branch === "yes" ? "yes" : e.branch === "no" ? "no" : undefined,
+    type: "smoothstep",
+    animated: false,
+    style: { stroke: "#ff6b2c", strokeWidth: 2 },
+  }));
+  return { nodes, edges };
+}
+
+function rfToFlow(nodes: Node<ChatbotFlowNodeData>[], edges: Edge[]): ChatbotFlowDefinition {
+  return {
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      type: n.data.blockType,
+      position: n.position,
+      data: n.data.blockData ?? {},
+    })),
+    edges: edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      branch:
+        e.sourceHandle === "yes" ? "yes" : e.sourceHandle === "no" ? "no" : undefined,
+    })),
+  };
+}
 
 interface Props {
   value: ChatbotFlowDefinition;
@@ -27,173 +66,181 @@ interface Props {
 
 export function ChatbotFlowBuilder({ value, onChange }: Props) {
   const { t } = useI18n();
-  const [flow, setFlow] = useState(value);
-  const [dragId, setDragId] = useState<string | null>(null);
+  const initial = useMemo(() => flowToRf(value), [value]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const skipSync = useRef(false);
+  const flowIdRef = useRef(JSON.stringify(value));
 
-  const sync = useCallback(
-    (next: ChatbotFlowDefinition) => {
-      setFlow(next);
-      onChange(next);
-    },
-    [onChange],
+  useEffect(() => {
+    const key = JSON.stringify(value);
+    if (key === flowIdRef.current) return;
+    flowIdRef.current = key;
+    const next = flowToRf(value);
+    skipSync.current = true;
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(null);
+  }, [value, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (skipSync.current) {
+      skipSync.current = false;
+      return;
+    }
+    const flow = rfToFlow(nodes, edges);
+    const key = JSON.stringify(flow);
+    if (key !== flowIdRef.current) {
+      flowIdRef.current = key;
+      onChange(flow);
+    }
+  }, [nodes, edges, onChange]);
+
+  const selectedFlowNode: ChatbotFlowNode | null = useMemo(() => {
+    const n = nodes.find((x) => x.id === selectedNodeId);
+    if (!n) return null;
+    return {
+      id: n.id,
+      type: n.data.blockType,
+      position: n.position,
+      data: n.data.blockData,
+    };
+  }, [nodes, selectedNodeId]);
+
+  const flowNodesForSettings = useMemo(
+    () =>
+      nodes.map((n) => ({
+        id: n.id,
+        type: n.data.blockType,
+        position: n.position,
+        data: n.data.blockData,
+      })),
+    [nodes],
   );
 
-  const addNode = (type: string) => {
-    const id = `${type}_${Date.now()}`;
-    const last = flow.nodes[flow.nodes.length - 1];
-    const y = (last?.position.y ?? 0) + 80;
-    const node: ChatbotFlowNode = { id, type, position: { x: 20, y }, data: {} };
-    const nodes = [...flow.nodes, node];
-    const edges = last
-      ? [...flow.edges, { id: `e_${id}`, source: last.id, target: id }]
-      : flow.edges;
-    sync({ nodes, edges });
-  };
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            type: "smoothstep",
+            style: { stroke: "#ff6b2c", strokeWidth: 2 },
+            id: `e_${connection.source}_${connection.sourceHandle ?? "o"}_${connection.target}`,
+          },
+          eds,
+        ),
+      );
+    },
+    [setEdges],
+  );
 
-  const removeNode = (id: string) => {
-    if (id === "start" || id === "end") return;
-    sync({
-      nodes: flow.nodes.filter((n) => n.id !== id),
-      edges: flow.edges.filter((e) => e.source !== id && e.target !== id),
-    });
-  };
+  const addBlock = useCallback(
+    (type: string) => {
+      const id = `${type}_${Date.now()}`;
+      const maxX = nodes.reduce((m, n) => Math.max(m, n.position.x), 0);
+      const maxY = nodes.reduce((m, n) => Math.max(m, n.position.y), 120);
+      const newNode: Node<ChatbotFlowNodeData> = {
+        id,
+        type: "chatbotBlock",
+        position: { x: maxX + 320, y: selectedNodeId ? maxY : 80 },
+        data: { blockType: type, blockData: {} },
+      };
+      setNodes((nds) => [...nds, newNode]);
+      if (selectedNodeId) {
+        const sourceNode = nodes.find((n) => n.id === selectedNodeId);
+        const sourceHandle =
+          sourceNode?.data.blockType === "condition" ? "yes" : undefined;
+        setEdges((eds) =>
+          addEdge(
+            {
+              id: `e_${selectedNodeId}_${id}`,
+              source: selectedNodeId,
+              target: id,
+              sourceHandle,
+              type: "smoothstep",
+              style: { stroke: "#ff6b2c", strokeWidth: 2 },
+            },
+            eds,
+          ),
+        );
+      }
+      setSelectedNodeId(id);
+    },
+    [nodes, selectedNodeId, setNodes, setEdges],
+  );
 
-  const updateNodeData = (id: string, patch: Record<string, unknown>) => {
-    sync({
-      ...flow,
-      nodes: flow.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
-    });
-  };
+  const updateNodeData = useCallback(
+    (id: string, data: Record<string, unknown>) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === id ? { ...n, data: { ...n.data, blockData: data } } : n,
+        ),
+      );
+    },
+    [setNodes],
+  );
 
-  const onDragOver = (e: React.DragEvent, overId: string) => {
-    e.preventDefault();
-    if (!dragId || dragId === overId) return;
-    const from = flow.nodes.findIndex((n) => n.id === dragId);
-    const to = flow.nodes.findIndex((n) => n.id === overId);
-    if (from < 0 || to < 0) return;
-    const nodes = [...flow.nodes];
-    const [item] = nodes.splice(from, 1);
-    nodes.splice(to, 0, item);
-    const ordered = nodes.map((n, i) => ({ ...n, position: { x: 20, y: 20 + i * 80 } }));
-    const edges = [];
-    for (let i = 0; i < ordered.length - 1; i++) {
-      edges.push({ id: `e_${ordered[i].id}_${ordered[i + 1].id}`, source: ordered[i].id, target: ordered[i + 1].id });
-    }
-    sync({ nodes: ordered, edges });
-  };
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== id));
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+      if (selectedNodeId === id) setSelectedNodeId(null);
+    },
+    [setNodes, setEdges, selectedNodeId],
+  );
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-ink-500 dark:text-ink-400">{t("chatbotPage.flowDragHint")}</p>
-      <div className="rounded-xl border border-dashed border-ink-200 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
-        {flow.nodes.map((node) => (
-          <div
-            key={node.id}
-            draggable={node.type !== "start" && node.type !== "end"}
-            onDragStart={() => setDragId(node.id)}
-            onDragOver={(e) => onDragOver(e, node.id)}
-            onDragEnd={() => setDragId(null)}
-            className={clsx(
-              "mb-2 flex flex-col gap-2 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm dark:bg-[#111C2B]",
-              dragId === node.id ? "border-brand-400" : "border-ink-200 dark:border-white/10",
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-ink-400" />
-              <span className="flex-1 font-semibold text-ink-800 dark:text-ink-100">
-                {t(BLOCK_LABEL[node.type] ?? node.type)}
-              </span>
-              {node.type !== "start" && node.type !== "end" ? (
-                <button type="button" onClick={() => removeNode(node.id)} className="text-ink-400 hover:text-rose-500">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
-            {node.type === "text" || node.type === "text_input" || node.type === "choice_input" ? (
-              <textarea
-                rows={2}
-                className="w-full rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-white/10 dark:bg-white/5"
-                placeholder={node.type === "text" ? t("chatbotPage.contentPlaceholder") : t("chatbotPage.promptPlaceholder")}
-                value={String(node.data?.content ?? node.data?.prompt ?? "")}
-                onChange={(e) =>
-                  updateNodeData(node.id, node.type === "text" ? { content: e.target.value } : { prompt: e.target.value })
-                }
-              />
-            ) : null}
-            {node.type === "text_input" || node.type === "choice_input" || node.type === "set_variable" ? (
-              <input
-                className="w-full rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-white/10 dark:bg-white/5"
-                placeholder={t("chatbotPage.variableName")}
-                value={String(node.data?.variableName ?? node.data?.name ?? "")}
-                onChange={(e) =>
-                  updateNodeData(
-                    node.id,
-                    node.type === "set_variable" ? { name: e.target.value } : { variableName: e.target.value },
-                  )
-                }
-              />
-            ) : null}
-            {node.type === "image" || node.type === "webhook" ? (
-              <input
-                className="w-full rounded border border-ink-200 px-2 py-1 text-[11px] dark:border-white/10 dark:bg-white/5"
-                placeholder="https://..."
-                value={String(node.data?.url ?? "")}
-                onChange={(e) => updateNodeData(node.id, { url: e.target.value })}
-              />
-            ) : null}
-            {node.type === "condition" ? (
-              <div className="grid grid-cols-3 gap-1">
-                <input
-                  className="rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-white/10"
-                  placeholder="field"
-                  value={String(node.data?.field ?? "")}
-                  onChange={(e) => updateNodeData(node.id, { field: e.target.value })}
-                />
-                <select
-                  className="rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-white/10"
-                  value={String(node.data?.operator ?? "eq")}
-                  onChange={(e) => updateNodeData(node.id, { operator: e.target.value })}
-                >
-                  <option value="eq">=</option>
-                  <option value="contains">contains</option>
-                  <option value="empty">empty</option>
-                </select>
-                <input
-                  className="rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-white/10"
-                  placeholder="value"
-                  value={String(node.data?.value ?? "")}
-                  onChange={(e) => updateNodeData(node.id, { value: e.target.value })}
-                />
-              </div>
-            ) : null}
-            {node.type === "wait" ? (
-              <input
-                type="number"
-                min={1}
-                max={300}
-                className="w-20 rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-white/10"
-                placeholder="sec"
-                value={String(node.data?.seconds ?? "")}
-                onChange={(e) => updateNodeData(node.id, { seconds: Number(e.target.value) })}
-              />
-            ) : null}
-          </div>
-        ))}
+    <div className="typebot-editor flex h-[min(72vh,720px)] min-h-[480px] overflow-hidden rounded-2xl border border-ink-200 shadow-inner dark:border-ink-700">
+      <ChatbotBlockPalette onAddBlock={addBlock} />
+
+      <div className="relative min-w-0 flex-1 bg-[#eef0f4] dark:bg-[#0d0f14]">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={(_, n) => setSelectedNodeId(n.id)}
+          onPaneClick={() => setSelectedNodeId(null)}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          minZoom={0.25}
+          maxZoom={1.5}
+          defaultEdgeOptions={{ type: "smoothstep" }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="#c5cad3" />
+          <Controls
+            showInteractive={false}
+            className="!rounded-xl !border-ink-200 !bg-white !shadow-md dark:!border-ink-700 dark:!bg-ink-900"
+          />
+          <MiniMap
+            nodeColor={(n) => {
+              const t = (n.data as ChatbotFlowNodeData)?.blockType;
+              if (t === "text" || t === "image") return "#2563eb";
+              if (t === "text_input" || t === "choice_input") return "#ea580c";
+              if (t === "condition" || t === "set_variable") return "#7c3aed";
+              return "#64748b";
+            }}
+            className="!rounded-xl !border !border-ink-200 !bg-white/90 dark:!border-ink-700 dark:!bg-ink-900/90"
+          />
+          <Panel position="top-center" className="!m-2">
+            <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-medium text-ink-500 shadow-sm backdrop-blur dark:bg-ink-900/90 dark:text-ink-400">
+              {t("chatbotPage.canvasHint")}
+            </span>
+          </Panel>
+        </ReactFlow>
       </div>
-      <div className="flex flex-wrap gap-1">
-        {CHATBOT_BLOCK_TYPES.filter((x) => x !== "start" && x !== "end").map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => addNode(type)}
-            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 text-[10px] font-medium hover:bg-ink-50 dark:border-white/10 dark:hover:bg-white/5"
-          >
-            <Plus className="h-3 w-3" />
-            {t(BLOCK_LABEL[type] ?? type)}
-          </button>
-        ))}
-      </div>
-      <p className="text-[10px] text-ink-500">{t("chatbotPage.flowFootnote")}</p>
+
+      <ChatbotBlockSettingsPanel
+        node={selectedFlowNode}
+        allNodes={flowNodesForSettings}
+        onUpdate={updateNodeData}
+        onDelete={deleteNode}
+      />
     </div>
   );
 }

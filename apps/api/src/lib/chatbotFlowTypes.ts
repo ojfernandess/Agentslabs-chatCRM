@@ -75,20 +75,20 @@ export function parseChatbotVariableDefs(raw: unknown): ChatbotFlowVariableDef[]
 export function defaultChatbotFlowDefinition(): ChatbotFlowDefinition {
   return {
     nodes: [
-      { id: "start", type: "start", position: { x: 0, y: 0 }, data: {} },
+      { id: "start", type: "start", position: { x: 80, y: 200 }, data: {} },
       {
         id: "welcome",
         type: "text",
-        position: { x: 0, y: 80 },
+        position: { x: 400, y: 180 },
         data: { content: "Olá {{contact.name}}! Como posso ajudar?" },
       },
       {
         id: "ask",
         type: "text_input",
-        position: { x: 0, y: 160 },
+        position: { x: 720, y: 160 },
         data: { variableName: "resposta", prompt: "Escreva a sua mensagem:" },
       },
-      { id: "end", type: "end", position: { x: 0, y: 240 }, data: {} },
+      { id: "end", type: "end", position: { x: 1040, y: 200 }, data: {} },
     ],
     edges: [
       { id: "e1", source: "start", target: "welcome" },

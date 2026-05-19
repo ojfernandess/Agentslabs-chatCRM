@@ -234,10 +234,16 @@ export function AutomationChatbotHub() {
               </button>
             </div>
 
-            <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
-              <p className="mb-2 text-xs text-ink-500">
-                {t("chatbotPage.publicId")}: <code className="font-mono">{selected.publicId}</code>
-              </p>
+            <div className="overflow-hidden rounded-2xl border border-ink-200 bg-[#eef0f4] shadow-sm dark:border-ink-800 dark:bg-[#0d0f14]">
+              <div className="flex items-center justify-between border-b border-ink-200/80 bg-white px-4 py-2 dark:border-ink-800 dark:bg-[#151821]">
+                <p className="text-xs text-ink-500">
+                  {t("chatbotPage.publicId")}:{" "}
+                  <code className="font-mono text-ink-700 dark:text-ink-300">{selected.publicId}</code>
+                </p>
+                <span className="rounded-full bg-[#fff4ed] px-2.5 py-0.5 text-[10px] font-bold text-[#ff6b2c] dark:bg-[#ff6b2c]/15">
+                  {t("chatbotPage.editorBadge")}
+                </span>
+              </div>
               <ChatbotFlowBuilder value={draftFlow} onChange={setDraftFlow} />
             </div>
 
