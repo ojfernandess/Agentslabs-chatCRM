@@ -4,16 +4,24 @@ import { Bot, ChevronLeft, ChevronRight, Loader2, Plus, Save, Trash2, Workflow }
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import { ChatbotFlowBuilder } from "./ChatbotFlowBuilder";
+import { ChatbotFlowSimulator } from "./ChatbotFlowSimulator";
 import {
   defaultChatbotFlow,
   type ChatbotFlowDefinition,
   type ChatbotFlowRow,
+  type ChatbotFlowVariableDef,
 } from "./chatbotFlowTypes";
 
 interface BotOption {
   id: string;
   name: string;
   isActive: boolean;
+}
+
+interface TagOption {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export function AutomationChatbotHub() {
@@ -24,7 +32,9 @@ export function AutomationChatbotHub() {
   const [draftName, setDraftName] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
   const [draftFlow, setDraftFlow] = useState<ChatbotFlowDefinition>(defaultChatbotFlow());
+  const [draftVariables, setDraftVariables] = useState<ChatbotFlowVariableDef[]>([]);
   const [draftPublished, setDraftPublished] = useState(false);
+  const [tags, setTags] = useState<TagOption[]>([]);
   const [linkBotId, setLinkBotId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,12 +47,14 @@ export function AutomationChatbotHub() {
     setLoading(true);
     setError(null);
     try {
-      const [flowsRes, botsRes] = await Promise.all([
+      const [flowsRes, botsRes, tagList] = await Promise.all([
         api.get<{ data: ChatbotFlowRow[] }>("/automation/chatbot-flows"),
         api.get<{ data: BotOption[] }>("/bots"),
+        api.get<TagOption[]>("/tags").catch(() => []),
       ]);
       setFlows(flowsRes.data ?? []);
       setBots(botsRes.data ?? []);
+      setTags(Array.isArray(tagList) ? tagList : []);
     } catch {
       setError("load_failed");
     } finally {
@@ -59,6 +71,7 @@ export function AutomationChatbotHub() {
     setDraftName(selected.name);
     setDraftDesc(selected.description ?? "");
     setDraftFlow(selected.flowDefinition ?? defaultChatbotFlow());
+    setDraftVariables(Array.isArray(selected.variables) ? selected.variables : []);
     setDraftPublished(selected.isPublished);
     setLinkBotId(selected.linkedBotId ?? "");
   }, [selected]);
@@ -89,6 +102,7 @@ export function AutomationChatbotHub() {
         description: draftDesc.trim() || null,
         isPublished: draftPublished,
         flowDefinition: draftFlow,
+        variables: draftVariables,
       });
       await load();
     } catch {
@@ -288,8 +302,60 @@ export function AutomationChatbotHub() {
                   {t("chatbotPage.editorBadge")}
                 </span>
               </div>
-              <ChatbotFlowBuilder value={draftFlow} onChange={setDraftFlow} />
+              <ChatbotFlowBuilder value={draftFlow} onChange={setDraftFlow} tags={tags} />
             </div>
+
+            <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
+              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("chatbotPage.variablesTitle")}</h3>
+              <p className="mt-1 text-xs text-ink-500">{t("chatbotPage.variablesHint")}</p>
+              <div className="mt-3 space-y-2">
+                {draftVariables.map((v, idx) => (
+                  <div key={v.id} className="flex flex-wrap gap-2">
+                    <input
+                      className="min-w-[120px] flex-1 rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-800"
+                      placeholder={t("chatbotPage.variableName")}
+                      value={v.name}
+                      onChange={(e) => {
+                        const next = [...draftVariables];
+                        next[idx] = { ...v, name: e.target.value };
+                        setDraftVariables(next);
+                      }}
+                    />
+                    <input
+                      className="min-w-[120px] flex-[2] rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-800"
+                      placeholder={t("chatbotPage.variableInitialValue")}
+                      value={v.value ?? ""}
+                      onChange={(e) => {
+                        const next = [...draftVariables];
+                        next[idx] = { ...v, value: e.target.value };
+                        setDraftVariables(next);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="rounded-lg border border-rose-200 px-2 text-rose-600"
+                      onClick={() => setDraftVariables(draftVariables.filter((_, i) => i !== idx))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="mt-2 text-xs font-semibold text-brand-600"
+                onClick={() =>
+                  setDraftVariables([
+                    ...draftVariables,
+                    { id: `var_${Date.now()}`, name: `var${draftVariables.length + 1}`, value: "" },
+                  ])
+                }
+              >
+                + {t("chatbotPage.addVariable")}
+              </button>
+            </div>
+
+            {selectedId ? <ChatbotFlowSimulator flowId={selectedId} disabled={saving} /> : null}
 
             <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">

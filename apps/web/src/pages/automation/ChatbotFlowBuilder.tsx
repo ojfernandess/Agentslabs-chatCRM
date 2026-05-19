@@ -59,12 +59,19 @@ function rfToFlow(nodes: Node<ChatbotFlowNodeData>[], edges: Edge[]): ChatbotFlo
   };
 }
 
+interface TagOption {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 interface Props {
   value: ChatbotFlowDefinition;
   onChange: (flow: ChatbotFlowDefinition) => void;
+  tags?: TagOption[];
 }
 
-export function ChatbotFlowBuilder({ value, onChange }: Props) {
+export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
   const { t } = useI18n();
   const initial = useMemo(() => flowToRf(value), [value]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
@@ -238,6 +245,7 @@ export function ChatbotFlowBuilder({ value, onChange }: Props) {
       <ChatbotBlockSettingsPanel
         node={selectedFlowNode}
         allNodes={flowNodesForSettings}
+        tags={tags}
         onUpdate={updateNodeData}
         onDelete={deleteNode}
       />

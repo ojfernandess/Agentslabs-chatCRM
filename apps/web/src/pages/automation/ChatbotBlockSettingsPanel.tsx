@@ -3,14 +3,21 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { getBlockMeta } from "./chatbotBlockMeta";
 import type { ChatbotFlowNode } from "./chatbotFlowTypes";
 
+interface TagOption {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 interface Props {
   node: ChatbotFlowNode | null;
   allNodes: ChatbotFlowNode[];
+  tags?: TagOption[];
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
 }
 
-export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }: Props) {
+export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate, onDelete }: Props) {
   const { t } = useI18n();
 
   if (!node) {
@@ -80,6 +87,20 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }
 
         {node.type === "choice_input" && (
           <label className="block text-xs">
+            <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.choiceDisplayMode")}</span>
+            <select
+              className="mb-2 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+              value={String(data.displayMode ?? "text")}
+              onChange={(e) => patch({ displayMode: e.target.value })}
+            >
+              <option value="text">{t("chatbotPage.choiceModeText")}</option>
+              <option value="buttons">{t("chatbotPage.choiceModeButtons")}</option>
+            </select>
+          </label>
+        )}
+
+        {node.type === "choice_input" && (
+          <label className="block text-xs">
             <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.choicesLabel")}</span>
             <textarea
               rows={3}
@@ -101,7 +122,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }
           </label>
         )}
 
-        {(node.type === "image" || node.type === "webhook") && (
+        {node.type === "image" && (
           <label className="block text-xs">
             <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">URL</span>
             <input
@@ -110,6 +131,59 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }
               value={String(data.url ?? "")}
               onChange={(e) => patch({ url: e.target.value })}
             />
+          </label>
+        )}
+
+        {node.type === "webhook" && (
+          <>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">URL</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                placeholder="https://"
+                value={String(data.url ?? "")}
+                onChange={(e) => patch({ url: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.webhookMethod")}</span>
+              <select
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.method ?? "POST")}
+                onChange={(e) => patch({ method: e.target.value })}
+              >
+                <option value="POST">POST</option>
+                <option value="GET">GET</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+              </select>
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.webhookResponseVar")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.responseVariable ?? "webhook_response")}
+                onChange={(e) => patch({ responseVariable: e.target.value })}
+              />
+            </label>
+          </>
+        )}
+
+        {node.type === "add_tag" && (
+          <label className="block text-xs">
+            <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.tagLabel")}</span>
+            <select
+              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+              value={String(data.tagId ?? "")}
+              onChange={(e) => patch({ tagId: e.target.value })}
+            >
+              <option value="">{t("chatbotPage.selectTag")}</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </select>
           </label>
         )}
 
@@ -132,6 +206,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }
                 onChange={(e) => patch({ operator: e.target.value })}
               >
                 <option value="eq">=</option>
+                <option value="neq">≠</option>
                 <option value="contains">contains</option>
                 <option value="empty">empty</option>
                 <option value="not_empty">not empty</option>

@@ -70,6 +70,21 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         link: params.mediaUrl,
         ...(params.body?.trim() ? { caption: params.body.trim().slice(0, 1024) } : {}),
       };
+    } else if (params.type === "INTERACTIVE" && params.interactiveButtons?.length) {
+      payload.type = "interactive";
+      payload.interactive = {
+        type: "button",
+        body: { text: (params.body ?? "Escolha uma opção:").trim().slice(0, 1024) },
+        action: {
+          buttons: params.interactiveButtons.slice(0, 3).map((b) => ({
+            type: "reply",
+            reply: {
+              id: b.id.slice(0, 256),
+              title: b.title.trim().slice(0, 20) || "Opção",
+            },
+          })),
+        },
+      };
     }
 
     if (!("type" in payload) || typeof payload.type !== "string") {
@@ -112,6 +127,11 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               id: string;
               type: string;
               text?: { body: string };
+              interactive?: {
+                type?: string;
+                button_reply?: { id: string; title: string };
+                list_reply?: { id: string; title: string };
+              };
               image?: { id: string; mime_type: string; caption?: string };
               document?: { id: string; mime_type: string; filename?: string; caption?: string };
               audio?: { id: string; mime_type: string };
@@ -148,11 +168,17 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
           const caption =
             msg.image?.caption ?? msg.document?.caption ?? msg.video?.caption ?? undefined;
 
+          const interactiveBody =
+            msg.interactive?.button_reply?.title ??
+            msg.interactive?.button_reply?.id ??
+            msg.interactive?.list_reply?.title ??
+            msg.interactive?.list_reply?.id;
+
           messages.push({
             from: `+${msg.from}`,
             waMessageId: msg.id,
             type: typeMap[msg.type] ?? "TEXT",
-            body: msg.text?.body ?? caption,
+            body: msg.text?.body ?? interactiveBody ?? caption,
             mediaType:
               msg.image?.mime_type ??
               msg.document?.mime_type ??

@@ -47,10 +47,12 @@ export interface ChatbotFlowDefinition {
 
 export interface ChatbotWaitingInput {
   nodeId: string;
-  kind: "text" | "choice";
+  kind: "text" | "choice" | "wait";
   variableName: string;
   prompt?: string;
   choices?: { id: string; label: string }[];
+  /** ISO — bloco wait: retomar fluxo após esta data */
+  resumeAt?: string;
 }
 
 export function parseChatbotFlowDefinition(raw: unknown): ChatbotFlowDefinition | null {

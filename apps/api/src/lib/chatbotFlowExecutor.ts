@@ -3,6 +3,7 @@ import type { Bot, ChatbotFlow, Contact, Conversation, Message, Prisma } from "@
 import { ChatbotFlowSessionStatus } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
+import { getWhatsAppProviderForInbox } from "../providers/factory.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
 import {
@@ -125,6 +126,52 @@ async function sendBotImage(
   });
 }
 
+async function sendBotChoice(
+  organizationId: string,
+  botId: string,
+  conversation: Conversation,
+  contact: Contact,
+  intro: string,
+  choices: { id: string; label: string }[],
+  displayMode: string,
+  log: FastifyBaseLogger,
+): Promise<string> {
+  const useButtons = displayMode === "buttons" && choices.length > 0 && choices.length <= 3;
+  if (useButtons) {
+    const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
+    if (provider) {
+      const to = contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
+      try {
+        await provider.sendMessage({
+          to,
+          type: "INTERACTIVE",
+          body: intro || "Escolha uma opção:",
+          interactiveButtons: choices.map((c) => ({ id: c.id, title: c.label })),
+        });
+        const summary = [intro, ...choices.map((c) => `• ${c.label}`)].filter(Boolean).join("\n");
+        await prisma.message
+          .create({
+            data: {
+              conversationId: conversation.id,
+              direction: "OUTBOUND",
+              type: "TEXT",
+              body: summary,
+              status: "SENT",
+            },
+          })
+          .catch(() => undefined);
+        return summary;
+      } catch (err) {
+        log.warn({ err }, "interactive buttons failed, falling back to numbered list");
+      }
+    }
+  }
+  const lines = choices.map((c, i) => `${i + 1}. ${c.label}`);
+  const body = [intro, ...lines].filter(Boolean).join("\n");
+  await sendBotText(organizationId, botId, conversation, contact, body, log);
+  return body;
+}
+
 function parseChoiceIndex(userText: string, choiceCount: number): number | null {
   const t = userText.trim();
   const n = Number.parseInt(t, 10);
@@ -191,15 +238,30 @@ export async function dispatchVisualChatbotFlow(input: {
     let status = session.status;
     let waiting = session.waitingInput as ChatbotWaitingInput | null;
 
-    if (status === ChatbotFlowSessionStatus.WAITING_INPUT && waiting && userText) {
+    if (waiting?.kind === "wait" && waiting.resumeAt) {
+      if (new Date(waiting.resumeAt) > new Date()) {
+        return;
+      }
+      currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
+      status = ChatbotFlowSessionStatus.ACTIVE;
+      waiting = null;
+    } else if (status === ChatbotFlowSessionStatus.WAITING_INPUT && waiting && userText) {
+      if (waiting.kind === "wait") {
+        return;
+      }
       const capturedVar = waiting.variableName;
       if (waiting.kind === "choice" && waiting.choices?.length) {
-        const idx = parseChoiceIndex(userText, waiting.choices.length);
-        if (idx != null) {
-          vars = { ...vars, [waiting.variableName]: waiting.choices[idx]!.label };
+        const byId = waiting.choices.find((c) => c.id === userText);
+        if (byId) {
+          vars = { ...vars, [waiting.variableName]: byId.label };
         } else {
-          const match = waiting.choices.find((c) => c.label.toLowerCase() === userText.toLowerCase());
-          vars = { ...vars, [waiting.variableName]: match?.label ?? userText };
+          const idx = parseChoiceIndex(userText, waiting.choices.length);
+          if (idx != null) {
+            vars = { ...vars, [waiting.variableName]: waiting.choices[idx]!.label };
+          } else {
+            const match = waiting.choices.find((c) => c.label.toLowerCase() === userText.toLowerCase());
+            vars = { ...vars, [waiting.variableName]: match?.label ?? userText };
+          }
         }
       } else {
         vars = { ...vars, [waiting.variableName]: userText };
@@ -288,9 +350,17 @@ export async function dispatchVisualChatbotFlow(input: {
             vars,
             contact,
           );
-          const lines = choices.map((c, i) => `${i + 1}. ${c.label}`);
-          const body = [intro, ...lines].filter(Boolean).join("\n");
-          await sendBotText(organizationId, bot.id, conversation, contact, body, log);
+          const displayMode = String(node.data?.displayMode ?? "text");
+          const body = await sendBotChoice(
+            organizationId,
+            bot.id,
+            conversation,
+            contact,
+            intro,
+            choices,
+            displayMode,
+            log,
+          );
           outboundMessages.push(body);
           waiting = { nodeId: node.id, kind: "choice", variableName, choices, prompt: intro };
           status = ChatbotFlowSessionStatus.WAITING_INPUT;
@@ -361,12 +431,18 @@ export async function dispatchVisualChatbotFlow(input: {
           break;
         }
         case "wait": {
-          const seconds = Math.min(Number(node.data?.seconds ?? node.data?.minutes ?? 0) * (node.data?.minutes != null ? 60 : 1), 5);
-          if (seconds > 0) {
-            await new Promise((r) => setTimeout(r, seconds * 1000));
-          }
-          currentId = nextEdgeTarget(flow, node.id);
-          continue;
+          const rawSeconds =
+            Number(node.data?.seconds ?? 0) ||
+            (node.data?.minutes != null ? Number(node.data.minutes) * 60 : 0);
+          const seconds = Math.min(Math.max(1, rawSeconds || 1), 300);
+          waiting = {
+            nodeId: node.id,
+            kind: "wait",
+            variableName: "_wait",
+            resumeAt: new Date(Date.now() + seconds * 1000).toISOString(),
+          };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
         }
         case "jump": {
           const target = String(node.data?.targetNodeId ?? node.data?.nodeId ?? "");

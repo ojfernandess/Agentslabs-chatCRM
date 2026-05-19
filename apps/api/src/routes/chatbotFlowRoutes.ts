@@ -11,6 +11,11 @@ import {
   parseChatbotFlowDefinition,
 } from "../lib/chatbotFlowTypes.js";
 import { generateChatbotPublicId } from "../lib/chatbotFlowExecutor.js";
+import {
+  createSimulatorSession,
+  runSimulatorTurn,
+  type SimulatorSession,
+} from "../lib/chatbotFlowSimulator.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -58,9 +63,18 @@ const linkBotSchema = z.object({
   botId: z.string().uuid().nullable(),
 });
 
+const simulatorSessionSchema = z.object({
+  currentNodeId: z.string().nullable().optional(),
+  variables: z.record(z.string()).optional(),
+  status: z.enum(["ACTIVE", "WAITING_INPUT", "WAITING_DELAY", "COMPLETED"]).optional(),
+  waitingInput: z.record(z.unknown()).nullable().optional(),
+});
+
 const testChatSchema = z.object({
   message: z.string().max(4000).default(""),
   contactName: z.string().max(200).optional(),
+  session: simulatorSessionSchema.optional(),
+  reset: z.boolean().optional(),
 });
 
 export async function registerChatbotFlowRoutes(app: FastifyInstance): Promise<void> {
@@ -299,9 +313,30 @@ export async function registerChatbotFlowRoutes(app: FastifyInstance): Promise<v
       return reply.status(400).send({ error: "Validation", message: "Invalid flow definition", statusCode: 400 });
     }
 
+    let session: SimulatorSession;
+    if (parsed.data.reset || !parsed.data.session) {
+      session = createSimulatorSession(flow.flowDefinition, flow.variables, parsed.data.contactName);
+    } else {
+      session = {
+        currentNodeId: parsed.data.session.currentNodeId ?? null,
+        variables: parsed.data.session.variables ?? {},
+        status: parsed.data.session.status ?? "ACTIVE",
+        waitingInput: (parsed.data.session.waitingInput as SimulatorSession["waitingInput"]) ?? null,
+      };
+    }
+
+    const turn = runSimulatorTurn({
+      flowDefinition: flow.flowDefinition,
+      session,
+      userMessage: parsed.data.message,
+      contactName: parsed.data.contactName,
+    });
+
     return {
       ok: true,
-      message: "Use o simulador na UI ou ligue o fluxo a um bot activo para testar em conversas reais.",
+      messages: turn.messages,
+      session: turn.session,
+      completed: turn.completed,
       nodeCount: def.nodes.length,
       edgeCount: def.edges.length,
       publicId: flow.publicId,
