@@ -88,7 +88,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, onUpdate, onDelete }
               value={
                 Array.isArray(data.choices)
                   ? (data.choices as { label?: string }[]).map((c) => c.label ?? "").join("\n")
-                  : "Sim\nNão"
+                  : t("chatbotPage.choicesPlaceholder")
               }
               onChange={(e) => {
                 const choices = e.target.value

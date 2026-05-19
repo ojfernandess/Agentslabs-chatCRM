@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Bot, Loader2, Plus, Save, Trash2, Workflow } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Loader2, Plus, Save, Trash2, Workflow } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import { ChatbotFlowBuilder } from "./ChatbotFlowBuilder";
@@ -29,6 +29,7 @@ export function AutomationChatbotHub() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flowsPanelOpen, setFlowsPanelOpen] = useState(true);
 
   const selected = flows.find((f) => f.id === selectedId) ?? null;
 
@@ -135,48 +136,91 @@ export function AutomationChatbotHub() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="rounded-xl border border-ink-200 bg-white p-3 dark:border-ink-800 dark:bg-ink-900/60">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("chatbotPage.flowList")}</h2>
+    <div className="flex gap-4 lg:gap-6">
+      <aside
+        className={clsx(
+          "flex shrink-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-white transition-[width] duration-200 dark:border-ink-800 dark:bg-ink-900/60",
+          flowsPanelOpen ? "w-[280px]" : "w-11",
+        )}
+      >
+        <div className="flex items-center gap-1 border-b border-ink-100 p-2 dark:border-ink-800">
           <button
             type="button"
-            disabled={saving}
-            onClick={() => void createFlow()}
-            className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+            onClick={() => setFlowsPanelOpen((o) => !o)}
+            title={flowsPanelOpen ? t("chatbotPage.flowListCollapse") : t("chatbotPage.flowListExpand")}
+            aria-expanded={flowsPanelOpen}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800"
           >
-            <Plus className="h-3 w-3" />
-            {t("chatbotPage.newFlow")}
+            {flowsPanelOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
-        </div>
-        <ul className="space-y-1">
-          {flows.map((f) => (
-            <li key={f.id}>
+          {flowsPanelOpen ? (
+            <>
+              <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-900 dark:text-ink-50">
+                {t("chatbotPage.flowList")}
+              </h2>
               <button
                 type="button"
-                onClick={() => setSelectedId(f.id)}
-                className={clsx(
-                  "w-full rounded-lg px-3 py-2 text-left text-xs",
-                  selectedId === f.id
-                    ? "bg-brand-50 font-semibold text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
-                    : "hover:bg-ink-50 dark:hover:bg-ink-800/50",
-                )}
+                disabled={saving}
+                onClick={() => void createFlow()}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
               >
-                <span className="block truncate">{f.name}</span>
-                <span className="text-[10px] text-ink-500">
-                  {f.isPublished ? t("chatbotPage.published") : t("chatbotPage.draft")}
-                  {f.linkedBot ? ` · ${f.linkedBot.name}` : ""}
-                </span>
+                <Plus className="h-3 w-3" />
+                {t("chatbotPage.newFlow")}
               </button>
-            </li>
-          ))}
-        </ul>
-        {flows.length === 0 ? (
-          <p className="mt-4 text-center text-xs text-ink-500">{t("chatbotPage.empty")}</p>
-        ) : null}
+            </>
+          ) : null}
+        </div>
+        {flowsPanelOpen ? (
+          <div className="flex-1 overflow-y-auto p-2">
+            <ul className="space-y-1">
+              {flows.map((f) => (
+                <li key={f.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(f.id)}
+                    className={clsx(
+                      "w-full rounded-lg px-3 py-2 text-left text-xs",
+                      selectedId === f.id
+                        ? "bg-brand-50 font-semibold text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+                        : "hover:bg-ink-50 dark:hover:bg-ink-800/50",
+                    )}
+                  >
+                    <span className="block truncate">{f.name}</span>
+                    <span className="text-[10px] text-ink-500">
+                      {f.isPublished ? t("chatbotPage.published") : t("chatbotPage.draft")}
+                      {f.linkedBot ? ` · ${f.linkedBot.name}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {flows.length === 0 ? (
+              <p className="mt-4 text-center text-xs text-ink-500">{t("chatbotPage.empty")}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center gap-2 py-3">
+            <button
+              type="button"
+              onClick={() => setFlowsPanelOpen(true)}
+              title={t("chatbotPage.flowListExpand")}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
+            >
+              <Workflow className="h-4 w-4" />
+            </button>
+            {selected ? (
+              <span
+                className="max-h-24 max-w-[2rem] truncate text-[9px] font-medium text-ink-500 [writing-mode:vertical-rl]"
+                title={selected.name}
+              >
+                {selected.name}
+              </span>
+            ) : null}
+          </div>
+        )}
       </aside>
 
-      <section className="space-y-4">
+      <section className="min-w-0 flex-1 space-y-4">
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
             {t("chatbotPage.loadError")}

@@ -86,7 +86,7 @@ export function defaultChatbotFlowDefinition(): ChatbotFlowDefinition {
         id: "ask",
         type: "text_input",
         position: { x: 720, y: 160 },
-        data: { variableName: "resposta", prompt: "Escreva a sua mensagem:" },
+        data: { variableName: "resposta", prompt: "Digite sua mensagem:" },
       },
       { id: "end", type: "end", position: { x: 1040, y: 200 }, data: {} },
     ],

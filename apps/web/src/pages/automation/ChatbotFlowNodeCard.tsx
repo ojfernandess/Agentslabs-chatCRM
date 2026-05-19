@@ -61,8 +61,8 @@ function ChatbotFlowNodeCardComponent({ data, selected }: NodeProps<ChatbotRfNod
       {!isEnd ? (
         isCondition ? (
           <div className="relative flex justify-between px-6 pb-2 pt-1">
-            <span className="text-[9px] font-semibold uppercase text-emerald-600">Sim</span>
-            <span className="text-[9px] font-semibold uppercase text-rose-500">Não</span>
+            <span className="text-[9px] font-semibold uppercase text-emerald-600">{t("chatbotPage.branchYes")}</span>
+            <span className="text-[9px] font-semibold uppercase text-rose-500">{t("chatbotPage.branchNo")}</span>
             <Handle
               type="source"
               id="yes"
