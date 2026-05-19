@@ -35,6 +35,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: true,
   },
   {
+    key: "chatbot_flow_builder",
+    defaultEnabled: true,
+  },
+  {
     key: "teams_collaboration_hub",
     defaultEnabled: false,
   },

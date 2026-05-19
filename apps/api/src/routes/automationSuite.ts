@@ -38,6 +38,7 @@ import {
 } from "../lib/knowledgeFileIngest.js";
 import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
 import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
+import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -2798,4 +2799,5 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   );
 
   await registerAutomationExecutionLogRoutes(app);
+  await registerChatbotFlowRoutes(app);
 }

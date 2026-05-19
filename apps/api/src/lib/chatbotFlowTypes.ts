@@ -1,0 +1,132 @@
+/** Blocos inspirados no modelo Typebot (bubbles, inputs, logic, integrations). */
+
+export const CHATBOT_BLOCK_TYPES = [
+  "start",
+  "text",
+  "image",
+  "text_input",
+  "choice_input",
+  "condition",
+  "set_variable",
+  "webhook",
+  "add_tag",
+  "handoff",
+  "wait",
+  "jump",
+  "end",
+] as const;
+
+export type ChatbotBlockType = (typeof CHATBOT_BLOCK_TYPES)[number];
+
+export interface ChatbotFlowNode {
+  id: string;
+  type: string;
+  data?: Record<string, unknown>;
+  position?: { x: number; y: number };
+}
+
+export interface ChatbotFlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  /** Ramo opcional: yes | no | default */
+  branch?: string;
+}
+
+export interface ChatbotFlowVariableDef {
+  id: string;
+  name: string;
+  value?: string;
+  isSessionVariable?: boolean;
+}
+
+export interface ChatbotFlowDefinition {
+  nodes: ChatbotFlowNode[];
+  edges: ChatbotFlowEdge[];
+}
+
+export interface ChatbotWaitingInput {
+  nodeId: string;
+  kind: "text" | "choice";
+  variableName: string;
+  prompt?: string;
+  choices?: { id: string; label: string }[];
+}
+
+export function parseChatbotFlowDefinition(raw: unknown): ChatbotFlowDefinition | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.nodes) || !Array.isArray(o.edges)) return null;
+  return { nodes: o.nodes as ChatbotFlowNode[], edges: o.edges as ChatbotFlowEdge[] };
+}
+
+export function parseChatbotVariableDefs(raw: unknown): ChatbotFlowVariableDef[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
+    .map((x) => ({
+      id: typeof x.id === "string" ? x.id : `var_${String(x.name ?? "x")}`,
+      name: typeof x.name === "string" ? x.name : "var",
+      value: typeof x.value === "string" ? x.value : undefined,
+      isSessionVariable: x.isSessionVariable === true,
+    }));
+}
+
+export function defaultChatbotFlowDefinition(): ChatbotFlowDefinition {
+  return {
+    nodes: [
+      { id: "start", type: "start", position: { x: 0, y: 0 }, data: {} },
+      {
+        id: "welcome",
+        type: "text",
+        position: { x: 0, y: 80 },
+        data: { content: "Olá {{contact.name}}! Como posso ajudar?" },
+      },
+      {
+        id: "ask",
+        type: "text_input",
+        position: { x: 0, y: 160 },
+        data: { variableName: "resposta", prompt: "Escreva a sua mensagem:" },
+      },
+      { id: "end", type: "end", position: { x: 0, y: 240 }, data: {} },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "welcome" },
+      { id: "e2", source: "welcome", target: "ask" },
+      { id: "e3", source: "ask", target: "end" },
+    ],
+  };
+}
+
+export function substituteChatbotVariables(
+  text: string,
+  vars: Record<string, string>,
+  contact: { name: string; phone?: string; email?: string | null },
+): string {
+  let out = text;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "gi"), v);
+  }
+  out = out
+    .replace(/\{\{\s*contact\.name\s*\}\}/gi, contact.name)
+    .replace(/\{\{\s*contact\.phone\s*\}\}/gi, contact.phone ?? "")
+    .replace(/\{\{\s*contact\.email\s*\}\}/gi, contact.email ?? "")
+    .replace(/\{\{\s*nome\s*\}\}/gi, contact.name);
+  return out;
+}
+
+export function botVisualChatbotFlowId(config: unknown): string | null {
+  if (config == null || typeof config !== "object") return null;
+  const c = config as Record<string, unknown>;
+  if (c.flowEngine !== "visual") return null;
+  const id = c.chatbotFlowId;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+export function botConfigForVisualFlow(chatbotFlowId: string): Record<string, unknown> {
+  return {
+    flowEngine: "visual",
+    chatbotFlowId,
+    automationManagedByOpenConduit: false,
+  };
+}

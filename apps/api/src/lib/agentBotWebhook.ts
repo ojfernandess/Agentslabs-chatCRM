@@ -16,6 +16,8 @@ import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { generateNativeAgentReply } from "./agentNativeLlm.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
+import { botVisualChatbotFlowId } from "./chatbotFlowTypes.js";
+import { dispatchVisualChatbotFlow } from "./chatbotFlowExecutor.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -482,6 +484,7 @@ export async function dispatchAgentBotWebhook(input: {
 
   const hasExternalWebhook = Boolean(bot.webhookUrl?.trim());
   const nativeManaged = botManagedByOpenConduit(bot.config);
+  const visualFlowId = !hasExternalWebhook ? botVisualChatbotFlowId(bot.config) : null;
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
       stage: "dispatchAgentBotWebhook",
@@ -490,8 +493,38 @@ export async function dispatchAgentBotWebhook(input: {
       conversationId: conversation.id,
       hasExternalWebhook,
       nativeManaged,
-      path: !hasExternalWebhook && nativeManaged ? "native_openconduit" : hasExternalWebhook ? "external_webhook" : "none",
+      visualFlowId,
+      path: hasExternalWebhook
+        ? "external_webhook"
+        : visualFlowId
+          ? "visual_chatbot"
+          : !hasExternalWebhook && nativeManaged
+            ? "native_openconduit"
+            : "none",
     });
+  }
+
+  if (!hasExternalWebhook && visualFlowId) {
+    const chatbotFlow = await prisma.chatbotFlow.findFirst({
+      where: {
+        id: visualFlowId,
+        organizationId,
+        OR: [{ isPublished: true }, { linkedBotId: bot.id }],
+      },
+    });
+    if (chatbotFlow) {
+      await dispatchVisualChatbotFlow({
+        organizationId,
+        bot,
+        chatbotFlow,
+        conversation,
+        contact,
+        message,
+        log,
+      });
+      return;
+    }
+    log.warn({ botId: bot.id, visualFlowId }, "visual chatbot flow not found or not published");
   }
 
   if (!hasExternalWebhook) {

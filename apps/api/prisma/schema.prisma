@@ -203,6 +203,7 @@ model Organization {
   automationToolExecutions       AutomationToolExecution[]
   automationExecutions           AutomationExecution[]
   automationExecutionLogSettings AutomationExecutionLogSettings?
+  chatbotFlows                   ChatbotFlow[]
 
   @@map("organizations")
 }
@@ -415,6 +416,7 @@ model Bot {
   automationConversationContexts AutomationConversationContext[]
   automationKnowledgeArticleBots AutomationKnowledgeArticleBot[]
   automationExecutions           AutomationExecution[]
+  linkedChatbotFlow              ChatbotFlow?
 
   @@unique([inboxTokenPrefix])
   @@index([organizationId])
@@ -807,6 +809,7 @@ model Conversation {
   automationContext      AutomationConversationContext?
   automationInteractions AutomationInteraction[]
   automationExecutions   AutomationExecution[]
+  chatbotFlowSession     ChatbotFlowSession?
 
   @@index([organizationId])
   @@index([contactId])
@@ -1492,4 +1495,56 @@ model AutomationExecutionLogSettings {
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
   @@map("automation_execution_log_settings")
+}
+
+/// Construtor visual de chatbot (estilo Typebot): fluxos com blocos, variáveis e sessões por conversa.
+enum ChatbotFlowSessionStatus {
+  ACTIVE
+  WAITING_INPUT
+  COMPLETED
+}
+
+model ChatbotFlow {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String       @db.VarChar(200)
+  description    String?      @db.Text
+  /// Identificador público para embed/API (estilo publicId do Typebot).
+  publicId       String       @unique @map("public_id") @db.VarChar(40)
+  isPublished    Boolean      @default(false) @map("is_published")
+  flowDefinition Json         @map("flow_definition")
+  /// Definições de variáveis (nome, valor inicial, isSession).
+  variables      Json         @default("[]")
+  theme          Json?
+  settings       Json?
+  linkedBotId    String?      @unique @map("linked_bot_id") @db.Uuid
+  linkedBot      Bot?         @relation(fields: [linkedBotId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  sessions ChatbotFlowSession[]
+
+  @@index([organizationId])
+  @@map("chatbot_flows")
+}
+
+model ChatbotFlowSession {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  chatbotFlowId  String                   @map("chatbot_flow_id") @db.Uuid
+  chatbotFlow    ChatbotFlow              @relation(fields: [chatbotFlowId], references: [id], onDelete: Cascade)
+  conversationId String?                  @unique @map("conversation_id") @db.Uuid
+  conversation   Conversation?            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contactId      String?                  @map("contact_id") @db.Uuid
+  currentNodeId  String?                  @map("current_node_id") @db.VarChar(64)
+  variables      Json                     @default("{}")
+  status         ChatbotFlowSessionStatus @default(ACTIVE)
+  waitingInput   Json?                    @map("waiting_input")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([chatbotFlowId])
+  @@map("chatbot_flow_sessions")
 }

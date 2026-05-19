@@ -36,6 +36,7 @@ import {
   type InstructionFallback,
 } from "@/pages/automation/instructionFallbacks";
 import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
+import { AutomationChatbotHub } from "@/pages/automation/AutomationChatbotHub";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -43,6 +44,7 @@ type Tab =
   | "overview"
   | "knowledge"
   | "agents"
+  | "chatbots"
   | "tools"
   | "prompts"
   | "interactions"
@@ -654,6 +656,7 @@ export function AutomationPage() {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const chatbotBuilderEnabled = user?.organizationFeatures?.chatbot_flow_builder ?? true;
   const [pilotAccessEnabled, setPilotAccessEnabled] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(false);
@@ -1069,6 +1072,7 @@ export function AutomationPage() {
         { id: "overview", label: t("automationPage.tabOverview") },
         { id: "knowledge", label: t("automationPage.tabKnowledge") },
         { id: "agents", label: t("automationPage.tabAgents") },
+        ...(chatbotBuilderEnabled ? [{ id: "chatbots" as const, label: t("automationPage.tabChatbots") }] : []),
         { id: "tools", label: t("automationPage.tabTools") },
         { id: "prompts", label: t("automationPage.tabPrompts") },
         { id: "interactions", label: t("automationPage.tabInteractions") },
@@ -1239,6 +1243,8 @@ export function AutomationPage() {
             suggestionLocale={locale}
           />
         ) : null}
+
+        {tab === "chatbots" && chatbotBuilderEnabled ? <AutomationChatbotHub /> : null}
 
         {tab === "executions" ? (
           <AutomationExecutionsTab
