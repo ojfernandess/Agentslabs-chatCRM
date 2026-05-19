@@ -1,56 +1,56 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3 } from "lucide-react";
+import { PageTransition } from "@/components/Motion";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
-import { Megaphone, Plus, RefreshCw, Trash2, Play } from "lucide-react";
-import clsx from "clsx";
-import { format } from "date-fns";
-
-type CampaignTag = { tagId: string; tag: { id: string; name: string; color: string } };
-
-interface CampaignRow {
-  id: string;
-  name: string;
-  status: string;
-  messageType: string;
-  body: string | null;
-  templateId: string | null;
-  totalRecipients: number;
-  sentCount: number;
-  failedCount: number;
-  createdAt: string;
-  tags: CampaignTag[];
-  _count?: { recipients: number };
-  audienceCount?: number | null;
-}
-
-interface TagOption {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface TemplateOption {
-  id: string;
-  name: string;
-  bodyVariableCount?: number;
-}
+import { CampaignCenterMetrics } from "@/pages/broadcasts/CampaignCenterMetrics";
+import { CampaignFiltersSidebar } from "@/pages/broadcasts/CampaignFiltersSidebar";
+import { CampaignCard } from "@/pages/broadcasts/CampaignCard";
+import {
+  CampaignCreatorPanel,
+  type CreatorDraft,
+  type CreatorTab,
+  defaultAdvancedOptions,
+} from "@/pages/broadcasts/CampaignCreatorPanel";
+import { CHANNEL_API, type SegmentRules } from "@/pages/broadcasts/CampaignAdvancedOptions";
+import { CampaignTemplatesLibrary } from "@/pages/broadcasts/CampaignTemplatesLibrary";
+import { CampaignAnalyticsPanel } from "@/pages/broadcasts/CampaignAnalyticsPanel";
+import {
+  OMNICHANNEL_CHANNELS,
+  type BroadcastDashboard,
+  type CampaignCenterTab,
+  type CampaignRow,
+  type CampaignStatusFilter,
+  type TagOption,
+  type TemplateOption,
+} from "@/pages/broadcasts/campaignTypes";
 
 export function BroadcastCampaignsPage() {
-  const { t, dateLocale } = useI18n();
+  const { t } = useI18n();
   const [rows, setRows] = useState<CampaignRow[]>([]);
+  const [dashboard, setDashboard] = useState<BroadcastDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dashLoading, setDashLoading] = useState(true);
   const [listError, setListError] = useState("");
+
+  const [centerTab, setCenterTab] = useState<CampaignCenterTab>("campaigns");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CampaignStatusFilter>("ALL");
+  const [channelFilter, setChannelFilter] = useState("all");
+
+  const [creatorOpen, setCreatorOpen] = useState(false);
+  const [creatorTab, setCreatorTab] = useState<CreatorTab>("quick");
+  const [creatorInitial, setCreatorInitial] = useState<Partial<CreatorDraft> | undefined>();
 
   const [tags, setTags] = useState<TagOption[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
-  const [messageType, setMessageType] = useState<"TEXT" | "TEMPLATE">("TEMPLATE");
-  const [body, setBody] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [integrationTools, setIntegrationTools] = useState<{ id: string; name: string; toolType: string }[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<{ id: string; name: string }[]>([]);
+  const [segmentPreview, setSegmentPreview] = useState<SegmentRules>({});
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewTagIds, setPreviewTagIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -69,94 +69,149 @@ export function BroadcastCampaignsPage() {
     }
   }, [t]);
 
+  const loadDashboard = useCallback(async () => {
+    setDashLoading(true);
+    try {
+      const data = await api.get<BroadcastDashboard>("/broadcasts/dashboard");
+      setDashboard(data);
+    } catch {
+      setDashboard(null);
+    } finally {
+      setDashLoading(false);
+    }
+  }, []);
+
+  const loadMeta = useCallback(async () => {
+    try {
+      const [tagList, tplList, tools, stages] = await Promise.all([
+        api.get<TagOption[]>("/tags"),
+        api.get<TemplateOption[]>("/templates"),
+        api.get<{ id: string; name: string; toolType: string }[]>("/broadcasts/integration-tools").catch(() => []),
+        api.get<{ id: string; name: string }[]>("/crm/pipeline-stages").catch(() => []),
+      ]);
+      setTags(Array.isArray(tagList) ? tagList : []);
+      setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
+      setIntegrationTools(Array.isArray(tools) ? tools : []);
+      setPipelineStages(Array.isArray(stages) ? stages : []);
+    } catch {
+      setTags([]);
+      setTemplates([]);
+      setIntegrationTools([]);
+      setPipelineStages([]);
+    }
+  }, []);
+
   useEffect(() => {
     void loadList();
-  }, [loadList]);
+    void loadDashboard();
+    void loadMeta();
+  }, [loadList, loadDashboard, loadMeta]);
 
   const hasRunning = rows.some((r) => r.status === "RUNNING");
 
   useEffect(() => {
     if (!hasRunning) return;
-    const id = window.setInterval(() => void loadList(), 4000);
+    const id = window.setInterval(() => {
+      void loadList();
+      void loadDashboard();
+    }, 4000);
     return () => window.clearInterval(id);
-  }, [hasRunning, loadList]);
+  }, [hasRunning, loadList, loadDashboard]);
 
-  const openForm = async () => {
-    setFormError("");
-    setName("");
-    setMessageType("TEMPLATE");
-    setBody("");
-    setTemplateId("");
-    setSelectedTagIds([]);
-    setPreviewCount(null);
-    setShowForm(true);
-    try {
-      const [tagList, tplList] = await Promise.all([
-        api.get<TagOption[]>("/tags"),
-        api.get<TemplateOption[]>("/templates"),
-      ]);
-      setTags(Array.isArray(tagList) ? tagList : []);
-      setTemplates(
-        (Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0),
-      );
-    } catch {
-      setTags([]);
-      setTemplates([]);
-    }
-  };
-
-  const runPreview = async () => {
-    if (selectedTagIds.length === 0) {
-      setPreviewCount(null);
-      return;
-    }
-    setPreviewBusy(true);
-    try {
-      const res = await api.post<{ audienceCount: number }>("/broadcasts/audience-preview", {
-        tagIds: selectedTagIds,
-      });
-      setPreviewCount(typeof res.audienceCount === "number" ? res.audienceCount : 0);
-    } catch {
-      setPreviewCount(null);
-    } finally {
-      setPreviewBusy(false);
-    }
-  };
+  const runPreview = useCallback(
+    async (tagIds: string[], segmentRules: SegmentRules) => {
+      const hasSeg =
+        tagIds.length > 0 ||
+        Boolean((segmentRules.pipelineStageIds as string[] | undefined)?.length) ||
+        Boolean((segmentRules.cities as string[] | undefined)?.length);
+      if (!hasSeg) {
+        setPreviewCount(null);
+        return;
+      }
+      setPreviewBusy(true);
+      try {
+        const res = await api.post<{ audienceCount: number }>("/broadcasts/audience-preview", {
+          tagIds,
+          segmentRules,
+        });
+        setPreviewCount(typeof res.audienceCount === "number" ? res.audienceCount : 0);
+      } catch {
+        setPreviewCount(null);
+      } finally {
+        setPreviewBusy(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    if (!showForm || selectedTagIds.length === 0) {
-      setPreviewCount(null);
-      return;
-    }
-    const h = window.setTimeout(() => void runPreview(), 400);
+    if (!creatorOpen) return;
+    const h = window.setTimeout(() => void runPreview(previewTagIds, segmentPreview), 400);
     return () => window.clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced preview
-  }, [showForm, [...selectedTagIds].sort().join(",")]);
+  }, [creatorOpen, previewTagIds.join(","), JSON.stringify(segmentPreview), runPreview]);
 
-  const toggleTag = (id: string) => {
-    setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const openCreator = (tab: CreatorTab = "quick", initial?: Partial<CreatorDraft>) => {
+    setFormError("");
+    setCreatorTab(tab);
+    setCreatorInitial(initial);
+    setPreviewTagIds(initial?.selectedTagIds ?? []);
+    setPreviewCount(null);
+    setCreatorOpen(true);
   };
 
-  const handleCreate = async () => {
-    const nameTrim = name.trim();
-    if (!nameTrim || selectedTagIds.length === 0) return;
-    if (messageType === "TEXT" && !body.trim()) return;
-    if (messageType === "TEMPLATE" && !templateId) return;
+  const handlePreview = useCallback((tagIds: string[], segmentRules: SegmentRules) => {
+    setPreviewTagIds(tagIds);
+    setSegmentPreview(segmentRules);
+  }, []);
+
+  const handleCreate = async (draft: CreatorDraft) => {
+    const nameTrim = draft.name.trim();
+    const adv = draft.advanced;
+    const hasAudience =
+      draft.selectedTagIds.length > 0 ||
+      Boolean(adv.segmentRules.pipelineStageIds?.length) ||
+      Boolean(adv.segmentRules.cities?.length);
+    if (!nameTrim || !hasAudience) return;
 
     setSubmitting(true);
     setFormError("");
     try {
+      const channel = CHANNEL_API[adv.channel] ?? "WHATSAPP";
       const payload: Record<string, unknown> = {
         name: nameTrim,
-        messageType,
-        tagIds: selectedTagIds,
+        channel,
+        messageType: channel === "EMAIL" ? "TEXT" : draft.messageType,
+        tagIds: draft.selectedTagIds,
+        segmentRules: adv.segmentRules,
+        flowDefinition: draft.flowDefinition ?? undefined,
+        scheduleType: adv.scheduleType,
+        requiresApproval: adv.requiresApproval,
+        useDistributedQueue: adv.useDistributedQueue,
+        throttleMs: adv.throttleMs,
+        revenuePerConversion: adv.revenuePerConversion ? Number(adv.revenuePerConversion) : undefined,
+        subject: adv.subject || undefined,
+        cronExpression: adv.cronExpression || undefined,
+        eventTrigger: adv.eventTrigger || undefined,
       };
-      if (messageType === "TEXT") payload.body = body.trim();
-      else payload.templateId = templateId;
+      if (adv.scheduleType === "SCHEDULED" && adv.scheduledAt) {
+        payload.scheduledAt = new Date(adv.scheduledAt).toISOString();
+      }
+      if (adv.abConfig.enabled) {
+        payload.abConfig = {
+          enabled: true,
+          splitPercentA: adv.abConfig.splitPercentA,
+          variantA: { body: adv.abConfig.variantA.body || draft.body },
+          variantB: { body: adv.abConfig.variantB.body || draft.body },
+        };
+      }
+      if (adv.integrationToolId) payload.integrationToolId = adv.integrationToolId;
+      if (draft.messageType === "TEXT" || channel === "EMAIL") payload.body = draft.body.trim();
+      else if (draft.templateId) payload.templateId = draft.templateId;
 
       await api.post("/broadcasts", payload);
-      setShowForm(false);
+      setCreatorOpen(false);
       void loadList();
+      void loadDashboard();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : t("broadcastPage.createError");
       setFormError(msg || t("broadcastPage.createError"));
@@ -170,9 +225,31 @@ export function BroadcastCampaignsPage() {
     try {
       await api.post(`/broadcasts/${id}/start`);
       void loadList();
+      void loadDashboard();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : t("broadcastPage.startError");
       alert(msg);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const approveCampaign = async (id: string, approve: boolean) => {
+    setActionBusy(id);
+    try {
+      await api.post(`/broadcasts/${id}/approve`, { approve });
+      void loadList();
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const cancelCampaign = async (id: string) => {
+    setActionBusy(id);
+    try {
+      await api.post(`/broadcasts/${id}/cancel`);
+      void loadList();
+      void loadDashboard();
     } finally {
       setActionBusy(null);
     }
@@ -184,6 +261,7 @@ export function BroadcastCampaignsPage() {
     try {
       await api.delete(`/broadcasts/${id}`);
       void loadList();
+      void loadDashboard();
     } catch {
       /* ignore */
     } finally {
@@ -200,236 +278,226 @@ export function BroadcastCampaignsPage() {
       CANCELLED: t("broadcastPage.statusCancelled"),
     })[s] ?? s;
 
+  const filteredRows = useMemo(() => {
+    return rows.filter((r) => {
+      if (statusFilter !== "ALL" && r.status !== statusFilter) return false;
+      if (channelFilter !== "all") {
+        const ch = (r.channel ?? "WHATSAPP").toLowerCase();
+        if (ch !== channelFilter) return false;
+      }
+      if (search.trim() && !r.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
+      return true;
+    });
+  }, [rows, statusFilter, channelFilter, search]);
+
+  const centerTabs: { id: CampaignCenterTab; label: string; icon: typeof LayoutGrid }[] = [
+    { id: "campaigns", label: t("broadcastPage.tabCampaigns"), icon: LayoutGrid },
+    { id: "templates", label: t("broadcastPage.tabTemplates"), icon: BookOpen },
+    { id: "flows", label: t("broadcastPage.tabFlows"), icon: GitBranch },
+    { id: "analytics", label: t("broadcastPage.tabAnalytics"), icon: BarChart3 },
+  ];
+
+  const statusFunnel = dashboard?.statusBreakdown ?? {};
+
   return (
-    <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <PageTransition>
+      <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-8">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-ink-900 dark:text-ink-50">
             <Megaphone className="h-7 w-7 text-brand-600" />
-            {t("broadcastPage.title")}
+            {t("broadcastPage.centerTitle")}
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-600 dark:text-ink-400">
-            {t("broadcastPage.subtitle")}
-          </p>
+          <p className="mt-1 max-w-3xl text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.centerSubtitle")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void loadList()}
+            onClick={() => {
+              void loadList();
+              void loadDashboard();
+            }}
             className="btn-secondary inline-flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4" />
             {t("common.refresh")}
           </button>
-          <button type="button" onClick={() => void openForm()} className="btn-primary inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openCreator("ai")}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            {t("broadcastPage.aiCampaign")}
+          </button>
+          <button type="button" onClick={() => openCreator("quick")} className="btn-primary inline-flex items-center gap-2">
             <Plus className="h-4 w-4" />
             {t("broadcastPage.newCampaign")}
           </button>
         </div>
       </header>
 
-      {showForm ? (
-        <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-700 dark:bg-ink-900">
-          <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-100">{t("broadcastPage.formTitle")}</h2>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">{t("broadcastPage.name")}</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                maxLength={200}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">{t("broadcastPage.messageType")}</label>
-              <select
-                value={messageType}
-                onChange={(e) => setMessageType(e.target.value as "TEXT" | "TEMPLATE")}
-                className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
+      <CampaignCenterMetrics dashboard={dashboard} loading={dashLoading} />
+
+      <div className="flex flex-wrap gap-2">
+        {OMNICHANNEL_CHANNELS.map((ch) => (
+          <span
+            key={ch.id}
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold",
+              ch.available
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+                : "border-ink-200 bg-ink-50 text-ink-500 dark:border-white/10 dark:bg-white/5 dark:text-ink-400",
+            )}
+          >
+            {t(ch.labelKey)}
+            {!ch.available ? (
+              <span className="rounded bg-ink-200/80 px-1 py-0.5 text-[9px] uppercase dark:bg-white/10">{t("broadcastPage.soon")}</span>
+            ) : null}
+          </span>
+        ))}
+      </div>
+
+      {Object.keys(statusFunnel).length > 0 ? (
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-ink-200/80 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+          <span className="w-full text-[10px] font-bold uppercase tracking-wider text-ink-500 sm:w-auto sm:py-1">
+            {t("broadcastPage.funnelTitle")}
+          </span>
+          {(["DRAFT", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"] as const).map((s) =>
+            statusFunnel[s] ? (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={clsx(
+                  "rounded-lg px-3 py-1 text-xs font-semibold tabular-nums",
+                  statusFilter === s ? "bg-brand-500 text-white" : "bg-ink-100 text-ink-700 dark:bg-white/10 dark:text-ink-200",
+                )}
               >
-                <option value="TEMPLATE">{t("broadcastPage.typeTemplate")}</option>
-                <option value="TEXT">{t("broadcastPage.typeText")}</option>
-              </select>
-            </div>
-            <div>
-              {messageType === "TEMPLATE" ? (
-                <>
-                  <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
-                    {t("broadcastPage.template")}
-                  </label>
-                  <select
-                    value={templateId}
-                    onChange={(e) => setTemplateId(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  >
-                    <option value="">{t("broadcastPage.selectTemplate")}</option>
-                    {templates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-500">
-                    {t("broadcastPage.templatesCampaignHint")}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">{t("broadcastPage.body")}</label>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    rows={4}
-                    className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                    maxLength={4096}
-                  />
-                </>
-              )}
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">{t("broadcastPage.tags")}</label>
-              <p className="mt-0.5 text-[11px] text-ink-500 dark:text-ink-500">{t("broadcastPage.tagsHint")}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {tags.map((tag) => {
-                  const on = selectedTagIds.includes(tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => toggleTag(tag.id)}
-                      className={clsx(
-                        "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                        on
-                          ? "border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-950/40 dark:text-brand-100"
-                          : "border-ink-200 text-ink-600 hover:border-ink-300 dark:border-ink-600 dark:text-ink-300",
-                      )}
-                      style={on ? { borderColor: tag.color } : undefined}
-                    >
-                      {tag.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">
-                {previewBusy
-                  ? t("broadcastPage.previewLoading")
-                  : previewCount !== null
-                    ? t("broadcastPage.audiencePreview").replace("{count}", String(previewCount))
-                    : t("broadcastPage.audienceEmpty")}
-              </p>
-            </div>
-          </div>
-          {formError ? (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
-              {formError}
-            </p>
-          ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => void handleCreate()}
-              className="btn-primary"
-            >
-              {submitting ? t("common.saving") : t("broadcastPage.saveDraft")}
-            </button>
-            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
-              {t("common.cancel")}
-            </button>
-          </div>
-        </section>
+                {statusLabel(s)}: {statusFunnel[s]}
+              </button>
+            ) : null,
+          )}
+        </div>
       ) : null}
 
-      <section className="rounded-xl border border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900">
-        {loading ? (
-          <p className="p-6 text-sm text-ink-500">{t("common.loading")}</p>
-        ) : listError ? (
-          <p className="p-6 text-sm text-red-600" role="alert">
-            {listError}
-          </p>
-        ) : rows.length === 0 ? (
-          <p className="p-6 text-sm text-ink-500">{t("broadcastPage.empty")}</p>
+      <div className="flex gap-1 overflow-x-auto border-b border-ink-200 dark:border-white/10">
+        {centerTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setCenterTab(id)}
+            className={clsx(
+              "flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+              centerTab === id
+                ? "border-brand-500 text-brand-700 dark:text-brand-300"
+                : "border-transparent text-ink-500 hover:text-ink-700",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+        {centerTab === "campaigns" ? (
+          <CampaignFiltersSidebar
+            search={search}
+            onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            channelFilter={channelFilter}
+            onChannelFilterChange={setChannelFilter}
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-ink-200 bg-ink-50 text-xs font-semibold uppercase text-ink-500 dark:border-ink-700 dark:bg-ink-800/80 dark:text-ink-400">
-                <tr>
-                  <th className="px-4 py-3">{t("broadcastPage.name")}</th>
-                  <th className="px-4 py-3">{t("broadcastPage.colStatus")}</th>
-                  <th className="px-4 py-3">{t("broadcastPage.colMessage")}</th>
-                  <th className="px-4 py-3">{t("broadcastPage.colTags")}</th>
-                  <th className="px-4 py-3">{t("broadcastPage.colStats")}</th>
-                  <th className="px-4 py-3">{t("broadcastPage.colActions")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
-                {rows.map((r) => (
-                  <tr key={r.id} className="text-ink-800 dark:text-ink-200">
-                    <td className="px-4 py-3 font-medium">{r.name}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={clsx(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
-                          r.status === "DRAFT" && "bg-ink-100 text-ink-700 dark:bg-ink-800",
-                          r.status === "RUNNING" && "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200",
-                          r.status === "COMPLETED" && "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200",
-                        )}
-                      >
-                        {statusLabel(r.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {r.messageType === "TEMPLATE" ? t("broadcastPage.typeTemplate") : t("broadcastPage.typeText")}
-                    </td>
-                    <td className="max-w-[200px] px-4 py-3 text-xs text-ink-600 dark:text-ink-400">
-                      <span className="line-clamp-2">
-                        {r.tags?.map((x) => x.tag?.name).filter(Boolean).join(", ") || "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs tabular-nums">
-                      {r.status === "DRAFT"
-                        ? "—"
-                        : `${r.sentCount}/${r.totalRecipients} · ${t("broadcastPage.failed")} ${r.failedCount}`}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {r.status === "DRAFT" ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={actionBusy === r.id}
-                              onClick={() => void startCampaign(r.id)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-800 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-200"
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              {t("broadcastPage.start")}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={actionBusy === r.id}
-                              onClick={() => void deleteDraft(r.id)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 text-xs text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:hover:bg-ink-800"
-                              aria-label={t("broadcastPage.delete")}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 text-[10px] text-ink-400">
-                        {format(new Date(r.createdAt), "PPp", { locale: dateLocale })}
-                      </p>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className="hidden lg:block" />
         )}
-      </section>
+
+        <div className="min-w-0">
+          {centerTab === "campaigns" ? (
+            <>
+              {loading ? (
+                <p className="text-sm text-ink-500">{t("common.loading")}</p>
+              ) : listError ? (
+                <p className="text-sm text-red-600" role="alert">
+                  {listError}
+                </p>
+              ) : filteredRows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-ink-200 p-12 text-center dark:border-white/10">
+                  <p className="text-sm text-ink-500">{t("broadcastPage.empty")}</p>
+                  <button type="button" className="btn-primary mt-4" onClick={() => openCreator("quick")}>
+                    {t("broadcastPage.newCampaign")}
+                  </button>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredRows.map((r) => (
+                    <CampaignCard
+                      key={r.id}
+                      row={r}
+                      statusLabel={statusLabel}
+                      actionBusy={actionBusy}
+                      onStart={startCampaign}
+                      onDelete={deleteDraft}
+                      onApprove={approveCampaign}
+                      onCancel={cancelCampaign}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
+
+          {centerTab === "templates" ? (
+            <CampaignTemplatesLibrary
+              onUseTemplate={(_id, name, body) =>
+                openCreator("quick", {
+                  name,
+                  messageType: "TEXT",
+                  body,
+                  selectedTagIds: [],
+                  advanced: defaultAdvancedOptions(),
+                  flowDefinition: null,
+                })
+              }
+            />
+          ) : null}
+
+          {centerTab === "flows" ? (
+            <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-8 text-center dark:border-white/10 dark:bg-[#111C2B]/55">
+              <GitBranch className="mx-auto h-12 w-12 text-brand-500 opacity-60" />
+              <h3 className="mt-4 text-lg font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.flowsTitle")}</h3>
+              <p className="mx-auto mt-2 max-w-lg text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.flowsSubtitle")}</p>
+              <button type="button" className="btn-primary mt-6" onClick={() => openCreator("flow")}>
+                {t("broadcastPage.flowsCta")}
+              </button>
+            </div>
+          ) : null}
+
+          {centerTab === "analytics" ? <CampaignAnalyticsPanel dashboard={dashboard} loading={dashLoading} /> : null}
+        </div>
+      </div>
 
       <p className="text-xs text-ink-500 dark:text-ink-500">{t("broadcastPage.footnote")}</p>
-    </div>
+
+      <CampaignCreatorPanel
+        open={creatorOpen}
+        onClose={() => setCreatorOpen(false)}
+        tags={tags}
+        templates={templates}
+        initialTab={creatorTab}
+        initialDraft={creatorInitial}
+        previewCount={previewCount}
+        previewBusy={previewBusy}
+        submitting={submitting}
+        formError={formError}
+        integrationTools={integrationTools}
+        pipelineStages={pipelineStages}
+        onPreview={handlePreview}
+        onSubmit={handleCreate}
+      />
+      </div>
+    </PageTransition>
   );
 }

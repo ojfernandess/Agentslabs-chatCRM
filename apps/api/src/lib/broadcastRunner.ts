@@ -1,14 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
-import type { SendMessageInput } from "./messagePayload.js";
-
-/** Espaçamento entre envios para reduzir risco de limitação pelo WhatsApp. */
-const THROTTLE_MS = 750;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
+import { enqueueBroadcastRecipientJob, isBroadcastQueueAvailable } from "./broadcastQueue.js";
+import { processBroadcastRecipient } from "./broadcastRecipientProcessor.js";
+import { syncBroadcastCampaignEngagement } from "./broadcastMetrics.js";
 
 export function scheduleBroadcastCampaignRun(app: FastifyInstance, campaignId: string): void {
   void runBroadcastCampaign(app, campaignId).catch((err) => {
@@ -16,10 +10,45 @@ export function scheduleBroadcastCampaignRun(app: FastifyInstance, campaignId: s
   });
 }
 
-export async function runBroadcastCampaign(app: FastifyInstance, campaignId: string): Promise<void> {
+export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promise<void> {
+  const pending = await prisma.broadcastCampaignRecipient.count({
+    where: { campaignId, status: "PENDING" },
+  });
+  if (pending > 0) return;
+
   const campaign = await prisma.broadcastCampaign.findUnique({
     where: { id: campaignId },
+    select: { status: true, scheduleType: true },
   });
+  if (!campaign || campaign.status !== "RUNNING") return;
+
+  await prisma.broadcastCampaign.update({
+    where: { id: campaignId },
+    data: { status: "COMPLETED", completedAt: new Date() },
+  });
+
+  if (campaign.scheduleType === "RECURRING") {
+    const next = new Date();
+    next.setDate(next.getDate() + 1);
+    next.setHours(9, 0, 0, 0);
+    await prisma.broadcastCampaignRecipient.deleteMany({ where: { campaignId } });
+    await prisma.broadcastCampaign.update({
+      where: { id: campaignId },
+      data: {
+        status: "DRAFT",
+        nextRunAt: next,
+        sentCount: 0,
+        failedCount: 0,
+        totalRecipients: 0,
+        startedAt: null,
+        completedAt: null,
+      },
+    });
+  }
+}
+
+export async function runBroadcastCampaign(app: FastifyInstance, campaignId: string): Promise<void> {
+  const campaign = await prisma.broadcastCampaign.findUnique({ where: { id: campaignId } });
   if (!campaign || campaign.status !== "RUNNING") return;
 
   const pending = await prisma.broadcastCampaignRecipient.findMany({
@@ -28,15 +57,29 @@ export async function runBroadcastCampaign(app: FastifyInstance, campaignId: str
   });
 
   if (pending.length === 0) {
-    await prisma.broadcastCampaign.update({
-      where: { id: campaignId },
-      data: { status: "COMPLETED", completedAt: new Date() },
-    });
+    await finalizeBroadcastCampaignIfDone(campaignId);
     return;
   }
 
-  let sent = campaign.sentCount;
-  let failed = campaign.failedCount;
+  const throttleMs = Math.max(200, campaign.throttleMs ?? 750);
+  const useQueue = campaign.useDistributedQueue && isBroadcastQueueAvailable();
+
+  if (useQueue) {
+    let delay = 0;
+    for (const rec of pending) {
+      const jobId = await enqueueBroadcastRecipientJob(campaignId, rec.id, delay);
+      if (jobId) {
+        await prisma.broadcastCampaignRecipient.update({
+          where: { id: rec.id },
+          data: { queueJobId: jobId },
+        });
+      } else {
+        await processBroadcastRecipient(app, campaignId, rec.id);
+      }
+      delay += throttleMs;
+    }
+    return;
+  }
 
   for (const rec of pending) {
     const state = await prisma.broadcastCampaign.findUnique({
@@ -45,71 +88,14 @@ export async function runBroadcastCampaign(app: FastifyInstance, campaignId: str
     });
     if (!state || state.status !== "RUNNING") return;
 
-    let payload: SendMessageInput;
-    if (campaign.messageType === "TEMPLATE") {
-      if (!campaign.templateId) {
-        await prisma.broadcastCampaignRecipient.update({
-          where: { id: rec.id },
-          data: { status: "FAILED", error: "Campaign missing templateId" },
-        });
-        failed += 1;
-        await prisma.broadcastCampaign.update({
-          where: { id: campaignId },
-          data: { sentCount: sent, failedCount: failed },
-        });
-        await sleep(THROTTLE_MS);
-        continue;
-      }
-      payload = {
-        contactId: rec.contactId,
-        type: "TEMPLATE",
-        templateId: campaign.templateId,
-      };
-    } else {
-      payload = {
-        contactId: rec.contactId,
-        type: "TEXT",
-        body: campaign.body ?? "",
-      };
-    }
-
-    try {
-      await deliverOutboundWhatsAppMessage({
-        organizationId: campaign.organizationId,
-        data: payload,
-        actor: { kind: "user", userId: campaign.createdById },
-        log: app.log,
-        newConversation: { status: "OPEN", assignedToId: campaign.createdById },
-      });
-      await prisma.broadcastCampaignRecipient.update({
-        where: { id: rec.id },
-        data: { status: "SENT", sentAt: new Date(), error: null },
-      });
-      sent += 1;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await prisma.broadcastCampaignRecipient.update({
-        where: { id: rec.id },
-        data: { status: "FAILED", error: msg },
-      });
-      failed += 1;
-    }
-
-    await prisma.broadcastCampaign.update({
-      where: { id: campaignId },
-      data: { sentCount: sent, failedCount: failed },
-    });
-
-    await sleep(THROTTLE_MS);
+    await processBroadcastRecipient(app, campaignId, rec.id);
+    await sleep(throttleMs);
   }
 
-  await prisma.broadcastCampaign.update({
-    where: { id: campaignId },
-    data: {
-      status: "COMPLETED",
-      completedAt: new Date(),
-      sentCount: sent,
-      failedCount: failed,
-    },
-  });
+  await finalizeBroadcastCampaignIfDone(campaignId);
+  await syncBroadcastCampaignEngagement(campaignId);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }

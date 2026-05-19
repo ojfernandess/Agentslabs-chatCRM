@@ -45,6 +45,8 @@ import {
   flushAutomationLogBuffer,
   registerAutomationExecutionLogWorker,
 } from "./lib/automationExecutionLog.js";
+import { registerBroadcastQueueWorker, closeBroadcastQueue } from "./lib/broadcastQueue.js";
+import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 
 const app = Fastify({
   logger: {
@@ -143,6 +145,7 @@ app.get("/health", async () => ({ status: "ok" }));
 const shutdown = async () => {
   app.log.info("Shutting down...");
   await flushAutomationLogBuffer().catch(() => {});
+  await closeBroadcastQueue().catch(() => {});
   await app.close();
   await disconnectDb();
   process.exit(0);
@@ -156,11 +159,17 @@ try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Server running at http://${config.host}:${config.port}`);
   registerAutomationExecutionLogWorker(app.log);
+  registerBroadcastQueueWorker(app);
   const autoResolveMs = 120_000;
   setInterval(() => {
     void runAutoResolveInactiveConversationsTick({ log: app.log });
   }, autoResolveMs);
   void runAutoResolveInactiveConversationsTick({ log: app.log });
+  const broadcastSchedulerMs = 60_000;
+  setInterval(() => {
+    void runBroadcastSchedulerTick(app);
+  }, broadcastSchedulerMs);
+  void runBroadcastSchedulerTick(app);
 } catch (err) {
   app.log.error(err);
   process.exit(1);

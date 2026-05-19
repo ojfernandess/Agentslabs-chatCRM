@@ -61,6 +61,32 @@ enum BroadcastRecipientStatus {
   FAILED
 }
 
+enum BroadcastChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  TELEGRAM
+  INSTAGRAM
+  MESSENGER
+  PUSH
+  WEBHOOK
+  VOICE
+}
+
+enum BroadcastScheduleType {
+  IMMEDIATE
+  SCHEDULED
+  RECURRING
+  EVENT
+}
+
+enum BroadcastApprovalStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum DealStatus {
   OPEN
   WON
@@ -214,8 +240,9 @@ model Inbox {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  members       InboxMember[]
-  conversations Conversation[]
+  members            InboxMember[]
+  conversations      Conversation[]
+  broadcastCampaigns BroadcastCampaign[]
 
   @@index([organizationId])
   @@index([agentBotId])
@@ -443,6 +470,7 @@ model User {
   inboxMemberships             InboxMember[]
   messagesAsActor              Message[]                     @relation("MessageActor")
   broadcastCampaignsCreated    BroadcastCampaign[]           @relation("BroadcastCampaignCreator")
+  broadcastCampaignsApproved   BroadcastCampaign[]           @relation("BroadcastCampaignApprover")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
   conversationReadStates       ConversationUserReadState[]
   passwordResetTokens          PasswordResetToken[]
@@ -881,24 +909,56 @@ model BroadcastCampaign {
   id          String                  @id @default(uuid()) @db.Uuid
   name        String                  @db.VarChar(200)
   status      BroadcastCampaignStatus @default(DRAFT)
-  /// Apenas TEXT ou TEMPLATE são aceites na API de campanhas.
+  channel     BroadcastChannel        @default(WHATSAPP)
+  /// Apenas TEXT ou TEMPLATE são aceites na API de campanhas (WhatsApp).
   messageType MessageType             @map("message_type")
   body        String?                 @db.Text
   templateId  String?                 @map("template_id") @db.Uuid
+  subject     String?                 @db.VarChar(500)
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  inboxId String? @map("inbox_id") @db.Uuid
+  inbox   Inbox?  @relation(fields: [inboxId], references: [id], onDelete: SetNull)
 
   createdById String @map("created_by_id") @db.Uuid
   createdBy   User   @relation("BroadcastCampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   template MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
+  scheduleType   BroadcastScheduleType   @default(IMMEDIATE) @map("schedule_type")
+  scheduledAt    DateTime?               @map("scheduled_at")
+  cronExpression String?                 @map("cron_expression") @db.VarChar(120)
+  nextRunAt      DateTime?               @map("next_run_at")
+  eventTrigger   String?                 @map("event_trigger") @db.VarChar(64)
+  eventConfig    Json?                   @map("event_config")
+  segmentRules   Json?                   @map("segment_rules")
+  flowDefinition Json?                   @map("flow_definition")
+  abConfig       Json?                   @map("ab_config")
+
+  requiresApproval Boolean                 @default(false) @map("requires_approval")
+  approvalStatus   BroadcastApprovalStatus @default(NONE) @map("approval_status")
+  approvedById     String?                 @map("approved_by_id") @db.Uuid
+  approvedBy       User?                   @relation("BroadcastCampaignApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?               @map("approved_at")
+  rejectionReason  String?                 @map("rejection_reason") @db.Text
+
+  integrationToolId String?               @map("integration_tool_id") @db.Uuid
+  integrationTool   AutomationCustomTool? @relation(fields: [integrationToolId], references: [id], onDelete: SetNull)
+
+  throttleMs          Int      @default(750) @map("throttle_ms")
+  useDistributedQueue Boolean  @default(true) @map("use_distributed_queue")
+  revenuePerConversion Decimal? @map("revenue_per_conversion") @db.Decimal(12, 2)
+
   startedAt       DateTime? @map("started_at")
   completedAt     DateTime? @map("completed_at")
   totalRecipients Int       @default(0) @map("total_recipients")
   sentCount       Int       @default(0) @map("sent_count")
   failedCount     Int       @default(0) @map("failed_count")
+  responseCount   Int       @default(0) @map("response_count")
+  conversionCount Int       @default(0) @map("conversion_count")
+  roiValue        Decimal?  @map("roi_value") @db.Decimal(14, 2)
   lastError       String?   @map("last_error") @db.Text
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -909,6 +969,8 @@ model BroadcastCampaign {
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, scheduleType, nextRunAt])
+  @@index([inboxId])
   @@map("broadcast_campaigns")
 }
 
@@ -928,8 +990,13 @@ model BroadcastCampaignRecipient {
   campaignId String                   @map("campaign_id") @db.Uuid
   contactId  String                   @map("contact_id") @db.Uuid
   status     BroadcastRecipientStatus @default(PENDING)
+  abVariant  String?                  @map("ab_variant") @db.VarChar(1)
   error      String?                  @db.Text
   sentAt     DateTime?                @map("sent_at")
+  openedAt   DateTime?                @map("opened_at")
+  respondedAt DateTime?               @map("responded_at")
+  convertedAt DateTime?               @map("converted_at")
+  queueJobId String?                  @map("queue_job_id") @db.VarChar(64)
   createdAt  DateTime                 @default(now()) @map("created_at")
 
   campaign BroadcastCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -937,6 +1004,7 @@ model BroadcastCampaignRecipient {
 
   @@unique([campaignId, contactId])
   @@index([campaignId])
+  @@index([campaignId, status])
   @@map("broadcast_campaign_recipients")
 }
 
@@ -1298,7 +1366,8 @@ model AutomationCustomTool {
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
-  executions AutomationToolExecution[]
+  executions         AutomationToolExecution[]
+  broadcastCampaigns BroadcastCampaign[]
 
   @@index([organizationId])
   @@index([botId])
