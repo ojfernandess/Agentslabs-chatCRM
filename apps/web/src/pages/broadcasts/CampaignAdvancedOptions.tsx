@@ -22,6 +22,7 @@ export interface AbConfig {
 
 export interface AdvancedCampaignOptions {
   channel: CampaignChannel;
+  inboxId: string;
   scheduleType: "IMMEDIATE" | "SCHEDULED" | "RECURRING" | "EVENT";
   scheduledAt: string;
   cronExpression: string;
@@ -347,6 +348,7 @@ export { CHANNEL_API };
 export function defaultAdvancedOptions(): AdvancedCampaignOptions {
   return {
     channel: "whatsapp",
+    inboxId: "",
     scheduleType: "IMMEDIATE",
     scheduledAt: "",
     cronExpression: "0 9 * * *",

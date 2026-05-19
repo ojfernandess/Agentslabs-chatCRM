@@ -1,8 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { X, Sparkles, Blocks, Send, Wand2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { segmentHasAudience, type TagOption, type TemplateOption } from "./campaignTypes";
+import { isWhatsAppCloudApiProvider, parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
+import {
+  segmentHasAudience,
+  OMNICHANNEL_CHANNELS,
+  CHANNEL_TO_INBOX_TYPE,
+  channelNeedsInbox,
+  type TagOption,
+  type TemplateOption,
+  type InboxOption,
+  type CampaignChannel,
+} from "./campaignTypes";
 import {
   CampaignAdvancedOptions,
   type AdvancedCampaignOptions,
@@ -29,6 +39,8 @@ interface Props {
   onClose: () => void;
   tags: TagOption[];
   templates: TemplateOption[];
+  templatesLoading?: boolean;
+  inboxes: InboxOption[];
   integrationTools: { id: string; name: string; toolType: string }[];
   pipelineStages: { id: string; name: string }[];
   initialTab?: CreatorTab;
@@ -38,6 +50,7 @@ interface Props {
   submitting: boolean;
   formError: string;
   onPreview: (tagIds: string[], segmentRules: AdvancedCampaignOptions["segmentRules"]) => void;
+  onInboxChange?: (inboxId: string) => void;
   onSubmit: (draft: CreatorDraft) => void;
 }
 
@@ -58,11 +71,20 @@ function generateAiDraft(prompt: string): Pick<CreatorDraft, "name" | "body" | "
   return { name, body, messageType: "TEXT" };
 }
 
+function firstInboxForChannel(inboxes: InboxOption[], channel: CampaignChannel): string {
+  const inboxType = CHANNEL_TO_INBOX_TYPE[channel];
+  if (!inboxType) return "";
+  const match = inboxes.find((i) => i.channelType === inboxType);
+  return match?.id ?? "";
+}
+
 export function CampaignCreatorPanel({
   open,
   onClose,
   tags,
   templates,
+  templatesLoading = false,
+  inboxes,
   integrationTools,
   pipelineStages,
   initialTab = "quick",
@@ -72,6 +94,7 @@ export function CampaignCreatorPanel({
   submitting,
   formError,
   onPreview,
+  onInboxChange,
   onSubmit,
 }: Props) {
   const { t } = useI18n();
@@ -82,14 +105,64 @@ export function CampaignCreatorPanel({
   useEffect(() => {
     if (!open) return;
     setTab(initialTab);
-    setDraft({ ...defaultDraft, ...initialDraft });
+    const merged: CreatorDraft = { ...defaultDraft, ...initialDraft };
+    if (!merged.advanced.inboxId && merged.advanced.channel) {
+      merged.advanced = {
+        ...merged.advanced,
+        inboxId: firstInboxForChannel(inboxes, merged.advanced.channel),
+      };
+    }
+    setDraft(merged);
     setAiPrompt("");
-  }, [open, initialTab, initialDraft]);
+    if (merged.advanced.inboxId) onInboxChange?.(merged.advanced.inboxId);
+  }, [open, initialTab, initialDraft, inboxes, onInboxChange]);
 
   useEffect(() => {
     if (!open) return;
     onPreview(draft.selectedTagIds, draft.advanced.segmentRules);
   }, [open, draft.selectedTagIds.join(","), JSON.stringify(draft.advanced.segmentRules), onPreview]);
+
+  const channelInboxes = useMemo(() => {
+    const inboxType = CHANNEL_TO_INBOX_TYPE[draft.advanced.channel];
+    if (!inboxType) return [];
+    return inboxes.filter((i) => i.channelType === inboxType);
+  }, [inboxes, draft.advanced.channel]);
+
+  const selectedInbox = inboxes.find((i) => i.id === draft.advanced.inboxId);
+  const selectedWaProvider = selectedInbox
+    ? parseInboxWhatsappFromChannelConfig(selectedInbox.channelConfig).whatsappProvider
+    : null;
+  const isMetaWhatsapp =
+    draft.advanced.channel === "whatsapp" &&
+    selectedInbox?.channelType === "WHATSAPP" &&
+    isWhatsAppCloudApiProvider(selectedWaProvider ?? "");
+
+  const visibleTemplates = useMemo(() => {
+    if (draft.messageType !== "TEMPLATE") return templates;
+    if (!isMetaWhatsapp) return templates;
+    return templates.filter((tpl) => Boolean(tpl.providerTemplateId?.trim()));
+  }, [templates, draft.messageType, isMetaWhatsapp]);
+
+  const patchAdvanced = (partial: Partial<AdvancedCampaignOptions>) => {
+    setDraft((d) => ({ ...d, advanced: { ...d.advanced, ...partial } }));
+  };
+
+  const setChannel = (channel: CampaignChannel) => {
+    const inboxId = firstInboxForChannel(inboxes, channel);
+    setDraft((d) => ({
+      ...d,
+      templateId: channel === "whatsapp" ? d.templateId : "",
+      messageType: channel === "email" ? "TEXT" : d.messageType,
+      advanced: { ...d.advanced, channel, inboxId },
+    }));
+    if (inboxId) onInboxChange?.(inboxId);
+  };
+
+  const setInboxId = (inboxId: string) => {
+    patchAdvanced({ inboxId });
+    onInboxChange?.(inboxId);
+    setDraft((d) => ({ ...d, templateId: "" }));
+  };
 
   if (!open) return null;
 
@@ -107,9 +180,13 @@ export function CampaignCreatorPanel({
     setTab("quick");
   };
 
+  const needsInbox = channelNeedsInbox(draft.advanced.channel);
+  const inboxOk = !needsInbox || Boolean(draft.advanced.inboxId);
+
   const canSubmit =
     Boolean(draft.name.trim()) &&
     segmentHasAudience(draft.selectedTagIds, draft.advanced.segmentRules) &&
+    inboxOk &&
     (draft.advanced.channel === "email"
       ? Boolean(draft.body.trim() || draft.advanced.subject.trim())
       : draft.messageType === "TEXT"
@@ -159,6 +236,57 @@ export function CampaignCreatorPanel({
           {tab === "quick" ? (
             <div className="space-y-4">
               <div>
+                <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
+                  {t("broadcastPage.creatorChannel")}
+                </label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {OMNICHANNEL_CHANNELS.map((ch) => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      disabled={!ch.available}
+                      onClick={() => ch.available && setChannel(ch.id)}
+                      className={clsx(
+                        "rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
+                        draft.advanced.channel === ch.id
+                          ? "bg-brand-500 text-white"
+                          : ch.available
+                            ? "border border-ink-200 text-ink-600 hover:border-brand-300 dark:border-white/10 dark:text-ink-300"
+                            : "border border-ink-100 text-ink-400 opacity-50",
+                      )}
+                    >
+                      {t(ch.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {needsInbox ? (
+                <div>
+                  <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
+                    {t("broadcastPage.creatorInbox")}
+                  </label>
+                  {channelInboxes.length === 0 ? (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{t("broadcastPage.noInboxForChannel")}</p>
+                  ) : (
+                    <select
+                      value={draft.advanced.inboxId}
+                      onChange={(e) => setInboxId(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                    >
+                      <option value="">{t("broadcastPage.selectInbox")}</option>
+                      {channelInboxes.map((inbox) => (
+                        <option key={inbox.id} value={inbox.id}>
+                          {inbox.name}
+                          {inbox.isDefault ? ` (${t("broadcastPage.inboxDefault")})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : null}
+
+              <div>
                 <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">{t("broadcastPage.name")}</label>
                 <input
                   value={draft.name}
@@ -174,15 +302,22 @@ export function CampaignCreatorPanel({
                   </label>
                   <select
                     value={draft.messageType}
-                    onChange={(e) => setDraft((d) => ({ ...d, messageType: e.target.value as "TEXT" | "TEMPLATE" }))}
-                    className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        messageType: e.target.value as "TEXT" | "TEMPLATE",
+                        templateId: e.target.value === "TEMPLATE" ? d.templateId : "",
+                      }))
+                    }
+                    disabled={draft.advanced.channel === "email"}
+                    className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5 disabled:opacity-60"
                   >
                     <option value="TEMPLATE">{t("broadcastPage.typeTemplate")}</option>
                     <option value="TEXT">{t("broadcastPage.typeText")}</option>
                   </select>
                 </div>
                 <div>
-                  {draft.messageType === "TEMPLATE" ? (
+                  {draft.messageType === "TEMPLATE" && draft.advanced.channel !== "email" ? (
                     <>
                       <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("broadcastPage.template")}
@@ -190,15 +325,28 @@ export function CampaignCreatorPanel({
                       <select
                         value={draft.templateId}
                         onChange={(e) => setDraft((d) => ({ ...d, templateId: e.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
+                        disabled={templatesLoading || !inboxOk}
+                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5 disabled:opacity-60"
                       >
-                        <option value="">{t("broadcastPage.selectTemplate")}</option>
-                        {templates.map((tpl) => (
+                        <option value="">
+                          {templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}
+                        </option>
+                        {visibleTemplates.map((tpl) => (
                           <option key={tpl.id} value={tpl.id}>
                             {tpl.name}
                           </option>
                         ))}
                       </select>
+                      {isMetaWhatsapp ? (
+                        <p className="mt-1 text-[11px] text-ink-500">{t("broadcastPage.metaTemplatesHint")}</p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-ink-500">{t("broadcastPage.templatesCampaignHint")}</p>
+                      )}
+                      {isMetaWhatsapp && !templatesLoading && visibleTemplates.length === 0 && inboxOk ? (
+                        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                          {t("broadcastPage.noMetaTemplates")}
+                        </p>
+                      ) : null}
                     </>
                   ) : (
                     <>

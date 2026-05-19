@@ -80,6 +80,33 @@ export interface TemplateOption {
   id: string;
   name: string;
   bodyVariableCount?: number;
+  providerTemplateId?: string | null;
+  isApproved?: boolean;
+}
+
+export interface InboxOption {
+  id: string;
+  name: string;
+  channelType: string;
+  isDefault?: boolean;
+  channelConfig?: unknown;
+}
+
+/** Maps campaign channel UI id → inbox.channelType in the API. */
+export const CHANNEL_TO_INBOX_TYPE: Record<CampaignChannel, string | null> = {
+  whatsapp: "WHATSAPP",
+  email: "EMAIL",
+  sms: "SMS",
+  telegram: "TELEGRAM",
+  instagram: "INSTAGRAM",
+  messenger: "FACEBOOK",
+  push: "API",
+  webhook: "API",
+  voice: "VOICE",
+};
+
+export function channelNeedsInbox(channel: CampaignChannel): boolean {
+  return CHANNEL_TO_INBOX_TYPE[channel] != null;
 }
 
 export const OMNICHANNEL_CHANNELS: {

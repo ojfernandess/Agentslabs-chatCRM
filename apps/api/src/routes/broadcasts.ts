@@ -13,6 +13,19 @@ import {
 } from "../lib/broadcastSegmentation.js";
 import { parseSegmentRules, segmentHasAudienceFilters } from "../lib/broadcastTypes.js";
 import { BROADCAST_EVENT_TRIGGERS } from "../lib/broadcastTypes.js";
+import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
+
+const campaignChannelToInboxType: Record<string, string> = {
+  WHATSAPP: "WHATSAPP",
+  EMAIL: "EMAIL",
+  SMS: "SMS",
+  TELEGRAM: "TELEGRAM",
+  INSTAGRAM: "INSTAGRAM",
+  MESSENGER: "FACEBOOK",
+  PUSH: "API",
+  WEBHOOK: "API",
+  VOICE: "VOICE",
+};
 
 const channelEnum = z.enum([
   "WHATSAPP",
@@ -208,6 +221,7 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
 
     const d = parsed.data;
 
+    let templateRow: { bodyVariableCount: number; providerTemplateId: string | null } | null = null;
     if (d.templateId) {
       const tpl = await prisma.messageTemplate.findFirst({
         where: { id: d.templateId, organizationId },
@@ -215,10 +229,63 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       if (!tpl) {
         return reply.status(400).send({ error: "Bad Request", message: "Template not found", statusCode: 400 });
       }
+      templateRow = tpl;
       if (d.messageType === "TEMPLATE" && tpl.bodyVariableCount > 0) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Campaigns only support templates without body variables",
+          statusCode: 400,
+        });
+      }
+    }
+
+    const inboxTypeForChannel = campaignChannelToInboxType[d.channel];
+    const campaignNeedsInbox =
+      Boolean(inboxTypeForChannel) && d.channel !== "WEBHOOK" && d.channel !== "PUSH";
+    let resolvedInboxId = d.inboxId;
+    if (campaignNeedsInbox) {
+      if (!resolvedInboxId) {
+        const fallback = await prisma.inbox.findFirst({
+          where: { organizationId, channelType: inboxTypeForChannel as never },
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        });
+        resolvedInboxId = fallback?.id;
+      }
+      if (!resolvedInboxId) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Select an inbox for this channel",
+          statusCode: 400,
+        });
+      }
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: resolvedInboxId, organizationId },
+      });
+      if (!inbox || inbox.channelType !== inboxTypeForChannel) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Inbox does not match the campaign channel",
+          statusCode: 400,
+        });
+      }
+    }
+
+    if (
+      d.channel === "WHATSAPP" &&
+      d.messageType === "TEMPLATE" &&
+      d.templateId &&
+      templateRow &&
+      resolvedInboxId
+    ) {
+      const providerKind = await getWhatsappProviderKindForInbox(organizationId, resolvedInboxId);
+      if (
+        (providerKind === "meta" || providerKind === "360dialog") &&
+        !templateRow.providerTemplateId?.trim()
+      ) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "Template is not synced with Meta for this WhatsApp inbox. Open Templates and sync, or pick another model.",
           statusCode: 400,
         });
       }
@@ -242,7 +309,7 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       data: {
         name: d.name,
         channel: d.channel,
-        inboxId: d.inboxId,
+        inboxId: resolvedInboxId ?? d.inboxId,
         messageType: d.messageType,
         body: d.messageType === "TEXT" || d.channel === "EMAIL" ? (d.body ?? "").trim() || null : null,
         templateId: d.messageType === "TEMPLATE" ? d.templateId : null,

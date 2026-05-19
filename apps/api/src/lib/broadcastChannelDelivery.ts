@@ -32,9 +32,10 @@ function mapChannelToInboxType(channel: string): string | null {
 }
 
 async function resolveInboxId(organizationId: string, channel: string, inboxId?: string | null): Promise<string> {
+  const expectedType = mapChannelToInboxType(channel);
   if (inboxId) {
     const row = await prisma.inbox.findFirst({ where: { id: inboxId, organizationId } });
-    if (row) return row.id;
+    if (row && (!expectedType || row.channelType === expectedType)) return row.id;
   }
   const inboxType = mapChannelToInboxType(channel);
   if (inboxType) {
@@ -173,6 +174,19 @@ export async function deliverBroadcastToContact(options: {
   }
 
   const inboxId = await resolveInboxId(campaign.organizationId, channel, campaign.inboxId);
+  const inbox = await prisma.inbox.findFirst({
+    where: { id: inboxId, organizationId: campaign.organizationId },
+  });
+  const expectedInboxType = mapChannelToInboxType(channel);
+  if (expectedInboxType && inbox && inbox.channelType !== expectedInboxType) {
+    throw new Error(
+      `Selected inbox uses ${inbox.channelType} but campaign channel is ${channel}. Pick a matching inbox.`,
+    );
+  }
+  if (payload.messageType === "TEMPLATE" && channel === "WHATSAPP" && inbox?.channelType !== "WHATSAPP") {
+    throw new Error("WhatsApp templates require a WhatsApp inbox");
+  }
+
   let sendInput: SendMessageInput;
   if (payload.messageType === "TEMPLATE" && payload.templateId) {
     sendInput = { contactId: contact.id, type: "TEMPLATE", templateId: payload.templateId, inboxId };
@@ -180,13 +194,19 @@ export async function deliverBroadcastToContact(options: {
     sendInput = { contactId: contact.id, type: "TEXT", body, inboxId };
   }
 
-  await deliverOutboundWhatsAppMessage({
+  const { message } = await deliverOutboundWhatsAppMessage({
     organizationId: campaign.organizationId,
     data: sendInput,
     actor: { kind: "user", userId: actorUserId },
     log,
     newConversation: { status: "OPEN", assignedToId: actorUserId },
   });
+
+  if (channel === "WHATSAPP" && message.status === "FAILED") {
+    throw new Error(
+      "WhatsApp delivery failed. Confirm the inbox uses Meta Cloud API and the template is synced for that number.",
+    );
+  }
 }
 
 export function resolvePayloadForRecipient(

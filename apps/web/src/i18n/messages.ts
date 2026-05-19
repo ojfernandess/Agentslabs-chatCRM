@@ -1001,6 +1001,15 @@ export const messages = {
       filterSearchPlaceholder: "Nome da campanha…",
       filterStatus: "Estado",
       filterChannel: "Canal",
+      creatorChannel: "Canal de envio",
+      creatorInbox: "Caixa de entrada",
+      selectInbox: "Selecione a caixa…",
+      inboxDefault: "padrão",
+      noInboxForChannel: "Não há caixa configurada para este canal. Crie uma em Caixas de entrada.",
+      metaTemplatesHint:
+        "Modelos sincronizados com a Meta (WhatsApp Cloud API) para a caixa selecionada. Só aparecem modelos sem variáveis no corpo.",
+      noMetaTemplates:
+        "Nenhum modelo Meta sincronizado nesta caixa. Abra Modelos ou sincronize na configuração da caixa WhatsApp.",
       filterAll: "Todos",
       filtersSegmentHint: "Filtre por estado e canal. Segmentação avançada no criador de campanha.",
       funnelTitle: "Funil de execução",
@@ -3767,6 +3776,15 @@ export const messages = {
       filterSearchPlaceholder: "Campaign name…",
       filterStatus: "Status",
       filterChannel: "Channel",
+      creatorChannel: "Send channel",
+      creatorInbox: "Inbox",
+      selectInbox: "Select inbox…",
+      inboxDefault: "default",
+      noInboxForChannel: "No inbox configured for this channel. Create one under Inboxes.",
+      metaTemplatesHint:
+        "Templates synced with Meta (WhatsApp Cloud API) for the selected inbox. Only templates without body variables are listed.",
+      noMetaTemplates:
+        "No Meta-synced templates for this inbox. Open Templates or sync from the WhatsApp inbox settings.",
       filterAll: "All",
       filtersSegmentHint: "Filter by status and channel. Advanced segmentation in the campaign creator.",
       funnelTitle: "Execution funnel",

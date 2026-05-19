@@ -25,6 +25,7 @@ import {
   type CampaignStatusFilter,
   type TagOption,
   type TemplateOption,
+  type InboxOption,
 } from "@/pages/broadcasts/campaignTypes";
 
 export function BroadcastCampaignsPage() {
@@ -45,7 +46,9 @@ export function BroadcastCampaignsPage() {
   const [creatorInitial, setCreatorInitial] = useState<Partial<CreatorDraft> | undefined>();
 
   const [tags, setTags] = useState<TagOption[]>([]);
+  const [inboxes, setInboxes] = useState<InboxOption[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [integrationTools, setIntegrationTools] = useState<{ id: string; name: string; toolType: string }[]>([]);
   const [pipelineStages, setPipelineStages] = useState<{ id: string; name: string }[]>([]);
   const [segmentPreview, setSegmentPreview] = useState<SegmentRules>({});
@@ -82,25 +85,44 @@ export function BroadcastCampaignsPage() {
     }
   }, []);
 
+  const loadTemplatesForInbox = useCallback(async (inboxId?: string) => {
+    setTemplatesLoading(true);
+    try {
+      const q = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
+      const tplList = await api.get<TemplateOption[]>(`/templates${q}`);
+      setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
+    } catch {
+      setTemplates([]);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
   const loadMeta = useCallback(async () => {
     try {
-      const [tagList, tplList, tools, stages] = await Promise.all([
+      const [tagList, inboxesRes, tools, stages] = await Promise.all([
         api.get<TagOption[]>("/tags"),
-        api.get<TemplateOption[]>("/templates"),
+        api.get<{ data: InboxOption[] }>("/inboxes"),
         api.get<{ id: string; name: string; toolType: string }[]>("/broadcasts/integration-tools").catch(() => []),
         api.get<{ id: string; name: string }[]>("/crm/pipeline-stages").catch(() => []),
       ]);
       setTags(Array.isArray(tagList) ? tagList : []);
-      setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
+      const inboxRows = [...(inboxesRes.data ?? [])].sort(
+        (a, b) => Number(!!b.isDefault) - Number(!!a.isDefault) || a.name.localeCompare(b.name),
+      );
+      setInboxes(inboxRows);
       setIntegrationTools(Array.isArray(tools) ? tools : []);
       setPipelineStages(Array.isArray(stages) ? stages : []);
+      const defaultWa = inboxRows.find((i) => i.channelType === "WHATSAPP");
+      await loadTemplatesForInbox(defaultWa?.id);
     } catch {
       setTags([]);
+      setInboxes([]);
       setTemplates([]);
       setIntegrationTools([]);
       setPipelineStages([]);
     }
-  }, []);
+  }, [loadTemplatesForInbox]);
 
   useEffect(() => {
     void loadList();
@@ -198,6 +220,7 @@ export function BroadcastCampaignsPage() {
         };
       }
       if (adv.integrationToolId) payload.integrationToolId = adv.integrationToolId;
+      if (adv.inboxId) payload.inboxId = adv.inboxId;
       if (draft.messageType === "TEXT" || channel === "EMAIL") payload.body = draft.body.trim();
       else if (draft.templateId) payload.templateId = draft.templateId;
 
@@ -478,7 +501,9 @@ export function BroadcastCampaignsPage() {
         open={creatorOpen}
         onClose={() => setCreatorOpen(false)}
         tags={tags}
+        inboxes={inboxes}
         templates={templates}
+        templatesLoading={templatesLoading}
         initialTab={creatorTab}
         initialDraft={creatorInitial}
         previewCount={previewCount}
@@ -488,6 +513,7 @@ export function BroadcastCampaignsPage() {
         integrationTools={integrationTools}
         pipelineStages={pipelineStages}
         onPreview={handlePreview}
+        onInboxChange={(inboxId) => void loadTemplatesForInbox(inboxId || undefined)}
         onSubmit={handleCreate}
       />
       </div>
