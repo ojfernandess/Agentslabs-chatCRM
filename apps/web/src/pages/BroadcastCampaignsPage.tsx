@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
@@ -85,18 +85,48 @@ export function BroadcastCampaignsPage() {
     }
   }, []);
 
-  const loadTemplatesForInbox = useCallback(async (inboxId?: string) => {
-    setTemplatesLoading(true);
-    try {
-      const q = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
-      const tplList = await api.get<TemplateOption[]>(`/templates${q}`);
-      setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
-    } catch {
-      setTemplates([]);
-    } finally {
-      setTemplatesLoading(false);
-    }
+  const templatesFetchRef = useRef<AbortController | null>(null);
+  const templatesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchedInboxRef = useRef<string | undefined>(undefined);
+
+  const loadTemplatesForInbox = useCallback((inboxId?: string, options?: { sync?: boolean }) => {
+    const key = inboxId ?? "";
+    if (lastFetchedInboxRef.current === key && !options?.sync) return;
+
+    if (templatesDebounceRef.current) clearTimeout(templatesDebounceRef.current);
+    templatesDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        templatesFetchRef.current?.abort();
+        const controller = new AbortController();
+        templatesFetchRef.current = controller;
+        setTemplatesLoading(true);
+        try {
+          const params = new URLSearchParams();
+          if (inboxId) params.set("inboxId", inboxId);
+          if (options?.sync) params.set("sync", "1");
+          const qs = params.toString();
+          const tplList = await api.get<TemplateOption[]>(`/templates${qs ? `?${qs}` : ""}`, {
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          lastFetchedInboxRef.current = key;
+          setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
+        } catch (e) {
+          if (e instanceof DOMException && e.name === "AbortError") return;
+          setTemplates([]);
+        } finally {
+          if (!controller.signal.aborted) setTemplatesLoading(false);
+        }
+      })();
+    }, 350);
   }, []);
+
+  const handleInboxChange = useCallback(
+    (inboxId: string) => {
+      loadTemplatesForInbox(inboxId || undefined);
+    },
+    [loadTemplatesForInbox],
+  );
 
   const loadMeta = useCallback(async () => {
     try {
@@ -113,8 +143,10 @@ export function BroadcastCampaignsPage() {
       setInboxes(inboxRows);
       setIntegrationTools(Array.isArray(tools) ? tools : []);
       setPipelineStages(Array.isArray(stages) ? stages : []);
-      const defaultWa = inboxRows.find((i) => i.channelType === "WHATSAPP");
-      await loadTemplatesForInbox(defaultWa?.id);
+      const defaultWa =
+        inboxRows.find((i) => i.channelType === "WHATSAPP" && i.isDefault) ??
+        inboxRows.find((i) => i.channelType === "WHATSAPP");
+      loadTemplatesForInbox(defaultWa?.id);
     } catch {
       setTags([]);
       setInboxes([]);
@@ -513,7 +545,7 @@ export function BroadcastCampaignsPage() {
         integrationTools={integrationTools}
         pipelineStages={pipelineStages}
         onPreview={handlePreview}
-        onInboxChange={(inboxId) => void loadTemplatesForInbox(inboxId || undefined)}
+        onInboxChange={handleInboxChange}
         onSubmit={handleCreate}
       />
       </div>

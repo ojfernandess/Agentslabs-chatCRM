@@ -24,14 +24,30 @@ const evolutionTemplateSchema = z.object({
   footer: z.string().max(160).optional(),
 });
 
+/** Evita bater na Meta a cada troca de caixa no UI (429). */
+const wabaSyncCooldownMs = 5 * 60 * 1000;
+const lastWabaSyncAt = new Map<string, number>();
+
+function shouldRunWabaSync(organizationId: string, inboxId?: string): boolean {
+  const key = `${organizationId}:${inboxId ?? "all"}`;
+  const now = Date.now();
+  const last = lastWabaSyncAt.get(key) ?? 0;
+  if (now - last < wabaSyncCooldownMs) return false;
+  lastWabaSyncAt.set(key, now);
+  return true;
+}
+
 export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
   app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-    const q = request.query as { inboxId?: string };
-    await syncWabaTemplatesForOrganization(organizationId, { inboxId: q?.inboxId, log: app.log });
+    const q = request.query as { inboxId?: string; sync?: string };
+    const wantsSync = q?.sync === "1" || q?.sync === "true";
+    if (wantsSync && shouldRunWabaSync(organizationId, q?.inboxId)) {
+      await syncWabaTemplatesForOrganization(organizationId, { inboxId: q?.inboxId, log: app.log });
+    }
     return prisma.messageTemplate.findMany({
       where: { organizationId },
       orderBy: { name: "asc" },

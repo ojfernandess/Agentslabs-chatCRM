@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { X, Sparkles, Blocks, Send, Wand2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -74,8 +74,9 @@ function generateAiDraft(prompt: string): Pick<CreatorDraft, "name" | "body" | "
 function firstInboxForChannel(inboxes: InboxOption[], channel: CampaignChannel): string {
   const inboxType = CHANNEL_TO_INBOX_TYPE[channel];
   if (!inboxType) return "";
-  const match = inboxes.find((i) => i.channelType === inboxType);
-  return match?.id ?? "";
+  const matches = inboxes.filter((i) => i.channelType === inboxType);
+  const preferred = matches.find((i) => i.isDefault) ?? matches[0];
+  return preferred?.id ?? "";
 }
 
 export function CampaignCreatorPanel({
@@ -101,9 +102,21 @@ export function CampaignCreatorPanel({
   const [tab, setTab] = useState<CreatorTab>(initialTab);
   const [draft, setDraft] = useState<CreatorDraft>({ ...defaultDraft, ...initialDraft });
   const [aiPrompt, setAiPrompt] = useState("");
+  const wasOpenRef = useRef(false);
+  const userPickedInboxRef = useRef(false);
+  const lastLoadedInboxRef = useRef("");
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      wasOpenRef.current = false;
+      userPickedInboxRef.current = false;
+      lastLoadedInboxRef.current = "";
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+    userPickedInboxRef.current = false;
+    lastLoadedInboxRef.current = "";
     setTab(initialTab);
     const merged: CreatorDraft = { ...defaultDraft, ...initialDraft };
     if (!merged.advanced.inboxId && merged.advanced.channel) {
@@ -114,8 +127,25 @@ export function CampaignCreatorPanel({
     }
     setDraft(merged);
     setAiPrompt("");
-    if (merged.advanced.inboxId) onInboxChange?.(merged.advanced.inboxId);
-  }, [open, initialTab, initialDraft, inboxes, onInboxChange]);
+  }, [open, initialTab, initialDraft, inboxes]);
+
+  useEffect(() => {
+    if (!open || userPickedInboxRef.current) return;
+    setDraft((d) => {
+      if (d.advanced.inboxId) return d;
+      const inboxId = firstInboxForChannel(inboxes, d.advanced.channel);
+      if (!inboxId) return d;
+      return { ...d, advanced: { ...d.advanced, inboxId } };
+    });
+  }, [open, inboxes]);
+
+  useEffect(() => {
+    if (!open || !channelNeedsInbox(draft.advanced.channel)) return;
+    const inboxId = draft.advanced.inboxId;
+    if (!inboxId || inboxId === lastLoadedInboxRef.current) return;
+    lastLoadedInboxRef.current = inboxId;
+    onInboxChange?.(inboxId);
+  }, [open, draft.advanced.inboxId, draft.advanced.channel, onInboxChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -148,19 +178,21 @@ export function CampaignCreatorPanel({
   };
 
   const setChannel = (channel: CampaignChannel) => {
+    userPickedInboxRef.current = false;
+    lastLoadedInboxRef.current = "";
     const inboxId = firstInboxForChannel(inboxes, channel);
     setDraft((d) => ({
       ...d,
-      templateId: channel === "whatsapp" ? d.templateId : "",
+      templateId: "",
       messageType: channel === "email" ? "TEXT" : d.messageType,
       advanced: { ...d.advanced, channel, inboxId },
     }));
-    if (inboxId) onInboxChange?.(inboxId);
   };
 
   const setInboxId = (inboxId: string) => {
+    userPickedInboxRef.current = true;
+    lastLoadedInboxRef.current = "";
     patchAdvanced({ inboxId });
-    onInboxChange?.(inboxId);
     setDraft((d) => ({ ...d, templateId: "" }));
   };
 
