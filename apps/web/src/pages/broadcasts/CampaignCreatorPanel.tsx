@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { X, Sparkles, Blocks, Send, Wand2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import type { TagOption, TemplateOption } from "./campaignTypes";
+import { segmentHasAudience, type TagOption, type TemplateOption } from "./campaignTypes";
 import {
   CampaignAdvancedOptions,
   type AdvancedCampaignOptions,
@@ -107,14 +107,9 @@ export function CampaignCreatorPanel({
     setTab("quick");
   };
 
-  const hasAudience =
-    draft.selectedTagIds.length > 0 ||
-    Boolean(draft.advanced.segmentRules.pipelineStageIds?.length) ||
-    Boolean(draft.advanced.segmentRules.cities?.length);
-
   const canSubmit =
     Boolean(draft.name.trim()) &&
-    hasAudience &&
+    segmentHasAudience(draft.selectedTagIds, draft.advanced.segmentRules) &&
     (draft.advanced.channel === "email"
       ? Boolean(draft.body.trim() || draft.advanced.subject.trim())
       : draft.messageType === "TEXT"

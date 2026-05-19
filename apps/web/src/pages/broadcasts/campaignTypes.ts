@@ -143,6 +143,28 @@ export const FLOW_BLOCK_KEYS = [
   "broadcastPage.flowEmail",
 ] as const;
 
+export interface SegmentRulesInput {
+  pipelineStageIds?: string[];
+  lifecycleStages?: string[];
+  cities?: string[];
+  optedInOnly?: boolean;
+  minDealValue?: number;
+  noResponseSinceDays?: number;
+}
+
+export function segmentHasAudience(tagIds: string[], rules?: SegmentRulesInput | null): boolean {
+  if (tagIds.length > 0) return true;
+  if (!rules) return false;
+  return Boolean(
+    rules.pipelineStageIds?.length ||
+      rules.lifecycleStages?.length ||
+      rules.cities?.length ||
+      rules.optedInOnly ||
+      (rules.minDealValue != null && rules.minDealValue > 0) ||
+      (rules.noResponseSinceDays != null && rules.noResponseSinceDays > 0),
+  );
+}
+
 export function campaignProgress(row: CampaignRow): number {
   if (row.status === "DRAFT") return 0;
   if (!row.totalRecipients) return row.status === "COMPLETED" ? 100 : 0;

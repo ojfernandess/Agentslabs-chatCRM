@@ -89,7 +89,7 @@ export function CampaignCenterMetrics({ dashboard, loading }: Props) {
       <MetricCard
         label={t("broadcastPage.metricResponseRate")}
         value={fmtPct(m?.responseRate)}
-        sub={t("broadcastPage.metricComingSoon")}
+        sub={t("broadcastPage.metricResponseSub")}
         icon={MessageCircle}
         tone="violet"
         loading={loading}
@@ -97,7 +97,7 @@ export function CampaignCenterMetrics({ dashboard, loading }: Props) {
       <MetricCard
         label={t("broadcastPage.metricConversions")}
         value={fmtPct(m?.conversions)}
-        sub={t("broadcastPage.metricComingSoon")}
+        sub={t("broadcastPage.metricConversionsSub")}
         icon={TrendingUp}
         tone="emerald"
         loading={loading}
@@ -127,7 +127,7 @@ export function CampaignCenterMetrics({ dashboard, loading }: Props) {
       <MetricCard
         label={t("broadcastPage.metricRoi")}
         value={m?.roi != null ? `R$ ${m.roi.toLocaleString()}` : t("broadcastPage.metricUnavailable")}
-        sub={t("broadcastPage.metricComingSoon")}
+        sub={t("broadcastPage.metricRoiSub")}
         icon={DollarSign}
         tone="violet"
         loading={loading}

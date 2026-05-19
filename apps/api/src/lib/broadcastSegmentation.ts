@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { assertTagsBelongToOrganization } from "./broadcastAudience.js";
-import type { BroadcastSegmentRules } from "./broadcastTypes.js";
+import { segmentHasAudienceFilters, type BroadcastSegmentRules } from "./broadcastTypes.js";
 
 export function buildSegmentWhere(
   organizationId: string,
@@ -64,7 +64,7 @@ export async function validateSegmentInput(
   const effectiveTagIds = rules.tagIds?.length ? rules.tagIds : tagIds;
   if (effectiveTagIds.length > 0) {
     await assertTagsBelongToOrganization(organizationId, effectiveTagIds);
-  } else if (!rules.pipelineStageIds?.length && !rules.lifecycleStages?.length && !rules.cities?.length) {
+  } else if (!segmentHasAudienceFilters([], rules)) {
     throw new Error("At least one tag or segment filter is required");
   }
 }

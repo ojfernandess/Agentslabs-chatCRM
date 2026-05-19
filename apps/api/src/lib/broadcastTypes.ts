@@ -62,6 +62,22 @@ export const BROADCAST_EVENT_TRIGGERS = [
 
 export type BroadcastEventTrigger = (typeof BROADCAST_EVENT_TRIGGERS)[number];
 
+export function segmentHasAudienceFilters(
+  tagIds: string[],
+  segmentRules: BroadcastSegmentRules | null,
+): boolean {
+  if (tagIds.length > 0) return true;
+  if (!segmentRules) return false;
+  return Boolean(
+    segmentRules.pipelineStageIds?.length ||
+      segmentRules.lifecycleStages?.length ||
+      segmentRules.cities?.length ||
+      segmentRules.optedInOnly ||
+      (segmentRules.minDealValue != null && segmentRules.minDealValue > 0) ||
+      (segmentRules.noResponseSinceDays != null && segmentRules.noResponseSinceDays > 0),
+  );
+}
+
 export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;

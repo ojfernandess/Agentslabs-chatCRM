@@ -14,6 +14,7 @@ import {
   defaultAdvancedOptions,
 } from "@/pages/broadcasts/CampaignCreatorPanel";
 import { CHANNEL_API, type SegmentRules } from "@/pages/broadcasts/CampaignAdvancedOptions";
+import { segmentHasAudience } from "@/pages/broadcasts/campaignTypes";
 import { CampaignTemplatesLibrary } from "@/pages/broadcasts/CampaignTemplatesLibrary";
 import { CampaignAnalyticsPanel } from "@/pages/broadcasts/CampaignAnalyticsPanel";
 import {
@@ -120,11 +121,7 @@ export function BroadcastCampaignsPage() {
 
   const runPreview = useCallback(
     async (tagIds: string[], segmentRules: SegmentRules) => {
-      const hasSeg =
-        tagIds.length > 0 ||
-        Boolean((segmentRules.pipelineStageIds as string[] | undefined)?.length) ||
-        Boolean((segmentRules.cities as string[] | undefined)?.length);
-      if (!hasSeg) {
+      if (!segmentHasAudience(tagIds, segmentRules)) {
         setPreviewCount(null);
         return;
       }
@@ -167,11 +164,7 @@ export function BroadcastCampaignsPage() {
   const handleCreate = async (draft: CreatorDraft) => {
     const nameTrim = draft.name.trim();
     const adv = draft.advanced;
-    const hasAudience =
-      draft.selectedTagIds.length > 0 ||
-      Boolean(adv.segmentRules.pipelineStageIds?.length) ||
-      Boolean(adv.segmentRules.cities?.length);
-    if (!nameTrim || !hasAudience) return;
+    if (!nameTrim || !segmentHasAudience(draft.selectedTagIds, adv.segmentRules)) return;
 
     setSubmitting(true);
     setFormError("");

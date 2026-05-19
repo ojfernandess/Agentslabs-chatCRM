@@ -1026,6 +1026,10 @@ export const messages = {
       flowEnd: "Fim",
       flowBuilderDragHint: "Arraste blocos para a área do fluxo. Ligações entre nós são guardadas automaticamente.",
       flowBuilderFootnote: "Passos wait/condition são executados no servidor antes do envio de cada destinatário.",
+      metricResponseSub: "Respostas inbound após envio",
+      metricConversionsSub: "Negócios WON atribuídos à campanha",
+      metricRoiSub: "Receita estimada por conversão configurada",
+      analyticsAbTestActive: "Ative no criador de campanha (opções avançadas) e compare variantes A/B.",
     },
     templateModal: {
       title: "Modelo de mensagem",
@@ -3707,6 +3711,10 @@ export const messages = {
       flowEnd: "End",
       flowBuilderDragHint: "Drag blocks into the flow area. Connections between nodes are saved automatically.",
       flowBuilderFootnote: "Wait/condition steps run on the server before each recipient is sent.",
+      metricResponseSub: "Inbound replies after send",
+      metricConversionsSub: "WON deals attributed to campaigns",
+      metricRoiSub: "Estimated revenue from configured conversion value",
+      analyticsAbTestActive: "Enable in the campaign creator (advanced options) to compare A/B variants.",
     },
     templateModal: {
       title: "Message template",

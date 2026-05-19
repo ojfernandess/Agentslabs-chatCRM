@@ -7,6 +7,7 @@ import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@opencondu
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
+import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -384,6 +385,8 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       include: { tags: { include: { tag: true } } },
     });
 
+    fireBroadcastEventTriggers(app, organizationId, "NEW_LEAD", { contactId: contact.id });
+
     return reply.status(201).send(contact);
   });
 
@@ -546,6 +549,14 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       if (!contact) {
         return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
       }
+
+      if (parsed.data.pipelineStageId !== undefined && contact.pipelineStageId) {
+        fireBroadcastEventTriggers(app, organizationId, "DEAL_STAGE_CHANGED", {
+          contactId: contact.id,
+          pipelineStageId: contact.pipelineStageId,
+        });
+      }
+
       return contact;
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
@@ -636,6 +647,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       where: { id: request.params.id, organizationId },
       include: { tags: { include: { tag: true } } },
     });
+
+    for (const tagId of parsed.data.tagIds) {
+      fireBroadcastEventTriggers(app, organizationId, "TAG_ADDED", {
+        contactId: request.params.id,
+        tagId,
+      });
+    }
 
     return contact;
   });
@@ -733,6 +751,10 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           contact.id,
           contact.pipelineStageId,
         );
+        fireBroadcastEventTriggers(app, organizationId, "DEAL_STAGE_CHANGED", {
+          contactId: contact.id,
+          pipelineStageId: contact.pipelineStageId,
+        });
       }
       return contact;
     } catch {

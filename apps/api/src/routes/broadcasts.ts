@@ -11,7 +11,7 @@ import { syncBroadcastCampaignEngagement } from "../lib/broadcastMetrics.js";
 import {
   countBroadcastAudienceAdvanced,
 } from "../lib/broadcastSegmentation.js";
-import { parseSegmentRules } from "../lib/broadcastTypes.js";
+import { parseSegmentRules, segmentHasAudienceFilters } from "../lib/broadcastTypes.js";
 import { BROADCAST_EVENT_TRIGGERS } from "../lib/broadcastTypes.js";
 
 const channelEnum = z.enum([
@@ -53,13 +53,8 @@ const createCampaignSchema = z
     revenuePerConversion: z.number().min(0).optional(),
   })
   .superRefine((data, ctx) => {
-    const hasTags = data.tagIds.length > 0;
     const seg = parseSegmentRules(data.segmentRules);
-    const hasSegment =
-      Boolean(seg?.pipelineStageIds?.length) ||
-      Boolean(seg?.lifecycleStages?.length) ||
-      Boolean(seg?.cities?.length);
-    if (!hasTags && !hasSegment) {
+    if (!segmentHasAudienceFilters(data.tagIds, seg)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tagIds or segment filters required", path: ["tagIds"] });
     }
     if (data.messageType === "TEXT" && !data.body?.trim() && data.channel !== "EMAIL") {

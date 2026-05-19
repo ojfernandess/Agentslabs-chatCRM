@@ -76,12 +76,9 @@ export function CampaignAnalyticsPanel({ dashboard, loading }: Props) {
             {t("broadcastPage.soon")}
           </span>
         </div>
-        <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-white/5">
-          <p className="text-xs font-bold text-ink-800 dark:text-ink-200">{t("broadcastPage.analyticsAbTest")}</p>
-          <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.analyticsAbTestBody")}</p>
-          <span className="mt-2 inline-block rounded-full bg-ink-200/80 px-2 py-0.5 text-[10px] font-bold uppercase dark:bg-white/10">
-            {t("broadcastPage.soon")}
-          </span>
+        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200">{t("broadcastPage.analyticsAbTest")}</p>
+          <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-300">{t("broadcastPage.analyticsAbTestActive")}</p>
         </div>
       </div>
     </div>

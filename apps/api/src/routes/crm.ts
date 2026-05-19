@@ -8,6 +8,7 @@ import { appendTimelineEvent } from "../lib/timeline.js";
 import { dealStatusFromLeadValueRollup } from "../lib/dealStageSync.js";
 import { DealStatus, Prisma } from "@prisma/client";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
 
 async function requireCrmDeals(organizationId: string, reply: FastifyReply): Promise<boolean> {
   const enabled = await isOrganizationFeatureEnabled(organizationId, "crm_deals");
@@ -548,6 +549,21 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       payload: { fields: Object.keys(parsed.data) },
       actorUserId: request.user.id,
     });
+
+    if (parsed.data.stageId !== undefined) {
+      fireBroadcastEventTriggers(app, organizationId, "DEAL_STAGE_CHANGED", {
+        dealId: updated.id,
+        contactId: updated.primaryContact?.id ?? null,
+        pipelineStageId: updated.stage?.id ?? nextStageId,
+      });
+      if (updated.status === DealStatus.WON) {
+        fireBroadcastEventTriggers(app, organizationId, "DEAL_WON", {
+          dealId: updated.id,
+          contactId: updated.primaryContact?.id ?? null,
+          pipelineStageId: updated.stage?.id ?? nextStageId,
+        });
+      }
+    }
 
     return updated;
   });
