@@ -122,6 +122,10 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       entry?: {
         changes?: {
           value?: {
+            contacts?: {
+              wa_id: string;
+              profile?: { name?: string };
+            }[];
             messages?: {
               from: string;
               id: string;
@@ -154,6 +158,14 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         const value = change.value;
         if (!value) continue;
 
+        const pushNameByWaId = new Map<string, string>();
+        for (const c of value.contacts ?? []) {
+          const name = c.profile?.name?.trim();
+          if (!name || !c.wa_id) continue;
+          pushNameByWaId.set(c.wa_id, name);
+          pushNameByWaId.set(`+${c.wa_id}`, name);
+        }
+
         for (const msg of value.messages ?? []) {
           const typeMap: Record<string, string> = {
             text: "TEXT",
@@ -174,8 +186,9 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             msg.interactive?.list_reply?.title ??
             msg.interactive?.list_reply?.id;
 
+          const fromE164 = `+${msg.from}`;
           messages.push({
-            from: `+${msg.from}`,
+            from: fromE164,
             waMessageId: msg.id,
             type: typeMap[msg.type] ?? "TEXT",
             body: msg.text?.body ?? interactiveBody ?? caption,
@@ -187,6 +200,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             metaMediaId,
             metaFileName: msg.document?.filename,
             timestamp: new Date(parseInt(msg.timestamp) * 1000),
+            pushName: pushNameByWaId.get(msg.from) ?? pushNameByWaId.get(fromE164),
           });
         }
 

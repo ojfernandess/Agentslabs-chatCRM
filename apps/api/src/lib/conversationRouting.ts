@@ -23,8 +23,10 @@ async function triageOpenUnassignedForAgentBot(
   });
 }
 
+const TEMPLATE_REPLY_REOPEN_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Nova mensagem após RESOLVED: não herdar atendente nem dados de encerramento (igual à reabertura manual no painel). */
-function reopenResolvedConversationData(activeConversationStatus: "OPEN" | "PENDING") {
+export function reopenResolvedConversationData(activeConversationStatus: "OPEN" | "PENDING") {
   return {
     status: activeConversationStatus,
     updatedAt: new Date(),
@@ -119,6 +121,33 @@ export async function ensureConversationForWhatsAppContact(params: {
 }
 
 /**
+ * Resposta após envio de template numa conversa RESOLVED: reutilizar a mesma thread.
+ */
+async function findResolvedConversationWithRecentTemplate(params: {
+  organizationId: string;
+  contactId: string;
+  inboxId: string;
+}) {
+  const since = new Date(Date.now() - TEMPLATE_REPLY_REOPEN_MS);
+  return prisma.conversation.findFirst({
+    where: {
+      organizationId: params.organizationId,
+      contactId: params.contactId,
+      inboxId: params.inboxId,
+      status: "RESOLVED",
+      messages: {
+        some: {
+          direction: "OUTBOUND",
+          type: "TEMPLATE",
+          createdAt: { gte: since },
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+/**
  * Conversa numa caixa explícita (canais API / widget / SMS / Telegram / …).
  * Escopo por `inboxId` para o mesmo contacto poder existir em várias caixas.
  */
@@ -177,6 +206,17 @@ export async function ensureConversationForChannelInbox(params: {
     orderBy: { updatedAt: "desc" },
   });
   if (!conv) {
+    const templateThread = await findResolvedConversationWithRecentTemplate({
+      organizationId,
+      contactId,
+      inboxId,
+    });
+    if (templateThread) {
+      return prisma.conversation.update({
+        where: { id: templateThread.id },
+        data: reopenResolvedConversationData(activeConversationStatus),
+      });
+    }
     return prisma.conversation.create({
       data: {
         organizationId,

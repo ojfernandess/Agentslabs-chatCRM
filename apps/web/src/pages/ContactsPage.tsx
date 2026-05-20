@@ -31,6 +31,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { format } from "date-fns";
 import { ContactProfileDrawer } from "@/components/ContactProfileDrawer";
+import { ContactAvatar } from "@/components/ContactAvatar";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 
@@ -439,19 +440,12 @@ export function ContactsPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="relative shrink-0">
-                                <div className="flex h-10 w-10 overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 text-sm font-bold text-slate-600 dark:from-ink-800 dark:to-ink-700 dark:text-ink-200">
-                                  {contact.profilePictureUrl ? (
-                                    <img
-                                      src={contact.profilePictureUrl}
-                                      alt=""
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    <span className="flex h-full w-full items-center justify-center">
-                                      {contact.name.charAt(0).toUpperCase()}
-                                    </span>
-                                  )}
-                                </div>
+                                <ContactAvatar
+                                  contactId={contact.id}
+                                  name={contact.name}
+                                  profilePictureUrl={contact.profilePictureUrl}
+                                  className="h-10 w-10 rounded-xl text-sm"
+                                />
                                 <span
                                   className={clsx(
                                     "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-ink-900",

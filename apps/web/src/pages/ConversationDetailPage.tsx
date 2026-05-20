@@ -65,6 +65,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
+import { ContactAvatar } from "@/components/ContactAvatar";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
   ConversationPriorityBadge,
@@ -1900,19 +1901,12 @@ export function ConversationDetailPage() {
             </Link>
             <div className="relative h-12 w-12 shrink-0 overflow-visible rounded-2xl text-sm font-semibold text-ink-700 dark:text-ink-100">
               <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 dark:from-ink-700 dark:to-ink-800">
-                {conversation.contact.profilePictureUrl ? (
-                  <img
-                    src={conversation.contact.profilePictureUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center">
-                    {conversation.contact.name.charAt(0).toUpperCase()}
-                  </span>
-                )}
+                <ContactAvatar
+                  contactId={conversation.contact.id}
+                  name={conversation.contact.name}
+                  profilePictureUrl={conversation.contact.profilePictureUrl}
+                  className="h-full w-full rounded-2xl text-sm"
+                />
                 <span
                   className={clsx(
                     "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
@@ -2217,21 +2211,12 @@ export function ConversationDetailPage() {
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
                   {showAvatar ? (
                     inbound ? (
-                      <div className="flex h-8 w-8 overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold text-ink-700 dark:bg-ink-700 dark:text-ink-100">
-                        {conversation.contact.profilePictureUrl ? (
-                          <img
-                            src={conversation.contact.profilePictureUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center">
-                            {conversation.contact.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
+                      <ContactAvatar
+                        contactId={conversation.contact.id}
+                        name={conversation.contact.name}
+                        profilePictureUrl={conversation.contact.profilePictureUrl}
+                        className="h-8 w-8 text-[10px]"
+                      />
                     ) : (
                       <div
                         className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"

@@ -5,7 +5,11 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
-import { ensureConversationForChannelInbox, ensureConversationForWhatsAppContact } from "./conversationRouting.js";
+import {
+  ensureConversationForChannelInbox,
+  ensureConversationForWhatsAppContact,
+  reopenResolvedConversationData,
+} from "./conversationRouting.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 
@@ -117,6 +121,16 @@ export async function deliverOutboundWhatsAppMessage(options: {
     inboxChannelConfig = conv.inbox.channelConfig ?? null;
     const { inbox: _inbox, ...rest } = conv;
     conversation = rest;
+    if (conversation.status === "RESOLVED") {
+      const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
+      const botTriageActive = Boolean(agentCtxPre);
+      const activeConversationStatus: "OPEN" | "PENDING" =
+        actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      conversation = await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: reopenResolvedConversationData(activeConversationStatus),
+      });
+    }
     providerKind =
       (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
   } else {

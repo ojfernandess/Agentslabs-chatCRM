@@ -21,6 +21,7 @@ import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInbo
 import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
 import { decrypt } from "../lib/encryption.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
+import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -306,9 +307,7 @@ async function handleWhatsAppPost(
         }
       }
 
-      let contact = await prisma.contact.findFirst({
-        where: { organizationId, phone },
-      });
+      let contact = await findContactByInboundPhone(prisma, organizationId, phone, msg.from);
       let contactJustCreated = false;
 
       if (msg.isGroup && contact && (contact.waId !== msg.groupJid || !contact.isGroupChat)) {
@@ -325,11 +324,14 @@ async function handleWhatsAppPost(
         const gid = (msg.groupJid ?? "").split("@")[0]?.replace(/\D/g, "") ?? "";
         const defaultGroupName =
           gid.length >= 4 ? `Grupo · ${gid.slice(-8)}` : "Grupo WhatsApp";
+        const displayName = msg.isGroup
+          ? defaultGroupName
+          : (msg.pushName?.trim() || phone);
         contact = await prisma.contact.create({
           data: {
             organizationId,
             phone,
-            name: msg.isGroup ? defaultGroupName : phone,
+            name: displayName,
             waId: msg.isGroup ? msg.groupJid! : msg.from,
             isGroupChat: Boolean(msg.isGroup),
           },
