@@ -31,7 +31,7 @@ interface ConversationRow {
   id: string;
   status: string;
   updatedAt: string;
-  contact: { id: string; name: string; phone: string; profilePictureUrl?: string | null };
+  contact: { name: string; phone: string; profilePictureUrl?: string | null };
   messages: LastMessage[];
 }
 
@@ -41,7 +41,6 @@ interface ConversationListResponse {
 
 export interface ConversationAlertPreview {
   id: string;
-  contactId: string;
   contactName: string;
   profilePictureUrl: string | null;
   preview: string;
@@ -78,23 +77,8 @@ function countBadge(
   return n;
 }
 
-function isBlockedCdnProfileUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return (
-      host.includes("fbcdn.net") ||
-      host.includes("facebook.com") ||
-      host.includes("fbsbx.com") ||
-      host.includes("whatsapp.net")
-    );
-  } catch {
-    return false;
-  }
-}
-
 function notificationIconUrl(profileUrl: string | null | undefined): string | undefined {
   if (!profileUrl || !profileUrl.trim()) return undefined;
-  if (isBlockedCdnProfileUrl(profileUrl)) return undefined;
   if (/^https?:\/\//i.test(profileUrl)) return profileUrl;
   try {
     return new URL(profileUrl, window.location.origin).href;
@@ -116,7 +100,6 @@ function buildAlertPreviews(
     if (new Date(c.updatedAt).getTime() <= clearedAt) continue;
     out.push({
       id: c.id,
-      contactId: c.contact.id,
       contactName: c.contact.name,
       profilePictureUrl: c.contact.profilePictureUrl ?? null,
       preview: messagePreview(last),

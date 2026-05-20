@@ -17,7 +17,6 @@ import {
   StickyNote,
 } from "lucide-react";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
-import { ContactAvatar } from "@/components/ContactAvatar";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 
 interface TagItem {
@@ -172,12 +171,19 @@ export function ContactProfileDrawer({
           >
             <div className="flex items-start gap-3 border-b border-slate-100 p-4 dark:border-ink-800">
               {contact ? (
-                <ContactAvatar
-                  contactId={contact.id}
-                  name={contact.name}
-                  profilePictureUrl={contact.profilePictureUrl}
-                  className="h-14 w-14 rounded-2xl text-lg"
-                />
+                <div className="flex h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-lg font-bold text-brand-800 dark:from-brand-900/50 dark:to-brand-800/30 dark:text-brand-100">
+                  {contact.profilePictureUrl ? (
+                    <img
+                      src={contact.profilePictureUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center">{contact.name.charAt(0).toUpperCase()}</span>
+                  )}
+                </div>
               ) : (
                 <div className="h-14 w-14 shrink-0 rounded-2xl bg-slate-100 dark:bg-ink-800" />
               )}
