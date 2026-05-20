@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
-import { BrandLogo } from "@/components/BrandLogo";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
@@ -268,7 +268,12 @@ export function Layout() {
     <>
       <div className="px-5 pt-6 pb-5">
         <Link to="/" className="flex items-center gap-3">
-          <BrandLogo alt={orgLabel} />
+          <img
+            src={brandAssetUrl("/logo.svg")}
+            alt={orgLabel}
+            className="h-9 w-9"
+            decoding="async"
+          />
           <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{orgLabel}</span>
         </Link>
       </div>
@@ -513,7 +518,7 @@ export function Layout() {
 
   return (
     <div className="flex h-[100dvh]">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/95 backdrop-blur-md dark:border-white/[0.06] dark:bg-[#0b1020]/92 lg:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
         {sidebarContent}
       </aside>
 
@@ -525,7 +530,7 @@ export function Layout() {
             onClick={() => setMobileNavOpen(false)}
             aria-label={t("common.close")}
           />
-          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200/80 bg-white/95 shadow-xl backdrop-blur-md dark:border-white/5 dark:bg-ink-950/90">
+          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-white/10 dark:bg-ink-950">
             <div className="absolute right-2 top-2">
               <button
                 type="button"
@@ -542,7 +547,7 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-14 items-center gap-3 border-b border-ink-200/80 bg-white/90 px-3 backdrop-blur-md dark:border-white/5 dark:bg-ink-950/80 lg:hidden">
+        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-white/10 dark:bg-ink-950 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}

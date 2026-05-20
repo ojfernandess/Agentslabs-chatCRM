@@ -184,7 +184,7 @@ export function CrmKanbanPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-ink-950">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
       </div>
     );
@@ -192,31 +192,31 @@ export function CrmKanbanPage() {
 
   return (
     <PageTransition>
-      <div className="flex h-full flex-col">
-        <div className="border-b border-ink-200/80 bg-white/90 px-8 py-6 backdrop-blur-sm dark:border-white/5 dark:bg-white/[0.03]">
+      <div className="flex h-full flex-col bg-gray-50 dark:bg-ink-950">
+        <div className="border-b border-gray-200 bg-white px-8 py-6 dark:border-ink-800 dark:bg-ink-900/60">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="ds-page-heading flex items-center gap-2">
+              <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">
                 <LayoutGrid className="h-7 w-7 text-brand-600 dark:text-brand-400" />
                 {t("crm.title")}
               </h1>
-              <p className="ds-page-subtitle mt-1">{t("crm.subtitle")}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("crm.subtitle")}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative min-w-[200px] flex-1 lg:max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-ink-500" />
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("crm.searchPlaceholder")}
-                  className="input-field py-2 pl-10"
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                 />
               </div>
               {isAdmin && (
                 <Link
                   to="/settings"
-                  className="btn-secondary inline-flex items-center gap-2"
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
                 >
                   <Settings className="h-4 w-4" />
                   {t("settings.leadTypesTitle")}
@@ -225,7 +225,7 @@ export function CrmKanbanPage() {
             </div>
           </div>
           {loadError && (
-            <p className="mt-3 text-sm text-red-600">{loadError}</p>
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{loadError}</p>
           )}
         </div>
 
@@ -244,21 +244,19 @@ export function CrmKanbanPage() {
                   key={col.key}
                   variants={staggerItem}
                   className={clsx(
-                    "flex w-72 shrink-0 flex-col rounded-xl border-2 shadow-sm transition-colors dark:backdrop-blur-sm",
-                    isOver
-                      ? "border-brand-400 bg-brand-50/30 dark:border-brand-500/50 dark:bg-brand-500/10"
-                      : "border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04]",
+                    "flex w-72 shrink-0 flex-col rounded-xl border-2 bg-white shadow-sm transition-colors dark:bg-ink-900/50",
+                    isOver ? "border-brand-400 bg-brand-50/30 dark:bg-brand-950/30" : "border-gray-200 dark:border-ink-700",
                   )}
                   onDragOver={(e) => onColumnDragOver(e, col.key)}
                   onDrop={(e) => onColumnDrop(e, col.leadTypeId)}
                 >
                   <div
-                    className="flex items-start justify-between gap-2 border-b border-ink-100 px-3 py-3 dark:border-white/5"
+                    className="flex items-start justify-between gap-2 border-b border-gray-100 px-3 py-3 dark:border-ink-800"
                     style={{ borderTop: `3px solid ${col.color}` }}
                   >
                     <div className="min-w-0">
-                      <h2 className="truncate font-semibold text-ink-900 dark:text-ink-50">{col.name}</h2>
-                      <p className="text-xs text-ink-500 dark:text-ink-400">
+                      <h2 className="truncate font-semibold text-gray-900 dark:text-ink-50">{col.name}</h2>
+                      <p className="text-xs text-gray-500 dark:text-ink-400">
                         {cards.length} {t("crm.contacts")}
                       </p>
                     </div>
@@ -266,7 +264,7 @@ export function CrmKanbanPage() {
 
                   <div className="flex-1 space-y-2 overflow-y-auto p-3">
                     {cards.length === 0 ? (
-                      <p className="py-8 text-center text-xs text-ink-400 dark:text-ink-500">{t("crm.dropHere")}</p>
+                      <p className="py-8 text-center text-xs text-gray-400 dark:text-ink-500">{t("crm.dropHere")}</p>
                     ) : (
                       cards.map((c) => {
                         const visibleTags = filterTagsForDisplay(c.tags);
@@ -276,26 +274,26 @@ export function CrmKanbanPage() {
                           draggable
                           onDragStart={(e) => onCardDragStart(e, c.id)}
                           className={clsx(
-                            "group cursor-grab rounded-lg border border-ink-200/80 bg-white p-3 shadow-sm active:cursor-grabbing dark:border-white/5 dark:bg-white/[0.05]",
+                            "group cursor-grab rounded-lg border border-gray-200 bg-white p-3 shadow-sm active:cursor-grabbing dark:border-ink-700 dark:bg-ink-900/80",
                             movingId === c.id && "opacity-50",
                           )}
                         >
                           <div className="flex gap-2">
-                            <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-ink-300 group-hover:text-ink-400 dark:text-ink-600 dark:group-hover:text-ink-500" />
+                            <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 group-hover:text-gray-400 dark:text-ink-600 dark:group-hover:text-ink-400" />
                             <div className="min-w-0 flex-1">
                               <Link
                                 to={`/contacts/${c.id}`}
-                                className="font-medium text-ink-900 hover:text-brand-600 dark:text-ink-50 dark:hover:text-brand-400"
+                                className="font-medium text-gray-900 hover:text-brand-600 dark:text-ink-50 dark:hover:text-brand-400"
                                 onDragStart={(e) => e.preventDefault()}
                               >
                                 {c.name}
                               </Link>
-                              <span className="mt-0.5 flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400">
+                              <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-ink-400">
                                 <Phone className="h-3 w-3" />
                                 {c.phone}
                               </span>
                               {c.assignedTo && (
-                                <span className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                                <span className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-ink-400">
                                   <User className="h-3 w-3" />
                                   {c.assignedTo.name}
                                 </span>
@@ -312,7 +310,7 @@ export function CrmKanbanPage() {
                                     </span>
                                   ))}
                                   {visibleTags.length > 3 && (
-                                    <span className="text-[10px] text-gray-400">
+                                    <span className="text-[10px] text-gray-400 dark:text-ink-500">
                                       +{visibleTags.length - 3}
                                     </span>
                                   )}

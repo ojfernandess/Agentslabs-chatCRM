@@ -209,7 +209,12 @@ export function SuperAdminShell({
     <div className="flex min-h-screen bg-[#f4f6fb] text-slate-900">
       <aside className="flex w-[260px] shrink-0 flex-col border-r border-white/10 bg-[#0b1220] text-slate-200">
         <div className="border-b border-white/10 px-5 py-5">
-          <img src={brandAssetUrl("/logo.svg")} alt="" className="h-9 w-auto brightness-0 invert" decoding="async" />
+          <img
+            src={brandAssetUrl("/logo.svg")}
+            alt=""
+            className="h-10 w-auto max-w-[200px] object-contain"
+            decoding="async"
+          />
           <div className="mt-4 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/20 ring-1 ring-brand-400/30">
               <Shield className="h-4 w-4 text-brand-300" />

@@ -309,18 +309,18 @@ export function BotsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="mb-2 flex items-center gap-2 text-brand-600">
+          <div className="mb-2 flex items-center gap-2 text-brand-600 dark:text-brand-400">
             <Bot className="h-6 w-6" />
             <span className="text-sm font-medium uppercase tracking-wide">{t("nav.bots")}</span>
           </div>
-          <h1 className="ds-page-heading">{t("bots.title")}</h1>
-          <p className="ds-page-subtitle mt-1">{t("bots.subtitle")}</p>
+          <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("bots.title")}</h1>
+          <p className="mt-1 text-ink-600 dark:text-ink-300">{t("bots.subtitle")}</p>
           <p className="mt-2 max-w-3xl text-sm text-ink-500 dark:text-ink-400">{t("bots.botIdExplain")}</p>
         </motion.header>
 
-        <form onSubmit={handleCreate} className="ds-panel mb-8 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <form onSubmit={handleCreate} className="mb-8 grid gap-3 rounded-lg border border-ink-200 bg-white p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900/50 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2">
-            <label className="ds-label">{t("bots.name")}</label>
+            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.name")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -329,7 +329,7 @@ export function BotsPage() {
             />
           </div>
           <div>
-            <label className="ds-label">{t("bots.type")}</label>
+            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.type")}</label>
             <select value={botType} onChange={(e) => setBotType(e.target.value as BotType)} className="input w-full">
               {(["WEBHOOK", "DIALOGFLOW", "CUSTOM"] as const).map((ty) => (
                 <option key={ty} value={ty}>
@@ -339,7 +339,7 @@ export function BotsPage() {
             </select>
           </div>
           <div>
-            <label className="ds-label">{t("bots.webhookUrl")}</label>
+            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.webhookUrl")}</label>
             <input
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
@@ -349,7 +349,7 @@ export function BotsPage() {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="ds-label">{t("bots.webhookSecret")}</label>
+            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.webhookSecret")}</label>
             <input
               value={newWebhookSecret}
               onChange={(e) => setNewWebhookSecret(e.target.value)}
@@ -361,12 +361,12 @@ export function BotsPage() {
             <p className="mt-1 text-xs text-ink-500">{t("bots.webhookSecretHint")}</p>
           </div>
           <p className="sm:col-span-2 text-xs text-ink-500">{t("bots.testWebhookHint")}</p>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 dark:text-ink-300 sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 sm:col-span-2">
             <input
               type="checkbox"
               checked={isActiveNew}
               onChange={(e) => setIsActiveNew(e.target.checked)}
-              className="rounded border-ink-300 dark:border-white/20 dark:bg-white/5"
+              className="rounded border-ink-300"
             />
             {t("bots.active")}
           </label>
@@ -388,9 +388,9 @@ export function BotsPage() {
         </form>
 
         {revealedInboxToken ? (
-          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm">
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
             <p className="font-medium">{t("bots.inboxTokenBanner")}</p>
-            <pre className="mt-2 overflow-x-auto rounded bg-white/80 p-2 font-mono text-xs text-ink-900">{revealedInboxToken}</pre>
+            <pre className="mt-2 overflow-x-auto rounded bg-white/80 p-2 font-mono text-xs text-ink-900 dark:bg-ink-950/60 dark:text-ink-100">{revealedInboxToken}</pre>
             <button
               type="button"
               className="btn-secondary mt-3 text-sm"
@@ -437,11 +437,11 @@ export function BotsPage() {
               <motion.li
                 key={b.id}
                 variants={staggerItem}
-                className="ds-panel p-4"
+                className="rounded-lg border border-ink-200 bg-white p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900/50"
               >
                 {editingId === b.id ? (
                   <div className="space-y-3">
-                    <div className="rounded-md border border-ink-100 bg-ink-50/80 px-3 py-2 dark:border-white/5 dark:bg-white/[0.04] sm:col-span-2">
+                    <div className="rounded-md border border-ink-100 bg-ink-50/80 px-3 py-2 dark:border-ink-700 dark:bg-ink-800/60 sm:col-span-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-medium text-ink-600">{t("bots.botId")}</span>
                         <code className="max-w-full break-all font-mono text-[11px] text-ink-800">{b.id}</code>
@@ -462,11 +462,11 @@ export function BotsPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="ds-label">{t("bots.name")}</label>
+                        <label className="mb-1 block text-xs text-ink-600">{t("bots.name")}</label>
                         <input value={editName} onChange={(e) => setEditName(e.target.value)} className="input w-full" />
                       </div>
                       <div>
-                        <label className="ds-label">{t("bots.type")}</label>
+                        <label className="mb-1 block text-xs text-ink-600">{t("bots.type")}</label>
                         <select value={editType} onChange={(e) => setEditType(e.target.value as BotType)} className="input w-full">
                           {(["WEBHOOK", "DIALOGFLOW", "CUSTOM"] as const).map((ty) => (
                             <option key={ty} value={ty}>
@@ -476,7 +476,7 @@ export function BotsPage() {
                         </select>
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="ds-label">{t("bots.webhookUrl")}</label>
+                        <label className="mb-1 block text-xs text-ink-600">{t("bots.webhookUrl")}</label>
                         <input
                           value={editWebhook}
                           onChange={(e) => setEditWebhook(e.target.value)}
@@ -485,7 +485,7 @@ export function BotsPage() {
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="ds-label">{t("bots.webhookSecret")}</label>
+                        <label className="mb-1 block text-xs text-ink-600">{t("bots.webhookSecret")}</label>
                         <input
                           value={editWebhookSecret}
                           onChange={(e) => setEditWebhookSecret(e.target.value)}
@@ -514,7 +514,7 @@ export function BotsPage() {
                         type="checkbox"
                         checked={editActive}
                         onChange={(e) => setEditActive(e.target.checked)}
-                        className="rounded border-ink-300 dark:border-white/20 dark:bg-white/5"
+                        className="rounded border-ink-300"
                       />
                       {t("bots.active")}
                     </label>

@@ -6,7 +6,6 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
-import { BrandLogo } from "@/components/BrandLogo";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 
 const REMEMBER_EMAIL_KEY = "opennexo_login_email";
@@ -115,14 +114,15 @@ export function LoginPage() {
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="mb-8 text-center">
-            <motion.div
-              className="mx-auto mb-5 flex justify-center"
+            <motion.img
+              src={brandAssetUrl("/logo.svg")}
+              alt="Logo"
+              className="mx-auto mb-5 h-14 w-auto"
+              decoding="async"
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.35, delay: 0.05 }}
-            >
-              <BrandLogo alt="Logo" className="h-14 max-w-[200px]" />
-            </motion.div>
+            />
             <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
               {mode === "login" ? t("login.title") : t("login.forgotTitle")}
             </h1>
