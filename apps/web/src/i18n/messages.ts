@@ -1967,6 +1967,7 @@ export const messages = {
       startChatDuplicateHint: "Já existe um contato com este telefone. Seleccione-o na lista.",
       startChatCreateFailed: "Não foi possível criar o contato.",
       startChatFillRequired: "Preencha nome e telefone.",
+      unreadBadge: "Não lida",
       emptySearchTitle: "Nenhuma conversa coincide com a pesquisa",
       emptySearchHint: "Limpe o campo ou altere os termos.",
       contextMenu: {
@@ -4830,6 +4831,7 @@ export const messages = {
       startChatDuplicateHint: "A contact with this phone already exists. Select them from the list.",
       startChatCreateFailed: "Could not create the contact.",
       startChatFillRequired: "Enter name and phone.",
+      unreadBadge: "Unread",
       emptySearchTitle: "No conversations match your search",
       emptySearchHint: "Clear the field or try different terms.",
       contextMenu: {

@@ -15,7 +15,12 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
-import { markConversationReadForUser, markConversationUnreadForUser } from "../lib/teamTransferUnread.js";
+import {
+  loadLastReadAtByConversation,
+  markConversationReadForUser,
+  markConversationUnreadForUser,
+  withUnreadFlag,
+} from "../lib/teamTransferUnread.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
@@ -291,12 +296,28 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     const triageByInbox = await buildAgentBotTriageMapForInboxes(organizationId, data);
+    const lastReadByConversation = await loadLastReadAtByConversation(
+      prisma,
+      request.user.id,
+      data.map((row) => row.id),
+    );
+    const withFlags = withUnreadFlag(
+      data.map((row) => ({
+        ...row,
+        lastMessage: row.messages[0] ?? null,
+      })),
+      lastReadByConversation,
+    );
 
     return {
-      data: data.map((row) => ({
-        ...stripCsatSurveyToken(row),
-        agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
-      })),
+      data: withFlags.map((row) => {
+        const { messages: _messages, ...rest } = row;
+        return {
+          ...stripCsatSurveyToken(rest),
+          agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
+          isUnread: row.isUnread,
+        };
+      }),
       total,
       page: query.page,
       pageSize: query.pageSize,

@@ -125,6 +125,10 @@ export function ConversationContextMenu({
     setBusy(true);
     try {
       await api.post(`/conversations/${target.id}/unread`);
+      window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
+      );
       onUpdated();
       onClose();
     } catch {

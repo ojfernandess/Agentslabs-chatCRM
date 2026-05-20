@@ -20,6 +20,7 @@ interface Conversation {
   id: string;
   status: string;
   priority?: ConversationPriority | null;
+  isUnread?: boolean;
   updatedAt: string;
   agentBotTriageActive?: boolean;
   awaitingHumanHandoff?: boolean;
@@ -413,6 +414,8 @@ export function ConversationsPage() {
                             "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
                             priorityListCardClass(conv.priority),
                             conv.priority === "URGENT" && "dark:hover:border-red-500/80",
+                            conv.isUnread &&
+                              "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
                           )}
                         >
                           <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
@@ -440,7 +443,21 @@ export function ConversationsPage() {
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="truncate font-semibold text-ink-900 dark:text-ink-50">{conv.contact.name}</span>
+                              {conv.isUnread ? (
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full bg-brand-500 ring-2 ring-brand-200 dark:ring-brand-900/50"
+                                  title={t("conversations.unreadBadge")}
+                                  aria-hidden
+                                />
+                              ) : null}
+                              <span
+                                className={clsx(
+                                  "truncate text-ink-900 dark:text-ink-50",
+                                  conv.isUnread ? "font-bold" : "font-semibold",
+                                )}
+                              >
+                                {conv.contact.name}
+                              </span>
                               {isConversationPriority(conv.priority) ? (
                                 <ConversationPriorityBadge priority={conv.priority} />
                               ) : null}
@@ -482,7 +499,14 @@ export function ConversationsPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <p className="mt-1 line-clamp-1 text-sm text-ink-600 dark:text-ink-400">
+                            <p
+                              className={clsx(
+                                "mt-1 line-clamp-1 text-sm",
+                                conv.isUnread
+                                  ? "font-medium text-ink-800 dark:text-ink-200"
+                                  : "text-ink-600 dark:text-ink-400",
+                              )}
+                            >
                               {lastMessage?.body || t("conversations.noMessages")}
                             </p>
                           </div>
