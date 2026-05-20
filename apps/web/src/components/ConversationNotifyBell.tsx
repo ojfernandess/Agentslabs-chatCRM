@@ -3,7 +3,6 @@ import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationAlertPreview } from "@/hooks/useConversationAlerts";
-import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
 import clsx from "clsx";
 export interface ConversationNotifyBellProps {
@@ -150,12 +149,15 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
                 navigate(`/conversations/${row.id}`);
               }}
             >
-              <ContactAvatar
-                contactId={row.contactId}
-                name={row.contactName}
-                profilePictureUrl={row.profilePictureUrl}
-                className="h-10 w-10 text-sm"
-              />
+              <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-200">
+                {row.profilePictureUrl ? (
+                  <img src={row.profilePictureUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center">
+                    {row.contactName.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink-900 dark:text-ink-50">
                   {row.contactName}

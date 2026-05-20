@@ -31,7 +31,7 @@ interface ConversationRow {
   id: string;
   status: string;
   updatedAt: string;
-  contact: { id: string; name: string; phone: string; profilePictureUrl?: string | null };
+  contact: { name: string; phone: string; profilePictureUrl?: string | null };
   messages: LastMessage[];
 }
 
@@ -41,7 +41,6 @@ interface ConversationListResponse {
 
 export interface ConversationAlertPreview {
   id: string;
-  contactId: string;
   contactName: string;
   profilePictureUrl: string | null;
   preview: string;
@@ -101,7 +100,6 @@ function buildAlertPreviews(
     if (new Date(c.updatedAt).getTime() <= clearedAt) continue;
     out.push({
       id: c.id,
-      contactId: c.contact.id,
       contactName: c.contact.name,
       profilePictureUrl: c.contact.profilePictureUrl ?? null,
       preview: messagePreview(last),

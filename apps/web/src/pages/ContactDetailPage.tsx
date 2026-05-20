@@ -20,7 +20,6 @@ import { format } from "date-fns";
 import clsx from "clsx";
 import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/components/Motion";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
-import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   timelineChannelLabel,
@@ -277,12 +276,21 @@ export function ContactDetailPage() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex flex-1 items-start gap-4">
-          <ContactAvatar
-            contactId={contact.id}
-            name={contact.name}
-            profilePictureUrl={contact.profilePictureUrl}
-            className="h-14 w-14 rounded-2xl text-lg"
-          />
+          <div className="flex h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 text-lg font-bold text-brand-800 dark:from-brand-900/40 dark:to-brand-800/30 dark:text-brand-100">
+            {contact.profilePictureUrl ? (
+              <img
+                src={contact.profilePictureUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center">
+                {contact.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{contact.name}</h1>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
