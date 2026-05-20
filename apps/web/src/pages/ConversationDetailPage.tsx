@@ -67,6 +67,11 @@ import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
+  ConversationPriorityBadge,
+  ConversationPriorityPicker,
+} from "@/components/ConversationPriorityBadge";
+import type { ConversationPriority } from "@/lib/conversationPriority";
+import {
   ChatImageThumbnail,
   DocumentAttachmentCard,
   isLikelyDocumentCaption,
@@ -141,6 +146,7 @@ interface OrgTagRow {
 interface ConversationDetail {
   id: string;
   status: string;
+  priority?: ConversationPriority | null;
   createdAt: string;
   closureReason: string | null;
   closureValue?: number | null;
@@ -269,6 +275,8 @@ export function ConversationDetailPage() {
   const [newContactNoteDraft, setNewContactNoteDraft] = useState("");
   const [contactNotesBusy, setContactNotesBusy] = useState(false);
   const [contactNotesError, setContactNotesError] = useState("");
+  const [priorityBusy, setPriorityBusy] = useState(false);
+  const [priorityError, setPriorityError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resolveNextIdRef = useRef<string | null>(null);
@@ -676,7 +684,7 @@ export function ConversationDetailPage() {
   useEffect(() => {
     const h = (e: Event) => {
       const d = (e as CustomEvent<{ conversationId?: string }>).detail;
-      if (d?.conversationId !== id) return;
+      if (d?.conversationId && d.conversationId !== id) return;
       void loadConversation();
     };
     window.addEventListener("openconduit:conversation-updated", h);
@@ -1004,6 +1012,23 @@ export function ConversationDetailPage() {
       }
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const saveConversationPriority = async (priority: ConversationPriority | null) => {
+    if (!conversation || !id) return;
+    setPriorityBusy(true);
+    setPriorityError("");
+    try {
+      const data = await api.put<ConversationDetail>(`/conversations/${id}`, { priority });
+      setConversation(data);
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+      );
+    } catch {
+      setPriorityError(t("conversationDetail.prioritySaveFailed"));
+    } finally {
+      setPriorityBusy(false);
     }
   };
 
@@ -1439,6 +1464,24 @@ export function ConversationDetailPage() {
             </div>
           );
         })()}
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-ink-700">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.prioritySection")}
+          </p>
+          <p className="mt-1 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
+            {t("conversationDetail.priorityHint")}
+          </p>
+          <div className="mt-2">
+            <ConversationPriorityPicker
+              value={conversation.priority}
+              disabled={priorityBusy}
+              onChange={(p) => void saveConversationPriority(p)}
+            />
+          </div>
+          {priorityError ? (
+            <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{priorityError}</p>
+          ) : null}
+        </div>
         {(() => {
           const assigned = conversation.contact.tags ?? [];
           const assignedIds = new Set(assigned.map((x) => x.tag.id));
@@ -1908,6 +1951,7 @@ export function ConversationDetailPage() {
                       >
                         {statusLabel(conversation.status)}
                       </span>
+                      <ConversationPriorityBadge priority={conversation.priority} />
                       {conversation.awaitingHumanHandoff ? (
                         <span
                           className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"

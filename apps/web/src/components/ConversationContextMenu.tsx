@@ -12,7 +12,9 @@ import {
   Copy,
   Trash2,
   ChevronRight,
+  Check,
 } from "lucide-react";
+import { priorityIcon, type ConversationPriority } from "@/lib/conversationPriority";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,6 +23,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 export interface ConversationContextTarget {
   id: string;
   status: string;
+  priority?: ConversationPriority | null;
   contact: { id: string; name: string };
 }
 
@@ -105,7 +108,9 @@ export function ConversationContextMenu({
     setBusy(true);
     try {
       await api.put(`/conversations/${target.id}`, body);
-      window.dispatchEvent(new CustomEvent("openconduit:conversation-updated"));
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
+      );
       onUpdated();
       onClose();
     } catch {
@@ -227,24 +232,31 @@ export function ConversationContextMenu({
         onLeave={() => setOpenSub((s) => (s === "priority" ? null : s))}
       >
         <div className={clsx(flyoutClass, "min-w-[160px]")}>
-          {PRIORITIES.map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={itemClass}
-              disabled={busy}
-              onClick={() => void patchConversation({ priority: p })}
-            >
-              {priorityLabel(p)}
-            </button>
-          ))}
+          {PRIORITIES.map((p) => {
+            const Icon = priorityIcon(p);
+            const selected = target?.priority === p;
+            return (
+              <button
+                key={p}
+                type="button"
+                className={itemClass}
+                disabled={busy}
+                onClick={() => void patchConversation({ priority: p })}
+              >
+                <Icon className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
+                <span className="min-w-0 flex-1">{priorityLabel(p)}</span>
+                {selected ? <Check className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" /> : null}
+              </button>
+            );
+          })}
           <button
             type="button"
             className={itemClass}
             disabled={busy}
             onClick={() => void patchConversation({ priority: null })}
           >
-            {priorityLabel("NONE")}
+            <span className="min-w-0 flex-1">{priorityLabel("NONE")}</span>
+            {!target?.priority ? <Check className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" /> : null}
           </button>
         </div>
       </SubmenuRow>

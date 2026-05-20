@@ -14,9 +14,12 @@ import {
   ConversationContextMenu,
   type ConversationContextTarget,
 } from "@/components/ConversationContextMenu";
+import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
+import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
   id: string;
   status: string;
+  priority?: ConversationPriority | null;
   updatedAt: string;
   agentBotTriageActive?: boolean;
   awaitingHumanHandoff?: boolean;
@@ -395,6 +398,7 @@ export function ConversationsPage() {
                             target: {
                               id: conv.id,
                               status: conv.status,
+                              priority: conv.priority ?? null,
                               contact: { id: conv.contact.id, name: conv.contact.name },
                             },
                             position: { x: e.clientX, y: e.clientY },
@@ -407,6 +411,8 @@ export function ConversationsPage() {
                             "group flex items-center gap-3 rounded-2xl border p-4 transition-all",
                             "border-ink-200 bg-white/80 shadow-sm hover:-translate-y-0.5 hover:shadow-md",
                             "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
+                            priorityListCardClass(conv.priority),
+                            conv.priority === "URGENT" && "dark:hover:border-red-500/80",
                           )}
                         >
                           <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
@@ -425,11 +431,19 @@ export function ConversationsPage() {
                                 <WhatsAppBrandIcon className="h-3 w-3" />
                               </span>
                             ) : null}
+                            {isConversationPriority(conv.priority) ? (
+                              <span className="absolute -right-1 -top-1">
+                                <ConversationPriorityBadge priority={conv.priority} variant="compact" />
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="truncate font-semibold text-ink-900 dark:text-ink-50">{conv.contact.name}</span>
+                              {isConversationPriority(conv.priority) ? (
+                                <ConversationPriorityBadge priority={conv.priority} />
+                              ) : null}
                               <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-semibold", statusColors[conv.status])}>
                                 {statusLabel(conv.status)}
                               </span>
