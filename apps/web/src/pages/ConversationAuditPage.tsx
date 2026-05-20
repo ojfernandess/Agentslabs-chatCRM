@@ -143,12 +143,12 @@ export function ConversationAuditPage() {
     <PageTransition>
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
             <FileSearch className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t("audit.title")}</h1>
-            <p className="mt-1 text-sm text-gray-500">{t("audit.subtitle")}</p>
+            <h1 className="ds-page-heading">{t("audit.title")}</h1>
+            <p className="ds-page-subtitle mt-1">{t("audit.subtitle")}</p>
           </div>
         </div>
 
@@ -156,14 +156,14 @@ export function ConversationAuditPage() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           onSubmit={(e) => void runQuery(e, 1)}
-          className="mb-6 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+          className="ds-panel mb-6 grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
         >
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">{t("audit.filterAssignee")}</label>
+            <label className="ds-label">{t("audit.filterAssignee")}</label>
             <select
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="input-field"
             >
               <option value="">{t("common.all")}</option>
               {users.map((u) => (
@@ -174,11 +174,11 @@ export function ConversationAuditPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">{t("audit.filterLeadType")}</label>
+            <label className="ds-label">{t("audit.filterLeadType")}</label>
             <select
               value={leadTypeId}
               onChange={(e) => setLeadTypeId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="input-field"
             >
               <option value="">{t("common.all")}</option>
               {leadTypes.map((lt) => (
@@ -189,11 +189,11 @@ export function ConversationAuditPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">{t("audit.filterTeam")}</label>
+            <label className="ds-label">{t("audit.filterTeam")}</label>
             <select
               value={teamId}
               onChange={(e) => setTeamId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="input-field"
             >
               <option value="">{t("common.all")}</option>
               {teams.map((tm) => (
@@ -204,21 +204,21 @@ export function ConversationAuditPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">{t("audit.resolvedFrom")}</label>
+            <label className="ds-label">{t("audit.resolvedFrom")}</label>
             <input
               type="datetime-local"
               value={resolvedFrom}
               onChange={(e) => setResolvedFrom(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="input-field"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">{t("audit.resolvedTo")}</label>
+            <label className="ds-label">{t("audit.resolvedTo")}</label>
             <input
               type="datetime-local"
               value={resolvedTo}
               onChange={(e) => setResolvedTo(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm"
+              className="input-field"
             />
           </div>
           <div className="flex items-end">
@@ -228,11 +228,11 @@ export function ConversationAuditPage() {
           </div>
         </motion.form>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-600 dark:text-ink-400">
           <span>
             {t("audit.totalRows")}: {total}
             {rows.length > 0 ? (
-              <span className="ml-2 text-gray-500">
+              <span className="ml-2 text-ink-500 dark:text-ink-500">
                 ({t("audit.sumPageWon")}: {fmtMoney(sumPageWon)} · {t("audit.sumPagePipeline")}:{" "}
                 {fmtMoney(sumPagePipeline)})
               </span>
@@ -245,13 +245,13 @@ export function ConversationAuditPage() {
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
         ) : rows.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500">
+          <p className="ds-empty-state">
             {t("audit.empty")}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="ds-table-shell">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase text-gray-600">
+              <thead className="ds-table-head">
                 <tr>
                   <th className="px-3 py-2">{t("audit.colWhen")}</th>
                   <th className="px-3 py-2">{t("audit.colContact")}</th>
@@ -263,28 +263,28 @@ export function ConversationAuditPage() {
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ink-100 dark:divide-white/5">
                 {rows.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/80">
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-600">
+                  <tr key={r.id} className="ds-table-row">
+                    <td className="whitespace-nowrap px-3 py-2 text-ink-600 dark:text-ink-400">
                       <span className="flex items-center gap-1 text-xs">
                         <Clock className="h-3 w-3" />
                         {formatDistanceToNow(new Date(r.updatedAt), { addSuffix: true, locale: dateLocale })}
                       </span>
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-ink-400 dark:text-ink-500">
                         {format(new Date(r.updatedAt), "Pp", { locale: dateLocale })}
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <p className="font-medium text-gray-900">{r.contact.name}</p>
-                      <p className="text-xs text-gray-500">{r.contact.phone}</p>
+                      <p className="font-medium text-ink-900 dark:text-ink-50">{r.contact.name}</p>
+                      <p className="text-xs text-ink-500 dark:text-ink-400">{r.contact.phone}</p>
                     </td>
-                    <td className="px-3 py-2 text-gray-700">
+                    <td className="px-3 py-2 text-ink-700 dark:text-ink-300">
                       {r.assignedTo?.name ?? "—"}
                       <br />
-                      <span className="text-[10px] text-gray-400">{r.assignedTo?.email}</span>
+                      <span className="text-[10px] text-ink-400 dark:text-ink-500">{r.assignedTo?.email}</span>
                     </td>
-                    <td className="px-3 py-2 text-gray-700">{r.team?.name ?? "—"}</td>
+                    <td className="px-3 py-2 text-ink-700 dark:text-ink-300">{r.team?.name ?? "—"}</td>
                     <td className="px-3 py-2">
                       {r.leadType ? (
                         <span
@@ -297,16 +297,16 @@ export function ConversationAuditPage() {
                         "—"
                       )}
                     </td>
-                    <td className="px-3 py-2 text-gray-800">
+                    <td className="px-3 py-2 text-ink-800 dark:text-ink-200">
                       {r.closureValue != null && r.closureValue > 0 ? fmtMoney(r.closureValue) : "—"}
                     </td>
-                    <td className="max-w-[220px] px-3 py-2 text-xs text-gray-600">
+                    <td className="max-w-[220px] px-3 py-2 text-xs text-ink-600 dark:text-ink-400">
                       <p>
-                        <span className="font-medium text-gray-700">{t("audit.contactOwner")}:</span>{" "}
+                        <span className="font-medium text-ink-700 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
                         {r.contact.assignedTo?.name ?? "—"}
                       </p>
                       <p className="mt-0.5">
-                        <span className="font-medium text-gray-700">{t("audit.contactCreatedBy")}:</span>{" "}
+                        <span className="font-medium text-ink-700 dark:text-ink-300">{t("audit.contactCreatedBy")}:</span>{" "}
                         {r.contact.createdBy?.name ?? t("audit.sourceInbound")}
                       </p>
                       <p className="mt-0.5 text-[10px] text-gray-400">
@@ -316,7 +316,7 @@ export function ConversationAuditPage() {
                     <td className="px-3 py-2 text-right">
                       <Link
                         to={`/conversations/${r.id}`}
-                        className="text-xs font-medium text-brand-600 hover:text-brand-800"
+                        className="text-xs font-medium text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300"
                       >
                         {t("audit.open")}
                       </Link>

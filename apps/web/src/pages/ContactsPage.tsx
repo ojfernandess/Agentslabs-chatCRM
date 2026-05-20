@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { ContactProfileDrawer } from "@/components/ContactProfileDrawer";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
+import { FixedDropdownPortal } from "@/components/FixedDropdownPortal";
 
 interface TagItem {
   id: string;
@@ -115,6 +116,8 @@ export function ContactsPage() {
 
   const [tagPickerFor, setTagPickerFor] = useState<string | null>(null);
   const [stagePickerFor, setStagePickerFor] = useState<string | null>(null);
+  const tagAnchorRef = useRef<HTMLDivElement>(null);
+  const stageAnchorRef = useRef<HTMLDivElement>(null);
   const hasAnimated = useRef(false);
 
   const tChannel = useCallback(
@@ -221,7 +224,7 @@ export function ContactsPage() {
 
   return (
     <PageTransition>
-      <div className="min-h-full bg-gradient-to-b from-slate-50/90 to-white p-6 md:p-8 dark:from-ink-950 dark:to-ink-950">
+      <div className="min-h-full p-6 md:p-8">
         <motion.div
           className="mx-auto max-w-[1600px]"
           variants={staggerContainer}
@@ -253,13 +256,13 @@ export function ContactsPage() {
           </motion.div>
 
           <motion.div variants={staggerItem} className="mb-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-ink-800 dark:bg-ink-900/50">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-white/5 dark:bg-white/[0.04]">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-ink-500">
                 {t("contacts.metricTotalContacts")}
               </p>
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-ink-50">{total}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-ink-800 dark:bg-ink-900/50">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-white/5 dark:bg-white/[0.04]">
               <p className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-ink-500">
                 <TrendingUp className="h-3.5 w-3.5" />
                 {t("contacts.metricWithDeals")}
@@ -268,7 +271,7 @@ export function ContactsPage() {
                 {stats?.withOpenDeals ?? "—"}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-ink-800 dark:bg-ink-900/50">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-white/5 dark:bg-white/[0.04]">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-ink-500">
                 {t("contacts.metricAvgScore")}
               </p>
@@ -382,7 +385,7 @@ export function ContactsPage() {
           ) : (
             <motion.div
               variants={staggerItem}
-              className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/40"
+              className="rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/5 dark:bg-white/[0.03] dark:backdrop-blur-sm"
             >
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1100px] text-left text-sm">
@@ -483,7 +486,10 @@ export function ContactsPage() {
                             </div>
                           </td>
                           <td className="hidden px-3 py-3 md:table-cell" onClick={(e) => e.stopPropagation()}>
-                            <div className="relative">
+                            <div
+                              ref={stagePickerFor === contact.id ? stageAnchorRef : undefined}
+                              className="relative"
+                            >
                               <button
                                 type="button"
                                 onClick={() =>
@@ -517,9 +523,9 @@ export function ContactsPage() {
                               </button>
                               <AnimatePresence>
                                 {stagePickerFor === contact.id && (
-                                  <DropdownPortal onClose={() => setStagePickerFor(null)}>
+                                  <FixedDropdownPortal anchorRef={stageAnchorRef} onClose={() => setStagePickerFor(null)}>
                                     <motion.div
-                                      className="w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+                                      className="w-48 rounded-lg border border-slate-200/80 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-ink-900/95 dark:backdrop-blur-md"
                                       variants={dropdownVariants}
                                       initial="hidden"
                                       animate="show"
@@ -551,7 +557,7 @@ export function ContactsPage() {
                                         </button>
                                       ))}
                                     </motion.div>
-                                  </DropdownPortal>
+                                  </FixedDropdownPortal>
                                 )}
                               </AnimatePresence>
                             </div>
@@ -594,7 +600,10 @@ export function ContactsPage() {
                                 ))}
                               </AnimatePresence>
                               {availableTags.length > 0 && (
-                                <div className="relative">
+                                <div
+                                  ref={tagPickerFor === contact.id ? tagAnchorRef : undefined}
+                                  className="relative"
+                                >
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -607,9 +616,9 @@ export function ContactsPage() {
                                   </button>
                                   <AnimatePresence>
                                     {tagPickerFor === contact.id && (
-                                      <DropdownPortal onClose={() => setTagPickerFor(null)}>
+                                      <FixedDropdownPortal anchorRef={tagAnchorRef} onClose={() => setTagPickerFor(null)}>
                                         <motion.div
-                                          className="w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+                                          className="w-48 rounded-lg border border-slate-200/80 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-ink-900/95 dark:backdrop-blur-md"
                                           variants={dropdownVariants}
                                           initial="hidden"
                                           animate="show"
@@ -633,7 +642,7 @@ export function ContactsPage() {
                                             </button>
                                           ))}
                                         </motion.div>
-                                      </DropdownPortal>
+                                      </FixedDropdownPortal>
                                     )}
                                   </AnimatePresence>
                                 </div>
@@ -734,28 +743,3 @@ export function ContactsPage() {
   );
 }
 
-function DropdownPortal({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  return (
-    <div ref={ref} className="absolute left-0 top-full z-20 mt-1">
-      {children}
-    </div>
-  );
-}

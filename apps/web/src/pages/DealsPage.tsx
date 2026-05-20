@@ -350,22 +350,22 @@ export function DealsPage() {
           <div className="flex items-center gap-3">
             <Briefcase className="h-8 w-8 text-brand-600" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{t("nav.deals")}</h1>
-              <p className="text-sm text-gray-500">{t("dealsPage.subtitle")}</p>
+              <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("nav.deals")}</h1>
+              <p className="text-sm text-ink-500 dark:text-ink-400">{t("dealsPage.subtitle")}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {!loading && deals.length > 0 ? (
               <div className="flex flex-wrap gap-3 text-sm">
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
-                  <p className="text-xs text-gray-500">{t("dealsPage.totalWon")}</p>
-                  <p className="font-semibold text-gray-900">
+                <div className="rounded-lg border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04] px-3 py-2 shadow-sm">
+                  <p className="text-xs text-ink-500 dark:text-ink-400">{t("dealsPage.totalWon")}</p>
+                  <p className="font-semibold text-ink-900 dark:text-ink-50">
                     {fmtMoney(totalWonCents, deals[0]?.currency ?? APP_CURRENCY)}
                   </p>
                 </div>
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
-                  <p className="text-xs text-gray-500">{t("dealsPage.totalOpen")}</p>
-                  <p className="font-semibold text-gray-900">
+                <div className="rounded-lg border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04] px-3 py-2 shadow-sm">
+                  <p className="text-xs text-ink-500 dark:text-ink-400">{t("dealsPage.totalOpen")}</p>
+                  <p className="font-semibold text-ink-900 dark:text-ink-50">
                     {fmtMoney(totalOpenCents, deals[0]?.currency ?? APP_CURRENCY)}
                   </p>
                 </div>
@@ -414,27 +414,27 @@ export function DealsPage() {
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
         ) : deals.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500">
+          <div className="rounded-xl border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04] p-12 text-center text-ink-500 dark:text-ink-400">
             Nenhum negócio ainda. Use &quot;Novo negócio&quot; ou a API{" "}
             <code className="text-xs">POST /api/v1/crm/deals</code>.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+          <div className="overflow-hidden rounded-xl border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04]">
+            <table className="min-w-full divide-y divide-ink-200 text-sm dark:divide-white/5">
+              <thead className="bg-ink-50 dark:bg-white/[0.04]">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Nome</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Etapa</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Estado</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-700">Valor</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-700">Contato</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-700">Linhas</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-700 dark:text-ink-300">Nome</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-700 dark:text-ink-300">Etapa</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-700 dark:text-ink-300">Estado</th>
+                  <th className="px-4 py-3 text-right font-medium text-ink-700 dark:text-ink-300">Valor</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-700 dark:text-ink-300">Contato</th>
+                  <th className="px-4 py-3 text-right font-medium text-ink-700 dark:text-ink-300">Linhas</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-ink-100 dark:divide-white/5">
                 {deals.map((d) => (
-                  <tr key={d.id} className="hover:bg-gray-50/80">
-                    <td className="px-4 py-3 font-medium text-gray-900">{d.name}</td>
+                  <tr key={d.id} className="hover:bg-ink-50 dark:bg-white/[0.04]/80">
+                    <td className="px-4 py-3 font-medium text-ink-900 dark:text-ink-50">{d.name}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-2">
                         <span
@@ -444,8 +444,8 @@ export function DealsPage() {
                         {d.stage.name}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{d.status}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-gray-800">
+                    <td className="px-4 py-3 text-ink-600 dark:text-ink-400">{d.status}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-ink-800 dark:text-ink-200">
                       {fmtMoney(d.amountCents, d.currency)}
                     </td>
                     <td className="px-4 py-3">
@@ -457,14 +457,14 @@ export function DealsPage() {
                           {d.primaryContact.name}
                         </Link>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-ink-400 dark:text-ink-500">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => openDetail(d.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-ink-200/80 px-2 py-1 text-xs font-medium text-ink-700 dark:border-white/10 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-white/[0.06]"
                       >
                         <ListTree className="h-3.5 w-3.5" />
                         Gerir
@@ -493,15 +493,15 @@ export function DealsPage() {
                 onClick={() => setCreateOpen(false)}
               />
               <motion.div
-                className="relative w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl"
+                className="relative w-full max-w-md rounded-xl border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04] p-6 shadow-xl"
                 variants={modalVariants}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-900">Novo negócio</h2>
+                  <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">Novo negócio</h2>
                   <button
                     type="button"
-                    className="rounded p-1 text-gray-400 hover:bg-gray-100"
+                    className="rounded p-1 text-ink-400 dark:text-ink-500 hover:bg-ink-100 dark:hover:bg-white/[0.06]"
                     onClick={() => setCreateOpen(false)}
                   >
                     <X className="h-5 w-5" />
@@ -509,18 +509,18 @@ export function DealsPage() {
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600">Nome</label>
+                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">Nome</label>
                     <input
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-ink-300 dark:border-white/10 px-3 py-2 text-sm"
                       value={createName}
                       onChange={(e) => setCreateName(e.target.value)}
                       placeholder="Ex.: Licença anual — Cliente X"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600">Etapa</label>
+                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">Etapa</label>
                     <select
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-ink-300 dark:border-white/10 px-3 py-2 text-sm"
                       value={createStageId}
                       onChange={(e) => setCreateStageId(e.target.value)}
                     >
@@ -532,16 +532,16 @@ export function DealsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600">
+                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                       Valor inicial (opcional, R$)
                     </label>
                     <input
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-ink-300 dark:border-white/10 px-3 py-2 text-sm"
                       value={createAmount}
                       onChange={(e) => setCreateAmount(e.target.value)}
                       placeholder="0,00"
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                       Ao adicionar linhas abaixo, o total do negócio passa a ser a soma das linhas.
                     </p>
                   </div>
@@ -549,7 +549,7 @@ export function DealsPage() {
                   <div className="flex justify-end gap-2 pt-2">
                     <button
                       type="button"
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="rounded-lg border border-ink-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:bg-white/[0.04]"
                       onClick={() => setCreateOpen(false)}
                     >
                       Cancelar
@@ -585,19 +585,19 @@ export function DealsPage() {
                 onClick={closeDetail}
               />
               <motion.div
-                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-xl"
+                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-ink-200/80 bg-white dark:border-white/5 dark:bg-white/[0.04] p-6 shadow-xl"
                 variants={modalVariants}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <h2 className="sr-only">{detail?.name ?? "Negócio"}</h2>
-                    <label className="block text-xs font-medium text-gray-600">
+                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                       {t("dealsPage.dealName")}
                     </label>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <input
-                        className="min-w-[12rem] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
+                        className="min-w-[12rem] flex-1 rounded-lg border border-ink-300 dark:border-white/10 px-3 py-2 text-sm font-semibold text-ink-900 dark:text-ink-50"
                         value={detailName}
                         onChange={(e) => setDetailName(e.target.value)}
                         disabled={detailLoading || !detail}
@@ -617,10 +617,10 @@ export function DealsPage() {
                       </button>
                     </div>
                     {nameMessage ? (
-                      <p className="mt-1 text-xs text-gray-600">{nameMessage}</p>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{nameMessage}</p>
                     ) : null}
                     {detail && (
-                      <p className="mt-2 text-sm text-gray-500">
+                      <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">
                         Total: {fmtMoney(detail.amountCents, detail.currency)}
                       </p>
                     )}
@@ -637,7 +637,7 @@ export function DealsPage() {
                     </button>
                     <button
                       type="button"
-                      className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100"
+                      className="shrink-0 rounded p-1 text-ink-400 dark:text-ink-500 hover:bg-ink-100 dark:hover:bg-white/[0.06]"
                       onClick={closeDetail}
                     >
                       <X className="h-5 w-5" />
@@ -651,13 +651,13 @@ export function DealsPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-                      <label className="block text-xs font-medium text-gray-600">
+                    <div className="mb-4 rounded-lg border border-ink-100 dark:border-white/5 bg-ink-50 dark:bg-white/[0.04]/80 p-3">
+                      <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("dealsPage.stageLabel")}
                       </label>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <select
-                          className="min-w-[180px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          className="min-w-[180px] flex-1 rounded-lg border border-ink-300 dark:border-white/10 px-3 py-2 text-sm"
                           value={detailStageId}
                           onChange={(e) => setDetailStageId(e.target.value)}
                         >
@@ -677,35 +677,35 @@ export function DealsPage() {
                         </button>
                       </div>
                       {stageMessage ? (
-                        <p className="mt-2 text-xs text-gray-600">{stageMessage}</p>
+                        <p className="mt-2 text-xs text-ink-600 dark:text-ink-400">{stageMessage}</p>
                       ) : null}
                     </div>
 
-                    <h3 className="mb-2 text-sm font-medium text-gray-700">Linhas</h3>
+                    <h3 className="mb-2 text-sm font-medium text-ink-700 dark:text-ink-300">Linhas</h3>
                     {detail.lineItems.length === 0 ? (
-                      <p className="mb-4 text-sm text-gray-500">Sem linhas — o valor pode ser só o inicial.</p>
+                      <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">Sem linhas — o valor pode ser só o inicial.</p>
                     ) : (
                       <ul className="mb-4 space-y-2">
                         {detail.lineItems.map((row) => (
                           <li
                             key={row.id}
-                            className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm"
+                            className="flex items-start justify-between gap-2 rounded-lg border border-ink-100 dark:border-white/5 bg-ink-50 dark:bg-white/[0.04]/80 px-3 py-2 text-sm"
                           >
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-gray-900">{row.description}</p>
-                              <p className="text-xs text-gray-500">
+                              <p className="font-medium text-ink-900 dark:text-ink-50">{row.description}</p>
+                              <p className="text-xs text-ink-500 dark:text-ink-400">
                                 {row.quantity} × {fmtMoney(row.unitPriceCents, detail.currency)}
                                 {row.discountPct > 0 ? ` (−${row.discountPct}%)` : ""}
                                 {row.product ? ` · ${row.product.name}` : ""}
                               </p>
-                              <p className="text-xs font-medium text-gray-700">
+                              <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
                                 Linha: {fmtMoney(lineTotal(row), detail.currency)}
                               </p>
                             </div>
                             <button
                               type="button"
                               onClick={() => void handleDeleteLine(row.id)}
-                              className="shrink-0 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                              className="shrink-0 rounded p-1.5 text-ink-400 dark:text-ink-500 hover:bg-red-50 hover:text-red-600"
                               title="Remover linha"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -715,19 +715,19 @@ export function DealsPage() {
                       </ul>
                     )}
 
-                    <h3 className="mb-2 text-sm font-medium text-gray-700">Adicionar linha</h3>
+                    <h3 className="mb-2 text-sm font-medium text-ink-700 dark:text-ink-300">Adicionar linha</h3>
                     {canManageProducts ? (
-                      <div className="mb-4 space-y-2 rounded-lg border border-dashed border-gray-200 bg-gray-50/90 p-3">
-                        <p className="text-xs font-medium text-gray-600">{t("dealsPage.createProduct")}</p>
+                      <div className="mb-4 space-y-2 rounded-lg border border-dashed border-ink-200 bg-ink-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                        <p className="text-xs font-medium text-ink-600 dark:text-ink-400">{t("dealsPage.createProduct")}</p>
                         <div className="grid gap-2 sm:grid-cols-2">
                           <input
-                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             placeholder={t("dealsPage.createProductName")}
                             value={newProductName}
                             onChange={(e) => setNewProductName(e.target.value)}
                           />
                           <input
-                            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             placeholder={t("dealsPage.createProductPrice")}
                             value={newProductPrice}
                             onChange={(e) => setNewProductPrice(e.target.value)}
@@ -744,26 +744,26 @@ export function DealsPage() {
                         </button>
                       </div>
                     ) : null}
-                    <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+                    <div className="space-y-3 rounded-lg border border-ink-200/80 p-3 dark:border-white/5">
                       <input
-                        className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                        className="w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                         placeholder="Descrição"
                         value={lineDesc}
                         onChange={(e) => setLineDesc(e.target.value)}
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-xs text-gray-500">Qtd</label>
+                          <label className="text-xs text-ink-500 dark:text-ink-400">Qtd</label>
                           <input
-                            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             value={lineQty}
                             onChange={(e) => setLineQty(e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">Preço unit. (R$)</label>
+                          <label className="text-xs text-ink-500 dark:text-ink-400">Preço unit. (R$)</label>
                           <input
-                            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             value={lineUnitEur}
                             onChange={(e) => setLineUnitEur(e.target.value)}
                             placeholder="0,00"
@@ -772,17 +772,17 @@ export function DealsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-xs text-gray-500">Desconto %</label>
+                          <label className="text-xs text-ink-500 dark:text-ink-400">Desconto %</label>
                           <input
-                            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             value={lineDisc}
                             onChange={(e) => setLineDisc(e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">Produto (opcional)</label>
+                          <label className="text-xs text-ink-500 dark:text-ink-400">Produto (opcional)</label>
                           <select
-                            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                            className="mt-1 w-full rounded border border-ink-300 dark:border-white/10 px-2 py-1.5 text-sm"
                             value={lineProductId}
                             onChange={(e) => {
                               const v = e.target.value;

@@ -67,21 +67,21 @@ export function MyAttendancePage() {
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
               <ClipboardCheck className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{t("attendance.title")}</h1>
-              <p className="mt-1 text-sm text-gray-500">{t("attendance.subtitle")}</p>
+              <h1 className="ds-page-heading">{t("attendance.title")}</h1>
+              <p className="ds-page-subtitle mt-1">{t("attendance.subtitle")}</p>
             </div>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
-            <p className="text-gray-500">{t("attendance.totalValue")}</p>
-            <p className="text-lg font-semibold text-gray-900">{fmtMoney(totalWonValue)}</p>
-            <p className="mt-2 text-xs font-medium text-gray-600">{t("attendance.negotiationSubtotal")}</p>
-            <p className="text-base font-semibold text-gray-800">{fmtMoney(totalPipelineValue)}</p>
-            <p className="mt-2 text-xs text-gray-400">{t("attendance.negotiationSubtotalHint")}</p>
-            <p className="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-400">
+          <div className="ds-panel px-4 py-3 text-sm">
+            <p className="text-ink-500 dark:text-ink-400">{t("attendance.totalValue")}</p>
+            <p className="text-lg font-semibold text-ink-900 dark:text-ink-50">{fmtMoney(totalWonValue)}</p>
+            <p className="mt-2 text-xs font-medium text-ink-600 dark:text-ink-400">{t("attendance.negotiationSubtotal")}</p>
+            <p className="text-base font-semibold text-ink-800 dark:text-ink-200">{fmtMoney(totalPipelineValue)}</p>
+            <p className="mt-2 text-xs text-ink-400 dark:text-ink-500">{t("attendance.negotiationSubtotalHint")}</p>
+            <p className="mt-2 border-t border-ink-100 pt-2 text-xs text-ink-400 dark:border-white/5 dark:text-ink-500">
               {t("attendance.resolvedTotal")}: {rows.length}
             </p>
           </div>
@@ -92,7 +92,7 @@ export function MyAttendancePage() {
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
         ) : rows.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500">
+          <p className="ds-empty-state">
             {t("attendance.empty")}
           </p>
         ) : (
@@ -108,14 +108,14 @@ export function MyAttendancePage() {
                 <motion.li key={r.id} variants={staggerItem}>
                   <Link
                     to={`/conversations/${r.id}`}
-                    className="flex flex-wrap items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    className="ds-panel flex flex-wrap items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-white/[0.06]"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
                       {r.contact.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-gray-900">{r.contact.name}</span>
+                        <span className="font-medium text-ink-900 dark:text-ink-50">{r.contact.name}</span>
                         {r.leadType ? (
                           <span
                             className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
@@ -130,16 +130,16 @@ export function MyAttendancePage() {
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-0.5 truncate text-sm text-gray-500">
+                      <p className="mt-0.5 truncate text-sm text-ink-500 dark:text-ink-400">
                         {r.closureReason || last?.body || "—"}
                       </p>
                       {r.team ? (
-                        <p className="mt-1 text-xs text-gray-400">
+                        <p className="mt-1 text-xs text-ink-400 dark:text-ink-500">
                           {t("conversationDetail.team")}: {r.team.name}
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                    <div className="flex items-center gap-1 text-xs text-ink-400 dark:text-ink-500">
                       <Clock className="h-3 w-3" />
                       {formatDistanceToNow(new Date(r.updatedAt), {
                         addSuffix: true,
