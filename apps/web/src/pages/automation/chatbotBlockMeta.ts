@@ -1,17 +1,28 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Calendar,
   CirclePlay,
+  Code2,
+  ExternalLink,
   Flag,
   GitBranch,
   Globe,
+  Sparkles,
+  Split,
+  Hash,
   Image,
+  Mail,
   MessageSquare,
+  Mic,
   MousePointerClick,
+  Phone,
+  Star,
   Tag,
   Timer,
   Type,
   UserRound,
   Variable,
+  Video,
   Webhook,
   Zap,
 } from "lucide-react";
@@ -85,6 +96,26 @@ export const CHATBOT_BLOCK_META: Record<string, ChatbotBlockMeta> = {
     labelKey: "chatbotPage.blockImage",
     descriptionKey: "chatbotPage.blockImageDesc",
   },
+  video: {
+    type: "video",
+    category: "bubbles",
+    icon: Video,
+    color: "#2563eb",
+    bgLight: "bg-blue-50/90 dark:bg-blue-950/40",
+    borderColor: "border-blue-200 dark:border-blue-800",
+    labelKey: "chatbotPage.blockVideo",
+    descriptionKey: "chatbotPage.blockVideoDesc",
+  },
+  audio: {
+    type: "audio",
+    category: "bubbles",
+    icon: Mic,
+    color: "#2563eb",
+    bgLight: "bg-blue-50/90 dark:bg-blue-950/40",
+    borderColor: "border-blue-200 dark:border-blue-800",
+    labelKey: "chatbotPage.blockAudio",
+    descriptionKey: "chatbotPage.blockAudioDesc",
+  },
   text_input: {
     type: "text_input",
     category: "inputs",
@@ -105,6 +136,56 @@ export const CHATBOT_BLOCK_META: Record<string, ChatbotBlockMeta> = {
     labelKey: "chatbotPage.blockChoiceInput",
     descriptionKey: "chatbotPage.blockChoiceInputDesc",
   },
+  email_input: {
+    type: "email_input",
+    category: "inputs",
+    icon: Mail,
+    color: "#ea580c",
+    bgLight: "bg-orange-50/90 dark:bg-orange-950/40",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    labelKey: "chatbotPage.blockEmailInput",
+    descriptionKey: "chatbotPage.blockEmailInputDesc",
+  },
+  number_input: {
+    type: "number_input",
+    category: "inputs",
+    icon: Hash,
+    color: "#ea580c",
+    bgLight: "bg-orange-50/90 dark:bg-orange-950/40",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    labelKey: "chatbotPage.blockNumberInput",
+    descriptionKey: "chatbotPage.blockNumberInputDesc",
+  },
+  phone_input: {
+    type: "phone_input",
+    category: "inputs",
+    icon: Phone,
+    color: "#ea580c",
+    bgLight: "bg-orange-50/90 dark:bg-orange-950/40",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    labelKey: "chatbotPage.blockPhoneInput",
+    descriptionKey: "chatbotPage.blockPhoneInputDesc",
+  },
+  date_input: {
+    type: "date_input",
+    category: "inputs",
+    icon: Calendar,
+    color: "#ea580c",
+    bgLight: "bg-orange-50/90 dark:bg-orange-950/40",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    labelKey: "chatbotPage.blockDateInput",
+    descriptionKey: "chatbotPage.blockDateInputDesc",
+  },
+  rating_input: {
+    type: "rating_input",
+    category: "inputs",
+    icon: Star,
+    color: "#ea580c",
+    bgLight: "bg-orange-50/90 dark:bg-orange-950/40",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    labelKey: "chatbotPage.blockRatingInput",
+    descriptionKey: "chatbotPage.blockRatingInputDesc",
+  },
   condition: {
     type: "condition",
     category: "logic",
@@ -115,6 +196,16 @@ export const CHATBOT_BLOCK_META: Record<string, ChatbotBlockMeta> = {
     labelKey: "chatbotPage.blockCondition",
     descriptionKey: "chatbotPage.blockConditionDesc",
   },
+  ab_test: {
+    type: "ab_test",
+    category: "logic",
+    icon: Split,
+    color: "#7c3aed",
+    bgLight: "bg-violet-50/90 dark:bg-violet-950/40",
+    borderColor: "border-violet-200 dark:border-violet-800",
+    labelKey: "chatbotPage.blockAbTest",
+    descriptionKey: "chatbotPage.blockAbTestDesc",
+  },
   set_variable: {
     type: "set_variable",
     category: "logic",
@@ -124,6 +215,36 @@ export const CHATBOT_BLOCK_META: Record<string, ChatbotBlockMeta> = {
     borderColor: "border-violet-200 dark:border-violet-800",
     labelKey: "chatbotPage.blockSetVariable",
     descriptionKey: "chatbotPage.blockSetVariableDesc",
+  },
+  script: {
+    type: "script",
+    category: "logic",
+    icon: Code2,
+    color: "#7c3aed",
+    bgLight: "bg-violet-50/90 dark:bg-violet-950/40",
+    borderColor: "border-violet-200 dark:border-violet-800",
+    labelKey: "chatbotPage.blockScript",
+    descriptionKey: "chatbotPage.blockScriptDesc",
+  },
+  redirect: {
+    type: "redirect",
+    category: "integrations",
+    icon: ExternalLink,
+    color: "#059669",
+    bgLight: "bg-emerald-50/90 dark:bg-emerald-950/40",
+    borderColor: "border-emerald-200 dark:border-emerald-800",
+    labelKey: "chatbotPage.blockRedirect",
+    descriptionKey: "chatbotPage.blockRedirectDesc",
+  },
+  openai: {
+    type: "openai",
+    category: "integrations",
+    icon: Sparkles,
+    color: "#059669",
+    bgLight: "bg-emerald-50/90 dark:bg-emerald-950/40",
+    borderColor: "border-emerald-200 dark:border-emerald-800",
+    labelKey: "chatbotPage.blockOpenai",
+    descriptionKey: "chatbotPage.blockOpenaiDesc",
   },
   wait: {
     type: "wait",
@@ -201,10 +322,36 @@ export function getBlockMeta(type: string): ChatbotBlockMeta {
 
 export function blockPreviewText(type: string, data?: Record<string, unknown>): string {
   if (type === "text") return String(data?.content ?? "").slice(0, 80);
-  if (type === "text_input" || type === "choice_input") return String(data?.prompt ?? data?.content ?? "").slice(0, 80);
-  if (type === "image" || type === "webhook") return String(data?.url ?? "").slice(0, 60);
+  if (
+    type === "text_input" ||
+    type === "choice_input" ||
+    type === "email_input" ||
+    type === "number_input" ||
+    type === "phone_input" ||
+    type === "date_input" ||
+    type === "rating_input"
+  ) {
+    return String(data?.prompt ?? data?.content ?? "").slice(0, 80);
+  }
+  if (type === "image" || type === "video" || type === "audio" || type === "webhook") {
+    return String(data?.url ?? data?.mediaUrl ?? "").slice(0, 60);
+  }
   if (type === "condition") return `${data?.field ?? "?"} ${data?.operator ?? "="} ${data?.value ?? ""}`;
+  if (type === "ab_test") {
+    const v = data?.variants;
+    if (Array.isArray(v)) {
+      return v
+        .map((x) => (x && typeof x === "object" ? `${(x as { id?: string }).id ?? "?"}:${(x as { weight?: number }).weight ?? 0}%` : ""))
+        .filter(Boolean)
+        .join(" · ")
+        .slice(0, 80);
+    }
+    return "A:50% · B:50%";
+  }
   if (type === "set_variable") return `${data?.name ?? data?.variableName ?? ""} = ${data?.value ?? ""}`;
+  if (type === "script") return String(data?.code ?? "").slice(0, 80);
+  if (type === "redirect") return String(data?.url ?? data?.message ?? "").slice(0, 80);
+  if (type === "openai") return String(data?.prompt ?? data?.content ?? "").slice(0, 80);
   if (type === "wait") return `${data?.seconds ?? 0}s`;
   return "";
 }

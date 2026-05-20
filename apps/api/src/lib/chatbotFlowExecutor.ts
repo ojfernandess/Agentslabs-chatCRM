@@ -14,6 +14,18 @@ import {
   type ChatbotFlowNode,
   type ChatbotWaitingInput,
 } from "./chatbotFlowTypes.js";
+import { isChatbotValidatedInputKind, validateChatbotUserInput } from "./chatbotInputValidation.js";
+import {
+  applyChatbotScriptAssignments,
+  parseAbVariants,
+  pickAbTestVariant,
+} from "./chatbotFlowLogic.js";
+import { runChatbotOpenAiBlock } from "./chatbotOpenAiBlock.js";
+import {
+  formatInvalidReplyMessage,
+  matchChatbotCommand,
+  parseChatbotFlowSettings,
+} from "./chatbotFlowSettings.js";
 
 type SessionVars = Record<string, string>;
 
@@ -103,11 +115,12 @@ async function sendBotText(
   });
 }
 
-async function sendBotImage(
+async function sendBotMedia(
   organizationId: string,
   botId: string,
   conversation: Conversation,
   contact: Contact,
+  type: "IMAGE" | "VIDEO" | "AUDIO",
   mediaUrl: string,
   log: FastifyBaseLogger,
 ): Promise<void> {
@@ -116,7 +129,7 @@ async function sendBotImage(
     data: {
       contactId: contact.id,
       conversationId: conversation.id,
-      type: "IMAGE",
+      type,
       mediaUrl,
       body: "",
     },
@@ -237,15 +250,33 @@ export async function dispatchVisualChatbotFlow(input: {
     let currentId = session.currentNodeId;
     let status = session.status;
     let waiting = session.waitingInput as ChatbotWaitingInput | null;
+    let invalidInputRetry = false;
+    let lastOutboundAssistant = "";
 
-    if (waiting?.kind === "wait" && waiting.resumeAt) {
+    const flowSettings = parseChatbotFlowSettings(chatbotFlow.settings);
+    const nodeIdSet = new Set(flow.nodes.map((n) => n.id));
+    let commandJump = false;
+    if (userText) {
+      const cmdTarget = matchChatbotCommand(userText, flowSettings.events?.commands, nodeIdSet);
+      if (cmdTarget) {
+        currentId = cmdTarget;
+        status = ChatbotFlowSessionStatus.ACTIVE;
+        waiting = null;
+        commandJump = true;
+        exLog.debug({ id: "command", name: "Comando" }, "Salto por comando global", {
+          output: { targetNodeId: cmdTarget },
+        });
+      }
+    }
+
+    if (!commandJump && waiting?.kind === "wait" && waiting.resumeAt) {
       if (new Date(waiting.resumeAt) > new Date()) {
         return;
       }
       currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
       status = ChatbotFlowSessionStatus.ACTIVE;
       waiting = null;
-    } else if (status === ChatbotFlowSessionStatus.WAITING_INPUT && waiting && userText) {
+    } else if (status === ChatbotFlowSessionStatus.WAITING_INPUT && waiting && userText && !commandJump) {
       if (waiting.kind === "wait") {
         return;
       }
@@ -263,15 +294,37 @@ export async function dispatchVisualChatbotFlow(input: {
             vars = { ...vars, [waiting.variableName]: match?.label ?? userText };
           }
         }
+      } else if (isChatbotValidatedInputKind(waiting.kind)) {
+        const result = validateChatbotUserInput(waiting.kind, userText, {
+          numberMin: waiting.numberMin,
+          numberMax: waiting.numberMax,
+          ratingMin: waiting.ratingMin,
+          ratingMax: waiting.ratingMax,
+        });
+        if (!result.ok) {
+          const hint = formatInvalidReplyMessage(
+            flowSettings.events?.invalidReplyMessage,
+            result.message,
+            waiting.prompt,
+            (frag) => substituteChatbotVariables(frag, vars, contact),
+          );
+          await sendBotText(organizationId, bot.id, conversation, contact, hint, log);
+          lastOutboundAssistant = hint;
+          invalidInputRetry = true;
+        } else {
+          vars = { ...vars, [waiting.variableName]: result.value };
+        }
       } else {
         vars = { ...vars, [waiting.variableName]: userText };
       }
-      currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
-      status = ChatbotFlowSessionStatus.ACTIVE;
-      waiting = null;
-      exLog.debug({ id: "input", name: "Input" }, "Resposta do utilizador capturada", {
-        output: { variable: capturedVar },
-      });
+      if (!invalidInputRetry) {
+        currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
+        status = ChatbotFlowSessionStatus.ACTIVE;
+        waiting = null;
+        exLog.debug({ id: "input", name: "Input" }, "Resposta do utilizador capturada", {
+          output: { variable: capturedVar },
+        });
+      }
     } else if (status === ChatbotFlowSessionStatus.COMPLETED) {
       const start = findStartNode(flow);
       currentId = start?.id ?? null;
@@ -282,6 +335,41 @@ export async function dispatchVisualChatbotFlow(input: {
     const maxSteps = 40;
     let steps = 0;
     const outboundMessages: string[] = [];
+
+    if (invalidInputRetry) {
+      await prisma.chatbotFlowSession.update({
+        where: { id: session.id },
+        data: {
+          currentNodeId: currentId,
+          variables: vars,
+          status: ChatbotFlowSessionStatus.WAITING_INPUT,
+          waitingInput: (waiting ?? undefined) as Prisma.InputJsonValue | undefined,
+        },
+      });
+      const lastOutbound = lastOutboundAssistant || (outboundMessages[outboundMessages.length - 1] ?? "");
+      if (lastOutbound || userText) {
+        await prisma.automationInteraction
+          .create({
+            data: {
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              userMessage: userText.slice(0, 4000),
+              assistantMessage: lastOutbound.slice(0, 4000),
+              responseType: "visual_chatbot",
+              metadata: { chatbotFlowId: chatbotFlow.id, sessionStatus: status, invalidInput: true },
+            },
+          })
+          .catch(() => {});
+      }
+      exLog.info(
+        { id: "done", name: "Fluxo visual" },
+        `Sessão ${status} (validação falhou)`,
+        { output: { steps: 0, outboundCount: outboundMessages.length } },
+      );
+      await exLog.completeSuccess();
+      return;
+    }
 
     while (steps < maxSteps && status === ChatbotFlowSessionStatus.ACTIVE) {
       steps += 1;
@@ -311,7 +399,23 @@ export async function dispatchVisualChatbotFlow(input: {
         case "image": {
           const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
           if (url) {
-            await sendBotImage(organizationId, bot.id, conversation, contact, url, log);
+            await sendBotMedia(organizationId, bot.id, conversation, contact, "IMAGE", url, log);
+          }
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "video": {
+          const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+          if (url) {
+            await sendBotMedia(organizationId, bot.id, conversation, contact, "VIDEO", url, log);
+          }
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "audio": {
+          const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+          if (url) {
+            await sendBotMedia(organizationId, bot.id, conversation, contact, "AUDIO", url, log);
           }
           currentId = nextEdgeTarget(flow, node.id);
           continue;
@@ -328,6 +432,107 @@ export async function dispatchVisualChatbotFlow(input: {
             outboundMessages.push(prompt);
           }
           waiting = { nodeId: node.id, kind: "text", variableName, prompt };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
+        }
+        case "email_input": {
+          const variableName = String(node.data?.variableName ?? "email");
+          const prompt = substituteChatbotVariables(
+            String(node.data?.prompt ?? node.data?.content ?? "Indique o seu email:"),
+            vars,
+            contact,
+          );
+          if (prompt) {
+            await sendBotText(organizationId, bot.id, conversation, contact, prompt, log);
+            outboundMessages.push(prompt);
+          }
+          waiting = { nodeId: node.id, kind: "email", variableName, prompt };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
+        }
+        case "number_input": {
+          const variableName = String(node.data?.variableName ?? "numero");
+          const prompt = substituteChatbotVariables(
+            String(node.data?.prompt ?? node.data?.content ?? "Indique um número:"),
+            vars,
+            contact,
+          );
+          if (prompt) {
+            await sendBotText(organizationId, bot.id, conversation, contact, prompt, log);
+            outboundMessages.push(prompt);
+          }
+          const numberMin =
+            node.data?.min != null
+              ? Number(node.data.min)
+              : node.data?.numberMin != null
+                ? Number(node.data.numberMin)
+                : undefined;
+          const numberMax =
+            node.data?.max != null
+              ? Number(node.data.max)
+              : node.data?.numberMax != null
+                ? Number(node.data.numberMax)
+                : undefined;
+          waiting = {
+            nodeId: node.id,
+            kind: "number",
+            variableName,
+            prompt,
+            numberMin: Number.isFinite(numberMin) ? numberMin : undefined,
+            numberMax: Number.isFinite(numberMax) ? numberMax : undefined,
+          };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
+        }
+        case "phone_input": {
+          const variableName = String(node.data?.variableName ?? "telefone");
+          const prompt = substituteChatbotVariables(
+            String(node.data?.prompt ?? node.data?.content ?? "Indique o seu telefone (com indicativo):"),
+            vars,
+            contact,
+          );
+          if (prompt) {
+            await sendBotText(organizationId, bot.id, conversation, contact, prompt, log);
+            outboundMessages.push(prompt);
+          }
+          waiting = { nodeId: node.id, kind: "phone", variableName, prompt };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
+        }
+        case "date_input": {
+          const variableName = String(node.data?.variableName ?? "data");
+          const prompt = substituteChatbotVariables(
+            String(node.data?.prompt ?? node.data?.content ?? "Indique a data (AAAA-MM-DD ou DD/MM/AAAA):"),
+            vars,
+            contact,
+          );
+          if (prompt) {
+            await sendBotText(organizationId, bot.id, conversation, contact, prompt, log);
+            outboundMessages.push(prompt);
+          }
+          waiting = { nodeId: node.id, kind: "date", variableName, prompt };
+          status = ChatbotFlowSessionStatus.WAITING_INPUT;
+          break;
+        }
+        case "rating_input": {
+          const variableName = String(node.data?.variableName ?? "avaliacao");
+          const rmin = Math.max(1, Math.min(10, Number(node.data?.ratingMin ?? 1) || 1));
+          const rmax = Math.max(rmin, Math.min(10, Number(node.data?.ratingMax ?? 5) || 5));
+          const basePrompt = String(node.data?.prompt ?? node.data?.content ?? "De quanto a quanto avalia?");
+          const withRange = `${basePrompt} (${rmin}–${rmax})`;
+          const prompt = substituteChatbotVariables(withRange, vars, contact);
+          if (prompt) {
+            await sendBotText(organizationId, bot.id, conversation, contact, prompt, log);
+            outboundMessages.push(prompt);
+          }
+          waiting = {
+            nodeId: node.id,
+            kind: "rating",
+            variableName,
+            prompt,
+            ratingMin: rmin,
+            ratingMax: rmax,
+          };
           status = ChatbotFlowSessionStatus.WAITING_INPUT;
           break;
         }
@@ -374,10 +579,81 @@ export async function dispatchVisualChatbotFlow(input: {
           currentId = nextEdgeTarget(flow, node.id, pass ? "yes" : "no");
           continue;
         }
+        case "ab_test": {
+          const variants = parseAbVariants(node.data?.variants);
+          const abVar = String(node.data?.variableName ?? `_ab_${node.id}`);
+          const seed = `${contact.id}:${node.id}`;
+          const picked =
+            vars[abVar]?.trim() || pickAbTestVariant(variants, `${session.id}:${seed}`);
+          vars = { ...vars, [abVar]: picked };
+          currentId = nextEdgeTarget(flow, node.id, picked) ?? nextEdgeTarget(flow, node.id);
+          continue;
+        }
         case "set_variable": {
           const name = String(node.data?.name ?? node.data?.variableName ?? "");
           const value = substituteChatbotVariables(String(node.data?.value ?? ""), vars, contact);
           if (name) vars[name] = value;
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "script": {
+          const code = String(node.data?.code ?? node.data?.script ?? "");
+          const sub = (frag: string) => substituteChatbotVariables(frag, vars, contact);
+          vars = applyChatbotScriptAssignments(code, vars, sub);
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "redirect": {
+          const url = substituteChatbotVariables(
+            String(node.data?.url ?? "").trim(),
+            vars,
+            contact,
+          );
+          const msgTpl = String(node.data?.message ?? node.data?.content ?? "").trim();
+          const msg = msgTpl
+            ? substituteChatbotVariables(msgTpl, vars, contact)
+            : url
+              ? url
+              : "";
+          if (url) {
+            const urlVar = String(node.data?.variableName ?? "redirect_url");
+            vars = { ...vars, [urlVar]: url };
+          }
+          if (msg) {
+            await sendBotText(organizationId, bot.id, conversation, contact, msg, log);
+            outboundMessages.push(msg);
+          }
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "openai": {
+          const prompt = substituteChatbotVariables(
+            String(node.data?.prompt ?? node.data?.content ?? ""),
+            vars,
+            contact,
+          );
+          const variableName = String(node.data?.variableName ?? "openai_reply");
+          const systemPrompt = substituteChatbotVariables(
+            String(node.data?.systemPrompt ?? ""),
+            vars,
+            contact,
+          );
+          const model = String(node.data?.model ?? "").trim() || undefined;
+          const sendToUser = node.data?.sendToUser === true;
+          if (prompt) {
+            const result = await runChatbotOpenAiBlock({
+              organizationId,
+              prompt,
+              systemPrompt: systemPrompt || undefined,
+              model,
+            });
+            const text = result.ok ? result.text : `⚠ ${result.error}`;
+            vars = { ...vars, [variableName]: text };
+            if (sendToUser && text) {
+              await sendBotText(organizationId, bot.id, conversation, contact, text, log);
+              outboundMessages.push(text);
+            }
+          }
           currentId = nextEdgeTarget(flow, node.id);
           continue;
         }

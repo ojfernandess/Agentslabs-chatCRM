@@ -7,6 +7,17 @@ import {
   type ChatbotFlowNode,
   type ChatbotWaitingInput,
 } from "./chatbotFlowTypes.js";
+import { isChatbotValidatedInputKind, validateChatbotUserInput } from "./chatbotInputValidation.js";
+import {
+  applyChatbotScriptAssignments,
+  parseAbVariants,
+  pickAbTestVariant,
+} from "./chatbotFlowLogic.js";
+import {
+  formatInvalidReplyMessage,
+  matchChatbotCommand,
+  parseChatbotFlowSettings,
+} from "./chatbotFlowSettings.js";
 
 export type SimulatorSessionStatus = "ACTIVE" | "WAITING_INPUT" | "WAITING_DELAY" | "COMPLETED";
 
@@ -112,6 +123,7 @@ export function createSimulatorSession(
 
 export function runSimulatorTurn(options: {
   flowDefinition: unknown;
+  flowSettings?: unknown;
   session: SimulatorSession;
   userMessage: string;
   contactName?: string;
@@ -125,6 +137,9 @@ export function runSimulatorTurn(options: {
     };
   }
 
+  const flowSettings = parseChatbotFlowSettings(options.flowSettings);
+  const nodeIdSet = new Set(flow.nodes.map((n) => n.id));
+
   const contact = simContact(options.contactName);
   const outbound: string[] = [];
   let vars = { ...options.session.variables };
@@ -133,7 +148,19 @@ export function runSimulatorTurn(options: {
   let waiting = options.session.waitingInput;
   const userText = options.userMessage.trim();
 
-  if (status === "WAITING_DELAY" && waiting?.kind === "wait") {
+  let commandJump = false;
+  if (userText) {
+    const cmdTarget = matchChatbotCommand(userText, flowSettings.events?.commands, nodeIdSet);
+    if (cmdTarget) {
+      currentId = cmdTarget;
+      status = "ACTIVE";
+      waiting = null;
+      commandJump = true;
+      outbound.push(`[Comando → ${cmdTarget}]`);
+    }
+  }
+
+  if (!commandJump && status === "WAITING_DELAY" && waiting?.kind === "wait") {
     const due = waiting.resumeAt ? new Date(waiting.resumeAt) <= new Date() : true;
     if (!due) {
       return { messages: [], session: options.session, completed: false };
@@ -141,7 +168,8 @@ export function runSimulatorTurn(options: {
     currentId = nextEdgeTarget(flow, waiting.nodeId);
     status = "ACTIVE";
     waiting = null;
-  } else if (status === "WAITING_INPUT" && waiting && userText) {
+  } else if (status === "WAITING_INPUT" && waiting && userText && !commandJump) {
+    let stayWaiting = false;
     if (waiting.kind === "choice" && waiting.choices?.length) {
       const idx = parseChoiceIndex(userText, waiting.choices.length);
       if (idx != null) {
@@ -151,11 +179,34 @@ export function runSimulatorTurn(options: {
         vars = { ...vars, [waiting.variableName]: match?.label ?? userText };
       }
     } else if (waiting.kind !== "wait") {
-      vars = { ...vars, [waiting.variableName]: userText };
+      if (isChatbotValidatedInputKind(waiting.kind)) {
+        const result = validateChatbotUserInput(waiting.kind, userText, {
+          numberMin: waiting.numberMin,
+          numberMax: waiting.numberMax,
+          ratingMin: waiting.ratingMin,
+          ratingMax: waiting.ratingMax,
+        });
+        if (!result.ok) {
+          const hint = formatInvalidReplyMessage(
+            flowSettings.events?.invalidReplyMessage,
+            result.message,
+            waiting.prompt,
+            (frag) => substituteChatbotVariables(frag, vars, contact),
+          );
+          outbound.push(hint.startsWith("⚠") ? hint : `⚠ ${hint}`);
+          stayWaiting = true;
+        } else {
+          vars = { ...vars, [waiting.variableName]: result.value };
+        }
+      } else {
+        vars = { ...vars, [waiting.variableName]: userText };
+      }
     }
-    currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
-    status = "ACTIVE";
-    waiting = null;
+    if (!stayWaiting) {
+      currentId = nextEdgeTarget(flow, waiting.nodeId) ?? currentId;
+      status = "ACTIVE";
+      waiting = null;
+    }
   } else if (status === "COMPLETED") {
     const start = findStartNode(flow);
     currentId = start?.id ?? null;
@@ -193,6 +244,18 @@ export function runSimulatorTurn(options: {
         currentId = nextEdgeTarget(flow, node.id);
         continue;
       }
+      case "video": {
+        const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+        if (url) outbound.push(`[Vídeo] ${url}`);
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
+      case "audio": {
+        const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+        if (url) outbound.push(`[Áudio] ${url}`);
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
       case "text_input": {
         const prompt = substituteChatbotVariables(
           String(node.data?.prompt ?? node.data?.content ?? "Escreva a sua resposta:"),
@@ -205,6 +268,102 @@ export function runSimulatorTurn(options: {
           kind: "text",
           variableName: String(node.data?.variableName ?? "input"),
           prompt,
+        };
+        status = "WAITING_INPUT";
+        break;
+      }
+      case "email_input": {
+        const prompt = substituteChatbotVariables(
+          String(node.data?.prompt ?? node.data?.content ?? "Indique o seu email:"),
+          vars,
+          contact,
+        );
+        if (prompt) outbound.push(prompt);
+        waiting = {
+          nodeId: node.id,
+          kind: "email",
+          variableName: String(node.data?.variableName ?? "email"),
+          prompt,
+        };
+        status = "WAITING_INPUT";
+        break;
+      }
+      case "number_input": {
+        const prompt = substituteChatbotVariables(
+          String(node.data?.prompt ?? node.data?.content ?? "Indique um número:"),
+          vars,
+          contact,
+        );
+        if (prompt) outbound.push(prompt);
+        const numberMin =
+          node.data?.min != null
+            ? Number(node.data.min)
+            : node.data?.numberMin != null
+              ? Number(node.data.numberMin)
+              : undefined;
+        const numberMax =
+          node.data?.max != null
+            ? Number(node.data.max)
+            : node.data?.numberMax != null
+              ? Number(node.data.numberMax)
+              : undefined;
+        waiting = {
+          nodeId: node.id,
+          kind: "number",
+          variableName: String(node.data?.variableName ?? "numero"),
+          prompt,
+          numberMin: Number.isFinite(numberMin) ? numberMin : undefined,
+          numberMax: Number.isFinite(numberMax) ? numberMax : undefined,
+        };
+        status = "WAITING_INPUT";
+        break;
+      }
+      case "phone_input": {
+        const prompt = substituteChatbotVariables(
+          String(node.data?.prompt ?? node.data?.content ?? "Indique o seu telefone (com indicativo):"),
+          vars,
+          contact,
+        );
+        if (prompt) outbound.push(prompt);
+        waiting = {
+          nodeId: node.id,
+          kind: "phone",
+          variableName: String(node.data?.variableName ?? "telefone"),
+          prompt,
+        };
+        status = "WAITING_INPUT";
+        break;
+      }
+      case "date_input": {
+        const prompt = substituteChatbotVariables(
+          String(node.data?.prompt ?? node.data?.content ?? "Indique a data (AAAA-MM-DD ou DD/MM/AAAA):"),
+          vars,
+          contact,
+        );
+        if (prompt) outbound.push(prompt);
+        waiting = {
+          nodeId: node.id,
+          kind: "date",
+          variableName: String(node.data?.variableName ?? "data"),
+          prompt,
+        };
+        status = "WAITING_INPUT";
+        break;
+      }
+      case "rating_input": {
+        const rmin = Math.max(1, Math.min(10, Number(node.data?.ratingMin ?? 1) || 1));
+        const rmax = Math.max(rmin, Math.min(10, Number(node.data?.ratingMax ?? 5) || 5));
+        const basePrompt = String(node.data?.prompt ?? node.data?.content ?? "De quanto a quanto avalia?");
+        const withRange = `${basePrompt} (${rmin}–${rmax})`;
+        const prompt = substituteChatbotVariables(withRange, vars, contact);
+        if (prompt) outbound.push(prompt);
+        waiting = {
+          nodeId: node.id,
+          kind: "rating",
+          variableName: String(node.data?.variableName ?? "avaliacao"),
+          prompt,
+          ratingMin: rmin,
+          ratingMax: rmax,
         };
         status = "WAITING_INPUT";
         break;
@@ -255,10 +414,56 @@ export function runSimulatorTurn(options: {
         currentId = nextEdgeTarget(flow, node.id, pass ? "yes" : "no");
         continue;
       }
+      case "ab_test": {
+        const variants = parseAbVariants(node.data?.variants);
+        const abVar = String(node.data?.variableName ?? `_ab_${node.id}`);
+        const picked = vars[abVar]?.trim() || pickAbTestVariant(variants, `sim:${node.id}`);
+        vars = { ...vars, [abVar]: picked };
+        outbound.push(`[A/B → ${picked}]`);
+        currentId = nextEdgeTarget(flow, node.id, picked) ?? nextEdgeTarget(flow, node.id);
+        continue;
+      }
       case "set_variable": {
         const name = String(node.data?.name ?? node.data?.variableName ?? "");
         const value = substituteChatbotVariables(String(node.data?.value ?? ""), vars, contact);
         if (name) vars[name] = value;
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
+      case "script": {
+        const code = String(node.data?.code ?? node.data?.script ?? "");
+        const sub = (frag: string) => substituteChatbotVariables(frag, vars, contact);
+        vars = applyChatbotScriptAssignments(code, vars, sub);
+        outbound.push("[Script executado]");
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
+      case "redirect": {
+        const url = substituteChatbotVariables(String(node.data?.url ?? "").trim(), vars, contact);
+        const msgTpl = String(node.data?.message ?? node.data?.content ?? "").trim();
+        const msg = msgTpl
+          ? substituteChatbotVariables(msgTpl, vars, contact)
+          : url || "";
+        if (url) {
+          const urlVar = String(node.data?.variableName ?? "redirect_url");
+          vars = { ...vars, [urlVar]: url };
+        }
+        if (msg) outbound.push(msg);
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
+      case "openai": {
+        const prompt = substituteChatbotVariables(
+          String(node.data?.prompt ?? node.data?.content ?? ""),
+          vars,
+          contact,
+        );
+        const variableName = String(node.data?.variableName ?? "openai_reply");
+        const sendToUser = node.data?.sendToUser === true;
+        const mock = prompt ? `[OpenAI simulado] Resposta para: ${prompt.slice(0, 80)}…` : "";
+        if (mock) vars = { ...vars, [variableName]: mock };
+        if (sendToUser && mock) outbound.push(mock);
+        else if (mock) outbound.push(`[OpenAI → {{${variableName}}}]`);
         currentId = nextEdgeTarget(flow, node.id);
         continue;
       }

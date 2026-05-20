@@ -4,10 +4,21 @@ export const CHATBOT_BLOCK_TYPES = [
   "start",
   "text",
   "image",
+  "video",
+  "audio",
   "text_input",
+  "email_input",
+  "number_input",
+  "phone_input",
+  "date_input",
+  "rating_input",
   "choice_input",
   "condition",
+  "ab_test",
   "set_variable",
+  "script",
+  "redirect",
+  "openai",
   "webhook",
   "add_tag",
   "handoff",
@@ -29,7 +40,7 @@ export interface ChatbotFlowEdge {
   id: string;
   source: string;
   target: string;
-  /** Ramo opcional: yes | no | default */
+  /** Ramo opcional: yes | no | a | b | … (ab_test) */
   branch?: string;
 }
 
@@ -47,12 +58,16 @@ export interface ChatbotFlowDefinition {
 
 export interface ChatbotWaitingInput {
   nodeId: string;
-  kind: "text" | "choice" | "wait";
+  kind: "text" | "choice" | "wait" | "email" | "number" | "phone" | "date" | "rating";
   variableName: string;
   prompt?: string;
   choices?: { id: string; label: string }[];
   /** ISO — bloco wait: retomar fluxo após esta data */
   resumeAt?: string;
+  numberMin?: number;
+  numberMax?: number;
+  ratingMin?: number;
+  ratingMax?: number;
 }
 
 export function parseChatbotFlowDefinition(raw: unknown): ChatbotFlowDefinition | null {

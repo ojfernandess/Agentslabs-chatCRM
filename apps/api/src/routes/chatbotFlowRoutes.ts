@@ -11,6 +11,11 @@ import {
   parseChatbotFlowDefinition,
 } from "../lib/chatbotFlowTypes.js";
 import { generateChatbotPublicId } from "../lib/chatbotFlowExecutor.js";
+import { loadChatbotFlowAnalytics } from "../lib/chatbotFlowAnalytics.js";
+import {
+  buildChatbotFlowExportBundle,
+  CHATBOT_FLOW_EXPORT_VERSION,
+} from "../lib/chatbotFlowLogic.js";
 import {
   createSimulatorSession,
   runSimulatorTurn,
@@ -75,6 +80,19 @@ const testChatSchema = z.object({
   contactName: z.string().max(200).optional(),
   session: simulatorSessionSchema.optional(),
   reset: z.boolean().optional(),
+});
+
+const importFlowSchema = z.object({
+  version: z.number().int().optional(),
+  exportedAt: z.string().optional(),
+  flow: z.object({
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).nullable().optional(),
+    flowDefinition: flowDefinitionSchema,
+    variables: z.array(z.record(z.unknown())).optional(),
+    theme: z.record(z.unknown()).nullable().optional(),
+    settings: z.record(z.unknown()).nullable().optional(),
+  }),
 });
 
 export async function registerChatbotFlowRoutes(app: FastifyInstance): Promise<void> {
@@ -327,6 +345,7 @@ export async function registerChatbotFlowRoutes(app: FastifyInstance): Promise<v
 
     const turn = runSimulatorTurn({
       flowDefinition: flow.flowDefinition,
+      flowSettings: flow.settings,
       session,
       userMessage: parsed.data.message,
       contactName: parsed.data.contactName,
@@ -341,5 +360,93 @@ export async function registerChatbotFlowRoutes(app: FastifyInstance): Promise<v
       edgeCount: def.edges.length,
       publicId: flow.publicId,
     };
+  });
+
+  app.get("/chatbot-flows/:id/export", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    if (!(await requireChatbotFeature(organizationId, reply))) return;
+
+    const { id } = request.params as { id: string };
+    const flow = await prisma.chatbotFlow.findFirst({ where: { id, organizationId } });
+    if (!flow) {
+      return reply.status(404).send({ error: "Not Found", message: "Flow not found", statusCode: 404 });
+    }
+
+    const bundle = buildChatbotFlowExportBundle({
+      name: flow.name,
+      description: flow.description,
+      flowDefinition: flow.flowDefinition,
+      variables: flow.variables,
+      theme: flow.theme,
+      settings: flow.settings,
+    });
+    return bundle;
+  });
+
+  app.post("/chatbot-flows/import", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    if (!(await requireChatbotFeature(organizationId, reply))) return;
+
+    const parsed = importFlowSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Validation", message: parsed.error.message, statusCode: 400 });
+    }
+    if (
+      parsed.data.version != null &&
+      parsed.data.version > 0 &&
+      parsed.data.version > CHATBOT_FLOW_EXPORT_VERSION
+    ) {
+      return reply.status(400).send({
+        error: "Validation",
+        message: `Unsupported export version ${parsed.data.version}`,
+        statusCode: 400,
+      });
+    }
+
+    const def = parseChatbotFlowDefinition(parsed.data.flow.flowDefinition);
+    if (!def) {
+      return reply.status(400).send({ error: "Validation", message: "Invalid flow definition", statusCode: 400 });
+    }
+
+    const row = await prisma.chatbotFlow.create({
+      data: {
+        organizationId,
+        name: parsed.data.flow.name.trim(),
+        description: parsed.data.flow.description?.trim() ?? null,
+        publicId: generateChatbotPublicId(),
+        flowDefinition: parsed.data.flow.flowDefinition as Prisma.InputJsonValue,
+        variables: (parsed.data.flow.variables ?? []) as Prisma.InputJsonValue,
+        theme: (parsed.data.flow.theme ?? undefined) as Prisma.InputJsonValue | undefined,
+        settings: (parsed.data.flow.settings ?? undefined) as Prisma.InputJsonValue | undefined,
+        isPublished: false,
+      },
+    });
+    return reply.status(201).send(row);
+  });
+
+  app.get("/chatbot-flows/:id/analytics", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    if (!(await requireChatbotFeature(organizationId, reply))) return;
+
+    const { id } = request.params as { id: string };
+    const flow = await prisma.chatbotFlow.findFirst({ where: { id, organizationId } });
+    if (!flow) {
+      return reply.status(404).send({ error: "Not Found", message: "Flow not found", statusCode: 404 });
+    }
+
+    const analytics = await loadChatbotFlowAnalytics(organizationId, id);
+    return { ok: true, analytics };
   });
 }

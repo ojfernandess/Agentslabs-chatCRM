@@ -1,9 +1,7 @@
 # Roadmap: Paridade Chatbot ↔ Typebot
 
 ## Estado atual (baseline)
-- 13 blocos: start, end, text, image, text_input, choice_input, condition, set_variable, webhook, add_tag, handoff, wait, jump
-- Editor React Flow, publicação, ligação a bot WhatsApp
-- ~25% paridade de blocos Typebot, ~30% plataforma
+- Roadmap Typebot **concluído** (Fases 1–4): 25 blocos, editor, WhatsApp, embed, analytics
 
 ## Fase 1 — WhatsApp + editor (prioridade alta) ✅ concluída
 | ID | Item | Estado |
@@ -14,25 +12,25 @@
 | 1.4 | Simulador | ✅ API `test-chat` + `ChatbotFlowSimulator` |
 | 1.5 | Variáveis de fluxo | ✅ Editor no hub + PATCH variables |
 
-## Fase 2 — Bubbles e inputs
-| ID | Item |
-|----|------|
-| 2.1 | video, audio bubbles |
-| 2.2 | email, number, phone inputs com validação |
-| 2.3 | date, rating inputs |
+## Fase 2 — Bubbles e inputs ✅ concluída
+| ID | Item | Estado |
+|----|------|--------|
+| 2.1 | video, audio bubbles | ✅ `sendBotMedia` + editor |
+| 2.2 | email, number, phone inputs com validação | ✅ API `validateChatbotUserInput` + executor/simulador |
+| 2.3 | date, rating inputs | ✅ |
 
-## Fase 3 — Logic e integrações
-| ID | Item |
-|----|------|
-| 3.1 | AB test |
-| 3.2 | redirect, script |
-| 3.3 | OpenAI block (opcional) |
-| 3.4 | export/import JSON |
+## Fase 3 — Logic e integrações ✅ concluída
+| ID | Item | Estado |
+|----|------|--------|
+| 3.1 | AB test | ✅ Ramo ponderado + alças a/b/c no editor |
+| 3.2 | redirect, script | ✅ Link WhatsApp + atribuições nome=valor |
+| 3.3 | OpenAI block (opcional) | ✅ Chave org/servidor, variável + envio opcional |
+| 3.4 | export/import JSON | ✅ GET export + POST import + UI |
 
-## Fase 4 — Plataforma
-| ID | Item |
-|----|------|
-| 4.1 | Embed / API publicId |
-| 4.2 | Theme UI |
-| 4.3 | Analytics de resultados |
-| 4.4 | Events (invalid reply, commands) |
+## Fase 4 — Plataforma ✅ concluída
+| ID | Item | Estado |
+|----|------|--------|
+| 4.1 | Embed / API publicId | ✅ `/chatbot/:publicId` + API pública CORS |
+| 4.2 | Theme UI | ✅ Editor de cores + cabeçalho |
+| 4.3 | Analytics de resultados | ✅ Sessões, conclusão, inválidas (7d) |
+| 4.4 | Events (invalid reply, commands) | ✅ Template {{error}} + saltos por comando |

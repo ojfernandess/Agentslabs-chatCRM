@@ -24,6 +24,29 @@ export interface ChatbotFlowVariableDef {
   isSessionVariable?: boolean;
 }
 
+export interface ChatbotFlowTheme {
+  primaryColor?: string;
+  backgroundColor?: string;
+  botBubbleColor?: string;
+  guestBubbleColor?: string;
+  fontFamily?: string;
+  borderRadius?: number;
+  logoUrl?: string;
+  headerTitle?: string;
+}
+
+export interface ChatbotFlowCommand {
+  trigger: string;
+  targetNodeId: string;
+}
+
+export interface ChatbotFlowSettings {
+  events?: {
+    invalidReplyMessage?: string;
+    commands?: ChatbotFlowCommand[];
+  };
+}
+
 export interface ChatbotFlowRow {
   id: string;
   name: string;
@@ -32,6 +55,8 @@ export interface ChatbotFlowRow {
   isPublished: boolean;
   flowDefinition: ChatbotFlowDefinition;
   variables: ChatbotFlowVariableDef[];
+  theme?: ChatbotFlowTheme | null;
+  settings?: ChatbotFlowSettings | null;
   linkedBotId: string | null;
   linkedBot?: { id: string; name: string; isActive: boolean } | null;
   sessionCount?: number;
@@ -43,10 +68,21 @@ export const CHATBOT_BLOCK_TYPES = [
   "start",
   "text",
   "image",
+  "video",
+  "audio",
   "text_input",
+  "email_input",
+  "number_input",
+  "phone_input",
+  "date_input",
+  "rating_input",
   "choice_input",
   "condition",
+  "ab_test",
   "set_variable",
+  "script",
+  "redirect",
+  "openai",
   "webhook",
   "add_tag",
   "handoff",

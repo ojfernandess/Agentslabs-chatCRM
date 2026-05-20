@@ -17,6 +17,17 @@ function ChatbotFlowNodeCardComponent({ data, selected }: NodeProps<ChatbotRfNod
   const Icon = meta.icon;
   const preview = blockPreviewText(data.blockType, data.blockData);
   const isCondition = data.blockType === "condition";
+  const isAbTest = data.blockType === "ab_test";
+  const abVariants = (() => {
+    const raw = data.blockData?.variants;
+    if (!Array.isArray(raw)) return [{ id: "a" }, { id: "b" }];
+    const list = raw
+      .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
+      .map((x, i) => ({
+        id: typeof x.id === "string" && x.id.trim() ? x.id.trim() : String.fromCharCode(97 + i),
+      }));
+    return list.length ? list : [{ id: "a" }, { id: "b" }];
+  })();
   const isStart = data.blockType === "start";
   const isEnd = data.blockType === "end";
 
@@ -75,6 +86,30 @@ function ChatbotFlowNodeCardComponent({ data, selected }: NodeProps<ChatbotRfNod
               position={Position.Bottom}
               className="!left-[72%] !h-3 !w-3 !border-2 !border-white !bg-rose-500"
             />
+          </div>
+        ) : isAbTest ? (
+          <div className="relative px-4 pb-2 pt-1">
+            <div className="flex justify-between gap-1">
+              {abVariants.map((v) => (
+                <span key={v.id} className="text-[9px] font-semibold uppercase text-violet-600">
+                  {v.id}
+                </span>
+              ))}
+            </div>
+            {abVariants.map((v, i) => {
+              const pct =
+                abVariants.length > 1 ? ((i + 1) / (abVariants.length + 1)) * 100 : 50;
+              return (
+                <Handle
+                  key={v.id}
+                  type="source"
+                  id={v.id}
+                  position={Position.Bottom}
+                  className="!h-3 !w-3 !border-2 !border-white !bg-violet-500"
+                  style={{ left: `${pct}%` }}
+                />
+              );
+            })}
           </div>
         ) : (
           <Handle

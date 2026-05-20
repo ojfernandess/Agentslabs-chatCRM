@@ -22,6 +22,7 @@ import { AutomationPage } from "@/pages/AutomationPage";
 import { MyAttendancePage } from "@/pages/MyAttendancePage";
 import { ConversationAuditPage } from "@/pages/ConversationAuditPage";
 import { CsatPage } from "@/pages/CsatPage";
+import { ChatbotEmbedPage } from "@/pages/ChatbotEmbedPage";
 import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { InboxesPage } from "@/pages/InboxesPage";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
@@ -91,6 +92,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/csat/:token" element={<CsatPage />} />
+      <Route path="/chatbot/:publicId" element={<ChatbotEmbedPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />
       <Route path="/login" element={<LoginPage />} />

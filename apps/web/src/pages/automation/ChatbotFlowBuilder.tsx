@@ -33,7 +33,7 @@ function flowToRf(flow: ChatbotFlowDefinition): { nodes: Node<ChatbotFlowNodeDat
     id: e.id,
     source: e.source,
     target: e.target,
-    sourceHandle: e.branch === "yes" ? "yes" : e.branch === "no" ? "no" : undefined,
+    sourceHandle: e.branch ?? undefined,
     type: "smoothstep",
     animated: false,
     style: { stroke: "#ff6b2c", strokeWidth: 2 },
@@ -53,8 +53,7 @@ function rfToFlow(nodes: Node<ChatbotFlowNodeData>[], edges: Edge[]): ChatbotFlo
       id: e.id,
       source: e.source,
       target: e.target,
-      branch:
-        e.sourceHandle === "yes" ? "yes" : e.sourceHandle === "no" ? "no" : undefined,
+      branch: e.sourceHandle ?? undefined,
     })),
   };
 }
@@ -148,17 +147,28 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
       const id = `${type}_${Date.now()}`;
       const maxX = nodes.reduce((m, n) => Math.max(m, n.position.x), 0);
       const maxY = nodes.reduce((m, n) => Math.max(m, n.position.y), 120);
+      const defaultBlockData: Record<string, Record<string, unknown>> = {
+        ab_test: { variants: [{ id: "a", weight: 50 }, { id: "b", weight: 50 }] },
+        script: { code: "resultado = {{resposta}}" },
+        redirect: { url: "https://", variableName: "redirect_url" },
+        openai: { prompt: "Resuma em uma frase: {{resposta}}", variableName: "openai_reply", sendToUser: true },
+      };
       const newNode: Node<ChatbotFlowNodeData> = {
         id,
         type: "chatbotBlock",
         position: { x: maxX + 320, y: selectedNodeId ? maxY : 80 },
-        data: { blockType: type, blockData: {} },
+        data: { blockType: type, blockData: defaultBlockData[type] ?? {} },
       };
       setNodes((nds) => [...nds, newNode]);
       if (selectedNodeId) {
         const sourceNode = nodes.find((n) => n.id === selectedNodeId);
+        const sourceType = sourceNode?.data.blockType;
         const sourceHandle =
-          sourceNode?.data.blockType === "condition" ? "yes" : undefined;
+          sourceType === "condition"
+            ? "yes"
+            : sourceType === "ab_test"
+              ? "a"
+              : undefined;
         setEdges((eds) =>
           addEdge(
             {
@@ -227,9 +237,31 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
           <MiniMap
             nodeColor={(n) => {
               const t = (n.data as ChatbotFlowNodeData)?.blockType;
-              if (t === "text" || t === "image") return "#2563eb";
-              if (t === "text_input" || t === "choice_input") return "#ea580c";
-              if (t === "condition" || t === "set_variable") return "#7c3aed";
+              if (t === "text" || t === "image" || t === "video" || t === "audio") return "#2563eb";
+              if (
+                t === "text_input" ||
+                t === "choice_input" ||
+                t === "email_input" ||
+                t === "number_input" ||
+                t === "phone_input" ||
+                t === "date_input" ||
+                t === "rating_input"
+              ) {
+                return "#ea580c";
+              }
+              if (
+                t === "condition" ||
+                t === "ab_test" ||
+                t === "set_variable" ||
+                t === "script" ||
+                t === "wait" ||
+                t === "jump"
+              ) {
+                return "#7c3aed";
+              }
+              if (t === "redirect" || t === "openai" || t === "webhook" || t === "add_tag" || t === "handoff") {
+                return "#059669";
+              }
               return "#64748b";
             }}
             className="!rounded-xl !border !border-ink-200 !bg-white/90 dark:!border-ink-700 dark:!bg-ink-900/90"

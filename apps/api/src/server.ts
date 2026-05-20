@@ -39,6 +39,7 @@ import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
+import { publicChatbotFlowRoutes } from "./routes/publicChatbotFlowRoutes.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 import {
@@ -85,6 +86,7 @@ await app.register(rateLimit, {
           path.startsWith("/api/v1/public/inbox/") ||
           path.startsWith("/api/v1/public/channels/") ||
           path.startsWith("/api/v1/public/widget/") ||
+          path.startsWith("/api/v1/public/chatbot/") ||
           path.startsWith("/api/v1/public/system-documentation") ||
           path.startsWith("/api/v1/public/knowledge-source-push/")
         );
@@ -104,6 +106,7 @@ app.decorate("prisma", prisma);
 // Leitura pública de áudio carregado (WhatsApp obtém o ficheiro antes de entregar ao cliente)
 await app.register(publicMessageMediaRoutes);
 await app.register(widgetPublicRoutes);
+await app.register(publicChatbotFlowRoutes);
 await app.register(publicSystemDocumentationRoutes, { prefix: "/api/v1/public" });
 await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
 await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" });

@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Bot, ChevronLeft, ChevronRight, Loader2, Plus, Save, Trash2, Workflow } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Download, Loader2, Plus, Save, Trash2, Upload, Workflow } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import { ChatbotFlowBuilder } from "./ChatbotFlowBuilder";
 import { ChatbotFlowSimulator } from "./ChatbotFlowSimulator";
+import { ChatbotPlatformPanel, DEFAULT_CHATBOT_THEME } from "./ChatbotPlatformPanel";
 import {
   defaultChatbotFlow,
   type ChatbotFlowDefinition,
   type ChatbotFlowRow,
+  type ChatbotFlowSettings,
+  type ChatbotFlowTheme,
   type ChatbotFlowVariableDef,
 } from "./chatbotFlowTypes";
 
@@ -33,6 +36,8 @@ export function AutomationChatbotHub() {
   const [draftDesc, setDraftDesc] = useState("");
   const [draftFlow, setDraftFlow] = useState<ChatbotFlowDefinition>(defaultChatbotFlow());
   const [draftVariables, setDraftVariables] = useState<ChatbotFlowVariableDef[]>([]);
+  const [draftTheme, setDraftTheme] = useState<ChatbotFlowTheme>({ ...DEFAULT_CHATBOT_THEME });
+  const [draftSettings, setDraftSettings] = useState<ChatbotFlowSettings>({});
   const [draftPublished, setDraftPublished] = useState(false);
   const [tags, setTags] = useState<TagOption[]>([]);
   const [linkBotId, setLinkBotId] = useState<string>("");
@@ -40,6 +45,7 @@ export function AutomationChatbotHub() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flowsPanelOpen, setFlowsPanelOpen] = useState(true);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const selected = flows.find((f) => f.id === selectedId) ?? null;
 
@@ -72,6 +78,8 @@ export function AutomationChatbotHub() {
     setDraftDesc(selected.description ?? "");
     setDraftFlow(selected.flowDefinition ?? defaultChatbotFlow());
     setDraftVariables(Array.isArray(selected.variables) ? selected.variables : []);
+    setDraftTheme({ ...DEFAULT_CHATBOT_THEME, ...(selected.theme ?? {}) });
+    setDraftSettings((selected.settings as ChatbotFlowSettings) ?? {});
     setDraftPublished(selected.isPublished);
     setLinkBotId(selected.linkedBotId ?? "");
   }, [selected]);
@@ -103,6 +111,8 @@ export function AutomationChatbotHub() {
         isPublished: draftPublished,
         flowDefinition: draftFlow,
         variables: draftVariables,
+        theme: draftTheme,
+        settings: draftSettings,
       });
       await load();
     } catch {
@@ -123,6 +133,57 @@ export function AutomationChatbotHub() {
       setError("save_failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const exportFlow = async () => {
+    if (!selectedId) return;
+    setSaving(true);
+    try {
+      const bundle = await api.get<{
+        version: number;
+        exportedAt: string;
+        flow: { name: string; flowDefinition: ChatbotFlowDefinition; variables?: ChatbotFlowVariableDef[] };
+      }>(`/automation/chatbot-flows/${selectedId}/export`);
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chatbot-${draftName.trim() || selectedId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("export_failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const importFlowFile = async (file: File) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as {
+        flow?: {
+          name: string;
+          description?: string | null;
+          flowDefinition: ChatbotFlowDefinition;
+          variables?: ChatbotFlowVariableDef[];
+        };
+      };
+      if (!parsed.flow?.flowDefinition?.nodes) {
+        setError("import_invalid");
+        return;
+      }
+      const row = await api.post<ChatbotFlowRow>("/automation/chatbot-flows/import", parsed);
+      await load();
+      setSelectedId(row.id);
+    } catch {
+      setError("import_failed");
+    } finally {
+      setSaving(false);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   };
 
@@ -237,7 +298,11 @@ export function AutomationChatbotHub() {
       <section className="min-w-0 flex-1 space-y-4">
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-            {t("chatbotPage.loadError")}
+            {error === "export_failed"
+              ? t("chatbotPage.exportError")
+              : error === "import_failed" || error === "import_invalid"
+                ? t("chatbotPage.importError")
+                : t("chatbotPage.loadError")}
           </div>
         ) : null}
 
@@ -289,6 +354,34 @@ export function AutomationChatbotHub() {
                 className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
               >
                 <Trash2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={saving || !selectedId}
+                onClick={() => void exportFlow()}
+                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-sm font-semibold hover:bg-ink-50 dark:border-ink-600 dark:hover:bg-ink-800"
+              >
+                <Download className="h-4 w-4" />
+                {t("chatbotPage.exportJson")}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void importFlowFile(f);
+                }}
+              />
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => importInputRef.current?.click()}
+                className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-sm font-semibold hover:bg-ink-50 dark:border-ink-600 dark:hover:bg-ink-800"
+              >
+                <Upload className="h-4 w-4" />
+                {t("chatbotPage.importJson")}
               </button>
             </div>
 
@@ -356,6 +449,19 @@ export function AutomationChatbotHub() {
             </div>
 
             {selectedId ? <ChatbotFlowSimulator flowId={selectedId} disabled={saving} /> : null}
+
+            {selectedId && selected ? (
+              <ChatbotPlatformPanel
+                flowId={selectedId}
+                publicId={selected.publicId}
+                isPublished={draftPublished}
+                flowNodes={draftFlow.nodes}
+                theme={draftTheme}
+                settings={draftSettings}
+                onThemeChange={setDraftTheme}
+                onSettingsChange={setDraftSettings}
+              />
+            ) : null}
 
             <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">

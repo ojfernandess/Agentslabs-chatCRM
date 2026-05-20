@@ -36,6 +36,17 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
   const data = node.data ?? {};
   const canDelete = node.type !== "start" && node.type !== "end";
 
+  const hasPromptField =
+    node.type === "text_input" ||
+    node.type === "choice_input" ||
+    node.type === "email_input" ||
+    node.type === "number_input" ||
+    node.type === "phone_input" ||
+    node.type === "date_input" ||
+    node.type === "rating_input";
+  const hasVariableNameField =
+    hasPromptField || node.type === "set_variable";
+
   const patch = (p: Record<string, unknown>) => onUpdate(node.id, { ...data, ...p });
 
   return (
@@ -56,7 +67,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {(node.type === "text" || node.type === "text_input" || node.type === "choice_input") && (
+        {(node.type === "text" || hasPromptField) && (
           <label className="block text-xs">
             <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">
               {node.type === "text" ? t("chatbotPage.contentPlaceholder") : t("chatbotPage.promptPlaceholder")}
@@ -72,7 +83,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
           </label>
         )}
 
-        {(node.type === "text_input" || node.type === "choice_input" || node.type === "set_variable") && (
+        {hasVariableNameField && (
           <label className="block text-xs">
             <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.variableName")}</span>
             <input
@@ -122,7 +133,59 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
           </label>
         )}
 
-        {node.type === "image" && (
+        {node.type === "number_input" && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.numberMin")}</span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={data.min != null && data.min !== "" ? String(data.min) : ""}
+                placeholder="—"
+                onChange={(e) => patch({ min: e.target.value === "" ? undefined : Number(e.target.value) })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.numberMax")}</span>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={data.max != null && data.max !== "" ? String(data.max) : ""}
+                placeholder="—"
+                onChange={(e) => patch({ max: e.target.value === "" ? undefined : Number(e.target.value) })}
+              />
+            </label>
+          </div>
+        )}
+
+        {node.type === "rating_input" && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.ratingMin")}</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.ratingMin ?? 1)}
+                onChange={(e) => patch({ ratingMin: Number(e.target.value) || 1 })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.ratingMax")}</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.ratingMax ?? 5)}
+                onChange={(e) => patch({ ratingMax: Number(e.target.value) || 5 })}
+              />
+            </label>
+          </div>
+        )}
+
+        {(node.type === "image" || node.type === "video" || node.type === "audio") && (
           <label className="block text-xs">
             <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">URL</span>
             <input
@@ -185,6 +248,145 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
               ))}
             </select>
           </label>
+        )}
+
+        {node.type === "ab_test" && (
+          <>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.abVariants")}</span>
+              <textarea
+                rows={3}
+                placeholder={t("chatbotPage.abVariantsPlaceholder")}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={
+                  Array.isArray(data.variants)
+                    ? (data.variants as { id?: string; weight?: number }[])
+                        .map((v) => `${v.id ?? "a"}:${v.weight ?? 50}`)
+                        .join("\n")
+                    : "a:50\nb:50"
+                }
+                onChange={(e) => {
+                  const variants = e.target.value
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line, i) => {
+                      const [idPart, weightPart] = line.split(":").map((x) => x.trim());
+                      return {
+                        id: idPart || String.fromCharCode(97 + i),
+                        weight: Number(weightPart) || 50,
+                      };
+                    });
+                  patch({ variants: variants.length ? variants : [{ id: "a", weight: 50 }, { id: "b", weight: 50 }] });
+                }}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.abVariable")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                placeholder="_ab_node"
+                value={String(data.variableName ?? "")}
+                onChange={(e) => patch({ variableName: e.target.value })}
+              />
+            </label>
+            <p className="text-[10px] text-ink-400">{t("chatbotPage.abHint")}</p>
+          </>
+        )}
+
+        {node.type === "script" && (
+          <label className="block text-xs">
+            <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.scriptCode")}</span>
+            <textarea
+              rows={5}
+              placeholder={t("chatbotPage.scriptPlaceholder")}
+              className="w-full font-mono rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+              value={String(data.code ?? data.script ?? "")}
+              onChange={(e) => patch({ code: e.target.value })}
+            />
+            <p className="mt-1 text-[10px] text-ink-400">{t("chatbotPage.scriptHint")}</p>
+          </label>
+        )}
+
+        {node.type === "redirect" && (
+          <>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">URL</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                placeholder="https://"
+                value={String(data.url ?? "")}
+                onChange={(e) => patch({ url: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.redirectMessage")}</span>
+              <textarea
+                rows={2}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                placeholder={t("chatbotPage.redirectMessageHint")}
+                value={String(data.message ?? data.content ?? "")}
+                onChange={(e) => patch({ message: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.variableName")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.variableName ?? "redirect_url")}
+                onChange={(e) => patch({ variableName: e.target.value })}
+              />
+            </label>
+          </>
+        )}
+
+        {node.type === "openai" && (
+          <>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.openaiPrompt")}</span>
+              <textarea
+                rows={3}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.prompt ?? data.content ?? "")}
+                onChange={(e) => patch({ prompt: e.target.value, content: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.openaiSystem")}</span>
+              <textarea
+                rows={2}
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.systemPrompt ?? "")}
+                onChange={(e) => patch({ systemPrompt: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.variableName")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.variableName ?? "openai_reply")}
+                onChange={(e) => patch({ variableName: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.openaiModel")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                placeholder="gpt-4o-mini"
+                value={String(data.model ?? "")}
+                onChange={(e) => patch({ model: e.target.value })}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 dark:text-ink-300">
+              <input
+                type="checkbox"
+                checked={data.sendToUser === true}
+                onChange={(e) => patch({ sendToUser: e.target.checked })}
+              />
+              {t("chatbotPage.openaiSendToUser")}
+            </label>
+            <p className="text-[10px] text-ink-400">{t("chatbotPage.openaiHint")}</p>
+          </>
         )}
 
         {node.type === "condition" && (
