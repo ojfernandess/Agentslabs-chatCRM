@@ -103,7 +103,7 @@ export function MyAttendancePage() {
             className="space-y-2"
           >
             {rows.map((r) => {
-              const last = r.messages[0];
+              const last = r.messages?.[0];
               return (
                 <motion.li key={r.id} variants={staggerItem}>
                   <Link

@@ -70,7 +70,7 @@ function countBadge(
   let n = 0;
   for (const c of rows) {
     if (!qualifies(c, prefs)) continue;
-    const last = c.messages[0];
+    const last = c.messages?.[0];
     if (!last || last.direction !== "INBOUND") continue;
     if (new Date(c.updatedAt).getTime() > clearedAt) n++;
   }
@@ -95,7 +95,7 @@ function buildAlertPreviews(
   const out: ConversationAlertPreview[] = [];
   for (const c of rows) {
     if (!qualifies(c, prefs)) continue;
-    const last = c.messages[0];
+    const last = c.messages?.[0];
     if (!last || last.direction !== "INBOUND") continue;
     if (new Date(c.updatedAt).getTime() <= clearedAt) continue;
     out.push({
@@ -168,7 +168,7 @@ export function useConversationAlerts() {
 
     for (const c of delta.data) {
       if (!qualifies(c, prefs)) continue;
-      const last = c.messages[0];
+      const last = c.messages?.[0];
       if (!last || last.direction !== "INBOUND") continue;
 
       const key = `${c.id}-${last.id}`;

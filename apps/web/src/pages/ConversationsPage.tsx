@@ -187,7 +187,7 @@ export function ConversationsPage() {
       const name = c.contact.name.toLowerCase();
       const phone = c.contact.phone ?? "";
       const phoneDigits = digitsOnly(phone);
-      const last = (c.messages[0]?.body ?? "").toLowerCase();
+      const last = (c.messages?.[0]?.body ?? "").toLowerCase();
       if (name.includes(raw)) return true;
       if (dRaw && phoneDigits.includes(dRaw)) return true;
       if (phone.toLowerCase().includes(raw)) return true;
@@ -389,7 +389,7 @@ export function ConversationsPage() {
               ) : (
                 <div className="space-y-2">
                   {filteredConversations.map((conv) => {
-                    const lastMessage = conv.messages[0];
+                    const lastMessage = conv.messages?.[0];
                     return (
                       <div
                         key={conv.id}

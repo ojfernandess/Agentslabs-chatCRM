@@ -311,7 +311,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       data: withFlags.map((row) => {
-        const { messages: _messages, ...rest } = row;
+        const { lastMessage: _lastMessage, ...rest } = row;
         return {
           ...stripCsatSurveyToken(rest),
           agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
