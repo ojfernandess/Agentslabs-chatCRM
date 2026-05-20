@@ -513,7 +513,7 @@ export function Layout() {
 
   return (
     <div className="flex h-[100dvh]">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/95 backdrop-blur-md dark:border-white/5 dark:bg-ink-950/75 lg:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/95 backdrop-blur-md dark:border-white/[0.06] dark:bg-[#0b1020]/92 lg:flex">
         {sidebarContent}
       </aside>
 

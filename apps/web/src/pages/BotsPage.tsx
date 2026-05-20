@@ -320,7 +320,7 @@ export function BotsPage() {
 
         <form onSubmit={handleCreate} className="ds-panel mb-8 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.name")}</label>
+            <label className="ds-label">{t("bots.name")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -329,7 +329,7 @@ export function BotsPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.type")}</label>
+            <label className="ds-label">{t("bots.type")}</label>
             <select value={botType} onChange={(e) => setBotType(e.target.value as BotType)} className="input w-full">
               {(["WEBHOOK", "DIALOGFLOW", "CUSTOM"] as const).map((ty) => (
                 <option key={ty} value={ty}>
@@ -339,7 +339,7 @@ export function BotsPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.webhookUrl")}</label>
+            <label className="ds-label">{t("bots.webhookUrl")}</label>
             <input
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
@@ -349,7 +349,7 @@ export function BotsPage() {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-ink-600">{t("bots.webhookSecret")}</label>
+            <label className="ds-label">{t("bots.webhookSecret")}</label>
             <input
               value={newWebhookSecret}
               onChange={(e) => setNewWebhookSecret(e.target.value)}
@@ -361,12 +361,12 @@ export function BotsPage() {
             <p className="mt-1 text-xs text-ink-500">{t("bots.webhookSecretHint")}</p>
           </div>
           <p className="sm:col-span-2 text-xs text-ink-500">{t("bots.testWebhookHint")}</p>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-700 dark:text-ink-300 sm:col-span-2">
             <input
               type="checkbox"
               checked={isActiveNew}
               onChange={(e) => setIsActiveNew(e.target.checked)}
-              className="rounded border-ink-300"
+              className="rounded border-ink-300 dark:border-white/20 dark:bg-white/5"
             />
             {t("bots.active")}
           </label>
@@ -462,11 +462,11 @@ export function BotsPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1 block text-xs text-ink-600">{t("bots.name")}</label>
+                        <label className="ds-label">{t("bots.name")}</label>
                         <input value={editName} onChange={(e) => setEditName(e.target.value)} className="input w-full" />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs text-ink-600">{t("bots.type")}</label>
+                        <label className="ds-label">{t("bots.type")}</label>
                         <select value={editType} onChange={(e) => setEditType(e.target.value as BotType)} className="input w-full">
                           {(["WEBHOOK", "DIALOGFLOW", "CUSTOM"] as const).map((ty) => (
                             <option key={ty} value={ty}>
@@ -476,7 +476,7 @@ export function BotsPage() {
                         </select>
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="mb-1 block text-xs text-ink-600">{t("bots.webhookUrl")}</label>
+                        <label className="ds-label">{t("bots.webhookUrl")}</label>
                         <input
                           value={editWebhook}
                           onChange={(e) => setEditWebhook(e.target.value)}
@@ -485,7 +485,7 @@ export function BotsPage() {
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="mb-1 block text-xs text-ink-600">{t("bots.webhookSecret")}</label>
+                        <label className="ds-label">{t("bots.webhookSecret")}</label>
                         <input
                           value={editWebhookSecret}
                           onChange={(e) => setEditWebhookSecret(e.target.value)}
@@ -514,7 +514,7 @@ export function BotsPage() {
                         type="checkbox"
                         checked={editActive}
                         onChange={(e) => setEditActive(e.target.checked)}
-                        className="rounded border-ink-300"
+                        className="rounded border-ink-300 dark:border-white/20 dark:bg-white/5"
                       />
                       {t("bots.active")}
                     </label>

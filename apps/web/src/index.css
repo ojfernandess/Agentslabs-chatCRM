@@ -22,10 +22,10 @@
   .dark body {
     background-color: #0b1020;
     background-image:
-      radial-gradient(circle at top left, rgba(91, 140, 255, 0.12), transparent 30%),
-      linear-gradient(180deg, #0b1020 0%, #0f172a 100%),
-      radial-gradient(900px 500px at 85% 8%, rgba(255, 122, 89, 0.08), transparent 55%),
-      radial-gradient(800px 480px at 50% 100%, rgba(59, 130, 246, 0.06), transparent 50%);
+      radial-gradient(ellipse 120% 80% at 8% -10%, rgba(91, 140, 255, 0.2), transparent 45%),
+      radial-gradient(ellipse 70% 50% at 92% 5%, rgba(255, 122, 89, 0.12), transparent 50%),
+      linear-gradient(180deg, #0b1020 0%, #0f172a 55%, #111827 100%),
+      radial-gradient(ellipse 90% 60% at 50% 110%, rgba(59, 130, 246, 0.1), transparent 55%);
     background-attachment: fixed;
   }
 
@@ -33,9 +33,14 @@
     @apply object-contain object-left;
   }
 
-  .dark .brand-logo-img {
-    mix-blend-mode: screen;
-    filter: drop-shadow(0 0 14px rgba(91, 140, 255, 0.18));
+  .dark .brand-logo-wrap {
+    isolation: isolate;
+  }
+
+  /* multiply remove fundo branco do PNG embutido no SVG sobre fundo escuro */
+  .dark .brand-logo-wrap .brand-logo-img {
+    mix-blend-mode: multiply;
+    filter: drop-shadow(0 0 12px rgba(91, 140, 255, 0.22));
   }
 
   #root {
@@ -125,6 +130,11 @@
     @apply focus-visible:ds-focus;
   }
 
+  /* alias legado usado em Bots e outras páginas */
+  .input {
+    @apply input-field;
+  }
+
   .input-field {
     @apply w-full rounded border border-ink-200/90 bg-white px-3 py-2 text-sm text-ink-900 shadow-sm transition-colors;
     @apply placeholder:text-ink-400;
@@ -151,7 +161,7 @@
 
   .ds-panel {
     @apply rounded-xl border border-ink-200/80 bg-white shadow-sm;
-    @apply dark:border-white/5 dark:bg-white/[0.04] dark:backdrop-blur-md;
+    @apply dark:border-white/[0.06] dark:bg-[#111827]/55 dark:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.5)] dark:backdrop-blur-md;
   }
 
   .ds-table-shell {
@@ -179,8 +189,8 @@
 
   .nav-link-active {
     @apply bg-brand-50 font-semibold text-brand-700;
-    @apply dark:relative dark:border-l-2 dark:border-brand-400/75 dark:bg-gradient-to-r dark:from-brand-500/20 dark:via-brand-500/10 dark:to-transparent dark:text-brand-200;
-    @apply dark:shadow-[inset_0_0_32px_rgba(255,122,89,0.1)] dark:backdrop-blur-sm;
+    @apply dark:relative dark:border-l-[3px] dark:border-brand-400 dark:bg-white/[0.06] dark:pl-[calc(0.75rem-3px)] dark:font-semibold dark:text-brand-200;
+    @apply dark:shadow-[inset_3px_0_16px_rgba(255,122,89,0.35),0_0_24px_rgba(255,122,89,0.08)] dark:backdrop-blur-sm;
   }
 
   .crm-bubble {
