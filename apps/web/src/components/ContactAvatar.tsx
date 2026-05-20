@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { api } from "@/lib/api";
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -58,15 +59,7 @@ export function ContactAvatar({ contactId, name, profilePictureUrl, className, i
 
     void (async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`/api/v1/contacts/${contactId}/profile-picture`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          if (!cancelled) setProxyFailed(true);
-          return;
-        }
-        const blob = await res.blob();
+        const blob = await api.fetchBlob(`/contacts/${contactId}/profile-picture`);
         if (cancelled) return;
         revoked = URL.createObjectURL(blob);
         setBlobUrl(revoked);
