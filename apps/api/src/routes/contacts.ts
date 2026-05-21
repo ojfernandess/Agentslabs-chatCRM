@@ -8,7 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
-import { fetchAndCacheContactProfilePicture } from "../lib/contactProfilePicture.js";
+import { resolveContactProfilePictureBuffer } from "../lib/contactProfilePictureResolve.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -331,17 +331,18 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     const contact = await prisma.contact.findFirst({
       where: { id: request.params.id, organizationId },
-      select: { id: true, profilePictureUrl: true },
+      select: { id: true, phone: true, profilePictureUrl: true, isGroupChat: true },
     });
-    if (!contact?.profilePictureUrl?.trim()) {
+    if (!contact || contact.isGroupChat) {
       return reply.status(404).send({ error: "Not Found", message: "No profile picture", statusCode: 404 });
     }
 
-    const buf = await fetchAndCacheContactProfilePicture(
+    const buf = await resolveContactProfilePictureBuffer({
       organizationId,
-      contact.id,
-      contact.profilePictureUrl.trim(),
-    );
+      contactId: contact.id,
+      phone: contact.phone,
+      profilePictureUrl: contact.profilePictureUrl,
+    });
     if (!buf) {
       return reply.status(404).send({
         error: "Not Found",

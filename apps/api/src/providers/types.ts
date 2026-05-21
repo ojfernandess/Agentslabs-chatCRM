@@ -80,6 +80,8 @@ export interface WhatsAppProviderInterface {
 
   /** Check provider connectivity */
   healthCheck(): Promise<boolean>;
-  /** Opcional — só Evolution API: URL da foto de perfil WhatsApp. */
+  /** Opcional — Evolution API: URL da foto de perfil WhatsApp. */
   fetchContactProfilePictureUrl?(phone: string): Promise<string | undefined>;
+  /** Opcional — Evolution Go: imagem em base64 via /user/avatar. */
+  fetchContactProfilePictureBuffer?(phone: string): Promise<Buffer | null>;
 }
