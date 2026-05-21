@@ -69,10 +69,10 @@ export async function fetchAndCacheContactProfilePicture(
       signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return null;
+    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (!ct.startsWith("image/")) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 64 || buf.length > 5 * 1024 * 1024) return null;
-    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
-    if (ct && !ct.startsWith("image/") && !ct.includes("octet-stream")) return null;
 
     const dir = cacheDir(organizationId);
     await mkdir(dir, { recursive: true });
