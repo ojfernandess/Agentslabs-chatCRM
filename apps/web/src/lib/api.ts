@@ -162,6 +162,18 @@ class ApiClient {
     }
     return response.blob();
   }
+
+  /** GET binário; devolve null em 404/401 (ex.: avatar ainda não em cache). */
+  async fetchBlobOptional(path: string): Promise<Blob | null> {
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(`${API_BASE}${path}`, { headers });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return blob.size >= 64 ? blob : null;
+  }
 }
 
 export class ApiError extends Error {

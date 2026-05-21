@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { api } from "@/lib/api";
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -43,7 +44,7 @@ function needsProfilePictureProxy(url: string): boolean {
   }
 }
 
-export type ContactAvatarVariant = "default" | "list";
+export type ContactAvatarVariant = "default" | "list" | "detail" | "message";
 
 type Props = {
   contactId: string;
@@ -90,17 +91,10 @@ export function ContactAvatar({
 
     void (async () => {
       try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`/api/v1/contacts/${contactId}/profile-picture`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          if (!cancelled) setApiFailed(true);
-          return;
-        }
-        const blob = await res.blob();
-        if (cancelled || blob.size < 64) {
-          if (!cancelled) setApiFailed(true);
+        const blob = await api.fetchBlobOptional(`/contacts/${contactId}/profile-picture`);
+        if (cancelled) return;
+        if (!blob) {
+          setApiFailed(true);
           return;
         }
         revoked = URL.createObjectURL(blob);
@@ -127,8 +121,14 @@ export function ContactAvatar({
   const showPhoto = showApi || showDirect;
   const showInitials = !showPhoto && !loading;
 
-  const isList = variant === "list";
-  const sizeClass = isList ? "h-[3.25rem] w-[3.25rem] text-sm" : "h-10 w-10 text-[10px]";
+  const sizeClass =
+    variant === "list"
+      ? "h-[3.25rem] w-[3.25rem] text-sm"
+      : variant === "detail"
+        ? "h-12 w-12 text-sm"
+        : variant === "message"
+          ? "h-8 w-8 text-[10px]"
+          : "h-10 w-10 text-[10px]";
 
   return (
     <span

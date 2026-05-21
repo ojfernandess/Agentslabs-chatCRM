@@ -65,6 +65,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
+import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
@@ -1899,31 +1900,15 @@ export function ConversationDetailPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            <div className="relative h-12 w-12 shrink-0 overflow-visible rounded-2xl text-sm font-semibold text-ink-700 dark:text-ink-100">
-              <div className="relative h-full w-full overflow-hidden rounded-2xl bg-gradient-to-br from-ink-100 to-ink-200 dark:from-ink-700 dark:to-ink-800">
-                <ContactAvatar
-                  contactId={conversation.contact.id}
-                  name={conversation.contact.name}
-                  profilePictureUrl={conversation.contact.profilePictureUrl}
-                  className="h-full w-full rounded-2xl text-sm"
-                />
-                <span
-                  className={clsx(
-                    "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
-                    presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
-                  )}
-                  title={presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}
-                />
-              </div>
-              {isWhatsappInbox ? (
-                <span
-                  className="absolute -left-1 -top-1 flex h-[22px] w-[22px] items-center justify-center rounded-lg bg-white shadow-md ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
-                  title="WhatsApp"
-                >
-                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
-                </span>
-              ) : null}
-            </div>
+            <ConversationListAvatar
+              contactId={conversation.contact.id}
+              contactName={conversation.contact.name}
+              profilePictureUrl={conversation.contact.profilePictureUrl}
+              channelType={isWhatsappInbox ? "WHATSAPP" : undefined}
+              priority={conversation.priority}
+              size="detail"
+              presenceOnline={presenceRecent}
+            />
             <div className="min-w-0 flex-1">
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2215,7 +2200,7 @@ export function ConversationDetailPage() {
                         contactId={conversation.contact.id}
                         name={conversation.contact.name}
                         profilePictureUrl={conversation.contact.profilePictureUrl}
-                        className="h-8 w-8 text-[10px]"
+                        variant="message"
                       />
                     ) : (
                       <div

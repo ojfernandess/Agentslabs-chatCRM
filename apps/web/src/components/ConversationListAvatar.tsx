@@ -11,10 +11,14 @@ type Props = {
   hasAvatar?: boolean;
   channelType?: string;
   priority?: ConversationPriority | null;
+  /** list = cartões da lista; detail = cabeçalho da conversa; message = balão no chat. */
+  size?: "list" | "detail" | "message";
+  /** Indicador de presença (cabeçalho do detalhe). */
+  presenceOnline?: boolean;
   className?: string;
 };
 
-/** Avatar da lista de conversas: foto circular, badge WhatsApp e prioridade. */
+/** Avatar com foto circular, badge WhatsApp e prioridade. */
 export function ConversationListAvatar({
   contactId,
   contactName,
@@ -22,10 +26,13 @@ export function ConversationListAvatar({
   hasAvatar,
   channelType,
   priority,
+  size = "list",
+  presenceOnline,
   className,
 }: Props) {
   const isWhatsApp = channelType === "WHATSAPP";
-  const showPriority = isConversationPriority(priority);
+  const showPriority = size !== "message" && isConversationPriority(priority);
+  const avatarVariant = size === "detail" ? "detail" : size === "message" ? "message" : "list";
 
   return (
     <div className={clsx("relative shrink-0", className)}>
@@ -34,11 +41,23 @@ export function ConversationListAvatar({
         name={contactName}
         profilePictureUrl={profilePictureUrl}
         hasAvatar={hasAvatar}
-        variant="list"
+        variant={avatarVariant}
       />
+      {presenceOnline !== undefined ? (
+        <span
+          className={clsx(
+            "absolute bottom-0.5 right-0.5 block h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",
+            presenceOnline ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+          )}
+          aria-hidden
+        />
+      ) : null}
       {isWhatsApp ? (
         <span
-          className="absolute -bottom-0.5 -right-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white shadow-md ring-2 ring-white dark:bg-ink-900 dark:ring-ink-950"
+          className={clsx(
+            "absolute flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white shadow-md ring-2 ring-white dark:bg-ink-900 dark:ring-ink-950",
+            size === "detail" ? "-left-0.5 -top-0.5" : "-bottom-0.5 -right-0.5",
+          )}
           title="WhatsApp"
         >
           <WhatsAppBrandIcon className="h-3.5 w-3.5" />
