@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
+import { fetchAndCacheContactProfilePicture } from "../lib/contactProfilePicture.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -322,6 +323,35 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       pageSize: query.pageSize,
       stats: { withOpenDeals, avgEngagementOnPage: avgEngagement },
     };
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/profile-picture", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, profilePictureUrl: true },
+    });
+    if (!contact?.profilePictureUrl?.trim()) {
+      return reply.status(404).send({ error: "Not Found", message: "No profile picture", statusCode: 404 });
+    }
+
+    const buf = await fetchAndCacheContactProfilePicture(
+      organizationId,
+      contact.id,
+      contact.profilePictureUrl.trim(),
+    );
+    if (!buf) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Profile picture unavailable or expired",
+        statusCode: 404,
+      });
+    }
+
+    reply.header("Cache-Control", "private, max-age=3600");
+    return reply.type("image/jpeg").send(buf);
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {

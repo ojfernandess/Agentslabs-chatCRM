@@ -240,9 +240,7 @@ async function handleWhatsAppPost(
     try {
       const phone = normalizePhoneE164(patch.phone);
       if (!phone) continue;
-      const existing = await prisma.contact.findFirst({
-        where: { organizationId, phone },
-      });
+      const existing = await findContactByInboundPhone(prisma, organizationId, phone, null);
       if (!existing) continue;
       const data: {
         profilePictureUrl?: string | null;

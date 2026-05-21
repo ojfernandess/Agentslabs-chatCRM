@@ -15,6 +15,7 @@ import {
   type ConversationContextTarget,
 } from "@/components/ConversationContextMenu";
 import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
+import { ContactAvatar } from "@/components/ContactAvatar";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
   id: string;
@@ -419,13 +420,12 @@ export function ConversationsPage() {
                           )}
                         >
                           <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
-                            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl">
-                              {conv.contact.profilePictureUrl ? (
-                                <img src={conv.contact.profilePictureUrl} alt="" className="h-full w-full object-cover" />
-                              ) : (
-                                conv.contact.name.charAt(0).toUpperCase()
-                              )}
-                            </div>
+                            <ContactAvatar
+                              contactId={conv.contact.id}
+                              name={conv.contact.name}
+                              profilePictureUrl={conv.contact.profilePictureUrl}
+                              className="h-full w-full rounded-2xl text-sm font-semibold"
+                            />
                             {conv.inbox?.channelType === "WHATSAPP" ? (
                               <span
                                 className="absolute -left-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-white shadow ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
