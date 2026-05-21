@@ -8,7 +8,11 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
-import { resolveContactProfilePictureBuffer } from "../lib/contactProfilePictureResolve.js";
+import {
+  resolveContactProfilePictureBuffer,
+  syncContactProfilePicture,
+  syncContactProfilePicturesBatch,
+} from "../lib/contactProfilePictureResolve.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -89,6 +93,10 @@ const querySchema = z.object({
   tag: z.string().uuid().optional(),
   stage: z.string().uuid().optional(),
   assignee: z.string().uuid().optional(),
+});
+
+const syncAvatarsSchema = z.object({
+  contactIds: z.array(z.string().uuid()).max(40),
 });
 
 type ContactListRow = {
@@ -325,6 +333,18 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.post("/sync-avatars", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const body = syncAvatarsSchema.parse(request.body ?? {});
+    const result = await syncContactProfilePicturesBatch({
+      organizationId,
+      contactIds: body.contactIds,
+    });
+    return result;
+  });
+
   app.get<{ Params: { id: string } }>("/:id/profile-picture", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -337,12 +357,29 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "No profile picture", statusCode: 404 });
     }
 
-    const buf = await resolveContactProfilePictureBuffer({
-      organizationId,
-      contactId: contact.id,
-      phone: contact.phone,
-      profilePictureUrl: contact.profilePictureUrl,
-    });
+    const refresh =
+      (request.query as { refresh?: string })?.refresh === "1" ||
+      (request.query as { refresh?: string })?.refresh === "true";
+
+    let buf = refresh
+      ? null
+      : await resolveContactProfilePictureBuffer({
+          organizationId,
+          contactId: contact.id,
+          phone: contact.phone,
+          profilePictureUrl: contact.profilePictureUrl,
+        });
+
+    if (!buf) {
+      buf = await syncContactProfilePicture({
+        organizationId,
+        contactId: contact.id,
+        phone: contact.phone,
+        profilePictureUrl: contact.profilePictureUrl,
+        force: refresh,
+      });
+    }
+
     if (!buf) {
       return reply.status(404).send({
         error: "Not Found",

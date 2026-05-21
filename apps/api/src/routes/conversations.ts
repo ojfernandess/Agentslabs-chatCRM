@@ -21,6 +21,7 @@ import {
   markConversationUnreadForUser,
   withUnreadFlag,
 } from "../lib/teamTransferUnread.js";
+import { hasContactAvatarCache } from "../lib/contactProfilePictureResolve.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
@@ -309,6 +310,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       lastReadByConversation,
     );
 
+    const uniqueContactIds = [...new Set(withFlags.map((row) => row.contact.id))];
+    const avatarByContact = new Map<string, boolean>();
+    await Promise.all(
+      uniqueContactIds.map(async (contactId) => {
+        const has = await hasContactAvatarCache(organizationId, contactId);
+        avatarByContact.set(contactId, has);
+      }),
+    );
+
     return {
       data: withFlags.map((row) => {
         const { lastMessage: _lastMessage, ...rest } = row;
@@ -316,6 +326,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           ...stripCsatSurveyToken(rest),
           agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
           isUnread: row.isUnread,
+          contact: {
+            ...rest.contact,
+            hasAvatar: avatarByContact.get(rest.contact.id) ?? false,
+          },
         };
       }),
       total,

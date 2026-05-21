@@ -347,49 +347,78 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
   async fetchContactProfilePictureBuffer(toE164: string): Promise<Buffer | null> {
     const number = digitsOnly(toE164);
     if (!number) return null;
-    try {
-      const response = await fetch(`${this.baseUrl}/user/avatar`, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify({ number }),
-      });
-      if (!response.ok) return null;
-      const raw = (await response.json()) as unknown;
-      const d = asRecord(raw);
-      const nested = asRecord(d?.data);
-      const b64raw =
-        (typeof d?.avatar === "string" ? d.avatar : null) ??
-        (typeof nested?.avatar === "string" ? nested.avatar : null);
-      if (!b64raw?.trim()) return null;
-      const b64 = b64raw.replace(/^data:image\/\w+;base64,/, "").trim();
-      const buf = Buffer.from(b64, "base64");
-      return buf.length >= 64 && buf.length <= 5 * 1024 * 1024 ? buf : null;
-    } catch {
-      return null;
+
+    const bodies = [
+      { number },
+      { number: `${number}@s.whatsapp.net` },
+      { remoteJid: `${number}@s.whatsapp.net` },
+    ];
+
+    for (const body of bodies) {
+      try {
+        const response = await fetch(`${this.baseUrl}/user/avatar`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) continue;
+
+        const ct = (response.headers.get("content-type") ?? "").toLowerCase();
+        if (ct.startsWith("image/")) {
+          const buf = Buffer.from(await response.arrayBuffer());
+          if (buf.length >= 64 && buf.length <= 5 * 1024 * 1024) return buf;
+          continue;
+        }
+
+        const raw = (await response.json()) as unknown;
+        const d = asRecord(raw);
+        const nested = asRecord(d?.data);
+        const b64raw =
+          (typeof d?.avatar === "string" ? d.avatar : null) ??
+          (typeof nested?.avatar === "string" ? nested.avatar : null);
+        if (!b64raw?.trim()) continue;
+        const b64 = b64raw.replace(/^data:image\/\w+;base64,/, "").trim();
+        const buf = Buffer.from(b64, "base64");
+        if (buf.length >= 64 && buf.length <= 5 * 1024 * 1024) return buf;
+      } catch {
+        /* try next body */
+      }
     }
+    return null;
   }
 
   async fetchContactProfilePictureUrl(toE164: string): Promise<string | undefined> {
     const number = digitsOnly(toE164);
     if (!number) return undefined;
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/fetchProfilePictureUrl`, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify({ number }),
-      });
-      if (!response.ok) return undefined;
-      const raw = (await response.json()) as unknown;
-      const d = asRecord(raw);
-      const nested = asRecord(d?.data);
-      const pic =
-        (typeof d?.profilePictureUrl === "string" ? d.profilePictureUrl : null) ??
-        (typeof d?.url === "string" ? d.url : null) ??
-        (typeof nested?.profilePictureUrl === "string" ? nested.profilePictureUrl : null) ??
-        (typeof nested?.url === "string" ? nested.url : null);
-      return pic?.trim() || undefined;
-    } catch {
-      return undefined;
+
+    const paths = this.instanceId
+      ? [
+          `${this.baseUrl}/chat/fetchProfilePictureUrl/${this.instanceId}`,
+          `${this.baseUrl}/chat/fetchProfilePictureUrl`,
+        ]
+      : [`${this.baseUrl}/chat/fetchProfilePictureUrl`];
+
+    for (const path of paths) {
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({ number }),
+        });
+        if (!response.ok) continue;
+        const raw = (await response.json()) as unknown;
+        const d = asRecord(raw);
+        const nested = asRecord(d?.data);
+        const pic =
+          (typeof d?.profilePictureUrl === "string" ? d.profilePictureUrl : null) ??
+          (typeof d?.url === "string" ? d.url : null) ??
+          (typeof nested?.profilePictureUrl === "string" ? nested.profilePictureUrl : null) ??
+          (typeof nested?.url === "string" ? nested.url : null);
+        if (pic?.trim()) return pic.trim();
+      } catch {
+        /* next path */
+      }
     }
+    return undefined;
   }
 }

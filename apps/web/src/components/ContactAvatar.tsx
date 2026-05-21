@@ -3,59 +3,91 @@ import clsx from "clsx";
 import { api } from "@/lib/api";
 
 function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const trimmed = name.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  const nameDigits = trimmed.replace(/\D/g, "");
+  if (digits.length >= 10 && nameDigits === digits) {
+    return digits.slice(-2);
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
-/** Hosts CDN WhatsApp/Facebook que falham no &lt;img&gt; directo no browser (403). */
-export function needsProfilePictureProxy(url: string): boolean {
-  const u = url.trim().toLowerCase();
-  if (!u.startsWith("http")) return false;
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return (
-      host.includes("fbcdn.net") ||
-      host.includes("facebook.com") ||
-      host.includes("fbsbx.com") ||
-      host.includes("whatsapp.net") ||
-      host.endsWith(".cdninstagram.com")
-    );
-  } catch {
-    return false;
-  }
+function avatarPalette(seed: string): { from: string; to: string; text: string } {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const palettes = [
+    { from: "from-violet-400", to: "to-indigo-600", text: "text-white" },
+    { from: "from-emerald-400", to: "to-teal-600", text: "text-white" },
+    { from: "from-sky-400", to: "to-blue-600", text: "text-white" },
+    { from: "from-amber-400", to: "to-orange-600", text: "text-white" },
+    { from: "from-rose-400", to: "to-pink-600", text: "text-white" },
+    { from: "from-slate-400", to: "to-slate-600", text: "text-white" },
+  ];
+  return palettes[h % palettes.length]!;
 }
+
+const failSessionKey = (contactId: string) => `oc_avatar_fail_${contactId}`;
 
 type Props = {
   contactId: string;
   name: string;
   profilePictureUrl?: string | null;
+  /** Quando false (ex.: após sync-avatars), não chama a API — evita 404 no console. */
+  hasAvatar?: boolean;
   className?: string;
   imgClassName?: string;
+  useApi?: boolean;
 };
 
-/**
- * Avatar: URL pública no img directo; CDN WhatsApp/Evolution via API autenticada (evita 403).
- */
-export function ContactAvatar({ contactId, name, profilePictureUrl, className, imgClassName }: Props) {
+export function ContactAvatar({
+  contactId,
+  name,
+  hasAvatar,
+  className,
+  imgClassName,
+  useApi = true,
+}: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [directFailed, setDirectFailed] = useState(false);
-  const [proxyFailed, setProxyFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const url = profilePictureUrl?.trim() ?? "";
-  const useProxy = Boolean(contactId && url && needsProfilePictureProxy(url));
-  const useDirect = Boolean(url && !useProxy);
+  const palette = useMemo(() => avatarPalette(contactId || name), [contactId, name]);
+  const initials = useMemo(() => initialsFromName(name), [name]);
 
   useEffect(() => {
-    setDirectFailed(false);
-    setProxyFailed(false);
-    if (!useProxy) {
-      setBlobUrl(null);
+    const onSynced = () => {
+      if (!contactId) return;
+      sessionStorage.removeItem(failSessionKey(contactId));
+      setReloadToken((t) => t + 1);
+    };
+    window.addEventListener("openconduit:contact-avatars-synced", onSynced);
+    return () => window.removeEventListener("openconduit:contact-avatars-synced", onSynced);
+  }, [contactId]);
+
+  useEffect(() => {
+    if (!contactId || !useApi) return;
+    if (hasAvatar === false) {
+      setUnavailable(true);
+      sessionStorage.setItem(failSessionKey(contactId), "1");
       return;
     }
-    let revoked: string | null = null;
+
     let cancelled = false;
+    let revoked: string | null = null;
+    setLoading(true);
+
+    const hadFail = sessionStorage.getItem(failSessionKey(contactId));
+    if (hadFail && reloadToken === 0) {
+      setUnavailable(true);
+      setLoading(false);
+      return;
+    }
+
+    setUnavailable(false);
 
     void (async () => {
       try {
@@ -63,8 +95,15 @@ export function ContactAvatar({ contactId, name, profilePictureUrl, className, i
         if (cancelled) return;
         revoked = URL.createObjectURL(blob);
         setBlobUrl(revoked);
+        sessionStorage.removeItem(failSessionKey(contactId));
       } catch {
-        if (!cancelled) setProxyFailed(true);
+        if (!cancelled) {
+          setUnavailable(true);
+          sessionStorage.setItem(failSessionKey(contactId), "1");
+          setBlobUrl(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -73,30 +112,38 @@ export function ContactAvatar({ contactId, name, profilePictureUrl, className, i
       if (revoked) URL.revokeObjectURL(revoked);
       setBlobUrl(null);
     };
-  }, [contactId, useProxy, url]);
+  }, [contactId, useApi, reloadToken, hasAvatar]);
 
-  const initials = useMemo(() => initialsFromName(name), [name]);
-  const showProxy = useProxy && blobUrl && !proxyFailed;
-  const showDirect = useDirect && !directFailed;
+  const showPhoto = Boolean(blobUrl && !unavailable);
 
   return (
     <span
       className={clsx(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold uppercase text-ink-600 dark:bg-ink-700 dark:text-ink-300",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br shadow-inner ring-1 ring-black/5 dark:ring-white/10",
+        palette.from,
+        palette.to,
+        palette.text,
         className,
       )}
     >
-      {showProxy ? (
-        <img src={blobUrl!} alt="" className={clsx("h-full w-full object-cover", imgClassName)} />
-      ) : showDirect ? (
+      {loading && !showPhoto ? (
+        <span className="absolute inset-0 animate-pulse bg-white/20" aria-hidden />
+      ) : null}
+      {showPhoto ? (
         <img
-          src={url}
+          src={blobUrl!}
           alt=""
-          className={clsx("h-full w-full object-cover", imgClassName)}
-          onError={() => setDirectFailed(true)}
+          className={clsx("relative z-[1] h-full w-full object-cover", imgClassName)}
         />
       ) : (
-        initials
+        <span
+          className={clsx(
+            "relative z-[1] flex h-full w-full items-center justify-center font-bold uppercase tracking-tight",
+            className?.includes("text-lg") ? "text-sm" : "text-[11px]",
+          )}
+        >
+          {initials}
+        </span>
       )}
     </span>
   );
