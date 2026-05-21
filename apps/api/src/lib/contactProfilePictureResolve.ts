@@ -12,6 +12,7 @@ import type { WhatsAppProviderInterface } from "../providers/types.js";
 
 const AVATAR_FILE = "avatar.jpg";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 function cacheDir(organizationId: string): string {
   return join(config.mediaUploadDir, "contact-avatars", organizationId);
 }
@@ -77,7 +78,6 @@ async function listWhatsAppAvatarProviders(
     orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
     select: { id: true },
   });
-
   for (const inbox of inboxes) {
     if (inbox.id === preferredInboxId) continue;
     push(await getWhatsAppProviderForInbox(organizationId, inbox.id));
@@ -97,7 +97,6 @@ async function fetchViaProvider(
     const buf = await provider.fetchContactProfilePictureBuffer(phone).catch(() => null);
     if (buf) return buf;
   }
-
   if (provider.fetchContactProfilePictureUrl) {
     const fresh = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
     if (fresh?.trim()) {
@@ -115,12 +114,11 @@ async function fetchViaProvider(
       if (fromUrl) return fromUrl;
     }
   }
-
   return null;
 }
 
 /**
- * Obtém foto via Evolution / Evolution Go (e URL fresca). Meta Cloud não tem avatar de contacto.
+ * Obtém foto via Evolution / Evolution Go (URL ou buffer). Meta Cloud não expõe avatar de contacto.
  */
 export async function syncContactProfilePicture(params: {
   organizationId: string;
@@ -175,14 +173,13 @@ export async function resolveContactProfilePictureBuffer(params: {
   contactId: string;
   phone: string;
   profilePictureUrl: string | null;
+  preferredInboxId?: string | null;
 }): Promise<Buffer | null> {
   const cached = await readContactAvatarCache(params.organizationId, params.contactId);
   if (cached) return cached;
 
-  const preferredInboxId = await getPreferredInboxForContact(
-    params.organizationId,
-    params.contactId,
-  );
+  const preferredInboxId =
+    params.preferredInboxId ?? (await getPreferredInboxForContact(params.organizationId, params.contactId));
 
   return syncContactProfilePicture({
     organizationId: params.organizationId,
@@ -193,7 +190,7 @@ export async function resolveContactProfilePictureBuffer(params: {
   });
 }
 
-/** Sincroniza avatares em lote (máx. 40) para a lista de conversas/contatos. */
+/** Sincroniza avatares em lote (máx. 40) para listas de conversas/contatos. */
 export async function syncContactProfilePicturesBatch(params: {
   organizationId: string;
   contactIds: string[];
@@ -201,7 +198,6 @@ export async function syncContactProfilePicturesBatch(params: {
   const ids = [...new Set(params.contactIds)].slice(0, 40);
   const synced: string[] = [];
   const failed: string[] = [];
-
   if (ids.length === 0) return { synced, failed };
 
   const contacts = await prisma.contact.findMany({
@@ -214,8 +210,7 @@ export async function syncContactProfilePicturesBatch(params: {
   });
 
   for (const c of contacts) {
-    const hasCache = await hasContactAvatarCache(params.organizationId, c.id);
-    if (hasCache) {
+    if (await hasContactAvatarCache(params.organizationId, c.id)) {
       synced.push(c.id);
       continue;
     }

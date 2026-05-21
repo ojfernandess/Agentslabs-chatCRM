@@ -21,7 +21,10 @@ import {
   markConversationUnreadForUser,
   withUnreadFlag,
 } from "../lib/teamTransferUnread.js";
-import { hasContactAvatarCache } from "../lib/contactProfilePictureResolve.js";
+import {
+  hasContactAvatarCache,
+  syncContactProfilePicturesBatch,
+} from "../lib/contactProfilePictureResolve.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
@@ -318,6 +321,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         avatarByContact.set(contactId, has);
       }),
     );
+    void syncContactProfilePicturesBatch({ organizationId, contactIds: uniqueContactIds }).catch(() => {});
 
     return {
       data: withFlags.map((row) => {

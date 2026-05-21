@@ -338,59 +338,60 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     const body = syncAvatarsSchema.parse(request.body ?? {});
-    const result = await syncContactProfilePicturesBatch({
+    return syncContactProfilePicturesBatch({
       organizationId,
       contactIds: body.contactIds,
     });
-    return result;
   });
 
-  app.get<{ Params: { id: string } }>("/:id/profile-picture", async (request, reply) => {
-    const organizationId = await resolveTenantOrganizationId(request, reply);
-    if (!organizationId) return;
+  app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>(
+    "/:id/profile-picture",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
 
-    const contact = await prisma.contact.findFirst({
-      where: { id: request.params.id, organizationId },
-      select: { id: true, phone: true, profilePictureUrl: true, isGroupChat: true },
-    });
-    if (!contact || contact.isGroupChat) {
-      return reply.status(404).send({ error: "Not Found", message: "No profile picture", statusCode: 404 });
-    }
+      const contact = await prisma.contact.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: { id: true, phone: true, profilePictureUrl: true, isGroupChat: true },
+      });
+      if (!contact || contact.isGroupChat) {
+        return reply.status(404).send({ error: "Not Found", message: "No profile picture", statusCode: 404 });
+      }
 
-    const refresh =
-      (request.query as { refresh?: string })?.refresh === "1" ||
-      (request.query as { refresh?: string })?.refresh === "true";
+      const refresh =
+        request.query?.refresh === "1" || request.query?.refresh === "true";
 
-    let buf = refresh
-      ? null
-      : await resolveContactProfilePictureBuffer({
+      let buf = refresh
+        ? null
+        : await resolveContactProfilePictureBuffer({
+            organizationId,
+            contactId: contact.id,
+            phone: contact.phone,
+            profilePictureUrl: contact.profilePictureUrl,
+          });
+
+      if (!buf) {
+        buf = await syncContactProfilePicture({
           organizationId,
           contactId: contact.id,
           phone: contact.phone,
           profilePictureUrl: contact.profilePictureUrl,
+          force: refresh,
         });
+      }
 
-    if (!buf) {
-      buf = await syncContactProfilePicture({
-        organizationId,
-        contactId: contact.id,
-        phone: contact.phone,
-        profilePictureUrl: contact.profilePictureUrl,
-        force: refresh,
-      });
-    }
+      if (!buf) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "Profile picture unavailable or expired",
+          statusCode: 404,
+        });
+      }
 
-    if (!buf) {
-      return reply.status(404).send({
-        error: "Not Found",
-        message: "Profile picture unavailable or expired",
-        statusCode: 404,
-      });
-    }
-
-    reply.header("Cache-Control", "private, max-age=3600");
-    return reply.type("image/jpeg").send(buf);
-  });
+      reply.header("Cache-Control", "private, max-age=3600");
+      return reply.type("image/jpeg").send(buf);
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);

@@ -22,6 +22,7 @@ import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
 import { decrypt } from "../lib/encryption.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
+import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -240,8 +241,19 @@ async function handleWhatsAppPost(
     try {
       const phone = normalizePhoneE164(patch.phone);
       if (!phone) continue;
-      const existing = await findContactByInboundPhone(prisma, organizationId, phone, null);
-      if (!existing) continue;
+      let existing = await findContactByInboundPhone(prisma, organizationId, phone, null);
+      if (!existing) {
+        const dn = patch.waDisplayName?.trim() || phone;
+        existing = await prisma.contact.create({
+          data: {
+            organizationId,
+            phone,
+            name: dn,
+            waId: phone,
+            profilePictureUrl: patch.profilePictureUrl ?? undefined,
+          },
+        });
+      }
       const data: {
         profilePictureUrl?: string | null;
         name?: string;
@@ -262,6 +274,15 @@ async function handleWhatsAppPost(
       }
       if (Object.keys(data).length > 0) {
         await prisma.contact.update({ where: { id: existing.id }, data });
+      }
+      if (!existing.isGroupChat) {
+        void syncContactProfilePicture({
+          organizationId,
+          contactId: existing.id,
+          phone: existing.phone,
+          profilePictureUrl: patch.profilePictureUrl ?? existing.profilePictureUrl,
+          preferredInboxId: target.inboxId,
+        }).catch(() => {});
       }
     } catch (err) {
       app.log.error(err, "Error applying contact sync from webhook");
@@ -345,30 +366,25 @@ async function handleWhatsAppPost(
           });
         }
 
-        if (provider.fetchContactProfilePictureUrl && !msg.isGroup) {
-          const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
-          if (pic) {
-            contact = await prisma.contact.update({
-              where: { id: contact.id },
-              data: { profilePictureUrl: pic },
-            });
-          }
+        if (!msg.isGroup) {
+          void syncContactProfilePicture({
+            organizationId,
+            contactId: contact.id,
+            phone: contact.phone,
+            profilePictureUrl: contact.profilePictureUrl,
+            preferredInboxId: target.inboxId,
+          }).catch(() => {});
         }
       }
 
-      if (
-        !contactJustCreated &&
-        provider.fetchContactProfilePictureUrl &&
-        !contact.profilePictureUrl &&
-        !msg.isGroup
-      ) {
-        const pic = await provider.fetchContactProfilePictureUrl(phone).catch(() => undefined);
-        if (pic) {
-          contact = await prisma.contact.update({
-            where: { id: contact.id },
-            data: { profilePictureUrl: pic },
-          });
-        }
+      if (!contactJustCreated && !contact.profilePictureUrl && !msg.isGroup) {
+        void syncContactProfilePicture({
+          organizationId,
+          contactId: contact.id,
+          phone: contact.phone,
+          profilePictureUrl: contact.profilePictureUrl,
+          preferredInboxId: target.inboxId,
+        }).catch(() => {});
       }
 
       if (channelSettings.autoOptInOnFirstMessage && !contact.optedIn) {

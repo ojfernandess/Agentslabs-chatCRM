@@ -704,27 +704,38 @@ export class EvolutionApiProvider implements WhatsAppProviderInterface {
   }
 
   async fetchContactProfilePictureUrl(toE164: string): Promise<string | undefined> {
-    const number = digitsOnly(toE164);
+    const number = evolutionDestinationForApi(toE164);
     if (!number) return undefined;
-    try {
-      const url = `${this.baseUrl}/chat/fetchProfilePictureUrl/${this.instanceName}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify({ number }),
-      });
-      if (!response.ok) return undefined;
-      const raw = (await response.json()) as unknown;
-      const d = asRecord(raw);
-      if (!d) return undefined;
-      const pic =
-        (typeof d.profilePictureUrl === "string" && d.profilePictureUrl) ||
-        (typeof d.url === "string" && d.url) ||
-        (typeof d.profilePicUrl === "string" && d.profilePicUrl);
-      return pic || undefined;
-    } catch {
-      return undefined;
+    const bodies = [
+      { number },
+      { number: digitsOnly(toE164) },
+      { remoteJid: `${digitsOnly(toE164)}@s.whatsapp.net` },
+    ];
+    for (const body of bodies) {
+      try {
+        const url = `${this.baseUrl}/chat/fetchProfilePictureUrl/${this.instanceName}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) continue;
+        const raw = (await response.json()) as unknown;
+        const d = asRecord(raw);
+        if (!d) continue;
+        const nested = asRecord(d.data);
+        const pic =
+          (typeof d.profilePictureUrl === "string" ? d.profilePictureUrl : undefined) ||
+          (typeof d.url === "string" ? d.url : undefined) ||
+          (typeof d.profilePicUrl === "string" ? d.profilePicUrl : undefined) ||
+          (typeof nested?.profilePictureUrl === "string" ? nested.profilePictureUrl : undefined) ||
+          (typeof nested?.url === "string" ? nested.url : undefined);
+        if (pic?.trim()) return pic.trim();
+      } catch {
+        /* try next body */
+      }
     }
+    return undefined;
   }
 }
 

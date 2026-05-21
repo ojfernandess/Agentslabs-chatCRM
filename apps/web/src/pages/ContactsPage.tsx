@@ -142,6 +142,10 @@ export function ContactsPage() {
       setContacts(res.data);
       setTotal(res.total);
       setStats(res.stats ?? null);
+      const ids = res.data.map((c) => c.id).slice(0, 40);
+      if (ids.length > 0) {
+        void api.post("/contacts/sync-avatars", { contactIds: ids }).catch(() => {});
+      }
     } catch {
       /* ignore */
     } finally {

@@ -348,7 +348,7 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     const number = digitsOnly(toE164);
     if (!number) return null;
 
-    const bodies = [
+    const bodies: Record<string, string>[] = [
       { number },
       { number: `${number}@s.whatsapp.net` },
       { remoteJid: `${number}@s.whatsapp.net` },
@@ -359,7 +359,7 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
         const response = await fetch(`${this.baseUrl}/user/avatar`, {
           method: "POST",
           headers: this.headers(),
-          body: JSON.stringify(body),
+          body: JSON.stringify({ ...body, preview: "false" }),
         });
         if (!response.ok) continue;
 
@@ -373,6 +373,22 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
         const raw = (await response.json()) as unknown;
         const d = asRecord(raw);
         const nested = asRecord(d?.data);
+        const urlPic =
+          (typeof nested?.URL === "string" ? nested.URL : undefined) ||
+          (typeof nested?.url === "string" ? nested.url : undefined) ||
+          (typeof d?.URL === "string" ? d.URL : undefined) ||
+          (typeof d?.url === "string" ? d.url : undefined);
+        if (urlPic?.trim()) {
+          const fromUrl = await fetch(urlPic.trim(), {
+            redirect: "follow",
+            signal: AbortSignal.timeout(12_000),
+          }).catch(() => null);
+          if (fromUrl?.ok) {
+            const buf = Buffer.from(await fromUrl.arrayBuffer());
+            if (buf.length >= 64 && buf.length <= 5 * 1024 * 1024) return buf;
+          }
+        }
+
         const b64raw =
           (typeof d?.avatar === "string" ? d.avatar : null) ??
           (typeof nested?.avatar === "string" ? nested.avatar : null);

@@ -154,39 +154,11 @@ export function ConversationsPage() {
       if (inboxFilter) params.set("inboxId", inboxFilter);
       if (mineActive) params.set("mine", "1");
       const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
-      const contactIds = [
-        ...new Set(res.data.map((c) => c.contact.id).filter(Boolean)),
-      ].slice(0, 40);
-      let syncedSet = new Set<string>();
-      let failedSet = new Set<string>();
+      setConversations(res.data);
+      const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
       if (contactIds.length > 0) {
-        try {
-          const sync = await api.post<{ synced: string[]; failed: string[] }>(
-            "/contacts/sync-avatars",
-            { contactIds },
-          );
-          syncedSet = new Set(sync.synced);
-          failedSet = new Set(sync.failed);
-          for (const id of sync.failed) {
-            sessionStorage.setItem(`oc_avatar_fail_${id}`, "1");
-          }
-          for (const id of sync.synced) {
-            sessionStorage.removeItem(`oc_avatar_fail_${id}`);
-          }
-          window.dispatchEvent(new CustomEvent("openconduit:contact-avatars-synced"));
-        } catch {
-          /* sync opcional */
-        }
+        void api.post("/contacts/sync-avatars", { contactIds }).catch(() => {});
       }
-      setConversations(
-        res.data.map((c) => {
-          const id = c.contact.id;
-          let hasAvatar = c.contact.hasAvatar;
-          if (syncedSet.has(id)) hasAvatar = true;
-          if (failedSet.has(id)) hasAvatar = false;
-          return { ...c, contact: { ...c.contact, hasAvatar } };
-        }),
-      );
       try {
         localStorage.setItem(
           "openconduit_conversation_list_ids",
@@ -452,13 +424,13 @@ export function ConversationsPage() {
                               "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
                           )}
                         >
-                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl">
+                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
                             <ContactAvatar
                               contactId={conv.contact.id}
                               name={conv.contact.name}
                               profilePictureUrl={conv.contact.profilePictureUrl}
                               hasAvatar={conv.contact.hasAvatar}
-                              className="h-11 w-11 rounded-2xl"
+                              className="h-full w-full rounded-2xl text-sm font-semibold"
                             />
                             {conv.inbox?.channelType === "WHATSAPP" ? (
                               <span
