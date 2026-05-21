@@ -8,7 +8,24 @@ function initialsFromName(name: string): string {
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
-/** Hosts CDN WhatsApp/Facebook que falham no &lt;img&gt; directo no browser. */
+/** Paleta estável de gradientes para iniciais (sem foto). */
+const INITIAL_GRADIENTS = [
+  "from-violet-500 to-purple-600",
+  "from-sky-500 to-blue-600",
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+  "from-indigo-500 to-blue-700",
+  "from-cyan-500 to-sky-600",
+  "from-fuchsia-500 to-violet-600",
+] as const;
+
+function gradientForName(name: string): (typeof INITIAL_GRADIENTS)[number] {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i) * (i + 1)) % 2147483647;
+  return INITIAL_GRADIENTS[h % INITIAL_GRADIENTS.length]!;
+}
+
 function needsProfilePictureProxy(url: string): boolean {
   const u = url.trim().toLowerCase();
   if (!u.startsWith("http")) return false;
@@ -26,31 +43,34 @@ function needsProfilePictureProxy(url: string): boolean {
   }
 }
 
+export type ContactAvatarVariant = "default" | "list";
+
 type Props = {
   contactId: string;
   name: string;
   profilePictureUrl?: string | null;
-  /** Indica cache local no servidor (lista de conversas). */
   hasAvatar?: boolean;
+  variant?: ContactAvatarVariant;
   className?: string;
   imgClassName?: string;
 };
 
 /**
- * Avatar via API autenticada (busca Evolution/Evolution Go e cache).
- * Fallback: URL pública directa quando não há provedor WhatsApp.
+ * Avatar via API (Evolution / Evolution Go + cache). Iniciais com gradiente quando não há foto.
  */
 export function ContactAvatar({
   contactId,
   name,
   profilePictureUrl,
   hasAvatar,
+  variant = "default",
   className,
   imgClassName,
 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [apiFailed, setApiFailed] = useState(false);
   const [directFailed, setDirectFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const url = profilePictureUrl?.trim() ?? "";
   const tryApi = Boolean(contactId);
@@ -60,11 +80,13 @@ export function ContactAvatar({
     if (!tryApi) {
       setBlobUrl(null);
       setApiFailed(false);
+      setLoading(false);
       return;
     }
     let revoked: string | null = null;
     let cancelled = false;
     setApiFailed(false);
+    setLoading(true);
 
     void (async () => {
       try {
@@ -85,6 +107,8 @@ export function ContactAvatar({
         setBlobUrl(revoked);
       } catch {
         if (!cancelled) setApiFailed(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -92,22 +116,41 @@ export function ContactAvatar({
       cancelled = true;
       if (revoked) URL.revokeObjectURL(revoked);
       setBlobUrl(null);
+      setLoading(false);
     };
   }, [contactId, tryApi, hasAvatar, url]);
 
   const initials = useMemo(() => initialsFromName(name), [name]);
+  const gradient = useMemo(() => gradientForName(name), [name]);
   const showApi = tryApi && blobUrl && !apiFailed;
   const showDirect = useDirectFallback && !directFailed;
+  const showPhoto = showApi || showDirect;
+  const showInitials = !showPhoto && !loading;
+
+  const isList = variant === "list";
+  const sizeClass = isList ? "h-[3.25rem] w-[3.25rem] text-sm" : "h-10 w-10 text-[10px]";
 
   return (
     <span
       className={clsx(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink-200 text-[10px] font-bold uppercase text-ink-600 dark:bg-ink-700 dark:text-ink-300",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full",
+        "ring-2 ring-white shadow-md dark:ring-ink-900/80",
+        sizeClass,
+        !showPhoto && !loading && clsx("bg-gradient-to-br text-white font-semibold tracking-wide", gradient),
+        loading && "bg-ink-100 dark:bg-ink-800",
         className,
       )}
+      aria-hidden
     >
+      {loading ? (
+        <span className="absolute inset-0 animate-pulse bg-gradient-to-br from-ink-200/80 to-ink-300/60 dark:from-ink-700 dark:to-ink-600" />
+      ) : null}
       {showApi ? (
-        <img src={blobUrl!} alt="" className={clsx("h-full w-full object-cover", imgClassName)} />
+        <img
+          src={blobUrl!}
+          alt=""
+          className={clsx("h-full w-full object-cover", imgClassName)}
+        />
       ) : showDirect ? (
         <img
           src={url}
@@ -115,9 +158,9 @@ export function ContactAvatar({
           className={clsx("h-full w-full object-cover", imgClassName)}
           onError={() => setDirectFailed(true)}
         />
-      ) : (
-        initials
-      )}
+      ) : showInitials ? (
+        <span className="select-none drop-shadow-sm">{initials}</span>
+      ) : null}
     </span>
   );
 }

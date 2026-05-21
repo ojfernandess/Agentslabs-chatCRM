@@ -5,7 +5,6 @@ import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Search, Squar
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
-import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
@@ -15,7 +14,7 @@ import {
   type ConversationContextTarget,
 } from "@/components/ConversationContextMenu";
 import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
-import { ContactAvatar } from "@/components/ContactAvatar";
+import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
   id: string;
@@ -415,7 +414,7 @@ export function ConversationsPage() {
                         <Link
                           to={`/conversations/${conv.id}`}
                           className={clsx(
-                            "group flex items-center gap-3 rounded-2xl border p-4 transition-all",
+                            "group flex items-center gap-4 rounded-2xl border p-4 transition-all",
                             "border-ink-200 bg-white/80 shadow-sm hover:-translate-y-0.5 hover:shadow-md",
                             "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
                             priorityListCardClass(conv.priority),
@@ -424,28 +423,14 @@ export function ConversationsPage() {
                               "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
                           )}
                         >
-                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded-2xl bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/35 dark:text-brand-200 dark:ring-1 dark:ring-white/10">
-                            <ContactAvatar
-                              contactId={conv.contact.id}
-                              name={conv.contact.name}
-                              profilePictureUrl={conv.contact.profilePictureUrl}
-                              hasAvatar={conv.contact.hasAvatar}
-                              className="h-full w-full rounded-2xl text-sm font-semibold"
-                            />
-                            {conv.inbox?.channelType === "WHATSAPP" ? (
-                              <span
-                                className="absolute -left-1 -top-1 flex h-[18px] w-[18px] items-center justify-center rounded-md bg-white shadow ring-1 ring-black/10 dark:bg-ink-900 dark:ring-white/15"
-                                title="WhatsApp"
-                              >
-                                <WhatsAppBrandIcon className="h-3 w-3" />
-                              </span>
-                            ) : null}
-                            {isConversationPriority(conv.priority) ? (
-                              <span className="absolute -right-1 -top-1">
-                                <ConversationPriorityBadge priority={conv.priority} variant="compact" />
-                              </span>
-                            ) : null}
-                          </div>
+                          <ConversationListAvatar
+                            contactId={conv.contact.id}
+                            contactName={conv.contact.name}
+                            profilePictureUrl={conv.contact.profilePictureUrl}
+                            hasAvatar={conv.contact.hasAvatar}
+                            channelType={conv.inbox?.channelType}
+                            priority={conv.priority}
+                          />
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
