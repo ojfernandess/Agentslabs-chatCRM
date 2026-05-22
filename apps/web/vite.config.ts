@@ -1,12 +1,30 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { copyFileSync, existsSync } from "fs";
 
 const assetsVersion = (process.env.VITE_PUBLIC_ASSETS_VERSION ?? "").trim();
+
+function syncRootLogoToPublic() {
+  const rootLogo = path.resolve(__dirname, "../../logo.svg");
+  const publicLogo = path.resolve(__dirname, "public/logo.svg");
+  if (existsSync(rootLogo)) {
+    copyFileSync(rootLogo, publicLogo);
+  }
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: "sync-root-logo",
+      buildStart() {
+        syncRootLogoToPublic();
+      },
+      configureServer() {
+        syncRootLogoToPublic();
+      },
+    },
     {
       name: "inject-favicon-cache-bust",
       transformIndexHtml(html: string) {

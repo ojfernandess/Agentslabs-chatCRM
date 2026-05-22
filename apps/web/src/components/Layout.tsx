@@ -271,7 +271,7 @@ export function Layout() {
           <img
             src={brandAssetUrl("/logo.svg")}
             alt={orgLabel}
-            className="h-9 w-9"
+            className="h-9 w-auto max-w-[2.75rem] object-contain"
             decoding="async"
           />
           <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{orgLabel}</span>
