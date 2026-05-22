@@ -82,6 +82,7 @@ interface AppSettings {
   autoResolveLeadTypeId?: string | null;
   resolveRequireClosureReason?: boolean;
   resolveRequireLeadType?: boolean;
+  resolveOfferReminder?: boolean;
   assistantOpenaiApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
 }
@@ -235,6 +236,7 @@ export function SettingsPage() {
   const [wfAutoLeadTypeId, setWfAutoLeadTypeId] = useState("");
   const [wfRequireClosure, setWfRequireClosure] = useState(true);
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
+  const [wfOfferReminder, setWfOfferReminder] = useState(true);
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -660,6 +662,7 @@ export function SettingsPage() {
         setWfAutoLeadTypeId(data.autoResolveLeadTypeId ?? "");
         setWfRequireClosure(data.resolveRequireClosureReason ?? true);
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
+        setWfOfferReminder(data.resolveOfferReminder ?? true);
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -831,6 +834,7 @@ export function SettingsPage() {
         autoResolveLeadTypeId: wfAutoLeadTypeId.trim() || null,
         resolveRequireClosureReason: wfRequireClosure,
         resolveRequireLeadType: wfRequireLeadType,
+        resolveOfferReminder: wfOfferReminder,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -843,6 +847,7 @@ export function SettingsPage() {
       setWfAutoLeadTypeId(data.autoResolveLeadTypeId ?? "");
       setWfRequireClosure(data.resolveRequireClosureReason ?? true);
       setWfRequireLeadType(data.resolveRequireLeadType ?? true);
+      setWfOfferReminder(data.resolveOfferReminder ?? true);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
@@ -2160,6 +2165,21 @@ export function SettingsPage() {
                       <label htmlFor="wfReqLead" className="text-sm text-gray-700">
                         {t("settings.workflowRequireLeadType")}
                       </label>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="wfOfferReminder"
+                        type="checkbox"
+                        checked={wfOfferReminder}
+                        onChange={(e) => setWfOfferReminder(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      <div>
+                        <label htmlFor="wfOfferReminder" className="text-sm text-gray-700">
+                          {t("settings.workflowOfferReminder")}
+                        </label>
+                        <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowOfferReminderHint")}</p>
+                      </div>
                     </div>
                   </div>
 

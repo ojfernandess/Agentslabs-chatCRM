@@ -61,6 +61,7 @@ import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } f
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
+import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
@@ -225,6 +226,12 @@ export function ConversationDetailPage() {
   const [resolveError, setResolveError] = useState("");
   const [resolveRequireClosureReason, setResolveRequireClosureReason] = useState(true);
   const [resolveRequireLeadType, setResolveRequireLeadType] = useState(true);
+  const [resolveOfferReminder, setResolveOfferReminder] = useState(true);
+  const [createReminderOnResolve, setCreateReminderOnResolve] = useState(false);
+  const [reminderNote, setReminderNote] = useState("");
+  const [reminderDueDate, setReminderDueDate] = useState("");
+  const [reminderDueTime, setReminderDueTime] = useState("09:00");
+  const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -284,6 +291,17 @@ export function ConversationDetailPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resolveNextIdRef = useRef<string | null>(null);
+
+  const openResolveModal = useCallback((nextId: string | null) => {
+    resolveNextIdRef.current = nextId;
+    setResolveError("");
+    setClosureAmount("");
+    setCreateReminderOnResolve(false);
+    setReminderNote("");
+    setReminderDueDate(tomorrowLocalYmd());
+    setReminderDueTime("09:00");
+    setResolveOpen(true);
+  }, []);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
@@ -439,14 +457,12 @@ export function ConversationDetailPage() {
 
       if (e.altKey && k === "e") {
         e.preventDefault();
-        resolveNextIdRef.current = null;
-        setResolveOpen(true);
+        openResolveModal(null);
         return;
       }
       if (mod && k === "e") {
         e.preventDefault();
-        resolveNextIdRef.current = nextConversationId("next");
-        setResolveOpen(true);
+        openResolveModal(nextConversationId("next"));
         return;
       }
 
@@ -466,7 +482,7 @@ export function ConversationDetailPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [id, navigate, nextConversationId]);
+  }, [id, navigate, nextConversationId, openResolveModal]);
 
   const onMessagesViewportScroll = useCallback(() => {
     const el = messagesViewportRef.current;
@@ -529,13 +545,16 @@ export function ConversationDetailPage() {
       try {
         const [rows, wf] = await Promise.all([
           api.get<LeadTypeRow[]>("/lead-types"),
-          api.get<{ resolveRequireClosureReason: boolean; resolveRequireLeadType: boolean }>(
-            "/settings/conversation-workflow",
-          ),
+          api.get<{
+            resolveRequireClosureReason: boolean;
+            resolveRequireLeadType: boolean;
+            resolveOfferReminder: boolean;
+          }>("/settings/conversation-workflow"),
         ]);
         setLeadTypes(rows);
         setResolveRequireClosureReason(wf.resolveRequireClosureReason ?? true);
         setResolveRequireLeadType(wf.resolveRequireLeadType ?? true);
+        setResolveOfferReminder(wf.resolveOfferReminder ?? true);
       } catch {
         /* ignore */
       }
@@ -1002,6 +1021,10 @@ export function ConversationDetailPage() {
       setClosureReason("");
       setClosureAmount("");
       setLeadTypeId("");
+      setCreateReminderOnResolve(false);
+      setReminderNote("");
+      setReminderDueDate("");
+      setReminderDueTime("09:00");
       if (status === "RESOLVED" && resolveNextIdRef.current) {
         const nextId = resolveNextIdRef.current;
         resolveNextIdRef.current = null;
@@ -1245,6 +1268,14 @@ export function ConversationDetailPage() {
   const submitResolve = async (e: FormEvent) => {
     e.preventDefault();
     setResolveError("");
+    const wantReminder =
+      showRemindersFeature && resolveOfferReminder && createReminderOnResolve && conversation;
+    if (wantReminder) {
+      if (!reminderNote.trim() || !reminderDueDate) {
+        setResolveError(t("conversationDetail.resolveReminderFieldsRequired"));
+        return;
+      }
+    }
     if (resolveRequireClosureReason && closureReason.trim().length < 3) {
       setResolveError(t("conversationDetail.closureReasonHint"));
       return;
@@ -1280,7 +1311,32 @@ export function ConversationDetailPage() {
     } else {
       extra.leadTypeId = leadTypeId || null;
     }
+
+    let reminderPayload: { contactId: string; note: string; dueDate: string; dueTime: string } | null =
+      null;
+    if (wantReminder && conversation) {
+      reminderPayload = {
+        contactId: conversation.contact.id,
+        note: reminderNote.trim(),
+        dueDate: reminderDueDate,
+        dueTime: reminderDueTime,
+      };
+    }
+
     await applyStatus("RESOLVED", extra);
+
+    if (reminderPayload) {
+      try {
+        const dueAt = localDueToIso(reminderPayload.dueDate, reminderPayload.dueTime);
+        await api.post("/reminders", {
+          contactId: reminderPayload.contactId,
+          note: reminderPayload.note,
+          dueAt,
+        });
+      } catch {
+        setFlowError(t("conversationDetail.resolveReminderCreateFailed"));
+      }
+    }
   };
 
   const statusLabel = (s: string) => {
@@ -2117,11 +2173,7 @@ export function ConversationDetailPage() {
               <button
                 type="button"
                 disabled={actionLoading}
-                onClick={() => {
-                  setResolveError("");
-                  setClosureAmount("");
-                  setResolveOpen(true);
-                }}
+                onClick={() => openResolveModal(null)}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
               >
                 <CheckCircle className="h-3.5 w-3.5" />
@@ -3073,6 +3125,79 @@ export function ConversationDetailPage() {
                   />
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.closureValueHint")}</p>
                 </div>
+                {showRemindersFeature && resolveOfferReminder ? (
+                  <div className="rounded-xl border border-ink-200 bg-ink-50/80 p-4 dark:border-ink-700 dark:bg-ink-800/40">
+                    <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
+                      {t("conversationDetail.resolveReminderTitle")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                      {t("conversationDetail.resolveReminderHint")}
+                    </p>
+                    {conversation ? (
+                      <p className="mt-2 text-xs text-ink-600 dark:text-ink-300">
+                        {conversation.contact.name}
+                        {conversation.contact.phone ? ` · ${conversation.contact.phone}` : ""}
+                      </p>
+                    ) : null}
+                    <label className="mt-3 flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={createReminderOnResolve}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setCreateReminderOnResolve(checked);
+                          if (checked && !reminderNote.trim() && closureReason.trim()) {
+                            setReminderNote(closureReason.trim());
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-500 dark:border-ink-600"
+                      />
+                      <span className="text-sm text-ink-700 dark:text-ink-200">
+                        {t("conversationDetail.resolveReminderEnable")}
+                      </span>
+                    </label>
+                    {createReminderOnResolve ? (
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                            {t("conversationDetail.resolveReminderNote")}
+                          </label>
+                          <textarea
+                            value={reminderNote}
+                            onChange={(e) => setReminderNote(e.target.value)}
+                            rows={2}
+                            placeholder={t("conversationDetail.resolveReminderNotePlaceholder")}
+                            className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                              {t("conversationDetail.resolveReminderDueDate")}
+                            </label>
+                            <input
+                              type="date"
+                              value={reminderDueDate}
+                              onChange={(e) => setReminderDueDate(e.target.value)}
+                              className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                              {t("conversationDetail.resolveReminderDueTime")}
+                            </label>
+                            <input
+                              type="time"
+                              value={reminderDueTime}
+                              onChange={(e) => setReminderDueTime(e.target.value)}
+                              className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {resolveError && (
                   <p className="text-sm text-red-600 dark:text-red-400">{resolveError}</p>
                 )}

@@ -124,6 +124,7 @@ const settingsSchema = z.object({
   autoResolveLeadTypeId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   resolveRequireClosureReason: z.boolean().optional(),
   resolveRequireLeadType: z.boolean().optional(),
+  resolveOfferReminder: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
   silentTransferToAgentBot: z.boolean().optional(),
   assistantOpenaiApiKey: z.union([z.string().max(500), z.null()]).optional(),
@@ -183,15 +184,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       select: {
         resolveRequireClosureReason: true,
         resolveRequireLeadType: true,
+        resolveOfferReminder: true,
       },
     });
     if (!row) {
       await prisma.settings.create({ data: { organizationId } });
-      row = { resolveRequireClosureReason: true, resolveRequireLeadType: true };
+      row = { resolveRequireClosureReason: true, resolveRequireLeadType: true, resolveOfferReminder: true };
     }
     return {
       resolveRequireClosureReason: row.resolveRequireClosureReason,
       resolveRequireLeadType: row.resolveRequireLeadType,
+      resolveOfferReminder: row.resolveOfferReminder,
     };
   });
 

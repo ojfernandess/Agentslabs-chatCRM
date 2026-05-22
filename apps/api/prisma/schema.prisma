@@ -1067,6 +1067,8 @@ model Settings {
   resolveRequireClosureReason Boolean @default(true) @map("resolve_require_closure_reason")
   /// Finalização manual: exigir tipo de lead ao resolver.
   resolveRequireLeadType      Boolean @default(true) @map("resolve_require_lead_type")
+  /// Finalização manual: mostrar opção de agendar lembrete para o contacto.
+  resolveOfferReminder        Boolean @default(true) @map("resolve_offer_reminder")
 
   /// Transcrever mensagens de áudio recebidas (WhatsApp / caixas) para texto — requer chave OpenAI no servidor.
   audioTranscriptionEnabled Boolean @default(false) @map("audio_transcription_enabled")
