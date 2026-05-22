@@ -70,6 +70,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   /**
    * Anexa a mensagem a esta conversa (ex.: inquérito CSAT após RESOLVED), sem passar pelo
    * roteamento que poderia reabrir OUTRA conversa com `lockSingleConversation`.
+   * Mantém status RESOLVED e preserva `csatSurveyToken` (não chama `reopenResolvedConversationData`).
    */
   pinnedConversationId?: string;
 }): Promise<{ message: Message; conversation: Conversation }> {
@@ -121,7 +122,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     inboxChannelConfig = conv.inbox.channelConfig ?? null;
     const { inbox: _inbox, ...rest } = conv;
     conversation = rest;
-    if (conversation.status === "RESOLVED") {
+    if (conversation.status === "RESOLVED" && !pinnedConversationId) {
       const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const botTriageActive = Boolean(agentCtxPre);
       const activeConversationStatus: "OPEN" | "PENDING" =
