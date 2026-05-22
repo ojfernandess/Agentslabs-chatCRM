@@ -297,7 +297,12 @@ export function SettingsPage() {
   const [evoGoQrCode, setEvoGoQrCode] = useState<string | null>(null);
   const [evoGoPairPhone, setEvoGoPairPhone] = useState("");
   const [evoGoPairingCode, setEvoGoPairingCode] = useState<string | null>(null);
-  const [evoGoStatus, setEvoGoStatus] = useState<{ connected: boolean; loggedIn: boolean; name: string } | null>(null);
+  const [evoGoStatus, setEvoGoStatus] = useState<{
+    connected: boolean;
+    loggedIn: boolean;
+    name: string;
+    unreachable?: boolean;
+  } | null>(null);
   const businessDataRef = useRef<{
     business_id: string;
     waba_id: string;
@@ -397,14 +402,20 @@ export function SettingsPage() {
   }, [isAdmin, evolutionPlatformQrMode, provider]);
 
   useEffect(() => {
-    if (!isAdmin || provider !== "evolution_go" || settings?.whatsappProvider !== "evolution_go" || !phoneNumberId) {
+    const savedInstanceId = settings?.whatsappPhoneNumberId?.trim() ?? "";
+    if (
+      !isAdmin ||
+      provider !== "evolution_go" ||
+      settings?.whatsappProvider !== "evolution_go" ||
+      !savedInstanceId
+    ) {
       setEvoGoStatus(null);
       return;
     }
     void refreshEvolutionGoStatus();
     const id = window.setInterval(() => void refreshEvolutionGoStatus(), 4000);
     return () => clearInterval(id);
-  }, [isAdmin, provider, settings?.whatsappProvider, phoneNumberId]);
+  }, [isAdmin, provider, settings?.whatsappProvider, settings?.whatsappPhoneNumberId]);
 
   const startEvolutionQr = async () => {
     setEvoQrBusy(true);
@@ -569,10 +580,15 @@ export function SettingsPage() {
 
   const refreshEvolutionGoStatus = async () => {
     try {
-      const st = await api.get<{ connected: boolean; loggedIn: boolean; name: string }>("/settings/evolution-go/status");
+      const st = await api.get<{
+        connected: boolean;
+        loggedIn: boolean;
+        name: string;
+        unreachable?: boolean;
+      }>("/settings/evolution-go/status");
       setEvoGoStatus(st);
     } catch {
-      /* ignore */
+      setEvoGoStatus({ connected: false, loggedIn: false, name: "", unreachable: true });
     }
   };
 
@@ -1665,6 +1681,15 @@ export function SettingsPage() {
                                     <>
                                       {" "}
                                       <span className="opacity-60">·</span> {evoGoStatus.name}
+                                    </>
+                                  ) : null}
+                                  {evoGoStatus.unreachable ? (
+                                    <>
+                                      {" "}
+                                      <span className="opacity-60">·</span>{" "}
+                                      <span className="text-amber-700 dark:text-amber-300">
+                                        Servidor Evolution Go indisponível ou instância inválida
+                                      </span>
                                     </>
                                   ) : null}
                                 </p>

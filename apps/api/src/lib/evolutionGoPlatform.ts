@@ -1,6 +1,7 @@
 import type { Settings } from "@prisma/client";
 import { prisma } from "../db.js";
-import { decrypt } from "./encryption.js";
+import { decrypt, encrypt } from "./encryption.js";
+import { evolutionGoGetStatus, evolutionGoLookupInstanceByRef } from "./evolutionGoApi.js";
 
 const EVOLUTION_GO_PROVIDER = "evolution_go" as const;
 
@@ -122,6 +123,65 @@ export async function resolveEvolutionGoApiConnection(
     baseUrl: baseUrl.replace(/\/+$/, ""),
     apiKey,
   };
+}
+
+export type EvolutionGoStatusResult = {
+  connected: boolean;
+  loggedIn: boolean;
+  name: string;
+  unreachable?: boolean;
+};
+
+/** Resolves credentials and fetches instance status without surfacing HTTP 502 for transient upstream errors. */
+export async function fetchEvolutionGoInstanceStatus(
+  settings: Pick<Settings, "whatsappProvider" | "evolutionApiBaseUrl" | "whatsappApiKey" | "whatsappPhoneNumberId">,
+  organizationId?: string,
+): Promise<EvolutionGoStatusResult> {
+  const disconnected: EvolutionGoStatusResult = {
+    connected: false,
+    loggedIn: false,
+    name: "",
+    unreachable: true,
+  };
+
+  const creds = await resolveEvolutionGoCredentials(settings);
+  if (!creds) return disconnected;
+
+  let apiKey = creds.apiKey;
+  let instanceRef = creds.instanceId;
+
+  const platform = await getEvolutionGoPlatformConfig();
+  const storedToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
+  if (instanceRef && isEvolutionGoPlatformModeActive(platform) && !storedToken) {
+    const found = await evolutionGoLookupInstanceByRef({
+      baseUrl: platform.baseUrl,
+      apiKey: platform.globalApiKey,
+      instanceRef,
+    });
+    if (found?.token) {
+      apiKey = found.token;
+      instanceRef = undefined;
+      if (organizationId) {
+        await prisma.settings.update({
+          where: { organizationId },
+          data: {
+            whatsappApiKey: encrypt(found.token),
+            whatsappPhoneNumberId: found.id,
+          },
+        });
+      }
+    }
+  }
+
+  const st = await evolutionGoGetStatus({
+    baseUrl: creds.baseUrl,
+    apiKey,
+    instanceRef,
+  });
+  if (st) {
+    return { ...st, unreachable: false };
+  }
+  return disconnected;
 }
 
 export async function resolveEvolutionGoInstanceConnection(

@@ -8,10 +8,50 @@ function asRecord(v: unknown): Record<string, unknown> | null {
     : null;
 }
 
+const EVOLUTION_GO_FETCH_TIMEOUT_MS = 12_000;
+
+async function evolutionGoFetchJson(
+  url: string,
+  init: RequestInit,
+): Promise<{ ok: boolean; status: number; json: unknown | null }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EVOLUTION_GO_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { ok: res.ok, status: res.status, json };
+  } catch {
+    return { ok: false, status: 0, json: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseStatusPayload(json: unknown): { connected: boolean; loggedIn: boolean; name: string } | null {
+  const root = asRecord(json);
+  const data = asRecord(root?.data) ?? root;
+  if (!data) return null;
+  const connected = data.Connected === true || data.connected === true;
+  const loggedIn = data.LoggedIn === true || data.loggedIn === true;
+  const name =
+    typeof data.Name === "string"
+      ? data.Name.trim()
+      : typeof data.name === "string"
+        ? data.name.trim()
+        : "";
+  return { connected, loggedIn, name };
+}
+
 export type EvolutionGoInstanceInfo = {
   id: string;
   name: string;
   connected: boolean;
+  token?: string;
 };
 
 export type EvolutionGoCreatedInstance = {
@@ -25,18 +65,12 @@ export async function evolutionGoFetchAllInstances(options: {
   apiKey: string;
 }): Promise<EvolutionGoInstanceInfo[] | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/all`, {
+  const { ok, json } = await evolutionGoFetchJson(`${base}/instance/all`, {
     headers: {
       apikey: options.apiKey,
     },
   });
-  if (!res.ok) return null;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    return null;
-  }
+  if (!ok) return null;
   const root = asRecord(json);
   const data = root?.data ?? root?.instances;
   if (!Array.isArray(data)) return null;
@@ -47,10 +81,26 @@ export async function evolutionGoFetchAllInstances(options: {
     const id = typeof r.id === "string" ? r.id.trim() : "";
     const name = typeof r.name === "string" ? r.name.trim() : "";
     const connected = r.connected === true;
+    const token = typeof r.token === "string" ? r.token.trim() : undefined;
     if (!id || !name) continue;
-    out.push({ id, name, connected });
+    out.push({ id, name, connected, ...(token ? { token } : {}) });
   }
   return out;
+}
+
+export async function evolutionGoLookupInstanceByRef(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceRef: string;
+}): Promise<EvolutionGoInstanceInfo | null> {
+  const ref = options.instanceRef.trim();
+  if (!ref) return null;
+  const list = await evolutionGoFetchAllInstances({
+    baseUrl: options.baseUrl,
+    apiKey: options.apiKey,
+  });
+  if (!list) return null;
+  return list.find((x) => x.id === ref || x.name === ref) ?? null;
 }
 
 export async function evolutionGoCreateInstance(options: {
@@ -60,7 +110,7 @@ export async function evolutionGoCreateInstance(options: {
   token: string;
 }): Promise<EvolutionGoCreatedInstance | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/create`, {
+  const { ok, json } = await evolutionGoFetchJson(`${base}/instance/create`, {
     method: "POST",
     headers: {
       apikey: options.apiKey,
@@ -71,13 +121,7 @@ export async function evolutionGoCreateInstance(options: {
       token: options.token,
     }),
   });
-  if (!res.ok) return null;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    return null;
-  }
+  if (!ok) return null;
   const root = asRecord(json);
   const data = asRecord(root?.data);
   const id = typeof data?.id === "string" ? data.id.trim() : "";
@@ -93,19 +137,13 @@ export async function evolutionGoGetQr(options: {
   instanceId?: string;
 }): Promise<{ qrDataUrl: string; code: string } | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/qr`, {
+  const { ok, json } = await evolutionGoFetchJson(`${base}/instance/qr`, {
     headers: {
       apikey: options.apiKey,
       ...(options.instanceId ? { instanceId: options.instanceId } : {}),
     },
   });
-  if (!res.ok) return null;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    return null;
-  }
+  if (!ok) return null;
   const root = asRecord(json);
   const data = asRecord(root?.data);
   const qrDataUrl =
@@ -124,27 +162,36 @@ export async function evolutionGoGetStatus(options: {
   baseUrl: string;
   apiKey: string;
   instanceId?: string;
+  instanceRef?: string;
 }): Promise<{ connected: boolean; loggedIn: boolean; name: string } | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/status`, {
-    headers: {
-      apikey: options.apiKey,
-      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
-    },
-  });
-  if (!res.ok) return null;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    return null;
+  const ref = (options.instanceRef ?? options.instanceId)?.trim();
+
+  type Attempt = { url: string; headers: Record<string, string> };
+  const attempts: Attempt[] = [];
+
+  const push = (url: string, headers: Record<string, string>) => {
+    if (!attempts.some((a) => a.url === url && JSON.stringify(a.headers) === JSON.stringify(headers))) {
+      attempts.push({ url, headers });
+    }
+  };
+
+  // Instance token: Evolution Go identifies the instance via apikey header only.
+  push(`${base}/instance/status`, { apikey: options.apiKey });
+
+  if (ref) {
+    push(`${base}/instance/status`, { apikey: options.apiKey, instanceId: ref });
+    push(`${base}/instance/${encodeURIComponent(ref)}/status`, { apikey: options.apiKey });
   }
-  const root = asRecord(json);
-  const data = asRecord(root?.data);
-  const connected = data?.Connected === true || data?.connected === true;
-  const loggedIn = data?.LoggedIn === true || data?.loggedIn === true;
-  const name = typeof data?.Name === "string" ? data.Name.trim() : typeof data?.name === "string" ? data.name.trim() : "";
-  return { connected, loggedIn, name };
+
+  for (const attempt of attempts) {
+    const { ok, json } = await evolutionGoFetchJson(attempt.url, { headers: attempt.headers });
+    if (!ok) continue;
+    const parsed = parseStatusPayload(json);
+    if (parsed) return parsed;
+  }
+
+  return null;
 }
 
 export async function evolutionGoRequestPairingCode(options: {
@@ -155,7 +202,7 @@ export async function evolutionGoRequestPairingCode(options: {
   subscribe: string[];
 }): Promise<string | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/pair`, {
+  const { ok, json } = await evolutionGoFetchJson(`${base}/instance/pair`, {
     method: "POST",
     headers: {
       apikey: options.apiKey,
@@ -164,13 +211,7 @@ export async function evolutionGoRequestPairingCode(options: {
     },
     body: JSON.stringify({ phone: options.phone, subscribe: options.subscribe }),
   });
-  if (!res.ok) return null;
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    return null;
-  }
+  if (!ok) return null;
   const root = asRecord(json);
   const data = asRecord(root?.data);
   const code =
@@ -192,7 +233,7 @@ export async function evolutionGoConnectInstance(options: {
   phone?: string;
 }): Promise<boolean> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const res = await fetch(`${base}/instance/connect`, {
+  const { ok } = await evolutionGoFetchJson(`${base}/instance/connect`, {
     method: "POST",
     headers: {
       apikey: options.apiKey,
@@ -206,5 +247,5 @@ export async function evolutionGoConnectInstance(options: {
       ...(options.phone ? { phone: options.phone } : {}),
     }),
   });
-  return res.ok;
+  return ok;
 }

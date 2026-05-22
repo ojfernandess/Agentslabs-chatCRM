@@ -31,7 +31,6 @@ import {
   evolutionGoCreateInstance,
   evolutionGoFetchAllInstances,
   evolutionGoGetQr,
-  evolutionGoGetStatus,
   evolutionGoRequestPairingCode,
 } from "../lib/evolutionGoApi.js";
 import {
@@ -43,6 +42,7 @@ import {
 import {
   ensureEvolutionGoProviderSelected,
   evolutionGoPlatformModeActive,
+  fetchEvolutionGoInstanceStatus,
   resolveEvolutionGoApiConnection,
   resolveEvolutionGoInstanceConnection,
 } from "../lib/evolutionGoPlatform.js";
@@ -729,25 +729,15 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
-      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
-      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
-      if (!api || (!instanceApi && !instanceId)) {
+      const instanceRef = settings.whatsappPhoneNumberId?.trim() ?? "";
+      if (!instanceRef) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go base URL / API key not configured",
+          message: "Evolution Go instance not configured",
           statusCode: 400,
         });
       }
-      const st = await evolutionGoGetStatus({ baseUrl: api.baseUrl, apiKey: api.apiKey, ...(instanceId ? { instanceId } : {}) });
-      if (!st) {
-        return reply.status(502).send({
-          error: "Bad Gateway",
-          message: "Evolution Go get status failed",
-          statusCode: 502,
-        });
-      }
-      return st;
+      return fetchEvolutionGoInstanceStatus(settings, organizationId);
     });
 
     const evolutionGoPairSchema = z.object({
