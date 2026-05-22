@@ -9,7 +9,7 @@ export type CampaignChannel =
   | "webhook"
   | "voice";
 
-export type CampaignCenterTab = "campaigns" | "templates" | "flows" | "analytics";
+export type CampaignCenterTab = "campaigns" | "followup" | "templates" | "flows" | "analytics";
 
 export type CampaignStatusFilter = "ALL" | "DRAFT" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
 

@@ -3,6 +3,13 @@ import { Clock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { slaDisplayFromMinutes } from "@/lib/slaTime";
+import {
+  settingsCard,
+  settingsInput,
+  settingsListWrap,
+  settingsMuted,
+  settingsTitle,
+} from "@/components/settings/settingsUi";
 
 export interface SlaPolicyRow {
   id: string;
@@ -67,7 +74,7 @@ function SlaTimeField({
   const { t } = useI18n();
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{label}</label>
       <SlaTimeFieldInputs fields={fields} onChange={onChange} t={t} />
     </div>
   );
@@ -89,12 +96,12 @@ function SlaTimeFieldInputs({
         min={1}
         value={fields.value}
         onChange={(e) => onChange({ ...fields, value: Number(e.target.value) || 1 })}
-        className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className="input-field w-24"
       />
       <select
         value={fields.unit}
         onChange={(e) => onChange({ ...fields, unit: e.target.value as TimeUnit })}
-        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className="input-field flex-1"
       >
         <option value="minutes">{t("settings.workflowUnitMinutes")}</option>
         <option value="hours">{t("settings.workflowUnitHours")}</option>
@@ -130,40 +137,40 @@ function SlaPolicyModal({
       onClick={closeModal}
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-ink-200/80 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-[#111C2B]"
         role="dialog"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={closeModal}
-          className="absolute right-4 top-4 rounded-lg p-1 text-gray-500 hover:bg-gray-100"
+          className="absolute right-4 top-4 rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-white/10"
           aria-label={t("common.close")}
         >
           <X className="h-5 w-5" />
         </button>
-        <h3 className="pr-8 text-lg font-semibold text-gray-900">
+        <h3 className="pr-8 text-lg font-semibold text-ink-900 dark:text-ink-50">
           {editingId ? t("settings.slaEditTitle") : t("settings.slaAddTitle")}
         </h3>
-        <p className="mt-1 text-sm text-gray-500">{t("settings.slaModalSubtitle")}</p>
+        <p className={`mt-1 ${settingsMuted}`}>{t("settings.slaModalSubtitle")}</p>
         <form onSubmit={(e) => void onSubmit(e)} className="mt-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">{t("settings.slaName")}</label>
+            <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("settings.slaName")}</label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder={t("settings.slaNamePlaceholder")}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className={settingsInput}
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">{t("settings.slaDescription")}</label>
+            <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("settings.slaDescription")}</label>
             <input
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder={t("settings.slaDescriptionPlaceholder")}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className={settingsInput}
             />
           </div>
           <SlaTimeField
@@ -181,22 +188,18 @@ function SlaPolicyModal({
             fields={form.resolution}
             onChange={(resolution) => setForm((f) => ({ ...f, resolution }))}
           />
-          <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-3">
-            <span className="text-sm text-gray-700">{t("settings.slaBusinessHours")}</span>
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-ink-200/80 px-3 py-3 dark:border-white/10">
+            <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.slaBusinessHours")}</span>
             <input
               type="checkbox"
               checked={form.businessHours}
               onChange={(e) => setForm((f) => ({ ...f, businessHours: e.target.checked }))}
-              className="h-4 w-4 rounded border-gray-300 text-brand-500"
+              className="h-4 w-4 rounded border-ink-300 text-brand-500 dark:border-ink-600"
             />
           </label>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
+            <button type="button" onClick={closeModal} className="btn-secondary">
               {t("common.cancel")}
             </button>
             <button
@@ -310,14 +313,14 @@ export function SlaPoliciesSettings() {
 
   return (
     <>
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className={settingsCard}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+            <h2 className={`flex items-center gap-2 ${settingsTitle}`}>
               <Clock className="h-5 w-5" />
               {t("settings.sectionSla")}
             </h2>
-            <p className="mt-1 text-sm text-gray-500">{t("settings.slaIntro")}</p>
+            <p className={`mt-1 ${settingsMuted}`}>{t("settings.slaIntro")}</p>
           </div>
           <button
             type="button"
@@ -329,17 +332,17 @@ export function SlaPoliciesSettings() {
           </button>
         </div>
         {loading ? (
-          <p className="text-sm text-gray-500">{t("common.loading")}</p>
+          <p className={settingsMuted}>{t("common.loading")}</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-gray-500">{t("settings.slaEmpty")}</p>
+          <p className={settingsMuted}>{t("settings.slaEmpty")}</p>
         ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+          <ul className={settingsListWrap}>
             {rows.map((row) => (
               <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 px-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-900">{row.name}</p>
-                  {row.description ? <p className="mt-0.5 text-xs text-gray-500">{row.description}</p> : null}
-                  <p className="mt-1 text-xs text-gray-600">
+                  <p className="font-medium text-ink-900 dark:text-ink-50">{row.name}</p>
+                  {row.description ? <p className={`mt-0.5 text-xs ${settingsMuted}`}>{row.description}</p> : null}
+                  <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
                     {t("settings.slaListFirst")}: {formatDuration(row.firstResponseTimeMinutes)} ·{" "}
                     {t("settings.slaListNext")}: {formatDuration(row.nextResponseTimeMinutes)} ·{" "}
                     {t("settings.slaListResolution")}: {formatDuration(row.resolutionTimeMinutes)}
@@ -385,7 +388,7 @@ function SlaPoliciesRowActions({
       <button
         type="button"
         onClick={() => openEdit(row)}
-        className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+        className="rounded-lg p-2 text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-white/10"
         title={t("common.edit")}
       >
         <Pencil className="h-4 w-4" />

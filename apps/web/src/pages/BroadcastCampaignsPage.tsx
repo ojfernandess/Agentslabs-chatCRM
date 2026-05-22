@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3 } from "lucide-react";
+import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3, Tags } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -16,6 +16,11 @@ import {
 import { CHANNEL_API, type SegmentRules } from "@/pages/broadcasts/CampaignAdvancedOptions";
 import { segmentHasAudience } from "@/pages/broadcasts/campaignTypes";
 import { CampaignTemplatesLibrary } from "@/pages/broadcasts/CampaignTemplatesLibrary";
+import {
+  FollowUpCampaignPanel,
+  type FollowUpSubmitPayload,
+  type FollowUpTagLogic,
+} from "@/pages/broadcasts/FollowUpCampaignPanel";
 import { CampaignAnalyticsPanel } from "@/pages/broadcasts/CampaignAnalyticsPanel";
 import {
   OMNICHANNEL_CHANNELS,
@@ -58,6 +63,12 @@ export function BroadcastCampaignsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+
+  const [followUpPreviewCount, setFollowUpPreviewCount] = useState<number | null>(null);
+  const [followUpPreviewBusy, setFollowUpPreviewBusy] = useState(false);
+  const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
+  const [followUpFormError, setFollowUpFormError] = useState("");
+  const [followUpSuccess, setFollowUpSuccess] = useState("");
 
   const loadList = useCallback(async () => {
     setListError("");
@@ -215,6 +226,67 @@ export function BroadcastCampaignsPage() {
     setSegmentPreview(segmentRules);
   }, []);
 
+  const runFollowUpPreview = useCallback(async (tagIds: string[], tagLogic: FollowUpTagLogic) => {
+    if (tagIds.length === 0) {
+      setFollowUpPreviewCount(null);
+      return;
+    }
+    setFollowUpPreviewBusy(true);
+    try {
+      const res = await api.post<{ audienceCount: number }>("/broadcasts/audience-preview", {
+        tagIds,
+        segmentRules: { tagLogic },
+      });
+      setFollowUpPreviewCount(typeof res.audienceCount === "number" ? res.audienceCount : 0);
+    } catch {
+      setFollowUpPreviewCount(null);
+    } finally {
+      setFollowUpPreviewBusy(false);
+    }
+  }, []);
+
+  const handleFollowUpSubmit = async (payload: FollowUpSubmitPayload) => {
+    setFollowUpSubmitting(true);
+    setFollowUpFormError("");
+    setFollowUpSuccess("");
+    try {
+      const res = await api.post<{
+        started?: boolean;
+        startError?: string | null;
+        status?: string;
+      }>("/broadcasts", {
+        name: payload.name,
+        channel: "WHATSAPP",
+        inboxId: payload.inboxId,
+        messageType: payload.messageType,
+        tagIds: payload.tagIds,
+        segmentRules: payload.segmentRules,
+        scheduleType: payload.scheduleType,
+        scheduledAt: payload.scheduledAt,
+        body: payload.body,
+        templateId: payload.templateId,
+        autoStart: payload.autoStart,
+      });
+      if (res.startError) {
+        setFollowUpFormError(t("broadcastPage.followUpStartPartial"));
+      } else if (payload.scheduleType === "IMMEDIATE" && res.started) {
+        setFollowUpSuccess(t("broadcastPage.followUpSuccessStarted"));
+      } else if (payload.scheduleType === "SCHEDULED") {
+        setFollowUpSuccess(t("broadcastPage.followUpSuccessScheduled"));
+      } else {
+        setFollowUpSuccess(t("broadcastPage.followUpSuccessDraft"));
+      }
+      void loadList();
+      void loadDashboard();
+      setCenterTab("campaigns");
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : t("broadcastPage.createError");
+      setFollowUpFormError(msg || t("broadcastPage.createError"));
+    } finally {
+      setFollowUpSubmitting(false);
+    }
+  };
+
   const handleCreate = async (draft: CreatorDraft) => {
     const nameTrim = draft.name.trim();
     const adv = draft.advanced;
@@ -340,6 +412,7 @@ export function BroadcastCampaignsPage() {
 
   const centerTabs: { id: CampaignCenterTab; label: string; icon: typeof LayoutGrid }[] = [
     { id: "campaigns", label: t("broadcastPage.tabCampaigns"), icon: LayoutGrid },
+    { id: "followup", label: t("broadcastPage.tabFollowUp"), icon: Tags },
     { id: "templates", label: t("broadcastPage.tabTemplates"), icon: BookOpen },
     { id: "flows", label: t("broadcastPage.tabFlows"), icon: GitBranch },
     { id: "analytics", label: t("broadcastPage.tabAnalytics"), icon: BarChart3 },
@@ -377,6 +450,18 @@ export function BroadcastCampaignsPage() {
           >
             <Sparkles className="h-4 w-4" />
             {t("broadcastPage.aiCampaign")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFollowUpSuccess("");
+              setFollowUpFormError("");
+              setCenterTab("followup");
+            }}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <Tags className="h-4 w-4" />
+            {t("broadcastPage.followUpCta")}
           </button>
           <button type="button" onClick={() => openCreator("quick")} className="btn-primary inline-flex items-center gap-2">
             <Plus className="h-4 w-4" />
@@ -448,7 +533,7 @@ export function BroadcastCampaignsPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+      <div className={clsx("grid gap-6", centerTab === "followup" ? "" : "lg:grid-cols-[240px_1fr]")}>
         {centerTab === "campaigns" ? (
           <CampaignFiltersSidebar
             search={search}
@@ -458,11 +543,29 @@ export function BroadcastCampaignsPage() {
             channelFilter={channelFilter}
             onChannelFilterChange={setChannelFilter}
           />
-        ) : (
+        ) : centerTab !== "followup" ? (
           <div className="hidden lg:block" />
-        )}
+        ) : null}
 
-        <div className="min-w-0">
+        <div className={clsx("min-w-0", centerTab === "followup" && "max-w-3xl")}>
+          {centerTab === "followup" ? (
+            <FollowUpCampaignPanel
+              tags={tags}
+              inboxes={inboxes}
+              templates={templates}
+              templatesLoading={templatesLoading}
+              previewCount={followUpPreviewCount}
+              previewBusy={followUpPreviewBusy}
+              submitting={followUpSubmitting}
+              formError={followUpFormError}
+              successMessage={followUpSuccess}
+              onPreview={(tagIds, tagLogic) => void runFollowUpPreview(tagIds, tagLogic)}
+              onInboxChange={handleInboxChange}
+              onSubmit={handleFollowUpSubmit}
+              onTemplatesRefresh={(id) => loadTemplatesForInbox(id || undefined, { sync: true })}
+            />
+          ) : null}
+
           {centerTab === "campaigns" ? (
             <>
               {loading ? (

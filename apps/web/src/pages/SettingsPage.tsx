@@ -29,8 +29,22 @@ import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProvi
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import {
   buildInboxWhatsappChannelConfig,
+  isWhatsAppCloudApiProvider,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
+import {
+  settingsCard,
+  settingsInput,
+  settingsLabel,
+  settingsMuted,
+  settingsNavActive,
+  settingsNavIdle,
+  settingsSubtitle,
+  settingsTableHead,
+  settingsTableRow,
+  settingsTableWrap,
+  settingsTitle,
+} from "@/components/settings/settingsUi";
 import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
 import {
   createEmbeddedSignupMessageHandler,
@@ -129,6 +143,16 @@ interface TagListRow {
   color: string;
 }
 
+interface MessageTemplateRow {
+  id: string;
+  name: string;
+  body: string;
+  templateLanguage?: string | null;
+  providerTemplateId?: string | null;
+  isApproved?: boolean;
+  metaCategory?: string | null;
+}
+
 /** Estágios do pipeline principal (Negócios / Novo negócio) — podem existir sem `leadType` após apagar tipo. */
 interface CrmPipelineStageRow {
   id: string;
@@ -182,6 +206,8 @@ export function SettingsPage() {
   const [metaTplSyncBusy, setMetaTplSyncBusy] = useState(false);
   const [metaTplSyncResult, setMetaTplSyncResult] = useState<{ synced: number } | null>(null);
   const [metaTplSyncError, setMetaTplSyncError] = useState("");
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
+  const [tplListLoading, setTplListLoading] = useState(false);
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
@@ -1033,6 +1059,30 @@ export function SettingsPage() {
     }
   };
 
+  const loadMessageTemplates = useCallback(
+    async (opts?: { sync?: boolean }) => {
+      setTplListLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (defaultWaInbox?.id) params.set("inboxId", defaultWaInbox.id);
+        if (opts?.sync) params.set("sync", "1");
+        const qs = params.toString();
+        const list = await api.get<MessageTemplateRow[]>(`/templates${qs ? `?${qs}` : ""}`);
+        setMessageTemplates(Array.isArray(list) ? list : []);
+      } catch {
+        setMessageTemplates([]);
+      } finally {
+        setTplListLoading(false);
+      }
+    },
+    [defaultWaInbox?.id],
+  );
+
+  useEffect(() => {
+    if (section !== "templates") return;
+    void loadMessageTemplates();
+  }, [section, loadMessageTemplates]);
+
   const syncMetaTemplates = async () => {
     setMetaTplSyncBusy(true);
     setMetaTplSyncError("");
@@ -1041,6 +1091,10 @@ export function SettingsPage() {
       const q = defaultWaInbox?.id ? `?inboxId=${encodeURIComponent(defaultWaInbox.id)}` : "";
       const result = await api.post<{ synced: number; wabaId: string | null }>(`/templates/meta/sync${q}`);
       setMetaTplSyncResult({ synced: result.synced });
+      await loadMessageTemplates({ sync: true });
+      if (result.synced === 0 && !result.wabaId) {
+        setMetaTplSyncError(t("settings.templatesMetaListEmptySync"));
+      }
     } catch (err) {
       setMetaTplSyncError(err instanceof Error ? err.message : t("settings.templatesMetaSyncFailed"));
     } finally {
@@ -1069,6 +1123,7 @@ export function SettingsPage() {
       setEvoTplName("");
       setEvoTplBody("");
       setEvoTplFooter("");
+      void loadMessageTemplates();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("settings.evoTplFailed");
       setEvoTplError(msg);
@@ -1089,7 +1144,12 @@ export function SettingsPage() {
     }
   };
 
-  const isMetaCloudSettingsProvider = provider === "meta" || provider === "360dialog";
+  const waInboxProvider = defaultWaInbox
+    ? parseInboxWhatsappFromChannelConfig(defaultWaInbox.channelConfig).whatsappProvider
+    : undefined;
+  const effectiveWhatsAppProvider =
+    provider || waInboxProvider || settings?.whatsappProvider || "";
+  const isMetaCloudSettingsProvider = isWhatsAppCloudApiProvider(effectiveWhatsAppProvider);
 
   const regenerateVerifyToken = async () => {
     setSaving(true);
@@ -1108,7 +1168,7 @@ export function SettingsPage() {
   if (!isAdmin) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-gray-500">{t("common.adminRequired")}</p>
+        <p className="text-ink-500 dark:text-ink-400">{t("common.adminRequired")}</p>
       </div>
     );
   }
@@ -1125,9 +1185,9 @@ export function SettingsPage() {
     <PageTransition>
       <div className="p-6 lg:p-8">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-8 border-b border-gray-200 pb-6">
-            <h1 className="text-2xl font-bold text-gray-900">{t("settings.title")}</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">{t("settings.subtitle")}</p>
+          <div className="mb-8 border-b border-ink-200/80 pb-6 dark:border-white/10">
+            <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("settings.title")}</h1>
+            <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">{t("settings.subtitle")}</p>
           </div>
 
           <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
@@ -1155,12 +1215,10 @@ export function SettingsPage() {
                   onClick={() => setSection(id)}
                   className={clsx(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium whitespace-nowrap transition-colors",
-                    section === id
-                      ? "bg-white text-brand-800 shadow-sm ring-1 ring-gray-200"
-                      : "text-gray-600 hover:bg-white/60 hover:text-gray-900",
+                    section === id ? settingsNavActive : settingsNavIdle,
                   )}
                 >
-                  <Icon className="h-5 w-5 shrink-0 text-gray-500" />
+                  <Icon className="h-5 w-5 shrink-0 text-ink-500 dark:text-ink-400" />
                   {label}
                 </button>
               ))}
@@ -1175,7 +1233,7 @@ export function SettingsPage() {
               {section === "channel" && (
                 <>
                   <motion.div
-                    className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 text-sm text-brand-900"
+                    className="rounded-xl border border-brand-200/80 bg-brand-50/60 p-4 text-sm text-brand-900 dark:border-brand-800/50 dark:bg-brand-950/30 dark:text-brand-100"
                     variants={staggerItem}
                   >
                     <p className="font-medium">{t("settings.channelUnifiedTitle")}</p>
@@ -1186,7 +1244,7 @@ export function SettingsPage() {
                   </motion.div>
                   {embeddedInfo?.available ? (
                     <motion.div
-                      className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                      className="card-surface rounded-xl p-6"
                       variants={staggerItem}
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -1195,10 +1253,10 @@ export function SettingsPage() {
                         </div>
                         <div className="min-w-0 flex-1 space-y-3">
                           <div>
-                            <h2 className="text-lg font-semibold text-gray-900">{t("settings.embeddedTitle")}</h2>
-                            <p className="mt-1 text-sm text-gray-600">{t("settings.embeddedDesc")}</p>
+                            <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("settings.embeddedTitle")}</h2>
+                            <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("settings.embeddedDesc")}</p>
                           </div>
-                          <ul className="space-y-2 text-sm text-gray-700">
+                          <ul className="space-y-2 text-sm text-ink-700 dark:text-ink-300">
                             <li className="flex gap-2">
                               <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
                               <span>{t("settings.embeddedBenefit1")}</span>
@@ -1228,7 +1286,7 @@ export function SettingsPage() {
                           >
                             {embeddedBusy ? t("settings.embeddedWorking") : t("settings.embeddedCta")}
                           </button>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-ink-500 dark:text-ink-400">
                             {t("settings.embeddedManualHint")}{" "}
                             <a
                               href="#whatsapp-manual-setup"
@@ -1250,10 +1308,10 @@ export function SettingsPage() {
                   ) : null}
 
                   <motion.div
-                    className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                    className="card-surface rounded-xl p-6"
                     variants={staggerItem}
                   >
-                    <p className="mb-4 text-sm text-gray-600">{t("settings.channelHint")}</p>
+                    <p className="mb-4 text-sm text-ink-600 dark:text-ink-400">{t("settings.channelHint")}</p>
                     {isMetaCloudSettingsProvider &&
                     (defaultWaInbox?.whatsappWebhookVerifyToken || settings?.whatsappWebhookVerifyToken) ? (
                       <WhatsAppMetaWebhookCopyPanel
@@ -1268,19 +1326,19 @@ export function SettingsPage() {
                       />
                     ) : (
                       <>
-                        <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
+                        <h2 className="mb-4 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                           <Settings className="h-5 w-5" />
                           Webhook URL
                         </h2>
-                        <p className="mb-3 text-sm text-gray-500">{t("settings.webhookCopyHint")}</p>
+                        <p className="mb-3 text-sm text-ink-500 dark:text-ink-400">{t("settings.webhookCopyHint")}</p>
                         <div className="flex items-center gap-2">
-                          <code className="flex-1 overflow-x-auto rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                          <code className="flex-1 overflow-x-auto rounded-lg bg-gray-100 px-3 py-2 text-sm text-ink-700 dark:text-ink-300">
                             {webhookDisplay || "—"}
                           </code>
                           <button
                             type="button"
                             onClick={copyWebhookUrl}
-                            className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
+                            className="rounded-lg border border-ink-200/80 p-2 text-ink-500 hover:bg-ink-50 dark:border-white/10 dark:text-ink-400 dark:hover:bg-white/5"
                           >
                             {copied ? (
                               <Check className="h-4 w-4 text-green-500" />
@@ -1296,18 +1354,18 @@ export function SettingsPage() {
                   <motion.form
                     id="whatsapp-manual-setup"
                     onSubmit={handleSave}
-                    className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                    className="card-surface rounded-xl p-6"
                     variants={staggerItem}
                   >
-                    <h2 className="mb-4 font-semibold text-gray-900">WhatsApp provider</h2>
+                    <h2 className="mb-4 font-semibold text-ink-900 dark:text-ink-50">WhatsApp provider</h2>
 
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Provider</label>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Provider</label>
                         <select
                           value={provider}
                           onChange={(e) => setProvider(e.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="">Select provider...</option>
                           <option value="meta">Meta Cloud API</option>
@@ -1319,13 +1377,13 @@ export function SettingsPage() {
                       </div>
 
                       {provider === "evolution" && evolutionPlatformQrMode ? (
-                        <div className="space-y-4 rounded-lg border border-brand-200 bg-brand-50/60 p-4">
+                        <div className="space-y-4 rounded-lg border border-brand-200/80 bg-brand-50/60 p-4 dark:border-brand-800/50 dark:bg-brand-950/25">
                           <div>
-                            <h3 className="text-sm font-semibold text-gray-900">{t("settings.evolutionQrTitle")}</h3>
-                            <p className="mt-1 text-xs text-gray-600">{t("settings.evolutionQrSubtitle")}</p>
+                            <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("settings.evolutionQrTitle")}</h3>
+                            <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("settings.evolutionQrSubtitle")}</p>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-800">
+                            <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                               {t("settings.evolutionQrInstanceNameLabel")}
                             </label>
                             <input
@@ -1337,10 +1395,10 @@ export function SettingsPage() {
                               autoComplete="off"
                               className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
                             />
-                            <p className="mt-1 text-xs text-gray-600">{t("settings.evolutionQrInstanceNameHint")}</p>
+                            <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("settings.evolutionQrInstanceNameHint")}</p>
                           </div>
                           {evoConnPoll ? (
-                            <p className="text-sm text-gray-800">
+                            <p className="text-sm text-ink-800 dark:text-ink-200">
                               <span className="font-medium">{t("settings.evolutionQrState")}:</span>{" "}
                               {evoConnPoll.connected ? (
                                 <span className="text-green-700">{t("settings.evolutionQrConnected")}</span>
@@ -1352,14 +1410,14 @@ export function SettingsPage() {
                             </p>
                           ) : null}
                           {phoneNumberId ? (
-                            <p className="text-xs text-gray-600">
-                              <span className="font-medium text-gray-800">{t("settings.evolutionQrInstance")}:</span>{" "}
+                            <p className="text-xs text-ink-600 dark:text-ink-400">
+                              <span className="font-medium text-ink-800 dark:text-ink-200">{t("settings.evolutionQrInstance")}:</span>{" "}
                               <code className="rounded bg-white px-1.5 py-0.5">{phoneNumberId}</code>
                             </p>
                           ) : null}
                           {evoPairingCode ? (
-                            <p className="text-xs text-gray-600">
-                              <span className="font-medium text-gray-800">{t("settings.evolutionQrPairing")}:</span>{" "}
+                            <p className="text-xs text-ink-600 dark:text-ink-400">
+                              <span className="font-medium text-ink-800 dark:text-ink-200">{t("settings.evolutionQrPairing")}:</span>{" "}
                               {evoPairingCode}
                             </p>
                           ) : null}
@@ -1398,7 +1456,7 @@ export function SettingsPage() {
                                 type="button"
                                 disabled={evoQrBusy}
                                 onClick={() => void refreshEvolutionQr()}
-                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
                               >
                                 {t("settings.evolutionQrRefresh")}
                               </button>
@@ -1410,7 +1468,7 @@ export function SettingsPage() {
                       {(provider === "evolution" && !evolutionPlatformQrMode) ||
                       (provider === "evolution_go" && !evolutionGoPlatformMode) ? (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">
+                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                             {provider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
                           </label>
                           <input
@@ -1422,9 +1480,9 @@ export function SettingsPage() {
                                 ? "https://evolution-go.example.com"
                                 : "https://evolution.example.com"
                             }
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                             {provider === "evolution_go" ? (
                               <>
                                 Public URL of your Evolution Go server (no trailing path; uses routes such as{" "}
@@ -1477,7 +1535,7 @@ export function SettingsPage() {
                       {!isMetaCloudSettingsProvider &&
                       !((provider === "evolution" && evolutionPlatformQrMode) || (provider === "evolution_go" && evolutionGoPlatformMode)) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {provider === "evolution" ? "API key" : "API Key"}
                         </label>
                         <input
@@ -1485,10 +1543,10 @@ export function SettingsPage() {
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
                           placeholder={settings?.whatsappApiKey ? "••••••••" : "Enter API key"}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                         {provider === "evolution" && !evolutionPlatformQrMode && (
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                             Same value as Evolution&apos;s global API key env (often{" "}
                             <code className="rounded bg-gray-100 px-1">AUTHENTICATION_API_KEY</code>); sent as the{" "}
                             <code className="rounded bg-gray-100 px-1">apikey</code> header.
@@ -1499,7 +1557,7 @@ export function SettingsPage() {
 
                       {!isMetaCloudSettingsProvider && !(provider === "evolution" && evolutionPlatformQrMode) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {provider === "evolution"
                             ? "Instance name"
                             : provider === "evolution_go"
@@ -1521,7 +1579,7 @@ export function SettingsPage() {
                                   : "Nome ou UUID da instância"
                               : "Enter phone number ID"
                           }
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
                       )}
@@ -1529,14 +1587,14 @@ export function SettingsPage() {
                       {provider === "evolution_go" ? (
                         <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
                           <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-                            <p className="text-sm font-medium text-gray-900">Criar e conectar instância</p>
+                            <p className="text-sm font-medium text-ink-900 dark:text-ink-50">Criar e conectar instância</p>
                             <div className="flex flex-wrap items-center gap-2">
                               <input
                                 type="text"
                                 value={evoGoNewInstanceName}
                                 onChange={(e) => setEvoGoNewInstanceName(e.target.value)}
                                 placeholder="Nome da instância (ex.: vendas)"
-                                className="min-w-[220px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                className="min-w-[220px] flex-1 input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                               />
                               <button
                                 type="button"
@@ -1547,7 +1605,7 @@ export function SettingsPage() {
                                 {evoGoBusy ? "Criando..." : "Criar instância"}
                               </button>
                             </div>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-ink-500 dark:text-ink-400">
                               Este fluxo usa a configuração global do Super Admin (URL + API key) quando o modo plataforma estiver ativo.
                             </p>
                           </div>
@@ -1557,7 +1615,7 @@ export function SettingsPage() {
                               type="button"
                               disabled={evoGoBusy}
                               onClick={() => void fetchEvolutionGoInstances()}
-                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
                             >
                               {evoGoBusy ? "Buscando..." : "Buscar instâncias"}
                             </button>
@@ -1579,17 +1637,17 @@ export function SettingsPage() {
                           {phoneNumberId ? (
                             <div className="rounded-lg border border-gray-200 bg-white p-3">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-medium text-gray-900">Status da instância</p>
+                                <p className="text-sm font-medium text-ink-900 dark:text-ink-50">Status da instância</p>
                                 <button
                                   type="button"
                                   disabled={evoGoBusy}
                                   onClick={() => void refreshEvolutionGoStatus()}
-                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
                                 >
                                   Atualizar status
                                 </button>
                               </div>
-                              <p className="mt-1 text-xs text-gray-600">
+                              <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
                                 Instance ID: <span className="font-mono">{phoneNumberId}</span>
                                 {evoGoStatus?.name ? (
                                   <>
@@ -1599,7 +1657,7 @@ export function SettingsPage() {
                                 ) : null}
                               </p>
                               {evoGoStatus ? (
-                                <p className="mt-2 text-sm text-gray-800">
+                                <p className="mt-2 text-sm text-ink-800 dark:text-ink-200">
                                   {evoGoStatus.connected ? "Connected" : "Offline"}{" "}
                                   <span className="opacity-60">·</span>{" "}
                                   {evoGoStatus.loggedIn ? "Logged in" : "Not logged in"}
@@ -1611,7 +1669,7 @@ export function SettingsPage() {
                                   ) : null}
                                 </p>
                               ) : (
-                                <p className="mt-2 text-sm text-gray-500">Aguardando status…</p>
+                                <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">Aguardando status…</p>
                               )}
                             </div>
                           ) : null}
@@ -1619,13 +1677,13 @@ export function SettingsPage() {
                           {phoneNumberId ? (
                             <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-medium text-gray-900">QR Code</p>
+                                <p className="text-sm font-medium text-ink-900 dark:text-ink-50">QR Code</p>
                                 <div className="flex flex-wrap gap-2">
                                   <button
                                     type="button"
                                     disabled={evoGoBusy}
                                     onClick={() => void refreshEvolutionGoQr()}
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
                                   >
                                     Atualizar QR
                                   </button>
@@ -1642,12 +1700,12 @@ export function SettingsPage() {
                                   />
                                 </div>
                               ) : (
-                                <p className="text-sm text-gray-600">
+                                <p className="text-sm text-ink-600 dark:text-ink-400">
                                   Conecte o webhook e depois clique em “Atualizar QR” para obter o QR Code.
                                 </p>
                               )}
                               {evoGoQrCode ? (
-                                <p className="text-xs text-gray-600">
+                                <p className="text-xs text-ink-600 dark:text-ink-400">
                                   Code: <span className="font-mono break-all">{evoGoQrCode}</span>
                                 </p>
                               ) : null}
@@ -1656,20 +1714,20 @@ export function SettingsPage() {
 
                           {phoneNumberId ? (
                             <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-                              <p className="text-sm font-medium text-gray-900">Código de pareamento</p>
+                              <p className="text-sm font-medium text-ink-900 dark:text-ink-50">Código de pareamento</p>
                               <div className="flex flex-wrap items-center gap-2">
                                 <input
                                   type="text"
                                   value={evoGoPairPhone}
                                   onChange={(e) => setEvoGoPairPhone(e.target.value)}
                                   placeholder="Telefone com DDI (ex.: 5511999999999)"
-                                  className="min-w-[220px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                  className="min-w-[220px] flex-1 input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                                 />
                                 <button
                                   type="button"
                                   disabled={evoGoBusy || !evoGoPairPhone.trim()}
                                   onClick={() => void requestEvolutionGoPairing()}
-                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
                                 >
                                   {evoGoBusy ? "Gerando..." : "Gerar código"}
                                 </button>
@@ -1690,13 +1748,13 @@ export function SettingsPage() {
 
                           {evoGoInstances?.length ? (
                             <div className="max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white">
-                              <ul className="divide-y divide-gray-100 text-sm">
+                              <ul className="divide-y divide-ink-100 dark:divide-white/10 text-sm">
                                 {evoGoInstances.map((inst) => (
                                   <li key={inst.id} className="flex items-center justify-between gap-3 px-3 py-2">
                                     <button
                                       type="button"
                                       onClick={() => setPhoneNumberId(inst.id)}
-                                      className="text-left font-medium text-gray-900 hover:underline"
+                                      className="text-left font-medium text-ink-900 dark:text-ink-50 hover:underline"
                                     >
                                       {inst.name}
                                     </button>
@@ -1718,7 +1776,7 @@ export function SettingsPage() {
 
                       {!isMetaCloudSettingsProvider ? (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700">Webhook secret</label>
+                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Webhook secret</label>
                           <input
                             type="password"
                             value={webhookSecret}
@@ -1730,10 +1788,10 @@ export function SettingsPage() {
                                   ? "••••••••"
                                   : "Enter webhook secret"
                             }
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                           {provider === "evolution" ? (
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                               <strong>Evolution does not supply this.</strong> Leave it empty for the usual setup —
                               webhooks work without it. For extra verification, invent any long random string, save it
                               here, then in Evolution configure the instance webhook <strong>headers</strong> (e.g. in
@@ -1742,7 +1800,7 @@ export function SettingsPage() {
                               this field. If this field is filled, requests without that header are rejected with 401.
                             </p>
                           ) : provider === "evolution_go" ? (
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
                               Opcional. Deixe vazio para aceitar o <code className="rounded bg-gray-100 px-1">instanceToken</code>{" "}
                               enviado pelo Evolution Go (token da instância). Se preencher, o valor deve coincidir com o
                               token da instância ou use o header{" "}
@@ -1753,13 +1811,13 @@ export function SettingsPage() {
                       ) : null}
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.agentBotWhatsApp")}
                         </label>
                         <select
                           value={agentBotId}
                           onChange={(e) => setAgentBotId(e.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="">{t("settings.agentBotNone")}</option>
                           {agentBotOptions.map((b) => (
@@ -1768,52 +1826,52 @@ export function SettingsPage() {
                             </option>
                           ))}
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.agentBotWhatsAppHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.agentBotWhatsAppHint")}</p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.lockSingleConversation")}
                         </label>
                         <select
                           value={lockSingleConversation ? "on" : "off"}
                           onChange={(e) => setLockSingleConversation(e.target.value === "on")}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="on">{t("settings.lockSingleConversationOn")}</option>
                           <option value="off">{t("settings.lockSingleConversationOff")}</option>
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.lockSingleConversationHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.lockSingleConversationHint")}</p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.audioTranscription")}
                         </label>
                         <select
                           value={audioTranscriptionEnabled ? "on" : "off"}
                           onChange={(e) => setAudioTranscriptionEnabled(e.target.value === "on")}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="on">{t("settings.audioTranscriptionOn")}</option>
                           <option value="off">{t("settings.audioTranscriptionOff")}</option>
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.audioTranscriptionHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.audioTranscriptionHint")}</p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.silentTransferToAgentBot")}
                         </label>
                         <select
                           value={silentTransferToAgentBot ? "on" : "off"}
                           onChange={(e) => setSilentTransferToAgentBot(e.target.value === "on")}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="on">{t("settings.silentTransferToAgentBotOn")}</option>
                           <option value="off">{t("settings.silentTransferToAgentBotOff")}</option>
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.silentTransferToAgentBotHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.silentTransferToAgentBotHint")}</p>
                       </div>
 
                       <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
@@ -1824,7 +1882,7 @@ export function SettingsPage() {
                           onChange={(e) => setAutoOptIn(e.target.checked)}
                           className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                         />
-                        <label htmlFor="autoOptIn" className="text-sm text-gray-700">
+                        <label htmlFor="autoOptIn" className="text-sm text-ink-700 dark:text-ink-300">
                           Auto opt-in contacts when they send the first message
                         </label>
                       </div>
@@ -1843,7 +1901,7 @@ export function SettingsPage() {
                         type="button"
                         onClick={() => void handleTestConnection()}
                         disabled={testing}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-ink-700 dark:text-ink-300 hover:bg-gray-50 disabled:opacity-50"
                       >
                         {testing ? (
                           "Testing..."
@@ -1869,14 +1927,14 @@ export function SettingsPage() {
               {section === "notifications" && (
                 <motion.form
                   onSubmit={(e) => void handleSaveNotifications(e)}
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <Bell className="h-5 w-5" />
                     {t("settings.sectionNotifications")}
                   </h2>
-                  <p className="mb-6 text-sm text-gray-500">
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">
                     Controls the sidebar bell badge and desktop notifications for new inbound WhatsApp activity when
                     conversations are open or pending.
                   </p>
@@ -1889,7 +1947,7 @@ export function SettingsPage() {
                         onChange={(e) => setNotifyOpen(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
-                      <label htmlFor="notifyOpen" className="text-sm text-gray-700">
+                      <label htmlFor="notifyOpen" className="text-sm text-ink-700 dark:text-ink-300">
                         Notify for open conversations
                       </label>
                     </div>
@@ -1901,7 +1959,7 @@ export function SettingsPage() {
                         onChange={(e) => setNotifyPending(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
-                      <label htmlFor="notifyPending" className="text-sm text-gray-700">
+                      <label htmlFor="notifyPending" className="text-sm text-ink-700 dark:text-ink-300">
                         Notify for pending conversations
                       </label>
                     </div>
@@ -1919,14 +1977,14 @@ export function SettingsPage() {
               {section === "csat" && (
                 <motion.form
                   onSubmit={(e) => void handleSaveCsat(e)}
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <Star className="h-5 w-5" />
                     {t("settings.sectionCsat")}
                   </h2>
-                  <p className="mb-6 text-sm text-gray-500">{t("settings.csatIntro")}</p>
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.csatIntro")}</p>
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
                       <input
@@ -1936,12 +1994,12 @@ export function SettingsPage() {
                         onChange={(e) => setCsatEnabled(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
-                      <label htmlFor="csatEnabled" className="text-sm text-gray-700">
+                      <label htmlFor="csatEnabled" className="text-sm text-ink-700 dark:text-ink-300">
                         {t("settings.csatEnable")}
                       </label>
                     </div>
                     <div>
-                      <label htmlFor="csatSurveyMessage" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="csatSurveyMessage" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                         {t("settings.csatMessageLabel")}
                       </label>
                       <textarea
@@ -1949,25 +2007,25 @@ export function SettingsPage() {
                         value={csatSurveyMessage}
                         onChange={(e) => setCsatSurveyMessage(e.target.value)}
                         rows={3}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                       />
-                      <p className="mt-1 text-xs text-gray-500">{t("settings.csatMessageHint")}</p>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.csatMessageHint")}</p>
                     </div>
                     <div>
-                      <label htmlFor="csatRatingType" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="csatRatingType" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                         {t("settings.csatRatingTypeLabel")}
                       </label>
                       <select
                         id="csatRatingType"
                         value={csatRatingType}
                         onChange={(e) => setCsatRatingType(e.target.value as CsatRatingType)}
-                        className="mt-1 block w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 block w-full max-w-xs input-field"
                       >
                         <option value="number">{t("settings.csatRatingTypeNumber")}</option>
                         <option value="star">{t("settings.csatRatingTypeStar")}</option>
                         <option value="emoji">{t("settings.csatRatingTypeEmoji")}</option>
                       </select>
-                      <p className="mt-1 text-xs text-gray-500">{t("settings.csatRatingTypeHint")}</p>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.csatRatingTypeHint")}</p>
                     </div>
                   </div>
                   <button
@@ -1995,20 +2053,20 @@ export function SettingsPage() {
               {section === "workflow" && (
                 <motion.form
                   onSubmit={(e) => void handleSaveWorkflow(e)}
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <GitBranch className="h-5 w-5" />
                     {t("settings.workflowTitle")}
                   </h2>
-                  <p className="mb-6 text-sm text-gray-500">{t("settings.workflowIntro")}</p>
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.workflowIntro")}</p>
 
                   <div className="flex flex-col gap-4 border-b border-gray-100 pb-6">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{t("settings.workflowAutoResolve")}</p>
-                        <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowAutoResolveHint")}</p>
+                        <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAutoResolve")}</p>
+                        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAutoResolveHint")}</p>
                       </div>
                       <button
                         type="button"
@@ -2032,7 +2090,7 @@ export function SettingsPage() {
                     <div className={clsx("space-y-4", !wfAutoEnabled && "pointer-events-none opacity-50")}>
                       <div className="flex flex-wrap items-end gap-3">
                         <div className="min-w-[100px]">
-                          <label className="block text-sm font-medium text-gray-700">
+                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                             {t("settings.workflowInactivityValue")}
                           </label>
                           <input
@@ -2040,11 +2098,11 @@ export function SettingsPage() {
                             min={1}
                             value={wfInactivityValue}
                             onChange={(e) => setWfInactivityValue(Number(e.target.value))}
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                         </div>
                         <div className="min-w-[140px]">
-                          <label className="block text-sm font-medium text-gray-700">
+                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                             {t("settings.workflowInactivityUnit")}
                           </label>
                           <select
@@ -2052,7 +2110,7 @@ export function SettingsPage() {
                             onChange={(e) =>
                               setWfInactivityUnit(e.target.value as "minutes" | "hours" | "days")
                             }
-                            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           >
                             <option value="minutes">{t("settings.workflowUnitMinutes")}</option>
                             <option value="hours">{t("settings.workflowUnitHours")}</option>
@@ -2060,26 +2118,26 @@ export function SettingsPage() {
                           </select>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500">{t("settings.workflowInactivityHint")}</p>
+                      <p className="text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowInactivityHint")}</p>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.workflowCustomerMessage")}
                         </label>
                         <textarea
                           value={wfCustomerMessage}
                           onChange={(e) => setWfCustomerMessage(e.target.value)}
                           rows={4}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           placeholder={t("settings.workflowCustomerMessagePlaceholder")}
                         />
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.workflowCustomerMessageHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowCustomerMessageHint")}</p>
                       </div>
 
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{t("settings.workflowSkipAssigned")}</p>
-                          <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowSkipAssignedHint")}</p>
+                          <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowSkipAssigned")}</p>
+                          <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowSkipAssignedHint")}</p>
                         </div>
                         <button
                           type="button"
@@ -2101,13 +2159,13 @@ export function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.workflowAutoLeadType")}
                         </label>
                         <select
                           value={wfAutoLeadTypeId}
                           onChange={(e) => setWfAutoLeadTypeId(e.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="">{t("settings.workflowSelectLeadType")}</option>
                           {leadTypes.map((lt) => (
@@ -2116,17 +2174,17 @@ export function SettingsPage() {
                             </option>
                           ))}
                         </select>
-                        <p className="mt-1 text-xs text-gray-500">{t("settings.workflowAutoLeadTypeHint")}</p>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAutoLeadTypeHint")}</p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                           {t("settings.workflowTagAfterResolve")}
                         </label>
                         <select
                           value={wfTagId}
                           onChange={(e) => setWfTagId(e.target.value)}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="">{t("settings.workflowSelectTag")}</option>
                           {workflowTags.map((tg) => (
@@ -2140,8 +2198,8 @@ export function SettingsPage() {
                   </div>
 
                   <div className="mt-6 space-y-4 border-b border-gray-100 pb-6">
-                    <h3 className="text-sm font-semibold text-gray-900">{t("settings.workflowManualTitle")}</h3>
-                    <p className="text-xs text-gray-500">{t("settings.workflowManualIntro")}</p>
+                    <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("settings.workflowManualTitle")}</h3>
+                    <p className="text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowManualIntro")}</p>
                     <div className="flex items-center gap-3">
                       <input
                         id="wfReqClosure"
@@ -2150,7 +2208,7 @@ export function SettingsPage() {
                         onChange={(e) => setWfRequireClosure(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
-                      <label htmlFor="wfReqClosure" className="text-sm text-gray-700">
+                      <label htmlFor="wfReqClosure" className="text-sm text-ink-700 dark:text-ink-300">
                         {t("settings.workflowRequireClosure")}
                       </label>
                     </div>
@@ -2162,7 +2220,7 @@ export function SettingsPage() {
                         onChange={(e) => setWfRequireLeadType(e.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
-                      <label htmlFor="wfReqLead" className="text-sm text-gray-700">
+                      <label htmlFor="wfReqLead" className="text-sm text-ink-700 dark:text-ink-300">
                         {t("settings.workflowRequireLeadType")}
                       </label>
                     </div>
@@ -2175,10 +2233,10 @@ export function SettingsPage() {
                         className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
                       />
                       <div>
-                        <label htmlFor="wfOfferReminder" className="text-sm text-gray-700">
+                        <label htmlFor="wfOfferReminder" className="text-sm text-ink-700 dark:text-ink-300">
                           {t("settings.workflowOfferReminder")}
                         </label>
-                        <p className="mt-0.5 text-xs text-gray-500">{t("settings.workflowOfferReminderHint")}</p>
+                        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowOfferReminderHint")}</p>
                       </div>
                     </div>
                   </div>
@@ -2201,14 +2259,14 @@ export function SettingsPage() {
               {section === "assistant" && (
                 <motion.form
                   onSubmit={(e) => void handleSaveAssistant(e)}
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <Sparkles className="h-5 w-5" />
                     {t("settings.assistantTitle")}
                   </h2>
-                  <p className="mb-6 text-sm text-gray-500">{t("settings.assistantIntro")}</p>
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.assistantIntro")}</p>
                   {assistantKeyMasked ? (
                     <p className="mb-4 rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2 text-sm text-brand-900">
                       {t("settings.assistantKeyActiveHint")}
@@ -2216,7 +2274,7 @@ export function SettingsPage() {
                   ) : null}
                   <div className="space-y-4">
                     <div>
-                      <label htmlFor="assistantOpenaiKey" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="assistantOpenaiKey" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                         {t("settings.assistantApiKeyLabel")}
                       </label>
                       <input
@@ -2225,13 +2283,13 @@ export function SettingsPage() {
                         autoComplete="off"
                         value={assistantOpenaiKey}
                         onChange={(e) => setAssistantOpenaiKey(e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         placeholder={assistantKeyMasked ? "••••••••" : ""}
                       />
-                      <p className="mt-1 text-xs text-gray-500">{t("settings.assistantApiKeyHint")}</p>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.assistantApiKeyHint")}</p>
                     </div>
                     <div>
-                      <label htmlFor="assistantOpenaiBaseUrl" className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="assistantOpenaiBaseUrl" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
                         {t("settings.assistantApiBaseUrlLabel")}
                       </label>
                       <input
@@ -2239,10 +2297,10 @@ export function SettingsPage() {
                         type="url"
                         value={assistantOpenaiBaseUrl}
                         onChange={(e) => setAssistantOpenaiBaseUrl(e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         placeholder="https://api.openai.com/v1"
                       />
-                      <p className="mt-1 text-xs text-gray-500">{t("settings.assistantApiBaseUrlHint")}</p>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.assistantApiBaseUrlHint")}</p>
                     </div>
                   </div>
                   {assistantSaveError ? (
@@ -2274,14 +2332,14 @@ export function SettingsPage() {
 
               {section === "crm" && (
                 <motion.div
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <Tag className="h-5 w-5" />
                     {t("settings.leadTypesTitle")}
                   </h2>
-                  <p className="mb-4 text-sm text-gray-500">{t("settings.leadTypesHint")}</p>
+                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.leadTypesHint")}</p>
                   {pipelineOrphans.length > 0 ? (
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900/50 dark:bg-amber-950/25">
                       <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-200">
@@ -2296,7 +2354,7 @@ export function SettingsPage() {
                             key={s.id}
                             className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-100 bg-white/90 px-3 py-2 dark:border-amber-900/35 dark:bg-ink-900/50"
                           >
-                            <span className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-ink-100">
+                            <span className="flex items-center gap-2 text-sm font-medium text-ink-900 dark:text-ink-50 dark:text-ink-100">
                               <span
                                 className="h-3 w-3 shrink-0 rounded-full"
                                 style={{ backgroundColor: s.color }}
@@ -2319,7 +2377,7 @@ export function SettingsPage() {
                     </div>
                   ) : null}
                   {leadTypes.length > 0 && (
-                    <ul className="mb-4 divide-y divide-gray-100 rounded-lg border border-gray-100">
+                    <ul className="mb-4 divide-y divide-ink-100 dark:divide-white/10 rounded-lg border border-ink-200/80 dark:border-white/10">
                       {leadTypes.map((lt) => (
                         <li key={lt.id} className="px-3 py-3 text-sm">
                           {editingLtId === lt.id ? (
@@ -2329,17 +2387,17 @@ export function SettingsPage() {
                             >
                               <div className="flex flex-wrap items-end gap-3">
                                 <div className="min-w-[140px] flex-1">
-                                  <label className="block text-xs font-medium text-gray-600">
+                                  <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                                     {t("settings.leadTypeName")}
                                   </label>
                                   <input
                                     value={editLtName}
                                     onChange={(e) => setEditLtName(e.target.value)}
-                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                    className="mt-1 w-full input-field"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs font-medium text-gray-600">
+                                  <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                                     {t("settings.leadTypeColor")}
                                   </label>
                                   <input
@@ -2351,7 +2409,7 @@ export function SettingsPage() {
                                 </div>
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-600">
+                                <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                                   {t("settings.leadTypeValueRollup")}
                                 </label>
                                 <select
@@ -2359,14 +2417,14 @@ export function SettingsPage() {
                                   onChange={(e) =>
                                     setEditLtRollup(e.target.value as LeadTypeRow["valueRollup"])
                                   }
-                                  className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  className="mt-1 w-full max-w-md input-field"
                                 >
                                   <option value="PIPELINE">{t("settings.leadTypeRollupPipeline")}</option>
                                   <option value="WON">{t("settings.leadTypeRollupWon")}</option>
                                   <option value="LOST">{t("settings.leadTypeRollupLost")}</option>
                                   <option value="NONE">{t("settings.leadTypeRollupNone")}</option>
                                 </select>
-                                <p className="mt-1 text-xs text-gray-500">{t("settings.leadTypeRollupWonHint")}</p>
+                                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.leadTypeRollupWonHint")}</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <button
@@ -2388,14 +2446,14 @@ export function SettingsPage() {
                           ) : (
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="min-w-0">
-                                <span className="flex items-center gap-2 font-medium text-gray-900">
+                                <span className="flex items-center gap-2 font-medium text-ink-900 dark:text-ink-50">
                                   <span
                                     className="h-3 w-3 shrink-0 rounded-full"
                                     style={{ backgroundColor: lt.color }}
                                   />
                                   {lt.name}
                                 </span>
-                                <p className="mt-0.5 text-xs text-gray-500">
+                                <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
                                   {t(LEAD_ROLLUP_LABEL_KEY[lt.valueRollup ?? "PIPELINE"])}
                                 </p>
                               </div>
@@ -2423,21 +2481,21 @@ export function SettingsPage() {
                     </ul>
                   )}
                   {leadTypes.length === 0 && (
-                    <p className="mb-4 text-sm text-gray-500">{t("settings.noLeadTypes")}</p>
+                    <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.noLeadTypes")}</p>
                   )}
                   <form onSubmit={handleAddLeadType} className="flex flex-wrap items-end gap-3">
                     <div className="min-w-[160px] flex-1">
-                      <label className="block text-xs font-medium text-gray-600">
+                      <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("settings.leadTypeName")}
                       </label>
                       <input
                         value={newLtName}
                         onChange={(e) => setNewLtName(e.target.value)}
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full input-field"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600">
+                      <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("settings.leadTypeColor")}
                       </label>
                       <input
@@ -2448,7 +2506,7 @@ export function SettingsPage() {
                       />
                     </div>
                     <div className="min-w-[200px] flex-1">
-                      <label className="block text-xs font-medium text-gray-600">
+                      <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("settings.leadTypeValueRollup")}
                       </label>
                       <select
@@ -2456,7 +2514,7 @@ export function SettingsPage() {
                         onChange={(e) =>
                           setNewLtRollup(e.target.value as LeadTypeRow["valueRollup"])
                         }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full input-field"
                       >
                         <option value="PIPELINE">{t("settings.leadTypeRollupPipeline")}</option>
                         <option value="WON">{t("settings.leadTypeRollupWon")}</option>
@@ -2473,7 +2531,7 @@ export function SettingsPage() {
                     </button>
                   </form>
                   {ltError && <p className="mt-2 text-sm text-red-600">{ltError}</p>}
-                  <p className="mt-3 text-xs text-gray-400">{t("settings.saveLeadTypesNote")}</p>
+                  <p className="mt-3 text-xs text-ink-400 dark:text-ink-500">{t("settings.saveLeadTypesNote")}</p>
                 </motion.div>
               )}
 
@@ -2482,26 +2540,36 @@ export function SettingsPage() {
                   className="space-y-6"
                   variants={staggerItem}
                 >
-                  <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                    <h2 className="mb-2 flex items-center gap-2 font-semibold text-gray-900">
+                  <div className={settingsCard}>
+                    <h2 className={clsx("mb-2 flex items-center gap-2", settingsTitle)}>
                       <FileText className="h-5 w-5" />
                       {t("settings.templatesTitle")}
                     </h2>
-                    <p className="text-sm text-gray-600">{t("settings.templatesMetaHint")}</p>
-                    {provider === "meta" || provider === "360dialog" ? (
-                      <motion.div className="mt-4" variants={staggerItem}>
-                        <button
-                          type="button"
-                          disabled={metaTplSyncBusy}
-                          onClick={() => void syncMetaTemplates()}
-                          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                        >
-                          {metaTplSyncBusy
-                            ? t("settings.templatesMetaSyncing")
-                            : t("settings.templatesMetaSync")}
-                        </button>
+                    <p className={settingsMuted}>{t("settings.templatesMetaHint")}</p>
+                    {isMetaCloudSettingsProvider ? (
+                      <motion.div className="mt-4 space-y-4" variants={staggerItem}>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={metaTplSyncBusy || tplListLoading}
+                            onClick={() => void syncMetaTemplates()}
+                            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                          >
+                            {metaTplSyncBusy
+                              ? t("settings.templatesMetaSyncing")
+                              : t("settings.templatesMetaSync")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={tplListLoading}
+                            onClick={() => void loadMessageTemplates()}
+                            className="btn-secondary text-sm"
+                          >
+                            {t("common.refresh")}
+                          </button>
+                        </div>
                         {metaTplSyncResult ? (
-                          <p className="mt-2 text-sm text-green-700">
+                          <p className="text-sm text-green-700 dark:text-green-400">
                             {t("settings.templatesMetaSyncOk").replace(
                               "{count}",
                               String(metaTplSyncResult.synced),
@@ -2509,41 +2577,105 @@ export function SettingsPage() {
                           </p>
                         ) : null}
                         {metaTplSyncError ? (
-                          <p className="mt-2 text-sm text-red-600">{metaTplSyncError}</p>
+                          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                            {metaTplSyncError}
+                          </p>
                         ) : null}
+
+                        <div>
+                          <h3 className={clsx("mb-3 text-sm", settingsTitle)}>
+                            {t("settings.templatesMetaListTitle")}
+                          </h3>
+                          {tplListLoading ? (
+                            <p className={settingsMuted}>{t("common.loading")}</p>
+                          ) : messageTemplates.length === 0 ? (
+                            <p className={settingsMuted}>{t("settings.templatesMetaListEmpty")}</p>
+                          ) : (
+                            <div className={settingsTableWrap}>
+                              <table className="w-full min-w-[640px] text-left text-sm">
+                                <thead>
+                                  <tr className={settingsTableHead}>
+                                    <th className="px-4 py-2">{t("settings.templatesColName")}</th>
+                                    <th className="px-4 py-2">{t("settings.templatesColLanguage")}</th>
+                                    <th className="px-4 py-2">{t("settings.templatesColStatus")}</th>
+                                    <th className="px-4 py-2">{t("settings.templatesColSource")}</th>
+                                    <th className="px-4 py-2">{t("settings.templatesColBody")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-ink-100 dark:divide-white/10">
+                                  {messageTemplates.map((tpl) => (
+                                    <tr key={tpl.id} className={settingsTableRow}>
+                                      <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">
+                                        {tpl.name}
+                                        {tpl.metaCategory ? (
+                                          <span className="ml-1 text-[10px] font-normal uppercase text-ink-400">
+                                            {tpl.metaCategory}
+                                          </span>
+                                        ) : null}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-ink-600 dark:text-ink-400">
+                                        {tpl.templateLanguage ?? "—"}
+                                      </td>
+                                      <td className="px-4 py-2.5">
+                                        <span
+                                          className={clsx(
+                                            "rounded-full px-2 py-0.5 text-xs font-medium",
+                                            tpl.isApproved
+                                              ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                                              : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+                                          )}
+                                        >
+                                          {tpl.isApproved
+                                            ? t("settings.templatesStatusApproved")
+                                            : t("settings.templatesStatusPending")}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2.5 text-ink-600 dark:text-ink-400">
+                                        {tpl.providerTemplateId
+                                          ? t("settings.templatesSourceMeta")
+                                          : t("settings.templatesSourceLocal")}
+                                      </td>
+                                      <td className="max-w-md px-4 py-2.5 text-xs text-ink-600 dark:text-ink-400">
+                                        <span className="line-clamp-3 whitespace-pre-wrap">{tpl.body}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
                       </motion.div>
                     ) : null}
                   </div>
 
-                  {provider === "evolution" ? (
+                  {effectiveWhatsAppProvider === "evolution" ? (
                     <motion.form
-                      className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                      className={settingsCard}
                       variants={staggerItem}
                       onSubmit={(e) => void submitEvolutionTemplate(e)}
                     >
-                      <h3 className="mb-1 font-semibold text-gray-900">{t("settings.templatesEvolutionTitle")}</h3>
-                      <p className="mb-4 text-sm text-gray-500">{t("settings.templatesEvolutionHint")}</p>
+                      <h3 className={clsx("mb-1", settingsTitle)}>{t("settings.templatesEvolutionTitle")}</h3>
+                      <p className={clsx("mb-4", settingsMuted)}>{t("settings.templatesEvolutionHint")}</p>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600">{t("settings.evoTplName")}</label>
+                          <label className={settingsLabel}>{t("settings.evoTplName")}</label>
                           <input
                             value={evoTplName}
                             onChange={(e) => setEvoTplName(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className={settingsInput}
                             required
                             maxLength={512}
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600">
-                            {t("settings.evoTplCategory")}
-                          </label>
+                          <label className={settingsLabel}>{t("settings.evoTplCategory")}</label>
                           <select
                             value={evoTplCategory}
                             onChange={(e) =>
                               setEvoTplCategory(e.target.value as typeof evoTplCategory)
                             }
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className={settingsInput}
                           >
                             <option value="UTILITY">UTILITY</option>
                             <option value="MARKETING">MARKETING</option>
@@ -2551,44 +2683,42 @@ export function SettingsPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600">
-                            {t("settings.evoTplLanguage")}
-                          </label>
+                          <label className={settingsLabel}>{t("settings.evoTplLanguage")}</label>
                           <input
                             value={evoTplLanguage}
                             onChange={(e) => setEvoTplLanguage(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className={settingsInput}
                             placeholder="pt_BR"
                             required
                             maxLength={32}
                           />
                         </div>
                         <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600">{t("settings.evoTplBody")}</label>
+                          <label className={settingsLabel}>{t("settings.evoTplBody")}</label>
                           <textarea
                             value={evoTplBody}
                             onChange={(e) => setEvoTplBody(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className={clsx(settingsInput, "min-h-[120px]")}
                             rows={5}
                             required
                             maxLength={4096}
                           />
                         </div>
                         <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600">
-                            {t("settings.evoTplFooter")}
-                          </label>
+                          <label className={settingsLabel}>{t("settings.evoTplFooter")}</label>
                           <input
                             value={evoTplFooter}
                             onChange={(e) => setEvoTplFooter(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            className={settingsInput}
                             maxLength={160}
                           />
                         </div>
                       </div>
-                      {evoTplError ? <p className="mt-3 text-sm text-red-600">{evoTplError}</p> : null}
+                      {evoTplError ? (
+                        <p className="mt-3 text-sm text-red-600 dark:text-red-400">{evoTplError}</p>
+                      ) : null}
                       {evoTplSuccess ? (
-                        <p className="mt-3 text-sm text-green-700">{t("settings.evoTplSuccess")}</p>
+                        <p className="mt-3 text-sm text-green-700 dark:text-green-400">{t("settings.evoTplSuccess")}</p>
                       ) : null}
                       <button
                         type="submit"
@@ -2598,58 +2728,84 @@ export function SettingsPage() {
                         {evoTplBusy ? t("common.loading") : t("settings.evoTplSubmit")}
                       </button>
                     </motion.form>
-                  ) : provider === "meta" || provider === "360dialog" ? null : (
+                  ) : isMetaCloudSettingsProvider ? null : (
                     <motion.div
-                      className="rounded-xl border border-amber-100 bg-amber-50/80 p-4 text-sm text-amber-950"
+                      className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100"
                       variants={staggerItem}
                     >
                       {t("settings.templatesEvolutionOnly")}
                     </motion.div>
                   )}
+
+                  {!isMetaCloudSettingsProvider && effectiveWhatsAppProvider === "evolution" && messageTemplates.length > 0 ? (
+                    <motion.div className={settingsCard} variants={staggerItem}>
+                      <h3 className={clsx("mb-3", settingsTitle)}>{t("settings.templatesMetaListTitle")}</h3>
+                      <div className={settingsTableWrap}>
+                        <table className="w-full min-w-[480px] text-left text-sm">
+                          <thead>
+                            <tr className={settingsTableHead}>
+                              <th className="px-4 py-2">{t("settings.templatesColName")}</th>
+                              <th className="px-4 py-2">{t("settings.templatesColBody")}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-ink-100 dark:divide-white/10">
+                            {messageTemplates.map((tpl) => (
+                              <tr key={tpl.id} className={settingsTableRow}>
+                                <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">{tpl.name}</td>
+                                <td className="px-4 py-2.5 text-xs text-ink-600 dark:text-ink-400">
+                                  <span className="line-clamp-2 whitespace-pre-wrap">{tpl.body}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </motion.div>
+                  ) : null}
                 </motion.div>
               )}
 
               {section === "team" && (
                 <motion.div
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="card-surface rounded-xl p-6"
                   variants={staggerItem}
                 >
-                  <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
+                  <h2 className="mb-4 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <UserPlus className="h-5 w-5" />
                     Team & users
                   </h2>
-                  <p className="mb-4 text-sm text-gray-500">
+                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">
                     Create accounts for agents or additional admins. Passwords must be at least 8 characters.
                   </p>
 
                   {teamUsers.length > 0 && (
-                    <div className="mb-6 overflow-x-auto rounded-lg border border-gray-100">
+                    <div className="mb-6 overflow-x-auto rounded-lg border border-ink-200/80 dark:border-white/10">
                       <table className="w-full min-w-[480px] text-left text-sm">
                         <thead>
-                          <tr className="border-b border-gray-100 bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-500">
+                          <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-white/10 dark:bg-white/5 dark:text-ink-400">
                             <th className="px-4 py-2">Name</th>
                             <th className="px-4 py-2">Email</th>
                             <th className="px-4 py-2">Role</th>
                             <th className="px-4 py-2">Added</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-ink-100 dark:divide-white/10">
                           {teamUsers.map((u) => (
-                            <tr key={u.id} className="bg-white">
-                              <td className="px-4 py-2.5 font-medium text-gray-900">{u.name}</td>
-                              <td className="px-4 py-2.5 text-gray-600">{u.email}</td>
+                            <tr key={u.id} className="bg-white dark:bg-transparent">
+                              <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">{u.name}</td>
+                              <td className="px-4 py-2.5 text-ink-600 dark:text-ink-400">{u.email}</td>
                               <td className="px-4 py-2.5">
                                 <span
                                   className={
                                     u.role === "ADMIN"
                                       ? "rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700"
-                                      : "rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700"
+                                      : "rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-700 dark:bg-white/10 dark:text-ink-300"
                                   }
                                 >
                                   {u.role === "ADMIN" ? "Admin" : "Agent"}
                                 </span>
                               </td>
-                              <td className="px-4 py-2.5 text-gray-500">
+                              <td className="px-4 py-2.5 text-ink-500 dark:text-ink-400">
                                 {new Date(u.createdAt).toLocaleDateString(undefined, {
                                   year: "numeric",
                                   month: "short",
@@ -2669,40 +2825,40 @@ export function SettingsPage() {
                     )}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Name</label>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Name</label>
                         <input
                           type="text"
                           value={newUserName}
                           onChange={(e) => setNewUserName(e.target.value)}
                           required
                           autoComplete="name"
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Email</label>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Email</label>
                         <input
                           type="email"
                           value={newUserEmail}
                           onChange={(e) => setNewUserEmail(e.target.value)}
                           required
                           autoComplete="email"
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Role</label>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Role</label>
                         <select
                           value={newUserRole}
                           onChange={(e) => setNewUserRole(e.target.value as "ADMIN" | "AGENT")}
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         >
                           <option value="AGENT">Agent</option>
                           <option value="ADMIN">Admin</option>
                         </select>
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Initial password</label>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Initial password</label>
                         <input
                           type="password"
                           value={newUserPassword}
@@ -2711,7 +2867,7 @@ export function SettingsPage() {
                           minLength={8}
                           autoComplete="new-password"
                           placeholder="At least 8 characters"
-                          className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                       </div>
                     </div>

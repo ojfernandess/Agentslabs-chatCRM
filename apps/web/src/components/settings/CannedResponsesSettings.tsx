@@ -2,6 +2,13 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import {
+  settingsCard,
+  settingsInput,
+  settingsListWrap,
+  settingsMuted,
+  settingsTitle,
+} from "@/components/settings/settingsUi";
 
 export interface CannedResponseRow {
   id: string;
@@ -97,25 +104,25 @@ export function CannedResponsesSettings() {
 
   return (
     <>
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className={settingsCard}>
         <CannedResponsesHeader t={t} openCreate={openCreate} />
         {loading ? (
-          <p className="text-sm text-gray-500">{t("common.loading")}</p>
+          <p className={settingsMuted}>{t("common.loading")}</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-gray-500">{t("settings.cannedEmpty")}</p>
+          <p className={settingsMuted}>{t("settings.cannedEmpty")}</p>
         ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+          <ul className={settingsListWrap}>
             {rows.map((row) => (
               <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 px-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="font-mono text-sm font-medium text-brand-700">/{row.shortcut}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-gray-600">{row.content}</p>
+                  <p className="font-mono text-sm font-medium text-brand-700 dark:text-brand-300">/{row.shortcut}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-ink-600 dark:text-ink-400">{row.content}</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     onClick={() => openEdit(row)}
-                    className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+                    className="rounded-lg p-2 text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-white/10"
                     title={t("common.edit")}
                   >
                     <Pencil className="h-4 w-4" />
@@ -123,7 +130,7 @@ export function CannedResponsesSettings() {
                   <button
                     type="button"
                     onClick={() => void onDelete(row.id)}
-                    className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
                     title={t("common.delete")}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -142,44 +149,40 @@ export function CannedResponsesSettings() {
           onClick={closeModal}
         >
           <div
-            className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+            className="relative w-full max-w-lg rounded-2xl border border-ink-200/80 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-[#111C2B]"
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={closeModal}
-              className="absolute right-4 top-4 rounded-lg p-1 text-gray-500 hover:bg-gray-100"
+              className="absolute right-4 top-4 rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-white/10"
               aria-label={t("common.close")}
             >
               <X className="h-5 w-5" />
             </button>
-            <h3 className="pr-8 text-lg font-semibold text-gray-900">
+            <h3 className={`pr-8 text-lg font-semibold ${settingsTitle}`}>
               {editingId ? t("settings.cannedEditTitle") : t("settings.cannedAddTitle")}
             </h3>
-            <p className="mt-1 text-sm text-gray-500">{t("settings.cannedModalSubtitle")}</p>
+            <p className={`mt-1 ${settingsMuted}`}>{t("settings.cannedModalSubtitle")}</p>
             <form onSubmit={(e) => void onSubmit(e)} className="mt-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t("settings.cannedShortcut")}</label>
-                <div className="mt-1 flex rounded-lg border border-gray-300 focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500">
-                  <span className="flex items-center pl-3 text-sm text-gray-500">/</span>
+                <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("settings.cannedShortcut")}</label>
+                <div className="input-field mt-1 flex focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/25">
+                  <span className="flex items-center pl-3 text-sm text-ink-500 dark:text-ink-400">/</span>
                   <input
                     value={form.shortcut}
                     onChange={(e) => setForm((f) => ({ ...f, shortcut: e.target.value.replace(/\s+/g, "") }))}
                     placeholder={t("settings.cannedShortcutPlaceholder")}
-                    className="flex-1 border-0 bg-transparent py-2 pr-3 text-sm focus:outline-none focus:ring-0"
+                    className="flex-1 border-0 bg-transparent py-2 pr-3 text-sm text-ink-900 focus:outline-none focus:ring-0 dark:text-ink-100"
                     required
                   />
                 </div>
               </div>
               <CannedMessageField form={form} setForm={setForm} t={t} />
-              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
               <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
+                <button type="button" onClick={closeModal} className="btn-secondary">
                   {t("common.cancel")}
                 </button>
                 <button
@@ -202,11 +205,11 @@ function CannedResponsesHeader({ t, openCreate }: { t: (k: string) => string; op
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+        <h2 className={`flex items-center gap-2 ${settingsTitle}`}>
           <MessageSquare className="h-5 w-5" />
           {t("settings.sectionCanned")}
         </h2>
-        <p className="mt-1 text-sm text-gray-500">{t("settings.cannedIntro")}</p>
+        <p className={`mt-1 ${settingsMuted}`}>{t("settings.cannedIntro")}</p>
       </div>
       <button
         type="button"
@@ -231,13 +234,13 @@ function CannedMessageField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700">{t("settings.cannedMessage")}</label>
+      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("settings.cannedMessage")}</label>
       <textarea
         value={form.content}
         onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
         rows={5}
         placeholder={t("settings.cannedMessagePlaceholder")}
-        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className={`${settingsInput} min-h-[120px]`}
         required
       />
     </div>

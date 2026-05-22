@@ -64,6 +64,8 @@ const createCampaignSchema = z
     throttleMs: z.number().int().min(200).max(60_000).optional(),
     useDistributedQueue: z.boolean().optional(),
     revenuePerConversion: z.number().min(0).optional(),
+    /** When true with IMMEDIATE schedule, materializes recipients and starts sending right after create. */
+    autoStart: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     const seg = parseSegmentRules(data.segmentRules);
@@ -336,7 +338,36 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       include: campaignInclude(),
     });
 
-    return reply.status(201).send({ ...campaign, audienceCount });
+    let started = false;
+    let startError: string | null = null;
+    if (
+      d.autoStart === true &&
+      !requiresApproval &&
+      d.scheduleType === "IMMEDIATE" &&
+      audienceCount > 0
+    ) {
+      try {
+        await materializeAndStartCampaign(app, organizationId, campaign.id);
+        started = true;
+      } catch (err) {
+        startError = err instanceof Error ? err.message : "start_failed";
+        app.log.warn({ err, campaignId: campaign.id }, "broadcast autoStart failed");
+      }
+    }
+
+    const refreshed = started
+      ? await prisma.broadcastCampaign.findFirst({
+          where: { id: campaign.id, organizationId },
+          include: campaignInclude(),
+        })
+      : campaign;
+
+    return reply.status(201).send({
+      ...(refreshed ?? campaign),
+      audienceCount,
+      started,
+      startError,
+    });
   });
 
   app.patch<{ Params: { id: string } }>("/:id", async (request, reply) => {
