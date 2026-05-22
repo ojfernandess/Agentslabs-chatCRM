@@ -1,10 +1,28 @@
 const API_BASE = "/api/v1";
+const TOKEN_KEY = "openconduit_token";
 
 class ApiClient {
   private token: string | null = null;
 
   setToken(token: string | null) {
     this.token = token;
+  }
+
+  /** Token em memória ou localStorage (sessão persistida). */
+  getToken(): string | null {
+    if (this.token) return this.token;
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private authHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
   }
 
   private async request<T>(
@@ -21,9 +39,7 @@ class ApiClient {
       headers["Content-Type"] = "application/json";
     }
 
-    if (this.token) {
-      headers["Authorization"] = `Bearer ${this.token}`;
-    }
+    Object.assign(headers, this.authHeaders());
 
     const response = await fetch(`${API_BASE}${path}`, {
       ...options,
@@ -80,13 +96,9 @@ class ApiClient {
   async uploadMessageAudio(blob: Blob, filename = "voice.webm"): Promise<{ mediaUrl: string; mimeType: string }> {
     const form = new FormData();
     form.append("file", blob, filename);
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
     const response = await fetch(`${API_BASE}/messages/upload-audio`, {
       method: "POST",
-      headers,
+      headers: this.authHeaders(),
       body: form,
     });
     if (!response.ok) {
@@ -101,13 +113,9 @@ class ApiClient {
   async uploadMessageMedia(file: Blob, filename?: string): Promise<{ mediaUrl: string; mimeType: string }> {
     const form = new FormData();
     form.append("file", file, filename ?? (file instanceof File ? file.name : "attachment"));
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
     const response = await fetch(`${API_BASE}/messages/upload-media`, {
       method: "POST",
-      headers,
+      headers: this.authHeaders(),
       body: form,
     });
     if (!response.ok) {
@@ -121,13 +129,9 @@ class ApiClient {
 
   /** Multipart form (ex.: importar ficheiro na KB). Não enviar Content-Type — o browser define o boundary. */
   async postMultipart<T>(path: string, form: FormData): Promise<T> {
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
     const response = await fetch(`${API_BASE}${path}`, {
       method: "POST",
-      headers,
+      headers: this.authHeaders(),
       body: form,
     });
     if (!response.ok) {
@@ -146,11 +150,7 @@ class ApiClient {
 
   /** GET binário / texto (exportações, ficheiros) com o mesmo Bearer da sessão. */
   async fetchBlob(path: string): Promise<Blob> {
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-    const response = await fetch(`${API_BASE}${path}`, { headers });
+    const response = await fetch(`${API_BASE}${path}`, { headers: this.authHeaders() });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
       throw new ApiError(
@@ -165,11 +165,7 @@ class ApiClient {
 
   /** GET binário; devolve null em 404/401 (ex.: avatar ainda não em cache). */
   async fetchBlobOptional(path: string): Promise<Blob | null> {
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
-    }
-    const response = await fetch(`${API_BASE}${path}`, { headers });
+    const response = await fetch(`${API_BASE}${path}`, { headers: this.authHeaders() });
     if (!response.ok) return null;
     const blob = await response.blob();
     return blob.size >= 64 ? blob : null;

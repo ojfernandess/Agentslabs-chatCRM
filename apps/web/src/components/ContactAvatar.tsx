@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { api } from "@/lib/api";
+import {
+  contactProfilePictureSrc,
+  needsProfilePictureProxy,
+} from "@/lib/contactAvatar";
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -27,99 +30,51 @@ function gradientForName(name: string): (typeof INITIAL_GRADIENTS)[number] {
   return INITIAL_GRADIENTS[h % INITIAL_GRADIENTS.length]!;
 }
 
-function needsProfilePictureProxy(url: string): boolean {
-  const u = url.trim().toLowerCase();
-  if (!u.startsWith("http")) return false;
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return (
-      host.includes("fbcdn.net") ||
-      host.includes("facebook.com") ||
-      host.includes("fbsbx.com") ||
-      host.includes("whatsapp.net") ||
-      host.endsWith(".cdninstagram.com")
-    );
-  } catch {
-    return false;
-  }
-}
-
 export type ContactAvatarVariant = "default" | "list" | "detail" | "message";
 
 type Props = {
   contactId: string;
   name: string;
   profilePictureUrl?: string | null;
+  /** Foto em cache no servidor (listagem / detalhe). */
   hasAvatar?: boolean;
+  /** Caminho relativo estilo Chatwoot `thumbnail`. */
+  thumbnail?: string | null;
   variant?: ContactAvatarVariant;
   className?: string;
   imgClassName?: string;
 };
 
 /**
- * Avatar via API (Evolution / Evolution Go + cache). Iniciais com gradiente quando não há foto.
+ * Avatar: iniciais imediatas; foto via URL em cache (thumbnail) ou URL directa.
+ * Evita fetch por contacto — o browser faz cache HTTP (padrão Chatwoot).
  */
 export function ContactAvatar({
   contactId,
   name,
   profilePictureUrl,
   hasAvatar,
+  thumbnail,
   variant = "default",
   className,
   imgClassName,
 }: Props) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [apiFailed, setApiFailed] = useState(false);
+  const [proxyFailed, setProxyFailed] = useState(false);
   const [directFailed, setDirectFailed] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const url = profilePictureUrl?.trim() ?? "";
-  const tryApi = Boolean(contactId);
-  const useDirectFallback = Boolean(url && !needsProfilePictureProxy(url) && apiFailed);
+  const cachedSrc = useMemo(
+    () => (hasAvatar ? contactProfilePictureSrc(contactId, thumbnail) : null),
+    [contactId, hasAvatar, thumbnail],
+  );
+  const directSrc =
+    url && !needsProfilePictureProxy(url) ? url : null;
 
-  useEffect(() => {
-    if (!tryApi) {
-      setBlobUrl(null);
-      setApiFailed(false);
-      setLoading(false);
-      return;
-    }
-    let revoked: string | null = null;
-    let cancelled = false;
-    setApiFailed(false);
-    setLoading(true);
-
-    void (async () => {
-      try {
-        const blob = await api.fetchBlobOptional(`/contacts/${contactId}/profile-picture`);
-        if (cancelled) return;
-        if (!blob) {
-          setApiFailed(true);
-          return;
-        }
-        revoked = URL.createObjectURL(blob);
-        setBlobUrl(revoked);
-      } catch {
-        if (!cancelled) setApiFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (revoked) URL.revokeObjectURL(revoked);
-      setBlobUrl(null);
-      setLoading(false);
-    };
-  }, [contactId, tryApi, hasAvatar, url]);
-
+  const showCached = Boolean(cachedSrc && !proxyFailed);
+  const showDirect = Boolean(directSrc && !directFailed && !showCached);
+  const showPhoto = showCached || showDirect;
   const initials = useMemo(() => initialsFromName(name), [name]);
   const gradient = useMemo(() => gradientForName(name), [name]);
-  const showApi = tryApi && blobUrl && !apiFailed;
-  const showDirect = useDirectFallback && !directFailed;
-  const showPhoto = showApi || showDirect;
-  const showInitials = !showPhoto && !loading;
 
   const sizeClass =
     variant === "list"
@@ -130,37 +85,42 @@ export function ContactAvatar({
           ? "h-8 w-8 text-[10px]"
           : "h-10 w-10 text-[10px]";
 
+  const lazy = variant === "list";
+
   return (
     <span
       className={clsx(
         "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full",
         "ring-2 ring-white shadow-md dark:ring-ink-900/80",
         sizeClass,
-        !showPhoto && !loading && clsx("bg-gradient-to-br text-white font-semibold tracking-wide", gradient),
-        loading && "bg-ink-100 dark:bg-ink-800",
+        !showPhoto && clsx("bg-gradient-to-br text-white font-semibold tracking-wide", gradient),
         className,
       )}
       aria-hidden
     >
-      {loading ? (
-        <span className="absolute inset-0 animate-pulse bg-gradient-to-br from-ink-200/80 to-ink-300/60 dark:from-ink-700 dark:to-ink-600" />
-      ) : null}
-      {showApi ? (
+      {showCached ? (
         <img
-          src={blobUrl!}
+          src={cachedSrc!}
           alt=""
+          loading={lazy ? "lazy" : "eager"}
+          decoding="async"
+          referrerPolicy="no-referrer"
           className={clsx("h-full w-full object-cover", imgClassName)}
+          onError={() => setProxyFailed(true)}
         />
       ) : showDirect ? (
         <img
-          src={url}
+          src={directSrc!}
           alt=""
+          loading={lazy ? "lazy" : "eager"}
+          decoding="async"
+          referrerPolicy="no-referrer"
           className={clsx("h-full w-full object-cover", imgClassName)}
           onError={() => setDirectFailed(true)}
         />
-      ) : showInitials ? (
+      ) : (
         <span className="select-none drop-shadow-sm">{initials}</span>
-      ) : null}
+      )}
     </span>
   );
 }

@@ -170,6 +170,8 @@ interface ConversationDetail {
     notes?: string | null;
     lifecycleStage?: string | null;
     profilePictureUrl?: string | null;
+    hasAvatar?: boolean;
+    thumbnail?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
     tags?: { tag: { id: string; name: string; color: string } }[];
@@ -1904,6 +1906,8 @@ export function ConversationDetailPage() {
               contactId={conversation.contact.id}
               contactName={conversation.contact.name}
               profilePictureUrl={conversation.contact.profilePictureUrl}
+              hasAvatar={conversation.contact.hasAvatar}
+              thumbnail={conversation.contact.thumbnail}
               channelType={isWhatsappInbox ? "WHATSAPP" : undefined}
               priority={conversation.priority}
               size="detail"
@@ -2200,6 +2204,8 @@ export function ConversationDetailPage() {
                         contactId={conversation.contact.id}
                         name={conversation.contact.name}
                         profilePictureUrl={conversation.contact.profilePictureUrl}
+                        hasAvatar={conversation.contact.hasAvatar}
+                        thumbnail={conversation.contact.thumbnail}
                         variant="message"
                       />
                     ) : (

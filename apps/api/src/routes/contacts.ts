@@ -370,13 +370,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
             profilePictureUrl: contact.profilePictureUrl,
           });
 
-      if (!buf) {
+      if (!buf && refresh) {
         buf = await syncContactProfilePicture({
           organizationId,
           contactId: contact.id,
           phone: contact.phone,
           profilePictureUrl: contact.profilePictureUrl,
-          force: refresh,
+          force: true,
         });
       }
 

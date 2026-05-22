@@ -23,6 +23,7 @@ import {
 } from "../lib/teamTransferUnread.js";
 import {
   hasContactAvatarCache,
+  syncContactProfilePicture,
   syncContactProfilePicturesBatch,
 } from "../lib/contactProfilePictureResolve.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
@@ -333,6 +334,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: {
             ...rest.contact,
             hasAvatar: avatarByContact.get(rest.contact.id) ?? false,
+            thumbnail: avatarByContact.get(rest.contact.id)
+              ? `/api/v1/contacts/${rest.contact.id}/profile-picture`
+              : null,
           },
         };
       }),
@@ -826,7 +830,26 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, conversation.inbox.channelType);
-    return { ...stripCsatSurveyToken(conversation), contactTimeline, agentBotTriageActive };
+    const contactHasAvatar = await hasContactAvatarCache(organizationId, conversation.contact.id);
+    void syncContactProfilePicture({
+      organizationId,
+      contactId: conversation.contact.id,
+      phone: conversation.contact.phone,
+      profilePictureUrl: conversation.contact.profilePictureUrl,
+    }).catch(() => {});
+
+    return {
+      ...stripCsatSurveyToken(conversation),
+      contact: {
+        ...conversation.contact,
+        hasAvatar: contactHasAvatar,
+        thumbnail: contactHasAvatar
+          ? `/api/v1/contacts/${conversation.contact.id}/profile-picture`
+          : null,
+      },
+      contactTimeline,
+      agentBotTriageActive,
+    };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {

@@ -31,6 +31,7 @@ interface Conversation {
     phone: string;
     profilePictureUrl?: string | null;
     hasAvatar?: boolean;
+    thumbnail?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
   };
@@ -428,6 +429,7 @@ export function ConversationsPage() {
                             contactName={conv.contact.name}
                             profilePictureUrl={conv.contact.profilePictureUrl}
                             hasAvatar={conv.contact.hasAvatar}
+                            thumbnail={conv.contact.thumbnail}
                             channelType={conv.inbox?.channelType}
                             priority={conv.priority}
                           />

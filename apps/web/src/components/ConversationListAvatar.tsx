@@ -9,6 +9,7 @@ type Props = {
   contactName: string;
   profilePictureUrl?: string | null;
   hasAvatar?: boolean;
+  thumbnail?: string | null;
   channelType?: string;
   priority?: ConversationPriority | null;
   /** list = cartões da lista; detail = cabeçalho da conversa; message = balão no chat. */
@@ -24,6 +25,7 @@ export function ConversationListAvatar({
   contactName,
   profilePictureUrl,
   hasAvatar,
+  thumbnail,
   channelType,
   priority,
   size = "list",
@@ -41,6 +43,7 @@ export function ConversationListAvatar({
         name={contactName}
         profilePictureUrl={profilePictureUrl}
         hasAvatar={hasAvatar}
+        thumbnail={thumbnail}
         variant={avatarVariant}
       />
       {presenceOnline !== undefined ? (

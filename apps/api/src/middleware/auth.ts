@@ -28,6 +28,26 @@ export function bearerRawToken(request: FastifyRequest): string | null {
   return m ? m[1]!.trim() : null;
 }
 
+/** GET /contacts/:id/profile-picture — <img> não envia Authorization; aceita ?access_token=JWT. */
+function isContactProfilePicturePath(url: string): boolean {
+  return /\/contacts\/[^/]+\/profile-picture$/i.test(url.split("?")[0] ?? "");
+}
+
+function sessionTokenFromProfilePictureQuery(request: FastifyRequest): string | null {
+  if (!isContactProfilePicturePath(request.url)) return null;
+  const q = request.query as { access_token?: string };
+  const raw = typeof q?.access_token === "string" ? q.access_token.trim() : "";
+  return raw.length > 0 ? raw : null;
+}
+
+function ensureBearerForJwtVerify(request: FastifyRequest): void {
+  if (bearerRawToken(request)) return;
+  const fromQuery = sessionTokenFromProfilePictureQuery(request);
+  if (fromQuery) {
+    request.headers.authorization = `Bearer ${fromQuery}`;
+  }
+}
+
 /**
  * GET /api/v1/bots e GET /api/v1/bots/:id: aceita JWT de sessão (admin) ou Bearer `ocb_...` do bot
  * (apenas leitura do próprio registo — compatível com integradores que só têm um campo "token").
@@ -48,6 +68,7 @@ export async function authenticate(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
+  ensureBearerForJwtVerify(request);
   const raw = bearerRawToken(request);
   try {
     await request.jwtVerify();
