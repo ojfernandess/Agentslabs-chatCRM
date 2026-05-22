@@ -3,6 +3,8 @@ import { prisma } from "../db.js";
 import { enqueueBroadcastRecipientJob, isBroadcastQueueAvailable } from "./broadcastQueue.js";
 import { processBroadcastRecipient } from "./broadcastRecipientProcessor.js";
 import { syncBroadcastCampaignEngagement } from "./broadcastMetrics.js";
+import { computeNextRunAt } from "./broadcastRecurrence.js";
+import { parseSegmentRules } from "./broadcastTypes.js";
 
 export function scheduleBroadcastCampaignRun(app: FastifyInstance, campaignId: string): void {
   void runBroadcastCampaign(app, campaignId).catch((err) => {
@@ -18,7 +20,7 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
 
   const campaign = await prisma.broadcastCampaign.findUnique({
     where: { id: campaignId },
-    select: { status: true, scheduleType: true },
+    select: { status: true, scheduleType: true, segmentRules: true },
   });
   if (!campaign || campaign.status !== "RUNNING") return;
 
@@ -28,15 +30,16 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
   });
 
   if (campaign.scheduleType === "RECURRING") {
-    const next = new Date();
-    next.setDate(next.getDate() + 1);
-    next.setHours(9, 0, 0, 0);
+    const rules = parseSegmentRules(campaign.segmentRules);
+    const rec = rules?.followUpRecurrence;
+    const next = rec ? computeNextRunAt(new Date(), rec) : fallbackRecurringNextRun();
     await prisma.broadcastCampaignRecipient.deleteMany({ where: { campaignId } });
     await prisma.broadcastCampaign.update({
       where: { id: campaignId },
       data: {
         status: "DRAFT",
         nextRunAt: next,
+        scheduledAt: next,
         sentCount: 0,
         failedCount: 0,
         totalRecipients: 0,
@@ -45,6 +48,14 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
       },
     });
   }
+}
+
+function fallbackRecurringNextRun(): Date {
+  const next = new Date();
+  next.setDate(next.getDate() + 1);
+  next.setHours(9, 0, 0, 0);
+  next.setSeconds(0, 0);
+  return next;
 }
 
 export async function runBroadcastCampaign(app: FastifyInstance, campaignId: string): Promise<void> {

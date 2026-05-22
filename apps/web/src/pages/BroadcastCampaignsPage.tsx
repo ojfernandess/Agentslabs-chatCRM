@@ -263,6 +263,7 @@ export function BroadcastCampaignsPage() {
         segmentRules: payload.segmentRules,
         scheduleType: payload.scheduleType,
         scheduledAt: payload.scheduledAt,
+        cronExpression: payload.cronExpression,
         body: payload.body,
         templateId: payload.templateId,
         autoStart: payload.autoStart,
@@ -273,6 +274,8 @@ export function BroadcastCampaignsPage() {
         setFollowUpSuccess(t("broadcastPage.followUpSuccessStarted"));
       } else if (payload.scheduleType === "SCHEDULED") {
         setFollowUpSuccess(t("broadcastPage.followUpSuccessScheduled"));
+      } else if (payload.scheduleType === "RECURRING") {
+        setFollowUpSuccess(t("broadcastPage.followUpSuccessRecurring"));
       } else {
         setFollowUpSuccess(t("broadcastPage.followUpSuccessDraft"));
       }

@@ -1,4 +1,8 @@
 import type { BroadcastChannel, BroadcastScheduleType } from "@prisma/client";
+import type { FollowUpRecurrence } from "./broadcastRecurrence.js";
+import { parseFollowUpRecurrence } from "./broadcastRecurrence.js";
+
+export type { FollowUpRecurrence };
 
 export type { BroadcastChannel, BroadcastScheduleType };
 
@@ -11,6 +15,7 @@ export interface BroadcastSegmentRules {
   optedInOnly?: boolean;
   minDealValue?: number;
   noResponseSinceDays?: number;
+  followUpRecurrence?: FollowUpRecurrence;
 }
 
 export interface BroadcastAbVariantPayload {
@@ -94,6 +99,7 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
     optedInOnly: o.optedInOnly === true,
     minDealValue: typeof o.minDealValue === "number" ? o.minDealValue : undefined,
     noResponseSinceDays: typeof o.noResponseSinceDays === "number" ? o.noResponseSinceDays : undefined,
+    followUpRecurrence: parseFollowUpRecurrence(o) ?? undefined,
   };
 }
 

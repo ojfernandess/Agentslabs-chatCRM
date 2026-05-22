@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { Prisma as PrismaTypes } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAdmin } from "../middleware/auth.js";
@@ -14,6 +15,11 @@ import {
 import { parseSegmentRules, segmentHasAudienceFilters } from "../lib/broadcastTypes.js";
 import { BROADCAST_EVENT_TRIGGERS } from "../lib/broadcastTypes.js";
 import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
+import {
+  buildCronFromRecurrence,
+  computeNextRunAt,
+  parseFollowUpRecurrence,
+} from "../lib/broadcastRecurrence.js";
 
 const campaignChannelToInboxType: Record<string, string> = {
   WHATSAPP: "WHATSAPP",
@@ -299,13 +305,22 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     const requiresApproval = d.requiresApproval === true;
     const approvalStatus = requiresApproval ? "PENDING" : "NONE";
 
-    const scheduledAt = d.scheduledAt ? new Date(d.scheduledAt) : null;
-    const nextRunAt =
-      d.scheduleType === "SCHEDULED" && scheduledAt
-        ? scheduledAt
-        : d.scheduleType === "RECURRING"
-          ? scheduledAt ?? new Date(Date.now() + 60_000)
-          : null;
+    let scheduledAt = d.scheduledAt ? new Date(d.scheduledAt) : null;
+    let cronExpression = d.cronExpression;
+    let nextRunAt: Date | null = null;
+
+    if (d.scheduleType === "SCHEDULED" && scheduledAt) {
+      nextRunAt = scheduledAt;
+    } else if (d.scheduleType === "RECURRING") {
+      const recurrence = segmentRules?.followUpRecurrence ?? parseFollowUpRecurrence(d.segmentRules);
+      if (recurrence) {
+        nextRunAt = computeNextRunAt(new Date(), recurrence);
+        scheduledAt = scheduledAt ?? nextRunAt;
+        cronExpression = buildCronFromRecurrence(recurrence);
+      } else {
+        nextRunAt = scheduledAt ?? new Date(Date.now() + 60_000);
+      }
+    }
 
     const campaign = await prisma.broadcastCampaign.create({
       data: {
@@ -318,15 +333,15 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
         subject: d.subject?.trim() || null,
         organizationId,
         createdById: request.user.id,
-        segmentRules: (d.segmentRules ?? undefined) as Prisma.InputJsonValue | undefined,
-        flowDefinition: (d.flowDefinition ?? undefined) as Prisma.InputJsonValue | undefined,
-        abConfig: (d.abConfig ?? undefined) as Prisma.InputJsonValue | undefined,
+        segmentRules: (d.segmentRules ?? undefined) as PrismaTypes.InputJsonValue | undefined,
+        flowDefinition: (d.flowDefinition ?? undefined) as PrismaTypes.InputJsonValue | undefined,
+        abConfig: (d.abConfig ?? undefined) as PrismaTypes.InputJsonValue | undefined,
         scheduleType: d.scheduleType,
         scheduledAt,
         cronExpression: d.cronExpression,
         nextRunAt,
         eventTrigger: d.eventTrigger,
-        eventConfig: (d.eventConfig ?? undefined) as Prisma.InputJsonValue | undefined,
+        eventConfig: (d.eventConfig ?? undefined) as PrismaTypes.InputJsonValue | undefined,
         requiresApproval,
         approvalStatus,
         integrationToolId: d.integrationToolId,
@@ -600,7 +615,25 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       if (code === "no_recipients") {
         return reply.status(400).send({ error: "Bad Request", message: "No contacts in segment", statusCode: 400 });
       }
-      throw err;
+      if (code === "not_scheduled_yet") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Campaign is scheduled for a future time",
+          statusCode: 400,
+        });
+      }
+      request.log.error({ err, campaignId: request.params.id }, "broadcast start failed");
+      const message =
+        err instanceof Prisma.PrismaClientKnownRequestError
+          ? "Failed to prepare campaign recipients (database limit or timeout). Try again or reduce audience size."
+          : err instanceof Error
+            ? err.message
+            : "Start failed";
+      return reply.status(500).send({
+        error: "Internal Server Error",
+        message,
+        statusCode: 500,
+      });
     }
   });
 

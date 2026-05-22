@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { CalendarClock, Loader2, Plus, Send, Tags } from "lucide-react";
+import { CalendarClock, Loader2, Plus, Repeat, Send, Tags } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
+import {
+  buildCronFromRecurrence,
+  defaultRecurrenceTimeLocal,
+  type FollowUpRecurrence,
+  type FollowUpRecurrenceFrequency,
+} from "@/lib/broadcastRecurrence";
 import type { InboxOption, TagOption, TemplateOption } from "./campaignTypes";
 
-export type FollowUpScheduleMode = "now" | "scheduled";
+export type FollowUpScheduleMode = "now" | "scheduled" | "recurring";
 export type FollowUpTagLogic = "ANY" | "ALL";
 
 export interface FollowUpDraft {
@@ -23,13 +29,14 @@ export interface FollowUpDraft {
 export interface FollowUpSubmitPayload {
   name: string;
   tagIds: string[];
-  segmentRules: { tagLogic: FollowUpTagLogic };
+  segmentRules: { tagLogic: FollowUpTagLogic; followUpRecurrence?: FollowUpRecurrence };
   inboxId: string;
   messageType: "TEXT" | "TEMPLATE";
   body?: string;
   templateId?: string;
-  scheduleType: "IMMEDIATE" | "SCHEDULED";
+  scheduleType: "IMMEDIATE" | "SCHEDULED" | "RECURRING";
   scheduledAt?: string;
+  cronExpression?: string;
   autoStart: boolean;
 }
 
@@ -88,6 +95,10 @@ export function FollowUpCampaignPanel({
   const [templateId, setTemplateId] = useState("");
   const [scheduleMode, setScheduleMode] = useState<FollowUpScheduleMode>("now");
   const [scheduledAt, setScheduledAt] = useState(defaultScheduledLocal);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<FollowUpRecurrenceFrequency>("monthly");
+  const [recurrenceTime, setRecurrenceTime] = useState(defaultRecurrenceTimeLocal);
+  const [recurrenceDayOfWeek, setRecurrenceDayOfWeek] = useState(1);
+  const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState(1);
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [newTplName, setNewTplName] = useState("");
   const [newTplBody, setNewTplBody] = useState("");
@@ -127,7 +138,8 @@ export function FollowUpCampaignPanel({
     audienceReady &&
     inboxId &&
     (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
-    (scheduleMode !== "scheduled" || Boolean(scheduledAt));
+    (scheduleMode !== "scheduled" || Boolean(scheduledAt)) &&
+    (scheduleMode !== "recurring" || Boolean(recurrenceTime));
 
   const handleCreateTemplate = async () => {
     const n = newTplName.trim();
@@ -158,19 +170,42 @@ export function FollowUpCampaignPanel({
   const handleSubmit = () => {
     if (!canSubmit) return;
     const finalName = suggestedName || t("broadcastPage.followUpUntitled");
+    const [hStr, mStr] = recurrenceTime.split(":");
+    const hour = Number(hStr);
+    const minute = Number(mStr);
+
+    let scheduleType: FollowUpSubmitPayload["scheduleType"] = "IMMEDIATE";
+    let scheduledAtIso: string | undefined;
+    let cronExpression: string | undefined;
+    let segmentRules: FollowUpSubmitPayload["segmentRules"] = { tagLogic };
+
+    if (scheduleMode === "scheduled" && scheduledAt) {
+      scheduleType = "SCHEDULED";
+      scheduledAtIso = new Date(scheduledAt).toISOString();
+    } else if (scheduleMode === "recurring") {
+      scheduleType = "RECURRING";
+      const followUpRecurrence: FollowUpRecurrence = {
+        frequency: recurrenceFrequency,
+        hour: Number.isFinite(hour) ? hour : 9,
+        minute: Number.isFinite(minute) ? minute : 0,
+        ...(recurrenceFrequency === "weekly" ? { dayOfWeek: recurrenceDayOfWeek } : {}),
+        ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
+      };
+      segmentRules = { tagLogic, followUpRecurrence };
+      cronExpression = buildCronFromRecurrence(followUpRecurrence);
+    }
+
     onSubmit({
       name: finalName,
       tagIds: selectedTagIds,
-      segmentRules: { tagLogic },
+      segmentRules,
       inboxId,
       messageType,
       body: messageType === "TEXT" ? body.trim() : undefined,
       templateId: messageType === "TEMPLATE" ? templateId : undefined,
-      scheduleType: scheduleMode === "now" ? "IMMEDIATE" : "SCHEDULED",
-      scheduledAt:
-        scheduleMode === "scheduled" && scheduledAt
-          ? new Date(scheduledAt).toISOString()
-          : undefined,
+      scheduleType,
+      scheduledAt: scheduledAtIso,
+      cronExpression,
       autoStart: scheduleMode === "now",
     });
   };
@@ -183,8 +218,21 @@ export function FollowUpCampaignPanel({
     setTemplateId("");
     setScheduleMode("now");
     setScheduledAt(defaultScheduledLocal());
+    setRecurrenceFrequency("monthly");
+    setRecurrenceTime(defaultRecurrenceTimeLocal());
+    setRecurrenceDayOfWeek(1);
+    setRecurrenceDayOfMonth(1);
     setShowCreateTemplate(false);
   }, []);
+
+  const weekdayOptions = useMemo(
+    () =>
+      [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+        value: d,
+        label: t(`broadcastPage.followUpWeekday${d}` as "broadcastPage.followUpWeekday0"),
+      })),
+    [t],
+  );
 
   useEffect(() => {
     if (successMessage) resetForm();
@@ -291,7 +339,7 @@ export function FollowUpCampaignPanel({
 
       <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.followUpScheduleTitle")}</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button
             type="button"
             onClick={() => setScheduleMode("now")}
@@ -328,6 +376,24 @@ export function FollowUpCampaignPanel({
               <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.followUpScheduleLaterHint")}</p>
             </div>
           </button>
+          <button
+            type="button"
+            onClick={() => setScheduleMode("recurring")}
+            className={clsx(
+              "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
+              scheduleMode === "recurring"
+                ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
+                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+            )}
+          >
+            <Repeat className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+            <div>
+              <span className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("broadcastPage.followUpRecurring")}
+              </span>
+              <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.followUpRecurringHint")}</p>
+            </div>
+          </button>
         </div>
         {scheduleMode === "scheduled" ? (
           <div className="mt-4">
@@ -340,6 +406,72 @@ export function FollowUpCampaignPanel({
               onChange={(e) => setScheduledAt(e.target.value)}
               className="input mt-1 w-full max-w-sm"
             />
+          </div>
+        ) : null}
+        {scheduleMode === "recurring" ? (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-ink-600 dark:text-ink-400">
+                {t("broadcastPage.followUpRecurrenceFreq")}
+              </label>
+              <select
+                className="input mt-1 w-full"
+                value={recurrenceFrequency}
+                onChange={(e) => setRecurrenceFrequency(e.target.value as FollowUpRecurrenceFrequency)}
+              >
+                <option value="daily">{t("broadcastPage.followUpRecurrenceDaily")}</option>
+                <option value="weekly">{t("broadcastPage.followUpRecurrenceWeekly")}</option>
+                <option value="monthly">{t("broadcastPage.followUpRecurrenceMonthly")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink-600 dark:text-ink-400">
+                {t("broadcastPage.followUpRecurrenceTime")}
+              </label>
+              <input
+                type="time"
+                value={recurrenceTime}
+                onChange={(e) => setRecurrenceTime(e.target.value)}
+                className="input mt-1 w-full"
+              />
+            </div>
+            {recurrenceFrequency === "weekly" ? (
+              <div>
+                <label className="text-xs font-semibold text-ink-600 dark:text-ink-400">
+                  {t("broadcastPage.followUpRecurrenceWeekday")}
+                </label>
+                <select
+                  className="input mt-1 w-full"
+                  value={recurrenceDayOfWeek}
+                  onChange={(e) => setRecurrenceDayOfWeek(Number(e.target.value))}
+                >
+                  {weekdayOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            {recurrenceFrequency === "monthly" ? (
+              <div>
+                <label className="text-xs font-semibold text-ink-600 dark:text-ink-400">
+                  {t("broadcastPage.followUpRecurrenceMonthDay")}
+                </label>
+                <select
+                  className="input mt-1 w-full"
+                  value={recurrenceDayOfMonth}
+                  onChange={(e) => setRecurrenceDayOfMonth(Number(e.target.value))}
+                >
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {t("broadcastPage.followUpRecurrenceDayN").replace("{day}", String(d))}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <p className="sm:col-span-2 text-xs text-ink-500">{t("broadcastPage.followUpRecurringNote")}</p>
           </div>
         ) : null}
       </section>
@@ -475,7 +607,11 @@ export function FollowUpCampaignPanel({
       <div className="flex flex-wrap gap-3">
         <button type="button" className="btn-primary inline-flex items-center gap-2" disabled={!canSubmit || submitting} onClick={handleSubmit}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {scheduleMode === "now" ? t("broadcastPage.followUpLaunch") : t("broadcastPage.followUpScheduleBtn")}
+          {scheduleMode === "now"
+            ? t("broadcastPage.followUpLaunch")
+            : scheduleMode === "recurring"
+              ? t("broadcastPage.followUpRecurringBtn")
+              : t("broadcastPage.followUpScheduleBtn")}
         </button>
       </div>
     </div>
