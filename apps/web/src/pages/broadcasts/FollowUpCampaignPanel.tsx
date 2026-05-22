@@ -10,9 +10,10 @@ import {
   type FollowUpRecurrenceFrequency,
 } from "@/lib/broadcastRecurrence";
 import type { InboxOption, TagOption, TemplateOption } from "./campaignTypes";
+import { segmentRulesWithKind } from "./campaignKind";
+import type { FollowUpEditInitial, FollowUpScheduleMode, FollowUpTagLogic } from "./campaignDraftMapper";
 
-export type FollowUpScheduleMode = "now" | "scheduled" | "recurring";
-export type FollowUpTagLogic = "ANY" | "ALL";
+export type { FollowUpScheduleMode, FollowUpTagLogic };
 
 export interface FollowUpDraft {
   name: string;
@@ -27,9 +28,10 @@ export interface FollowUpDraft {
 }
 
 export interface FollowUpSubmitPayload {
+  editCampaignId?: string;
   name: string;
   tagIds: string[];
-  segmentRules: { tagLogic: FollowUpTagLogic; followUpRecurrence?: FollowUpRecurrence };
+  segmentRules: { tagLogic: FollowUpTagLogic; followUpRecurrence?: FollowUpRecurrence; campaignKind?: "followup" };
   inboxId: string;
   messageType: "TEXT" | "TEMPLATE";
   body?: string;
@@ -50,17 +52,12 @@ interface Props {
   submitting: boolean;
   formError: string;
   successMessage: string;
+  editInitial?: FollowUpEditInitial | null;
+  onCancelEdit?: () => void;
   onPreview: (tagIds: string[], tagLogic: FollowUpTagLogic) => void;
   onInboxChange: (inboxId: string) => void;
   onSubmit: (payload: FollowUpSubmitPayload) => void;
   onTemplatesRefresh: (inboxId: string) => void;
-}
-
-function defaultWaInbox(inboxes: InboxOption[]): string {
-  const wa =
-    inboxes.find((i) => i.channelType === "WHATSAPP" && i.isDefault) ??
-    inboxes.find((i) => i.channelType === "WHATSAPP");
-  return wa?.id ?? "";
 }
 
 function defaultScheduledLocal(): string {
@@ -80,6 +77,8 @@ export function FollowUpCampaignPanel({
   submitting,
   formError,
   successMessage,
+  editInitial,
+  onCancelEdit,
   onPreview,
   onInboxChange,
   onSubmit,
@@ -89,7 +88,7 @@ export function FollowUpCampaignPanel({
   const [name, setName] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagLogic, setTagLogic] = useState<FollowUpTagLogic>("ANY");
-  const [inboxId, setInboxId] = useState(() => defaultWaInbox(inboxes));
+  const [inboxId, setInboxId] = useState("");
   const [messageType, setMessageType] = useState<"TEXT" | "TEMPLATE">("TEMPLATE");
   const [body, setBody] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -104,10 +103,6 @@ export function FollowUpCampaignPanel({
   const [newTplBody, setNewTplBody] = useState("");
   const [creatingTpl, setCreatingTpl] = useState(false);
   const [createTplError, setCreateTplError] = useState("");
-
-  useEffect(() => {
-    if (!inboxId) setInboxId(defaultWaInbox(inboxes));
-  }, [inboxes, inboxId]);
 
   useEffect(() => {
     onPreview(selectedTagIds, tagLogic);
@@ -132,14 +127,37 @@ export function FollowUpCampaignPanel({
     return t("broadcastPage.followUpDefaultName").replace("{tags}", tagNames);
   }, [name, selectedTagIds, tags, t]);
 
+  const inboxRequired = waInboxes.length > 0;
+  const inboxOk = inboxRequired && Boolean(inboxId);
   const audienceReady = previewCount != null && previewCount > 0;
   const canSubmit =
     selectedTagIds.length > 0 &&
     audienceReady &&
-    inboxId &&
+    inboxOk &&
     (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
     (scheduleMode !== "scheduled" || Boolean(scheduledAt)) &&
     (scheduleMode !== "recurring" || Boolean(recurrenceTime));
+
+  const applyEditInitial = useCallback((data: FollowUpEditInitial) => {
+    setName(data.name);
+    setSelectedTagIds(data.selectedTagIds);
+    setTagLogic(data.tagLogic);
+    setInboxId(data.inboxId);
+    setMessageType(data.messageType);
+    setBody(data.body);
+    setTemplateId(data.templateId);
+    setScheduleMode(data.scheduleMode);
+    setScheduledAt(data.scheduledAt);
+    setRecurrenceFrequency(data.recurrenceFrequency);
+    setRecurrenceTime(data.recurrenceTime);
+    setRecurrenceDayOfWeek(data.recurrenceDayOfWeek);
+    setRecurrenceDayOfMonth(data.recurrenceDayOfMonth);
+    if (data.inboxId) onInboxChange(data.inboxId);
+  }, [onInboxChange]);
+
+  useEffect(() => {
+    if (editInitial) applyEditInitial(editInitial);
+  }, [editInitial, applyEditInitial]);
 
   const handleCreateTemplate = async () => {
     const n = newTplName.trim();
@@ -177,7 +195,7 @@ export function FollowUpCampaignPanel({
     let scheduleType: FollowUpSubmitPayload["scheduleType"] = "IMMEDIATE";
     let scheduledAtIso: string | undefined;
     let cronExpression: string | undefined;
-    let segmentRules: FollowUpSubmitPayload["segmentRules"] = { tagLogic };
+    let segmentRules: FollowUpSubmitPayload["segmentRules"] = segmentRulesWithKind({ tagLogic }, "followup") as FollowUpSubmitPayload["segmentRules"];
 
     if (scheduleMode === "scheduled" && scheduledAt) {
       scheduleType = "SCHEDULED";
@@ -191,11 +209,12 @@ export function FollowUpCampaignPanel({
         ...(recurrenceFrequency === "weekly" ? { dayOfWeek: recurrenceDayOfWeek } : {}),
         ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
       };
-      segmentRules = { tagLogic, followUpRecurrence };
+      segmentRules = segmentRulesWithKind({ tagLogic, followUpRecurrence }, "followup") as FollowUpSubmitPayload["segmentRules"];
       cronExpression = buildCronFromRecurrence(followUpRecurrence);
     }
 
     onSubmit({
+      editCampaignId: editInitial?.campaignId,
       name: finalName,
       tagIds: selectedTagIds,
       segmentRules,
@@ -206,7 +225,7 @@ export function FollowUpCampaignPanel({
       scheduleType,
       scheduledAt: scheduledAtIso,
       cronExpression,
-      autoStart: scheduleMode === "now",
+      autoStart: !editInitial?.campaignId && scheduleMode === "now",
     });
   };
 
@@ -246,6 +265,18 @@ export function FollowUpCampaignPanel({
           {t("broadcastPage.followUpTitle")}
         </h2>
         <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.followUpSubtitle")}</p>
+        {editInitial ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="rounded-lg bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-900 dark:bg-violet-950/50 dark:text-violet-200">
+              {t("broadcastPage.editingDraft")}
+            </span>
+            {onCancelEdit ? (
+              <button type="button" className="text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300" onClick={onCancelEdit}>
+                {t("broadcastPage.cancelEdit")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {successMessage ? (
@@ -481,14 +512,18 @@ export function FollowUpCampaignPanel({
         <select
           className="input mt-2 w-full max-w-md"
           value={inboxId}
+          required
           onChange={(e) => {
             setInboxId(e.target.value);
             setTemplateId("");
             onInboxChange(e.target.value);
           }}
         >
+          <option value="">{t("broadcastPage.selectInbox")}</option>
           {waInboxes.length === 0 ? (
-            <option value="">{t("broadcastPage.noInboxForChannel")}</option>
+            <option value="" disabled>
+              {t("broadcastPage.noInboxForChannel")}
+            </option>
           ) : (
             waInboxes.map((inbox) => (
               <option key={inbox.id} value={inbox.id}>
@@ -498,6 +533,11 @@ export function FollowUpCampaignPanel({
             ))
           )}
         </select>
+        {!inboxOk ? (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300" role="alert">
+            {waInboxes.length === 0 ? t("broadcastPage.followUpInboxMissing") : t("broadcastPage.followUpInboxRequired")}
+          </p>
+        ) : null}
 
         <div className="mt-4 flex gap-2">
           {(["TEMPLATE", "TEXT"] as const).map((mt) => (
@@ -607,11 +647,13 @@ export function FollowUpCampaignPanel({
       <div className="flex flex-wrap gap-3">
         <button type="button" className="btn-primary inline-flex items-center gap-2" disabled={!canSubmit || submitting} onClick={handleSubmit}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {scheduleMode === "now"
-            ? t("broadcastPage.followUpLaunch")
-            : scheduleMode === "recurring"
-              ? t("broadcastPage.followUpRecurringBtn")
-              : t("broadcastPage.followUpScheduleBtn")}
+          {editInitial
+            ? t("broadcastPage.saveChanges")
+            : scheduleMode === "now"
+              ? t("broadcastPage.followUpLaunch")
+              : scheduleMode === "recurring"
+                ? t("broadcastPage.followUpRecurringBtn")
+                : t("broadcastPage.followUpScheduleBtn")}
         </button>
       </div>
     </div>

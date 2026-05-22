@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { format } from "date-fns";
-import { Play, Trash2, MessageSquare, Bot, Users, BarChart3, Check, X, Ban } from "lucide-react";
+import { Play, Trash2, MessageSquare, Bot, Users, BarChart3, Check, X, Ban, Pencil } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { campaignDeliveryRate, campaignProgress, CHANNEL_LABEL_KEYS, type CampaignRow } from "./campaignTypes";
+import { campaignKindBadgeClass, campaignKindLabelKey, resolveCampaignKind } from "./campaignKind";
 
 interface Props {
   row: CampaignRow;
@@ -10,6 +11,7 @@ interface Props {
   actionBusy: string | null;
   onStart: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit?: (id: string) => void;
   onApprove?: (id: string, approve: boolean) => void;
   onCancel?: (id: string) => void;
 }
@@ -22,8 +24,9 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400",
 };
 
-export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, onApprove, onCancel }: Props) {
+export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, onEdit, onApprove, onCancel }: Props) {
   const { t, dateLocale } = useI18n();
+  const campaignKind = resolveCampaignKind(row);
   const progress = campaignProgress(row);
   const delivery = campaignDeliveryRate(row);
   const contactCount =
@@ -38,6 +41,14 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
       <div className="min-w-0 flex-1">
         <h3 className="truncate text-sm font-bold text-ink-900 dark:text-ink-50">{row.name}</h3>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold",
+              campaignKindBadgeClass(campaignKind),
+            )}
+          >
+            {t(campaignKindLabelKey(campaignKind))}
+          </span>
           <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
             <MessageSquare className="h-3 w-3" />
             {t(channelKey)}
@@ -157,16 +168,27 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
           </button>
         </div>
       ) : row.status === "DRAFT" && !pendingApproval && row.approvalStatus !== "REJECTED" ? (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={actionBusy === row.id}
             onClick={() => onStart(row.id)}
-            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
+            className="inline-flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
           >
             <Play className="h-3.5 w-3.5" />
             {t("broadcastPage.start")}
           </button>
+          {onEdit ? (
+            <button
+              type="button"
+              disabled={actionBusy === row.id}
+              onClick={() => onEdit(row.id)}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-white/10 dark:text-ink-200 dark:hover:bg-white/5"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {t("broadcastPage.edit")}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={actionBusy === row.id}
@@ -187,6 +209,23 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
           >
             <Ban className="h-3.5 w-3.5" />
             {t("broadcastPage.cancelCampaign")}
+          </button>
+        </div>
+      ) : row.status === "COMPLETED" || row.status === "CANCELLED" || row.status === "FAILED" ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {row.sentCount > 0 ? (
+            <p className="w-full text-[10px] tabular-nums text-ink-500 dark:text-ink-400">
+              {row.sentCount}/{row.totalRecipients} · {t("broadcastPage.failed")} {row.failedCount}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={actionBusy === row.id}
+            onClick={() => onDelete(row.id)}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50 dark:border-white/10 dark:hover:bg-white/5"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t("broadcastPage.delete")}
           </button>
         </div>
       ) : row.sentCount > 0 ? (

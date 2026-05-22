@@ -247,12 +247,15 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const segmentRulesForInbox = parseSegmentRules(d.segmentRules);
+    const isFollowUpCampaign = segmentRulesForInbox?.campaignKind === "followup";
+
     const inboxTypeForChannel = campaignChannelToInboxType[d.channel];
     const campaignNeedsInbox =
       Boolean(inboxTypeForChannel) && d.channel !== "WEBHOOK" && d.channel !== "PUSH";
     let resolvedInboxId = d.inboxId;
     if (campaignNeedsInbox) {
-      if (!resolvedInboxId) {
+      if (!resolvedInboxId && !isFollowUpCampaign) {
         const fallback = await prisma.inbox.findFirst({
           where: { organizationId, channelType: inboxTypeForChannel as never },
           orderBy: [{ isDefault: "desc" }, { name: "asc" }],
@@ -299,7 +302,7 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const segmentRules = parseSegmentRules(d.segmentRules);
+    const segmentRules = segmentRulesForInbox;
     const audienceCount = await countBroadcastAudienceAdvanced(organizationId, d.tagIds, segmentRules);
 
     const requiresApproval = d.requiresApproval === true;
@@ -405,6 +408,42 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const d = parsed.data;
+    const mergedSegment =
+      d.segmentRules !== undefined ? parseSegmentRules(d.segmentRules) : parseSegmentRules(existing.segmentRules);
+    const scheduleType = d.scheduleType ?? existing.scheduleType;
+    let scheduledAt =
+      d.scheduledAt !== undefined
+        ? d.scheduledAt
+          ? new Date(d.scheduledAt)
+          : null
+        : existing.scheduledAt;
+    let cronExpression = d.cronExpression !== undefined ? d.cronExpression : existing.cronExpression;
+    let nextRunAt: Date | null | undefined = undefined;
+    const scheduleFieldsTouched =
+      d.scheduleType != null ||
+      d.scheduledAt !== undefined ||
+      d.segmentRules !== undefined ||
+      d.cronExpression !== undefined;
+
+    if (scheduleFieldsTouched) {
+      if (scheduleType === "SCHEDULED" && scheduledAt) {
+        nextRunAt = scheduledAt;
+      } else if (scheduleType === "RECURRING") {
+        const recurrence =
+          mergedSegment?.followUpRecurrence ?? parseFollowUpRecurrence(d.segmentRules ?? existing.segmentRules);
+        if (recurrence) {
+          nextRunAt = computeNextRunAt(new Date(), recurrence);
+          scheduledAt = scheduledAt ?? nextRunAt;
+          cronExpression = buildCronFromRecurrence(recurrence);
+        } else {
+          nextRunAt = scheduledAt ?? new Date(Date.now() + 60_000);
+        }
+      } else if (scheduleType === "IMMEDIATE") {
+        nextRunAt = null;
+        scheduledAt = null;
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       if (d.tagIds) {
         await tx.broadcastCampaignTag.deleteMany({ where: { campaignId: existing.id } });
@@ -433,10 +472,7 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
             : {}),
           ...(d.abConfig !== undefined ? { abConfig: d.abConfig as Prisma.InputJsonValue } : {}),
           ...(d.scheduleType != null ? { scheduleType: d.scheduleType } : {}),
-          ...(d.scheduledAt !== undefined
-            ? { scheduledAt: d.scheduledAt ? new Date(d.scheduledAt) : null }
-            : {}),
-          ...(d.cronExpression !== undefined ? { cronExpression: d.cronExpression } : {}),
+          ...(scheduleFieldsTouched ? { scheduledAt, cronExpression, nextRunAt: nextRunAt ?? null } : {}),
           ...(d.eventTrigger !== undefined ? { eventTrigger: d.eventTrigger } : {}),
           ...(d.eventConfig !== undefined ? { eventConfig: d.eventConfig as Prisma.InputJsonValue } : {}),
           ...(d.requiresApproval != null
@@ -515,10 +551,11 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Campaign not found", statusCode: 404 });
     }
-    if (existing.status !== "DRAFT") {
+    const deletable = new Set(["DRAFT", "COMPLETED", "CANCELLED", "FAILED"]);
+    if (!deletable.has(existing.status)) {
       return reply.status(409).send({
         error: "Conflict",
-        message: "Only draft campaigns can be deleted",
+        message: "Running campaigns cannot be deleted. Cancel the campaign first.",
         statusCode: 409,
       });
     }

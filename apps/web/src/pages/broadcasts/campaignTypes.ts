@@ -39,6 +39,11 @@ export interface CampaignRow {
   startedAt?: string | null;
   completedAt?: string | null;
   tags: CampaignTag[];
+  segmentRules?: unknown;
+  flowDefinition?: unknown;
+  inboxId?: string | null;
+  cronExpression?: string | null;
+  scheduledAt?: string | null;
   createdBy?: { id: string; name: string; displayName: string | null };
   _count?: { recipients: number };
   audienceCount?: number | null;

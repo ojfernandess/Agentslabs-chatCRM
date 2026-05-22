@@ -6,9 +6,12 @@ export type { FollowUpRecurrence };
 
 export type { BroadcastChannel, BroadcastScheduleType };
 
+export type BroadcastCampaignKind = "followup" | "broadcast" | "ai" | "flow";
+
 export interface BroadcastSegmentRules {
   tagIds?: string[];
   tagLogic?: "ANY" | "ALL";
+  campaignKind?: BroadcastCampaignKind;
   pipelineStageIds?: string[];
   lifecycleStages?: string[];
   cities?: string[];
@@ -100,6 +103,13 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
     minDealValue: typeof o.minDealValue === "number" ? o.minDealValue : undefined,
     noResponseSinceDays: typeof o.noResponseSinceDays === "number" ? o.noResponseSinceDays : undefined,
     followUpRecurrence: parseFollowUpRecurrence(o) ?? undefined,
+    campaignKind:
+      o.campaignKind === "followup" ||
+      o.campaignKind === "broadcast" ||
+      o.campaignKind === "ai" ||
+      o.campaignKind === "flow"
+        ? o.campaignKind
+        : undefined,
   };
 }
 

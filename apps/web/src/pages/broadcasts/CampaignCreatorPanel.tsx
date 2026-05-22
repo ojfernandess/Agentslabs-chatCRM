@@ -37,6 +37,7 @@ export { defaultAdvancedOptions };
 interface Props {
   open: boolean;
   onClose: () => void;
+  editCampaignId?: string | null;
   tags: TagOption[];
   templates: TemplateOption[];
   templatesLoading?: boolean;
@@ -51,7 +52,7 @@ interface Props {
   formError: string;
   onPreview: (tagIds: string[], segmentRules: AdvancedCampaignOptions["segmentRules"]) => void;
   onInboxChange?: (inboxId: string) => void;
-  onSubmit: (draft: CreatorDraft) => void;
+  onSubmit: (draft: CreatorDraft, editId?: string | null) => void;
 }
 
 const defaultDraft: CreatorDraft = {
@@ -82,6 +83,7 @@ function firstInboxForChannel(inboxes: InboxOption[], channel: CampaignChannel):
 export function CampaignCreatorPanel({
   open,
   onClose,
+  editCampaignId = null,
   tags,
   templates,
   templatesLoading = false,
@@ -231,8 +233,12 @@ export function CampaignCreatorPanel({
       <div className="relative flex h-full w-full max-w-xl flex-col border-l border-ink-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0f1728]">
         <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-white/10">
           <div>
-            <h2 className="text-lg font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.creatorTitle")}</h2>
-            <p className="text-xs text-ink-500 dark:text-ink-400">{t("broadcastPage.creatorSubtitle")}</p>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-ink-50">
+              {editCampaignId ? t("broadcastPage.editCampaignTitle") : t("broadcastPage.creatorTitle")}
+            </h2>
+            <p className="text-xs text-ink-500 dark:text-ink-400">
+              {editCampaignId ? t("broadcastPage.editCampaignSubtitle") : t("broadcastPage.creatorSubtitle")}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-ink-50 dark:hover:bg-white/5">
             <X className="h-5 w-5" />
@@ -479,10 +485,14 @@ export function CampaignCreatorPanel({
               <button
                 type="button"
                 disabled={submitting || !canSubmit}
-                onClick={() => onSubmit(draft)}
+                onClick={() => onSubmit(draft, editCampaignId)}
                 className="btn-primary flex-1"
               >
-                {submitting ? t("common.saving") : t("broadcastPage.saveDraft")}
+                {submitting
+                  ? t("common.saving")
+                  : editCampaignId
+                    ? t("broadcastPage.saveChanges")
+                    : t("broadcastPage.saveDraft")}
               </button>
               <button type="button" className="btn-secondary" onClick={onClose}>
                 {t("common.cancel")}

@@ -21,6 +21,12 @@ import {
   type FollowUpSubmitPayload,
   type FollowUpTagLogic,
 } from "@/pages/broadcasts/FollowUpCampaignPanel";
+import { resolveCampaignKind, segmentRulesWithKind } from "@/pages/broadcasts/campaignKind";
+import {
+  campaignToCreatorDraft,
+  campaignToFollowUpInitial,
+  type CampaignDetailRow,
+} from "@/pages/broadcasts/campaignDraftMapper";
 import { CampaignAnalyticsPanel } from "@/pages/broadcasts/CampaignAnalyticsPanel";
 import {
   OMNICHANNEL_CHANNELS,
@@ -69,6 +75,8 @@ export function BroadcastCampaignsPage() {
   const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
   const [followUpFormError, setFollowUpFormError] = useState("");
   const [followUpSuccess, setFollowUpSuccess] = useState("");
+  const [followUpEditInitial, setFollowUpEditInitial] = useState<ReturnType<typeof campaignToFollowUpInitial> | null>(null);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setListError("");
@@ -250,11 +258,7 @@ export function BroadcastCampaignsPage() {
     setFollowUpFormError("");
     setFollowUpSuccess("");
     try {
-      const res = await api.post<{
-        started?: boolean;
-        startError?: string | null;
-        status?: string;
-      }>("/broadcasts", {
+      const body = {
         name: payload.name,
         channel: "WHATSAPP",
         inboxId: payload.inboxId,
@@ -267,17 +271,30 @@ export function BroadcastCampaignsPage() {
         body: payload.body,
         templateId: payload.templateId,
         autoStart: payload.autoStart,
-      });
-      if (res.startError) {
-        setFollowUpFormError(t("broadcastPage.followUpStartPartial"));
-      } else if (payload.scheduleType === "IMMEDIATE" && res.started) {
-        setFollowUpSuccess(t("broadcastPage.followUpSuccessStarted"));
-      } else if (payload.scheduleType === "SCHEDULED") {
-        setFollowUpSuccess(t("broadcastPage.followUpSuccessScheduled"));
-      } else if (payload.scheduleType === "RECURRING") {
-        setFollowUpSuccess(t("broadcastPage.followUpSuccessRecurring"));
+      };
+
+      if (payload.editCampaignId) {
+        await api.patch(`/broadcasts/${payload.editCampaignId}`, body);
+        setFollowUpSuccess(t("broadcastPage.editSuccess"));
+        setFollowUpEditInitial(null);
+        setEditingCampaignId(null);
       } else {
-        setFollowUpSuccess(t("broadcastPage.followUpSuccessDraft"));
+        const res = await api.post<{
+          started?: boolean;
+          startError?: string | null;
+          status?: string;
+        }>("/broadcasts", body);
+        if (res.startError) {
+          setFollowUpFormError(t("broadcastPage.followUpStartPartial"));
+        } else if (payload.scheduleType === "IMMEDIATE" && res.started) {
+          setFollowUpSuccess(t("broadcastPage.followUpSuccessStarted"));
+        } else if (payload.scheduleType === "SCHEDULED") {
+          setFollowUpSuccess(t("broadcastPage.followUpSuccessScheduled"));
+        } else if (payload.scheduleType === "RECURRING") {
+          setFollowUpSuccess(t("broadcastPage.followUpSuccessRecurring"));
+        } else {
+          setFollowUpSuccess(t("broadcastPage.followUpSuccessDraft"));
+        }
       }
       void loadList();
       void loadDashboard();
@@ -290,7 +307,33 @@ export function BroadcastCampaignsPage() {
     }
   };
 
-  const handleCreate = async (draft: CreatorDraft) => {
+  const openEditCampaign = async (id: string) => {
+    setActionBusy(id);
+    setFormError("");
+    try {
+      const detail = await api.get<CampaignDetailRow>(`/broadcasts/${id}`);
+      const kind = resolveCampaignKind(detail);
+      setEditingCampaignId(id);
+      if (kind === "followup") {
+        setFollowUpEditInitial(campaignToFollowUpInitial(detail));
+        setFollowUpFormError("");
+        setCenterTab("followup");
+      } else {
+        setFollowUpEditInitial(null);
+        const draft = campaignToCreatorDraft(detail);
+        setCreatorInitial(draft);
+        setCreatorTab(kind === "flow" ? "flow" : kind === "ai" ? "ai" : "quick");
+        setCreatorOpen(true);
+      }
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : t("broadcastPage.loadCampaignError");
+      alert(msg);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const handleCreate = async (draft: CreatorDraft, editId?: string | null) => {
     const nameTrim = draft.name.trim();
     const adv = draft.advanced;
     if (!nameTrim || !segmentHasAudience(draft.selectedTagIds, adv.segmentRules)) return;
@@ -299,12 +342,13 @@ export function BroadcastCampaignsPage() {
     setFormError("");
     try {
       const channel = CHANNEL_API[adv.channel] ?? "WHATSAPP";
+      const kind = creatorTab === "flow" ? "flow" : creatorTab === "ai" ? "ai" : "broadcast";
       const payload: Record<string, unknown> = {
         name: nameTrim,
         channel,
         messageType: channel === "EMAIL" ? "TEXT" : draft.messageType,
         tagIds: draft.selectedTagIds,
-        segmentRules: adv.segmentRules,
+        segmentRules: segmentRulesWithKind(adv.segmentRules as Record<string, unknown>, kind),
         flowDefinition: draft.flowDefinition ?? undefined,
         scheduleType: adv.scheduleType,
         requiresApproval: adv.requiresApproval,
@@ -331,8 +375,13 @@ export function BroadcastCampaignsPage() {
       if (draft.messageType === "TEXT" || channel === "EMAIL") payload.body = draft.body.trim();
       else if (draft.templateId) payload.templateId = draft.templateId;
 
-      await api.post("/broadcasts", payload);
+      if (editId) {
+        await api.patch(`/broadcasts/${editId}`, payload);
+      } else {
+        await api.post("/broadcasts", payload);
+      }
       setCreatorOpen(false);
+      setEditingCampaignId(null);
       void loadList();
       void loadDashboard();
     } catch (e) {
@@ -378,8 +427,10 @@ export function BroadcastCampaignsPage() {
     }
   };
 
-  const deleteDraft = async (id: string) => {
-    if (!window.confirm(t("broadcastPage.deleteConfirm"))) return;
+  const deleteDraft = async (id: string, status?: string) => {
+    const msg =
+      status === "COMPLETED" ? t("broadcastPage.deleteCompletedConfirm") : t("broadcastPage.deleteConfirm");
+    if (!window.confirm(msg)) return;
     setActionBusy(id);
     try {
       await api.delete(`/broadcasts/${id}`);
@@ -459,6 +510,8 @@ export function BroadcastCampaignsPage() {
             onClick={() => {
               setFollowUpSuccess("");
               setFollowUpFormError("");
+              setFollowUpEditInitial(null);
+              setEditingCampaignId(null);
               setCenterTab("followup");
             }}
             className="btn-secondary inline-flex items-center gap-2"
@@ -562,6 +615,11 @@ export function BroadcastCampaignsPage() {
               submitting={followUpSubmitting}
               formError={followUpFormError}
               successMessage={followUpSuccess}
+              editInitial={followUpEditInitial}
+              onCancelEdit={() => {
+                setFollowUpEditInitial(null);
+                setEditingCampaignId(null);
+              }}
               onPreview={(tagIds, tagLogic) => void runFollowUpPreview(tagIds, tagLogic)}
               onInboxChange={handleInboxChange}
               onSubmit={handleFollowUpSubmit}
@@ -593,7 +651,8 @@ export function BroadcastCampaignsPage() {
                       statusLabel={statusLabel}
                       actionBusy={actionBusy}
                       onStart={startCampaign}
-                      onDelete={deleteDraft}
+                      onEdit={openEditCampaign}
+                      onDelete={(id) => deleteDraft(id, r.status)}
                       onApprove={approveCampaign}
                       onCancel={cancelCampaign}
                     />
@@ -637,7 +696,11 @@ export function BroadcastCampaignsPage() {
 
       <CampaignCreatorPanel
         open={creatorOpen}
-        onClose={() => setCreatorOpen(false)}
+        onClose={() => {
+          setCreatorOpen(false);
+          setEditingCampaignId(null);
+        }}
+        editCampaignId={editingCampaignId}
         tags={tags}
         inboxes={inboxes}
         templates={templates}
@@ -652,7 +715,7 @@ export function BroadcastCampaignsPage() {
         pipelineStages={pipelineStages}
         onPreview={handlePreview}
         onInboxChange={handleInboxChange}
-        onSubmit={handleCreate}
+        onSubmit={(draft) => void handleCreate(draft, editingCampaignId)}
       />
       </div>
     </PageTransition>
