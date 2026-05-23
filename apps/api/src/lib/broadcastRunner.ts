@@ -3,7 +3,8 @@ import { prisma } from "../db.js";
 import { enqueueBroadcastRecipientJob, isBroadcastQueueAvailable } from "./broadcastQueue.js";
 import { processBroadcastRecipient } from "./broadcastRecipientProcessor.js";
 import { syncBroadcastCampaignEngagement } from "./broadcastMetrics.js";
-import { computeNextRunAt } from "./broadcastRecurrence.js";
+import { computeNextRunAt, DEFAULT_FOLLOW_UP_TIME_ZONE } from "./broadcastRecurrence.js";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { parseSegmentRules } from "./broadcastTypes.js";
 
 export function scheduleBroadcastCampaignRun(app: FastifyInstance, campaignId: string): void {
@@ -51,11 +52,14 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
 }
 
 function fallbackRecurringNextRun(): Date {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  next.setHours(9, 0, 0, 0);
-  next.setSeconds(0, 0);
-  return next;
+  const timeZone = DEFAULT_FOLLOW_UP_TIME_ZONE;
+  const zNow = toZonedTime(new Date(), timeZone);
+  const nextDay = new Date(zNow);
+  nextDay.setDate(nextDay.getDate() + 1);
+  return fromZonedTime(
+    new Date(nextDay.getFullYear(), nextDay.getMonth(), nextDay.getDate(), 9, 0, 0, 0),
+    timeZone,
+  );
 }
 
 export async function runBroadcastCampaign(app: FastifyInstance, campaignId: string): Promise<void> {

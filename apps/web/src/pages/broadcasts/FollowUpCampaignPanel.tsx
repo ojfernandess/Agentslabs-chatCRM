@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { CalendarClock, Loader2, Plus, Repeat, Send, Tags } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import {
   buildCronFromRecurrence,
+  browserTimeZone,
   defaultRecurrenceTimeLocal,
   type FollowUpRecurrence,
   type FollowUpRecurrenceFrequency,
@@ -104,9 +105,19 @@ export function FollowUpCampaignPanel({
   const [creatingTpl, setCreatingTpl] = useState(false);
   const [createTplError, setCreateTplError] = useState("");
 
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
+
   useEffect(() => {
-    onPreview(selectedTagIds, tagLogic);
-  }, [selectedTagIds.join(","), tagLogic, onPreview]);
+    if (selectedTagIds.length === 0) {
+      onPreviewRef.current([], tagLogic);
+      return;
+    }
+    const h = window.setTimeout(() => {
+      onPreviewRef.current(selectedTagIds, tagLogic);
+    }, 400);
+    return () => window.clearTimeout(h);
+  }, [selectedTagIds.join(","), tagLogic]);
 
   const waInboxes = useMemo(
     () => inboxes.filter((i) => i.channelType === "WHATSAPP"),
@@ -206,6 +217,7 @@ export function FollowUpCampaignPanel({
         frequency: recurrenceFrequency,
         hour: Number.isFinite(hour) ? hour : 9,
         minute: Number.isFinite(minute) ? minute : 0,
+        timeZone: browserTimeZone(),
         ...(recurrenceFrequency === "weekly" ? { dayOfWeek: recurrenceDayOfWeek } : {}),
         ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
       };

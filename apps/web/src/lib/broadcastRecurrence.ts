@@ -4,8 +4,18 @@ export interface FollowUpRecurrence {
   frequency: FollowUpRecurrenceFrequency;
   hour: number;
   minute: number;
+  /** IANA timezone — hour/minute are interpreted in this zone on the server. */
+  timeZone?: string;
   dayOfWeek?: number;
   dayOfMonth?: number;
+}
+
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+  } catch {
+    return "America/Sao_Paulo";
+  }
 }
 
 export function buildCronFromRecurrence(r: FollowUpRecurrence): string {

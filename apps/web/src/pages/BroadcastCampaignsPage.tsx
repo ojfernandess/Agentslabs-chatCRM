@@ -253,6 +253,10 @@ export function BroadcastCampaignsPage() {
     }
   }, []);
 
+  const handleFollowUpPreview = useCallback((tagIds: string[], tagLogic: FollowUpTagLogic) => {
+    void runFollowUpPreview(tagIds, tagLogic);
+  }, [runFollowUpPreview]);
+
   const handleFollowUpSubmit = async (payload: FollowUpSubmitPayload) => {
     setFollowUpSubmitting(true);
     setFollowUpFormError("");
@@ -620,7 +624,7 @@ export function BroadcastCampaignsPage() {
                 setFollowUpEditInitial(null);
                 setEditingCampaignId(null);
               }}
-              onPreview={(tagIds, tagLogic) => void runFollowUpPreview(tagIds, tagLogic)}
+              onPreview={handleFollowUpPreview}
               onInboxChange={handleInboxChange}
               onSubmit={handleFollowUpSubmit}
               onTemplatesRefresh={(id) => loadTemplatesForInbox(id || undefined, { sync: true })}
