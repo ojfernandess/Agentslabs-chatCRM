@@ -32,6 +32,11 @@ import {
   createConversationClosureRecord,
   markConversationClosureReopened,
 } from "../lib/conversationClosureRecords.js";
+import {
+  computeClosureRollupTotals,
+  pickLatestClosureRecord,
+  shouldCarryForwardClosureValue,
+} from "../lib/closureValueRollup.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
   analyzeConversationForInsights,
@@ -374,7 +379,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       profilePictureUrl: true,
     } as const;
 
-    const [records, total] = await Promise.all([
+    const [records, total, rollupRows] = await Promise.all([
       prisma.conversationClosureRecord.findMany({
         where,
         include: {
@@ -391,9 +396,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         take: query.pageSize,
       }),
       prisma.conversationClosureRecord.count({ where }),
+      prisma.conversationClosureRecord.findMany({
+        where,
+        select: {
+          conversationId: true,
+          sessionIndex: true,
+          closureValue: true,
+          leadType: { select: { valueRollup: true } },
+        },
+      }),
     ]);
 
+    const summary = computeClosureRollupTotals(rollupRows);
+
     return {
+      summary,
       data: records.map((row) => ({
         id: row.id,
         conversationId: row.conversationId,
@@ -935,6 +952,29 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }).catch(() => {});
 
     const { closureRecords, ...convRest } = conversation;
+    const mappedClosureRecords = closureRecords.map((r) => ({
+      id: r.id,
+      sessionIndex: r.sessionIndex,
+      resolvedAt: r.resolvedAt.toISOString(),
+      reopenedAt: r.reopenedAt?.toISOString() ?? null,
+      isNewAttendance: r.isNewAttendance,
+      closureReason: r.closureReason,
+      closureValue: r.closureValue,
+      csatScore: r.csatScore,
+      csatComment: r.csatComment,
+      csatRecordedAt: r.csatRecordedAt?.toISOString() ?? null,
+      resolvedBy: r.resolvedBy,
+      reopenedBy: r.reopenedBy,
+      assignedTo: r.assignedTo,
+      team: r.team,
+      leadType: r.leadType,
+    }));
+
+    const lastClosure = pickLatestClosureRecord(closureRecords);
+    const carryForward =
+      conversation.status !== "RESOLVED" &&
+      lastClosure != null &&
+      shouldCarryForwardClosureValue(lastClosure.leadType?.valueRollup);
 
     return {
       ...stripCsatSurveyToken(convRest),
@@ -945,23 +985,17 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           ? `/api/v1/contacts/${conversation.contact.id}/profile-picture`
           : null,
       },
-      closureRecords: closureRecords.map((r) => ({
-        id: r.id,
-        sessionIndex: r.sessionIndex,
-        resolvedAt: r.resolvedAt.toISOString(),
-        reopenedAt: r.reopenedAt?.toISOString() ?? null,
-        isNewAttendance: r.isNewAttendance,
-        closureReason: r.closureReason,
-        closureValue: r.closureValue,
-        csatScore: r.csatScore,
-        csatComment: r.csatComment,
-        csatRecordedAt: r.csatRecordedAt?.toISOString() ?? null,
-        resolvedBy: r.resolvedBy,
-        reopenedBy: r.reopenedBy,
-        assignedTo: r.assignedTo,
-        team: r.team,
-        leadType: r.leadType,
-      })),
+      closureRecords: mappedClosureRecords,
+      reopenClosureDefaults:
+        carryForward && lastClosure
+          ? {
+              leadTypeId: lastClosure.leadTypeId,
+              closureValue: lastClosure.closureValue,
+              afterWonSale: false,
+            }
+          : lastClosure?.leadType?.valueRollup === "WON"
+            ? { leadTypeId: null, closureValue: null, afterWonSale: true }
+            : null,
       contactTimeline,
       agentBotTriageActive,
     };

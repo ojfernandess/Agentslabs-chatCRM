@@ -8,6 +8,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
 import { formatCurrencyUnits } from "@/lib/currency";
+import { closureRecordContribution, latestClosureRecordPerConversation } from "@/lib/closureValueRollup";
 
 interface TeamUser {
   id: string;
@@ -125,21 +126,20 @@ export function ConversationAuditPage() {
     return <Navigate to="/" replace />;
   }
 
-  const auditContribution = (r: AuditRow): "WON" | "PIPELINE" | "IGNORE" => {
-    const v = r.closureValue ?? 0;
-    if (v <= 0) return "IGNORE";
-    const roll = r.leadType?.valueRollup ?? "PIPELINE";
-    if (roll === "WON") return "WON";
-    if (roll === "PIPELINE") return "PIPELINE";
-    return "IGNORE";
-  };
-
-  const sumPageWon = rows.reduce(
-    (a, r) => a + (auditContribution(r) === "WON" ? (r.closureValue ?? 0) : 0),
+  const latestOnPage = latestClosureRecordPerConversation(
+    rows.map((r) => ({
+      conversationId: r.conversationId,
+      sessionIndex: r.sessionIndex,
+      closureValue: r.closureValue,
+      leadType: r.leadType,
+    })),
+  );
+  const sumPageWon = latestOnPage.reduce(
+    (a, r) => a + (closureRecordContribution(r) === "WON" ? (r.closureValue ?? 0) : 0),
     0,
   );
-  const sumPagePipeline = rows.reduce(
-    (a, r) => a + (auditContribution(r) === "PIPELINE" ? (r.closureValue ?? 0) : 0),
+  const sumPagePipeline = latestOnPage.reduce(
+    (a, r) => a + (closureRecordContribution(r) === "PIPELINE" ? (r.closureValue ?? 0) : 0),
     0,
   );
 

@@ -178,6 +178,11 @@ interface ConversationDetail {
   csatSurveyPending?: boolean;
   leadType: LeadTypeRow | null;
   closureRecords?: ClosureRecordRow[];
+  reopenClosureDefaults?: {
+    leadTypeId: string | null;
+    closureValue: number | null;
+    afterWonSale: boolean;
+  } | null;
   assignedTo?: { id: string; name: string } | null;
   /** Presente na API — caixa e flag do bot por canal. */
   inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
@@ -315,13 +320,36 @@ export function ConversationDetailPage() {
   const openResolveModal = useCallback((nextId: string | null) => {
     resolveNextIdRef.current = nextId;
     setResolveError("");
-    setClosureAmount("");
     setCreateReminderOnResolve(false);
     setReminderNote("");
     setReminderDueDate(tomorrowLocalYmd());
     setReminderDueTime("09:00");
     setResolveOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!resolveOpen || !conversation) return;
+    const d = conversation.reopenClosureDefaults;
+    if (d?.afterWonSale) {
+      setClosureAmount("");
+      setLeadTypeId("");
+      setClosureReason("");
+      return;
+    }
+    if (d?.leadTypeId) {
+      setLeadTypeId(d.leadTypeId);
+    } else {
+      setLeadTypeId("");
+    }
+    if (d?.closureValue != null && d.closureValue > 0) {
+      setClosureAmount(String(d.closureValue));
+    } else {
+      setClosureAmount("");
+    }
+    if (!d) {
+      setClosureReason("");
+    }
+  }, [resolveOpen, conversation?.id, conversation?.reopenClosureDefaults]);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
@@ -3229,6 +3257,16 @@ export function ConversationDetailPage() {
             >
               <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.finalizeTitle")}</h3>
               <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.finalizeSubtitle")}</p>
+              {conversation?.reopenClosureDefaults?.afterWonSale ? (
+                <p className="mt-2 rounded-lg border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100">
+                  {t("conversationDetail.reopenAfterWonHint")}
+                </p>
+              ) : conversation?.reopenClosureDefaults?.closureValue != null &&
+                conversation.reopenClosureDefaults.closureValue > 0 ? (
+                <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
+                  {t("conversationDetail.reopenCarryValueHint")}
+                </p>
+              ) : null}
               {(!resolveRequireClosureReason || !resolveRequireLeadType) && (
                 <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.finalizeRulesHint")}</p>
               )}

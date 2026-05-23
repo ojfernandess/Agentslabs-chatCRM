@@ -2126,6 +2126,10 @@ export const messages = {
       attendanceSession: "Atendimento",
       attendanceReopened: "Reaberta em {date} por {name}",
       attendanceResolvedBy: "Finalizada por {name}",
+      reopenCarryValueHint:
+        "Valor e tipo de lead do último encerramento foram sugeridos — ajuste se a negociação mudou.",
+      reopenAfterWonHint:
+        "Venda já registrada neste contato. Informe um novo valor de lead para o próximo atendimento.",
       leadLabel: "Tipo de lead",
       recordVoice: "Gravar mensagem de áudio",
       stopRecording: "Parar e enviar",
@@ -2271,7 +2275,10 @@ export const messages = {
       subtitle: "Histórico dos seus encerramentos — tipo de lead e valores (mantém registos mesmo após reabrir)",
       totalValue: "Soma dos valores (vendido)",
       negotiationSubtotal: "Em negociação",
-      negotiationSubtotalHint: "Valores de tipos marcados como pipeline / cotação — configurável em Tipos de lead.",
+      negotiationSubtotalHint:
+        "Por conversa, conta só o último encerramento em tipos «Em negociação» — configurável em Tipos de lead.",
+      totalValueHint:
+        "Por conversa, conta só o último encerramento em tipos «Classificação do valor» (vendido).",
       resolvedTotal: "Total de registos",
       empty: "Ainda não há atendimentos finalizados seus.",
     },
@@ -5090,6 +5097,10 @@ export const messages = {
       attendanceSession: "Attendance",
       attendanceReopened: "Reopened on {date} by {name}",
       attendanceResolvedBy: "Closed by {name}",
+      reopenCarryValueHint:
+        "Lead value and type from the last closure are suggested — update if the deal changed.",
+      reopenAfterWonHint:
+        "A sale was already recorded for this contact. Enter a new lead value for this attendance.",
       leadLabel: "Lead type",
       recordVoice: "Record voice message",
       stopRecording: "Stop and send",
@@ -5236,7 +5247,9 @@ export const messages = {
       subtitle: "Your closure history — lead types and values (kept after reopen)",
       totalValue: "Total value (closed-won)",
       negotiationSubtotal: "In negotiation",
-      negotiationSubtotalHint: "Values from lead types classified as pipeline — configurable under Lead types.",
+      negotiationSubtotalHint:
+        "Per conversation, only the latest closure in pipeline-classified lead types counts.",
+      totalValueHint: "Per conversation, only the latest closure in closed-won lead types counts.",
       resolvedTotal: "Total records",
       empty: "No closed attendances on your account yet.",
     },

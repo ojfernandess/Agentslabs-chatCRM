@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
+import { computeClosureRollupTotals } from "@/lib/closureValueRollup";
 
 interface Row {
   id: string;
@@ -27,6 +28,7 @@ export function MyAttendancePage() {
   const { t, dateLocale } = useI18n();
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState({ wonValue: 0, pipelineValue: 0 });
   const [loading, setLoading] = useState(true);
   const hasAnimated = useRef(false);
 
@@ -36,14 +38,22 @@ export function MyAttendancePage() {
     async function load() {
       if (!hasAnimated.current) setLoading(true);
       try {
-        const res = await api.get<{ data: Row[]; total: number }>(
-          "/conversations/my-attendance?pageSize=100",
-        );
+        const res = await api.get<{
+          data: Row[];
+          total: number;
+          summary?: { wonValue: number; pipelineValue: number };
+        }>("/conversations/my-attendance?pageSize=100");
         setRows(res.data);
         setTotal(res.total);
+        if (res.summary) {
+          setSummary(res.summary);
+        } else {
+          setSummary(computeClosureRollupTotals(res.data));
+        }
       } catch {
         setRows([]);
         setTotal(0);
+        setSummary({ wonValue: 0, pipelineValue: 0 });
       } finally {
         setLoading(false);
       }
@@ -51,23 +61,8 @@ export function MyAttendancePage() {
     void load();
   }, []);
 
-  const contribution = (r: Row): "WON" | "PIPELINE" | "IGNORE" => {
-    const v = r.closureValue ?? 0;
-    if (v <= 0) return "IGNORE";
-    const roll = r.leadType?.valueRollup ?? "PIPELINE";
-    if (roll === "WON") return "WON";
-    if (roll === "PIPELINE") return "PIPELINE";
-    return "IGNORE";
-  };
-
-  const totalWonValue = rows.reduce(
-    (a, r) => a + (contribution(r) === "WON" ? (r.closureValue ?? 0) : 0),
-    0,
-  );
-  const totalPipelineValue = rows.reduce(
-    (a, r) => a + (contribution(r) === "PIPELINE" ? (r.closureValue ?? 0) : 0),
-    0,
-  );
+  const totalWonValue = summary.wonValue;
+  const totalPipelineValue = summary.pipelineValue;
 
   return (
     <PageTransition>
@@ -85,9 +80,10 @@ export function MyAttendancePage() {
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-ink-700 dark:bg-ink-900/50">
             <p className="text-gray-500 dark:text-ink-400">{t("attendance.totalValue")}</p>
             <p className="text-lg font-semibold text-gray-900 dark:text-ink-50">{fmtMoney(totalWonValue)}</p>
+            <p className="mt-1 text-[10px] leading-snug text-gray-400 dark:text-ink-500">{t("attendance.totalValueHint")}</p>
             <p className="mt-2 text-xs font-medium text-gray-600 dark:text-ink-300">{t("attendance.negotiationSubtotal")}</p>
             <p className="text-base font-semibold text-gray-800 dark:text-ink-100">{fmtMoney(totalPipelineValue)}</p>
-            <p className="mt-2 text-xs text-gray-400 dark:text-ink-500">{t("attendance.negotiationSubtotalHint")}</p>
+            <p className="mt-1 text-[10px] leading-snug text-gray-400 dark:text-ink-500">{t("attendance.negotiationSubtotalHint")}</p>
             <p className="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-400 dark:border-ink-800 dark:text-ink-500">
               {t("attendance.resolvedTotal")}: {total}
             </p>
