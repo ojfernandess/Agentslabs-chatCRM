@@ -321,6 +321,8 @@ export function ConversationDetailPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resolveNextIdRef = useRef<string | null>(null);
+  /** Evita repor lead/valor a cada poll da conversa enquanto o modal está aberto. */
+  const resolveFormInitializedRef = useRef(false);
 
   const openResolveModal = useCallback((nextId: string | null) => {
     resolveNextIdRef.current = nextId;
@@ -329,11 +331,18 @@ export function ConversationDetailPage() {
     setReminderNote("");
     setReminderDueDate(tomorrowLocalYmd());
     setReminderDueTime("09:00");
+    resolveFormInitializedRef.current = false;
     setResolveOpen(true);
   }, []);
 
   useEffect(() => {
-    if (!resolveOpen || !conversation) return;
+    if (!resolveOpen) {
+      resolveFormInitializedRef.current = false;
+      return;
+    }
+    if (!conversation || resolveFormInitializedRef.current) return;
+    resolveFormInitializedRef.current = true;
+
     const d = conversation.reopenClosureDefaults;
     if (d?.afterWonSale) {
       setClosureAmount("");
@@ -341,11 +350,7 @@ export function ConversationDetailPage() {
       setClosureReason("");
       return;
     }
-    if (d?.leadTypeId) {
-      setLeadTypeId(d.leadTypeId);
-    } else {
-      setLeadTypeId("");
-    }
+    setLeadTypeId(d?.leadTypeId ?? "");
     if (d?.closureValue != null && d.closureValue > 0) {
       setClosureAmount(String(d.closureValue));
     } else {
@@ -354,7 +359,7 @@ export function ConversationDetailPage() {
     if (!d) {
       setClosureReason("");
     }
-  }, [resolveOpen, conversation?.id, conversation?.reopenClosureDefaults]);
+  }, [resolveOpen, conversation]);
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
