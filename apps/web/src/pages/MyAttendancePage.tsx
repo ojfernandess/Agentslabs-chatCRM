@@ -6,7 +6,11 @@ import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { formatCurrencyUnits } from "@/lib/currency";
-import { computeClosureRollupTotals } from "@/lib/closureValueRollup";
+import {
+  computeClosureRollupTotals,
+  isPipelineClosureActiveForRollup,
+  shouldDisplayClosureValueBadge,
+} from "@/lib/closureValueRollup";
 
 interface Row {
   id: string;
@@ -64,6 +68,13 @@ export function MyAttendancePage() {
   const totalWonValue = summary.wonValue;
   const totalPipelineValue = summary.pipelineValue;
 
+  const rollupRows = rows.map((r) => ({
+    conversationId: r.conversationId,
+    sessionIndex: r.sessionIndex,
+    closureValue: r.closureValue,
+    leadType: r.leadType,
+  }));
+
   return (
     <PageTransition>
       <div className="p-4 sm:p-6 lg:p-8">
@@ -107,6 +118,17 @@ export function MyAttendancePage() {
           >
             {rows.map((r) => {
               const last = r.messages?.[0];
+              const rowRollup = {
+                conversationId: r.conversationId,
+                sessionIndex: r.sessionIndex,
+                closureValue: r.closureValue,
+                leadType: r.leadType,
+              };
+              const showValue = shouldDisplayClosureValueBadge(rowRollup, rollupRows);
+              const pipelineSuperseded =
+                r.leadType?.valueRollup === "PIPELINE" &&
+                (r.closureValue ?? 0) > 0 &&
+                !isPipelineClosureActiveForRollup(rowRollup, rollupRows);
               return (
                 <motion.li key={r.id} variants={staggerItem}>
                   <Link
@@ -146,12 +168,21 @@ export function MyAttendancePage() {
                             {r.leadType.name}
                           </span>
                         ) : null}
-                        {r.closureValue != null && r.closureValue > 0 ? (
+                        {showValue ? (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
-                            {fmtMoney(r.closureValue)}
+                            {fmtMoney(r.closureValue!)}
+                          </span>
+                        ) : pipelineSuperseded ? (
+                          <span className="text-[10px] text-gray-400 line-through dark:text-ink-500">
+                            {fmtMoney(r.closureValue!)}
                           </span>
                         ) : null}
                       </div>
+                      {pipelineSuperseded ? (
+                        <p className="mt-0.5 text-[10px] text-gray-400 dark:text-ink-500">
+                          {t("attendance.pipelineSupersededHint")}
+                        </p>
+                      ) : null}
                       <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-ink-400">
                         {r.closureReason || last?.body || "—"}
                       </p>

@@ -65,6 +65,10 @@ import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
+import {
+  isPipelineClosureActiveForRollup,
+  shouldDisplayClosureValueBadge,
+} from "@/lib/closureValueRollup";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
@@ -105,6 +109,7 @@ interface LeadTypeRow {
   id: string;
   name: string;
   color: string;
+  valueRollup?: string;
 }
 
 type CopilotInsights = {
@@ -1851,7 +1856,25 @@ export function ConversationDetailPage() {
             </span>
           </summary>
           <div className="divide-y divide-ink-200/60 border-t border-ink-200/60 dark:divide-white/10 dark:border-white/10">
-            {conversation.closureRecords.map((rec) => (
+            {conversation.closureRecords.map((rec) => {
+              const historyRollupRows = conversation.closureRecords!.map((r) => ({
+                conversationId: conversation.id,
+                sessionIndex: r.sessionIndex,
+                closureValue: r.closureValue,
+                leadType: r.leadType,
+              }));
+              const rowRollup = {
+                conversationId: conversation.id,
+                sessionIndex: rec.sessionIndex,
+                closureValue: rec.closureValue,
+                leadType: rec.leadType,
+              };
+              const showValue = shouldDisplayClosureValueBadge(rowRollup, historyRollupRows);
+              const pipelineSuperseded =
+                rec.leadType?.valueRollup === "PIPELINE" &&
+                (rec.closureValue ?? 0) > 0 &&
+                !isPipelineClosureActiveForRollup(rowRollup, historyRollupRows);
+              return (
               <details
                 key={rec.id}
                 open={rec.sessionIndex === 1}
@@ -1909,12 +1932,24 @@ export function ConversationDetailPage() {
                       <dd className="whitespace-pre-wrap text-ink-600 dark:text-ink-400">{rec.closureReason}</dd>
                     </div>
                   ) : null}
-                  {rec.closureValue != null && rec.closureValue > 0 ? (
+                  {showValue ? (
                     <div>
                       <dt className="font-medium text-ink-700 dark:text-ink-300">
                         {t("conversationDetail.closureValueLabel")}
                       </dt>
-                      <dd>{fmtMoney(rec.closureValue)}</dd>
+                      <dd>{fmtMoney(rec.closureValue!)}</dd>
+                    </div>
+                  ) : pipelineSuperseded ? (
+                    <div>
+                      <dt className="font-medium text-ink-500 dark:text-ink-500">
+                        {t("conversationDetail.closureValueLabel")}
+                      </dt>
+                      <dd className="text-ink-400 line-through dark:text-ink-500">
+                        {fmtMoney(rec.closureValue!)}
+                      </dd>
+                      <dd className="mt-0.5 text-[9px] text-ink-400 dark:text-ink-500">
+                        {t("attendance.pipelineSupersededHint")}
+                      </dd>
                     </div>
                   ) : null}
                   {rec.csatScore != null ? (
@@ -1954,7 +1989,8 @@ export function ConversationDetailPage() {
                   ) : null}
                 </dl>
               </details>
-            ))}
+              );
+            })}
           </div>
         </details>
       ) : null}

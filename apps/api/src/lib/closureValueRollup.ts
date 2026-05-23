@@ -50,25 +50,55 @@ export function latestClosureRecordPerConversation<T extends ClosureRollupRow>(
 }
 
 /**
- * Somas por conversa: vendido usa o último WON; negociação usa o último PIPELINE.
- * Reabrir e encerrar em pipeline não remove vendas WON anteriores; novo WON substitui o WON da conversa.
+ * Vendido: soma de todos os encerramentos WON (cada venda / sessão conta).
+ * Negociação: por conversa, só o último encerramento se ainda for pipeline (venda WON posterior zera).
  */
 export function computeClosureRollupTotals(records: ClosureRollupRow[]): {
   wonValue: number;
   pipelineValue: number;
 } {
-  const latestWon = latestClosureRecordPerConversationAndBucket(records, "WON");
-  const latestPipeline = latestClosureRecordPerConversationAndBucket(records, "PIPELINE");
-
   let wonValue = 0;
+  for (const row of records) {
+    if (closureRecordContribution(row) === "WON") {
+      wonValue += row.closureValue ?? 0;
+    }
+  }
+
+  const latestPerConversation = latestClosureRecordPerConversation(records);
   let pipelineValue = 0;
-  for (const row of latestWon) {
-    wonValue += row.closureValue ?? 0;
+  for (const row of latestPerConversation) {
+    if (closureRecordContribution(row) === "PIPELINE") {
+      pipelineValue += row.closureValue ?? 0;
+    }
   }
-  for (const row of latestPipeline) {
-    pipelineValue += row.closureValue ?? 0;
-  }
+
   return { wonValue, pipelineValue };
+}
+
+/** Pipeline antigo deixou de contar após venda (WON) na mesma conversa. */
+export function isPipelineClosureActiveForRollup(
+  row: ClosureRollupRow,
+  allRecords: ClosureRollupRow[],
+): boolean {
+  if (closureRecordContribution(row) !== "PIPELINE") return false;
+  const convRecords = allRecords.filter((r) => r.conversationId === row.conversationId);
+  const latest = pickLatestClosureRecord(convRecords);
+  if (!latest || closureRecordContribution(latest) === "WON") return false;
+  const [latestPipeline] = latestClosureRecordPerConversationAndBucket(convRecords, "PIPELINE");
+  return latestPipeline != null && latestPipeline.sessionIndex === row.sessionIndex;
+}
+
+/** Exibir badge de valor no histórico (WON sempre; pipeline só se ainda ativo). */
+export function shouldDisplayClosureValueBadge(
+  row: ClosureRollupRow,
+  allRecords: ClosureRollupRow[],
+): boolean {
+  const v = row.closureValue ?? 0;
+  if (v <= 0) return false;
+  const bucket = closureRecordContribution(row);
+  if (bucket === "WON") return true;
+  if (bucket === "PIPELINE") return isPipelineClosureActiveForRollup(row, allRecords);
+  return false;
 }
 
 /** Último registo de encerramento da conversa (maior sessionIndex). */
