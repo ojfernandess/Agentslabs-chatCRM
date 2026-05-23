@@ -146,6 +146,9 @@
     border-color: var(--crm-bubble-border);
     color: var(--crm-bubble-text);
     box-shadow: var(--crm-bubble-shadow);
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .dark .crm-bubble {

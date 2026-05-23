@@ -1815,92 +1815,124 @@ export function ConversationDetailPage() {
       ) : null}
 
       {conversation.closureRecords && conversation.closureRecords.length > 0 ? (
-        <div className="rounded-2xl border border-ink-200/80 bg-ink-50/60 p-4 dark:border-white/10 dark:bg-ink-900/40">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-600 dark:text-ink-400">
-            {t("conversationDetail.attendanceHistoryTitle")}
-          </p>
-          <div className="mt-3 space-y-3">
+        <details className="rounded-xl border border-ink-200/70 bg-ink-50/40 dark:border-white/10 dark:bg-white/[0.03]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 [&::-webkit-details-marker]:hidden">
+            <span>{t("conversationDetail.attendanceHistoryTitle")}</span>
+            <span className="rounded-full bg-ink-200/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-ink-600 dark:bg-white/10 dark:text-ink-300">
+              {conversation.closureRecords.length}
+            </span>
+          </summary>
+          <div className="divide-y divide-ink-200/60 border-t border-ink-200/60 dark:divide-white/10 dark:border-white/10">
             {conversation.closureRecords.map((rec) => (
-              <div
+              <details
                 key={rec.id}
-                className={clsx(
-                  "rounded-xl border p-3",
-                  rec.sessionIndex === 1
-                    ? "border-brand-300/70 bg-brand-50/50 dark:border-brand-800/50 dark:bg-brand-950/25"
-                    : "border-ink-200/70 bg-white/80 dark:border-ink-700 dark:bg-ink-900/50",
-                )}
+                open={rec.sessionIndex === 1}
+                className="group/att px-3 py-1.5"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-ink-800 dark:text-ink-200">
-                    {t("conversationDetail.attendanceSession")} #{rec.sessionIndex}
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-1.5 py-1 text-[10px] text-ink-700 dark:text-ink-300 [&::-webkit-details-marker]:hidden">
+                  <span className="font-semibold text-ink-800 dark:text-ink-200">
+                    #{rec.sessionIndex}
+                  </span>
+                  <span className="text-ink-500 dark:text-ink-400">
+                    {format(new Date(rec.resolvedAt), "P · HH:mm", { locale: dateLocale })}
                   </span>
                   {rec.sessionIndex === 1 ? (
-                    <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-800 dark:bg-brand-900/50 dark:text-brand-200">
+                    <span className="rounded bg-brand-100/90 px-1 py-px text-[9px] font-medium text-brand-800 dark:bg-brand-900/40 dark:text-brand-200">
                       {t("conversationDetail.attendanceFirst")}
                     </span>
                   ) : null}
                   {rec.isNewAttendance ? (
-                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-900/50 dark:text-violet-200">
+                    <span className="rounded bg-violet-100/90 px-1 py-px text-[9px] font-medium text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
                       {t("conversationDetail.attendanceNew")}
                     </span>
                   ) : null}
-                  <span className="text-[10px] text-ink-500 dark:text-ink-400">
-                    {format(new Date(rec.resolvedAt), "PPp", { locale: dateLocale })}
-                  </span>
-                </div>
-                {rec.resolvedBy ? (
-                  <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">
-                    {t("conversationDetail.attendanceResolvedBy").replace("{name}", rec.resolvedBy.name)}
-                  </p>
-                ) : null}
-                {rec.leadType ? (
-                  <p className="mt-1 text-sm text-ink-800 dark:text-ink-200">
-                    <span className="font-medium">{t("conversationDetail.leadLabel")}:</span>{" "}
-                    <span style={{ color: rec.leadType.color }} className="font-semibold">
+                  {rec.leadType ? (
+                    <span
+                      className="max-w-[8rem] truncate rounded px-1 py-px text-[9px] font-medium text-white"
+                      style={{ backgroundColor: rec.leadType.color }}
+                      title={rec.leadType.name}
+                    >
                       {rec.leadType.name}
                     </span>
-                  </p>
-                ) : null}
-                {rec.closureReason ? (
-                  <p className="mt-1 whitespace-pre-wrap text-xs text-ink-700 dark:text-ink-300">{rec.closureReason}</p>
-                ) : null}
-                {rec.closureValue != null && rec.closureValue > 0 ? (
-                  <p className="mt-1 text-xs text-ink-800 dark:text-ink-200">
-                    <span className="font-medium">{t("conversationDetail.closureValueLabel")}:</span>{" "}
-                    {fmtMoney(rec.closureValue)}
-                  </p>
-                ) : null}
-                {rec.csatScore != null ? (
-                  <div className="mt-2 flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Star
-                        key={i}
-                        className={clsx(
-                          "h-3.5 w-3.5",
-                          i <= rec.csatScore! ? "fill-amber-400 text-amber-400" : "text-ink-300 dark:text-ink-600",
-                        )}
-                      />
-                    ))}
-                    <span className="ml-1 text-xs font-semibold tabular-nums">{rec.csatScore}/5</span>
-                  </div>
-                ) : null}
-                {rec.reopenedAt ? (
-                  <p className="mt-2 text-[11px] font-medium text-amber-800 dark:text-amber-300">
-                    {t("conversationDetail.attendanceReopened")
-                      .replace(
-                        "{date}",
-                        format(new Date(rec.reopenedAt), "PPp", { locale: dateLocale }),
-                      )
-                      .replace("{name}", rec.reopenedBy?.name ?? "—")}
-                  </p>
-                ) : null}
-              </div>
+                  ) : null}
+                  {rec.reopenedAt ? (
+                    <span className="text-[9px] font-medium text-amber-700 dark:text-amber-300">
+                      {t("audit.statusReopened")}
+                    </span>
+                  ) : null}
+                </summary>
+                <dl className="mb-2 space-y-1 border-l border-ink-200/80 pl-2 text-[10px] leading-snug text-ink-600 dark:border-white/10 dark:text-ink-400">
+                  {rec.resolvedBy ? (
+                    <dd>
+                      {t("conversationDetail.attendanceResolvedBy").replace("{name}", rec.resolvedBy.name)}
+                    </dd>
+                  ) : null}
+                  {rec.leadType ? (
+                    <div>
+                      <dt className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.leadLabel")}</dt>
+                      <dd style={{ color: rec.leadType.color }}>{rec.leadType.name}</dd>
+                    </div>
+                  ) : null}
+                  {rec.closureReason ? (
+                    <div>
+                      <dt className="font-medium text-ink-700 dark:text-ink-300">
+                        {t("conversationDetail.closureReason")}
+                      </dt>
+                      <dd className="whitespace-pre-wrap text-ink-600 dark:text-ink-400">{rec.closureReason}</dd>
+                    </div>
+                  ) : null}
+                  {rec.closureValue != null && rec.closureValue > 0 ? (
+                    <div>
+                      <dt className="font-medium text-ink-700 dark:text-ink-300">
+                        {t("conversationDetail.closureValueLabel")}
+                      </dt>
+                      <dd>{fmtMoney(rec.closureValue)}</dd>
+                    </div>
+                  ) : null}
+                  {rec.csatScore != null ? (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <dt className="font-medium text-ink-700 dark:text-ink-300">
+                        {t("conversationDetail.csatRecordedPrefix")}
+                      </dt>
+                      <dd className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <Star
+                            key={i}
+                            className={clsx(
+                              "h-3 w-3",
+                              i <= rec.csatScore! ? "fill-amber-400 text-amber-400" : "text-ink-300 dark:text-ink-600",
+                            )}
+                          />
+                        ))}
+                        <span className="font-semibold tabular-nums">{rec.csatScore}/5</span>
+                      </dd>
+                    </div>
+                  ) : null}
+                  {rec.csatComment ? (
+                    <div>
+                      <dt className="font-medium text-ink-700 dark:text-ink-300">CSAT</dt>
+                      <dd className="whitespace-pre-wrap">{rec.csatComment}</dd>
+                    </div>
+                  ) : null}
+                  {rec.reopenedAt ? (
+                    <div>
+                      <dt className="font-medium text-amber-800 dark:text-amber-300">{t("audit.statusReopened")}</dt>
+                      <dd>
+                        {t("conversationDetail.attendanceReopened")
+                          .replace("{date}", format(new Date(rec.reopenedAt), "PPp", { locale: dateLocale }))
+                          .replace("{name}", rec.reopenedBy?.name ?? "—")}
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </details>
             ))}
           </div>
-        </div>
+        </details>
       ) : null}
 
       {conversation.status === "RESOLVED" &&
+      !(conversation.closureRecords && conversation.closureRecords.length > 0) &&
       (conversation.closureReason ||
         conversation.leadType ||
         conversation.csatScore != null ||
@@ -1960,6 +1992,15 @@ export function ConversationDetailPage() {
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {conversation.status === "RESOLVED" &&
+      conversation.csatSurveyPending &&
+      conversation.closureRecords &&
+      conversation.closureRecords.length > 0 ? (
+        <p className="rounded-lg border border-brand-200/50 bg-brand-50/30 px-3 py-2 text-[10px] leading-snug text-brand-900/90 dark:border-brand-900/35 dark:bg-brand-950/20 dark:text-brand-100/90">
+          {t("conversationDetail.csatPendingCustomer")}
+        </p>
       ) : null}
 
       <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
@@ -2390,7 +2431,7 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative max-w-[min(calc(100%-2.5rem),28rem)] border px-3.5 py-2.5",
+                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] border px-3.5 py-2.5",
                     bubbleRadius,
                     isNew && "crm-bubble-unread",
                     msg.isPrivate ? "crm-bubble-private" : inbound ? "crm-bubble-in" : "crm-bubble-out",
@@ -2433,7 +2474,7 @@ export function ConversationDetailPage() {
                   {msg.body?.trim() && msg.type !== "DOCUMENT" ? (
                     <p
                       className={clsx(
-                        "whitespace-pre-wrap text-sm leading-snug",
+                        "whitespace-pre-wrap break-words text-sm leading-snug [overflow-wrap:anywhere]",
                         msg.type === "IMAGE" && msg.mediaUrl && "mt-2",
                       )}
                     >
@@ -2441,7 +2482,9 @@ export function ConversationDetailPage() {
                     </p>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-snug">{msg.body}</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-snug [overflow-wrap:anywhere]">
+                      {msg.body}
+                    </p>
                   ) : null}
                   {msg.type === "VIDEO" && msg.mediaUrl && (
                     <video
