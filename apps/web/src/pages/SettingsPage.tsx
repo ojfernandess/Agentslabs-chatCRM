@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Clock,
   MessageSquare,
+  Search,
 } from "lucide-react";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvidersOverview";
@@ -65,6 +67,7 @@ type SettingsSection =
   | "canned"
   | "workflow"
   | "assistant"
+  | "leadFinder"
   | "crm"
   | "templates"
   | "team";
@@ -101,6 +104,7 @@ interface AppSettings {
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
   assistantOpenaiApiKey?: string | null;
+  leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
 }
 
@@ -183,7 +187,13 @@ function workflowDisplayFromMinutes(total: number): { n: number; u: "minutes" | 
 export function SettingsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
-  const [section, setSection] = useState<SettingsSection>("channel");
+  const [searchParams] = useSearchParams();
+  const showLeadFinder = user?.organizationFeatures?.lead_finder ?? false;
+  const initialSection = searchParams.get("section");
+  const [section, setSection] = useState<SettingsSection>(() => {
+    if (initialSection === "leadFinder" && showLeadFinder) return "leadFinder";
+    return "channel";
+  });
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const effectiveOrgId = user?.actingOrganizationId ?? user?.organizationId ?? null;
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -279,6 +289,8 @@ export function SettingsPage() {
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
   const [assistantOpenaiBaseUrl, setAssistantOpenaiBaseUrl] = useState("");
+  const [leadFinderSerpApiKey, setLeadFinderSerpApiKey] = useState("");
+  const [leadFinderSaveError, setLeadFinderSaveError] = useState("");
   const [assistantSaveError, setAssistantSaveError] = useState("");
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
@@ -572,6 +584,8 @@ export function SettingsPage() {
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
+        setLeadFinderSerpApiKey("");
+        setLeadFinderSaveError("");
         setAssistantSaveError("");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
@@ -813,6 +827,40 @@ export function SettingsPage() {
       setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
     } catch (err) {
       setAssistantSaveError(err instanceof Error ? err.message : t("settings.assistantSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveLeadFinder = async (e: FormEvent) => {
+    e.preventDefault();
+    setLeadFinderSaveError("");
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = {};
+      if (leadFinderSerpApiKey.trim()) {
+        body.leadFinderSerpApiKey = leadFinderSerpApiKey.trim();
+      }
+      const data = await api.put<AppSettings>("/settings", body);
+      setSettings(data);
+      setLeadFinderSerpApiKey("");
+    } catch (err) {
+      setLeadFinderSaveError(err instanceof Error ? err.message : t("settings.leadFinderSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveLeadFinderKey = async () => {
+    if (!window.confirm(t("settings.leadFinderRemoveKeyConfirm"))) return;
+    setLeadFinderSaveError("");
+    setSaving(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", { leadFinderSerpApiKey: null });
+      setSettings(data);
+      setLeadFinderSerpApiKey("");
+    } catch (err) {
+      setLeadFinderSaveError(err instanceof Error ? err.message : t("settings.leadFinderSaveError"));
     } finally {
       setSaving(false);
     }
@@ -1062,6 +1110,7 @@ export function SettingsPage() {
   };
 
   const assistantKeyMasked = settings?.assistantOpenaiApiKey === "••••••••";
+  const leadFinderKeyMasked = settings?.leadFinderSerpApiKey === "••••••••";
 
   if (!isAdmin) {
     return (
@@ -1102,6 +1151,7 @@ export function SettingsPage() {
                   ["canned", t("settings.sectionCanned"), MessageSquare],
                   ["workflow", t("settings.sectionWorkflow"), GitBranch],
                   ["assistant", t("settings.sectionAssistant"), Sparkles],
+                  ...(showLeadFinder ? ([["leadFinder", t("settings.sectionLeadFinder"), Search]] as const) : []),
                   ["crm", t("settings.sectionCrm"), Tag],
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -2054,6 +2104,64 @@ export function SettingsPage() {
                   </div>
                 </motion.form>
               )}
+
+              {section === "leadFinder" && showLeadFinder ? (
+                <motion.form
+                  onSubmit={(e) => void handleSaveLeadFinder(e)}
+                  className="card-surface rounded-xl p-6"
+                  variants={staggerItem}
+                >
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
+                    <Search className="h-5 w-5" />
+                    {t("settings.leadFinderTitle")}
+                  </h2>
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.leadFinderIntro")}</p>
+                  {leadFinderKeyMasked ? (
+                    <p className="mb-4 rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2 text-sm text-brand-900">
+                      {t("settings.leadFinderKeyActiveHint")}
+                    </p>
+                  ) : null}
+                  <div>
+                    <label htmlFor="leadFinderSerpApiKey" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                      {t("settings.leadFinderApiKeyLabel")}
+                    </label>
+                    <input
+                      id="leadFinderSerpApiKey"
+                      type="password"
+                      autoComplete="off"
+                      value={leadFinderSerpApiKey}
+                      onChange={(e) => setLeadFinderSerpApiKey(e.target.value)}
+                      className="mt-1 block w-full input-field text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      placeholder={leadFinderKeyMasked ? "••••••••" : ""}
+                    />
+                    <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.leadFinderApiKeyHint")}</p>
+                  </div>
+                  {leadFinderSaveError ? (
+                    <p className="mt-4 text-sm text-red-600" role="alert">
+                      {leadFinderSaveError}
+                    </p>
+                  ) : null}
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                    >
+                      {saving ? t("common.loading") : t("settings.leadFinderSave")}
+                    </button>
+                    {leadFinderKeyMasked ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void handleRemoveLeadFinderKey()}
+                        className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {t("settings.leadFinderRemoveKey")}
+                      </button>
+                    ) : null}
+                  </div>
+                </motion.form>
+              ) : null}
 
               {section === "crm" && (
                 <motion.div

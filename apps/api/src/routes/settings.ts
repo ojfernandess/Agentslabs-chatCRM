@@ -130,6 +130,7 @@ const settingsSchema = z.object({
   audioTranscriptionEnabled: z.boolean().optional(),
   silentTransferToAgentBot: z.boolean().optional(),
   assistantOpenaiApiKey: z.union([z.string().max(500), z.null()]).optional(),
+  leadFinderSerpApiKey: z.union([z.string().max(500), z.null()]).optional(),
   assistantOpenaiApiBaseUrl: z.union([z.string().url().max(512), z.literal(""), z.null()]).optional(),
   assistantAiEnabled: z.boolean().optional(),
   aiPilotAccessEnabled: z.boolean().optional(),
@@ -142,6 +143,7 @@ function maskSettings<
     whatsappApiKey: string | null;
     whatsappWebhookSecret: string | null;
     assistantOpenaiApiKey?: string | null;
+    leadFinderSerpApiKey?: string | null;
     assistantOpenaiApiBaseUrl?: string | null;
     aiAlertWebhookSecret?: string | null;
     assistantAiEnabled?: boolean;
@@ -157,6 +159,7 @@ function maskSettings<
         ? (settings as { whatsappWebhookVerifyToken?: string | null }).whatsappWebhookVerifyToken ?? null
         : null,
     assistantOpenaiApiKey: settings.assistantOpenaiApiKey ? "••••••••" : null,
+    leadFinderSerpApiKey: settings.leadFinderSerpApiKey ? "••••••••" : null,
     aiAlertWebhookSecret: settings.aiAlertWebhookSecret ? "••••••••" : null,
     webhookUrl: webhookUrlForOrganization(organizationId),
   };
@@ -349,6 +352,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
             delete data.assistantOpenaiApiKey;
           } else {
             data.assistantOpenaiApiKey = encrypt(t.slice(0, 500));
+          }
+        }
+      }
+
+      if (data.leadFinderSerpApiKey !== undefined) {
+        const raw = data.leadFinderSerpApiKey;
+        if (raw === null) {
+          /* explicit clear */
+        } else if (typeof raw === "string") {
+          const t = raw.trim();
+          if (!t || t === "••••••••" || t === "***") {
+            delete data.leadFinderSerpApiKey;
+          } else {
+            data.leadFinderSerpApiKey = encrypt(t.slice(0, 500));
           }
         }
       }

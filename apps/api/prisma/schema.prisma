@@ -1121,6 +1121,8 @@ model Settings {
 
   /// Chave OpenAI opcional da organização para «Gerar resposta» e IA & Insights (painel humano). Se null, usa a chave do servidor.
   assistantOpenaiApiKey      String? @map("assistant_openai_api_key") @db.Text
+  /// Chave SerpApi (Google Maps) para prospecção Lead Finder.
+  leadFinderSerpApiKey       String? @map("lead_finder_serp_api_key") @db.Text
   /// Base URL API compatível com OpenAI (ex. Azure). Se null, usa `OPENAI_API_BASE_URL` do servidor.
   assistantOpenaiApiBaseUrl String? @map("assistant_openai_api_base_url") @db.VarChar(512)
 

@@ -35,6 +35,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: true,
   },
   {
+    key: "lead_finder",
+    defaultEnabled: false,
+  },
+  {
     key: "chatbot_flow_builder",
     defaultEnabled: true,
   },

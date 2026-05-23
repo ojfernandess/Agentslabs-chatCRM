@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3, Tags } from "lucide-react";
+import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3, Tags, Search } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/hooks/useAuth";
 import { CampaignCenterMetrics } from "@/pages/broadcasts/CampaignCenterMetrics";
 import { CampaignFiltersSidebar } from "@/pages/broadcasts/CampaignFiltersSidebar";
 import { CampaignCard } from "@/pages/broadcasts/CampaignCard";
@@ -28,6 +30,7 @@ import {
   type CampaignDetailRow,
 } from "@/pages/broadcasts/campaignDraftMapper";
 import { CampaignAnalyticsPanel } from "@/pages/broadcasts/CampaignAnalyticsPanel";
+import { LeadFinderPanel } from "@/pages/broadcasts/LeadFinderPanel";
 import {
   OMNICHANNEL_CHANNELS,
   type BroadcastDashboard,
@@ -41,6 +44,9 @@ import {
 
 export function BroadcastCampaignsPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const showLeadFinder = user?.organizationFeatures?.lead_finder ?? false;
   const [rows, setRows] = useState<CampaignRow[]>([]);
   const [dashboard, setDashboard] = useState<BroadcastDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +68,7 @@ export function BroadcastCampaignsPage() {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [integrationTools, setIntegrationTools] = useState<{ id: string; name: string; toolType: string }[]>([]);
   const [pipelineStages, setPipelineStages] = useState<{ id: string; name: string }[]>([]);
+  const [leadTypes, setLeadTypes] = useState<{ id: string; name: string }[]>([]);
   const [segmentPreview, setSegmentPreview] = useState<SegmentRules>({});
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -149,11 +156,12 @@ export function BroadcastCampaignsPage() {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [tagList, inboxesRes, tools, stages] = await Promise.all([
+      const [tagList, inboxesRes, tools, stages, leadTypeList] = await Promise.all([
         api.get<TagOption[]>("/tags"),
         api.get<{ data: InboxOption[] }>("/inboxes"),
         api.get<{ id: string; name: string; toolType: string }[]>("/broadcasts/integration-tools").catch(() => []),
         api.get<{ id: string; name: string }[]>("/crm/pipeline-stages").catch(() => []),
+        api.get<{ id: string; name: string }[]>("/lead-types").catch(() => []),
       ]);
       setTags(Array.isArray(tagList) ? tagList : []);
       const inboxRows = [...(inboxesRes.data ?? [])].sort(
@@ -162,6 +170,7 @@ export function BroadcastCampaignsPage() {
       setInboxes(inboxRows);
       setIntegrationTools(Array.isArray(tools) ? tools : []);
       setPipelineStages(Array.isArray(stages) ? stages : []);
+      setLeadTypes(Array.isArray(leadTypeList) ? leadTypeList : []);
       const defaultWa =
         inboxRows.find((i) => i.channelType === "WHATSAPP" && i.isDefault) ??
         inboxRows.find((i) => i.channelType === "WHATSAPP");
@@ -172,6 +181,7 @@ export function BroadcastCampaignsPage() {
       setTemplates([]);
       setIntegrationTools([]);
       setPipelineStages([]);
+      setLeadTypes([]);
     }
   }, [loadTemplatesForInbox]);
 
@@ -471,6 +481,7 @@ export function BroadcastCampaignsPage() {
   const centerTabs: { id: CampaignCenterTab; label: string; icon: typeof LayoutGrid }[] = [
     { id: "campaigns", label: t("broadcastPage.tabCampaigns"), icon: LayoutGrid },
     { id: "followup", label: t("broadcastPage.tabFollowUp"), icon: Tags },
+    ...(showLeadFinder ? [{ id: "leadfinder" as const, label: t("broadcastPage.tabLeadFinder"), icon: Search }] : []),
     { id: "templates", label: t("broadcastPage.tabTemplates"), icon: BookOpen },
     { id: "flows", label: t("broadcastPage.tabFlows"), icon: GitBranch },
     { id: "analytics", label: t("broadcastPage.tabAnalytics"), icon: BarChart3 },
@@ -593,7 +604,7 @@ export function BroadcastCampaignsPage() {
         ))}
       </div>
 
-      <div className={clsx("grid gap-6", centerTab === "followup" ? "" : "lg:grid-cols-[240px_1fr]")}>
+      <div className={clsx("grid gap-6", centerTab === "followup" || centerTab === "leadfinder" ? "" : "lg:grid-cols-[240px_1fr]")}>
         {centerTab === "campaigns" ? (
           <CampaignFiltersSidebar
             search={search}
@@ -603,11 +614,23 @@ export function BroadcastCampaignsPage() {
             channelFilter={channelFilter}
             onChannelFilterChange={setChannelFilter}
           />
-        ) : centerTab !== "followup" ? (
+        ) : centerTab !== "followup" && centerTab !== "leadfinder" ? (
           <div className="hidden lg:block" />
         ) : null}
 
-        <div className={clsx("min-w-0", centerTab === "followup" && "max-w-3xl")}>
+        <div className={clsx("min-w-0", (centerTab === "followup" || centerTab === "leadfinder") && "max-w-3xl")}>
+          {centerTab === "leadfinder" && showLeadFinder ? (
+            <LeadFinderPanel
+              tags={tags}
+              leadTypes={leadTypes}
+              inboxes={inboxes}
+              templates={templates}
+              templatesLoading={templatesLoading}
+              onInboxChange={handleInboxChange}
+              onOpenSettings={() => navigate("/settings?section=leadFinder")}
+            />
+          ) : null}
+
           {centerTab === "followup" ? (
             <FollowUpCampaignPanel
               tags={tags}
