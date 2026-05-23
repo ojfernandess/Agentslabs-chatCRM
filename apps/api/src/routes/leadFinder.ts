@@ -5,7 +5,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { decrypt } from "../lib/encryption.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
-import { searchGoogleMaps, type SerpMapsLocalResult } from "../lib/serpApiGoogleMaps.js";
+import { searchGoogleMaps, SerpApiError, type SerpMapsLocalResult } from "../lib/serpApiGoogleMaps.js";
 import { normalizeLeadFinderPhone } from "../lib/leadFinderPhone.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
@@ -32,6 +32,37 @@ async function getSerpApiKey(organizationId: string): Promise<string | null> {
   });
   const key = decrypt(settings?.leadFinderSerpApiKey ?? null);
   return key?.trim() || null;
+}
+
+function shouldUseLocationParam(body: { niche?: string; city?: string; query?: string }, q: string): string | undefined {
+  const city = body.city?.trim();
+  if (!city) return undefined;
+  if (body.query?.trim()) return undefined;
+  const niche = body.niche?.trim();
+  if (niche && q.includes(city)) return undefined;
+  if (q.includes(" em ") && q.includes(city)) return undefined;
+  return city;
+}
+
+function mapSerpApiError(err: unknown): { status: number; message: string } {
+  if (err instanceof SerpApiError) {
+    const msg = err.message || "SerpApi search failed";
+    const lower = msg.toLowerCase();
+    if (err.httpStatus === 401 || lower.includes("invalid api key") || lower.includes("api key")) {
+      return { status: 400, message: "Chave SerpApi inválida. Verifique em Configurações → Lead Finder." };
+    }
+    if (err.httpStatus === 429 || lower.includes("rate limit")) {
+      return { status: 429, message: "Limite de pesquisas SerpApi atingido. Tente novamente em alguns minutos." };
+    }
+    return { status: 502, message: msg };
+  }
+  if (err instanceof Error && err.name === "TimeoutError") {
+    return { status: 504, message: "SerpApi demorou demais a responder. Tente novamente." };
+  }
+  if (err instanceof Error) {
+    return { status: 502, message: err.message };
+  }
+  return { status: 502, message: "SerpApi search failed" };
 }
 
 function buildSearchQuery(body: { niche?: string; city?: string; query?: string }): string {
@@ -162,31 +193,30 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const city = parsed.data.city?.trim();
-      const data = await searchGoogleMaps({
+      const serp = await searchGoogleMaps({
         apiKey,
         q,
-        location: city || undefined,
+        location: shouldUseLocationParam(parsed.data, q),
         start: parsed.data.start ?? 0,
         hl: parsed.data.hl ?? "pt",
         gl: parsed.data.gl ?? "br",
       });
 
-      const results = (data.local_results ?? []).map(mapLocalResult);
+      const results = serp.localResults.map(mapLocalResult);
+      const start = parsed.data.start ?? 0;
       const nextStart =
-        data.serpapi_pagination?.next && results.length > 0
-          ? (parsed.data.start ?? 0) + results.length
-          : null;
+        serp.paginationNext && results.length > 0 ? start + results.length : null;
 
       return {
         query: q,
         results,
+        localResultsState: serp.localResultsState,
         nextStart: nextStart != null && nextStart <= 100 ? nextStart : null,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "SerpApi search failed";
-      app.log.warn({ err, organizationId }, "lead finder search failed");
-      return reply.status(502).send({ error: "Bad Gateway", message, statusCode: 502 });
+      const mapped = mapSerpApiError(err);
+      app.log.warn({ err, organizationId, query: q }, "lead finder search failed");
+      return reply.status(mapped.status).send({ error: "Bad Gateway", message: mapped.message, statusCode: mapped.status });
     }
   });
 

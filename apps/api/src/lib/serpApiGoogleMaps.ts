@@ -1,4 +1,5 @@
 const SERP_API_BASE = "https://serpapi.com/search.json";
+const SERP_FETCH_TIMEOUT_MS = 90_000;
 
 export interface SerpMapsLocalResult {
   position?: number;
@@ -22,7 +23,8 @@ export interface SerpMapsLocalResult {
 
 export interface SerpMapsSearchResponse {
   search_metadata?: { status?: string; error?: string };
-  local_results?: SerpMapsLocalResult[];
+  search_information?: { local_results_state?: string; query_displayed?: string };
+  local_results?: SerpMapsLocalResult[] | SerpMapsLocalResult[][] | SerpMapsLocalResult;
   serpapi_pagination?: { next?: string };
   error?: string;
 }
@@ -30,6 +32,7 @@ export interface SerpMapsSearchResponse {
 export interface GoogleMapsSearchParams {
   apiKey: string;
   q: string;
+  /** SerpApi location origin — omit when city is already in `q`. */
   location?: string;
   start?: number;
   hl?: string;
@@ -38,7 +41,57 @@ export interface GoogleMapsSearchParams {
   z?: number;
 }
 
-export async function searchGoogleMaps(params: GoogleMapsSearchParams): Promise<SerpMapsSearchResponse> {
+export class SerpApiError extends Error {
+  constructor(
+    message: string,
+    readonly httpStatus?: number,
+    readonly serpStatus?: string,
+  ) {
+    super(message);
+    this.name = "SerpApiError";
+  }
+}
+
+function isLocalResult(value: unknown): value is SerpMapsLocalResult {
+  return Boolean(value && typeof value === "object" && "title" in (value as Record<string, unknown>));
+}
+
+/** SerpApi may return a flat array or grouped arrays depending on layout. */
+export function normalizeLocalResults(raw: SerpMapsSearchResponse["local_results"]): SerpMapsLocalResult[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    const flat: SerpMapsLocalResult[] = [];
+    for (const item of raw) {
+      if (Array.isArray(item)) {
+        for (const inner of item) {
+          if (isLocalResult(inner)) flat.push(inner);
+        }
+      } else if (isLocalResult(item)) {
+        flat.push(item);
+      }
+    }
+    return flat;
+  }
+  return isLocalResult(raw) ? [raw] : [];
+}
+
+async function parseSerpJson(res: Response): Promise<SerpMapsSearchResponse> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as SerpMapsSearchResponse;
+  } catch {
+    throw new SerpApiError(
+      text.trim().slice(0, 200) || `Resposta inválida da SerpApi (HTTP ${res.status})`,
+      res.status,
+    );
+  }
+}
+
+export async function searchGoogleMaps(params: GoogleMapsSearchParams): Promise<{
+  localResults: SerpMapsLocalResult[];
+  paginationNext: string | null;
+  localResultsState: string | null;
+}> {
   const url = new URL(SERP_API_BASE);
   url.searchParams.set("engine", "google_maps");
   url.searchParams.set("type", "search");
@@ -47,24 +100,39 @@ export async function searchGoogleMaps(params: GoogleMapsSearchParams): Promise<
   url.searchParams.set("hl", params.hl ?? "pt");
   url.searchParams.set("gl", params.gl ?? "br");
   url.searchParams.set("google_domain", params.googleDomain ?? "google.com.br");
+
+  const start = params.start ?? 0;
+  url.searchParams.set("start", String(start));
+
   if (params.location?.trim()) {
     url.searchParams.set("location", params.location.trim());
     url.searchParams.set("z", String(params.z ?? 14));
   }
-  if (params.start != null && params.start > 0) {
-    url.searchParams.set("start", String(params.start));
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    signal: AbortSignal.timeout(SERP_FETCH_TIMEOUT_MS),
+  });
+
+  const data = await parseSerpJson(res);
+  const serpError = data.error ?? data.search_metadata?.error;
+  const serpStatus = data.search_metadata?.status;
+
+  if (!res.ok) {
+    throw new SerpApiError(serpError ?? `SerpApi HTTP ${res.status}`, res.status, serpStatus);
+  }
+  if (serpStatus === "Error") {
+    throw new SerpApiError(serpError ?? "SerpApi search failed", res.status, serpStatus);
   }
 
-  const res = await fetch(url.toString(), { method: "GET" });
-  const data = (await res.json()) as SerpMapsSearchResponse;
-  if (!res.ok) {
-    const msg = data.error ?? data.search_metadata?.error ?? `SerpApi HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  if (data.search_metadata?.status === "Error") {
-    throw new Error(data.search_metadata.error ?? data.error ?? "SerpApi search failed");
-  }
-  return data;
+  const localResults = normalizeLocalResults(data.local_results);
+  const state = data.search_information?.local_results_state ?? null;
+
+  return {
+    localResults,
+    paginationNext: data.serpapi_pagination?.next ?? null,
+    localResultsState: state,
+  };
 }
 
 export async function fetchGoogleMapsPlace(params: {
@@ -78,10 +146,13 @@ export async function fetchGoogleMapsPlace(params: {
   url.searchParams.set("api_key", params.apiKey);
   url.searchParams.set("hl", params.hl ?? "pt");
 
-  const res = await fetch(url.toString(), { method: "GET" });
-  const data = (await res.json()) as { place_results?: SerpMapsLocalResult; error?: string };
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    signal: AbortSignal.timeout(SERP_FETCH_TIMEOUT_MS),
+  });
+  const data = (await parseSerpJson(res)) as { place_results?: SerpMapsLocalResult; error?: string };
   if (!res.ok) {
-    throw new Error(data.error ?? `SerpApi HTTP ${res.status}`);
+    throw new SerpApiError(data.error ?? `SerpApi HTTP ${res.status}`, res.status);
   }
   return data.place_results ?? null;
 }
