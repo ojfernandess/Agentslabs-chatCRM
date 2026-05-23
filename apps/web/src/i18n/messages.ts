@@ -2268,12 +2268,12 @@ export const messages = {
     },
     attendance: {
       title: "Meu atendimento",
-      subtitle: "Conversas finalizadas atribuídas a si — tipo de lead e valores",
+      subtitle: "Histórico dos seus encerramentos — tipo de lead e valores (mantém registos mesmo após reabrir)",
       totalValue: "Soma dos valores (vendido)",
       negotiationSubtotal: "Em negociação",
       negotiationSubtotalHint: "Valores de tipos marcados como pipeline / cotação — configurável em Tipos de lead.",
-      resolvedTotal: "Total finalizadas",
-      empty: "Ainda não há conversas finalizadas a si.",
+      resolvedTotal: "Total de registos",
+      empty: "Ainda não há atendimentos finalizados seus.",
     },
     audit: {
       title: "Auditoria de conversas",
@@ -5233,12 +5233,12 @@ export const messages = {
     },
     attendance: {
       title: "My attendance",
-      subtitle: "Resolved conversations assigned to you — lead types and values",
+      subtitle: "Your closure history — lead types and values (kept after reopen)",
       totalValue: "Total value (closed-won)",
       negotiationSubtotal: "In negotiation",
       negotiationSubtotalHint: "Values from lead types classified as pipeline — configurable under Lead types.",
-      resolvedTotal: "Resolved count",
-      empty: "No resolved conversations assigned to you yet.",
+      resolvedTotal: "Total records",
+      empty: "No closed attendances on your account yet.",
     },
     audit: {
       title: "Conversation audit",

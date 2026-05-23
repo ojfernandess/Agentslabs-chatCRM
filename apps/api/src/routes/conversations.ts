@@ -64,6 +64,11 @@ const auditQuerySchema = z.object({
   resolvedTo: z.string().optional(),
 });
 
+const myAttendanceQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(100),
+});
+
 const updateSchema = z.object({
   status: z.enum(["OPEN", "RESOLVED", "PENDING"]).optional(),
   assignedToId: z.string().uuid().nullable().optional(),
@@ -345,6 +350,65 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           },
         };
       }),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  });
+
+  /** Encerramentos do atendente atual (histórico permanente; inclui conversas reabertas). */
+  app.get("/my-attendance", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const query = myAttendanceQuerySchema.parse(request.query);
+    const where: Prisma.ConversationClosureRecordWhereInput = {
+      organizationId,
+      assignedToId: request.user.id,
+    };
+
+    const contactListSelect = {
+      id: true,
+      name: true,
+      phone: true,
+      profilePictureUrl: true,
+    } as const;
+
+    const [records, total] = await Promise.all([
+      prisma.conversationClosureRecord.findMany({
+        where,
+        include: {
+          ...closureRecordInclude,
+          conversation: {
+            include: {
+              contact: { select: contactListSelect },
+              messages: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true, createdAt: true } },
+            },
+          },
+        },
+        orderBy: { resolvedAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      prisma.conversationClosureRecord.count({ where }),
+    ]);
+
+    return {
+      data: records.map((row) => ({
+        id: row.id,
+        conversationId: row.conversationId,
+        sessionIndex: row.sessionIndex,
+        status: row.reopenedAt ? "REOPENED" : "RESOLVED",
+        resolvedAt: row.resolvedAt.toISOString(),
+        reopenedAt: row.reopenedAt?.toISOString() ?? null,
+        isNewAttendance: row.isNewAttendance,
+        closureValue: row.closureValue,
+        closureReason: row.closureReason,
+        contact: row.conversation.contact,
+        team: row.team,
+        leadType: row.leadType,
+        messages: row.conversation.messages,
+      })),
       total,
       page: query.page,
       pageSize: query.pageSize,

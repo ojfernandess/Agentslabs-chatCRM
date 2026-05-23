@@ -9,8 +9,12 @@ import { formatCurrencyUnits } from "@/lib/currency";
 
 interface Row {
   id: string;
+  conversationId: string;
+  sessionIndex: number;
   status: string;
-  updatedAt: string;
+  resolvedAt: string;
+  reopenedAt: string | null;
+  isNewAttendance: boolean;
   closureValue: number | null;
   closureReason: string | null;
   contact: { id: string; name: string; phone: string };
@@ -22,6 +26,7 @@ interface Row {
 export function MyAttendancePage() {
   const { t, dateLocale } = useI18n();
   const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const hasAnimated = useRef(false);
 
@@ -31,12 +36,14 @@ export function MyAttendancePage() {
     async function load() {
       if (!hasAnimated.current) setLoading(true);
       try {
-        const res = await api.get<{ data: Row[] }>(
-          "/conversations?mine=1&status=RESOLVED&pageSize=100",
+        const res = await api.get<{ data: Row[]; total: number }>(
+          "/conversations/my-attendance?pageSize=100",
         );
         setRows(res.data);
+        setTotal(res.total);
       } catch {
         setRows([]);
+        setTotal(0);
       } finally {
         setLoading(false);
       }
@@ -82,7 +89,7 @@ export function MyAttendancePage() {
             <p className="text-base font-semibold text-gray-800 dark:text-ink-100">{fmtMoney(totalPipelineValue)}</p>
             <p className="mt-2 text-xs text-gray-400 dark:text-ink-500">{t("attendance.negotiationSubtotalHint")}</p>
             <p className="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-400 dark:border-ink-800 dark:text-ink-500">
-              {t("attendance.resolvedTotal")}: {rows.length}
+              {t("attendance.resolvedTotal")}: {total}
             </p>
           </div>
         </div>
@@ -107,7 +114,7 @@ export function MyAttendancePage() {
               return (
                 <motion.li key={r.id} variants={staggerItem}>
                   <Link
-                    to={`/conversations/${r.id}`}
+                    to={`/conversations/${r.conversationId}`}
                     className="flex flex-wrap items-center gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-ink-700 dark:bg-ink-900/50 dark:hover:border-ink-600"
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
@@ -116,6 +123,25 @@ export function MyAttendancePage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-gray-900 dark:text-ink-50">{r.contact.name}</span>
+                        {r.sessionIndex > 1 ? (
+                          <span className="text-[10px] text-gray-500 dark:text-ink-400">
+                            {t("conversationDetail.attendanceSession")} #{r.sessionIndex}
+                          </span>
+                        ) : null}
+                        <span
+                          className={
+                            r.reopenedAt
+                              ? "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                              : "rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                          }
+                        >
+                          {r.reopenedAt ? t("audit.statusReopened") : t("audit.statusResolved")}
+                        </span>
+                        {r.isNewAttendance ? (
+                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
+                            {t("conversationDetail.attendanceNew")}
+                          </span>
+                        ) : null}
                         {r.leadType ? (
                           <span
                             className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
@@ -141,7 +167,7 @@ export function MyAttendancePage() {
                     </div>
                     <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-ink-500">
                       <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(new Date(r.updatedAt), {
+                      {formatDistanceToNow(new Date(r.resolvedAt), {
                         addSuffix: true,
                         locale: dateLocale,
                       })}
