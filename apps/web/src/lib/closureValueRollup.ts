@@ -18,6 +18,21 @@ export function closureRecordContribution(
   return "IGNORE";
 }
 
+export function latestClosureRecordPerConversationAndBucket<T extends ClosureRollupRow>(
+  records: T[],
+  bucket: "WON" | "PIPELINE",
+): T[] {
+  const map = new Map<string, T>();
+  for (const row of records) {
+    if (closureRecordContribution(row) !== bucket) continue;
+    const prev = map.get(row.conversationId);
+    if (!prev || row.sessionIndex > prev.sessionIndex) {
+      map.set(row.conversationId, row);
+    }
+  }
+  return [...map.values()];
+}
+
 export function latestClosureRecordPerConversation<T extends ClosureRollupRow>(
   records: T[],
 ): T[] {
@@ -35,14 +50,16 @@ export function computeClosureRollupTotals(records: ClosureRollupRow[]): {
   wonValue: number;
   pipelineValue: number;
 } {
-  const latest = latestClosureRecordPerConversation(records);
+  const latestWon = latestClosureRecordPerConversationAndBucket(records, "WON");
+  const latestPipeline = latestClosureRecordPerConversationAndBucket(records, "PIPELINE");
+
   let wonValue = 0;
   let pipelineValue = 0;
-  for (const row of latest) {
-    const bucket = closureRecordContribution(row);
-    const v = row.closureValue ?? 0;
-    if (bucket === "WON") wonValue += v;
-    else if (bucket === "PIPELINE") pipelineValue += v;
+  for (const row of latestWon) {
+    wonValue += row.closureValue ?? 0;
+  }
+  for (const row of latestPipeline) {
+    pipelineValue += row.closureValue ?? 0;
   }
   return { wonValue, pipelineValue };
 }

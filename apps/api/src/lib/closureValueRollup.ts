@@ -19,7 +19,23 @@ export function closureRecordContribution(
   return "IGNORE";
 }
 
-/** Último atendimento por conversa — evita somar PIPELINE antigo após novo encerramento WON. */
+/** Último encerramento da conversa dentro de um bucket (WON ou PIPELINE). */
+export function latestClosureRecordPerConversationAndBucket<T extends ClosureRollupRow>(
+  records: T[],
+  bucket: "WON" | "PIPELINE",
+): T[] {
+  const map = new Map<string, T>();
+  for (const row of records) {
+    if (closureRecordContribution(row) !== bucket) continue;
+    const prev = map.get(row.conversationId);
+    if (!prev || row.sessionIndex > prev.sessionIndex) {
+      map.set(row.conversationId, row);
+    }
+  }
+  return [...map.values()];
+}
+
+/** Último atendimento por conversa (qualquer classificação). */
 export function latestClosureRecordPerConversation<T extends ClosureRollupRow>(
   records: T[],
 ): T[] {
@@ -33,18 +49,24 @@ export function latestClosureRecordPerConversation<T extends ClosureRollupRow>(
   return [...map.values()];
 }
 
+/**
+ * Somas por conversa: vendido usa o último WON; negociação usa o último PIPELINE.
+ * Reabrir e encerrar em pipeline não remove vendas WON anteriores; novo WON substitui o WON da conversa.
+ */
 export function computeClosureRollupTotals(records: ClosureRollupRow[]): {
   wonValue: number;
   pipelineValue: number;
 } {
-  const latest = latestClosureRecordPerConversation(records);
+  const latestWon = latestClosureRecordPerConversationAndBucket(records, "WON");
+  const latestPipeline = latestClosureRecordPerConversationAndBucket(records, "PIPELINE");
+
   let wonValue = 0;
   let pipelineValue = 0;
-  for (const row of latest) {
-    const bucket = closureRecordContribution(row);
-    const v = row.closureValue ?? 0;
-    if (bucket === "WON") wonValue += v;
-    else if (bucket === "PIPELINE") pipelineValue += v;
+  for (const row of latestWon) {
+    wonValue += row.closureValue ?? 0;
+  }
+  for (const row of latestPipeline) {
+    pipelineValue += row.closureValue ?? 0;
   }
   return { wonValue, pipelineValue };
 }

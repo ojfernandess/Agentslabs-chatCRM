@@ -2276,9 +2276,9 @@ export const messages = {
       totalValue: "Soma dos valores (vendido)",
       negotiationSubtotal: "Em negociação",
       negotiationSubtotalHint:
-        "Por conversa, conta só o último encerramento em tipos «Em negociação» — configurável em Tipos de lead.",
+        "Por conversa, o último encerramento em «Em negociação» — reabrir com outro tipo não remove este valor.",
       totalValueHint:
-        "Por conversa, conta só o último encerramento em tipos «Classificação do valor» (vendido).",
+        "Por conversa, o último encerramento vendido (WON) — só muda ao finalizar de novo com tipo «Classificação do valor».",
       resolvedTotal: "Total de registos",
       empty: "Ainda não há atendimentos finalizados seus.",
     },
@@ -5248,8 +5248,9 @@ export const messages = {
       totalValue: "Total value (closed-won)",
       negotiationSubtotal: "In negotiation",
       negotiationSubtotalHint:
-        "Per conversation, only the latest closure in pipeline-classified lead types counts.",
-      totalValueHint: "Per conversation, only the latest closure in closed-won lead types counts.",
+        "Per conversation, latest pipeline closure — reopening with another type does not remove this amount.",
+      totalValueHint:
+        "Per conversation, latest closed-won (WON) closure — only changes when you close again with a WON lead type.",
       resolvedTotal: "Total records",
       empty: "No closed attendances on your account yet.",
     },
