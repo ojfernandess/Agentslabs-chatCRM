@@ -131,31 +131,58 @@ export async function evolutionGoCreateInstance(options: {
   return { id, name, token };
 }
 
+export type EvolutionGoOpResult = {
+  ok: boolean;
+  status: number;
+  hint?: string;
+};
+
+export const EVOLUTION_GO_WEBHOOK_SUBSCRIBE = [
+  "MESSAGE",
+  "READ_RECEIPT",
+  "CONNECTION",
+  "QRCODE",
+  "GROUP",
+  "CALL",
+] as const;
+
+function evolutionGoUpstreamHint(status: number, json: unknown): string | undefined {
+  const root = asRecord(json);
+  const err = asRecord(root?.error);
+  const msg =
+    (typeof err?.message === "string" ? err.message : null) ??
+    (typeof root?.message === "string" ? root.message : null);
+  if (msg) return msg;
+  if (status === 401) return "Invalid API key or instance token";
+  if (status === 404) return "Instance not found on Evolution Go server";
+  if (status === 0) return "Evolution Go server unreachable";
+  return undefined;
+}
+
 export async function evolutionGoGetQr(options: {
   baseUrl: string;
   apiKey: string;
-  instanceId?: string;
 }): Promise<{ qrDataUrl: string; code: string } | null> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const { ok, json } = await evolutionGoFetchJson(`${base}/instance/qr`, {
-    headers: {
-      apikey: options.apiKey,
-      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
-    },
-  });
-  if (!ok) return null;
-  const root = asRecord(json);
-  const data = asRecord(root?.data);
-  const qrDataUrl =
-    typeof data?.Qrcode === "string"
-      ? data.Qrcode.trim()
-      : typeof data?.qrcode === "string"
-        ? data.qrcode.trim()
-        : "";
-  const code =
-    typeof data?.Code === "string" ? data.Code.trim() : typeof data?.code === "string" ? data.code.trim() : "";
-  if (!qrDataUrl && !code) return null;
-  return { qrDataUrl, code };
+  const attempts = [`${base}/instance/qr`, `${base}/instance/qrcode`];
+  for (const url of attempts) {
+    const { ok, json } = await evolutionGoFetchJson(url, {
+      headers: { apikey: options.apiKey },
+    });
+    if (!ok) continue;
+    const root = asRecord(json);
+    const data = asRecord(root?.data);
+    const qrDataUrl =
+      typeof data?.Qrcode === "string"
+        ? data.Qrcode.trim()
+        : typeof data?.qrcode === "string"
+          ? data.qrcode.trim()
+          : "";
+    const code =
+      typeof data?.Code === "string" ? data.Code.trim() : typeof data?.code === "string" ? data.code.trim() : "";
+    if (qrDataUrl || code) return { qrDataUrl, code };
+  }
+  return null;
 }
 
 export async function evolutionGoGetStatus(options: {
@@ -197,19 +224,20 @@ export async function evolutionGoGetStatus(options: {
 export async function evolutionGoRequestPairingCode(options: {
   baseUrl: string;
   apiKey: string;
-  instanceId?: string;
   phone: string;
-  subscribe: string[];
+  subscribe?: string[];
 }): Promise<string | null> {
   const base = normalizeBaseUrl(options.baseUrl);
   const { ok, json } = await evolutionGoFetchJson(`${base}/instance/pair`, {
     method: "POST",
     headers: {
       apikey: options.apiKey,
-      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ phone: options.phone, subscribe: options.subscribe }),
+    body: JSON.stringify({
+      phone: options.phone,
+      subscribe: options.subscribe ?? [...EVOLUTION_GO_WEBHOOK_SUBSCRIBE],
+    }),
   });
   if (!ok) return null;
   const root = asRecord(json);
@@ -226,26 +254,32 @@ export async function evolutionGoRequestPairingCode(options: {
 export async function evolutionGoConnectInstance(options: {
   baseUrl: string;
   apiKey: string;
-  instanceId?: string;
   webhookUrl: string;
-  subscribe: string[];
-  immediate: boolean;
+  subscribe?: string[];
+  immediate?: boolean;
   phone?: string;
-}): Promise<boolean> {
+}): Promise<EvolutionGoOpResult> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const { ok } = await evolutionGoFetchJson(`${base}/instance/connect`, {
+  const body = {
+    webhookUrl: options.webhookUrl,
+    subscribe: options.subscribe ?? [...EVOLUTION_GO_WEBHOOK_SUBSCRIBE],
+    immediate: options.immediate ?? true,
+    rabbitmqEnabled: "disabled",
+    websocketEnable: "disabled",
+    natsEnabled: "disabled",
+    ...(options.phone ? { phone: options.phone } : {}),
+  };
+  const { ok, status, json } = await evolutionGoFetchJson(`${base}/instance/connect`, {
     method: "POST",
     headers: {
       apikey: options.apiKey,
-      ...(options.instanceId ? { instanceId: options.instanceId } : {}),
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      webhookUrl: options.webhookUrl,
-      subscribe: options.subscribe,
-      immediate: options.immediate,
-      ...(options.phone ? { phone: options.phone } : {}),
-    }),
+    body: JSON.stringify(body),
   });
-  return ok;
+  return {
+    ok,
+    status,
+    hint: ok ? undefined : evolutionGoUpstreamHint(status, json),
+  };
 }

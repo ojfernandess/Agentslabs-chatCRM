@@ -21,6 +21,11 @@ import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInbo
 import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
 import { decrypt } from "../lib/encryption.js";
 import { getDefaultInboxId } from "../lib/defaultInbox.js";
+import {
+  evolutionGoWebhookMatchesOrgInstance,
+  findEvolutionGoWhatsappInboxId,
+  isEvolutionGoWebhookPayload,
+} from "../lib/evolutionGoPlatform.js";
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 
@@ -111,6 +116,10 @@ async function resolveWhatsappWebhookTarget(
     }
   }
 
+  if (!inboxId && options.body && isEvolutionGoWebhookPayload(options.body)) {
+    inboxId = (await findEvolutionGoWhatsappInboxId(organizationId)) ?? undefined;
+  }
+
   if (inboxId) {
     const inbox = await prisma.inbox.findFirst({
       where: { id: inboxId, organizationId },
@@ -166,13 +175,36 @@ async function handleWhatsAppPost(
     return reply.status(400).send({ error: "Invalid JSON body" });
   }
 
+  let resolvedInboxId = options?.inboxId;
+  if (isEvolutionGoWebhookPayload(body)) {
+    const evoInbox = await findEvolutionGoWhatsappInboxId(organizationId);
+    if (evoInbox) resolvedInboxId = evoInbox;
+  }
+
   const target = await resolveWhatsappWebhookTarget(organizationId, {
-    inboxId: options?.inboxId,
+    inboxId: resolvedInboxId,
     body,
   });
   if (!target) {
     app.log.warn({ organizationId }, "Webhook received but no WhatsApp inbox/provider resolved");
     return reply.status(200).send();
+  }
+
+  if (target.whatsappProvider === "evolution_go" || isEvolutionGoWebhookPayload(body)) {
+    const orgSettings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { whatsappPhoneNumberId: true, whatsappApiKey: true, whatsappProvider: true },
+    });
+    if (
+      orgSettings?.whatsappProvider === "evolution_go" &&
+      !evolutionGoWebhookMatchesOrgInstance(body, orgSettings)
+    ) {
+      app.log.info(
+        { organizationId, inboxId: target.inboxId },
+        "Evolution Go webhook ignored: instance in payload does not match organization instance",
+      );
+      return reply.status(200).send();
+    }
   }
 
   const provider = await getWhatsAppProviderForInbox(organizationId, target.inboxId);

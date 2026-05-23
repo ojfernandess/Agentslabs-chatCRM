@@ -151,11 +151,14 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     return id;
   }
 
-  parseWebhook(headers: Record<string, string | undefined>, body: unknown) {
+  parseWebhook(_headers: Record<string, string | undefined>, body: unknown) {
     const env = asRecord(body);
-    const event = typeof env?.event === "string" ? env.event.trim() : "";
+    if (!env) return { messages: [], statusUpdates: [] };
 
-    if (event === "Receipt") {
+    const event = typeof env.event === "string" ? env.event.trim() : "";
+    const eventUpper = event.toUpperCase();
+
+    if (event === "Receipt" || eventUpper === "READ_RECEIPT") {
       const state = typeof env?.state === "string" ? env.state : "";
       const mapped = state ? mapReceiptState(state) : null;
       if (!mapped) return { messages: [], statusUpdates: [] };
@@ -172,22 +175,60 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       return { messages: [], statusUpdates };
     }
 
-    if (event !== "Message") {
+    const isMessageEvent = eventUpper === "MESSAGE" || event === "Message" || event === "messages.upsert";
+
+    if (!isMessageEvent) {
+      const dataProbe = asRecord(env.data);
+      const hasMessageShape =
+        dataProbe?.Info ||
+        dataProbe?.info ||
+        dataProbe?.key ||
+        dataProbe?.Message ||
+        dataProbe?.message;
+      if (!hasMessageShape) return { messages: [], statusUpdates: [] };
+    }
+
+    const data = asRecord(env.data) ?? env;
+    if (!data) return { messages: [], statusUpdates: [] };
+
+    const key = asRecord(data.key);
+    const info = asRecord(data?.Info ?? data?.info);
+
+    const keyFromMe = key?.fromMe === true || key?.FromMe === true;
+
+    let waMessageId = "";
+    let remoteJid = "";
+    let senderJid = "";
+    let senderAlt = "";
+    let isGroup = false;
+    let pushName: string | undefined;
+    let timestamp = new Date();
+    if (key) {
+      if (keyFromMe) return { messages: [], statusUpdates: [] };
+      waMessageId = typeof key.id === "string" ? key.id.trim() : "";
+      remoteJid = typeof key.remoteJid === "string" ? key.remoteJid.trim() : "";
+      isGroup = remoteJid.includes("@g.us");
+      pushName =
+        typeof data.pushName === "string" && data.pushName.trim()
+          ? data.pushName.trim()
+          : typeof key.pushName === "string" && key.pushName.trim()
+            ? key.pushName.trim()
+            : undefined;
+      timestamp = parseIsoOrNow(data.messageTimestamp ?? data.timestamp);
+    } else if (info) {
+      if (info.IsFromMe === true || info.isFromMe === true) return { messages: [], statusUpdates: [] };
+      waMessageId = typeof info.ID === "string" && info.ID.trim() ? info.ID.trim() : "";
+      remoteJid = typeof info.Chat === "string" ? info.Chat.trim() : "";
+      senderJid = typeof info.Sender === "string" ? info.Sender.trim() : "";
+      senderAlt = typeof info.SenderAlt === "string" ? info.SenderAlt.trim() : "";
+      isGroup = info.IsGroup === true || remoteJid.includes("@g.us");
+      pushName = typeof info.PushName === "string" && info.PushName.trim() ? info.PushName.trim() : undefined;
+      timestamp = parseIsoOrNow(info.Timestamp);
+    } else {
       return { messages: [], statusUpdates: [] };
     }
 
-    const data = asRecord(env?.data);
-    const info = asRecord(data?.Info ?? data?.info);
-    if (!info) return { messages: [], statusUpdates: [] };
-    if (info.IsFromMe === true) return { messages: [], statusUpdates: [] };
-
-    const waMessageId = typeof info.ID === "string" && info.ID.trim() ? info.ID.trim() : "";
     if (!waMessageId) return { messages: [], statusUpdates: [] };
-
-    const remoteJid = typeof info.Chat === "string" ? info.Chat.trim() : "";
-    const senderJid = typeof info.Sender === "string" ? info.Sender.trim() : "";
-    const senderAlt = typeof info.SenderAlt === "string" ? info.SenderAlt.trim() : "";
-    const isGroup = info.IsGroup === true || remoteJid.includes("@g.us");
 
     let from: string | null = null;
     let groupJid: string | undefined;
@@ -205,9 +246,6 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       if (!from) return { messages: [], statusUpdates: [] };
     }
 
-    const pushName = typeof info.PushName === "string" && info.PushName.trim() ? info.PushName.trim() : undefined;
-    const timestamp = parseIsoOrNow(info.Timestamp);
-
     const msg = asRecord(data?.Message ?? data?.message) ?? {};
     let type = "TEXT";
     let bodyText: string | undefined;
@@ -219,7 +257,12 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     const extText = ext && typeof ext.text === "string" ? ext.text : undefined;
     bodyText = extText ?? conv;
 
-    const mediaTypeHint = typeof info.MediaType === "string" ? info.MediaType.trim().toLowerCase() : "";
+    const mediaTypeHint =
+      typeof info?.MediaType === "string"
+        ? info.MediaType.trim().toLowerCase()
+        : typeof data.mediaType === "string"
+          ? data.mediaType.trim().toLowerCase()
+          : "";
     const base64 = typeof msg.base64 === "string" && msg.base64.trim() ? msg.base64.trim() : "";
 
     const img = asRecord(msg.imageMessage);
@@ -317,16 +360,17 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     const token = headers["x-openconduit-token"];
     if (token && timingEqual(token, secret)) return true;
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(rawBody) as unknown;
-      const env = asRecord(parsed);
-      const it = typeof env?.instanceToken === "string" ? env.instanceToken.trim() : "";
-      if (it) {
-        if (timingEqual(it, secret)) return true;
-        if (this.apiKey && timingEqual(it, this.apiKey)) return true;
-      }
+      parsed = JSON.parse(rawBody) as unknown;
     } catch {
       return false;
+    }
+    const env = asRecord(parsed);
+    const it = typeof env?.instanceToken === "string" ? env.instanceToken.trim() : "";
+    if (it) {
+      if (timingEqual(it, secret)) return true;
+      if (this.apiKey && timingEqual(it, this.apiKey)) return true;
     }
     return false;
   }
@@ -339,9 +383,9 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
     const st = await evolutionGoGetStatus({
       baseUrl: this.baseUrl,
       apiKey: this.apiKey,
-      ...(this.instanceId ? { instanceId: this.instanceId } : {}),
+      instanceRef: this.instanceId,
     });
-    return st ? st.connected : false;
+    return st ? st.loggedIn : false;
   }
 
   async fetchContactProfilePictureBuffer(toE164: string): Promise<Buffer | null> {

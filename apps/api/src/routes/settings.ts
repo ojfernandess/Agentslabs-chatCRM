@@ -29,7 +29,6 @@ import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDis
 import {
   evolutionGoConnectInstance,
   evolutionGoCreateInstance,
-  evolutionGoFetchAllInstances,
   evolutionGoGetQr,
   evolutionGoRequestPairingCode,
 } from "../lib/evolutionGoApi.js";
@@ -42,9 +41,12 @@ import {
 import {
   ensureEvolutionGoProviderSelected,
   evolutionGoPlatformModeActive,
+  evolutionGoScopedInstanceName,
+  evolutionGoWebhookUrlForOrganization,
   fetchEvolutionGoInstanceStatus,
+  listEvolutionGoInstancesForOrg,
   resolveEvolutionGoApiConnection,
-  resolveEvolutionGoInstanceConnection,
+  resolveEvolutionGoOperationAuth,
 } from "../lib/evolutionGoPlatform.js";
 import {
   evolutionApiCreateInstance,
@@ -561,18 +563,18 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instances = await evolutionGoFetchAllInstances({ baseUrl: api.baseUrl, apiKey: api.apiKey });
-      if (!instances) {
+      const selected = settings.whatsappPhoneNumberId?.trim() ?? "";
+      const orgInstances = await listEvolutionGoInstancesForOrg(organizationId, selected || undefined);
+      if (!orgInstances) {
         return reply.status(502).send({
           error: "Bad Gateway",
           message: "Failed to fetch Evolution Go instances",
           statusCode: 502,
         });
       }
-      const selected = settings.whatsappPhoneNumberId?.trim() ?? "";
       return {
         selectedInstance: selected || null,
-        instances: instances.map((x) => ({
+        instances: orgInstances.map((x) => ({
           ...x,
           selected: !!selected && (x.name === selected || x.id === selected),
         })),
@@ -591,32 +593,44 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
-      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
-      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
-      if (!api || (!instanceApi && !instanceId)) {
+      const instanceRef = settings.whatsappPhoneNumberId?.trim() ?? "";
+      if (!instanceRef) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go base URL / API key not configured",
+          message: "Create or select an Evolution Go instance first",
           statusCode: 400,
         });
       }
-      const ok = await evolutionGoConnectInstance({
-        baseUrl: api.baseUrl,
-        apiKey: api.apiKey,
-        ...(instanceId ? { instanceId } : {}),
-        webhookUrl: webhookUrlForOrganization(organizationId),
-        subscribe: ["ALL"],
-        immediate: true,
-      });
-      if (!ok) {
-        return reply.status(502).send({
-          error: "Bad Gateway",
-          message: "Evolution Go connect failed",
-          statusCode: 502,
+      const auth = await resolveEvolutionGoOperationAuth(settings, organizationId);
+      if (!auth) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message:
+            "Instance token missing. Create the instance again or re-select it from your organization instances.",
+          statusCode: 400,
         });
       }
-      return { connected: true };
+      const webhookUrl = await evolutionGoWebhookUrlForOrganization(organizationId);
+      const connectRes = await evolutionGoConnectInstance({
+        baseUrl: auth.baseUrl,
+        apiKey: auth.apiKey,
+        webhookUrl,
+      });
+      if (!connectRes.ok) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: connectRes.hint ?? "Evolution Go connect failed",
+          statusCode: 502,
+          upstreamStatus: connectRes.status,
+        });
+      }
+      await syncWhatsappCredentialsToInbox(organizationId, {
+        whatsappProvider: "evolution_go",
+        whatsappPhoneNumberId: instanceRef,
+        whatsappApiKey: settings.whatsappApiKey ?? undefined,
+        evolutionApiBaseUrl: settings.evolutionApiBaseUrl ?? undefined,
+      }).catch(() => {});
+      return { connected: true, webhookUrl };
     });
 
     const evolutionGoCreateSchema = z.object({
@@ -649,10 +663,11 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
       const token = randomUUID();
+      const instanceName = evolutionGoScopedInstanceName(organizationId, parsed.data.name.trim());
       const created = await evolutionGoCreateInstance({
         baseUrl: api.baseUrl,
         apiKey: api.apiKey,
-        name: parsed.data.name.trim(),
+        name: instanceName,
         token,
       });
       if (!created) {
@@ -671,17 +686,28 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           whatsappApiKey: encrypt(created.token),
         },
       });
-      const instanceApi = await resolveEvolutionGoInstanceConnection(updated);
-      if (instanceApi) {
-        await evolutionGoConnectInstance({
-          baseUrl: instanceApi.baseUrl,
-          apiKey: instanceApi.apiKey,
-          webhookUrl: webhookUrlForOrganization(organizationId),
-          subscribe: ["ALL"],
-          immediate: true,
-        });
+      const webhookUrl = await evolutionGoWebhookUrlForOrganization(organizationId);
+      const connectRes = await evolutionGoConnectInstance({
+        baseUrl: api.baseUrl,
+        apiKey: created.token,
+        webhookUrl,
+      });
+      if (connectRes.ok) {
+        await syncWhatsappCredentialsToInbox(organizationId, {
+          whatsappProvider: "evolution_go",
+          whatsappPhoneNumberId: created.id,
+          whatsappApiKey: updated.whatsappApiKey ?? undefined,
+          evolutionApiBaseUrl: updated.evolutionApiBaseUrl ?? undefined,
+        }).catch(() => {});
       }
-      return { instance: { id: created.id, name: created.name, connected: false, webhookConfigured: !!instanceApi } };
+      return {
+        instance: {
+          id: created.id,
+          name: created.name,
+          connected: false,
+          webhookConfigured: connectRes.ok,
+        },
+      };
     });
 
     admin.get("/evolution-go/qr", async (request, reply) => {
@@ -696,21 +722,26 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
-      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
-      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
-      if (!api || (!instanceApi && !instanceId)) {
+      if (!settings.whatsappPhoneNumberId?.trim()) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go base URL / API key not configured",
+          message: "Create an Evolution Go instance first",
           statusCode: 400,
         });
       }
-      const qr = await evolutionGoGetQr({ baseUrl: api.baseUrl, apiKey: api.apiKey, ...(instanceId ? { instanceId } : {}) });
+      const auth = await resolveEvolutionGoOperationAuth(settings, organizationId);
+      if (!auth) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Instance token missing — recreate the instance",
+          statusCode: 400,
+        });
+      }
+      const qr = await evolutionGoGetQr({ baseUrl: auth.baseUrl, apiKey: auth.apiKey });
       if (!qr) {
         return reply.status(502).send({
           error: "Bad Gateway",
-          message: "Evolution Go get QR failed",
+          message: "Evolution Go get QR failed — connect webhook first or wait if already logged in",
           statusCode: 502,
         });
       }
@@ -761,22 +792,18 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const instanceApi = await resolveEvolutionGoInstanceConnection(settings);
-      const api = instanceApi ?? (await resolveEvolutionGoApiConnection(settings));
-      const instanceId = instanceApi ? undefined : (settings.whatsappPhoneNumberId?.trim() ?? "");
-      if (!api || (!instanceApi && !instanceId)) {
+      const auth = await resolveEvolutionGoOperationAuth(settings, organizationId);
+      if (!auth) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Evolution Go base URL / API key not configured",
+          message: "Instance token missing — create the instance first",
           statusCode: 400,
         });
       }
       const code = await evolutionGoRequestPairingCode({
-        baseUrl: api.baseUrl,
-        apiKey: api.apiKey,
-        ...(instanceId ? { instanceId } : {}),
+        baseUrl: auth.baseUrl,
+        apiKey: auth.apiKey,
         phone: parsed.data.phone.trim(),
-        subscribe: ["ALL"],
       });
       if (!code) {
         return reply.status(502).send({
