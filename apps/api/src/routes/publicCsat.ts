@@ -88,16 +88,32 @@ export async function publicCsatRoutes(app: FastifyInstance): Promise<void> {
         };
       }
 
+      const recordedAt = new Date();
       const updated = await tx.conversation.update({
         where: { id: conv.id },
         data: {
           csatScore: parsed.data.score,
           csatComment: comment,
-          csatRecordedAt: new Date(),
+          csatRecordedAt: recordedAt,
           csatSurveyToken: null,
         },
         select: { csatScore: true, csatComment: true },
       });
+      const closure = await tx.conversationClosureRecord.findFirst({
+        where: { conversationId: conv.id },
+        orderBy: { sessionIndex: "desc" },
+        select: { id: true },
+      });
+      if (closure) {
+        await tx.conversationClosureRecord.update({
+          where: { id: closure.id },
+          data: {
+            csatScore: parsed.data.score,
+            csatComment: comment,
+            csatRecordedAt: recordedAt,
+          },
+        });
+      }
       return { ok: true as const, score: updated.csatScore!, comment: updated.csatComment, duplicate: false as const };
     });
 

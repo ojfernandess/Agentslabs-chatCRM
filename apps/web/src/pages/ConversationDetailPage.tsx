@@ -147,6 +147,24 @@ interface OrgTagRow {
   color: string;
 }
 
+interface ClosureRecordRow {
+  id: string;
+  sessionIndex: number;
+  resolvedAt: string;
+  reopenedAt: string | null;
+  isNewAttendance: boolean;
+  closureReason: string | null;
+  closureValue: number | null;
+  csatScore: number | null;
+  csatComment: string | null;
+  csatRecordedAt: string | null;
+  resolvedBy: { id: string; name: string; email?: string } | null;
+  reopenedBy: { id: string; name: string; email?: string } | null;
+  assignedTo: { id: string; name: string; email?: string } | null;
+  team: { id: string; name: string } | null;
+  leadType: LeadTypeRow | null;
+}
+
 interface ConversationDetail {
   id: string;
   status: string;
@@ -159,6 +177,7 @@ interface ConversationDetail {
   csatRecordedAt?: string | null;
   csatSurveyPending?: boolean;
   leadType: LeadTypeRow | null;
+  closureRecords?: ClosureRecordRow[];
   assignedTo?: { id: string; name: string } | null;
   /** Presente na API — caixa e flag do bot por canal. */
   inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
@@ -1791,6 +1810,92 @@ export function ConversationDetailPage() {
             >
               {t("conversationDetail.saveTeam")}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {conversation.closureRecords && conversation.closureRecords.length > 0 ? (
+        <div className="rounded-2xl border border-ink-200/80 bg-ink-50/60 p-4 dark:border-white/10 dark:bg-ink-900/40">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-600 dark:text-ink-400">
+            {t("conversationDetail.attendanceHistoryTitle")}
+          </p>
+          <div className="mt-3 space-y-3">
+            {conversation.closureRecords.map((rec) => (
+              <div
+                key={rec.id}
+                className={clsx(
+                  "rounded-xl border p-3",
+                  rec.sessionIndex === 1
+                    ? "border-brand-300/70 bg-brand-50/50 dark:border-brand-800/50 dark:bg-brand-950/25"
+                    : "border-ink-200/70 bg-white/80 dark:border-ink-700 dark:bg-ink-900/50",
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-ink-800 dark:text-ink-200">
+                    {t("conversationDetail.attendanceSession")} #{rec.sessionIndex}
+                  </span>
+                  {rec.sessionIndex === 1 ? (
+                    <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-800 dark:bg-brand-900/50 dark:text-brand-200">
+                      {t("conversationDetail.attendanceFirst")}
+                    </span>
+                  ) : null}
+                  {rec.isNewAttendance ? (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-900/50 dark:text-violet-200">
+                      {t("conversationDetail.attendanceNew")}
+                    </span>
+                  ) : null}
+                  <span className="text-[10px] text-ink-500 dark:text-ink-400">
+                    {format(new Date(rec.resolvedAt), "PPp", { locale: dateLocale })}
+                  </span>
+                </div>
+                {rec.resolvedBy ? (
+                  <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">
+                    {t("conversationDetail.attendanceResolvedBy").replace("{name}", rec.resolvedBy.name)}
+                  </p>
+                ) : null}
+                {rec.leadType ? (
+                  <p className="mt-1 text-sm text-ink-800 dark:text-ink-200">
+                    <span className="font-medium">{t("conversationDetail.leadLabel")}:</span>{" "}
+                    <span style={{ color: rec.leadType.color }} className="font-semibold">
+                      {rec.leadType.name}
+                    </span>
+                  </p>
+                ) : null}
+                {rec.closureReason ? (
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-ink-700 dark:text-ink-300">{rec.closureReason}</p>
+                ) : null}
+                {rec.closureValue != null && rec.closureValue > 0 ? (
+                  <p className="mt-1 text-xs text-ink-800 dark:text-ink-200">
+                    <span className="font-medium">{t("conversationDetail.closureValueLabel")}:</span>{" "}
+                    {fmtMoney(rec.closureValue)}
+                  </p>
+                ) : null}
+                {rec.csatScore != null ? (
+                  <div className="mt-2 flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star
+                        key={i}
+                        className={clsx(
+                          "h-3.5 w-3.5",
+                          i <= rec.csatScore! ? "fill-amber-400 text-amber-400" : "text-ink-300 dark:text-ink-600",
+                        )}
+                      />
+                    ))}
+                    <span className="ml-1 text-xs font-semibold tabular-nums">{rec.csatScore}/5</span>
+                  </div>
+                ) : null}
+                {rec.reopenedAt ? (
+                  <p className="mt-2 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                    {t("conversationDetail.attendanceReopened")
+                      .replace(
+                        "{date}",
+                        format(new Date(rec.reopenedAt), "PPp", { locale: dateLocale }),
+                      )
+                      .replace("{name}", rec.reopenedBy?.name ?? "—")}
+                  </p>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
       ) : null}

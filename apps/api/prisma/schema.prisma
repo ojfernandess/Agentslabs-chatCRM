@@ -168,6 +168,7 @@ model Organization {
   users              User[]
   contacts           Contact[]
   conversations      Conversation[]
+  closureRecords     ConversationClosureRecord[]
   tags               Tag[]
   pipelines          Pipeline[]
   accounts           Account[]
@@ -278,9 +279,10 @@ model Team {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  members       TeamMember[]
-  conversations Conversation[]
-  channels      TeamChannel[]
+  members         TeamMember[]
+  conversations   Conversation[]
+  closureRecords  ConversationClosureRecord[]
+  channels        TeamChannel[]
   workspaceItems TeamWorkspaceItem[]
 
   @@index([organizationId])
@@ -475,6 +477,9 @@ model User {
   broadcastCampaignsApproved   BroadcastCampaign[]           @relation("BroadcastCampaignApprover")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
   conversationReadStates       ConversationUserReadState[]
+  closureRecordsResolved     ConversationClosureRecord[]   @relation("ClosureRecordResolvedBy")
+  closureRecordsReopened     ConversationClosureRecord[]   @relation("ClosureRecordReopenedBy")
+  closureRecordsAssigned     ConversationClosureRecord[]   @relation("ClosureRecordAssignee")
   passwordResetTokens          PasswordResetToken[]
   teamChannelMessages          TeamChannelMessage[]          @relation("TeamChannelMessageAuthor")
   teamChannelMessageReactions  TeamChannelMessageReaction[]  @relation("TeamChannelMessageReactionUser")
@@ -755,6 +760,7 @@ model LeadType {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   conversations               Conversation[]
+  closureRecords              ConversationClosureRecord[]
   pipelineStages              PipelineStage[]
   settingsAutoResolveLeadType Settings[]      @relation("SettingsAutoResolveLeadType")
 
@@ -804,6 +810,7 @@ model Conversation {
   awaitingHumanHandoff Boolean @default(false) @map("awaiting_human_handoff")
 
   messages               Message[]
+  closureRecords         ConversationClosureRecord[]
   userReadStates         ConversationUserReadState[]
   botInteractions        BotInteraction[]
   automationContext      AutomationConversationContext?
@@ -819,6 +826,45 @@ model Conversation {
   @@index([teamId])
   @@index([inboxId])
   @@map("conversations")
+}
+
+/// Registo permanente de cada encerramento (auditoria); reabertura não apaga o histórico.
+model ConversationClosureRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  sessionIndex   Int      @map("session_index")
+  resolvedAt     DateTime @map("resolved_at")
+  resolvedById   String   @map("resolved_by_id") @db.Uuid
+  assignedToId   String?  @map("assigned_to_id") @db.Uuid
+  teamId         String?  @map("team_id") @db.Uuid
+  leadTypeId     String?  @map("lead_type_id") @db.Uuid
+  closureReason  String?  @map("closure_reason") @db.Text
+  closureValue   Float?   @map("closure_value")
+  csatScore      Int?     @map("csat_score")
+  csatComment    String?  @map("csat_comment") @db.Text
+  csatRecordedAt DateTime? @map("csat_recorded_at")
+  reopenedAt     DateTime? @map("reopened_at")
+  reopenedById   String?  @map("reopened_by_id") @db.Uuid
+  /// Verdadeiro quando outro atendente reabriu ou encerrou após reabertura por terceiro.
+  isNewAttendance Boolean @default(false) @map("is_new_attendance")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  resolvedBy   User         @relation("ClosureRecordResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
+  reopenedBy   User?        @relation("ClosureRecordReopenedBy", fields: [reopenedById], references: [id], onDelete: SetNull)
+  assignedTo   User?        @relation("ClosureRecordAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  leadType     LeadType?    @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, sessionIndex])
+  @@index([organizationId, resolvedAt])
+  @@index([conversationId])
+  @@index([assignedToId])
+  @@index([leadTypeId])
+  @@index([teamId])
+  @@map("conversation_closure_records")
 }
 
 model Message {

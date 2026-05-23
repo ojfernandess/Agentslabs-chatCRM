@@ -24,8 +24,13 @@ interface LeadTypeRow {
 
 interface AuditRow {
   id: string;
+  conversationId: string;
+  sessionIndex: number;
   status: string;
   updatedAt: string;
+  resolvedAt: string;
+  reopenedAt: string | null;
+  isNewAttendance: boolean;
   closureValue: number | null;
   closureReason: string | null;
   contact: {
@@ -92,7 +97,6 @@ export function ConversationAuditPage() {
       const params = new URLSearchParams({
         pageSize: String(pageSize),
         page: String(nextPage),
-        status: "RESOLVED",
       });
       if (assigneeId) params.set("assignedToId", assigneeId);
       if (leadTypeId) params.set("leadTypeId", leadTypeId);
@@ -254,6 +258,7 @@ export function ConversationAuditPage() {
               <thead className="border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase text-gray-600 dark:border-ink-700 dark:bg-ink-900/80 dark:text-ink-400">
                 <tr>
                   <th className="px-3 py-2">{t("audit.colWhen")}</th>
+                  <th className="px-3 py-2">{t("audit.colStatus")}</th>
                   <th className="px-3 py-2">{t("audit.colContact")}</th>
                   <th className="px-3 py-2">{t("audit.colAssignee")}</th>
                   <th className="px-3 py-2">{t("audit.colTeam")}</th>
@@ -269,11 +274,27 @@ export function ConversationAuditPage() {
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-ink-300">
                       <span className="flex items-center gap-1 text-xs">
                         <Clock className="h-3 w-3" />
-                        {formatDistanceToNow(new Date(r.updatedAt), { addSuffix: true, locale: dateLocale })}
+                        {formatDistanceToNow(new Date(r.resolvedAt), { addSuffix: true, locale: dateLocale })}
                       </span>
                       <span className="text-[10px] text-gray-400 dark:text-ink-500">
-                        {format(new Date(r.updatedAt), "Pp", { locale: dateLocale })}
+                        {format(new Date(r.resolvedAt), "Pp", { locale: dateLocale })}
                       </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={
+                          r.reopenedAt
+                            ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                            : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                        }
+                      >
+                        {r.reopenedAt ? t("audit.statusReopened") : t("audit.statusResolved")}
+                      </span>
+                      {r.isNewAttendance ? (
+                        <span className="mt-1 block text-[10px] text-violet-600 dark:text-violet-300">
+                          {t("conversationDetail.attendanceNew")}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       <p className="font-medium text-gray-900 dark:text-ink-50">{r.contact.name}</p>
@@ -315,7 +336,7 @@ export function ConversationAuditPage() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Link
-                        to={`/conversations/${r.id}`}
+                        to={`/conversations/${r.conversationId}`}
                         className="text-xs font-medium text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300"
                       >
                         {t("audit.open")}

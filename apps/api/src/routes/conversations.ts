@@ -27,6 +27,11 @@ import {
   syncContactProfilePicturesBatch,
 } from "../lib/contactProfilePictureResolve.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import {
+  closureRecordInclude,
+  createConversationClosureRecord,
+  markConversationClosureReopened,
+} from "../lib/conversationClosureRecords.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
   analyzeConversationForInsights,
@@ -358,9 +363,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     const query = auditQuerySchema.parse(request.query);
-    const where: Prisma.ConversationWhereInput = {
+    const where: Prisma.ConversationClosureRecordWhereInput = {
       organizationId,
-      status: query.status,
     };
 
     if (query.assignedToId) {
@@ -377,7 +381,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!inbox) {
         return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
       }
-      where.inboxId = query.inboxId;
+      where.conversation = { inboxId: query.inboxId };
     }
 
     if (query.resolvedFrom || query.resolvedTo) {
@@ -391,7 +395,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         if (!Number.isNaN(b.getTime())) range.lte = b;
       }
       if (Object.keys(range).length > 0) {
-        where.updatedAt = range;
+        where.resolvedAt = range;
       }
     }
 
@@ -405,29 +409,53 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       createdBy: { select: { id: true, name: true, email: true } },
     } as const;
 
-    const [data, total] = await Promise.all([
-      prisma.conversation.findMany({
+    const [records, total] = await Promise.all([
+      prisma.conversationClosureRecord.findMany({
         where,
         include: {
-          contact: { select: contactAuditSelect },
-          assignedTo: { select: { id: true, name: true, email: true } },
-          team: { select: { id: true, name: true } },
-          inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
-          leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
+          ...closureRecordInclude,
+          conversation: {
+            include: {
+              contact: { select: contactAuditSelect },
+              inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+            },
+          },
         },
-        orderBy: { updatedAt: "desc" },
+        orderBy: { resolvedAt: "desc" },
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
-      prisma.conversation.count({ where }),
+      prisma.conversationClosureRecord.count({ where }),
     ]);
 
-    const triageByInbox = await buildAgentBotTriageMapForInboxes(organizationId, data);
+    const triageByInbox = await buildAgentBotTriageMapForInboxes(
+      organizationId,
+      records.map((r) => ({ inboxId: r.conversation.inboxId })),
+    );
 
     return {
-      data: data.map((row) => ({
-        ...stripCsatSurveyToken(row),
-        agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
+      data: records.map((row) => ({
+        id: row.id,
+        conversationId: row.conversationId,
+        sessionIndex: row.sessionIndex,
+        status: row.reopenedAt ? "REOPENED" : "RESOLVED",
+        updatedAt: row.resolvedAt.toISOString(),
+        resolvedAt: row.resolvedAt.toISOString(),
+        reopenedAt: row.reopenedAt?.toISOString() ?? null,
+        isNewAttendance: row.isNewAttendance,
+        closureValue: row.closureValue,
+        closureReason: row.closureReason,
+        contact: row.conversation.contact,
+        assignedTo: row.assignedTo,
+        team: row.team,
+        leadType: row.leadType,
+        resolvedBy: row.resolvedBy,
+        reopenedBy: row.reopenedBy,
+        inbox: row.conversation.inbox,
+        csatScore: row.csatScore,
+        csatComment: row.csatComment,
+        csatRecordedAt: row.csatRecordedAt?.toISOString() ?? null,
+        agentBotTriageActive: triageByInbox.get(row.conversation.inboxId) ?? false,
       })),
       total,
       page: query.page,
@@ -804,6 +832,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         team: { select: { id: true, name: true } },
         inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
+        closureRecords: {
+          orderBy: { sessionIndex: "asc" },
+          include: closureRecordInclude,
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -838,8 +870,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       profilePictureUrl: conversation.contact.profilePictureUrl,
     }).catch(() => {});
 
+    const { closureRecords, ...convRest } = conversation;
+
     return {
-      ...stripCsatSurveyToken(conversation),
+      ...stripCsatSurveyToken(convRest),
       contact: {
         ...conversation.contact,
         hasAvatar: contactHasAvatar,
@@ -847,6 +881,23 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           ? `/api/v1/contacts/${conversation.contact.id}/profile-picture`
           : null,
       },
+      closureRecords: closureRecords.map((r) => ({
+        id: r.id,
+        sessionIndex: r.sessionIndex,
+        resolvedAt: r.resolvedAt.toISOString(),
+        reopenedAt: r.reopenedAt?.toISOString() ?? null,
+        isNewAttendance: r.isNewAttendance,
+        closureReason: r.closureReason,
+        closureValue: r.closureValue,
+        csatScore: r.csatScore,
+        csatComment: r.csatComment,
+        csatRecordedAt: r.csatRecordedAt?.toISOString() ?? null,
+        resolvedBy: r.resolvedBy,
+        reopenedBy: r.reopenedBy,
+        assignedTo: r.assignedTo,
+        team: r.team,
+        leadType: r.leadType,
+      })),
       contactTimeline,
       agentBotTriageActive,
     };
@@ -1093,6 +1144,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             team: { select: { id: true, name: true } },
             inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
             leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
+            closureRecords: {
+              orderBy: { sessionIndex: "asc" },
+              include: closureRecordInclude,
+            },
             messages: {
               orderBy: { createdAt: "asc" },
               include: {
@@ -1105,6 +1160,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         });
 
         let dealMeta: { id: string; name: string; primaryContactId: string | null } | null = null;
+
+        if (parsed.data.status === "OPEN" && existing.status === "RESOLVED") {
+          await markConversationClosureReopened(tx, {
+            conversationId: existing.id,
+            reopenedById: request.user.id,
+          });
+        }
 
         if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
           const ltid = data.leadTypeId;
@@ -1149,6 +1211,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               name: deal.name,
               primaryContactId: deal.primaryContactId,
             };
+          }
+
+          if (existing.status === "OPEN" || existing.status === "PENDING") {
+            const effectiveAssignee =
+              data.assignedToId !== undefined ? data.assignedToId : conv.assignedToId;
+            await createConversationClosureRecord(tx, {
+              organizationId,
+              conversationId: existing.id,
+              resolvedById: request.user.id,
+              assignedToId: effectiveAssignee,
+              teamId: conv.teamId,
+              leadTypeId: data.leadTypeId ?? null,
+              closureReason: data.closureReason ?? null,
+              closureValue: data.closureValue ?? null,
+            });
           }
         }
 
@@ -1299,7 +1376,29 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
-      return { ...stripCsatSurveyToken(conversation), contactTimeline, agentBotTriageActive };
+      const { closureRecords, ...convBody } = conversation;
+      return {
+        ...stripCsatSurveyToken(convBody),
+        closureRecords: closureRecords.map((r) => ({
+          id: r.id,
+          sessionIndex: r.sessionIndex,
+          resolvedAt: r.resolvedAt.toISOString(),
+          reopenedAt: r.reopenedAt?.toISOString() ?? null,
+          isNewAttendance: r.isNewAttendance,
+          closureReason: r.closureReason,
+          closureValue: r.closureValue,
+          csatScore: r.csatScore,
+          csatComment: r.csatComment,
+          csatRecordedAt: r.csatRecordedAt?.toISOString() ?? null,
+          resolvedBy: r.resolvedBy,
+          reopenedBy: r.reopenedBy,
+          assignedTo: r.assignedTo,
+          team: r.team,
+          leadType: r.leadType,
+        })),
+        contactTimeline,
+        agentBotTriageActive,
+      };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }

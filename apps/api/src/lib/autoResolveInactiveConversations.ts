@@ -5,6 +5,7 @@ import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "./csatSurvey.js";
 import { ensurePipelineStageForLeadType } from "./pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "./dealStageSync.js";
+import { createConversationClosureRecord } from "./conversationClosureRecords.js";
 
 const AUTO_CLOSURE_REASON = "Resolução automática por inatividade.";
 const inFlight = new Set<string>();
@@ -123,7 +124,19 @@ async function processOneConversation(
           id: true,
           contactId: true,
           csatSurveyToken: true,
+          assignedToId: true,
+          teamId: true,
         },
+      });
+      await createConversationClosureRecord(tx, {
+        organizationId,
+        conversationId,
+        resolvedById: actorUserId,
+        assignedToId: conv.assignedToId,
+        teamId: conv.teamId,
+        leadTypeId: ltid,
+        closureReason: AUTO_CLOSURE_REASON,
+        closureValue: null,
       });
       return { conversation: conv };
     });
