@@ -207,6 +207,12 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       if (keyFromMe) return { messages: [], statusUpdates: [] };
       waMessageId = typeof key.id === "string" ? key.id.trim() : "";
       remoteJid = typeof key.remoteJid === "string" ? key.remoteJid.trim() : "";
+      senderAlt =
+        typeof key.remoteJidAlt === "string" && key.remoteJidAlt.trim()
+          ? key.remoteJidAlt.trim()
+          : typeof data.remoteJidAlt === "string" && data.remoteJidAlt.trim()
+            ? data.remoteJidAlt.trim()
+            : "";
       isGroup = remoteJid.includes("@g.us");
       pushName =
         typeof data.pushName === "string" && data.pushName.trim()
@@ -242,7 +248,14 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       groupJid = jid;
       participantE164 = senderJid ? jidOrAltToE164(senderJid, senderAlt) : null;
     } else {
-      from = jidOrAltToE164(remoteJid, senderAlt) ?? jidOrAltToE164(senderJid, senderAlt);
+      from =
+        jidOrAltToE164(remoteJid, senderAlt) ??
+        jidOrAltToE164(senderJid, senderAlt) ??
+        (remoteJid.includes("@lid") && senderJid ? jidToE164(senderJid) : null);
+      if (!from) {
+        const participant = typeof data.participant === "string" ? data.participant.trim() : "";
+        from = participant ? jidToE164(participant) : null;
+      }
       if (!from) return { messages: [], statusUpdates: [] };
     }
 

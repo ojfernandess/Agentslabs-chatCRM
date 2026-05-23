@@ -191,16 +191,34 @@ async function handleWhatsAppPost(
   }
 
   if (target.whatsappProvider === "evolution_go" || isEvolutionGoWebhookPayload(body)) {
+    const inboxCreds = await resolveInboxWhatsappCredentials(organizationId, {
+      channelConfig: (
+        await prisma.inbox.findFirst({
+          where: { id: target.inboxId, organizationId },
+          select: { channelConfig: true },
+        })
+      )?.channelConfig,
+    });
     const orgSettings = await prisma.settings.findUnique({
       where: { organizationId },
       select: { whatsappPhoneNumberId: true, whatsappApiKey: true, whatsappProvider: true },
     });
+    const matchSettings = {
+      whatsappPhoneNumberId:
+        inboxCreds?.whatsappPhoneNumberId ?? orgSettings?.whatsappPhoneNumberId ?? null,
+      whatsappApiKey: inboxCreds?.whatsappApiKey ?? orgSettings?.whatsappApiKey ?? null,
+    };
     if (
-      orgSettings?.whatsappProvider === "evolution_go" &&
-      !evolutionGoWebhookMatchesOrgInstance(body, orgSettings)
+      (target.whatsappProvider === "evolution_go" || isEvolutionGoWebhookPayload(body)) &&
+      !evolutionGoWebhookMatchesOrgInstance(body, matchSettings, organizationId)
     ) {
       app.log.info(
-        { organizationId, inboxId: target.inboxId },
+        {
+          organizationId,
+          inboxId: target.inboxId,
+          payloadInstanceId: (body as Record<string, unknown>)?.instanceId,
+          payloadInstance: (body as Record<string, unknown>)?.instance,
+        },
         "Evolution Go webhook ignored: instance in payload does not match organization instance",
       );
       return reply.status(200).send();

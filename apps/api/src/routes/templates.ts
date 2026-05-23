@@ -6,7 +6,10 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { maxBodyPlaceholderIndex } from "../lib/templateVariables.js";
 import { syncWabaTemplatesForOrganization } from "../lib/syncWabaTemplates.js";
 import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
+import { isMetaCloudWhatsappProvider } from "../lib/inboxWhatsappConfig.js";
+import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
+import type { Prisma } from "@prisma/client";
 
 const templateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -48,8 +51,22 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     if (wantsSync && shouldRunWabaSync(organizationId, q?.inboxId)) {
       await syncWabaTemplatesForOrganization(organizationId, { inboxId: q?.inboxId, log: app.log });
     }
+
+    let provider: string | null = null;
+    if (q?.inboxId) {
+      provider = await getWhatsappProviderKindForInbox(organizationId, q.inboxId);
+    }
+
+    const where: Prisma.MessageTemplateWhereInput = { organizationId };
+    if (provider && isMetaCloudWhatsappProvider(provider)) {
+      where.OR = [{ metaCategory: { not: null } }, { providerTemplateId: { not: null } }];
+    } else if (provider === "evolution" || provider === "evolution_go") {
+      where.metaCategory = null;
+      where.providerTemplateId = null;
+    }
+
     return prisma.messageTemplate.findMany({
-      where: { organizationId },
+      where,
       orderBy: { name: "asc" },
     });
   });

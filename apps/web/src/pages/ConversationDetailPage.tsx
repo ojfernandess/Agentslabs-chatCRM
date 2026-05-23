@@ -130,6 +130,7 @@ interface MessageTemplateRow {
   name: string;
   body: string;
   bodyVariableCount: number;
+  providerTemplateId?: string | null;
   metaCategory?: string | null;
   templateLanguage?: string;
 }
@@ -590,16 +591,23 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const inboxId = conversation?.inbox?.id;
     void (async () => {
       try {
-        const rows = await api.get<MessageTemplateRow[]>("/templates");
-        if (!cancelled)
-          setMessageTemplates(
-            (Array.isArray(rows) ? rows : []).map((r) => ({
-              ...r,
-              bodyVariableCount: typeof r.bodyVariableCount === "number" ? r.bodyVariableCount : 0,
-            })),
-          );
+        const q = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
+        const rows = await api.get<MessageTemplateRow[]>(`/templates${q}`);
+        if (!cancelled) {
+          let list = (Array.isArray(rows) ? rows : []).map((r) => ({
+            ...r,
+            bodyVariableCount: typeof r.bodyVariableCount === "number" ? r.bodyVariableCount : 0,
+          }));
+          if (whatsappProvider === "evolution" || whatsappProvider === "evolution_go") {
+            list = list.filter((r) => !r.metaCategory?.trim() && !r.providerTemplateId?.trim());
+          } else if (whatsappProvider === "meta" || whatsappProvider === "360dialog") {
+            list = list.filter((r) => Boolean(r.metaCategory?.trim() || r.providerTemplateId?.trim()));
+          }
+          setMessageTemplates(list);
+        }
       } catch {
         if (!cancelled) setMessageTemplates([]);
       }
@@ -607,7 +615,7 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [conversation?.inbox?.id, whatsappProvider]);
 
   useEffect(() => {
     let cancelled = false;

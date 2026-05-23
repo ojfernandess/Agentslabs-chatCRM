@@ -212,20 +212,31 @@ export function isEvolutionGoWebhookPayload(body: unknown): boolean {
 export function evolutionGoWebhookMatchesOrgInstance(
   body: unknown,
   settings: Pick<Settings, "whatsappPhoneNumberId" | "whatsappApiKey">,
+  organizationId?: string,
 ): boolean {
   const env = webhookPayloadRecord(body);
   if (!env) return true;
+
+  const token = typeof env.instanceToken === "string" ? env.instanceToken.trim() : "";
+  const orgToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
+  if (token && orgToken && token === orgToken) return true;
+
   const orgRef = settings.whatsappPhoneNumberId?.trim() ?? "";
   const payloadId = typeof env.instanceId === "string" ? env.instanceId.trim() : "";
   const payloadName = typeof env.instance === "string" ? env.instance.trim() : "";
-  if (!orgRef) return true;
-  if (payloadId && (payloadId === orgRef || payloadName === orgRef)) return true;
-  if (payloadName && payloadName === orgRef) return true;
-  if (payloadId || payloadName) return false;
-  const token = typeof env.instanceToken === "string" ? env.instanceToken.trim() : "";
-  const orgToken = decrypt(settings.whatsappApiKey?.trim() ?? "")?.trim() ?? "";
-  if (token && orgToken) return token === orgToken;
-  return true;
+
+  if (!orgRef && !orgToken) return true;
+  if (payloadId && orgRef && payloadId === orgRef) return true;
+  if (payloadName && orgRef && payloadName === orgRef) return true;
+
+  if (organizationId && payloadName) {
+    const prefix = evolutionGoOrgInstancePrefix(organizationId);
+    if (payloadName === prefix || payloadName.startsWith(`${prefix}-`)) return true;
+  }
+
+  if (!payloadId && !payloadName) return true;
+
+  return false;
 }
 
 /** Caixa WhatsApp com provider evolution_go (ou default se só Settings tiver evolution_go). */

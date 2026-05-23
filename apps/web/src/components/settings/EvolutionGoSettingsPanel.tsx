@@ -70,8 +70,18 @@ export function EvolutionGoSettingsPanel({
     if (!hasInstance) return;
     void loadInstances();
     void refreshStatus();
-    const id = window.setInterval(() => void refreshStatus(), 5000);
-    return () => clearInterval(id);
+    const poll = () => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    };
+    const id = window.setInterval(poll, 20_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [hasInstance, loadInstances, refreshStatus]);
 
   const createInstance = async () => {
