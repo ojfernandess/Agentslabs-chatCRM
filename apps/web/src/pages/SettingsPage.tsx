@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -34,6 +34,7 @@ import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProvi
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import {
   buildInboxWhatsappChannelConfig,
+  isInboxWhatsappConfigured,
   isWhatsAppCloudApiProvider,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
@@ -270,6 +271,7 @@ export function SettingsPage() {
   const [evoTplLanguage, setEvoTplLanguage] = useState("pt_BR");
   const [evoTplBody, setEvoTplBody] = useState("");
   const [evoTplFooter, setEvoTplFooter] = useState("");
+  const [evoTplInboxId, setEvoTplInboxId] = useState("");
   const [evoTplBusy, setEvoTplBusy] = useState(false);
   const [evoTplError, setEvoTplError] = useState("");
   const [evoTplSuccess, setEvoTplSuccess] = useState(false);
@@ -999,12 +1001,48 @@ export function SettingsPage() {
     }
   };
 
+  const evolutionTemplateInboxes = useMemo(
+    () =>
+      waInboxes
+        .map((inbox) => {
+          const fields = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+          if (fields.whatsappProvider !== "evolution" && fields.whatsappProvider !== "evolution_go") {
+            return null;
+          }
+          if (!isInboxWhatsappConfigured(fields)) return null;
+          return {
+            id: inbox.id,
+            name: inbox.name?.trim() || t("settings.templatesEvolutionInboxFallback"),
+            provider: fields.whatsappProvider as "evolution" | "evolution_go",
+          };
+        })
+        .filter((x): x is { id: string; name: string; provider: "evolution" | "evolution_go" } => x != null),
+    [waInboxes, t],
+  );
+
+  const showEvolutionTemplates = evolutionTemplateInboxes.length > 0;
+
+  useEffect(() => {
+    if (evolutionTemplateInboxes.length === 0) {
+      setEvoTplInboxId("");
+      return;
+    }
+    setEvoTplInboxId((prev) =>
+      prev && evolutionTemplateInboxes.some((i) => i.id === prev) ? prev : evolutionTemplateInboxes[0].id,
+    );
+  }, [evolutionTemplateInboxes]);
+
+  const templatesListInboxId = useMemo(() => {
+    if (section === "templates" && showEvolutionTemplates && evoTplInboxId) return evoTplInboxId;
+    return defaultWaInbox?.id;
+  }, [section, showEvolutionTemplates, evoTplInboxId, defaultWaInbox?.id]);
+
   const loadMessageTemplates = useCallback(
     async (opts?: { sync?: boolean }) => {
       setTplListLoading(true);
       try {
         const params = new URLSearchParams();
-        if (defaultWaInbox?.id) params.set("inboxId", defaultWaInbox.id);
+        if (templatesListInboxId) params.set("inboxId", templatesListInboxId);
         if (opts?.sync) params.set("sync", "1");
         const qs = params.toString();
         const list = await api.get<MessageTemplateRow[]>(`/templates${qs ? `?${qs}` : ""}`);
@@ -1015,13 +1053,18 @@ export function SettingsPage() {
         setTplListLoading(false);
       }
     },
-    [defaultWaInbox?.id],
+    [templatesListInboxId],
   );
 
   useEffect(() => {
     if (section !== "templates") return;
     void loadMessageTemplates();
   }, [section, loadMessageTemplates]);
+
+  useEffect(() => {
+    if (section !== "templates" || !showEvolutionTemplates) return;
+    void loadMessageTemplates();
+  }, [section, showEvolutionTemplates, evoTplInboxId, loadMessageTemplates]);
 
   const syncMetaTemplates = async () => {
     setMetaTplSyncBusy(true);
@@ -1044,8 +1087,8 @@ export function SettingsPage() {
 
   const submitEvolutionTemplate = async (e: FormEvent) => {
     e.preventDefault();
-    if (provider !== "evolution") {
-      setEvoTplError(t("settings.evoTplWrongProvider"));
+    if (!evoTplInboxId) {
+      setEvoTplError(t("settings.evoTplNoInbox"));
       return;
     }
     setEvoTplBusy(true);
@@ -1053,6 +1096,7 @@ export function SettingsPage() {
     setEvoTplSuccess(false);
     try {
       await api.post("/templates/evolution", {
+        inboxId: evoTplInboxId,
         name: evoTplName.trim(),
         category: evoTplCategory,
         language: evoTplLanguage.trim(),
@@ -2378,7 +2422,13 @@ export function SettingsPage() {
                       <FileText className="h-5 w-5" />
                       {t("settings.templatesTitle")}
                     </h2>
-                    <p className={settingsMuted}>{t("settings.templatesMetaHint")}</p>
+                    <p className={settingsMuted}>
+                      {isMetaCloudSettingsProvider
+                        ? t("settings.templatesMetaHint")
+                        : showEvolutionTemplates
+                          ? t("settings.templatesEvolutionSectionHint")
+                          : t("settings.templatesMetaHint")}
+                    </p>
                     {isMetaCloudSettingsProvider ? (
                       <motion.div className="mt-4 space-y-4" variants={staggerItem}>
                         <div className="flex flex-wrap items-center gap-3">
@@ -2482,7 +2532,7 @@ export function SettingsPage() {
                     ) : null}
                   </div>
 
-                  {effectiveWhatsAppProvider === "evolution" ? (
+                  {showEvolutionTemplates ? (
                     <motion.form
                       className={settingsCard}
                       variants={staggerItem}
@@ -2490,6 +2540,32 @@ export function SettingsPage() {
                     >
                       <h3 className={clsx("mb-1", settingsTitle)}>{t("settings.templatesEvolutionTitle")}</h3>
                       <p className={clsx("mb-4", settingsMuted)}>{t("settings.templatesEvolutionHint")}</p>
+                      {evolutionTemplateInboxes.length > 1 ? (
+                        <div className="mb-4">
+                          <label className={settingsLabel}>{t("settings.templatesEvolutionInboxLabel")}</label>
+                          <select
+                            className={settingsInput}
+                            value={evoTplInboxId}
+                            onChange={(e) => setEvoTplInboxId(e.target.value)}
+                          >
+                            {evolutionTemplateInboxes.map((inbox) => (
+                              <option key={inbox.id} value={inbox.id}>
+                                {inbox.name} —{" "}
+                                {inbox.provider === "evolution_go"
+                                  ? t("settings.templatesEvolutionGoProvider")
+                                  : t("settings.templatesEvolutionApiProvider")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : evolutionTemplateInboxes.length === 1 ? (
+                        <p className={clsx("mb-4 text-xs", settingsMuted)}>
+                          {t("settings.templatesEvolutionInboxSingle").replace(
+                            "{name}",
+                            evolutionTemplateInboxes[0].name,
+                          )}
+                        </p>
+                      ) : null}
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="sm:col-span-2">
                           <label className={settingsLabel}>{t("settings.evoTplName")}</label>
@@ -2535,7 +2611,9 @@ export function SettingsPage() {
                             rows={5}
                             required
                             maxLength={4096}
+                            placeholder={t("settings.evoTplBodyPlaceholder")}
                           />
+                          <p className={clsx("mt-1", settingsMuted)}>{t("settings.evoTplVariablesHint")}</p>
                         </div>
                         <div className="sm:col-span-2">
                           <label className={settingsLabel}>{t("settings.evoTplFooter")}</label>
@@ -2561,38 +2639,73 @@ export function SettingsPage() {
                         {evoTplBusy ? t("common.loading") : t("settings.evoTplSubmit")}
                       </button>
                     </motion.form>
-                  ) : isMetaCloudSettingsProvider ? null : (
-                    <motion.div
-                      className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100"
-                      variants={staggerItem}
-                    >
-                      {t("settings.templatesEvolutionOnly")}
-                    </motion.div>
-                  )}
+                  ) : null}
 
-                  {!isMetaCloudSettingsProvider && effectiveWhatsAppProvider === "evolution" && messageTemplates.length > 0 ? (
+                  {showEvolutionTemplates ? (
                     <motion.div className={settingsCard} variants={staggerItem}>
-                      <h3 className={clsx("mb-3", settingsTitle)}>{t("settings.templatesMetaListTitle")}</h3>
-                      <div className={settingsTableWrap}>
-                        <table className="w-full min-w-[480px] text-left text-sm">
-                          <thead>
-                            <tr className={settingsTableHead}>
-                              <th className="px-4 py-2">{t("settings.templatesColName")}</th>
-                              <th className="px-4 py-2">{t("settings.templatesColBody")}</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-ink-100 dark:divide-white/10">
-                            {messageTemplates.map((tpl) => (
-                              <tr key={tpl.id} className={settingsTableRow}>
-                                <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">{tpl.name}</td>
-                                <td className="px-4 py-2.5 text-xs text-ink-600 dark:text-ink-400">
-                                  <span className="line-clamp-2 whitespace-pre-wrap">{tpl.body}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h3 className={settingsTitle}>{t("settings.templatesEvolutionListTitle")}</h3>
+                        <button
+                          type="button"
+                          disabled={tplListLoading}
+                          onClick={() => void loadMessageTemplates()}
+                          className="btn-secondary text-sm"
+                        >
+                          {t("common.refresh")}
+                        </button>
                       </div>
+                      {tplListLoading ? (
+                        <p className={settingsMuted}>{t("common.loading")}</p>
+                      ) : messageTemplates.length === 0 ? (
+                        <p className={settingsMuted}>{t("settings.templatesEvolutionListEmpty")}</p>
+                      ) : (
+                        <div className={settingsTableWrap}>
+                          <table className="w-full min-w-[640px] text-left text-sm">
+                            <thead>
+                              <tr className={settingsTableHead}>
+                                <th className="px-4 py-2">{t("settings.templatesColName")}</th>
+                                <th className="px-4 py-2">{t("settings.templatesColLanguage")}</th>
+                                <th className="px-4 py-2">{t("settings.templatesColStatus")}</th>
+                                <th className="px-4 py-2">{t("settings.templatesColBody")}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-ink-100 dark:divide-white/10">
+                              {messageTemplates.map((tpl) => (
+                                <tr key={tpl.id} className={settingsTableRow}>
+                                  <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">
+                                    {tpl.name}
+                                    {tpl.metaCategory ? (
+                                      <span className="ml-1 text-[10px] font-normal uppercase text-ink-400">
+                                        {tpl.metaCategory}
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-ink-600 dark:text-ink-400">
+                                    {tpl.templateLanguage ?? "—"}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span
+                                      className={clsx(
+                                        "rounded-full px-2 py-0.5 text-xs font-medium",
+                                        tpl.isApproved
+                                          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                                          : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+                                      )}
+                                    >
+                                      {tpl.isApproved
+                                        ? t("settings.templatesStatusApproved")
+                                        : t("settings.templatesStatusPending")}
+                                    </span>
+                                  </td>
+                                  <td className="max-w-md px-4 py-2.5 text-xs text-ink-600 dark:text-ink-400">
+                                    <span className="line-clamp-3 whitespace-pre-wrap">{tpl.body}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </motion.div>
                   ) : null}
                 </motion.div>

@@ -5,7 +5,10 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { maxBodyPlaceholderIndex } from "../lib/templateVariables.js";
 import { syncWabaTemplatesForOrganization } from "../lib/syncWabaTemplates.js";
-import { resolveEvolutionApiCredentials } from "../lib/evolutionPlatform.js";
+import {
+  findEvolutionTemplateInboxes,
+  resolveEvolutionTemplateCredentials,
+} from "../lib/evolutionTemplateCredentials.js";
 import { isMetaCloudWhatsappProvider } from "../lib/inboxWhatsappConfig.js";
 import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
@@ -25,6 +28,7 @@ const evolutionTemplateSchema = z.object({
   language: z.string().min(2).max(32),
   body: z.string().min(1).max(4096),
   footer: z.string().max(160).optional(),
+  inboxId: z.string().uuid().optional(),
 });
 
 /** Evita bater na Meta a cada troca de caixa no UI (429). */
@@ -87,32 +91,34 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     return result;
   });
 
+  app.get("/evolution/capabilities", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const inboxes = await findEvolutionTemplateInboxes(organizationId);
+    return { enabled: inboxes.length > 0, inboxes };
+  });
+
   app.post("/evolution", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
-
-    const settings = await prisma.settings.findUnique({ where: { organizationId } });
-    if (settings?.whatsappProvider !== "evolution") {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: "Evolution API must be selected as the WhatsApp provider",
-        statusCode: 400,
-      });
-    }
-    const creds = await resolveEvolutionApiCredentials(settings);
-    if (!creds) {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: "Configure Evolution (instance / URL & API key, or QR-managed mode) first",
-        statusCode: 400,
-      });
-    }
 
     const parsed = evolutionTemplateSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
         error: "Bad Request",
         message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+
+    const creds = await resolveEvolutionTemplateCredentials(organizationId, {
+      inboxId: parsed.data.inboxId,
+    });
+    if (!creds) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message:
+          "Configure uma caixa WhatsApp com Evolution API ou Evolution Go (instância ligada) antes de criar modelos.",
         statusCode: 400,
       });
     }
