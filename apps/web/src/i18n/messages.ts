@@ -2688,6 +2688,7 @@ export const messages = {
       templatesSourceLocal: "Local",
       templatesStatusApproved: "Aprovado",
       templatesStatusPending: "Pendente",
+      templatesStatusReady: "Disponível",
       templatesEvolutionSectionHint:
         "Modelos Meta são sincronizados da Meta Business. Com Evolution API ou Evolution Go numa caixa WhatsApp, pode criar modelos no mesmo estilo da Cloud API.",
       templatesEvolutionTitle: "Criar modelo (Evolution API / Evolution Go)",
@@ -5784,6 +5785,7 @@ export const messages = {
       templatesSourceLocal: "Local",
       templatesStatusApproved: "Approved",
       templatesStatusPending: "Pending",
+      templatesStatusReady: "Ready",
       templatesEvolutionSectionHint:
         "Meta templates are synced from Meta Business. With Evolution API or Evolution Go on a WhatsApp inbox, you can create templates in the same Cloud API style.",
       templatesEvolutionTitle: "Create template (Evolution API / Evolution Go)",

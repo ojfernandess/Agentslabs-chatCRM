@@ -182,7 +182,8 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         templateLanguage: parsed.data.language,
         bodyVariableCount,
         metaCategory: parsed.data.category,
-        isApproved: false,
+        /** Modelos locais Evolution ficam disponíveis de imediato (não passam por aprovação Meta). */
+        isApproved: true,
       },
     });
     return reply.status(201).send({ ...row, evolutionUpstream });

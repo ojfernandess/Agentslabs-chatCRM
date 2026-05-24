@@ -75,12 +75,16 @@ export function MessageTemplatesTable({
                 <span
                   className={clsx(
                     "rounded-full px-2 py-0.5 text-xs font-medium",
-                    tpl.isApproved
+                    !tpl.providerTemplateId?.trim() || tpl.isApproved
                       ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
                       : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
                   )}
                 >
-                  {tpl.isApproved ? t("settings.templatesStatusApproved") : t("settings.templatesStatusPending")}
+                  {!tpl.providerTemplateId?.trim()
+                    ? t("settings.templatesStatusReady")
+                    : tpl.isApproved
+                      ? t("settings.templatesStatusApproved")
+                      : t("settings.templatesStatusPending")}
                 </span>
               </td>
               {showSource ? (

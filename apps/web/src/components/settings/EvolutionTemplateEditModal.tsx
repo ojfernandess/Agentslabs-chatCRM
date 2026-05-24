@@ -39,7 +39,7 @@ export function EvolutionTemplateEditModal({ template, onClose, onSaved }: Props
         name: name.trim(),
         body: body.trim(),
         templateLanguage: language.trim(),
-        isApproved: template.isApproved ?? false,
+        isApproved: true,
       });
       onSaved();
       onClose();

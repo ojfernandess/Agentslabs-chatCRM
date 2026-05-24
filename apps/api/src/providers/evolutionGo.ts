@@ -98,14 +98,19 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
   }
 
   async sendMessage(params: SendMessageParams): Promise<string> {
-    if (params.type === "TEXT") {
+    /** Modelos locais (sem Meta WABA): enviam o texto já substituído como mensagem normal. */
+    if (params.type === "TEXT" || params.type === "TEMPLATE") {
+      const text = params.body?.trim() ?? "";
+      if (!text) {
+        throw new Error("Evolution Go: text body required");
+      }
       const url = `${this.baseUrl}/send/text`;
       const response = await fetch(url, {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify({
           number: destinationForSend(params.to),
-          text: params.body ?? "",
+          text,
         }),
       });
       if (!response.ok) {
