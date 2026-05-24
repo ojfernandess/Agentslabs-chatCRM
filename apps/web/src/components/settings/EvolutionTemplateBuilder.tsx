@@ -40,6 +40,7 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [successMode, setSuccessMode] = useState<"created" | "local_only">("created");
 
   useEffect(() => {
     if (inboxes.length === 0) {
@@ -85,14 +86,20 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
     setError("");
     setSuccess(false);
     try {
-      await api.post("/templates/evolution", {
+      const variableSamples =
+        placeholderIndices.length > 0
+          ? placeholderIndices.map((idx) => previewValues[idx]?.trim() || `exemplo_${idx}`)
+          : undefined;
+      const created = await api.post<{ evolutionUpstream?: "created" | "local_only" }>("/templates/evolution", {
         inboxId,
         name: normalizedName,
         category,
         language: language.trim(),
         body: body.trim(),
         ...(footer.trim() ? { footer: footer.trim() } : {}),
+        ...(variableSamples ? { variableSamples } : {}),
       });
+      setSuccessMode(created.evolutionUpstream === "local_only" ? "local_only" : "created");
       setSuccess(true);
       setName("");
       setBody("");
@@ -251,7 +258,7 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
           ) : null}
           {success ? (
             <p className="mb-3 text-sm text-green-700 dark:text-green-400" role="status">
-              {t("settings.evoTplSuccess")}
+              {successMode === "local_only" ? t("settings.evoTplSuccessLocalOnly") : t("settings.evoTplSuccess")}
             </p>
           ) : null}
           <button

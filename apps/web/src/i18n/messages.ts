@@ -2719,7 +2719,9 @@ export const messages = {
       evoTplBody: "Texto do corpo",
       evoTplFooter: "Rodapé (opcional)",
       evoTplSubmit: "Criar modelo na Evolution",
-      evoTplSuccess: "Pedido enviado. O modelo foi adicionado à lista local.",
+      evoTplSuccess: "Pedido enviado à Evolution API. O modelo foi adicionado à lista local.",
+      evoTplSuccessLocalOnly:
+        "Modelo guardado localmente. O Evolution Go não suporta criação na Meta; use Evolution API (Cloud API) na instância para submeter à WhatsApp Business.",
       evoTplWrongProvider: "Selecione Evolution API no canal WhatsApp.",
       evoTplFailed: "Não foi possível criar o modelo na Evolution.",
       csatIntro:
@@ -5807,7 +5809,9 @@ export const messages = {
       evoTplBody: "Body text",
       evoTplFooter: "Footer (optional)",
       evoTplSubmit: "Create template on Evolution",
-      evoTplSuccess: "Request sent. Template added to the local list.",
+      evoTplSuccess: "Request sent to Evolution API. Template added to the local list.",
+      evoTplSuccessLocalOnly:
+        "Template saved locally. Evolution Go cannot submit to Meta; use Evolution API (Cloud API) on the instance to register with WhatsApp Business.",
       evoTplWrongProvider: "Select Evolution API on the WhatsApp channel.",
       evoTplFailed: "Could not create the template on Evolution.",
       csatIntro:

@@ -11,6 +11,10 @@ import {
 } from "../lib/evolutionTemplateCredentials.js";
 import { isMetaCloudWhatsappProvider } from "../lib/inboxWhatsappConfig.js";
 import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
+import {
+  buildEvolutionTemplateCreateComponents,
+  normalizeEvolutionTemplateName,
+} from "../lib/evolutionTemplatePayload.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
 import type { Prisma } from "@prisma/client";
 
@@ -29,6 +33,8 @@ const evolutionTemplateSchema = z.object({
   body: z.string().min(1).max(4096),
   footer: z.string().max(160).optional(),
   inboxId: z.string().uuid().optional(),
+  /** Valores de exemplo para {{1}}, {{2}}, … (ordem 1-based). */
+  variableSamples: z.array(z.string().max(256)).max(20).optional(),
 });
 
 /** Evita bater na Meta a cada troca de caixa no UI (429). */
@@ -123,27 +129,54 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    try {
-      await evolutionCreateBusinessTemplate({
-        baseUrl: creds.baseUrl,
-        apiKey: creds.apiKey,
-        instanceName: creds.instanceName,
-        name: parsed.data.name,
-        category: parsed.data.category,
-        language: parsed.data.language,
-        body: parsed.data.body,
-        footer: parsed.data.footer,
+    const templateName = normalizeEvolutionTemplateName(parsed.data.name);
+    if (!templateName) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Nome do modelo inválido. Use letras minúsculas, números e underscore (ex.: confirmacao_pedido).",
+        statusCode: 400,
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Evolution template/create failed";
-      return reply.status(502).send({ error: "Bad Gateway", message: msg, statusCode: 502 });
+    }
+
+    const maxIdx = maxBodyPlaceholderIndex(parsed.data.body);
+    const sampleRow =
+      parsed.data.variableSamples?.length && maxIdx > 0
+        ? Array.from({ length: maxIdx }, (_, i) => parsed.data.variableSamples?.[i] ?? `exemplo_${i + 1}`)
+        : undefined;
+    const components = buildEvolutionTemplateCreateComponents(parsed.data.body, parsed.data.footer, sampleRow);
+    let evolutionUpstream: "created" | "local_only" = "local_only";
+
+    if (creds.provider === "evolution") {
+      try {
+        await evolutionCreateBusinessTemplate({
+          baseUrl: creds.baseUrl,
+          apiKey: creds.apiKey,
+          instanceName: creds.instanceName,
+          name: templateName,
+          category: parsed.data.category,
+          language: parsed.data.language,
+          body: parsed.data.body,
+          footer: parsed.data.footer,
+          components,
+        });
+        evolutionUpstream = "created";
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Evolution template/create failed";
+        request.log.warn({ err, inboxId: creds.inboxId }, "Evolution API template/create failed");
+        return reply.status(502).send({ error: "Bad Gateway", message: msg, statusCode: 502 });
+      }
+    } else {
+      request.log.info(
+        { inboxId: creds.inboxId, instanceName: creds.instanceName },
+        "Evolution Go: template/create não disponível; modelo guardado apenas localmente",
+      );
     }
 
     const bodyVariableCount = maxBodyPlaceholderIndex(parsed.data.body);
     const row = await prisma.messageTemplate.create({
       data: {
         organizationId,
-        name: parsed.data.name,
+        name: templateName,
         body: parsed.data.body,
         providerTemplateId: null,
         templateLanguage: parsed.data.language,
@@ -152,7 +185,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         isApproved: false,
       },
     });
-    return reply.status(201).send(row);
+    return reply.status(201).send({ ...row, evolutionUpstream });
   });
 
   app.post("/", async (request, reply) => {

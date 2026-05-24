@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
 import {
+  buildEvolutionTemplateCreateComponents,
+  parseEvolutionUpstreamError,
+} from "../lib/evolutionTemplatePayload.js";
+import {
   WhatsAppProviderInterface,
   SendMessageParams,
   IncomingMessage,
@@ -748,30 +752,45 @@ export async function evolutionCreateBusinessTemplate(options: {
   language: string;
   body: string;
   footer?: string;
+  components?: Array<Record<string, unknown>>;
 }): Promise<unknown> {
   const base = normalizeBaseUrl(options.baseUrl);
-  const instance = encodeURIComponent(options.instanceName);
+  const instance = encodeURIComponent(options.instanceName.trim());
   const url = `${base}/template/create/${instance}`;
-  const components: Array<Record<string, unknown>> = [{ type: "BODY", text: options.body }];
-  if (options.footer?.trim()) {
-    components.push({ type: "FOOTER", text: options.footer.trim() });
+  const components =
+    options.components ??
+    buildEvolutionTemplateCreateComponents(options.body, options.footer);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        apikey: options.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: options.name,
+        category: options.category,
+        language: options.language,
+        components,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Evolution template/create: tempo esgotado ao contactar o servidor");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      apikey: options.apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      name: options.name,
-      category: options.category,
-      language: options.language,
-      components,
-    }),
-  });
+
   const txt = await res.text();
   if (!res.ok) {
-    throw new Error(`Evolution template/create: ${res.status} ${txt}`);
+    throw new Error(parseEvolutionUpstreamError(res.status, txt));
   }
   try {
     return JSON.parse(txt) as unknown;
