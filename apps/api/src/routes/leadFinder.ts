@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
@@ -6,12 +7,10 @@ import { decrypt } from "../lib/encryption.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { searchGoogleMaps, SerpApiError, type SerpMapsLocalResult } from "../lib/serpApiGoogleMaps.js";
-import { normalizeLeadFinderPhone } from "../lib/leadFinderPhone.js";
-import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
-import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
-import { materializeAndStartCampaign } from "../lib/broadcastCampaignStart.js";
-import { parseSegmentRules } from "../lib/broadcastTypes.js";
-import { computeNextRunAt, parseFollowUpRecurrence } from "../lib/broadcastRecurrence.js";
+import { importLeadFinderContacts } from "../lib/leadFinderImport.js";
+import { createLeadFinderFollowUp } from "../lib/leadFinderFollowUp.js";
+import { listLeadFinderSegments } from "../lib/leadFinderSegments.js";
+import { buildCronFromRecurrence, computeNextRunAt, parseFollowUpRecurrence } from "../lib/broadcastRecurrence.js";
 
 async function leadFinderGate(request: Parameters<typeof authenticate>[0], reply: Parameters<typeof authenticate>[1]): Promise<string | null> {
   await requireAdmin(request, reply);
@@ -96,22 +95,6 @@ function mapLocalResult(r: SerpMapsLocalResult) {
   };
 }
 
-function contactNotesFromLead(lead: {
-  address?: string | null;
-  website?: string | null;
-  placeId?: string | null;
-  type?: string | null;
-  rating?: number | null;
-}): string {
-  const lines: string[] = ["[Lead Finder]"];
-  if (lead.type) lines.push(`Tipo: ${lead.type}`);
-  if (lead.address) lines.push(`Endereço: ${lead.address}`);
-  if (lead.website) lines.push(`Site: ${lead.website}`);
-  if (lead.placeId) lines.push(`Google Place ID: ${lead.placeId}`);
-  if (lead.rating != null) lines.push(`Avaliação: ${lead.rating}`);
-  return lines.join("\n");
-}
-
 const searchSchema = z.object({
   niche: z.string().max(200).optional(),
   city: z.string().max(200).optional(),
@@ -132,18 +115,8 @@ const importLeadSchema = z.object({
   rating: z.number().optional().nullable(),
 });
 
-const importSchema = z.object({
-  leads: z.array(importLeadSchema).min(1).max(100),
-  tagIds: z.array(z.string().uuid()).optional(),
-  leadTypeId: z.string().uuid().optional().nullable(),
-  createImportTag: z.boolean().optional(),
-  importTagName: z.string().max(100).optional(),
-  updateExisting: z.boolean().optional(),
-});
-
-const followUpSchema = z.object({
-  tagIds: z.array(z.string().uuid()).min(1),
-  name: z.string().min(1).max(200),
+const followUpBodySchema = z.object({
+  name: z.string().min(1).max(200).optional(),
   inboxId: z.string().uuid(),
   messageType: z.enum(["TEXT", "TEMPLATE"]),
   body: z.string().max(4096).optional(),
@@ -154,6 +127,88 @@ const followUpSchema = z.object({
   cronExpression: z.string().max(100).optional(),
   autoStart: z.boolean().optional(),
 });
+
+const importSchema = z.object({
+  leads: z.array(importLeadSchema).min(1).max(100),
+  tagIds: z.array(z.string().uuid()).optional(),
+  leadTypeId: z.string().uuid().optional().nullable(),
+  createImportTag: z.boolean().optional(),
+  importTagName: z.string().max(100).optional(),
+  updateExisting: z.boolean().optional(),
+  followUp: followUpBodySchema.optional(),
+});
+
+const followUpSchema = followUpBodySchema.extend({
+  tagIds: z.array(z.string().uuid()).min(1),
+  name: z.string().min(1).max(200),
+});
+
+const segmentSchema = z.object({
+  name: z.string().min(1).max(120),
+  niche: z.string().min(1).max(200),
+  city: z.string().min(1).max(200),
+});
+
+const importConfigSchema = z.object({
+  tagIds: z.array(z.string().uuid()).optional(),
+  leadTypeId: z.string().uuid().optional().nullable(),
+  createImportTag: z.boolean().optional(),
+  importTagName: z.string().max(100).optional(),
+  updateExisting: z.boolean().optional(),
+});
+
+const scheduleSchema = z.object({
+  name: z.string().min(1).max(200),
+  enabled: z.boolean().optional(),
+  searchMode: z.enum(["custom", "segment"]),
+  niche: z.string().max(200).optional(),
+  city: z.string().max(200).optional(),
+  segmentId: z.string().uuid().optional(),
+  importConfig: importConfigSchema.default({}),
+  scheduleType: z.enum(["SCHEDULED", "RECURRING"]),
+  scheduledAt: z.string().datetime().optional(),
+  recurrence: z.record(z.unknown()).optional(),
+  cronExpression: z.string().max(100).optional(),
+  timeZone: z.string().max(64).optional(),
+  followUpConfig: followUpBodySchema.partial().optional().nullable(),
+});
+
+function resolveScheduleNextRun(
+  scheduleType: "SCHEDULED" | "RECURRING",
+  scheduledAt?: string,
+  recurrence?: Record<string, unknown>,
+  cronExpression?: string,
+): { nextRunAt: Date | null; scheduledAtDate: Date | null; cron: string | null; recurrenceJson: object | null } {
+  let scheduledAtDate = scheduledAt ? new Date(scheduledAt) : null;
+  let cron = cronExpression ?? null;
+  let recurrenceJson: object | null = recurrence ? (recurrence as object) : null;
+  let nextRunAt: Date | null = null;
+
+  if (scheduleType === "SCHEDULED" && scheduledAtDate) {
+    nextRunAt = scheduledAtDate;
+  } else if (scheduleType === "RECURRING" && recurrence) {
+    const parsed = parseFollowUpRecurrence({ followUpRecurrence: recurrence });
+    if (parsed) {
+      if (!cron) cron = buildCronFromRecurrence(parsed);
+      nextRunAt = computeNextRunAt(new Date(), parsed);
+      scheduledAtDate = scheduledAtDate ?? nextRunAt;
+      recurrenceJson = parsed as object;
+    }
+  }
+
+  return { nextRunAt, scheduledAtDate, cron, recurrenceJson };
+}
+
+async function validateFollowUpInput(
+  organizationId: string,
+  d: z.infer<typeof followUpBodySchema> & { name?: string },
+): Promise<string | null> {
+  if (d.messageType === "TEXT" && !d.body?.trim()) return "body is required for TEXT";
+  if (d.messageType === "TEMPLATE" && !d.templateId) return "templateId is required for TEMPLATE";
+  const inbox = await prisma.inbox.findFirst({ where: { id: d.inboxId, organizationId } });
+  if (!inbox) return "Invalid inboxId";
+  return null;
+}
 
 export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -167,6 +222,197 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       configured: Boolean(apiKey),
       serpApiDocsUrl: "https://serpapi.com/google-maps-api",
     };
+  });
+
+  app.get("/segments", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const segments = await listLeadFinderSegments(organizationId);
+    return { segments };
+  });
+
+  app.post("/segments", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const parsed = segmentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const segment = await prisma.leadFinderSegment.create({
+        data: { organizationId, ...parsed.data, isPreset: false },
+      });
+      return reply.status(201).send({ segment });
+    } catch {
+      return reply.status(400).send({ error: "Bad Request", message: "Segmento com este nome já existe.", statusCode: 400 });
+    }
+  });
+
+  app.patch("/segments/:id", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const { id } = request.params as { id: string };
+    const parsed = segmentSchema.partial().safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.leadFinderSegment.findFirst({ where: { id, organizationId } });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Segment not found", statusCode: 404 });
+    }
+    try {
+      const segment = await prisma.leadFinderSegment.update({
+        where: { id },
+        data: parsed.data,
+      });
+      return { segment };
+    } catch {
+      return reply.status(400).send({ error: "Bad Request", message: "Segmento com este nome já existe.", statusCode: 400 });
+    }
+  });
+
+  app.delete("/segments/:id", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.leadFinderSegment.findFirst({ where: { id, organizationId } });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Segment not found", statusCode: 404 });
+    }
+    await prisma.leadFinderSegment.delete({ where: { id } });
+    return { ok: true };
+  });
+
+  app.get("/schedules", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const schedules = await prisma.leadFinderSchedule.findMany({
+      where: { organizationId },
+      include: { segment: { select: { id: true, name: true, niche: true, city: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return { schedules };
+  });
+
+  app.post("/schedules", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const parsed = scheduleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const d = parsed.data;
+    if (d.searchMode === "segment" && !d.segmentId) {
+      return reply.status(400).send({ error: "Bad Request", message: "segmentId required for segment mode", statusCode: 400 });
+    }
+    if (d.searchMode === "custom" && !d.niche?.trim() && !d.city?.trim()) {
+      return reply.status(400).send({ error: "Bad Request", message: "Informe nicho ou cidade.", statusCode: 400 });
+    }
+    if (d.followUpConfig?.inboxId) {
+      const err = await validateFollowUpInput(organizationId, d.followUpConfig as z.infer<typeof followUpBodySchema>);
+      if (err) return reply.status(400).send({ error: "Bad Request", message: err, statusCode: 400 });
+    }
+
+    const { nextRunAt, scheduledAtDate, cron, recurrenceJson } = resolveScheduleNextRun(
+      d.scheduleType,
+      d.scheduledAt,
+      d.recurrence,
+      d.cronExpression,
+    );
+    if (!nextRunAt) {
+      return reply.status(400).send({ error: "Bad Request", message: "Horário de execução inválido.", statusCode: 400 });
+    }
+
+    const schedule = await prisma.leadFinderSchedule.create({
+      data: {
+        organizationId,
+        name: d.name,
+        enabled: d.enabled ?? true,
+        searchMode: d.searchMode,
+        niche: d.niche?.trim() || null,
+        city: d.city?.trim() || null,
+        segmentId: d.segmentId ?? null,
+        importConfig: d.importConfig as object,
+        scheduleType: d.scheduleType,
+        scheduledAt: scheduledAtDate,
+        recurrence: recurrenceJson ?? undefined,
+        cronExpression: cron,
+        nextRunAt,
+        timeZone: d.timeZone ?? null,
+        followUpConfig: d.followUpConfig ? (d.followUpConfig as object) : undefined,
+        createdById: request.user.id,
+      },
+      include: { segment: { select: { id: true, name: true, niche: true, city: true } } },
+    });
+    return reply.status(201).send({ schedule });
+  });
+
+  app.patch("/schedules/:id", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const { id } = request.params as { id: string };
+    const parsed = scheduleSchema.partial().safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.leadFinderSchedule.findFirst({ where: { id, organizationId } });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Schedule not found", statusCode: 404 });
+    }
+    const d = parsed.data;
+    if (d.followUpConfig?.inboxId) {
+      const err = await validateFollowUpInput(organizationId, d.followUpConfig as z.infer<typeof followUpBodySchema>);
+      if (err) return reply.status(400).send({ error: "Bad Request", message: err, statusCode: 400 });
+    }
+
+    const scheduleType = d.scheduleType ?? existing.scheduleType;
+    const scheduledAtStr = d.scheduledAt ?? existing.scheduledAt?.toISOString();
+    const recurrence = d.recurrence ?? (existing.recurrence as Record<string, unknown> | undefined);
+    const cronExpr = d.cronExpression ?? existing.cronExpression ?? undefined;
+
+    let nextRunAt = existing.nextRunAt;
+    if (d.scheduleType || d.scheduledAt || d.recurrence || d.cronExpression) {
+      const resolved = resolveScheduleNextRun(scheduleType, scheduledAtStr, recurrence, cronExpr);
+      nextRunAt = resolved.nextRunAt;
+    }
+
+    const schedule = await prisma.leadFinderSchedule.update({
+      where: { id },
+      data: {
+        ...(d.name != null ? { name: d.name } : {}),
+        ...(d.enabled != null ? { enabled: d.enabled } : {}),
+        ...(d.searchMode != null ? { searchMode: d.searchMode } : {}),
+        ...(d.niche !== undefined ? { niche: d.niche?.trim() || null } : {}),
+        ...(d.city !== undefined ? { city: d.city?.trim() || null } : {}),
+        ...(d.importConfig != null ? { importConfig: d.importConfig as object } : {}),
+        ...(d.scheduleType != null ? { scheduleType: d.scheduleType } : {}),
+        ...(d.scheduledAt != null ? { scheduledAt: new Date(d.scheduledAt) } : {}),
+        ...(d.recurrence != null ? { recurrence: d.recurrence as object } : {}),
+        ...(d.cronExpression !== undefined ? { cronExpression: d.cronExpression } : {}),
+        ...(d.timeZone !== undefined ? { timeZone: d.timeZone } : {}),
+        ...(d.followUpConfig !== undefined
+          ? { followUpConfig: d.followUpConfig === null ? Prisma.JsonNull : (d.followUpConfig as Prisma.InputJsonValue) }
+          : {}),
+        nextRunAt,
+        ...(d.segmentId !== undefined
+          ? { segment: d.segmentId ? { connect: { id: d.segmentId } } : { disconnect: true } }
+          : {}),
+      },
+      include: { segment: { select: { id: true, name: true, niche: true, city: true } } },
+    });
+    return { schedule };
+  });
+
+  app.delete("/schedules/:id", async (request, reply) => {
+    const organizationId = await leadFinderGate(request, reply);
+    if (!organizationId) return;
+    const { id } = request.params as { id: string };
+    const existing = await prisma.leadFinderSchedule.findFirst({ where: { id, organizationId } });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Schedule not found", statusCode: 404 });
+    }
+    await prisma.leadFinderSchedule.delete({ where: { id } });
+    return { ok: true };
   });
 
   app.post("/search", async (request, reply) => {
@@ -230,103 +476,57 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const d = parsed.data;
-    let tagIds = [...(d.tagIds ?? [])];
 
-    if (d.createImportTag) {
-      const tagName = (d.importTagName?.trim() || `Lead Finder ${new Date().toISOString().slice(0, 10)}`).slice(0, 100);
-      const existingTag = await prisma.tag.findFirst({ where: { organizationId, name: tagName } });
-      if (existingTag) {
-        if (!tagIds.includes(existingTag.id)) tagIds.push(existingTag.id);
-      } else {
-        const created = await prisma.tag.create({
-          data: { organizationId, name: tagName, color: "#6366f1" },
+    if (d.followUp) {
+      const broadcastEnabled = await isOrganizationFeatureEnabled(organizationId, "broadcast_campaigns");
+      if (!broadcastEnabled) {
+        return reply.status(403).send({
+          error: "Forbidden",
+          message: "Campanhas de envio estão desativadas para esta organização.",
+          statusCode: 403,
         });
-        tagIds.push(created.id);
       }
+      const err = await validateFollowUpInput(organizationId, d.followUp);
+      if (err) return reply.status(400).send({ error: "Bad Request", message: err, statusCode: 400 });
     }
 
-    if (d.leadTypeId) {
-      const lt = await prisma.leadType.findFirst({ where: { id: d.leadTypeId, organizationId } });
-      if (!lt) {
-        return reply.status(400).send({ error: "Bad Request", message: "Invalid leadTypeId", statusCode: 400 });
-      }
-    }
-
-    if (tagIds.length > 0) {
-      const count = await prisma.tag.count({ where: { organizationId, id: { in: tagIds } } });
-      if (count !== tagIds.length) {
-        return reply.status(400).send({ error: "Bad Request", message: "Invalid tagIds", statusCode: 400 });
-      }
-    }
-
-    let pipelineStageId: string | null = null;
-    if (d.leadTypeId) {
-      const stage = await ensurePipelineStageForLeadType(prisma, organizationId, d.leadTypeId);
-      pipelineStageId = stage.id;
-    }
-
-    const createdIds: string[] = [];
-    const updatedIds: string[] = [];
-    const skipped: { title: string; reason: string }[] = [];
-
-    for (const lead of d.leads) {
-      const phone = normalizeLeadFinderPhone(lead.phone ?? "");
-      if (!phone) {
-        skipped.push({ title: lead.title, reason: "no_phone" });
-        continue;
-      }
-
-      const notes = contactNotesFromLead(lead);
-      const existing = await prisma.contact.findFirst({ where: { organizationId, phone } });
-
-      if (existing) {
-        if (!d.updateExisting) {
-          skipped.push({ title: lead.title, reason: "duplicate" });
-          continue;
-        }
-        const updated = await prisma.contact.update({
-          where: { id: existing.id },
-          data: {
-            name: lead.title,
-            notes: existing.notes ? `${existing.notes}\n\n${notes}` : notes,
-            ...(lead.email?.trim() ? { email: lead.email.trim() } : {}),
-            ...(pipelineStageId ? { pipelineStageId } : {}),
-          },
-        });
-        if (tagIds.length > 0) {
-          await prisma.contactTag.createMany({
-            data: tagIds.map((tagId) => ({ contactId: updated.id, tagId })),
-            skipDuplicates: true,
-          });
-        }
-        updatedIds.push(updated.id);
-        continue;
-      }
-
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          phone,
-          name: lead.title,
-          notes,
-          email: lead.email?.trim() || null,
-          pipelineStageId,
-          createdById: request.user.id,
-          tags: tagIds.length > 0 ? { create: tagIds.map((tagId) => ({ tagId })) } : undefined,
-        },
+    try {
+      const result = await importLeadFinderContacts(app, organizationId, {
+        leads: d.leads,
+        tagIds: d.tagIds,
+        leadTypeId: d.leadTypeId,
+        createImportTag: d.createImportTag,
+        importTagName: d.importTagName,
+        updateExisting: d.updateExisting,
+        createdById: request.user.id,
       });
-      createdIds.push(contact.id);
-      fireBroadcastEventTriggers(app, organizationId, "NEW_LEAD", { contactId: contact.id });
-    }
 
-    return {
-      created: createdIds.length,
-      updated: updatedIds.length,
-      skipped: skipped.length,
-      skippedDetails: skipped,
-      contactIds: [...createdIds, ...updatedIds],
-      tagIds,
-    };
+      let followUp: { campaignId: string; started: boolean; startError: string | null } | null = null;
+      if (d.followUp && result.tagIds.length > 0) {
+        const fuName =
+          d.followUp.name?.trim() ||
+          (d.importTagName ? `Follow-up: ${d.importTagName}` : "Follow-up Lead Finder");
+        followUp = await createLeadFinderFollowUp(app, organizationId, {
+          tagIds: result.tagIds,
+          name: fuName.slice(0, 200),
+          inboxId: d.followUp.inboxId,
+          messageType: d.followUp.messageType,
+          body: d.followUp.body,
+          templateId: d.followUp.templateId,
+          scheduleType: d.followUp.scheduleType,
+          scheduledAt: d.followUp.scheduledAt,
+          segmentRules: d.followUp.segmentRules,
+          cronExpression: d.followUp.cronExpression,
+          autoStart: d.followUp.autoStart,
+          createdById: request.user.id,
+        });
+      }
+
+      return { ...result, followUp };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Import failed";
+      return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
+    }
   });
 
   app.post("/create-follow-up", async (request, reply) => {
@@ -348,74 +548,18 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const d = parsed.data;
-  if (d.messageType === "TEXT" && !d.body?.trim()) {
-      return reply.status(400).send({ error: "Bad Request", message: "body is required for TEXT", statusCode: 400 });
-    }
-    if (d.messageType === "TEMPLATE" && !d.templateId) {
-      return reply.status(400).send({ error: "Bad Request", message: "templateId is required for TEMPLATE", statusCode: 400 });
-    }
-
-    const inbox = await prisma.inbox.findFirst({ where: { id: d.inboxId, organizationId } });
-    if (!inbox) {
-      return reply.status(400).send({ error: "Bad Request", message: "Invalid inboxId", statusCode: 400 });
-    }
+    const err = await validateFollowUpInput(organizationId, d);
+    if (err) return reply.status(400).send({ error: "Bad Request", message: err, statusCode: 400 });
 
     const tagCount = await prisma.tag.count({ where: { organizationId, id: { in: d.tagIds } } });
     if (tagCount !== d.tagIds.length) {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid tagIds", statusCode: 400 });
     }
 
-    const segmentRules = {
-      tagLogic: "ANY" as const,
-      campaignKind: "followup" as const,
-      ...(parseSegmentRules(d.segmentRules) ?? {}),
-    };
-
-    let scheduledAt = d.scheduledAt ? new Date(d.scheduledAt) : null;
-    let cronExpression = d.cronExpression ?? null;
-    let nextRunAt: Date | null = null;
-
-    if (d.scheduleType === "SCHEDULED" && scheduledAt) {
-      nextRunAt = scheduledAt;
-    } else if (d.scheduleType === "RECURRING") {
-      const recurrence = parseFollowUpRecurrence(segmentRules);
-      if (recurrence) {
-        nextRunAt = computeNextRunAt(new Date(), recurrence);
-        scheduledAt = scheduledAt ?? nextRunAt;
-      }
-    }
-
-    const campaign = await prisma.broadcastCampaign.create({
-      data: {
-        organizationId,
-        name: d.name,
-        channel: "WHATSAPP",
-        inboxId: d.inboxId,
-        messageType: d.messageType,
-        body: d.messageType === "TEXT" ? d.body?.trim() : null,
-        templateId: d.messageType === "TEMPLATE" ? d.templateId : null,
-        segmentRules: segmentRules as object,
-        scheduleType: d.scheduleType,
-        scheduledAt,
-        cronExpression,
-        nextRunAt,
-        status: "DRAFT",
-        createdById: request.user.id,
-        tags: { create: d.tagIds.map((tagId) => ({ tagId })) },
-      },
+    const result = await createLeadFinderFollowUp(app, organizationId, {
+      ...d,
+      createdById: request.user.id,
     });
-
-    let started = false;
-    let startError: string | null = null;
-    if (d.autoStart === true && d.scheduleType === "IMMEDIATE") {
-      try {
-        await materializeAndStartCampaign(app, organizationId, campaign.id);
-        started = true;
-      } catch (err) {
-        startError = err instanceof Error ? err.message : "Start failed";
-      }
-    }
-
-    return reply.status(201).send({ campaignId: campaign.id, started, startError });
+    return reply.status(201).send(result);
   });
 }

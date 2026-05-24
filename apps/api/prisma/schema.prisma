@@ -205,6 +205,8 @@ model Organization {
   automationExecutions           AutomationExecution[]
   automationExecutionLogSettings AutomationExecutionLogSettings?
   chatbotFlows                   ChatbotFlow[]
+  leadFinderSegments             LeadFinderSegment[]
+  leadFinderSchedules            LeadFinderSchedule[]
 
   @@map("organizations")
 }
@@ -1597,4 +1599,58 @@ model ChatbotFlowSession {
   @@index([organizationId])
   @@index([chatbotFlowId])
   @@map("chatbot_flow_sessions")
+}
+
+model LeadFinderSegment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(120)
+  niche          String   @db.VarChar(200)
+  city           String   @db.VarChar(200)
+  isPreset       Boolean  @default(false) @map("is_preset")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  schedules    LeadFinderSchedule[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("lead_finder_segments")
+}
+
+enum LeadFinderScheduleType {
+  SCHEDULED
+  RECURRING
+}
+
+model LeadFinderSchedule {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  name           String                 @db.VarChar(200)
+  enabled        Boolean                @default(true)
+  searchMode     String                 @map("search_mode") @db.VarChar(16)
+  niche          String?                @db.VarChar(200)
+  city           String?                @db.VarChar(200)
+  segmentId      String?                @map("segment_id") @db.Uuid
+  importConfig   Json                   @default("{}") @map("import_config")
+  scheduleType   LeadFinderScheduleType @map("schedule_type")
+  scheduledAt    DateTime?              @map("scheduled_at")
+  recurrence     Json?
+  cronExpression String?                @map("cron_expression") @db.VarChar(100)
+  nextRunAt      DateTime?              @map("next_run_at")
+  timeZone       String?                @map("time_zone") @db.VarChar(64)
+  followUpConfig Json?                  @map("follow_up_config")
+  lastRunAt      DateTime?              @map("last_run_at")
+  lastRunResult  Json?                  @map("last_run_result")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  createdById    String?                @map("created_by_id") @db.Uuid
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  segment      LeadFinderSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([enabled, nextRunAt])
+  @@map("lead_finder_schedules")
 }

@@ -49,6 +49,7 @@ import {
 } from "./lib/automationExecutionLog.js";
 import { registerBroadcastQueueWorker, closeBroadcastQueue } from "./lib/broadcastQueue.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
+import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
 
 const app = Fastify({
@@ -176,6 +177,10 @@ try {
     void runBroadcastSchedulerTick(app);
   }, broadcastSchedulerMs);
   void runBroadcastSchedulerTick(app);
+  setInterval(() => {
+    void runLeadFinderSchedulerTick(app);
+  }, broadcastSchedulerMs);
+  void runLeadFinderSchedulerTick(app);
   const chatbotSchedulerMs = 30_000;
   setInterval(() => {
     void runChatbotFlowSchedulerTick(app);
