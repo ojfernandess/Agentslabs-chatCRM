@@ -1,23 +1,24 @@
 import { Resend } from "resend";
-import { buildPasswordResetEmailContent } from "@openconduit/shared";
+import { buildUserInviteEmailContent } from "@openconduit/shared";
 import type { ResendEmailConfig } from "./resendEmailSettings.js";
-import { resolvePasswordResetTemplates, resolveSystemLogoUrl } from "./resendEmailSettings.js";
+import { resolveSystemLogoUrl, resolveUserInviteTemplates } from "./resendEmailSettings.js";
 
-export async function sendPasswordResetEmail(
+export async function sendUserInviteEmail(
   cfg: ResendEmailConfig,
   toEmail: string,
-  resetUrl: string,
-  userName: string,
+  inviteUrl: string,
+  organizationName: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const resend = new Resend(cfg.apiKey);
-  const { subjectTpl, htmlTpl } = resolvePasswordResetTemplates(cfg);
+  const { subjectTpl, htmlTpl } = resolveUserInviteTemplates(cfg);
   const vars = {
-    resetUrl,
+    inviteUrl,
     appName: cfg.fromName,
-    userName: userName.trim() || "—",
     logoUrl: resolveSystemLogoUrl(cfg),
+    userName: toEmail.split("@")[0] ?? "—",
+    organizationName: organizationName.trim() || "—",
   };
-  const { subject, html } = buildPasswordResetEmailContent(subjectTpl, htmlTpl, vars);
+  const { subject, html } = buildUserInviteEmailContent(subjectTpl, htmlTpl, vars);
 
   const { data, error } = await resend.emails.send({
     from: `${cfg.fromName} <${cfg.fromEmail}>`,

@@ -30,6 +30,7 @@ export function nativeOpenAiToolFunctionName(toolId: string): string {
 }
 
 export type ConnectedToolInstructionRow = { name: string; instruction: string; toolId: string };
+export type ConnectedTagInstructionRow = { name: string; instruction: string; tagId: string };
 export type TeamTransferHint = { teamId: string; teamName: string; instruction: string };
 
 export type EscalationPromptContext = {
@@ -46,6 +47,7 @@ export function buildPromptAutoInstructionBlock(input: {
   linkedArticleTitles: string[];
   connectedToolNames: string[];
   connectedToolInstructions?: ConnectedToolInstructionRow[];
+  connectedTagInstructions?: ConnectedTagInstructionRow[];
   teamTransferHints?: TeamTransferHint[];
   escalation?: EscalationPromptContext | null;
   instructionFallbacks?: InstructionFallback[];
@@ -57,6 +59,7 @@ export function buildPromptAutoInstructionBlock(input: {
     linkedArticleTitles,
     connectedToolNames,
     connectedToolInstructions,
+    connectedTagInstructions,
     teamTransferHints,
     escalation,
     instructionFallbacks,
@@ -101,6 +104,7 @@ export function buildPromptAutoInstructionBlock(input: {
   pushNative("scheduling_google", "automationPage.agentTool_scheduling_google");
   pushNative("scheduling_outlook", "automationPage.agentTool_scheduling_outlook");
   pushNative("call_human", "automationPage.agentTool_call_human");
+  pushNative("assign_contact_tags", "automationPage.agentTool_assign_contact_tags");
   pushNative("end_conversation", "automationPage.agentTool_end_conversation");
   pushNative("ping", "automationPage.agentTool_ping");
 
@@ -124,6 +128,16 @@ export function buildPromptAutoInstructionBlock(input: {
       lines.push(
         t("automationPage.promptBuilderConnectedToolNativeFnLine").replace("{fn}", nativeOpenAiToolFunctionName(row.toolId)),
       );
+      lines.push(row.instruction.trim());
+      lines.push("");
+    }
+  }
+
+  const tagInstr = (connectedTagInstructions ?? []).filter((x) => x.name && x.instruction?.trim() && x.tagId);
+  if (tagInstr.length && nativeTools.assign_contact_tags === true) {
+    lines.push(t("automationPage.promptBuilderConnectedTagsSection"));
+    for (const row of tagInstr) {
+      lines.push(`**${row.name}** (\`tag_id\`: \`${row.tagId}\`)`);
       lines.push(row.instruction.trim());
       lines.push("");
     }

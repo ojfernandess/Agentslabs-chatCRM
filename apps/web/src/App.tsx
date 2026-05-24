@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
+import { AcceptInvitePage } from "@/pages/AcceptInvitePage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { AiInsightsPage } from "@/pages/AiInsightsPage";
@@ -95,6 +96,7 @@ export function App() {
       <Route path="/chatbot/:publicId" element={<ChatbotEmbedPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />
+      <Route path="/login/invite" element={<AcceptInvitePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"

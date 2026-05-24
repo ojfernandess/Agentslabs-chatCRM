@@ -138,6 +138,7 @@ export type EvolutionGoOpResult = {
 };
 
 export const EVOLUTION_GO_WEBHOOK_SUBSCRIBE = [
+  "ALL",
   "MESSAGE",
   "READ_RECEIPT",
   "CONNECTION",

@@ -25,6 +25,7 @@ import {
 } from "@/components/super-admin/SuperAdminShell";
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
+import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 
 interface OrgRow {
   id: string;
@@ -218,8 +219,11 @@ interface SuperResendPayload {
   fromEmail: string;
   fromName: string;
   apiKeyMasked: string;
+  systemLogoUrl?: string;
   passwordResetSubject: string;
   passwordResetHtmlTemplate: string;
+  userInviteSubject: string;
+  userInviteHtmlTemplate: string;
 }
 
 interface SuperMediaStoragePayload {
@@ -348,15 +352,21 @@ export function SuperAdminPage() {
     fromEmail: "",
     fromName: "OpenNexo CRM",
     apiKeyMasked: "",
+    systemLogoUrl: "",
     passwordResetSubject: "",
     passwordResetHtmlTemplate: "",
+    userInviteSubject: "",
+    userInviteHtmlTemplate: "",
   });
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFromEmail, setResendFromEmail] = useState("");
   const [resendFromName, setResendFromName] = useState("OpenNexo CRM");
   const [resendSaving, setResendSaving] = useState(false);
+  const [resendSystemLogoUrl, setResendSystemLogoUrl] = useState("");
   const [resendPasswordResetSubject, setResendPasswordResetSubject] = useState("");
   const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
+  const [resendUserInviteSubject, setResendUserInviteSubject] = useState("");
+  const [resendUserInviteHtml, setResendUserInviteHtml] = useState("");
 
   const [mediaStorageLoad, setMediaStorageLoad] = useState(false);
   const [mediaStorageSaving, setMediaStorageSaving] = useState(false);
@@ -589,8 +599,11 @@ export function SuperAdminPage() {
         setResendSnapshot(d);
         setResendFromEmail(d.fromEmail);
         setResendFromName(d.fromName || "OpenNexo CRM");
+        setResendSystemLogoUrl(d.systemLogoUrl ?? "");
         setResendPasswordResetSubject(d.passwordResetSubject);
         setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
+        setResendUserInviteSubject(d.userInviteSubject);
+        setResendUserInviteHtml(d.userInviteHtmlTemplate);
         setResendApiKey("");
       })
       .catch(() => {
@@ -600,8 +613,11 @@ export function SuperAdminPage() {
             fromEmail: "",
             fromName: "OpenNexo CRM",
             apiKeyMasked: "",
+            systemLogoUrl: "",
             passwordResetSubject: "",
             passwordResetHtmlTemplate: "",
+            userInviteSubject: "",
+            userInviteHtmlTemplate: "",
           });
           setResendFromEmail("");
           setResendFromName("OpenNexo CRM");
@@ -1020,19 +1036,28 @@ export function SuperAdminPage() {
         fromEmail: string;
         fromName: string;
         apiKey?: string;
+        systemLogoUrl?: string;
         passwordResetSubject: string;
         passwordResetHtmlTemplate: string;
+        userInviteSubject: string;
+        userInviteHtmlTemplate: string;
       } = {
         fromEmail: resendFromEmail.trim(),
         fromName: (resendFromName.trim() || "OpenNexo CRM").slice(0, 120),
+        systemLogoUrl: resendSystemLogoUrl.trim(),
         passwordResetSubject: resendPasswordResetSubject.trim(),
         passwordResetHtmlTemplate: resendPasswordResetHtml,
+        userInviteSubject: resendUserInviteSubject.trim(),
+        userInviteHtmlTemplate: resendUserInviteHtml,
       };
       if (resendApiKey.trim()) body.apiKey = resendApiKey.trim();
       const d = await api.put<SuperResendPayload>("/super/resend-email", body);
       setResendSnapshot(d);
+      setResendSystemLogoUrl(d.systemLogoUrl ?? "");
       setResendPasswordResetSubject(d.passwordResetSubject);
       setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
+      setResendUserInviteSubject(d.userInviteSubject);
+      setResendUserInviteHtml(d.userInviteHtmlTemplate);
       setResendApiKey("");
     } catch {
       setError("Não foi possível guardar as definições Resend.");
@@ -1730,12 +1755,33 @@ export function SuperAdminPage() {
                         autoComplete="new-password"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.resendSystemLogoUrl")}</label>
+                      <p className="mt-0.5 text-xs text-ink-500">{t("superAdmin.resendSystemLogoUrlHint")}</p>
+                      <input
+                        type="url"
+                        value={resendSystemLogoUrl}
+                        onChange={(e) => setResendSystemLogoUrl(e.target.value)}
+                        placeholder="https://app.seudominio.com/logo.svg"
+                        className="input-field mt-2 w-full"
+                        autoComplete="off"
+                      />
+                    </div>
                     <ResendPasswordResetTemplateEditor
                       fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
                       subject={resendPasswordResetSubject}
                       html={resendPasswordResetHtml}
                       onSubjectChange={setResendPasswordResetSubject}
                       onHtmlChange={setResendPasswordResetHtml}
+                    />
+                    <ResendUserInviteTemplateEditor
+                      fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
+                      subject={resendUserInviteSubject}
+                      html={resendUserInviteHtml}
+                      onSubjectChange={setResendUserInviteSubject}
+                      onHtmlChange={setResendUserInviteHtml}
                     />
                     <button type="submit" className="btn-primary" disabled={resendSaving}>
                       {resendSaving ? t("common.saving") : t("superAdmin.resendSave")}

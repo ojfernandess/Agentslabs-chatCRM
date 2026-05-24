@@ -166,6 +166,7 @@ model Organization {
   monthlyMessageQuota Int?    @map("monthly_message_quota")
 
   users              User[]
+  userInvitations    UserInvitation[]
   contacts           Contact[]
   conversations      Conversation[]
   closureRecords     ConversationClosureRecord[]
@@ -483,6 +484,7 @@ model User {
   closureRecordsReopened     ConversationClosureRecord[]   @relation("ClosureRecordReopenedBy")
   closureRecordsAssigned     ConversationClosureRecord[]   @relation("ClosureRecordAssignee")
   passwordResetTokens          PasswordResetToken[]
+  invitationsSent              UserInvitation[]              @relation("UserInvitationsSent")
   teamChannelMessages          TeamChannelMessage[]          @relation("TeamChannelMessageAuthor")
   teamChannelMessageReactions  TeamChannelMessageReaction[]  @relation("TeamChannelMessageReactionUser")
   teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
@@ -502,6 +504,26 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+/// Convite por email para novo utilizador da organização (registo via link).
+model UserInvitation {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String       @db.VarChar(255)
+  role           UserRole     @default(AGENT)
+  tokenHash      String       @unique @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime     @map("expires_at")
+  acceptedAt     DateTime?    @map("accepted_at")
+  revokedAt      DateTime?    @map("revoked_at")
+  invitedById    String       @map("invited_by_id") @db.Uuid
+  invitedBy      User         @relation("UserInvitationsSent", fields: [invitedById], references: [id], onDelete: Restrict)
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("user_invitations")
 }
 
 /// Última vez que o utilizador abriu a conversa no painel — para ocultar badge de transferência de equipa.

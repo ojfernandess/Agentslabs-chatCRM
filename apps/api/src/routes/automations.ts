@@ -7,6 +7,7 @@ import {
   assignConversationTeamBodySchema,
   assignConversationTeamForOrg,
 } from "../lib/conversationTeamAssignment.js";
+import { assignTagsToConversationContact } from "../lib/assignContactTags.js";
 
 const assignConversationTagsSchema = z.object({
   tagIds: z.array(z.string().uuid()).min(1),
@@ -69,42 +70,23 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const conversation = await prisma.conversation.findFirst({
-      where: { id: request.params.id, organizationId },
-      select: { id: true, contactId: true },
+    const result = await assignTagsToConversationContact(prisma, {
+      organizationId,
+      conversationId: request.params.id,
+      tagIds: parsed.data.tagIds,
+      mode: parsed.data.mode,
     });
-    if (!conversation) {
-      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
-    }
-
-    const existingTags = await prisma.tag.findMany({
-      where: { organizationId, id: { in: parsed.data.tagIds } },
-      select: { id: true },
-    });
-    if (existingTags.length !== parsed.data.tagIds.length) {
-      return reply.status(400).send({ error: "Bad Request", message: "One or more tagIds are invalid", statusCode: 400 });
-    }
-
-    await prisma.$transaction(async (tx) => {
-      if (parsed.data.mode === "replace") {
-        await tx.contactTag.deleteMany({ where: { contactId: conversation.contactId } });
+    if (!result.ok) {
+      if (result.error === "conversation_not_found") {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
       }
-      await tx.contactTag.createMany({
-        data: parsed.data.tagIds.map((tagId) => ({ contactId: conversation.contactId, tagId })),
-        skipDuplicates: true,
-      });
-    });
-
-    const contactTags = await prisma.contactTag.findMany({
-      where: { contactId: conversation.contactId },
-      orderBy: { tagId: "asc" },
-    });
-    const tags = await prisma.tag.findMany({
-      where: { id: { in: contactTags.map((ct) => ct.tagId) }, organizationId },
-      select: { id: true, name: true, color: true },
-      orderBy: { name: "asc" },
-    });
-    return { conversationId: conversation.id, contactId: conversation.contactId, tags };
+      return reply.status(400).send({ error: "Bad Request", message: result.error, statusCode: 400 });
+    }
+    return {
+      conversationId: request.params.id,
+      contactId: result.contactId,
+      tags: result.tags,
+    };
   });
 
   app.patch<{ Params: { id: string } }>("/conversations/:id/team", async (request, reply) => {

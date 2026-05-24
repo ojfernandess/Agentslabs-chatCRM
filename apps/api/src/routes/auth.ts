@@ -14,6 +14,8 @@ import {
   generateUserApiAccessTokenParts,
   hashUserApiAccessToken,
 } from "../middleware/userApiTokenAuth.js";
+import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
+import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -39,6 +41,12 @@ const forgotPasswordSchema = z.object({
 const resetPasswordSchema = z.object({
   token: z.string().min(16).max(512),
   newPassword: z.string().min(8).max(128),
+});
+
+const acceptInviteSchema = z.object({
+  token: z.string().min(16).max(512),
+  name: z.string().min(1).max(255),
+  password: z.string().min(8).max(128),
 });
 
 function canManageProfileApiToken(user: {
@@ -111,6 +119,91 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       prisma.user.update({ where: { id: row.userId }, data: { passwordHash } }),
       prisma.passwordResetToken.deleteMany({ where: { userId: row.userId } }),
     ]);
+    return { ok: true };
+  });
+
+  app.get("/invite", async (request, reply) => {
+    const token = String((request.query as { token?: string }).token ?? "").trim();
+    if (!token) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Missing token",
+        statusCode: 400,
+      });
+    }
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const row = await prisma.userInvitation.findUnique({
+      where: { tokenHash },
+      include: { organization: { select: { name: true } } },
+    });
+    if (!row || row.revokedAt || row.acceptedAt || row.expiresAt < new Date()) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid or expired invitation link",
+        statusCode: 400,
+      });
+    }
+    return {
+      email: row.email,
+      role: row.role,
+      organizationName: row.organization.name,
+    };
+  });
+
+  app.post("/accept-invite", async (request, reply) => {
+    const parsed = acceptInviteSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+    const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+    const row = await prisma.userInvitation.findUnique({
+      where: { tokenHash },
+    });
+    if (!row || row.revokedAt || row.acceptedAt || row.expiresAt < new Date()) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid or expired invitation link",
+        statusCode: 400,
+      });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: row.email } });
+    if (existing) {
+      return reply.status(409).send({
+        error: "Conflict",
+        message: "An account with this email already exists",
+        statusCode: 409,
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.data.password, config.bcryptCostFactor);
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          organizationId: row.organizationId,
+          name: parsed.data.name.trim(),
+          email: row.email,
+          passwordHash,
+          role: row.role,
+        },
+        select: { id: true, email: true, role: true, organizationId: true },
+      });
+      await tx.userInvitation.update({
+        where: { id: row.id },
+        data: { acceptedAt: new Date() },
+      });
+      return created;
+    });
+
+    if (user.role === "AGENT") {
+      await addAgentToAllOrganizationTeams(row.organizationId, user.id);
+    }
+    await addUserToDefaultInboxes(row.organizationId, user.id);
+
     return { ok: true };
   });
 

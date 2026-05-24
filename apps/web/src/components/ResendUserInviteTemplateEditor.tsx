@@ -1,17 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  buildPasswordResetEmailContent,
-  DEFAULT_PASSWORD_RESET_HTML,
-  DEFAULT_PASSWORD_RESET_SUBJECT,
-  PASSWORD_RESET_PREVIEW_SAMPLE,
+  buildUserInviteEmailContent,
+  DEFAULT_USER_INVITE_HTML,
+  DEFAULT_USER_INVITE_SUBJECT,
+  USER_INVITE_PREVIEW_SAMPLE,
 } from "@openconduit/shared";
 import { useI18n } from "@/i18n/I18nProvider";
 
 const TOKENS = [
-  "{{resetUrl}}",
-  "{{resetUrlText}}",
-  "{{appName}}",
+  "{{inviteUrl}}",
+  "{{inviteUrlText}}",
   "{{userName}}",
+  "{{organizationName}}",
+  "{{appName}}",
   "{{logoUrl}}",
   "{{logoHtml}}",
 ] as const;
@@ -35,7 +36,7 @@ function insertAtCursor(
   });
 }
 
-export type ResendPasswordResetTemplateEditorProps = {
+export type ResendUserInviteTemplateEditorProps = {
   fromName: string;
   logoUrl?: string;
   subject: string;
@@ -44,14 +45,14 @@ export type ResendPasswordResetTemplateEditorProps = {
   onHtmlChange: (v: string) => void;
 };
 
-export function ResendPasswordResetTemplateEditor({
+export function ResendUserInviteTemplateEditor({
   fromName,
   logoUrl,
   subject,
   html,
   onSubjectChange,
   onHtmlChange,
-}: ResendPasswordResetTemplateEditorProps) {
+}: ResendUserInviteTemplateEditorProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const subjectInputRef = useRef<HTMLInputElement>(null);
@@ -59,8 +60,8 @@ export function ResendPasswordResetTemplateEditor({
 
   const preview = useMemo(() => {
     const appName = fromName.trim() || "OpenNexo CRM";
-    return buildPasswordResetEmailContent(subject, html, {
-      ...PASSWORD_RESET_PREVIEW_SAMPLE,
+    return buildUserInviteEmailContent(subject, html, {
+      ...USER_INVITE_PREVIEW_SAMPLE,
       appName,
       logoUrl: logoUrl?.trim() || PREVIEW_LOGO,
     });
@@ -121,8 +122,8 @@ export function ResendPasswordResetTemplateEditor({
           type="button"
           className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
           onClick={() => {
-            onSubjectChange(DEFAULT_PASSWORD_RESET_SUBJECT);
-            onHtmlChange(DEFAULT_PASSWORD_RESET_HTML);
+            onSubjectChange(DEFAULT_USER_INVITE_SUBJECT);
+            onHtmlChange(DEFAULT_USER_INVITE_HTML);
           }}
         >
           {t("superAdmin.resendTemplateRestoreDefaults")}
@@ -132,8 +133,8 @@ export function ResendPasswordResetTemplateEditor({
       {tab === "edit" ? (
         <>
           <div>
-            <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetSubject")}</h3>
-            <p className="mb-2 text-xs text-ink-500">{t("superAdmin.resendPasswordResetPlaceholders")}</p>
+            <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendUserInviteSubject")}</h3>
+            <p className="mb-2 text-xs text-ink-500">{t("superAdmin.resendUserInvitePlaceholders")}</p>
             <input
               ref={subjectInputRef}
               type="text"
@@ -149,7 +150,7 @@ export function ResendPasswordResetTemplateEditor({
                 <button
                   key={`s-${token}`}
                   type="button"
-                  className="rounded border border-ink-200 bg-ink-50 px-2 py-1 font-mono text-[11px] text-ink-800 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                  className="rounded border border-ink-200 bg-ink-50 px-2 py-1 font-mono text-[11px] text-ink-800 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                   onClick={() => insertInSubject(token)}
                 >
                   {token}
@@ -158,7 +159,7 @@ export function ResendPasswordResetTemplateEditor({
             </div>
           </div>
           <div>
-            <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendPasswordResetHtml")}</h3>
+            <h3 className="mb-1 text-sm font-semibold text-ink-900">{t("superAdmin.resendUserInviteHtml")}</h3>
             <textarea
               ref={htmlTextareaRef}
               value={html}
@@ -173,7 +174,7 @@ export function ResendPasswordResetTemplateEditor({
                 <button
                   key={`h-${token}`}
                   type="button"
-                  className="rounded border border-ink-200 bg-ink-50 px-2 py-1 font-mono text-[11px] text-ink-800 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+                  className="rounded border border-ink-200 bg-ink-50 px-2 py-1 font-mono text-[11px] text-ink-800 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                   onClick={() => insertInHtml(token)}
                 >
                   {token}

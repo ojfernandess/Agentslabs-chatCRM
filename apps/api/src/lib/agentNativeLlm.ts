@@ -21,6 +21,7 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
+import { assignTagsToConversationContact } from "./assignContactTags.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 import {
   openAiToolDefinitionForAutomationTool,
@@ -65,6 +66,7 @@ export type NativeToolsFlags = {
   transfer_to_team: boolean;
   list_teams: boolean;
   call_human: boolean;
+  assign_contact_tags: boolean;
 };
 
 const defaultNativeTools = (): NativeToolsFlags => ({
@@ -72,6 +74,7 @@ const defaultNativeTools = (): NativeToolsFlags => ({
   transfer_to_team: false,
   list_teams: false,
   call_human: true,
+  assign_contact_tags: false,
 });
 
 export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlags {
@@ -89,7 +92,58 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
     transfer_to_team: assignOn || transferOn,
     list_teams: flag("list_teams", false) || assignOn || transferOn,
     call_human: flag("call_human", base.call_human),
+    assign_contact_tags: flag("assign_contact_tags", base.assign_contact_tags),
   };
+}
+
+export type AgentConnectedTagRow = {
+  tagId: string;
+  enabled: boolean;
+  agentInstruction?: string;
+};
+
+function parseConnectedTagsFromBehavior(behavior: unknown): AgentConnectedTagRow[] {
+  if (!behavior || typeof behavior !== "object") return [];
+  const raw = (behavior as Record<string, unknown>).connectedTags;
+  if (!Array.isArray(raw)) return [];
+  const out: AgentConnectedTagRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const tagId = typeof o.tagId === "string" ? o.tagId.trim() : "";
+    if (!tagId) continue;
+    out.push({
+      tagId,
+      enabled: o.enabled === true,
+      agentInstruction: typeof o.agentInstruction === "string" ? o.agentInstruction : undefined,
+    });
+  }
+  return out;
+}
+
+function parseConnectedTagAgentInstructions(behavior: unknown): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const row of parseConnectedTagsFromBehavior(behavior)) {
+    if (!row.enabled) continue;
+    const ins = typeof row.agentInstruction === "string" ? row.agentInstruction.trim() : "";
+    if (ins) m.set(row.tagId, ins);
+  }
+  return m;
+}
+
+async function resolveAgentAssignableTagIds(
+  organizationId: string,
+  behavior: unknown,
+): Promise<string[]> {
+  const connected = parseConnectedTagsFromBehavior(behavior).filter((x) => x.enabled);
+  if (connected.length > 0) return connected.map((x) => x.tagId);
+  const tags = await prisma.tag.findMany({
+    where: { organizationId },
+    select: { id: true },
+    orderBy: { name: "asc" },
+    take: 80,
+  });
+  return tags.map((t) => t.id);
 }
 
 function formatKnowledgeToolResult(
@@ -109,7 +163,7 @@ function formatKnowledgeToolResult(
 
 function buildOpenAiTools(
   flags: NativeToolsFlags,
-  opts?: { omitBuscarConhecimento?: boolean },
+  opts?: { omitBuscarConhecimento?: boolean; assignableTagsDescription?: string },
 ): OpenAiToolDefinition[] {
   const tools: OpenAiToolDefinition[] = [];
   if (flags.knowledge_search && !opts?.omitBuscarConhecimento) {
@@ -158,6 +212,44 @@ function buildOpenAiTools(
       },
     });
   }
+  if (flags.assign_contact_tags) {
+    const tagDesc =
+      opts?.assignableTagsDescription?.trim() ||
+      "Etiquetas configuradas para este agente (use listar_etiquetas para ver UUIDs).";
+    tools.push({
+      type: "function",
+      function: {
+        name: "listar_etiquetas",
+        description:
+          "Lista etiquetas (tags) que este agente pode atribuir ao contacto da conversa, com id UUID e nome.",
+        parameters: { type: "object", properties: {} },
+      },
+    });
+    tools.push({
+      type: "function",
+      function: {
+        name: "atribuir_etiquetas",
+        description:
+          `Atribui etiquetas ao contacto desta conversa. Só use tag_ids permitidos para este agente.\n${tagDesc}`,
+        parameters: {
+          type: "object",
+          properties: {
+            tag_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "Lista de UUIDs de etiquetas (máx. 12)",
+            },
+            mode: {
+              type: "string",
+              enum: ["add", "replace"],
+              description: "add = acrescenta; replace = substitui todas as etiquetas do contacto",
+            },
+          },
+          required: ["tag_ids"],
+        },
+      },
+    });
+  }
   if (flags.call_human) {
     tools.push({
       type: "function",
@@ -185,11 +277,23 @@ async function executeNativeTool(input: {
   botId: string;
   conversationId: string;
   flags: NativeToolsFlags;
+  allowedTagIds: string[];
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
   userMessage?: string;
 }): Promise<string> {
-  const { name, argsJson, organizationId, botId, conversationId, flags, log, pinnedArticleIds, userMessage } = input;
+  const {
+    name,
+    argsJson,
+    organizationId,
+    botId,
+    conversationId,
+    flags,
+    allowedTagIds,
+    log,
+    pinnedArticleIds,
+    userMessage,
+  } = input;
   let args: Record<string, unknown> = {};
   try {
     const p = JSON.parse(argsJson || "{}");
@@ -273,6 +377,48 @@ async function executeNativeTool(input: {
         teamId: r.payload.teamId,
         teamName: r.payload.team?.name ?? null,
         message: "Conversa atribuída à equipa e aberta para atendentes humanos.",
+      });
+    }
+
+    if (name === "listar_etiquetas" && flags.assign_contact_tags) {
+      const ids = allowedTagIds.length ? allowedTagIds : [];
+      const tags = ids.length
+        ? await prisma.tag.findMany({
+            where: { organizationId, id: { in: ids } },
+            select: { id: true, name: true, color: true },
+            orderBy: { name: "asc" },
+          })
+        : [];
+      return JSON.stringify({ ok: true, tags });
+    }
+
+    if (name === "atribuir_etiquetas" && flags.assign_contact_tags) {
+      const rawIds = args.tag_ids ?? args.tagIds;
+      const tagIds = Array.isArray(rawIds)
+        ? rawIds.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean)
+        : [];
+      if (!tagIds.length) return JSON.stringify({ ok: false, error: "missing_tag_ids" });
+      const allowed = new Set(allowedTagIds);
+      const filtered = tagIds.filter((id) => allowed.has(id)).slice(0, 12);
+      if (!filtered.length) {
+        return JSON.stringify({ ok: false, error: "tag_ids_not_allowed_for_agent" });
+      }
+      const modeRaw = args.mode;
+      const mode = modeRaw === "replace" ? "replace" : "add";
+      const r = await assignTagsToConversationContact(prisma, {
+        organizationId,
+        conversationId,
+        tagIds: filtered,
+        mode,
+      });
+      if (!r.ok) {
+        return JSON.stringify({ ok: false, error: r.error });
+      }
+      return JSON.stringify({
+        ok: true,
+        contactId: r.contactId,
+        tags: r.tags,
+        message: "Etiquetas atribuídas ao contacto da conversa.",
       });
     }
 
@@ -567,6 +713,24 @@ export async function generateNativeAgentReply(input: {
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
+  const allowedTagIds = flags.assign_contact_tags
+    ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
+    : [];
+  let assignableTagsDescription = "";
+  if (flags.assign_contact_tags && allowedTagIds.length > 0) {
+    const tagRows = await prisma.tag.findMany({
+      where: { organizationId, id: { in: allowedTagIds } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const tagInstr = parseConnectedTagAgentInstructions(profile.behaviorConfig);
+    assignableTagsDescription = tagRows
+      .map((t) => {
+        const ins = tagInstr.get(t.id);
+        return ins ? `- ${t.name} (\`${t.id}\`): ${ins}` : `- ${t.name} (\`${t.id}\`)`;
+      })
+      .join("\n");
+  }
   const customToolPreamble =
     customHttpTools.length > 0
       ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n"
@@ -619,11 +783,17 @@ export async function generateNativeAgentReply(input: {
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
       "- **`buscar_conhecimento`:** continua disponível. Se o seu prompt interno exigir uma chamada explícita à função antes de responder, invoque‑a com `query` adequada; se os excertos acima já bastarem, pode responder sem nova chamada.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+      (flags.assign_contact_tags
+        ? "- `listar_etiquetas` / `atribuir_etiquetas`: etiquetas no contacto da conversa; use só UUIDs permitidos.\n"
+        : "") +
       "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
       customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
       "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
+      (flags.assign_contact_tags
+        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
+        : "") +
       "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre." +
       customToolPreamble;
 
@@ -682,7 +852,7 @@ export async function generateNativeAgentReply(input: {
   let completedToolRounds = 0;
 
   const tools: OpenAiToolDefinition[] = [
-    ...buildOpenAiTools(flags, { omitBuscarConhecimento }),
+    ...buildOpenAiTools(flags, { omitBuscarConhecimento, assignableTagsDescription }),
     ...customHttpTools.map((row) =>
       openAiToolDefinitionForAutomationTool(row, { agentInstruction: agentInstructionByToolId.get(row.id) }),
     ),
@@ -786,6 +956,7 @@ export async function generateNativeAgentReply(input: {
               botId: bot.id,
               conversationId: conversation.id,
               flags,
+              allowedTagIds,
               log,
               pinnedArticleIds,
               userMessage,

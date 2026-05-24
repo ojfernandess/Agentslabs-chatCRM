@@ -27,6 +27,7 @@ import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib
 import {
   RESEND_EMAIL_PLATFORM_KEY,
   getPasswordResetTemplatesForEditor,
+  getUserInviteTemplatesForEditor,
   parseResendEmailValue,
 } from "../lib/resendEmailSettings.js";
 import {
@@ -116,8 +117,11 @@ const resendEmailPutSchema = z.object({
   apiKey: z.string().max(512).optional(),
   fromEmail: z.string().email(),
   fromName: z.string().min(1).max(120).optional(),
+  systemLogoUrl: z.string().max(2000).optional(),
   passwordResetSubject: z.string().max(200).optional(),
   passwordResetHtmlTemplate: z.string().max(100_000).optional(),
+  userInviteSubject: z.string().max(200).optional(),
+  userInviteHtmlTemplate: z.string().max(100_000).optional(),
 });
 
 const mediaStoragePutSchema = z.object({
@@ -1237,6 +1241,13 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
     });
     const tpl = getPasswordResetTemplatesForEditor(row?.value);
+    const inviteTpl = getUserInviteTemplatesForEditor(row?.value);
+    const rawVal =
+      row?.value && typeof row.value === "object" && row.value !== null
+        ? (row.value as Record<string, unknown>)
+        : {};
+    const systemLogoUrl =
+      typeof rawVal.systemLogoUrl === "string" && rawVal.systemLogoUrl.trim() ? rawVal.systemLogoUrl.trim() : "";
     const parsed = parseResendEmailValue(row?.value);
     if (!parsed) {
       return {
@@ -1244,8 +1255,11 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         fromEmail: "",
         fromName: "OpenNexo CRM",
         apiKeyMasked: "",
+        systemLogoUrl,
         passwordResetSubject: tpl.subject,
         passwordResetHtmlTemplate: tpl.html,
+        userInviteSubject: inviteTpl.subject,
+        userInviteHtmlTemplate: inviteTpl.html,
       };
     }
     return {
@@ -1253,8 +1267,11 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       fromEmail: parsed.fromEmail,
       fromName: parsed.fromName,
       apiKeyMasked: "••••••••",
+      systemLogoUrl: parsed.systemLogoUrl ?? systemLogoUrl,
       passwordResetSubject: tpl.subject,
       passwordResetHtmlTemplate: tpl.html,
+      userInviteSubject: inviteTpl.subject,
+      userInviteHtmlTemplate: inviteTpl.html,
     };
   });
 
@@ -1293,12 +1310,29 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         : (typeof existingVal.passwordResetHtmlTemplate === "string"
             ? existingVal.passwordResetHtmlTemplate
             : null) ?? null;
+    const systemLogoUrl =
+      parsed.data.systemLogoUrl !== undefined
+        ? parsed.data.systemLogoUrl.trim().slice(0, 2000) || null
+        : (typeof existingVal.systemLogoUrl === "string" ? existingVal.systemLogoUrl : null) ?? null;
+    const userInviteSubject =
+      parsed.data.userInviteSubject !== undefined
+        ? parsed.data.userInviteSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.userInviteSubject === "string" ? existingVal.userInviteSubject : null) ?? null;
+    const userInviteHtmlTemplate =
+      parsed.data.userInviteHtmlTemplate !== undefined
+        ? parsed.data.userInviteHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.userInviteHtmlTemplate === "string"
+            ? existingVal.userInviteHtmlTemplate
+            : null) ?? null;
     const value = {
       apiKey,
       fromEmail: parsed.data.fromEmail.trim().toLowerCase(),
       fromName,
+      systemLogoUrl,
       passwordResetSubject,
       passwordResetHtmlTemplate,
+      userInviteSubject,
+      userInviteHtmlTemplate,
     };
     await prisma.platformSetting.upsert({
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
@@ -1314,13 +1348,17 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     const tpl = getPasswordResetTemplatesForEditor(value);
+    const inviteTpl = getUserInviteTemplatesForEditor(value);
     return {
       configured: true,
       fromEmail: value.fromEmail,
       fromName: value.fromName,
       apiKeyMasked: "••••••••",
+      systemLogoUrl: value.systemLogoUrl ?? "",
       passwordResetSubject: tpl.subject,
       passwordResetHtmlTemplate: tpl.html,
+      userInviteSubject: inviteTpl.subject,
+      userInviteHtmlTemplate: inviteTpl.html,
     };
   });
 

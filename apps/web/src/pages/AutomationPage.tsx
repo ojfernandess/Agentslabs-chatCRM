@@ -95,6 +95,7 @@ const NATIVE_TOOL_KEYS = [
   "scheduling_google",
   "scheduling_outlook",
   "call_human",
+  "assign_contact_tags",
   "end_conversation",
   "ping",
 ] as const;
@@ -221,6 +222,26 @@ function normalizeConnectedTools(raw: unknown): AgentConnectedToolRow[] {
   return out;
 }
 
+function defaultConnectedTags(): AgentConnectedTagRow[] {
+  return [];
+}
+
+function normalizeConnectedTags(raw: unknown): AgentConnectedTagRow[] {
+  if (!Array.isArray(raw)) return defaultConnectedTags();
+  const out: AgentConnectedTagRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.tagId !== "string") continue;
+    out.push({
+      tagId: o.tagId,
+      enabled: Boolean(o.enabled),
+      agentInstruction: typeof o.agentInstruction === "string" ? o.agentInstruction : undefined,
+    });
+  }
+  return out;
+}
+
 const defaultBehavior = {
   nativeTools: defaultNativeTools(),
   escalationRules: {
@@ -249,6 +270,13 @@ const defaultBehavior = {
   },
   scheduling: { useOrgReminders: true, externalCalendar: "none" },
   connectedTools: defaultConnectedTools(),
+  connectedTags: defaultConnectedTags(),
+};
+
+export type AgentConnectedTagRow = {
+  tagId: string;
+  enabled: boolean;
+  agentInstruction?: string;
 };
 
 export type AgentConnectedToolRow = {
@@ -296,6 +324,7 @@ type AgentFormFields = {
   nativeTools: Record<NativeToolKey, boolean>;
   promptModuleIds: string[];
   connectedTools: AgentConnectedToolRow[];
+  connectedTags: AgentConnectedTagRow[];
   /** Instruções por equipa (UUID) para transfer_to_team — guardado em promptBuilder.teamTransferHints. */
   teamTransferHints: Array<{ teamId: string; instruction: string }>;
   /** Fallbacks por trecho seleccionado nas instruções principais. */
@@ -335,6 +364,7 @@ function emptyAgentForm(): AgentFormFields {
     nativeTools: defaultNativeTools(),
     promptModuleIds: [],
     connectedTools: defaultConnectedTools(),
+    connectedTags: defaultConnectedTags(),
     teamTransferHints: [],
     instructionFallbacks: [],
   };
@@ -420,6 +450,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     nativeTools,
     promptModuleIds,
     connectedTools: normalizeConnectedTools(beh.connectedTools),
+    connectedTags: normalizeConnectedTags(beh.connectedTags),
     teamTransferHints,
     instructionFallbacks,
   };
@@ -430,6 +461,7 @@ function formToPayload(
   ctx: {
     knowledgeArticles: KnowledgeArticle[];
     customTools: AutomationCustomToolRow[];
+    orgTags: Array<{ id: string; name: string; color: string }>;
     orgTeams: Array<{ id: string; name: string }>;
     t: (key: string) => string;
   },
@@ -456,6 +488,16 @@ function formToPayload(
       return { name, instruction: ins, toolId: x.toolId };
     })
     .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
+  const connectedTagInstructions = form.connectedTags
+    .filter((x) => x.enabled)
+    .map((x) => {
+      const tag = ctx.orgTags.find((tg) => tg.id === x.tagId);
+      const name = tag?.name;
+      const ins = (x.agentInstruction ?? "").trim();
+      if (!name || !ins) return null;
+      return { name, instruction: ins, tagId: x.tagId };
+    })
+    .filter((x): x is { name: string; instruction: string; tagId: string } => x != null);
   const teamHintsResolved = form.teamTransferHints
     .filter((h) => h.instruction.trim())
     .map((h) => ({
@@ -483,6 +525,7 @@ function formToPayload(
     linkedArticleTitles: linkedTitles,
     connectedToolNames: connectedNames,
     connectedToolInstructions: connectedInstructions,
+    connectedTagInstructions,
     teamTransferHints: teamHintsResolved,
     escalation: hasEsc
       ? {
@@ -526,6 +569,7 @@ function formToPayload(
     ...defaultBehavior,
     nativeTools: { ...form.nativeTools },
     connectedTools: form.connectedTools,
+    connectedTags: form.connectedTags,
     escalationRules: {
       ...defaultBehavior.escalationRules,
       mode: form.escalationMode,
@@ -708,6 +752,7 @@ export function AutomationPage() {
     }
   }, [pilotView, tab]);
   const [orgTeamsForAgent, setOrgTeamsForAgent] = useState<Array<{ id: string; name: string }>>([]);
+  const [orgTagsForAgent, setOrgTagsForAgent] = useState<Array<{ id: string; name: string; color: string }>>([]);
 
   const [ctxRows, setCtxRows] = useState<
     Array<{
@@ -732,6 +777,14 @@ export function AutomationPage() {
       })
       .catch(() => {
         if (!cancelled) setOrgTeamsForAgent([]);
+      });
+    void api
+      .get<Array<{ id: string; name: string; color: string }>>("/tags")
+      .then((rows) => {
+        if (!cancelled) setOrgTagsForAgent(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrgTagsForAgent([]);
       });
     return () => {
       cancelled = true;
@@ -913,6 +966,7 @@ export function AutomationPage() {
         knowledgeArticles: articles,
         customTools: tools,
         orgTeams: orgTeamsForAgent,
+        orgTags: orgTagsForAgent,
         t,
       });
       if (agentForm.mode === "edit" && agentForm.editBotId) {
@@ -1240,6 +1294,7 @@ export function AutomationPage() {
               setTab("knowledge");
             }}
             orgTeams={orgTeamsForAgent}
+            orgTags={orgTagsForAgent}
             suggestionLocale={locale}
           />
         ) : null}
@@ -1438,6 +1493,7 @@ function AgentsTab({
   applyPromptModulesSelection,
   onOpenKnowledgeTab,
   orgTeams,
+  orgTags,
   suggestionLocale,
 }: {
   t: Translate;
@@ -1460,6 +1516,7 @@ function AgentsTab({
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
   onOpenKnowledgeTab: () => void;
   orgTeams: Array<{ id: string; name: string }>;
+  orgTags: Array<{ id: string; name: string; color: string }>;
   suggestionLocale: string;
 }) {
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2844,6 +2901,91 @@ function AgentsTab({
                                   </button>
                                 </div>
                               </div>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  {t("automationPage.agentConnectedTagsTitle")}
+                </p>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedTagsHelp")}</p>
+                {!agentForm.nativeTools.assign_contact_tags ? (
+                  <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                    {t("automationPage.agentConnectedTagsNativeOff")}
+                  </p>
+                ) : null}
+                {orgTags.length === 0 ? (
+                  <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedTagsEmpty")}</p>
+                ) : (
+                  <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto">
+                    {orgTags.map((tg) => {
+                      const existing = agentForm.connectedTags.find((x) => x.tagId === tg.id);
+                      const enabled = Boolean(existing?.enabled);
+                      const row: AgentConnectedTagRow = existing ?? {
+                        tagId: tg.id,
+                        enabled: false,
+                        agentInstruction: undefined,
+                      };
+                      return (
+                        <li
+                          key={tg.id}
+                          className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
+                              <input
+                                type="checkbox"
+                                checked={enabled}
+                                disabled={!agentForm.nativeTools.assign_contact_tags}
+                                onChange={(e) => {
+                                  const on = e.target.checked;
+                                  setAgentForm((f) => {
+                                    const rest = f.connectedTags.filter((x) => x.tagId !== tg.id);
+                                    if (!on) return { ...f, connectedTags: rest };
+                                    return {
+                                      ...f,
+                                      connectedTags: [
+                                        ...rest,
+                                        { tagId: tg.id, enabled: true, agentInstruction: undefined },
+                                      ],
+                                    };
+                                  });
+                                }}
+                              />
+                              <span
+                                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: tg.color }}
+                                aria-hidden
+                              />
+                              {tg.name}
+                            </label>
+                          </div>
+                          {enabled ? (
+                            <div className="mt-2 border-t border-ink-100 pt-2 dark:border-ink-800">
+                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                {t("automationPage.agentConnectedToolInstruction")}
+                                <textarea
+                                  rows={3}
+                                  value={row.agentInstruction ?? ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setAgentForm((f) => ({
+                                      ...f,
+                                      connectedTags: f.connectedTags.map((x) =>
+                                        x.tagId === tg.id ? { ...x, agentInstruction: v } : x,
+                                      ),
+                                    }));
+                                  }}
+                                  placeholder={t("automationPage.agentConnectedTagInstructionHint")}
+                                  className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
+                                />
+                              </label>
                             </div>
                           ) : null}
                         </li>

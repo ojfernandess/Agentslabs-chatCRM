@@ -27,6 +27,8 @@ import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvide
 import { collectWhatsappProviderOverview } from "@/lib/whatsappProvidersOverview";
 import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
 import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
+import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPanel";
+import { TeamInvitesPanel } from "@/components/settings/TeamInvitesPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -72,6 +74,7 @@ type SettingsSection =
   | "leadFinder"
   | "crm"
   | "templates"
+  | "tags"
   | "team";
 
 type CsatRatingType = "number" | "star" | "emoji";
@@ -1059,6 +1062,7 @@ export function SettingsPage() {
                   ...(showLeadFinder ? ([["leadFinder", t("settings.sectionLeadFinder"), Search]] as const) : []),
                   ["crm", t("settings.sectionCrm"), Tag],
                   ["templates", t("settings.sectionTemplates"), FileText],
+                  ["tags", t("settings.sectionTags"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
                 ] as const
               ).map(([id, label, Icon]) => (
@@ -2289,6 +2293,12 @@ export function SettingsPage() {
                 />
               )}
 
+              {section === "tags" && (
+                <motion.div variants={staggerItem}>
+                  <OrganizationTagsPanel />
+                </motion.div>
+              )}
+
               {section === "team" && (
                 <motion.div
                   className="card-surface rounded-xl p-6"
@@ -2296,11 +2306,10 @@ export function SettingsPage() {
                 >
                   <h2 className="mb-4 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
                     <UserPlus className="h-5 w-5" />
-                    Team & users
+                    {t("settings.sectionTeam")}
                   </h2>
-                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">
-                    Create accounts for agents or additional admins. Passwords must be at least 8 characters.
-                  </p>
+                  <TeamInvitesPanel />
+                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.teamManualSubtitle")}</p>
 
                   {teamUsers.length > 0 && (
                     <div className="mb-6 overflow-x-auto rounded-lg border border-ink-200/80 dark:border-white/10">
