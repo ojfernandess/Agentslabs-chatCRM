@@ -136,7 +136,7 @@ export function BroadcastCampaignsPage() {
           });
           if (controller.signal.aborted) return;
           lastFetchedInboxRef.current = key;
-          setTemplates((Array.isArray(tplList) ? tplList : []).filter((x) => (x.bodyVariableCount ?? 0) === 0));
+          setTemplates(Array.isArray(tplList) ? tplList : []);
         } catch (e) {
           if (e instanceof DOMException && e.name === "AbortError") return;
           setTemplates([]);

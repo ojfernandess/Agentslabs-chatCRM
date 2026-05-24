@@ -1148,6 +1148,13 @@ export const messages = {
       followUpSaveTemplate: "Guardar e usar",
       followUpCreateTplError: "Não foi possível criar o modelo.",
       followUpTplPending: "pendente",
+      followUpTplHasVars: "{n} var.",
+      templatesEvolutionFollowUpHint:
+        "Modelos criados em Configurações → Modelos (Evolution). Com variáveis, o primeiro campo usa o primeiro nome do contacto no envio.",
+      templatesEvolutionEmpty:
+        "Nenhum modelo local para esta caixa. Crie em Configurações → Modelos de mensagem (aba Evolution) ou abaixo.",
+      templatesMetaEmpty:
+        "Nenhum modelo Meta sincronizado. Use «Buscar modelos na Meta» em Configurações ou escolha texto livre.",
       followUpLaunch: "Criar e enviar agora",
       followUpScheduleBtn: "Agendar campanha",
       followUpDefaultName: "Follow-up: {tags}",
@@ -4251,6 +4258,13 @@ export const messages = {
       followUpSaveTemplate: "Save and use",
       followUpCreateTplError: "Could not create the template.",
       followUpTplPending: "pending",
+      followUpTplHasVars: "{n} var.",
+      templatesEvolutionFollowUpHint:
+        "Templates from Settings → Templates (Evolution tab). With variables, the first placeholder uses the contact's first name when sending.",
+      templatesEvolutionEmpty:
+        "No local templates for this inbox. Create them under Settings → Message templates (Evolution tab) or below.",
+      templatesMetaEmpty:
+        "No synced Meta templates. Fetch from Meta in Settings or use free text.",
       followUpLaunch: "Create and send now",
       followUpScheduleBtn: "Schedule campaign",
       followUpDefaultName: "Follow-up: {tags}",

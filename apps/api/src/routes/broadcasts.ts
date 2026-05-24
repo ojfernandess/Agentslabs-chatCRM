@@ -239,11 +239,18 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       }
       templateRow = tpl;
       if (d.messageType === "TEMPLATE" && tpl.bodyVariableCount > 0) {
-        return reply.status(400).send({
-          error: "Bad Request",
-          message: "Campaigns only support templates without body variables",
-          statusCode: 400,
-        });
+        let inboxProvider: string | null = null;
+        if (d.inboxId) {
+          inboxProvider = await getWhatsappProviderKindForInbox(organizationId, d.inboxId);
+        }
+        if (inboxProvider !== "evolution" && inboxProvider !== "evolution_go") {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message:
+              "Modelos com variáveis {{1}}, {{2}}… só são suportados em campanhas com caixa Evolution API ou Evolution Go.",
+            statusCode: 400,
+          });
+        }
       }
     }
 

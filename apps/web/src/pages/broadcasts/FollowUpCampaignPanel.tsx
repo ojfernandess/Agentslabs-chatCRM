@@ -4,6 +4,13 @@ import { CalendarClock, Loader2, Plus, Repeat, Send, Tags } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import {
+  filterTemplatesForWhatsappInbox,
+  isEvolutionWhatsappProvider,
+  templateOptionStatusSuffix,
+  whatsappProviderForInbox,
+} from "@/lib/campaignTemplates";
+import { parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
+import {
   buildCronFromRecurrence,
   browserTimeZone,
   defaultRecurrenceTimeLocal,
@@ -124,6 +131,21 @@ export function FollowUpCampaignPanel({
     [inboxes],
   );
 
+  const selectedInbox = useMemo(
+    () => waInboxes.find((i) => i.id === inboxId),
+    [waInboxes, inboxId],
+  );
+
+  const selectedWaProvider = whatsappProviderForInbox(selectedInbox);
+
+  const visibleTemplates = useMemo(
+    () =>
+      filterTemplatesForWhatsappInbox(templates, selectedInbox, {
+        allowVariableTemplates: isEvolutionWhatsappProvider(selectedWaProvider),
+      }),
+    [templates, selectedInbox, selectedWaProvider],
+  );
+
   const toggleTag = (id: string) => {
     setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -173,16 +195,25 @@ export function FollowUpCampaignPanel({
   const handleCreateTemplate = async () => {
     const n = newTplName.trim();
     const b = newTplBody.trim();
-    if (!n || !b) return;
+    if (!n || !b || !inboxId) return;
     setCreatingTpl(true);
     setCreateTplError("");
     try {
-      const row = await api.post<TemplateOption>("/templates", {
-        name: n,
-        body: b,
-        templateLanguage: "pt_BR",
-        isApproved: false,
-      });
+      const provider = selectedWaProvider ?? parseInboxWhatsappFromChannelConfig(selectedInbox?.channelConfig).whatsappProvider;
+      const row = isEvolutionWhatsappProvider(provider)
+        ? await api.post<TemplateOption & { id: string }>("/templates/evolution", {
+            inboxId,
+            name: n,
+            category: "UTILITY",
+            language: "pt_BR",
+            body: b,
+          })
+        : await api.post<TemplateOption>("/templates", {
+            name: n,
+            body: b,
+            templateLanguage: "pt_BR",
+            isApproved: false,
+          });
       setMessageType("TEMPLATE");
       setTemplateId(row.id);
       setShowCreateTemplate(false);
@@ -579,14 +610,28 @@ export function FollowUpCampaignPanel({
               disabled={templatesLoading}
             >
               <option value="">{templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}</option>
-              {templates.map((tpl) => (
+              {visibleTemplates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
                   {tpl.name}
-                  {tpl.isApproved ? "" : ` (${t("broadcastPage.followUpTplPending")})`}
+                  {templateOptionStatusSuffix(tpl, t)}
+                  {(tpl.bodyVariableCount ?? 0) > 0
+                    ? ` · ${t("broadcastPage.followUpTplHasVars").replace("{n}", String(tpl.bodyVariableCount))}`
+                    : ""}
                 </option>
               ))}
             </select>
-            <p className="text-xs text-ink-500">{t("broadcastPage.templatesCampaignHint")}</p>
+            <p className="text-xs text-ink-500">
+              {isEvolutionWhatsappProvider(selectedWaProvider)
+                ? t("broadcastPage.templatesEvolutionFollowUpHint")
+                : t("broadcastPage.templatesCampaignHint")}
+            </p>
+            {!templatesLoading && inboxOk && visibleTemplates.length === 0 ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300" role="status">
+                {isEvolutionWhatsappProvider(selectedWaProvider)
+                  ? t("broadcastPage.templatesEvolutionEmpty")
+                  : t("broadcastPage.templatesMetaEmpty")}
+              </p>
+            ) : null}
             {!showCreateTemplate ? (
               <button
                 type="button"

@@ -4,6 +4,12 @@ import { CalendarClock, Loader2, Plus, Trash2, ToggleLeft, ToggleRight } from "l
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import { browserTimeZone } from "@/lib/broadcastRecurrence";
+import {
+  filterTemplatesForWhatsappInbox,
+  isEvolutionWhatsappProvider,
+  templateOptionStatusSuffix,
+  whatsappProviderForInbox,
+} from "@/lib/campaignTemplates";
 import type { InboxOption, TagOption, TemplateOption } from "./campaignTypes";
 import {
   buildFollowUpSchedulePayload,
@@ -78,6 +84,15 @@ export function LeadFinderAutomationsPanel({
   const [templateId, setTemplateId] = useState("");
 
   const waInboxes = useMemo(() => inboxes.filter((i) => i.channelType === "WHATSAPP"), [inboxes]);
+  const selectedInbox = useMemo(() => waInboxes.find((i) => i.id === inboxId), [waInboxes, inboxId]);
+  const selectedWaProvider = whatsappProviderForInbox(selectedInbox);
+  const visibleTemplates = useMemo(
+    () =>
+      filterTemplatesForWhatsappInbox(templates, selectedInbox, {
+        allowVariableTemplates: isEvolutionWhatsappProvider(selectedWaProvider),
+      }),
+    [templates, selectedInbox, selectedWaProvider],
+  );
 
   const loadSchedules = useCallback(async () => {
     setLoading(true);
@@ -361,9 +376,10 @@ export function LeadFinderAutomationsPanel({
                     <div className="sm:col-span-2">
                       <select className="input w-full" value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={templatesLoading}>
                         <option value="">{templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}</option>
-                        {templates.map((tpl) => (
+                        {visibleTemplates.map((tpl) => (
                           <option key={tpl.id} value={tpl.id}>
                             {tpl.name}
+                            {templateOptionStatusSuffix(tpl, t)}
                           </option>
                         ))}
                       </select>

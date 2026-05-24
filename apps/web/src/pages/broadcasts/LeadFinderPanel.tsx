@@ -16,6 +16,12 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
+import {
+  filterTemplatesForWhatsappInbox,
+  isEvolutionWhatsappProvider,
+  templateOptionStatusSuffix,
+  whatsappProviderForInbox,
+} from "@/lib/campaignTemplates";
 import type { InboxOption, TagOption, TemplateOption } from "./campaignTypes";
 import {
   buildFollowUpSchedulePayload,
@@ -107,6 +113,15 @@ export function LeadFinderPanel({
   const [templateId, setTemplateId] = useState("");
 
   const waInboxes = useMemo(() => inboxes.filter((i) => i.channelType === "WHATSAPP"), [inboxes]);
+  const selectedInbox = useMemo(() => waInboxes.find((i) => i.id === inboxId), [waInboxes, inboxId]);
+  const selectedWaProvider = whatsappProviderForInbox(selectedInbox);
+  const visibleTemplates = useMemo(
+    () =>
+      filterTemplatesForWhatsappInbox(templates, selectedInbox, {
+        allowVariableTemplates: isEvolutionWhatsappProvider(selectedWaProvider),
+      }),
+    [templates, selectedInbox, selectedWaProvider],
+  );
   const activeSegment = segments.find((s) => s.id === segmentId);
 
   const loadStatus = useCallback(async () => {
@@ -684,9 +699,10 @@ export function LeadFinderPanel({
                         <div className="sm:col-span-2">
                           <select className="input w-full" value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={templatesLoading}>
                             <option value="">{templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}</option>
-                            {templates.map((tpl) => (
+                            {visibleTemplates.map((tpl) => (
                               <option key={tpl.id} value={tpl.id}>
                                 {tpl.name}
+                                {templateOptionStatusSuffix(tpl, t)}
                               </option>
                             ))}
                           </select>

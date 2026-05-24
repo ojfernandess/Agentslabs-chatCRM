@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { X, Sparkles, Blocks, Send, Wand2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { filterTemplatesForWhatsappInbox } from "@/lib/campaignTemplates";
 import { isWhatsAppCloudApiProvider, parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
 import {
   segmentHasAudience,
@@ -161,6 +162,11 @@ export function CampaignCreatorPanel({
   }, [inboxes, draft.advanced.channel]);
 
   const selectedInbox = inboxes.find((i) => i.id === draft.advanced.inboxId);
+  const visibleTemplates = useMemo(() => {
+    if (draft.messageType !== "TEMPLATE" || draft.advanced.channel !== "whatsapp") return templates;
+    return filterTemplatesForWhatsappInbox(templates, selectedInbox);
+  }, [templates, draft.messageType, draft.advanced.channel, selectedInbox]);
+
   const selectedWaProvider = selectedInbox
     ? parseInboxWhatsappFromChannelConfig(selectedInbox.channelConfig).whatsappProvider
     : null;
@@ -168,12 +174,6 @@ export function CampaignCreatorPanel({
     draft.advanced.channel === "whatsapp" &&
     selectedInbox?.channelType === "WHATSAPP" &&
     isWhatsAppCloudApiProvider(selectedWaProvider ?? "");
-
-  const visibleTemplates = useMemo(() => {
-    if (draft.messageType !== "TEMPLATE") return templates;
-    if (!isMetaWhatsapp) return templates;
-    return templates.filter((tpl) => Boolean(tpl.providerTemplateId?.trim()));
-  }, [templates, draft.messageType, isMetaWhatsapp]);
 
   const patchAdvanced = (partial: Partial<AdvancedCampaignOptions>) => {
     setDraft((d) => ({ ...d, advanced: { ...d.advanced, ...partial } }));

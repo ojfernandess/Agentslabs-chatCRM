@@ -4,6 +4,7 @@ import type { BroadcastCampaign, Contact } from "@prisma/client";
 import { prisma } from "../db.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import type { SendMessageInput } from "./messagePayload.js";
+import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { substituteContactVars } from "./broadcastTypes.js";
@@ -189,7 +190,23 @@ export async function deliverBroadcastToContact(options: {
 
   let sendInput: SendMessageInput;
   if (payload.messageType === "TEMPLATE" && payload.templateId) {
-    sendInput = { contactId: contact.id, type: "TEMPLATE", templateId: payload.templateId, inboxId };
+    const tpl = await prisma.messageTemplate.findFirst({
+      where: { id: payload.templateId, organizationId: campaign.organizationId },
+    });
+    let templateBodyParameters: string[] | undefined;
+    if (tpl && tpl.bodyVariableCount > 0) {
+      const firstName = contact.name.trim().split(/\s+/)[0] || contact.name.trim() || "";
+      templateBodyParameters = Array.from({ length: tpl.bodyVariableCount }, (_, i) =>
+        i === 0 ? firstName : "",
+      );
+    }
+    sendInput = {
+      contactId: contact.id,
+      type: "TEMPLATE",
+      templateId: payload.templateId,
+      inboxId,
+      ...(templateBodyParameters ? { templateBodyParameters } : {}),
+    };
   } else {
     sendInput = { contactId: contact.id, type: "TEXT", body, inboxId };
   }
@@ -203,6 +220,12 @@ export async function deliverBroadcastToContact(options: {
   });
 
   if (channel === "WHATSAPP" && message.status === "FAILED") {
+    const providerKind = await getWhatsappProviderKindForInbox(campaign.organizationId, inboxId);
+    if (providerKind === "evolution" || providerKind === "evolution_go") {
+      throw new Error(
+        "Falha ao enviar pelo WhatsApp (Evolution). Confirme que a instância está ligada e o modelo existe na caixa.",
+      );
+    }
     throw new Error(
       "WhatsApp delivery failed. Confirm the inbox uses Meta Cloud API and the template is synced for that number.",
     );
