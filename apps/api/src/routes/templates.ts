@@ -71,7 +71,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     if (provider && isMetaCloudWhatsappProvider(provider)) {
       where.OR = [{ metaCategory: { not: null } }, { providerTemplateId: { not: null } }];
     } else if (provider === "evolution" || provider === "evolution_go") {
-      where.metaCategory = null;
+      /** Modelos locais Evolution: sem ID Meta; metaCategory guarda UTILITY/MARKETING. */
       where.providerTemplateId = null;
     }
 
@@ -210,7 +210,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(template);
   });
 
-  app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
+  app.put<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -221,6 +221,20 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
 
     const bodyVariableCount = maxBodyPlaceholderIndex(parsed.data.body);
     const tl = parsed.data.templateLanguage;
+
+    const existing = await prisma.messageTemplate.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Template not found", statusCode: 404 });
+    }
+    if (existing.providerTemplateId?.trim()) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Modelos sincronizados da Meta não podem ser editados aqui. Sincronize novamente na Meta.",
+        statusCode: 400,
+      });
+    }
 
     const res = await prisma.messageTemplate.updateMany({
       where: { id: request.params.id, organizationId },
@@ -241,7 +255,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
+  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 

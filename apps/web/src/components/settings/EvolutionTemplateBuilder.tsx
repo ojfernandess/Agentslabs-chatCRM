@@ -257,7 +257,7 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
             </p>
           ) : null}
           {success ? (
-            <p className="mb-3 text-sm text-green-700 dark:text-green-400" role="status">
+            <p className="mb-3 rounded-lg border border-green-200/80 bg-green-50/90 px-3 py-2 text-sm text-green-900 dark:border-green-800/50 dark:bg-green-950/30 dark:text-green-100" role="status">
               {successMode === "local_only" ? t("settings.evoTplSuccessLocalOnly") : t("settings.evoTplSuccess")}
             </p>
           ) : null}

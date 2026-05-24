@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
+import { Pencil, Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   settingsMuted,
@@ -24,9 +25,20 @@ interface Props {
   loading?: boolean;
   emptyMessage: string;
   showSource?: boolean;
+  manageable?: boolean;
+  onEdit?: (row: MessageTemplateRow) => void;
+  onDelete?: (row: MessageTemplateRow) => void;
 }
 
-export function MessageTemplatesTable({ rows, loading = false, emptyMessage, showSource = false }: Props) {
+export function MessageTemplatesTable({
+  rows,
+  loading = false,
+  emptyMessage,
+  showSource = false,
+  manageable = false,
+  onEdit,
+  onDelete,
+}: Props) {
   const { t } = useI18n();
 
   if (loading) {
@@ -46,6 +58,7 @@ export function MessageTemplatesTable({ rows, loading = false, emptyMessage, sho
             <th className="px-4 py-2">{t("settings.templatesColStatus")}</th>
             {showSource ? <th className="px-4 py-2">{t("settings.templatesColSource")}</th> : null}
             <th className="px-4 py-2">{t("settings.templatesColBody")}</th>
+            {manageable ? <th className="px-4 py-2 text-right">{t("settings.templatesColActions")}</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-ink-100 dark:divide-white/10">
@@ -78,6 +91,28 @@ export function MessageTemplatesTable({ rows, loading = false, emptyMessage, sho
               <td className="max-w-md px-4 py-2.5 text-xs text-ink-600 dark:text-ink-400">
                 <span className="line-clamp-3 whitespace-pre-wrap">{tpl.body}</span>
               </td>
+              {manageable ? (
+                <td className="px-4 py-2.5 text-right">
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-white/10"
+                      title={t("common.edit")}
+                      onClick={() => onEdit?.(tpl)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      title={t("common.delete")}
+                      onClick={() => onDelete?.(tpl)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

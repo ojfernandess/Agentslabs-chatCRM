@@ -659,7 +659,7 @@ export function ConversationDetailPage() {
             bodyVariableCount: typeof r.bodyVariableCount === "number" ? r.bodyVariableCount : 0,
           }));
           if (whatsappProvider === "evolution" || whatsappProvider === "evolution_go") {
-            list = list.filter((r) => !r.metaCategory?.trim() && !r.providerTemplateId?.trim());
+            list = list.filter((r) => !r.providerTemplateId?.trim());
           } else if (whatsappProvider === "meta" || whatsappProvider === "360dialog") {
             list = list.filter((r) => Boolean(r.metaCategory?.trim() || r.providerTemplateId?.trim()));
           }
@@ -2877,8 +2877,19 @@ export function ConversationDetailPage() {
                               title={t("conversationDetail.pickTemplate")}
                               onClick={() => {
                                 setTemplateMenuOpen(false);
-                                if (isWaba && isOutsideWindow && !privateNote) {
-                                  setTemplateModalTemplate(tp);
+                                const isEvolutionProvider =
+                                  whatsappProvider === "evolution" || whatsappProvider === "evolution_go";
+                                if (
+                                  (isWaba && isOutsideWindow && !privateNote) ||
+                                  (isEvolutionProvider && !privateNote)
+                                ) {
+                                  setTemplateModalTemplate({
+                                    id: tp.id,
+                                    name: tp.name,
+                                    body: tp.body,
+                                    bodyVariableCount: tp.bodyVariableCount ?? 0,
+                                    metaCategory: tp.metaCategory,
+                                  });
                                   return;
                                 }
                                 setNewMessage(tp.body);
@@ -3698,6 +3709,7 @@ export function ConversationDetailPage() {
         template={templateModalTemplate}
         contactId={conversation?.contact.id ?? ""}
         conversationId={conversation?.id}
+        inboxId={conversation?.inbox?.id}
         onClose={() => setTemplateModalTemplate(null)}
         onSent={async () => {
           stickToBottomRef.current = true;

@@ -2719,9 +2719,15 @@ export const messages = {
       evoTplBody: "Texto do corpo",
       evoTplFooter: "Rodapé (opcional)",
       evoTplSubmit: "Criar modelo na Evolution",
-      evoTplSuccess: "Pedido enviado à Evolution API. O modelo foi adicionado à lista local.",
+      evoTplSuccess:
+        "Modelo criado com sucesso e já pode ser utilizado em conversas e campanhas. Pedido enviado à Evolution API para aprovação na Meta, quando aplicável.",
       evoTplSuccessLocalOnly:
-        "Modelo guardado localmente. O Evolution Go não suporta criação na Meta; use Evolution API (Cloud API) na instância para submeter à WhatsApp Business.",
+        "Modelo criado com sucesso e já pode ser utilizado em conversas e campanhas. Fica guardado localmente nesta organização.",
+      evoTplEditTitle: "Editar modelo",
+      evoTplEditFailed: "Não foi possível guardar as alterações.",
+      evoTplDeleteConfirm: "Eliminar o modelo «{name}»? Esta ação não pode ser desfeita.",
+      evoTplDeleteFailed: "Não foi possível eliminar o modelo.",
+      templatesColActions: "Ações",
       evoTplWrongProvider: "Selecione Evolution API no canal WhatsApp.",
       evoTplFailed: "Não foi possível criar o modelo na Evolution.",
       csatIntro:
@@ -5809,9 +5815,15 @@ export const messages = {
       evoTplBody: "Body text",
       evoTplFooter: "Footer (optional)",
       evoTplSubmit: "Create template on Evolution",
-      evoTplSuccess: "Request sent to Evolution API. Template added to the local list.",
+      evoTplSuccess:
+        "Template created successfully and is ready to use in conversations and campaigns. Submitted to Evolution API for Meta approval when applicable.",
       evoTplSuccessLocalOnly:
-        "Template saved locally. Evolution Go cannot submit to Meta; use Evolution API (Cloud API) on the instance to register with WhatsApp Business.",
+        "Template created successfully and is ready to use in conversations and campaigns. It is stored locally for this organization.",
+      evoTplEditTitle: "Edit template",
+      evoTplEditFailed: "Could not save changes.",
+      evoTplDeleteConfirm: "Delete template «{name}»? This cannot be undone.",
+      evoTplDeleteFailed: "Could not delete the template.",
+      templatesColActions: "Actions",
       evoTplWrongProvider: "Select Evolution API on the WhatsApp channel.",
       evoTplFailed: "Could not create the template on Evolution.",
       csatIntro:

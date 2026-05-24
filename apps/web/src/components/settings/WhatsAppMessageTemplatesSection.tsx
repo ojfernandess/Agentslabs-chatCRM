@@ -16,6 +16,7 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { EvolutionTemplateBuilder, type EvolutionTemplateInboxOption } from "./EvolutionTemplateBuilder";
+import { EvolutionTemplateEditModal } from "./EvolutionTemplateEditModal";
 import {
   MessageTemplatesTable,
   MessageTemplatesTableHeader,
@@ -104,6 +105,7 @@ export function WhatsAppMessageTemplatesSection({ waInboxes, defaultWaInboxId, o
   const [metaSyncResult, setMetaSyncResult] = useState<{ synced: number } | null>(null);
   const [metaSyncError, setMetaSyncError] = useState("");
   const [evolutionListInboxId, setEvolutionListInboxId] = useState("");
+  const [editingTemplate, setEditingTemplate] = useState<MessageTemplateRow | null>(null);
 
   useEffect(() => {
     if (metaInboxes.length === 0) {
@@ -173,21 +175,15 @@ export function WhatsAppMessageTemplatesSection({ waInboxes, defaultWaInboxId, o
     }
   }, [evolutionListInboxId]);
 
-  const reloadEvolutionForInbox = useCallback(async (inboxId: string) => {
-    if (!inboxId) return;
-    setEvolutionLoading(true);
+  const handleDeleteEvolutionTemplate = async (row: MessageTemplateRow) => {
+    if (!window.confirm(t("settings.evoTplDeleteConfirm").replace("{name}", row.name))) return;
     try {
-      const params = new URLSearchParams();
-      params.set("inboxId", inboxId);
-      const list = await api.get<MessageTemplateRow[]>(`/templates?${params.toString()}`);
-      const rows = Array.isArray(list) ? list : [];
-      setEvolutionRows(rows.filter(isEvolutionTemplateRow));
-    } catch {
-      setEvolutionRows([]);
-    } finally {
-      setEvolutionLoading(false);
+      await api.delete(`/templates/${row.id}`);
+      await loadEvolutionTemplates();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : t("settings.evoTplDeleteFailed"));
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (showMeta) void loadMetaTemplates();
@@ -336,7 +332,7 @@ export function WhatsAppMessageTemplatesSection({ waInboxes, defaultWaInboxId, o
             inboxes={evolutionInboxes}
             onCreated={(inboxId) => {
               setEvolutionListInboxId(inboxId);
-              void reloadEvolutionForInbox(inboxId);
+              void loadEvolutionTemplates();
             }}
           />
           <motion.div className={settingsCard} variants={staggerItem}>
@@ -372,8 +368,16 @@ export function WhatsAppMessageTemplatesSection({ waInboxes, defaultWaInboxId, o
               rows={evolutionRows}
               loading={evolutionLoading}
               emptyMessage={t("settings.templatesEvolutionListEmpty")}
+              manageable
+              onEdit={(row) => setEditingTemplate(row)}
+              onDelete={(row) => void handleDeleteEvolutionTemplate(row)}
             />
           </motion.div>
+          <EvolutionTemplateEditModal
+            template={editingTemplate}
+            onClose={() => setEditingTemplate(null)}
+            onSaved={() => void loadEvolutionTemplates()}
+          />
         </>
       ) : null}
     </motion.div>
