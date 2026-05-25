@@ -28,7 +28,7 @@ import { collectWhatsappProviderOverview } from "@/lib/whatsappProvidersOverview
 import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
 import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
 import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPanel";
-import { TeamInvitesPanel } from "@/components/settings/TeamInvitesPanel";
+import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -141,14 +141,6 @@ const LEAD_ROLLUP_LABEL_KEY: Record<LeadTypeRow["valueRollup"], string> = {
   NONE: "settings.leadTypeRollupLabel_NONE",
 };
 
-interface TeamUser {
-  id: string;
-  name: string;
-  email: string;
-  role: "ADMIN" | "AGENT";
-  createdAt: string;
-}
-
 interface TagListRow {
   id: string;
   name: string;
@@ -229,14 +221,6 @@ export function SettingsPage() {
   const [csatEnabled, setCsatEnabled] = useState(false);
   const [csatSurveyMessage, setCsatSurveyMessage] = useState("");
   const [csatRatingType, setCsatRatingType] = useState<CsatRatingType>("number");
-
-  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"ADMIN" | "AGENT">("AGENT");
-  const [userFormError, setUserFormError] = useState("");
-  const [userFormSubmitting, setUserFormSubmitting] = useState(false);
 
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newLtName, setNewLtName] = useState("");
@@ -481,9 +465,8 @@ export function SettingsPage() {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, users, lt, tags, botList, emb, inboxesRes] = await Promise.all([
+        const [data, lt, tags, botList, emb, inboxesRes] = await Promise.all([
           api.get<AppSettings>("/settings"),
-          api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
           api.get<TagListRow[]>("/tags").catch(() => [] as TagListRow[]),
           api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
@@ -570,7 +553,6 @@ export function SettingsPage() {
         setAssistantSaveError("");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
-        setTeamUsers(users);
         setLeadTypes(
           lt.map((x) => ({
             ...x,
@@ -693,30 +675,6 @@ export function SettingsPage() {
       setLtError(err instanceof Error ? err.message : "Failed");
     } finally {
       setEditLtSubmitting(false);
-    }
-  };
-
-  const handleAddUser = async (e: FormEvent) => {
-    e.preventDefault();
-    setUserFormError("");
-    setUserFormSubmitting(true);
-    try {
-      await api.post<TeamUser>("/users", {
-        name: newUserName,
-        email: newUserEmail,
-        password: newUserPassword,
-        role: newUserRole,
-      });
-      setNewUserName("");
-      setNewUserEmail("");
-      setNewUserPassword("");
-      setNewUserRole("AGENT");
-      const users = await api.get<TeamUser[]>("/users");
-      setTeamUsers(users);
-    } catch (err) {
-      setUserFormError(err instanceof Error ? err.message : "Failed to create user");
-    } finally {
-      setUserFormSubmitting(false);
     }
   };
 
@@ -2308,110 +2266,7 @@ export function SettingsPage() {
                     <UserPlus className="h-5 w-5" />
                     {t("settings.sectionTeam")}
                   </h2>
-                  <TeamInvitesPanel />
-                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.teamManualSubtitle")}</p>
-
-                  {teamUsers.length > 0 && (
-                    <div className="mb-6 overflow-x-auto rounded-lg border border-ink-200/80 dark:border-white/10">
-                      <table className="w-full min-w-[480px] text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-white/10 dark:bg-white/5 dark:text-ink-400">
-                            <th className="px-4 py-2">Name</th>
-                            <th className="px-4 py-2">Email</th>
-                            <th className="px-4 py-2">Role</th>
-                            <th className="px-4 py-2">Added</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-ink-100 dark:divide-white/10">
-                          {teamUsers.map((u) => (
-                            <tr key={u.id} className="bg-white dark:bg-transparent">
-                              <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-ink-100">{u.name}</td>
-                              <td className="px-4 py-2.5 text-ink-600 dark:text-ink-400">{u.email}</td>
-                              <td className="px-4 py-2.5">
-                                <span
-                                  className={
-                                    u.role === "ADMIN"
-                                      ? "rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700"
-                                      : "rounded-full bg-ink-100 px-2 py-0.5 text-xs font-medium text-ink-700 dark:bg-white/10 dark:text-ink-300"
-                                  }
-                                >
-                                  {u.role === "ADMIN" ? "Admin" : "Agent"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-ink-500 dark:text-ink-400">
-                                {new Date(u.createdAt).toLocaleDateString(undefined, {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleAddUser} className="space-y-4">
-                    {userFormError && (
-                      <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{userFormError}</p>
-                    )}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Name</label>
-                        <input
-                          type="text"
-                          value={newUserName}
-                          onChange={(e) => setNewUserName(e.target.value)}
-                          required
-                          autoComplete="name"
-                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Email</label>
-                        <input
-                          type="email"
-                          value={newUserEmail}
-                          onChange={(e) => setNewUserEmail(e.target.value)}
-                          required
-                          autoComplete="email"
-                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Role</label>
-                        <select
-                          value={newUserRole}
-                          onChange={(e) => setNewUserRole(e.target.value as "ADMIN" | "AGENT")}
-                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        >
-                          <option value="AGENT">Agent</option>
-                          <option value="ADMIN">Admin</option>
-                        </select>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Initial password</label>
-                        <input
-                          type="password"
-                          value={newUserPassword}
-                          onChange={(e) => setNewUserPassword(e.target.value)}
-                          required
-                          minLength={8}
-                          autoComplete="new-password"
-                          placeholder="At least 8 characters"
-                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={userFormSubmitting}
-                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                    >
-                      {userFormSubmitting ? "Adding…" : "Add user"}
-                    </button>
-                  </form>
+                  <TeamSettingsPanel isAdmin={isAdmin} currentUserId={user?.id} />
                 </motion.div>
               )}
             </motion.div>

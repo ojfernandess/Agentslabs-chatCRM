@@ -22,6 +22,7 @@ import { PageTransition, motion, AnimatePresence, dropdownVariants } from "@/com
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   timelineChannelLabel,
   timelineEventSummary,
@@ -120,6 +121,9 @@ export function ContactDetailPage() {
   const [editDocument, setEditDocument] = useState("");
   const [editCity, setEditCity] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Tag picker state
   const [allTags, setAllTags] = useState<TagItem[]>([]);
@@ -205,14 +209,17 @@ export function ContactDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
-    const name = contact?.name ?? "";
-    if (!window.confirm(t("contacts.deleteConfirm").replace("{name}", name))) return;
+  const confirmDelete = async () => {
+    if (!id) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
     try {
       await api.delete(`/contacts/${id}`);
       navigate("/contacts");
     } catch {
-      window.alert(t("contacts.deleteError"));
+      setDeleteError(t("contacts.deleteError"));
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -320,7 +327,10 @@ export function ContactDetailPage() {
             {t("common.edit")}
           </button>
           <button
-            onClick={() => void handleDelete()}
+            onClick={() => {
+              setDeleteError(null);
+              setShowDeleteModal(true);
+            }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/40"
           >
             <Trash2 className="h-4 w-4" />
@@ -788,6 +798,23 @@ export function ContactDetailPage() {
         open={quickOpen}
         onClose={() => setQuickOpen(false)}
         contact={contact ? { id: contact.id, name: contact.name, phone: contact.phone } : null}
+      />
+
+      <ConfirmDialog
+        open={showDeleteModal}
+        title={t("contacts.deleteTitle")}
+        message={t("contacts.deleteConfirm").replace("{name}", contact?.name ?? "")}
+        confirmLabel={t("contacts.deleteContact")}
+        variant="danger"
+        loading={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deleteBusy) {
+            setShowDeleteModal(false);
+            setDeleteError(null);
+          }
+        }}
       />
     </PageTransition>
   );

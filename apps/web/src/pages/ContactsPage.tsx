@@ -34,6 +34,7 @@ import { format } from "date-fns";
 import { ContactProfileDrawer } from "@/components/ContactProfileDrawer";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 
 interface TagItem {
@@ -112,7 +113,9 @@ export function ContactsPage() {
 
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
-  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [allTags, setAllTags] = useState<TagItem[]>([]);
   const [allStages, setAllStages] = useState<StageItem[]>([]);
@@ -214,18 +217,19 @@ export function ContactsPage() {
     }
   };
 
-  const handleDeleteContact = async (contactId: string, contactName: string) => {
-    const msg = t("contacts.deleteConfirm").replace("{name}", contactName);
-    if (!window.confirm(msg)) return;
-    setDeletingContactId(contactId);
+  const confirmDeleteContact = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
     try {
-      await api.delete(`/contacts/${contactId}`);
-      setContacts((prev) => prev.filter((c) => c.id !== contactId));
-      if (drawerContactId === contactId) setDrawerContactId(null);
+      await api.delete(`/contacts/${deleteTarget.id}`);
+      setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      if (drawerContactId === deleteTarget.id) setDrawerContactId(null);
+      setDeleteTarget(null);
     } catch {
-      window.alert(t("contacts.deleteError"));
+      setDeleteError(t("contacts.deleteError"));
     } finally {
-      setDeletingContactId(null);
+      setDeleteBusy(false);
     }
   };
 
@@ -723,8 +727,11 @@ export function ContactsPage() {
                               </button>
                               <button
                                 type="button"
-                                disabled={deletingContactId === contact.id}
-                                onClick={() => void handleDeleteContact(contact.id, contact.name)}
+                                disabled={deleteBusy && deleteTarget?.id === contact.id}
+                                onClick={() => {
+                                  setDeleteError(null);
+                                  setDeleteTarget({ id: contact.id, name: contact.name });
+                                }}
                                 className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-ink-900 dark:text-red-400 dark:hover:bg-red-950/40"
                                 title={t("contacts.deleteContact")}
                               >
@@ -758,9 +765,9 @@ export function ContactsPage() {
           setQuickContact(c);
           setDrawerContactId(null);
         }}
-        onDeleted={(id) => {
-          setContacts((prev) => prev.filter((c) => c.id !== id));
-          setDrawerContactId(null);
+        onRequestDelete={(c) => {
+          setDeleteError(null);
+          setDeleteTarget(c);
         }}
         tChannel={tChannel}
       />
@@ -769,6 +776,22 @@ export function ContactsPage() {
         open={quickContact != null}
         onClose={() => setQuickContact(null)}
         contact={quickContact}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget != null}
+        title={t("contacts.deleteTitle")}
+        message={
+          deleteTarget ? t("contacts.deleteConfirm").replace("{name}", deleteTarget.name) : ""
+        }
+        confirmLabel={t("contacts.deleteContact")}
+        variant="danger"
+        loading={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void confirmDeleteContact()}
+        onCancel={() => {
+          if (!deleteBusy) setDeleteTarget(null);
+        }}
       />
     </PageTransition>
   );

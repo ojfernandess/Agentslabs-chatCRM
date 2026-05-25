@@ -1817,7 +1817,7 @@ export function SuperAdminPage() {
                 </button>
               </form>
               <section className="card-surface p-6">
-                <h2 className="mb-4 font-semibold text-ink-900">Registos</h2>
+                <h2 className="mb-4 font-semibold text-ink-900">Registros</h2>
                 {settingsLoading ? (
                   <p className="text-sm text-ink-500">{t("common.loading")}</p>
                 ) : platformSettings.length === 0 ? (
