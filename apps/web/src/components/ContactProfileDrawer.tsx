@@ -16,6 +16,7 @@ import {
   MapPin,
   FileText,
   StickyNote,
+  Trash2,
 } from "lucide-react";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
@@ -99,12 +100,14 @@ export function ContactProfileDrawer({
   open,
   onClose,
   onQuickMessage,
+  onDeleted,
   tChannel,
 }: {
   contactId: string | null;
   open: boolean;
   onClose: () => void;
   onQuickMessage: (c: { id: string; name: string; phone: string }) => void;
+  onDeleted?: (contactId: string) => void;
   tChannel: (type: string) => string;
 }) {
   const { t, dateLocale } = useI18n();
@@ -112,6 +115,23 @@ export function ContactProfileDrawer({
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!contact) return;
+    const msg = t("contacts.deleteConfirm").replace("{name}", contact.name);
+    if (!window.confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/contacts/${contact.id}`);
+      onDeleted?.(contact.id);
+      onClose();
+    } catch {
+      window.alert(t("contacts.deleteError"));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || !contactId) {
@@ -213,6 +233,17 @@ export function ContactProfileDrawer({
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Link>
+                    {onDeleted ? (
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => void handleDelete()}
+                        className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40"
+                        title={t("contacts.deleteContact")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </>
                 ) : null}
                 <button

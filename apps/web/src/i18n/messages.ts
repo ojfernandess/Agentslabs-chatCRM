@@ -2442,6 +2442,10 @@ export const messages = {
       noCompany: "—",
       openFullPage: "Abrir página completa",
       quickMessage: "Mensagem rápida",
+      deleteContact: "Excluir",
+      deleteConfirm:
+        "Excluir o contato «{name}» e os dados associados (conversas, tags)? Esta ação não pode ser desfeita.",
+      deleteError: "Não foi possível excluir o contato.",
       metricTotalContacts: "Total na base",
       metricWithDeals: "Com negócio aberto",
       metricAvgScore: "Score médio (página)",
@@ -5613,6 +5617,10 @@ export const messages = {
       noCompany: "—",
       openFullPage: "Open full page",
       quickMessage: "Quick message",
+      deleteContact: "Delete",
+      deleteConfirm:
+        "Delete contact «{name}» and associated data (conversations, tags)? This cannot be undone.",
+      deleteError: "Could not delete the contact.",
       metricTotalContacts: "Total records",
       metricWithDeals: "With open deal",
       metricAvgScore: "Avg score (page)",

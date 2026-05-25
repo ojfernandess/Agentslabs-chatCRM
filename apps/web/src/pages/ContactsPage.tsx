@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Send,
   Mail,
+  Trash2,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -111,6 +112,7 @@ export function ContactsPage() {
 
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   const [allTags, setAllTags] = useState<TagItem[]>([]);
   const [allStages, setAllStages] = useState<StageItem[]>([]);
@@ -209,6 +211,21 @@ export function ContactsPage() {
       );
     } catch {
       /* ignore */
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    const msg = t("contacts.deleteConfirm").replace("{name}", contactName);
+    if (!window.confirm(msg)) return;
+    setDeletingContactId(contactId);
+    try {
+      await api.delete(`/contacts/${contactId}`);
+      setContacts((prev) => prev.filter((c) => c.id !== contactId));
+      if (drawerContactId === contactId) setDrawerContactId(null);
+    } catch {
+      window.alert(t("contacts.deleteError"));
+    } finally {
+      setDeletingContactId(null);
     }
   };
 
@@ -693,16 +710,28 @@ export function ContactsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setQuickContact({ id: contact.id, name: contact.name, phone: contact.phone })
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700"
-                            >
-                              <Send className="h-3.5 w-3.5" />
-                              {t("contacts.quickMessage")}
-                            </button>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setQuickContact({ id: contact.id, name: contact.name, phone: contact.phone })
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                {t("contacts.quickMessage")}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingContactId === contact.id}
+                                onClick={() => void handleDeleteContact(contact.id, contact.name)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-ink-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                                title={t("contacts.deleteContact")}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {t("contacts.deleteContact")}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -727,6 +756,10 @@ export function ContactsPage() {
         onClose={() => setDrawerContactId(null)}
         onQuickMessage={(c) => {
           setQuickContact(c);
+          setDrawerContactId(null);
+        }}
+        onDeleted={(id) => {
+          setContacts((prev) => prev.filter((c) => c.id !== id));
           setDrawerContactId(null);
         }}
         tChannel={tChannel}
