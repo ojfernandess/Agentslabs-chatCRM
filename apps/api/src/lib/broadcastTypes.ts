@@ -8,6 +8,9 @@ export type { BroadcastChannel, BroadcastScheduleType };
 
 export type BroadcastCampaignKind = "followup" | "broadcast" | "ai" | "flow";
 
+/** Após envio de follow-up: fila do bot ou handoff para atendente humano. */
+export type FollowUpAfterSendMode = "bot" | "human_handoff";
+
 export interface BroadcastSegmentRules {
   tagIds?: string[];
   tagLogic?: "ANY" | "ALL";
@@ -19,6 +22,7 @@ export interface BroadcastSegmentRules {
   minDealValue?: number;
   noResponseSinceDays?: number;
   followUpRecurrence?: FollowUpRecurrence;
+  followUpAfterSend?: FollowUpAfterSendMode;
 }
 
 export interface BroadcastAbVariantPayload {
@@ -103,6 +107,10 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
     minDealValue: typeof o.minDealValue === "number" ? o.minDealValue : undefined,
     noResponseSinceDays: typeof o.noResponseSinceDays === "number" ? o.noResponseSinceDays : undefined,
     followUpRecurrence: parseFollowUpRecurrence(o) ?? undefined,
+    followUpAfterSend:
+      o.followUpAfterSend === "bot" || o.followUpAfterSend === "human_handoff"
+        ? o.followUpAfterSend
+        : undefined,
     campaignKind:
       o.campaignKind === "followup" ||
       o.campaignKind === "broadcast" ||

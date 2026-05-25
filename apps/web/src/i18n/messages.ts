@@ -1143,6 +1143,15 @@ export const messages = {
       followUpTagAny: "Qualquer etiqueta",
       followUpTagAll: "Todas as etiquetas",
       followUpNoTags: "Crie etiquetas em Contactos para segmentar a audiência.",
+      followUpAfterSendTitle: "Após o envio da mensagem",
+      followUpAfterSendHint:
+        "Define como a conversa fica na lista de atendimentos quando o contacto responder ou precisar de continuidade.",
+      followUpAfterSendHuman: "Aguardando atendimento",
+      followUpAfterSendHumanHint:
+        "Conversa em pendência para a equipa humana (sem atribuição automática). O bot deixa de responder até um atendente assumir.",
+      followUpAfterSendBot: "Bot no atendimento",
+      followUpAfterSendBotHint:
+        "Conversa na fila do agente virtual: pendente, sem atendente humano. Novas mensagens do contacto seguem para o webhook do bot.",
       followUpScheduleTitle: "Quando enviar",
       followUpSendNow: "Enviar agora para todos",
       followUpSendNowHint: "Inicia o envio imediatamente após criar a campanha (todos os contactos da segmentação).",
@@ -4346,6 +4355,15 @@ export const messages = {
       followUpTagAny: "Any tag",
       followUpTagAll: "All tags",
       followUpNoTags: "Create tags under Contacts to build your audience.",
+      followUpAfterSendTitle: "After the message is sent",
+      followUpAfterSendHint:
+        "Controls how the conversation appears in the inbox when the contact replies or needs follow-up.",
+      followUpAfterSendHuman: "Awaiting agent",
+      followUpAfterSendHumanHint:
+        "Conversation stays pending for your team (not auto-assigned). The bot pauses until an agent takes over.",
+      followUpAfterSendBot: "Bot handling",
+      followUpAfterSendBotHint:
+        "Conversation stays in the virtual agent queue: pending, no human assignee. Inbound messages go to the bot webhook.",
       followUpScheduleTitle: "When to send",
       followUpSendNow: "Send now to everyone",
       followUpSendNowHint: "Starts sending immediately after the campaign is created.",

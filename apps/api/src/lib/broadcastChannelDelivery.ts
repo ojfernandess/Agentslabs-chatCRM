@@ -2,13 +2,35 @@ import type { FastifyBaseLogger } from "fastify";
 import { Resend } from "resend";
 import type { BroadcastCampaign, Contact } from "@prisma/client";
 import { prisma } from "../db.js";
-import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import {
+  deliverOutboundWhatsAppMessage,
+  type PostSendConversationPolicy,
+} from "./outboundMessage.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import { getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
-import { substituteContactVars } from "./broadcastTypes.js";
-import type { BroadcastAbVariantPayload } from "./broadcastTypes.js";
+import { parseSegmentRules, substituteContactVars } from "./broadcastTypes.js";
+import type { BroadcastAbVariantPayload, FollowUpAfterSendMode } from "./broadcastTypes.js";
+
+function postSendPolicyForCampaign(campaign: BroadcastCampaign): PostSendConversationPolicy {
+  const rules = parseSegmentRules(campaign.segmentRules);
+  if (rules?.campaignKind !== "followup") return "default";
+  const mode: FollowUpAfterSendMode | undefined = rules.followUpAfterSend;
+  if (!mode) return "default";
+  return mode === "bot" ? "bot_queue" : "human_handoff";
+}
+
+function newConversationForCampaign(
+  campaign: BroadcastCampaign,
+  actorUserId: string,
+): { status: "OPEN" | "PENDING"; assignedToId?: string | null } {
+  const policy = postSendPolicyForCampaign(campaign);
+  if (policy === "bot_queue" || policy === "human_handoff") {
+    return { status: "PENDING", assignedToId: null };
+  }
+  return { status: "OPEN", assignedToId: actorUserId };
+}
 
 export interface CampaignSendPayload {
   body?: string | null;
@@ -216,7 +238,8 @@ export async function deliverBroadcastToContact(options: {
     data: sendInput,
     actor: { kind: "user", userId: actorUserId },
     log,
-    newConversation: { status: "OPEN", assignedToId: actorUserId },
+    newConversation: newConversationForCampaign(campaign, actorUserId),
+    postSendConversationPolicy: postSendPolicyForCampaign(campaign),
   });
 
   if (channel === "WHATSAPP" && message.status === "FAILED") {

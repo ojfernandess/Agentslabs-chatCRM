@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { CalendarClock, Loader2, Plus, Repeat, Send, Tags } from "lucide-react";
+import { Bot, CalendarClock, Headset, Loader2, Plus, Repeat, Send, Tags } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import {
@@ -19,9 +19,14 @@ import {
 } from "@/lib/broadcastRecurrence";
 import type { InboxOption, TagOption, TemplateOption } from "./campaignTypes";
 import { segmentRulesWithKind } from "./campaignKind";
-import type { FollowUpEditInitial, FollowUpScheduleMode, FollowUpTagLogic } from "./campaignDraftMapper";
+import type {
+  FollowUpAfterSendMode,
+  FollowUpEditInitial,
+  FollowUpScheduleMode,
+  FollowUpTagLogic,
+} from "./campaignDraftMapper";
 
-export type { FollowUpScheduleMode, FollowUpTagLogic };
+export type { FollowUpAfterSendMode, FollowUpScheduleMode, FollowUpTagLogic };
 
 export interface FollowUpDraft {
   name: string;
@@ -39,7 +44,12 @@ export interface FollowUpSubmitPayload {
   editCampaignId?: string;
   name: string;
   tagIds: string[];
-  segmentRules: { tagLogic: FollowUpTagLogic; followUpRecurrence?: FollowUpRecurrence; campaignKind?: "followup" };
+  segmentRules: {
+    tagLogic: FollowUpTagLogic;
+    followUpRecurrence?: FollowUpRecurrence;
+    followUpAfterSend?: FollowUpAfterSendMode;
+    campaignKind?: "followup";
+  };
   inboxId: string;
   messageType: "TEXT" | "TEMPLATE";
   body?: string;
@@ -106,6 +116,7 @@ export function FollowUpCampaignPanel({
   const [recurrenceTime, setRecurrenceTime] = useState(defaultRecurrenceTimeLocal);
   const [recurrenceDayOfWeek, setRecurrenceDayOfWeek] = useState(1);
   const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState(1);
+  const [followUpAfterSend, setFollowUpAfterSend] = useState<FollowUpAfterSendMode>("human_handoff");
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [newTplName, setNewTplName] = useState("");
   const [newTplBody, setNewTplBody] = useState("");
@@ -185,6 +196,7 @@ export function FollowUpCampaignPanel({
     setRecurrenceTime(data.recurrenceTime);
     setRecurrenceDayOfWeek(data.recurrenceDayOfWeek);
     setRecurrenceDayOfMonth(data.recurrenceDayOfMonth);
+    setFollowUpAfterSend(data.followUpAfterSend);
     if (data.inboxId) onInboxChange(data.inboxId);
   }, [onInboxChange]);
 
@@ -237,7 +249,10 @@ export function FollowUpCampaignPanel({
     let scheduleType: FollowUpSubmitPayload["scheduleType"] = "IMMEDIATE";
     let scheduledAtIso: string | undefined;
     let cronExpression: string | undefined;
-    let segmentRules: FollowUpSubmitPayload["segmentRules"] = segmentRulesWithKind({ tagLogic }, "followup") as FollowUpSubmitPayload["segmentRules"];
+    let segmentRules: FollowUpSubmitPayload["segmentRules"] = segmentRulesWithKind(
+      { tagLogic, followUpAfterSend },
+      "followup",
+    ) as FollowUpSubmitPayload["segmentRules"];
 
     if (scheduleMode === "scheduled" && scheduledAt) {
       scheduleType = "SCHEDULED";
@@ -252,7 +267,10 @@ export function FollowUpCampaignPanel({
         ...(recurrenceFrequency === "weekly" ? { dayOfWeek: recurrenceDayOfWeek } : {}),
         ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
       };
-      segmentRules = segmentRulesWithKind({ tagLogic, followUpRecurrence }, "followup") as FollowUpSubmitPayload["segmentRules"];
+      segmentRules = segmentRulesWithKind(
+        { tagLogic, followUpRecurrence, followUpAfterSend },
+        "followup",
+      ) as FollowUpSubmitPayload["segmentRules"];
       cronExpression = buildCronFromRecurrence(followUpRecurrence);
     }
 
@@ -284,6 +302,7 @@ export function FollowUpCampaignPanel({
     setRecurrenceTime(defaultRecurrenceTimeLocal());
     setRecurrenceDayOfWeek(1);
     setRecurrenceDayOfMonth(1);
+    setFollowUpAfterSend("human_handoff");
     setShowCreateTemplate(false);
   }, []);
 
@@ -548,6 +567,49 @@ export function FollowUpCampaignPanel({
             <p className="sm:col-span-2 text-xs text-ink-500">{t("broadcastPage.followUpRecurringNote")}</p>
           </div>
         ) : null}
+      </section>
+
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+        <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.followUpAfterSendTitle")}</h3>
+        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("broadcastPage.followUpAfterSendHint")}</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setFollowUpAfterSend("human_handoff")}
+            className={clsx(
+              "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
+              followUpAfterSend === "human_handoff"
+                ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
+                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+            )}
+          >
+            <Headset className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+            <div>
+              <span className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("broadcastPage.followUpAfterSendHuman")}
+              </span>
+              <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.followUpAfterSendHumanHint")}</p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFollowUpAfterSend("bot")}
+            className={clsx(
+              "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
+              followUpAfterSend === "bot"
+                ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
+                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+            )}
+          >
+            <Bot className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+            <div>
+              <span className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("broadcastPage.followUpAfterSendBot")}
+              </span>
+              <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.followUpAfterSendBotHint")}</p>
+            </div>
+          </button>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">

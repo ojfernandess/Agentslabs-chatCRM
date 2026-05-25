@@ -61,6 +61,8 @@ export type OutboundActor =
   | { kind: "user"; userId: string }
   | { kind: "agent_bot"; botId: string };
 
+export type PostSendConversationPolicy = "default" | "bot_queue" | "human_handoff";
+
 export async function deliverOutboundWhatsAppMessage(options: {
   organizationId: string;
   data: SendMessageInput;
@@ -68,6 +70,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
   log: FastifyBaseLogger;
   /** Conversa nova quando ainda não existe (painel humano). */
   newConversation: { status: "OPEN" | "PENDING"; assignedToId?: string | null };
+  /** Política após envio bem-sucedido (ex.: campanhas de follow-up). */
+  postSendConversationPolicy?: PostSendConversationPolicy;
   /**
    * Anexa a mensagem a esta conversa (ex.: inquérito CSAT após RESOLVED), sem passar pelo
    * roteamento que poderia reabrir OUTRA conversa com `lockSingleConversation`.
@@ -75,7 +79,15 @@ export async function deliverOutboundWhatsAppMessage(options: {
    */
   pinnedConversationId?: string;
 }): Promise<{ message: Message; conversation: Conversation }> {
-  const { organizationId, data, actor, log, newConversation, pinnedConversationId } = options;
+  const {
+    organizationId,
+    data,
+    actor,
+    log,
+    newConversation,
+    pinnedConversationId,
+    postSendConversationPolicy = "default",
+  } = options;
   const {
     contactId,
     type,
@@ -126,8 +138,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
     if (conversation.status === "RESOLVED" && !pinnedConversationId) {
       const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const botTriageActive = Boolean(agentCtxPre);
-      const activeConversationStatus: "OPEN" | "PENDING" =
+      let activeConversationStatus: "OPEN" | "PENDING" =
         actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      if (postSendConversationPolicy === "bot_queue" || postSendConversationPolicy === "human_handoff") {
+        activeConversationStatus = "PENDING";
+      }
       conversation = await prisma.conversation.update({
         where: { id: conversation.id },
         data: reopenResolvedConversationData(activeConversationStatus),
@@ -146,8 +161,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
       }
       const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, explicitInboxId);
       const botTriageActive = Boolean(agentCtxPre);
-      const activeConversationStatus: "OPEN" | "PENDING" =
+      let activeConversationStatus: "OPEN" | "PENDING" =
         actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      if (postSendConversationPolicy === "bot_queue" || postSendConversationPolicy === "human_handoff") {
+        activeConversationStatus = "PENDING";
+      }
       const base = await ensureConversationForChannelInbox({
         organizationId,
         contactId,
@@ -174,8 +192,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
       const defInbox = await getDefaultInboxId(organizationId);
       const agentCtxPre = await getAgentBotDispatchContextForInbox(organizationId, defInbox);
       const botTriageActive = Boolean(agentCtxPre);
-      const activeConversationStatus: "OPEN" | "PENDING" =
+      let activeConversationStatus: "OPEN" | "PENDING" =
         actor.kind === "user" ? "OPEN" : botTriageActive ? "PENDING" : "OPEN";
+      if (postSendConversationPolicy === "bot_queue" || postSendConversationPolicy === "human_handoff") {
+        activeConversationStatus = "PENDING";
+      }
       const base = await ensureConversationForWhatsAppContact({
         organizationId,
         contactId,
@@ -429,13 +450,26 @@ export async function deliverOutboundWhatsAppMessage(options: {
     );
   }
 
-  const convPatch: { updatedAt: Date; assignedToId?: string; status?: "OPEN" } = {
+  const convPatch: {
+    updatedAt: Date;
+    assignedToId?: string | null;
+    status?: "OPEN" | "PENDING";
+    awaitingHumanHandoff?: boolean;
+  } = {
     updatedAt: new Date(),
   };
   /** Só atribuir ao agente / passar a OPEN quando a mensagem **ao cliente** foi entregue com sucesso.
    * Antes: QUALQUER tentativa (incl. WhatsApp FAILED) já punha `assignedToId`, bloqueando o webhook do agent bot. */
   const deliveredToClient = !isPrivate && outboundStatus === "SENT";
-  if (actor.kind === "user" && deliveredToClient) {
+  if (deliveredToClient && postSendConversationPolicy === "bot_queue") {
+    convPatch.status = "PENDING";
+    convPatch.assignedToId = null;
+    convPatch.awaitingHumanHandoff = false;
+  } else if (deliveredToClient && postSendConversationPolicy === "human_handoff") {
+    convPatch.status = "PENDING";
+    convPatch.assignedToId = null;
+    convPatch.awaitingHumanHandoff = true;
+  } else if (actor.kind === "user" && deliveredToClient) {
     convPatch.assignedToId = actor.userId;
     if (conversation.status === "PENDING") {
       convPatch.status = "OPEN";
