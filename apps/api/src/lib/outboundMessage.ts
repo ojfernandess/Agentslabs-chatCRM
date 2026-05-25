@@ -12,6 +12,7 @@ import {
 } from "./conversationRouting.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
+import { broadcastConversationUpdated } from "./workspaceHub.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -445,6 +446,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     where: { id: conversation.id },
     data: convPatch,
   });
+
+  broadcastConversationUpdated(organizationId, conversation.id);
 
   return { message, conversation: updatedConversation };
 }

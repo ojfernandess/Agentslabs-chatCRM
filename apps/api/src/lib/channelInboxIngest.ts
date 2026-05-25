@@ -4,6 +4,7 @@ import type { InboxChannelType, MessageType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
+import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
@@ -199,6 +200,8 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       });
     }
   }
+
+  broadcastConversationUpdated(organizationId, conversation.id);
 
   return {
     conversationId: conversation.id,

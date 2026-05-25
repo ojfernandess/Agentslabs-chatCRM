@@ -28,6 +28,7 @@ import {
 } from "../lib/evolutionGoPlatform.js";
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
+import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -658,6 +659,8 @@ async function handleWhatsAppPost(
           "Agent bot dispatch skipped: no active bot context found for inbox/settings",
         );
       }
+
+      broadcastConversationUpdated(organizationId, conversation.id);
     } catch (err) {
       app.log.error(err, "Error processing incoming webhook message");
     }
@@ -665,6 +668,13 @@ async function handleWhatsAppPost(
 
   for (const status of statusUpdates) {
     try {
+      const targetMsg = await prisma.message.findFirst({
+        where: {
+          providerMsgId: status.waMessageId,
+          conversation: { organizationId },
+        },
+        select: { conversationId: true },
+      });
       await prisma.message.updateMany({
         where: {
           providerMsgId: status.waMessageId,
@@ -672,6 +682,9 @@ async function handleWhatsAppPost(
         },
         data: { status: status.status },
       });
+      if (targetMsg) {
+        broadcastConversationUpdated(organizationId, targetMsg.conversationId);
+      }
     } catch (err) {
       app.log.error(err, "Error processing status update");
     }

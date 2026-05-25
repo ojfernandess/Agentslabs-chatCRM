@@ -61,6 +61,7 @@ import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } f
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
+import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
@@ -769,15 +770,9 @@ export function ConversationDetailPage() {
     return () => clearInterval(interval);
   }, [loadConversation]);
 
-  useEffect(() => {
-    const h = (e: Event) => {
-      const d = (e as CustomEvent<{ conversationId?: string }>).detail;
-      if (d?.conversationId && d.conversationId !== id) return;
-      void loadConversation();
-    };
-    window.addEventListener("openconduit:conversation-updated", h);
-    return () => window.removeEventListener("openconduit:conversation-updated", h);
-  }, [id, loadConversation]);
+  useDebouncedConversationUpdated(() => {
+    void loadConversation();
+  }, { conversationId: id });
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;

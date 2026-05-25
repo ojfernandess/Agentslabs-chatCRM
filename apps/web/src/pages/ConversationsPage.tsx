@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
@@ -178,11 +179,9 @@ export function ConversationsPage() {
     void loadConversations();
   }, [loadConversations]);
 
-  useEffect(() => {
-    const h = () => void loadConversations();
-    window.addEventListener("openconduit:conversation-updated", h);
-    return () => window.removeEventListener("openconduit:conversation-updated", h);
-  }, [loadConversations]);
+  useDebouncedConversationUpdated(() => {
+    void loadConversations();
+  });
 
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
   const filteredConversations = useMemo(() => {

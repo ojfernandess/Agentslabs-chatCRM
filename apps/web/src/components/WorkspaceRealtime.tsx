@@ -46,46 +46,75 @@ export function WorkspaceRealtime() {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
 
+    let cancelled = false;
+    let retryAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`;
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
 
-    ws.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(String(ev.data)) as {
-          type?: string;
-          contact?: { name?: string };
-          teamId?: string | null;
-          teamName?: string | null;
-          conversationId?: string;
-          awaitingHumanHandoff?: boolean;
-        };
-        if (data.type === "conversation.transferred") {
-          const contact = data.contact?.name ?? "—";
-          const team = (data.teamName ?? "").trim() || translate(locale, "workspace.transferUnknownTeam");
-          const msg = translate(locale, "workspace.transferToast")
-            .replace("{contact}", contact)
-            .replace("{team}", team);
-          pushToast(msg);
-          playTransferChime();
-          window.dispatchEvent(
-            new CustomEvent("openconduit:conversation-transferred", { detail: data }),
-          );
-        } else if (data.type === "conversation.updated" && typeof data.conversationId === "string") {
-          window.dispatchEvent(
-            new CustomEvent("openconduit:conversation-updated", {
-              detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
-            }),
-          );
-        }
-      } catch {
-        /* ignore */
+    const handlePayload = (data: {
+      type?: string;
+      contact?: { name?: string };
+      teamId?: string | null;
+      teamName?: string | null;
+      conversationId?: string;
+      awaitingHumanHandoff?: boolean;
+    }) => {
+      if (data.type === "conversation.transferred") {
+        const contact = data.contact?.name ?? "—";
+        const team = (data.teamName ?? "").trim() || translate(locale, "workspace.transferUnknownTeam");
+        const msg = translate(locale, "workspace.transferToast")
+          .replace("{contact}", contact)
+          .replace("{team}", team);
+        pushToast(msg);
+        playTransferChime();
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-transferred", { detail: data }),
+        );
+      } else if (data.type === "conversation.updated" && typeof data.conversationId === "string") {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", {
+            detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
+          }),
+        );
       }
     };
 
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryAttempt = 0;
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(String(ev.data)) as Parameters<typeof handlePayload>[0];
+          if (data.type === "workspace.connected") return;
+          handlePayload(data);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+        if (cancelled) return;
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(retryAttempt, 5));
+        retryAttempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
     return () => {
-      ws.close();
+      cancelled = true;
+      if (reconnectTimer != null) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
       wsRef.current = null;
     };
   }, [user, pushToast, locale]);

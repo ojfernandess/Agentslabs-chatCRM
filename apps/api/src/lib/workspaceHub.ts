@@ -38,3 +38,16 @@ export function broadcastToOrganization(organizationId: string, payload: unknown
     }
   }
 }
+
+/** Notifica clientes conectados para recarregar lista/detalhe da conversa (novas mensagens, status, etc.). */
+export function broadcastConversationUpdated(
+  organizationId: string,
+  conversationId: string,
+  extra?: { awaitingHumanHandoff?: boolean },
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "conversation.updated",
+    conversationId,
+    ...extra,
+  });
+}
