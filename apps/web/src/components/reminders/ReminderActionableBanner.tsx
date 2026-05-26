@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { format } from "date-fns";
-import { AlertCircle, Bell, Check, Clock, UserCircle } from "lucide-react";
+import { ArrowUpRight, Bell, Check, ChevronRight } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { ActionableReminder } from "@/hooks/useActionableReminders";
 
@@ -27,93 +27,107 @@ export function ReminderActionableBanner({
 
   if (reminders.length === 0) return null;
 
-  const visible = reminders.slice(0, 5);
+  const visible = reminders.slice(0, 4);
   const extra = reminders.length - visible.length;
+  const hasOverdue = reminders.some((row) => isOverdue(row.dueAt));
 
   return (
     <div
-      className="shrink-0 border-b border-amber-300/70 bg-gradient-to-r from-amber-50 via-amber-50/95 to-orange-50/90 px-4 py-3 shadow-sm dark:border-amber-700/40 dark:from-amber-950/50 dark:via-amber-950/40 dark:to-orange-950/30"
+      className={clsx(
+        "shrink-0 border-b border-ink-200/60 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-ink-950/75 sm:px-5",
+        hasOverdue ? "border-l-[3px] border-l-red-500" : "border-l-[3px] border-l-brand-500",
+      )}
       role="region"
       aria-label={t("reminders.actionableBannerTitle")}
     >
-      <div className="mx-auto flex max-w-6xl flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
-            <Bell className="h-4 w-4 shrink-0" aria-hidden />
-            {t("reminders.actionableBannerTitle")}
-            <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-bold tabular-nums text-amber-950 dark:bg-amber-900/60 dark:text-amber-100">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-2.5 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <Bell className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            </span>
+            <p className="truncate text-sm font-medium text-ink-900 dark:text-ink-50">
+              {t("reminders.actionableBannerTitle")}
+            </p>
+            <span className="shrink-0 rounded-md bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-ink-600 dark:bg-white/10 dark:text-ink-300">
               {reminders.length}
             </span>
-          </p>
+          </div>
           <Link
             to="/reminders"
-            className="text-xs font-semibold text-amber-900 underline-offset-2 hover:underline dark:text-amber-200"
+            className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-brand-600 transition-colors hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
           >
             {t("reminders.actionableViewAll")}
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
           </Link>
         </div>
 
-        <ul className="space-y-2">
+        <ul className="divide-y divide-ink-100 dark:divide-white/[0.06]">
           {visible.map((row) => {
             const overdue = isOverdue(row.dueAt);
             const due = new Date(row.dueAt);
             const dueLabel = Number.isNaN(due.getTime())
               ? ""
               : format(due, "dd MMM · HH:mm", { locale: dateLocale });
+            const completing = completingId === row.id;
 
             return (
-              <li
-                key={row.id}
-                className={clsx(
-                  "flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2.5",
-                  overdue
-                    ? "border-red-300/80 bg-red-50/90 dark:border-red-800/50 dark:bg-red-950/35"
-                    : "border-amber-200/90 bg-white/85 dark:border-amber-800/40 dark:bg-amber-950/25",
-                )}
-              >
+              <li key={row.id} className="group flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                <span
+                  className={clsx(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    overdue ? "bg-red-500" : "bg-brand-500/70",
+                  )}
+                  aria-hidden
+                />
+
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{row.note}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-600 dark:text-ink-300">
-                    <span className="inline-flex items-center gap-1">
-                      <UserCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      {contactLabel(row)}
-                    </span>
+                  <p className="truncate text-sm font-medium text-ink-900 dark:text-ink-50">{row.note}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-500 dark:text-ink-400">
+                    <span className="truncate">{contactLabel(row)}</span>
                     {dueLabel ? (
-                      <span className="inline-flex items-center gap-1">
-                        {overdue ? (
-                          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-300" aria-hidden />
-                        ) : (
-                          <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        )}
-                        {dueLabel}
-                      </span>
+                      <>
+                        <span className="text-ink-300 dark:text-ink-600" aria-hidden>
+                          ·
+                        </span>
+                        <span className={clsx(overdue && "font-medium text-red-600 dark:text-red-400")}>{dueLabel}</span>
+                      </>
                     ) : null}
-                    {overdue ? (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800 dark:bg-red-950/50 dark:text-red-200">
-                        {t("reminders.filterOverdue")}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
-                        {t("reminders.filterToday")}
-                      </span>
-                    )}
-                  </div>
+                    <span
+                      className={clsx(
+                        "rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide",
+                        overdue
+                          ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                          : "bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300",
+                      )}
+                    >
+                      {overdue ? t("reminders.filterOverdue") : t("reminders.filterToday")}
+                    </span>
+                  </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+
+                <div className="flex shrink-0 items-center gap-1 opacity-90 transition-opacity group-hover:opacity-100">
                   <Link
                     to={`/reminders?open=${encodeURIComponent(row.id)}`}
-                    className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10"
+                    className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-white/10 dark:hover:text-ink-100"
                   >
                     {t("reminders.actionableOpen")}
+                    <ArrowUpRight className="h-3 w-3" aria-hidden />
                   </Link>
                   <button
                     type="button"
-                    disabled={completingId === row.id}
+                    disabled={completing}
                     onClick={() => onComplete(row.id)}
-                    className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60 dark:bg-brand-600"
+                    title={completing ? t("reminders.actionableCompleting") : t("reminders.actionableComplete")}
+                    aria-label={completing ? t("reminders.actionableCompleting") : t("reminders.actionableComplete")}
+                    className={clsx(
+                      "flex h-7 w-7 items-center justify-center rounded-full border transition-colors disabled:cursor-wait disabled:opacity-60",
+                      completing
+                        ? "border-brand-400 bg-brand-50 text-brand-600 dark:border-brand-500/50 dark:bg-brand-950/50 dark:text-brand-300"
+                        : "border-ink-200 text-ink-400 hover:border-brand-400 hover:bg-brand-50 hover:text-brand-600 dark:border-ink-600 dark:hover:border-brand-500/60 dark:hover:bg-brand-950/40 dark:hover:text-brand-300",
+                    )}
                   >
-                    <Check className="h-3.5 w-3.5" aria-hidden />
-                    {completingId === row.id ? t("reminders.actionableCompleting") : t("reminders.actionableComplete")}
+                    <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
                   </button>
                 </div>
               </li>
@@ -122,8 +136,10 @@ export function ReminderActionableBanner({
         </ul>
 
         {extra > 0 ? (
-          <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
-            {t("reminders.actionableMore").replace("{n}", String(extra))}
+          <p className="mt-2 border-t border-ink-100 pt-2 text-xs text-ink-500 dark:border-white/[0.06] dark:text-ink-400">
+            <Link to="/reminders" className="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+              {t("reminders.actionableMore").replace("{n}", String(extra))}
+            </Link>
           </p>
         ) : null}
       </div>
