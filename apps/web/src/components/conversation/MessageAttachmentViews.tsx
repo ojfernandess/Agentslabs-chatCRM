@@ -72,7 +72,7 @@ export function ChatImageThumbnail({
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full cursor-zoom-in overflow-hidden rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+      className="block w-full cursor-zoom-in overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
     >
       <img
         src={src}

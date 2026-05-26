@@ -2458,13 +2458,8 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              /* Agrupamento: espaço visível entre balões do mesmo remetente; bloco maior ao mudar de remetente. */
-              const rowSpacing = groupedNext ? "mb-2.5" : "mb-6";
-              const bubbleRadius = clsx(
-                "rounded-2xl",
-                inbound ? groupedPrev && "rounded-tl-md" : groupedPrev && "rounded-tr-md",
-                inbound ? groupedNext && "rounded-bl-md" : groupedNext && "rounded-br-md",
-              );
+              /* Agrupamento: 12px entre balões do mesmo remetente; bloco maior ao mudar de remetente. */
+              const rowSpacing = groupedNext ? "mb-3" : "mb-5";
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -2495,8 +2490,7 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] border px-3.5 py-2.5",
-                    bubbleRadius,
+                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] border p-4",
                     isNew && "crm-bubble-unread",
                     msg.isPrivate ? "crm-bubble-private" : inbound ? "crm-bubble-in" : "crm-bubble-out",
                   )}
@@ -2504,10 +2498,9 @@ export function ConversationDetailPage() {
                   {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat ? (
                     <p
                       className={clsx(
-                        "mb-2.5 border-b pb-2 text-[11px] font-semibold leading-tight",
                         msg.isPrivate
-                          ? "border-amber-400/40 text-amber-900/90 dark:border-amber-500/30 dark:text-amber-100/95"
-                          : "border-ink-200/60 text-ink-700 dark:border-white/10 dark:text-ink-200",
+                          ? "mb-1.5 text-xs font-semibold text-amber-900/90 dark:text-amber-100/95"
+                          : "crm-bubble-agent-name",
                       )}
                     >
                       {msg.actorUser.displayName?.trim() || msg.actorUser.name}
@@ -2538,7 +2531,7 @@ export function ConversationDetailPage() {
                   {msg.body?.trim() && msg.type !== "DOCUMENT" ? (
                     <p
                       className={clsx(
-                        "whitespace-pre-wrap break-words text-sm leading-snug [overflow-wrap:anywhere]",
+                        "whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
                         msg.type === "IMAGE" && msg.mediaUrl && "mt-2",
                       )}
                     >
@@ -2546,7 +2539,7 @@ export function ConversationDetailPage() {
                     </p>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-snug [overflow-wrap:anywhere]">
+                    <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                       {msg.body}
                     </p>
                   ) : null}
@@ -2571,27 +2564,23 @@ export function ConversationDetailPage() {
                       playsInline
                     />
                   )}
-                  <div
-                    className={clsx(
-                      "crm-bubble-meta mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
-                    )}
-                  >
+                  <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {inbound && isNew ? (
-                      <span className="ml-1 inline-flex h-2 w-2 items-center justify-center">
+                      <span className="ml-0.5 inline-flex h-[18px] w-[18px] items-center justify-center">
                         <span className="h-1.5 w-1.5 rounded-full bg-brand-500/80 dark:bg-brand-300/80" />
                       </span>
                     ) : null}
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (
-                          <AlertTriangle className="h-3 w-3 text-red-500 dark:text-red-300" aria-hidden />
+                          <AlertTriangle className="h-[18px] w-[18px] text-red-500 dark:text-red-300" aria-hidden />
                         ) : msg.status === "READ" ? (
-                          <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" aria-hidden />
+                          <CheckCheck className="h-[18px] w-[18px] text-brand-600 dark:text-brand-300" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-3 w-3 text-ink-500/70 dark:text-ink-300/70" aria-hidden />
+                          <CheckCheck className="h-[18px] w-[18px] opacity-60" aria-hidden />
                         ) : (
-                          <Check className="h-3 w-3 text-ink-500/80 dark:text-ink-300/80" aria-hidden />
+                          <Check className="h-[18px] w-[18px] opacity-70" aria-hidden />
                         )}
                       </span>
                     )}
@@ -2602,7 +2591,7 @@ export function ConversationDetailPage() {
               return (
                 <motion.div
                   key={msg.id}
-                  className={clsx("flex w-full gap-2", inbound ? "justify-start" : "justify-end", rowSpacing)}
+                  className={clsx("flex w-full gap-3", inbound ? "justify-start" : "justify-end", rowSpacing)}
                   initial={isNew ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
@@ -2631,7 +2620,7 @@ export function ConversationDetailPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
-                <div className="rounded-2xl border border-brand-500/30 bg-brand-500/15 px-4 py-3 dark:bg-brand-900/35">
+                <div className="crm-bubble crm-bubble-out rounded-[16px] border p-4">
                   <div className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.2s]" />
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.1s]" />
