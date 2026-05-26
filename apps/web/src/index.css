@@ -192,15 +192,22 @@
 
   .crm-bubble-out {
     --crm-bubble-bg: rgba(var(--brand-secondary-rgb), 0.12);
-    --crm-bubble-border: rgba(var(--brand-secondary-rgb), 0.16);
-    --crm-bubble-shadow: 0 1px 2px rgba(var(--brand-primary-rgb), 0.08);
+    --crm-bubble-border: rgba(var(--brand-primary-rgb), 0.10);
+    --crm-bubble-shadow: 0 1px 2px rgba(var(--brand-primary-rgb), 0.05);
+    border-color: rgba(var(--brand-primary-rgb), 0.10);
   }
 
   .dark .crm-bubble-out {
     --crm-bubble-bg: rgba(var(--brand-primary-rgb), 0.32);
-    --crm-bubble-border: rgba(var(--brand-secondary-rgb), 0.24);
+    --crm-bubble-border: rgba(var(--brand-secondary-rgb), 0.18);
     --crm-bubble-text: rgba(248, 250, 252, 0.98);
     --crm-bubble-meta: rgba(226, 232, 240, 0.65);
+    border-color: rgba(var(--brand-secondary-rgb), 0.18);
+  }
+
+  .crm-bubble-unread.crm-bubble-out {
+    @apply ring-2 ring-brand-500/25;
+    @apply dark:ring-brand-400/20;
   }
 
   .crm-bubble-unread {

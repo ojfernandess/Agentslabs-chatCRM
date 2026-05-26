@@ -230,14 +230,6 @@ function messageGroupedWithPrevious(messages: Message[], index: number): boolean
   return differenceInMinutes(new Date(cur.createdAt), new Date(prev.createdAt)) <= MSG_GROUP_MINUTES;
 }
 
-function messageGroupedWithNext(messages: Message[], index: number): boolean {
-  if (index >= messages.length - 1) return false;
-  const cur = messages[index];
-  const next = messages[index + 1];
-  if (next.direction !== cur.direction || !!next.isPrivate !== !!cur.isPrivate) return false;
-  return differenceInMinutes(new Date(next.createdAt), new Date(cur.createdAt)) <= MSG_GROUP_MINUTES;
-}
-
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -2431,7 +2423,7 @@ export function ConversationDetailPage() {
           className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5"
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
-          <div className="relative w-full min-w-0 space-y-0">
+          <div className="relative flex w-full min-w-0 flex-col gap-3">
             {conversation.awaitingHumanHandoff ? (
               <div
                 className="mb-4 flex items-start gap-2 rounded-xl border border-red-200/90 bg-red-50/95 px-3 py-2.5 text-xs text-red-950 shadow-sm dark:border-red-800/50 dark:bg-red-950/45 dark:text-red-100"
@@ -2453,13 +2445,12 @@ export function ConversationDetailPage() {
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
-              const groupedNext = messageGroupedWithNext(list, i);
               const isNew = !seenMessageIds.current.has(msg.id);
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              /* Agrupamento: 12px entre balões do mesmo remetente; bloco maior ao mudar de remetente. */
-              const rowSpacing = groupedNext ? "mb-3" : "mb-5";
+              /* 12px entre balões (gap-3); bloco extra ao mudar de remetente. */
+              const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -2591,7 +2582,7 @@ export function ConversationDetailPage() {
               return (
                 <motion.div
                   key={msg.id}
-                  className={clsx("flex w-full gap-3", inbound ? "justify-start" : "justify-end", rowSpacing)}
+                  className={clsx("flex w-full gap-3", inbound ? "justify-start" : "justify-end", blockSpacing)}
                   initial={isNew ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
