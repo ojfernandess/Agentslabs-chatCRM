@@ -2154,6 +2154,7 @@ export const messages = {
       startChatCreateFailed: "Não foi possível criar o contato.",
       startChatFillRequired: "Preencha nome e telefone.",
       unreadBadge: "Não lida",
+      listAssignee: "Atendente",
       emptySearchTitle: "Nenhuma conversa coincide com a pesquisa",
       emptySearchHint: "Limpe o campo ou altere os termos.",
       contextMenu: {
@@ -5372,6 +5373,7 @@ export const messages = {
       startChatCreateFailed: "Could not create the contact.",
       startChatFillRequired: "Enter name and phone.",
       unreadBadge: "Unread",
+      listAssignee: "Assignee",
       emptySearchTitle: "No conversations match your search",
       emptySearchHint: "Clear the field or try different terms.",
       contextMenu: {

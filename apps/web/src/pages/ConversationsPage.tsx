@@ -49,6 +49,21 @@ const statusColors: Record<string, string> = {
   RESOLVED: "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
 };
 
+function ScopeTabCount({ count, selected }: { count: number; selected: boolean }) {
+  return (
+    <span
+      className={clsx(
+        "rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+        selected
+          ? "bg-white/25"
+          : "bg-ink-200/90 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
+      )}
+    >
+      {count}
+    </span>
+  );
+}
+
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -80,6 +95,12 @@ export function ConversationsPage() {
 
   const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
+  const [scopeCounts, setScopeCounts] = useState({
+    org: 0,
+    bot: 0,
+    attendanceQueue: 0,
+    mine: 0,
+  });
 
   type ConversationListScope = "org" | "mine" | "bot" | "attendance";
 
@@ -114,6 +135,8 @@ export function ConversationsPage() {
     setSearchParams(
       (prev) => {
         const n = new URLSearchParams(prev);
+        n.delete("bot");
+        n.delete("botAttendance");
         n.set("attendance", "1");
         if (sub === "mine") {
           n.set("mine", "1");
@@ -291,12 +314,53 @@ export function ConversationsPage() {
     }
   }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
 
+  const loadScopeCounts = useCallback(async () => {
+    try {
+      const base = new URLSearchParams({ page: "1", pageSize: "1" });
+      if (teamFilter) base.set("teamId", teamFilter);
+      if (inboxFilter) base.set("inboxId", inboxFilter);
+
+      const orgParams = new URLSearchParams(base);
+      const botParams = new URLSearchParams(base);
+      botParams.set("botAttendance", "1");
+      const queueParams = new URLSearchParams(base);
+      queueParams.set("waitingAttendance", "1");
+      const mineParams = new URLSearchParams(base);
+      mineParams.set("mine", "1");
+
+      const [orgRes, botRes, queueRes, mineRes] = await Promise.all([
+        api.get<{ total: number }>(`/conversations?${orgParams}`),
+        orgAgentBotTriageActive
+          ? api.get<{ total: number }>(`/conversations?${botParams}`)
+          : Promise.resolve({ total: 0 }),
+        orgAttendanceTabEnabled
+          ? api.get<{ total: number }>(`/conversations?${queueParams}`)
+          : Promise.resolve({ total: 0 }),
+        api.get<{ total: number }>(`/conversations?${mineParams}`),
+      ]);
+
+      setScopeCounts({
+        org: orgRes.total ?? 0,
+        bot: botRes.total ?? 0,
+        attendanceQueue: queueRes.total ?? 0,
+        mine: mineRes.total ?? 0,
+      });
+    } catch {
+      /* ignore count errors */
+    }
+  }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled]);
+
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
 
+  useEffect(() => {
+    void loadScopeCounts();
+  }, [loadScopeCounts]);
+
   useDebouncedConversationUpdated(() => {
     void loadConversations();
+    void loadScopeCounts();
   });
 
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
@@ -382,7 +446,7 @@ export function ConversationsPage() {
                 {orgAttendanceTabEnabled ? (
                   <button
                     type="button"
-                    onClick={() => setAttendanceSubView("queue")}
+                    onClick={() => setScopeParam("attendance")}
                     className={clsx(
                       "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                       attendanceScopeActive
@@ -392,6 +456,7 @@ export function ConversationsPage() {
                   >
                     <Headset className="h-3.5 w-3.5" />
                     {t("conversations.scopeAttendance")}
+                    <ScopeTabCount count={scopeCounts.attendanceQueue} selected={attendanceScopeActive} />
                   </button>
                 ) : null}
                 <button
@@ -406,9 +471,10 @@ export function ConversationsPage() {
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
                   {t("conversations.scopeOrg")}
-                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
+                  <ScopeTabCount
+                    count={scopeCounts.org}
+                    selected={!mineActive && !botAttendanceActive && !attendanceScopeActive}
+                  />
                 </button>
                 {!orgAttendanceTabEnabled ? (
                   <button
@@ -423,6 +489,7 @@ export function ConversationsPage() {
                   >
                     <UserCircle className="h-3.5 w-3.5" />
                     {t("conversations.myAssignments")}
+                    <ScopeTabCount count={scopeCounts.mine} selected={mineActive} />
                   </button>
                 ) : null}
                 {orgAgentBotTriageActive ? (
@@ -438,9 +505,7 @@ export function ConversationsPage() {
                   >
                     <Bot className="h-3.5 w-3.5" />
                     {t("conversations.scopeBotAttendance")}
-                    {botAttendanceActive ? (
-                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                    ) : null}
+                    <ScopeTabCount count={scopeCounts.bot} selected={botAttendanceActive} />
                   </button>
                 ) : null}
               </div>
@@ -532,9 +597,7 @@ export function ConversationsPage() {
                 >
                   <Clock className="h-3.5 w-3.5" />
                   {t("conversations.attendanceQueue")}
-                  {!mineActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
+                  <ScopeTabCount count={scopeCounts.attendanceQueue} selected={!mineActive} />
                 </button>
                 <button
                   type="button"
@@ -548,9 +611,7 @@ export function ConversationsPage() {
                 >
                   <UserCircle className="h-3.5 w-3.5" />
                   {t("conversations.myAssignments")}
-                  {mineActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
+                  <ScopeTabCount count={scopeCounts.mine} selected={mineActive} />
                 </button>
               </div>
             ) : null}
@@ -663,6 +724,15 @@ export function ConversationsPage() {
                               {conv.inbox ? (
                                 <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200">
                                   {conv.inbox.name}
+                                </span>
+                              ) : null}
+                              {conv.assignedTo?.name ? (
+                                <span
+                                  className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
+                                  title={`${t("conversations.listAssignee")}: ${conv.assignedTo.name}`}
+                                >
+                                  <UserCircle className="h-3 w-3 shrink-0" aria-hidden />
+                                  <span className="truncate">{conv.assignedTo.name}</span>
                                 </span>
                               ) : null}
                               {conv.awaitingHumanHandoff ? (
