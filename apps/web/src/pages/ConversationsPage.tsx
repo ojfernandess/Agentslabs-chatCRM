@@ -377,111 +377,74 @@ export function ConversationsPage() {
           </header>
 
           <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
-              {orgAttendanceTabEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => setAttendanceSubView("queue")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    attendanceScopeActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <Headset className="h-3.5 w-3.5" />
-                  {t("conversations.scopeAttendance")}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setScopeParam("org")}
-                className={clsx(
-                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                  !mineActive && !botAttendanceActive && !attendanceScopeActive
-                    ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                    : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                )}
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                {t("conversations.scopeOrg")}
-                {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
-                  <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                ) : null}
-              </button>
-              {!orgAttendanceTabEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => setScopeParam("mine")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    mineActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <UserCircle className="h-3.5 w-3.5" />
-                  {t("conversations.myAssignments")}
-                </button>
-              ) : null}
-              {orgAgentBotTriageActive ? (
-                <button
-                  type="button"
-                  onClick={() => setScopeParam("bot")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    botAttendanceActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <Bot className="h-3.5 w-3.5" />
-                  {t("conversations.scopeBotAttendance")}
-                  {botAttendanceActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
-                </button>
-              ) : null}
-            </div>
-
-            {orgAttendanceTabEnabled && attendanceScopeActive ? (
-              <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/15">
-                <button
-                  type="button"
-                  onClick={() => setAttendanceSubView("queue")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    !mineActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  {t("conversations.attendanceQueue")}
-                  {!mineActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAttendanceSubView("mine")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    mineActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <UserCircle className="h-3.5 w-3.5" />
-                  {t("conversations.myAssignments")}
-                  {mineActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
-                </button>
-              </div>
-            ) : null}
-
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
+              <div className="flex flex-wrap items-center gap-2">
+                {orgAttendanceTabEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => setAttendanceSubView("queue")}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      attendanceScopeActive
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                    )}
+                  >
+                    <Headset className="h-3.5 w-3.5" />
+                    {t("conversations.scopeAttendance")}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setScopeParam("org")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    !mineActive && !botAttendanceActive && !attendanceScopeActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {t("conversations.scopeOrg")}
+                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+                {!orgAttendanceTabEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => setScopeParam("mine")}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      mineActive
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                    )}
+                  >
+                    <UserCircle className="h-3.5 w-3.5" />
+                    {t("conversations.myAssignments")}
+                  </button>
+                ) : null}
+                {orgAgentBotTriageActive ? (
+                  <button
+                    type="button"
+                    onClick={() => setScopeParam("bot")}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      botAttendanceActive
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                    )}
+                  >
+                    <Bot className="h-3.5 w-3.5" />
+                    {t("conversations.scopeBotAttendance")}
+                    {botAttendanceActive ? (
+                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                    ) : null}
+                  </button>
+                ) : null}
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 {!botAttendanceActive && (!attendanceScopeActive || mineActive) ? (
                 <div className="flex flex-wrap gap-1 rounded-full bg-ink-100 p-1 dark:bg-ink-900/60">
@@ -554,6 +517,43 @@ export function ConversationsPage() {
                 </div>
               </div>
             </div>
+
+            {orgAttendanceTabEnabled && attendanceScopeActive ? (
+              <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/15">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubView("queue")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    !mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  {t("conversations.attendanceQueue")}
+                  {!mineActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubView("mine")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <UserCircle className="h-3.5 w-3.5" />
+                  {t("conversations.myAssignments")}
+                  {mineActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
               {loading ? (
