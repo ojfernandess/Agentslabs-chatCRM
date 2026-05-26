@@ -60,6 +60,7 @@ import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { resolveCannedResponseVariables } from "@/lib/cannedResponseVariables";
 import { useAuth } from "@/hooks/useAuth";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
@@ -682,12 +683,15 @@ export function ConversationDetailPage() {
     };
   }, []);
 
-  const applyCannedResponse = useCallback((row: CannedResponseRow) => {
-    setNewMessage(row.content);
-    setCannedMenuOpen(false);
-    setTemplateMenuOpen(false);
-    setEmojiOpen(false);
-  }, []);
+  const applyCannedResponse = useCallback(
+    (row: CannedResponseRow) => {
+      setNewMessage(resolveCannedResponseVariables(row.content, user));
+      setCannedMenuOpen(false);
+      setTemplateMenuOpen(false);
+      setEmojiOpen(false);
+    },
+    [user],
+  );
 
   const onComposerChange = useCallback(
     (value: string) => {
@@ -696,13 +700,13 @@ export function ConversationDetailPage() {
         const key = match[1].toLowerCase();
         const found = cannedResponses.find((c) => c.shortcut === key);
         if (found) {
-          setNewMessage(value.replace(/\/[a-zA-Z0-9_-]+\s$/, found.content));
+          setNewMessage(value.replace(/\/[a-zA-Z0-9_-]+\s$/, resolveCannedResponseVariables(found.content, user)));
           return;
         }
       }
       setNewMessage(value);
     },
-    [cannedResponses],
+    [cannedResponses, user],
   );
 
   const cannedSlashFilter = useMemo(() => {
@@ -775,9 +779,10 @@ export function ConversationDetailPage() {
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
-  /** Corpo enviado ao cliente: anexa assinatura do perfil só em mensagens públicas. */
+  /** Corpo enviado ao cliente: variáveis de resposta pronta + assinatura do perfil em mensagens públicas. */
   const outboundBodyWithSignature = (text: string, isPrivate: boolean): string => {
-    const trimmed = text.trim();
+    const resolved = resolveCannedResponseVariables(text, user);
+    const trimmed = resolved.trim();
     if (isPrivate) return trimmed;
     const sig = user?.messageSignature?.trim();
     if (!sig) return trimmed;
@@ -2481,9 +2486,13 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] border p-4",
+                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] p-4",
                     isNew && "crm-bubble-unread",
-                    msg.isPrivate ? "crm-bubble-private" : inbound ? "crm-bubble-in" : "crm-bubble-out",
+                    msg.isPrivate
+                      ? "crm-bubble-private border border-amber-300/45 dark:border-amber-500/35"
+                      : inbound
+                        ? "crm-bubble-in border border-ink-200/60 dark:border-white/10"
+                        : "crm-bubble-out border border-brand-500/25 dark:border-brand-400/30",
                   )}
                 >
                   {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat ? (
@@ -2611,7 +2620,7 @@ export function ConversationDetailPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
-                <div className="crm-bubble crm-bubble-out rounded-[16px] border p-4">
+                <div className="crm-bubble crm-bubble-out rounded-[16px] border border-brand-500/25 p-4 dark:border-brand-400/30">
                   <div className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.2s]" />
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.1s]" />

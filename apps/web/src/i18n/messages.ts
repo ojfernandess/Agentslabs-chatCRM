@@ -2883,7 +2883,9 @@ export const messages = {
       slaDeleteConfirm: "Eliminar esta política SLA?",
       sectionCanned: "Respostas prontas",
       cannedIntro:
-        "Modelos de resposta com atalho para usar na conversa (menu ou digite /atalho seguido de espaço).",
+        "Modelos de resposta com atalho para usar na conversa (menu ou digite /atalho seguido de espaço). Use {{atendente}} para inserir o nome do atendente configurado no perfil.",
+      cannedVariablesHint:
+        "Variáveis: {{atendente}}, {{nome_atendente}} ou {{attendant_name}} — substituídas pelo nome para exibição (ou nome completo) do perfil ao enviar.",
       cannedAdd: "Adicionar resposta pronta",
       cannedAddTitle: "Adicionar resposta pronta",
       cannedEditTitle: "Editar resposta pronta",
@@ -2893,7 +2895,7 @@ export const messages = {
       cannedShortcutPlaceholder: "ex.: saudacao",
       cannedMessage: "Mensagem",
       cannedMessagePlaceholder:
-        "Escreva a mensagem que deseja guardar como modelo para usar depois.",
+        "Ex.: Olá! Sou {{atendente}}, como posso ajudar?",
       cannedSubmit: "Guardar",
       cannedEmpty: "Não há respostas prontas nesta organização.",
       cannedSaveError: "Não foi possível guardar a resposta pronta.",
@@ -6097,7 +6099,9 @@ export const messages = {
       slaDeleteConfirm: "Delete this SLA policy?",
       sectionCanned: "Canned responses",
       cannedIntro:
-        "Shortcut-based reply templates for the conversation composer (menu or type /shortcut followed by space).",
+        "Shortcut-based reply templates for the conversation composer (menu or type /shortcut followed by space). Use {{atendente}} to insert the attendant name from the user profile.",
+      cannedVariablesHint:
+        "Variables: {{atendente}}, {{nome_atendente}}, or {{attendant_name}} — replaced with the profile display name (or full name) when sent.",
       cannedAdd: "Add canned response",
       cannedAddTitle: "Add canned response",
       cannedEditTitle: "Edit canned response",
@@ -6106,7 +6110,7 @@ export const messages = {
       cannedShortcut: "Shortcut",
       cannedShortcutPlaceholder: "e.g. greeting",
       cannedMessage: "Message",
-      cannedMessagePlaceholder: "Write the message you want to save as a template for later use.",
+      cannedMessagePlaceholder: "e.g. Hello! I'm {{atendente}}, how can I help?",
       cannedSubmit: "Save",
       cannedEmpty: "No canned responses in this organization.",
       cannedSaveError: "Could not save canned response.",

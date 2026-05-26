@@ -180,6 +180,7 @@ export function CannedResponsesSettings() {
                 </div>
               </div>
               <CannedMessageField form={form} setForm={setForm} t={t} />
+              <p className={`text-xs ${settingsMuted}`}>{t("settings.cannedVariablesHint")}</p>
               {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary">
