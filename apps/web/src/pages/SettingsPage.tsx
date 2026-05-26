@@ -66,6 +66,7 @@ import clsx from "clsx";
 import {
   applyConversationBubbleTheme,
   DEFAULT_BUBBLE_THEME,
+  hasCustomBubbleTheme,
 } from "@/lib/conversationBubbleTheme";
 
 type SettingsSection =
@@ -122,6 +123,10 @@ interface AppSettings {
   conversationBubbleAgentColor?: string | null;
   conversationBubbleClientColorDark?: string | null;
   conversationBubbleAgentColorDark?: string | null;
+  conversationBubbleClientTextColor?: string | null;
+  conversationBubbleAgentTextColor?: string | null;
+  conversationBubbleClientTextColorDark?: string | null;
+  conversationBubbleAgentTextColorDark?: string | null;
 }
 
 interface AgentBotOption {
@@ -274,6 +279,10 @@ export function SettingsPage() {
   const [bubbleAgentColor, setBubbleAgentColor] = useState<string>(DEFAULT_BUBBLE_THEME.agent);
   const [bubbleClientDark, setBubbleClientDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientDark);
   const [bubbleAgentDark, setBubbleAgentDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentDark);
+  const [bubbleClientTextColor, setBubbleClientTextColor] = useState<string>(DEFAULT_BUBBLE_THEME.clientText);
+  const [bubbleAgentTextColor, setBubbleAgentTextColor] = useState<string>(DEFAULT_BUBBLE_THEME.agentText);
+  const [bubbleClientTextDark, setBubbleClientTextDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientTextDark);
+  const [bubbleAgentTextDark, setBubbleAgentTextDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentTextDark);
   const [appearanceSaveError, setAppearanceSaveError] = useState("");
   const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
 
@@ -572,17 +581,15 @@ export function SettingsPage() {
         setLeadFinderSaveError("");
         setAssistantSaveError("");
         setAppearanceSaveError("");
-        const hasCustomBubbles = !!(
-          data.conversationBubbleClientColor ||
-          data.conversationBubbleAgentColor ||
-          data.conversationBubbleClientColorDark ||
-          data.conversationBubbleAgentColorDark
-        );
-        setAppearanceUsesDefaults(!hasCustomBubbles);
+        setAppearanceUsesDefaults(!hasCustomBubbleTheme(data));
         setBubbleClientColor(data.conversationBubbleClientColor ?? DEFAULT_BUBBLE_THEME.client);
         setBubbleAgentColor(data.conversationBubbleAgentColor ?? DEFAULT_BUBBLE_THEME.agent);
         setBubbleClientDark(data.conversationBubbleClientColorDark ?? DEFAULT_BUBBLE_THEME.clientDark);
         setBubbleAgentDark(data.conversationBubbleAgentColorDark ?? DEFAULT_BUBBLE_THEME.agentDark);
+        setBubbleClientTextColor(data.conversationBubbleClientTextColor ?? DEFAULT_BUBBLE_THEME.clientText);
+        setBubbleAgentTextColor(data.conversationBubbleAgentTextColor ?? DEFAULT_BUBBLE_THEME.agentText);
+        setBubbleClientTextDark(data.conversationBubbleClientTextColorDark ?? DEFAULT_BUBBLE_THEME.clientTextDark);
+        setBubbleAgentTextDark(data.conversationBubbleAgentTextColorDark ?? DEFAULT_BUBBLE_THEME.agentTextDark);
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setLeadTypes(
@@ -868,23 +875,25 @@ export function SettingsPage() {
             conversationBubbleAgentColor: null,
             conversationBubbleClientColorDark: null,
             conversationBubbleAgentColorDark: null,
+            conversationBubbleClientTextColor: null,
+            conversationBubbleAgentTextColor: null,
+            conversationBubbleClientTextColorDark: null,
+            conversationBubbleAgentTextColorDark: null,
           }
         : {
             conversationBubbleClientColor: bubbleClientColor,
             conversationBubbleAgentColor: bubbleAgentColor,
             conversationBubbleClientColorDark: bubbleClientDark,
             conversationBubbleAgentColorDark: bubbleAgentDark,
+            conversationBubbleClientTextColor: bubbleClientTextColor,
+            conversationBubbleAgentTextColor: bubbleAgentTextColor,
+            conversationBubbleClientTextColorDark: bubbleClientTextDark,
+            conversationBubbleAgentTextColorDark: bubbleAgentTextDark,
           };
       const data = await api.put<AppSettings>("/settings", payload);
       setSettings(data);
       applyConversationBubbleTheme(data);
-      const hasCustom = !!(
-        data.conversationBubbleClientColor ||
-        data.conversationBubbleAgentColor ||
-        data.conversationBubbleClientColorDark ||
-        data.conversationBubbleAgentColorDark
-      );
-      setAppearanceUsesDefaults(!hasCustom);
+      setAppearanceUsesDefaults(!hasCustomBubbleTheme(data));
     } catch {
       setAppearanceSaveError(t("settings.appearanceSaveError"));
     } finally {
@@ -898,7 +907,13 @@ export function SettingsPage() {
     setBubbleAgentColor(DEFAULT_BUBBLE_THEME.agent);
     setBubbleClientDark(DEFAULT_BUBBLE_THEME.clientDark);
     setBubbleAgentDark(DEFAULT_BUBBLE_THEME.agentDark);
+    setBubbleClientTextColor(DEFAULT_BUBBLE_THEME.clientText);
+    setBubbleAgentTextColor(DEFAULT_BUBBLE_THEME.agentText);
+    setBubbleClientTextDark(DEFAULT_BUBBLE_THEME.clientTextDark);
+    setBubbleAgentTextDark(DEFAULT_BUBBLE_THEME.agentTextDark);
   };
+
+  const bubblePreviewStyle = (bg: string, text: string) => ({ backgroundColor: bg, color: text });
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -1668,8 +1683,9 @@ export function SettingsPage() {
                         {t("settings.appearanceLightMode")}
                       </p>
                       <div className="space-y-3">
+                        <p className="text-xs font-medium text-ink-500 dark:text-ink-400">{t("settings.appearanceClientBubble")}</p>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceClientBubble")}</span>
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
                           <input
                             type="color"
                             value={bubbleClientColor}
@@ -1681,7 +1697,20 @@ export function SettingsPage() {
                           />
                         </label>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAgentBubble")}</span>
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientTextColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientTextColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <p className="pt-1 text-xs font-medium text-ink-500 dark:text-ink-400">{t("settings.appearanceAgentBubble")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
                           <input
                             type="color"
                             value={bubbleAgentColor}
@@ -1692,17 +1721,29 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
                           />
                         </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentTextColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentTextColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
                       </div>
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-white p-3 dark:bg-ink-900/60">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-white/10"
-                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleClientColor }}
+                          style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor)}
                         >
                           {t("settings.appearancePreviewClient")}
                         </div>
                         <div
                           className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-500/25 px-3 py-2 text-sm dark:border-brand-400/30"
-                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleAgentColor }}
+                          style={bubblePreviewStyle(bubbleAgentColor, bubbleAgentTextColor)}
                         >
                           {t("settings.appearancePreviewAgent")}
                         </div>
@@ -1714,8 +1755,9 @@ export function SettingsPage() {
                         {t("settings.appearanceDarkMode")}
                       </p>
                       <div className="space-y-3">
+                        <p className="text-xs font-medium text-ink-400">{t("settings.appearanceClientBubble")}</p>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-300">{t("settings.appearanceClientBubble")}</span>
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
                           <input
                             type="color"
                             value={bubbleClientDark}
@@ -1727,7 +1769,20 @@ export function SettingsPage() {
                           />
                         </label>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-300">{t("settings.appearanceAgentBubble")}</span>
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientTextDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientTextDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <p className="pt-1 text-xs font-medium text-ink-400">{t("settings.appearanceAgentBubble")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
                           <input
                             type="color"
                             value={bubbleAgentDark}
@@ -1738,17 +1793,29 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
                           />
                         </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentTextDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentTextDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
                       </div>
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0e1624] p-3">
                         <div
-                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm text-ink-100"
-                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleClientDark }}
+                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm"
+                          style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark)}
                         >
                           {t("settings.appearancePreviewClient")}
                         </div>
                         <div
-                          className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-400/30 px-3 py-2 text-sm text-ink-100"
-                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleAgentDark }}
+                          className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-400/30 px-3 py-2 text-sm"
+                          style={bubblePreviewStyle(bubbleAgentDark, bubbleAgentTextDark)}
                         >
                           {t("settings.appearancePreviewAgent")}
                         </div>

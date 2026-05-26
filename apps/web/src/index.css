@@ -180,23 +180,26 @@
 
   .crm-bubble-in {
     --crm-bubble-bg: var(--org-bubble-client-bg, #ffffff);
+    --crm-bubble-text: var(--org-bubble-client-text, #0f172a);
     --crm-bubble-border: rgba(15, 23, 42, 0.08);
     --crm-bubble-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   }
 
   .dark .crm-bubble-in {
     --crm-bubble-bg: var(--org-bubble-client-bg-dark, rgba(30, 41, 59, 0.95));
+    --crm-bubble-text: var(--org-bubble-client-text-dark, rgba(248, 250, 252, 0.96));
     --crm-bubble-border: rgba(255, 255, 255, 0.08);
   }
 
   .crm-bubble-out {
     --crm-bubble-bg: var(--org-bubble-agent-bg, rgba(var(--brand-secondary-rgb), 0.12));
+    --crm-bubble-text: var(--org-bubble-agent-text, #0f172a);
     --crm-bubble-shadow: 0 1px 2px rgba(var(--brand-primary-rgb), 0.05);
   }
 
   .dark .crm-bubble-out {
     --crm-bubble-bg: var(--org-bubble-agent-bg-dark, rgba(var(--brand-primary-rgb), 0.32));
-    --crm-bubble-text: rgba(248, 250, 252, 0.98);
+    --crm-bubble-text: var(--org-bubble-agent-text-dark, rgba(248, 250, 252, 0.98));
     --crm-bubble-meta: rgba(226, 232, 240, 0.65);
   }
 

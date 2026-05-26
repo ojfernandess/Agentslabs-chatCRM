@@ -143,6 +143,10 @@ const settingsSchema = z.object({
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
   conversationBubbleAgentColorDark: hexColorField,
+  conversationBubbleClientTextColor: hexColorField,
+  conversationBubbleAgentTextColor: hexColorField,
+  conversationBubbleClientTextColorDark: hexColorField,
+  conversationBubbleAgentTextColorDark: hexColorField,
 });
 
 function maskSettings<
@@ -236,6 +240,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationBubbleAgentColor: true,
         conversationBubbleClientColorDark: true,
         conversationBubbleAgentColorDark: true,
+        conversationBubbleClientTextColor: true,
+        conversationBubbleAgentTextColor: true,
+        conversationBubbleClientTextColorDark: true,
+        conversationBubbleAgentTextColorDark: true,
       },
     });
 
@@ -244,6 +252,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationBubbleAgentColor: settings?.conversationBubbleAgentColor ?? null,
       conversationBubbleClientColorDark: settings?.conversationBubbleClientColorDark ?? null,
       conversationBubbleAgentColorDark: settings?.conversationBubbleAgentColorDark ?? null,
+      conversationBubbleClientTextColor: settings?.conversationBubbleClientTextColor ?? null,
+      conversationBubbleAgentTextColor: settings?.conversationBubbleAgentTextColor ?? null,
+      conversationBubbleClientTextColorDark: settings?.conversationBubbleClientTextColorDark ?? null,
+      conversationBubbleAgentTextColorDark: settings?.conversationBubbleAgentTextColorDark ?? null,
     };
   });
 
@@ -363,6 +375,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.conversationBubbleAgentColor === "") data.conversationBubbleAgentColor = null;
       if (data.conversationBubbleClientColorDark === "") data.conversationBubbleClientColorDark = null;
       if (data.conversationBubbleAgentColorDark === "") data.conversationBubbleAgentColorDark = null;
+      if (data.conversationBubbleClientTextColor === "") data.conversationBubbleClientTextColor = null;
+      if (data.conversationBubbleAgentTextColor === "") data.conversationBubbleAgentTextColor = null;
+      if (data.conversationBubbleClientTextColorDark === "") data.conversationBubbleClientTextColorDark = null;
+      if (data.conversationBubbleAgentTextColorDark === "") data.conversationBubbleAgentTextColorDark = null;
 
       if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {
         const t = data.whatsappApiKey.trim();
