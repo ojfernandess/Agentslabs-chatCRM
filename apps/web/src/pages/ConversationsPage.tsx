@@ -78,45 +78,36 @@ export function ConversationsPage() {
 
   const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
 
-  const setMineParam = (mine: boolean) => {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        if (mine) {
-          n.set("mine", "1");
-          n.delete("bot");
-          n.delete("botAttendance");
-        } else {
-          n.delete("mine");
-        }
-        return n;
-      },
-      { replace: true },
-    );
-  };
+  type ConversationListScope = "org" | "mine" | "bot";
 
-  const setBotAttendanceParam = (active: boolean) => {
+  const setScopeParam = useCallback((scope: ConversationListScope) => {
     setSearchParams(
       (prev) => {
         const n = new URLSearchParams(prev);
-        if (active) {
+        n.delete("mine");
+        n.delete("bot");
+        n.delete("botAttendance");
+        if (scope === "mine") {
+          n.set("mine", "1");
+        } else if (scope === "bot") {
           n.set("bot", "1");
-          n.delete("mine");
           n.delete("status");
-        } else {
-          n.delete("bot");
-          n.delete("botAttendance");
         }
         return n;
       },
       { replace: true },
     );
-  };
+    if (scope === "bot") {
+      setStatusFilter("");
+    }
+  }, [setSearchParams]);
 
   useEffect(() => {
     const s = searchParams.get("status");
     if (s === "OPEN" || s === "PENDING" || s === "RESOLVED") {
       setStatusFilter(s);
+    } else {
+      setStatusFilter("");
     }
     const tid = searchParams.get("teamId") ?? "";
     setTeamFilter(tid);
@@ -188,9 +179,9 @@ export function ConversationsPage() {
 
   useEffect(() => {
     if (botAttendanceActive && !orgAgentBotTriageActive) {
-      setBotAttendanceParam(false);
+      setScopeParam("org");
     }
-  }, [botAttendanceActive, orgAgentBotTriageActive]);
+  }, [botAttendanceActive, orgAgentBotTriageActive, setScopeParam]);
 
   const loadConversations = useCallback(async () => {
     if (!hasAnimated.current) setLoading(true);
@@ -315,10 +306,7 @@ export function ConversationsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setBotAttendanceParam(false);
-                    setMineParam(false);
-                  }}
+                  onClick={() => setScopeParam("org")}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                     !mineActive && !botAttendanceActive
@@ -334,10 +322,7 @@ export function ConversationsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setBotAttendanceParam(false);
-                    setMineParam(true);
-                  }}
+                  onClick={() => setScopeParam("mine")}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                     mineActive
@@ -351,11 +336,7 @@ export function ConversationsPage() {
                 {orgAgentBotTriageActive ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setMineParam(false);
-                      setBotAttendanceParam(true);
-                      setStatusFilter("");
-                    }}
+                    onClick={() => setScopeParam("bot")}
                     className={clsx(
                       "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                       botAttendanceActive
