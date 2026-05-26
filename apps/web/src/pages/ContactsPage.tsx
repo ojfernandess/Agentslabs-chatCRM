@@ -95,8 +95,8 @@ function formatMoney(cents: number, currency: string): string {
 function ChannelIcon({ channel }: { channel: string | null }) {
   const c = (channel ?? "").toUpperCase();
   if (c === "WHATSAPP") return <WhatsAppBrandIcon className="h-4 w-4 shrink-0" />;
-  if (c === "EMAIL") return <Mail className="h-4 w-4 shrink-0 text-slate-400" />;
-  return <MessageCircle className="h-4 w-4 shrink-0 text-slate-400" />;
+  if (c === "EMAIL") return <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-ink-500" />;
+  return <MessageCircle className="h-4 w-4 shrink-0 text-slate-400 dark:text-ink-500" />;
 }
 
 export function ContactsPage() {
@@ -309,14 +309,14 @@ export function ContactsPage() {
 
           <motion.div variants={staggerItem} className="mb-5 flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-ink-500" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder={t("contacts.searchPlaceholder")}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500"
               />
             </div>
             <button
@@ -330,7 +330,7 @@ export function ContactsPage() {
           <AnimatePresence>
             {showCreate && (
               <motion.div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 dark:bg-black/60"
                 variants={backdropVariants}
                 initial="hidden"
                 animate="show"
@@ -358,7 +358,7 @@ export function ContactsPage() {
                         type="text"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-950"
+                        className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100"
                       />
                     </div>
                     <div>
@@ -369,7 +369,7 @@ export function ContactsPage() {
                         type="tel"
                         value={newPhone}
                         onChange={(e) => setNewPhone(e.target.value)}
-                        className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-950"
+                        className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100"
                       />
                     </div>
                   </div>
@@ -534,7 +534,7 @@ export function ContactsPage() {
                                     <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
                                   </>
                                 ) : (
-                                  <span className="flex items-center gap-1 border border-dashed border-slate-300 px-2 py-0.5 text-slate-400 dark:border-ink-600">
+                                  <span className="flex items-center gap-1 border border-dashed border-slate-300 px-2 py-0.5 text-slate-400 dark:border-ink-600 dark:text-ink-500">
                                     <Plus className="h-3 w-3" />
                                     {t("contacts.stage")}
                                   </span>
@@ -553,7 +553,7 @@ export function ContactsPage() {
                                       <button
                                         type="button"
                                         onClick={() => setStage(contact.id, null)}
-                                        className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-50 dark:hover:bg-ink-800"
+                                        className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-50 dark:text-ink-500 dark:hover:bg-ink-800"
                                       >
                                         {t("contacts.noStage")}
                                       </button>
@@ -563,9 +563,9 @@ export function ContactsPage() {
                                           type="button"
                                           onClick={() => setStage(contact.id, stage.id)}
                                           className={clsx(
-                                            "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-ink-800",
+                                            "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-ink-200 dark:hover:bg-ink-800",
                                             (contact.pipelineStage?.leadTypeId ?? contact.pipelineStage?.id) ===
-                                              stage.id && "bg-slate-50 font-medium dark:bg-ink-800",
+                                              stage.id && "bg-slate-50 font-medium dark:bg-ink-800 dark:text-ink-100",
                                           )}
                                         >
                                           <span
@@ -629,7 +629,7 @@ export function ContactsPage() {
                                       setStagePickerFor(null);
                                       setTagPickerFor(tagPickerFor === contact.id ? null : contact.id);
                                     }}
-                                    className="rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 dark:border-ink-600"
+                                    className="rounded-full border border-dashed border-slate-300 p-0.5 text-slate-400 dark:border-ink-600 dark:text-ink-500"
                                   >
                                     <Plus className="h-3 w-3" />
                                   </button>
@@ -643,7 +643,7 @@ export function ContactsPage() {
                                           animate="show"
                                           exit="exit"
                                         >
-                                          <p className="px-3 py-1.5 text-xs font-medium text-slate-400">
+                                          <p className="px-3 py-1.5 text-xs font-medium text-slate-400 dark:text-ink-500">
                                             {t("contacts.addTag")}
                                           </p>
                                           {availableTags.map((tag) => (
@@ -651,7 +651,7 @@ export function ContactsPage() {
                                               key={tag.id}
                                               type="button"
                                               onClick={() => addTag(contact.id, tag.id)}
-                                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-ink-800"
+                                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-ink-200 dark:hover:bg-ink-800"
                                             >
                                               <span
                                                 className="h-2.5 w-2.5 rounded-full"
@@ -676,14 +676,14 @@ export function ContactsPage() {
                                   {contact.lastMessage.preview || `(${contact.lastMessage.type})`}
                                 </p>
                                 <time
-                                  className="text-[10px] text-slate-400"
+                                  className="text-[10px] text-slate-400 dark:text-ink-500"
                                   dateTime={contact.lastMessage.createdAt}
                                 >
                                   {format(new Date(contact.lastMessage.createdAt), "PPp", { locale: dateLocale })}
                                 </time>
                               </div>
                             ) : (
-                              <span className="text-xs text-slate-400">—</span>
+                              <span className="text-xs text-slate-400 dark:text-ink-500">—</span>
                             )}
                           </td>
                           <td className="hidden px-3 py-3 lg:table-cell">
@@ -692,7 +692,7 @@ export function ContactsPage() {
                                 {formatMoney(contact.openDealsTotalCents, contact.openDealsCurrency)}
                               </span>
                             ) : (
-                              <span className="text-xs text-slate-400">—</span>
+                              <span className="text-xs text-slate-400 dark:text-ink-500">—</span>
                             )}
                           </td>
                           <td className="px-3 py-3">
@@ -720,7 +720,7 @@ export function ContactsPage() {
                                 onClick={() =>
                                   setQuickContact({ id: contact.id, name: contact.name, phone: contact.phone })
                                 }
-                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700"
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
                               >
                                 <Send className="h-3.5 w-3.5" />
                                 {t("contacts.quickMessage")}

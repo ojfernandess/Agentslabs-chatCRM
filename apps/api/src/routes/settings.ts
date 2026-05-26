@@ -100,6 +100,8 @@ const evolutionQrStartBodySchema = z
     }
   });
 
+const hexColorField = z.union([z.string().regex(/^#[0-9A-Fa-f]{6}$/), z.literal(""), z.null()]).optional();
+
 const settingsSchema = z.object({
   whatsappProvider: z.enum(["meta", "360dialog", "twilio", "evolution", "evolution_go"]).optional(),
   whatsappApiKey: z.string().max(500).optional(),
@@ -137,6 +139,10 @@ const settingsSchema = z.object({
   aiAlertWebhookUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
   aiAlertWebhookSecret: z.union([z.string().max(500), z.null()]).optional(),
   conversationsAttendanceTabEnabled: z.boolean().optional(),
+  conversationBubbleClientColor: hexColorField,
+  conversationBubbleAgentColor: hexColorField,
+  conversationBubbleClientColorDark: hexColorField,
+  conversationBubbleAgentColorDark: hexColorField,
 });
 
 function maskSettings<
@@ -215,6 +221,29 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return {
       notifyConversationOpen: settings.notifyConversationOpen,
       notifyConversationPending: settings.notifyConversationPending,
+    };
+  });
+
+  /** Cores dos balões de conversa — qualquer utilizador autenticado do tenant. */
+  app.get("/conversation-appearance", { preHandler: [authenticate] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: {
+        conversationBubbleClientColor: true,
+        conversationBubbleAgentColor: true,
+        conversationBubbleClientColorDark: true,
+        conversationBubbleAgentColorDark: true,
+      },
+    });
+
+    return {
+      conversationBubbleClientColor: settings?.conversationBubbleClientColor ?? null,
+      conversationBubbleAgentColor: settings?.conversationBubbleAgentColor ?? null,
+      conversationBubbleClientColorDark: settings?.conversationBubbleClientColorDark ?? null,
+      conversationBubbleAgentColorDark: settings?.conversationBubbleAgentColorDark ?? null,
     };
   });
 
@@ -330,6 +359,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.autoResolveTagId === "") data.autoResolveTagId = null;
       if (data.autoResolveLeadTypeId === "") data.autoResolveLeadTypeId = null;
       if (data.assistantOpenaiApiBaseUrl === "") data.assistantOpenaiApiBaseUrl = null;
+      if (data.conversationBubbleClientColor === "") data.conversationBubbleClientColor = null;
+      if (data.conversationBubbleAgentColor === "") data.conversationBubbleAgentColor = null;
+      if (data.conversationBubbleClientColorDark === "") data.conversationBubbleClientColorDark = null;
+      if (data.conversationBubbleAgentColorDark === "") data.conversationBubbleAgentColorDark = null;
 
       if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {
         const t = data.whatsappApiKey.trim();

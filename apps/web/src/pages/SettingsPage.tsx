@@ -20,6 +20,7 @@ import {
   Clock,
   MessageSquare,
   Search,
+  Palette,
 } from "lucide-react";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
@@ -62,9 +63,14 @@ import {
   setupFacebookSdk,
 } from "@/lib/whatsappEmbeddedSdk";
 import clsx from "clsx";
+import {
+  applyConversationBubbleTheme,
+  DEFAULT_BUBBLE_THEME,
+} from "@/lib/conversationBubbleTheme";
 
 type SettingsSection =
   | "channel"
+  | "appearance"
   | "notifications"
   | "csat"
   | "sla"
@@ -112,6 +118,10 @@ interface AppSettings {
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
+  conversationBubbleClientColor?: string | null;
+  conversationBubbleAgentColor?: string | null;
+  conversationBubbleClientColorDark?: string | null;
+  conversationBubbleAgentColorDark?: string | null;
 }
 
 interface AgentBotOption {
@@ -259,6 +269,13 @@ export function SettingsPage() {
   const [leadFinderSerpApiKey, setLeadFinderSerpApiKey] = useState("");
   const [leadFinderSaveError, setLeadFinderSaveError] = useState("");
   const [assistantSaveError, setAssistantSaveError] = useState("");
+
+  const [bubbleClientColor, setBubbleClientColor] = useState<string>(DEFAULT_BUBBLE_THEME.client);
+  const [bubbleAgentColor, setBubbleAgentColor] = useState<string>(DEFAULT_BUBBLE_THEME.agent);
+  const [bubbleClientDark, setBubbleClientDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientDark);
+  const [bubbleAgentDark, setBubbleAgentDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentDark);
+  const [appearanceSaveError, setAppearanceSaveError] = useState("");
+  const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
   const [embeddedBusy, setEmbeddedBusy] = useState(false);
@@ -554,6 +571,18 @@ export function SettingsPage() {
         setLeadFinderSerpApiKey("");
         setLeadFinderSaveError("");
         setAssistantSaveError("");
+        setAppearanceSaveError("");
+        const hasCustomBubbles = !!(
+          data.conversationBubbleClientColor ||
+          data.conversationBubbleAgentColor ||
+          data.conversationBubbleClientColorDark ||
+          data.conversationBubbleAgentColorDark
+        );
+        setAppearanceUsesDefaults(!hasCustomBubbles);
+        setBubbleClientColor(data.conversationBubbleClientColor ?? DEFAULT_BUBBLE_THEME.client);
+        setBubbleAgentColor(data.conversationBubbleAgentColor ?? DEFAULT_BUBBLE_THEME.agent);
+        setBubbleClientDark(data.conversationBubbleClientColorDark ?? DEFAULT_BUBBLE_THEME.clientDark);
+        setBubbleAgentDark(data.conversationBubbleAgentColorDark ?? DEFAULT_BUBBLE_THEME.agentDark);
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setLeadTypes(
@@ -828,6 +857,49 @@ export function SettingsPage() {
     }
   };
 
+  const handleSaveAppearance = async (e: FormEvent) => {
+    e.preventDefault();
+    setAppearanceSaveError("");
+    setSaving(true);
+    try {
+      const payload = appearanceUsesDefaults
+        ? {
+            conversationBubbleClientColor: null,
+            conversationBubbleAgentColor: null,
+            conversationBubbleClientColorDark: null,
+            conversationBubbleAgentColorDark: null,
+          }
+        : {
+            conversationBubbleClientColor: bubbleClientColor,
+            conversationBubbleAgentColor: bubbleAgentColor,
+            conversationBubbleClientColorDark: bubbleClientDark,
+            conversationBubbleAgentColorDark: bubbleAgentDark,
+          };
+      const data = await api.put<AppSettings>("/settings", payload);
+      setSettings(data);
+      applyConversationBubbleTheme(data);
+      const hasCustom = !!(
+        data.conversationBubbleClientColor ||
+        data.conversationBubbleAgentColor ||
+        data.conversationBubbleClientColorDark ||
+        data.conversationBubbleAgentColorDark
+      );
+      setAppearanceUsesDefaults(!hasCustom);
+    } catch {
+      setAppearanceSaveError(t("settings.appearanceSaveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetAppearance = () => {
+    setAppearanceUsesDefaults(true);
+    setBubbleClientColor(DEFAULT_BUBBLE_THEME.client);
+    setBubbleAgentColor(DEFAULT_BUBBLE_THEME.agent);
+    setBubbleClientDark(DEFAULT_BUBBLE_THEME.clientDark);
+    setBubbleAgentDark(DEFAULT_BUBBLE_THEME.agentDark);
+  };
+
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -1016,6 +1088,7 @@ export function SettingsPage() {
               {(
                 [
                   ["channel", t("settings.sectionChannel"), Smartphone],
+                  ["appearance", t("settings.sectionAppearance"), Palette],
                   ["notifications", t("settings.sectionNotifications"), Bell],
                   ["csat", t("settings.sectionCsat"), Star],
                   ["sla", t("settings.sectionSla"), Clock],
@@ -1569,6 +1642,137 @@ export function SettingsPage() {
                     </div>
                   </motion.form>
                 </>
+              )}
+
+              {section === "appearance" && (
+                <motion.form
+                  onSubmit={(e) => void handleSaveAppearance(e)}
+                  className="card-surface rounded-xl p-6"
+                  variants={staggerItem}
+                >
+                  <h2 className="mb-2 flex items-center gap-2 font-semibold text-ink-900 dark:text-ink-50">
+                    <Palette className="h-5 w-5" />
+                    {t("settings.sectionAppearance")}
+                  </h2>
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.appearanceIntro")}</p>
+
+                  {appearanceSaveError ? (
+                    <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                      {appearanceSaveError}
+                    </p>
+                  ) : null}
+
+                  <div className="mb-6 grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-ink-950/40">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                        {t("settings.appearanceLightMode")}
+                      </p>
+                      <div className="space-y-3">
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceClientBubble")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAgentBubble")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-white p-3 dark:bg-ink-900/60">
+                        <div
+                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-white/10"
+                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleClientColor }}
+                        >
+                          {t("settings.appearancePreviewClient")}
+                        </div>
+                        <div
+                          className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-500/25 px-3 py-2 text-sm dark:border-brand-400/30"
+                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleAgentColor }}
+                        >
+                          {t("settings.appearancePreviewAgent")}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-ink-200/80 bg-ink-950 p-4 dark:border-white/10">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-400">
+                        {t("settings.appearanceDarkMode")}
+                      </p>
+                      <div className="space-y-3">
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceClientBubble")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAgentBubble")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0e1624] p-3">
+                        <div
+                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm text-ink-100"
+                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleClientDark }}
+                        >
+                          {t("settings.appearancePreviewClient")}
+                        </div>
+                        <div
+                          className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-400/30 px-3 py-2 text-sm text-ink-100"
+                          style={appearanceUsesDefaults ? undefined : { backgroundColor: bubbleAgentDark }}
+                        >
+                          {t("settings.appearancePreviewAgent")}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                    >
+                      {saving ? t("common.loading") : t("settings.appearanceSave")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetAppearance}
+                      className="btn-secondary px-4 py-2 text-sm"
+                    >
+                      {t("settings.appearanceReset")}
+                    </button>
+                  </div>
+                </motion.form>
               )}
 
               {section === "notifications" && (

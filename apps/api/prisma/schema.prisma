@@ -1166,6 +1166,12 @@ model Settings {
   /// Segredo opcional para assinatura HMAC-SHA256 do webhook de alertas de IA.
   aiAlertWebhookSecret String? @map("ai_alert_webhook_secret") @db.Text
 
+  /// Cores dos balões de conversa (cliente / atendente) — modo claro e escuro (#RRGGBB).
+  conversationBubbleClientColor     String? @map("conversation_bubble_client_color") @db.VarChar(7)
+  conversationBubbleAgentColor      String? @map("conversation_bubble_agent_color") @db.VarChar(7)
+  conversationBubbleClientColorDark String? @map("conversation_bubble_client_color_dark") @db.VarChar(7)
+  conversationBubbleAgentColorDark  String? @map("conversation_bubble_agent_color_dark") @db.VarChar(7)
+
   @@map("settings")
 }
 

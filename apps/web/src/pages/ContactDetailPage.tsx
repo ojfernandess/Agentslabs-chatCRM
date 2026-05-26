@@ -266,7 +266,7 @@ export function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-gray-500">Contact not found</p>
+        <p className="text-gray-500 dark:text-ink-400">{t("contacts.notFound")}</p>
       </div>
     );
   }
@@ -280,7 +280,7 @@ export function ContactDetailPage() {
       <div className="mb-6 flex items-center gap-4">
         <Link
           to="/contacts"
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-ink-500 dark:hover:bg-ink-800 dark:hover:text-ink-100"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
@@ -321,7 +321,7 @@ export function ContactDetailPage() {
           </button>
           <button
             onClick={() => setEditing(!editing)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
           >
             <Edit className="h-4 w-4" />
             {t("common.edit")}
@@ -384,12 +384,12 @@ export function ContactDetailPage() {
                         {conv.inbox?.channelType === "WHATSAPP" ? (
                           <WhatsAppBrandIcon className="h-4 w-4 shrink-0" />
                         ) : (
-                          <MessageSquare className="h-4 w-4 shrink-0 text-gray-400" />
+                          <MessageSquare className="h-4 w-4 shrink-0 text-gray-400 dark:text-ink-500" />
                         )}
                         <span className="text-sm font-medium text-gray-700 dark:text-ink-200">
                           {conv.inbox?.name ?? conv.inbox?.channelType}
                         </span>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-400 dark:text-ink-500">
                           {format(new Date(conv.updatedAt), "PP", { locale: dateLocale })}
                         </span>
                       </Link>
@@ -411,10 +411,10 @@ export function ContactDetailPage() {
                           <div key={msg.id} className={clsx("flex", inbound ? "justify-start" : "justify-end")}>
                             <div
                               className={clsx(
-                                "max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm",
+                                "crm-bubble max-w-[min(100%,28rem)] px-3 py-2 text-sm",
                                 inbound
-                                  ? "border border-gray-100 bg-white text-gray-900 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
-                                  : "bg-gradient-to-br from-brand-500 to-brand-600 text-white",
+                                  ? "crm-bubble-in border border-ink-200/60 dark:border-white/10"
+                                  : "crm-bubble-out border border-brand-500/25 dark:border-brand-400/30",
                               )}
                             >
                               <p className="mb-1 text-[10px] font-medium opacity-80">
@@ -556,19 +556,19 @@ export function ContactDetailPage() {
           {detailTab === "overview" && !editing ? (
             <>
               {contact.notes && (
-                <div className="rounded-xl border border-gray-200 bg-white p-6">
-                  <h2 className="mb-2 text-sm font-medium text-gray-500">Notes</h2>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{contact.notes}</p>
+                <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+                  <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-ink-400">{t("contactEdit.fieldNotes")}</h2>
+                  <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-ink-200">{contact.notes}</p>
                 </div>
               )}
 
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900">
-                  <History className="h-4 w-4 text-gray-400" />
+              <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+                <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900 dark:text-ink-50">
+                  <History className="h-4 w-4 text-gray-400 dark:text-ink-500" />
                   {t("contactDetail.activityTitle")}
                 </h2>
                 {timeline.length === 0 ? (
-                  <p className="text-sm text-gray-500">{t("contactDetail.activityEmpty")}</p>
+                  <p className="text-sm text-gray-500 dark:text-ink-400">{t("contactDetail.activityEmpty")}</p>
                 ) : (
                   <ul className="space-y-4">
                     {timeline.map((ev) => {
@@ -578,12 +578,12 @@ export function ContactDetailPage() {
                       return (
                         <li
                           key={ev.id}
-                          className="border-l-2 border-brand-200 py-0.5 pl-3 text-sm"
+                          className="border-l-2 border-brand-200 py-0.5 pl-3 text-sm dark:border-brand-800/60"
                         >
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-medium text-gray-900">{title}</span>
+                            <span className="font-medium text-gray-900 dark:text-ink-100">{title}</span>
                             {channel ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-ink-800 dark:text-ink-300">
                                 {(ev.channel ?? "").toLowerCase() === "whatsapp" ? (
                                   <WhatsAppBrandIcon className="h-3 w-3 shrink-0" />
                                 ) : null}
@@ -592,17 +592,17 @@ export function ContactDetailPage() {
                             ) : null}
                             <time
                               dateTime={ev.occurredAt}
-                              className="text-xs text-gray-400"
+                              className="text-xs text-gray-400 dark:text-ink-500"
                             >
                               {format(new Date(ev.occurredAt), "PPp", { locale: dateLocale })}
                             </time>
                           </div>
                           {summary ? (
-                            <p className="mt-1.5 whitespace-pre-wrap text-gray-600">{summary}</p>
+                            <p className="mt-1.5 whitespace-pre-wrap text-gray-600 dark:text-ink-300">{summary}</p>
                           ) : null}
                           {ev.actorUser ? (
-                            <p className="mt-1 text-xs text-gray-500">
-                              <span className="font-medium text-gray-600">
+                            <p className="mt-1 text-xs text-gray-500 dark:text-ink-400">
+                              <span className="font-medium text-gray-600 dark:text-ink-300">
                                 {t("contactDetail.timelineActor")}
                               </span>
                               : {ev.actorUser.name}
@@ -663,12 +663,12 @@ export function ContactDetailPage() {
           </div>
 
           {/* Pipeline Stage */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-3 text-sm font-medium text-gray-500">Pipeline Stage</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
+            <h2 className="mb-3 text-sm font-medium text-gray-500 dark:text-ink-400">{t("contacts.colPipeline")}</h2>
             <div className="relative">
               <button
                 onClick={() => setShowStagePicker(!showStagePicker)}
-                className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
               >
                 {contact.pipelineStage ? (
                   <span className="flex items-center gap-2">
@@ -679,14 +679,14 @@ export function ContactDetailPage() {
                     {contact.pipelineStage.name}
                   </span>
                 ) : (
-                  <span className="text-gray-400">No stage</span>
+                  <span className="text-gray-400 dark:text-ink-500">{t("contacts.noStage")}</span>
                 )}
-                <ChevronDown className="h-4 w-4 text-gray-400" />
+                <ChevronDown className="h-4 w-4 text-gray-400 dark:text-ink-500" />
               </button>
               <AnimatePresence>
               {showStagePicker && (
                 <motion.div
-                  className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                  className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
                   variants={dropdownVariants}
                   initial="hidden"
                   animate="show"
@@ -694,18 +694,18 @@ export function ContactDetailPage() {
                 >
                   <button
                     onClick={() => setStage(null)}
-                    className="block w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50"
+                    className="block w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 dark:text-ink-500 dark:hover:bg-ink-800"
                   >
-                    No stage
+                    {t("contacts.noStage")}
                   </button>
                   {allStages.map((stage) => (
                     <button
                       key={stage.id}
                       onClick={() => setStage(stage.id)}
                       className={clsx(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-ink-200 dark:hover:bg-ink-800",
                         (contact.pipelineStage?.leadTypeId ?? contact.pipelineStage?.id) === stage.id
-                          ? "bg-gray-50 font-medium"
+                          ? "bg-gray-50 font-medium dark:bg-ink-800 dark:text-ink-100"
                           : "",
                       )}
                     >
@@ -723,13 +723,13 @@ export function ContactDetailPage() {
           </div>
 
           {/* Tags */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-500">Tags</h2>
+              <h2 className="text-sm font-medium text-gray-500 dark:text-ink-400">{t("contacts.colTags")}</h2>
               {availableTags.length > 0 && (
                 <button
                   onClick={() => setShowTagPicker(!showTagPicker)}
-                  className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-ink-500 dark:hover:bg-ink-800 dark:hover:text-ink-200"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -738,13 +738,13 @@ export function ContactDetailPage() {
             <AnimatePresence>
             {showTagPicker && (
               <motion.div
-                className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-2"
+                className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-ink-700 dark:bg-ink-950/50"
                 variants={dropdownVariants}
                 initial="hidden"
                 animate="show"
                 exit="exit"
               >
-                <p className="mb-2 text-xs font-medium text-gray-500">Add a tag</p>
+                <p className="mb-2 text-xs font-medium text-gray-500 dark:text-ink-400">{t("contacts.addTag")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {availableTags.map((tag) => (
                     <button
@@ -765,7 +765,7 @@ export function ContactDetailPage() {
             )}
             </AnimatePresence>
             {contact.tags.length === 0 && !showTagPicker ? (
-              <p className="text-sm text-gray-400">No tags</p>
+              <p className="text-sm text-gray-400 dark:text-ink-500">{t("contacts.noTags")}</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {contact.tags.map(({ tag }) => (

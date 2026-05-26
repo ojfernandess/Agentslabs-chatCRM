@@ -30,6 +30,7 @@ import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import { useActionableReminders } from "@/hooks/useActionableReminders";
 import { ReminderActionableBanner } from "@/components/reminders/ReminderActionableBanner";
+import { useConversationBubbleTheme } from "@/hooks/useConversationBubbleTheme";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -71,6 +72,8 @@ export function Layout() {
   const { reminders: actionableReminders, completingId, completeReminder } = useActionableReminders(
     !!user && showRemindersFeature,
   );
+  const orgThemeKey = user?.actingOrganizationId ?? user?.organizationId ?? null;
+  useConversationBubbleTheme(!!user, orgThemeKey);
 
   useEffect(() => {
     if (orgLabel && orgLabel !== "—") {
