@@ -189,8 +189,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const where: Prisma.ConversationWhereInput = { organizationId };
     const botAttendance = isMineFlag(query.botAttendance);
     const waitingAttendance = isMineFlag(query.waitingAttendance);
+    const mineRequested = isMineFlag(query.mine);
 
-    if (!botAttendance && !waitingAttendance && query.status) {
+    if (!botAttendance && !(waitingAttendance && !mineRequested) && query.status) {
       where.status = query.status;
     }
 
@@ -230,10 +231,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       where.inboxId = ids.length > 0 ? { in: ids } : { in: [] };
     }
 
-    const mine = botAttendance || waitingAttendance ? false : isMineFlag(query.mine);
+    const mine = botAttendance ? false : mineRequested;
     const effectiveAssigneeId = mine ? request.user.id : query.assignedToId;
 
-    if (waitingAttendance) {
+    /** Fila «aguardando atendimento» só quando não pedido `mine` (Meus atendimentos mantém comportamento próprio). */
+    if (waitingAttendance && !mineRequested) {
       const orgSettings = await prisma.settings.findUnique({
         where: { organizationId },
         select: { conversationsAttendanceTabEnabled: true },

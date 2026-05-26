@@ -109,6 +109,27 @@ export function ConversationsPage() {
     }
   }, [setSearchParams]);
 
+  /** Dentro da aba Atendimento: fila vs. meus atendimentos (comportamento de `mine` igual ao da lista normal). */
+  const setAttendanceSubView = useCallback((sub: "queue" | "mine") => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set("attendance", "1");
+        if (sub === "mine") {
+          n.set("mine", "1");
+        } else {
+          n.delete("mine");
+          n.delete("status");
+        }
+        return n;
+      },
+      { replace: true },
+    );
+    if (sub === "queue") {
+      setStatusFilter("");
+    }
+  }, [setSearchParams]);
+
   useEffect(() => {
     const s = searchParams.get("status");
     if (s === "OPEN" || s === "PENDING" || s === "RESOLVED") {
@@ -197,9 +218,40 @@ export function ConversationsPage() {
 
   useEffect(() => {
     if (attendanceScopeActive && !orgAttendanceTabEnabled) {
-      setScopeParam("org");
+      if (mineActive) {
+        setSearchParams(
+          (prev) => {
+            const n = new URLSearchParams(prev);
+            n.delete("attendance");
+            if (!n.get("mine")) n.set("mine", "1");
+            return n;
+          },
+          { replace: true },
+        );
+      } else {
+        setScopeParam("org");
+      }
     }
-  }, [attendanceScopeActive, orgAttendanceTabEnabled, setScopeParam]);
+  }, [attendanceScopeActive, orgAttendanceTabEnabled, mineActive, setScopeParam, setSearchParams]);
+
+  /** Com aba Atendimento activa, «Meus atendimentos» passa a viver sob `attendance=1&mine=1`. */
+  useEffect(() => {
+    if (
+      orgAttendanceTabEnabled &&
+      mineActive &&
+      !attendanceScopeActive &&
+      !botAttendanceActive
+    ) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("attendance", "1");
+          return n;
+        },
+        { replace: true },
+      );
+    }
+  }, [orgAttendanceTabEnabled, mineActive, attendanceScopeActive, botAttendanceActive, setSearchParams]);
 
   const loadConversations = useCallback(async () => {
     if (!hasAnimated.current) setLoading(true);
@@ -207,6 +259,9 @@ export function ConversationsPage() {
       const params = new URLSearchParams({ pageSize: "50" });
       if (botAttendanceActive) {
         params.set("botAttendance", "1");
+      } else if (attendanceScopeActive && mineActive) {
+        if (statusFilter) params.set("status", statusFilter);
+        params.set("mine", "1");
       } else if (attendanceScopeActive) {
         params.set("waitingAttendance", "1");
       } else {
@@ -322,42 +377,39 @@ export function ConversationsPage() {
           </header>
 
           <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
-              <div className="flex flex-wrap items-center gap-2">
-                {orgAttendanceTabEnabled ? (
-                  <button
-                    type="button"
-                    onClick={() => setScopeParam("attendance")}
-                    className={clsx(
-                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                      attendanceScopeActive
-                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                    )}
-                  >
-                    <Headset className="h-3.5 w-3.5" />
-                    {t("conversations.scopeAttendance")}
-                    {attendanceScopeActive ? (
-                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                    ) : null}
-                  </button>
-                ) : null}
+            <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
+              {orgAttendanceTabEnabled ? (
                 <button
                   type="button"
-                  onClick={() => setScopeParam("org")}
+                  onClick={() => setAttendanceSubView("queue")}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    !mineActive && !botAttendanceActive && !attendanceScopeActive
+                    attendanceScopeActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
                   )}
                 >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {t("conversations.scopeOrg")}
-                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
+                  <Headset className="h-3.5 w-3.5" />
+                  {t("conversations.scopeAttendance")}
                 </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setScopeParam("org")}
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                  !mineActive && !botAttendanceActive && !attendanceScopeActive
+                    ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                    : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                )}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                {t("conversations.scopeOrg")}
+                {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
+                  <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                ) : null}
+              </button>
+              {!orgAttendanceTabEnabled ? (
                 <button
                   type="button"
                   onClick={() => setScopeParam("mine")}
@@ -371,28 +423,67 @@ export function ConversationsPage() {
                   <UserCircle className="h-3.5 w-3.5" />
                   {t("conversations.myAssignments")}
                 </button>
-                {orgAgentBotTriageActive ? (
-                  <button
-                    type="button"
-                    onClick={() => setScopeParam("bot")}
-                    className={clsx(
-                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                      botAttendanceActive
-                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                    )}
-                  >
-                    <Bot className="h-3.5 w-3.5" />
-                    {t("conversations.scopeBotAttendance")}
-                    {botAttendanceActive ? (
-                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                    ) : null}
-                  </button>
-                ) : null}
-              </div>
+              ) : null}
+              {orgAgentBotTriageActive ? (
+                <button
+                  type="button"
+                  onClick={() => setScopeParam("bot")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    botAttendanceActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  {t("conversations.scopeBotAttendance")}
+                  {botAttendanceActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+              ) : null}
+            </div>
 
+            {orgAttendanceTabEnabled && attendanceScopeActive ? (
+              <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/15">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubView("queue")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    !mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  {t("conversations.attendanceQueue")}
+                  {!mineActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubView("mine")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    mineActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <UserCircle className="h-3.5 w-3.5" />
+                  {t("conversations.myAssignments")}
+                  {mineActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
               <div className="flex flex-wrap items-center gap-2">
-                {!botAttendanceActive && !attendanceScopeActive ? (
+                {!botAttendanceActive && (!attendanceScopeActive || mineActive) ? (
                 <div className="flex flex-wrap gap-1 rounded-full bg-ink-100 p-1 dark:bg-ink-900/60">
                   {filters.map((f) => (
                     <button
@@ -482,22 +573,26 @@ export function ConversationsPage() {
                       ? t("conversations.emptySearchTitle")
                       : botAttendanceActive
                         ? t("conversations.emptyBotTitle")
-                        : attendanceScopeActive
-                          ? t("conversations.emptyAttendanceTitle")
-                          : mineActive
-                            ? t("conversations.emptyMineTitle")
-                            : t("conversations.emptyTitle")}
+                        : attendanceScopeActive && mineActive
+                          ? t("conversations.emptyMineTitle")
+                          : attendanceScopeActive
+                            ? t("conversations.emptyAttendanceTitle")
+                            : mineActive
+                              ? t("conversations.emptyMineTitle")
+                              : t("conversations.emptyTitle")}
                   </p>
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
                     {listSearch.trim() && conversations.length > 0
                       ? t("conversations.emptySearchHint")
                       : botAttendanceActive
                         ? t("conversations.emptyBotHint")
-                        : attendanceScopeActive
-                          ? t("conversations.emptyAttendanceHint")
-                          : mineActive
-                            ? t("conversations.emptyMineHint")
-                            : t("conversations.emptyHint")}
+                        : attendanceScopeActive && mineActive
+                          ? t("conversations.emptyMineHint")
+                          : attendanceScopeActive
+                            ? t("conversations.emptyAttendanceHint")
+                            : mineActive
+                              ? t("conversations.emptyMineHint")
+                              : t("conversations.emptyHint")}
                   </p>
                 </motion.div>
               ) : (
