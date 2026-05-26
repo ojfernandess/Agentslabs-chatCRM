@@ -7,6 +7,12 @@ export type ConversationBubbleTheme = {
   conversationBubbleAgentTextColor?: string | null;
   conversationBubbleClientTextColorDark?: string | null;
   conversationBubbleAgentTextColorDark?: string | null;
+  conversationBubbleAgentNameColor?: string | null;
+  conversationBubbleAgentNameColorDark?: string | null;
+  conversationBubbleClientMetaColor?: string | null;
+  conversationBubbleClientMetaColorDark?: string | null;
+  conversationBubbleAgentMetaColor?: string | null;
+  conversationBubbleAgentMetaColorDark?: string | null;
 };
 
 export const DEFAULT_BUBBLE_THEME = {
@@ -18,6 +24,12 @@ export const DEFAULT_BUBBLE_THEME = {
   agentText: "#0f172a",
   clientTextDark: "#f8fafc",
   agentTextDark: "#f8fafc",
+  agentName: "#6734ff",
+  agentNameDark: "#a78bfa",
+  clientMeta: "#64748b",
+  clientMetaDark: "#94a3b8",
+  agentMeta: "#64748b",
+  agentMetaDark: "#cbd5e1",
 } as const;
 
 const THEME_VAR_PAIRS: [keyof ConversationBubbleTheme, string][] = [
@@ -29,6 +41,12 @@ const THEME_VAR_PAIRS: [keyof ConversationBubbleTheme, string][] = [
   ["conversationBubbleAgentTextColor", "--org-bubble-agent-text"],
   ["conversationBubbleClientTextColorDark", "--org-bubble-client-text-dark"],
   ["conversationBubbleAgentTextColorDark", "--org-bubble-agent-text-dark"],
+  ["conversationBubbleAgentNameColor", "--org-bubble-agent-name"],
+  ["conversationBubbleAgentNameColorDark", "--org-bubble-agent-name-dark"],
+  ["conversationBubbleClientMetaColor", "--org-bubble-client-meta"],
+  ["conversationBubbleClientMetaColorDark", "--org-bubble-client-meta-dark"],
+  ["conversationBubbleAgentMetaColor", "--org-bubble-agent-meta"],
+  ["conversationBubbleAgentMetaColorDark", "--org-bubble-agent-meta-dark"],
 ];
 
 export function hasCustomBubbleTheme(theme: ConversationBubbleTheme | null | undefined): boolean {

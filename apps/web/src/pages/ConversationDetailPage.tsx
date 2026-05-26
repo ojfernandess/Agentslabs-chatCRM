@@ -2577,20 +2577,20 @@ export function ConversationDetailPage() {
                   <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {inbound && isNew ? (
-                      <span className="ml-0.5 inline-flex h-[18px] w-[18px] items-center justify-center">
-                        <span className="h-1.5 w-1.5 rounded-full bg-brand-500/80 dark:bg-brand-300/80" />
+                      <span className="crm-bubble-unread-dot ml-0.5 inline-flex h-[18px] w-[18px] items-center justify-center">
+                        <span className="h-1.5 w-1.5 rounded-full" />
                       </span>
                     ) : null}
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (
-                          <AlertTriangle className="h-[18px] w-[18px] text-red-500 dark:text-red-300" aria-hidden />
+                          <AlertTriangle className="crm-bubble-read-status is-failed h-[18px] w-[18px]" aria-hidden />
                         ) : msg.status === "READ" ? (
-                          <CheckCheck className="h-[18px] w-[18px] text-brand-600 dark:text-brand-300" aria-hidden />
+                          <CheckCheck className="crm-bubble-read-status is-read h-[18px] w-[18px]" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (
-                          <CheckCheck className="h-[18px] w-[18px] opacity-60" aria-hidden />
+                          <CheckCheck className="crm-bubble-read-status is-delivered h-[18px] w-[18px]" aria-hidden />
                         ) : (
-                          <Check className="h-[18px] w-[18px] opacity-70" aria-hidden />
+                          <Check className="crm-bubble-read-status is-sent h-[18px] w-[18px]" aria-hidden />
                         )}
                       </span>
                     )}

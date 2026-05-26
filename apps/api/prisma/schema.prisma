@@ -1175,6 +1175,12 @@ model Settings {
   conversationBubbleAgentTextColor      String? @map("conversation_bubble_agent_text_color") @db.VarChar(7)
   conversationBubbleClientTextColorDark String? @map("conversation_bubble_client_text_color_dark") @db.VarChar(7)
   conversationBubbleAgentTextColorDark  String? @map("conversation_bubble_agent_text_color_dark") @db.VarChar(7)
+  conversationBubbleAgentNameColor      String? @map("conversation_bubble_agent_name_color") @db.VarChar(7)
+  conversationBubbleAgentNameColorDark  String? @map("conversation_bubble_agent_name_color_dark") @db.VarChar(7)
+  conversationBubbleClientMetaColor     String? @map("conversation_bubble_client_meta_color") @db.VarChar(7)
+  conversationBubbleClientMetaColorDark String? @map("conversation_bubble_client_meta_color_dark") @db.VarChar(7)
+  conversationBubbleAgentMetaColor      String? @map("conversation_bubble_agent_meta_color") @db.VarChar(7)
+  conversationBubbleAgentMetaColorDark  String? @map("conversation_bubble_agent_meta_color_dark") @db.VarChar(7)
 
   @@map("settings")
 }

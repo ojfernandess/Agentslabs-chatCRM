@@ -147,6 +147,12 @@ const settingsSchema = z.object({
   conversationBubbleAgentTextColor: hexColorField,
   conversationBubbleClientTextColorDark: hexColorField,
   conversationBubbleAgentTextColorDark: hexColorField,
+  conversationBubbleAgentNameColor: hexColorField,
+  conversationBubbleAgentNameColorDark: hexColorField,
+  conversationBubbleClientMetaColor: hexColorField,
+  conversationBubbleClientMetaColorDark: hexColorField,
+  conversationBubbleAgentMetaColor: hexColorField,
+  conversationBubbleAgentMetaColorDark: hexColorField,
 });
 
 function maskSettings<
@@ -244,6 +250,12 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationBubbleAgentTextColor: true,
         conversationBubbleClientTextColorDark: true,
         conversationBubbleAgentTextColorDark: true,
+        conversationBubbleAgentNameColor: true,
+        conversationBubbleAgentNameColorDark: true,
+        conversationBubbleClientMetaColor: true,
+        conversationBubbleClientMetaColorDark: true,
+        conversationBubbleAgentMetaColor: true,
+        conversationBubbleAgentMetaColorDark: true,
       },
     });
 
@@ -256,6 +268,12 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationBubbleAgentTextColor: settings?.conversationBubbleAgentTextColor ?? null,
       conversationBubbleClientTextColorDark: settings?.conversationBubbleClientTextColorDark ?? null,
       conversationBubbleAgentTextColorDark: settings?.conversationBubbleAgentTextColorDark ?? null,
+      conversationBubbleAgentNameColor: settings?.conversationBubbleAgentNameColor ?? null,
+      conversationBubbleAgentNameColorDark: settings?.conversationBubbleAgentNameColorDark ?? null,
+      conversationBubbleClientMetaColor: settings?.conversationBubbleClientMetaColor ?? null,
+      conversationBubbleClientMetaColorDark: settings?.conversationBubbleClientMetaColorDark ?? null,
+      conversationBubbleAgentMetaColor: settings?.conversationBubbleAgentMetaColor ?? null,
+      conversationBubbleAgentMetaColorDark: settings?.conversationBubbleAgentMetaColorDark ?? null,
     };
   });
 
@@ -379,6 +397,12 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.conversationBubbleAgentTextColor === "") data.conversationBubbleAgentTextColor = null;
       if (data.conversationBubbleClientTextColorDark === "") data.conversationBubbleClientTextColorDark = null;
       if (data.conversationBubbleAgentTextColorDark === "") data.conversationBubbleAgentTextColorDark = null;
+      if (data.conversationBubbleAgentNameColor === "") data.conversationBubbleAgentNameColor = null;
+      if (data.conversationBubbleAgentNameColorDark === "") data.conversationBubbleAgentNameColorDark = null;
+      if (data.conversationBubbleClientMetaColor === "") data.conversationBubbleClientMetaColor = null;
+      if (data.conversationBubbleClientMetaColorDark === "") data.conversationBubbleClientMetaColorDark = null;
+      if (data.conversationBubbleAgentMetaColor === "") data.conversationBubbleAgentMetaColor = null;
+      if (data.conversationBubbleAgentMetaColorDark === "") data.conversationBubbleAgentMetaColorDark = null;
 
       if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {
         const t = data.whatsappApiKey.trim();

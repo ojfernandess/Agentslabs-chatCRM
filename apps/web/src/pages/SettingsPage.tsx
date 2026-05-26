@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Search,
   Palette,
+  CheckCheck,
 } from "lucide-react";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
@@ -127,6 +128,12 @@ interface AppSettings {
   conversationBubbleAgentTextColor?: string | null;
   conversationBubbleClientTextColorDark?: string | null;
   conversationBubbleAgentTextColorDark?: string | null;
+  conversationBubbleAgentNameColor?: string | null;
+  conversationBubbleAgentNameColorDark?: string | null;
+  conversationBubbleClientMetaColor?: string | null;
+  conversationBubbleClientMetaColorDark?: string | null;
+  conversationBubbleAgentMetaColor?: string | null;
+  conversationBubbleAgentMetaColorDark?: string | null;
 }
 
 interface AgentBotOption {
@@ -283,6 +290,12 @@ export function SettingsPage() {
   const [bubbleAgentTextColor, setBubbleAgentTextColor] = useState<string>(DEFAULT_BUBBLE_THEME.agentText);
   const [bubbleClientTextDark, setBubbleClientTextDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientTextDark);
   const [bubbleAgentTextDark, setBubbleAgentTextDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentTextDark);
+  const [bubbleAgentNameColor, setBubbleAgentNameColor] = useState<string>(DEFAULT_BUBBLE_THEME.agentName);
+  const [bubbleAgentNameDark, setBubbleAgentNameDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentNameDark);
+  const [bubbleClientMetaColor, setBubbleClientMetaColor] = useState<string>(DEFAULT_BUBBLE_THEME.clientMeta);
+  const [bubbleClientMetaDark, setBubbleClientMetaDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientMetaDark);
+  const [bubbleAgentMetaColor, setBubbleAgentMetaColor] = useState<string>(DEFAULT_BUBBLE_THEME.agentMeta);
+  const [bubbleAgentMetaDark, setBubbleAgentMetaDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentMetaDark);
   const [appearanceSaveError, setAppearanceSaveError] = useState("");
   const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
 
@@ -590,6 +603,12 @@ export function SettingsPage() {
         setBubbleAgentTextColor(data.conversationBubbleAgentTextColor ?? DEFAULT_BUBBLE_THEME.agentText);
         setBubbleClientTextDark(data.conversationBubbleClientTextColorDark ?? DEFAULT_BUBBLE_THEME.clientTextDark);
         setBubbleAgentTextDark(data.conversationBubbleAgentTextColorDark ?? DEFAULT_BUBBLE_THEME.agentTextDark);
+        setBubbleAgentNameColor(data.conversationBubbleAgentNameColor ?? DEFAULT_BUBBLE_THEME.agentName);
+        setBubbleAgentNameDark(data.conversationBubbleAgentNameColorDark ?? DEFAULT_BUBBLE_THEME.agentNameDark);
+        setBubbleClientMetaColor(data.conversationBubbleClientMetaColor ?? DEFAULT_BUBBLE_THEME.clientMeta);
+        setBubbleClientMetaDark(data.conversationBubbleClientMetaColorDark ?? DEFAULT_BUBBLE_THEME.clientMetaDark);
+        setBubbleAgentMetaColor(data.conversationBubbleAgentMetaColor ?? DEFAULT_BUBBLE_THEME.agentMeta);
+        setBubbleAgentMetaDark(data.conversationBubbleAgentMetaColorDark ?? DEFAULT_BUBBLE_THEME.agentMetaDark);
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setLeadTypes(
@@ -879,6 +898,12 @@ export function SettingsPage() {
             conversationBubbleAgentTextColor: null,
             conversationBubbleClientTextColorDark: null,
             conversationBubbleAgentTextColorDark: null,
+            conversationBubbleAgentNameColor: null,
+            conversationBubbleAgentNameColorDark: null,
+            conversationBubbleClientMetaColor: null,
+            conversationBubbleClientMetaColorDark: null,
+            conversationBubbleAgentMetaColor: null,
+            conversationBubbleAgentMetaColorDark: null,
           }
         : {
             conversationBubbleClientColor: bubbleClientColor,
@@ -889,6 +914,12 @@ export function SettingsPage() {
             conversationBubbleAgentTextColor: bubbleAgentTextColor,
             conversationBubbleClientTextColorDark: bubbleClientTextDark,
             conversationBubbleAgentTextColorDark: bubbleAgentTextDark,
+            conversationBubbleAgentNameColor: bubbleAgentNameColor,
+            conversationBubbleAgentNameColorDark: bubbleAgentNameDark,
+            conversationBubbleClientMetaColor: bubbleClientMetaColor,
+            conversationBubbleClientMetaColorDark: bubbleClientMetaDark,
+            conversationBubbleAgentMetaColor: bubbleAgentMetaColor,
+            conversationBubbleAgentMetaColorDark: bubbleAgentMetaDark,
           };
       const data = await api.put<AppSettings>("/settings", payload);
       setSettings(data);
@@ -911,9 +942,25 @@ export function SettingsPage() {
     setBubbleAgentTextColor(DEFAULT_BUBBLE_THEME.agentText);
     setBubbleClientTextDark(DEFAULT_BUBBLE_THEME.clientTextDark);
     setBubbleAgentTextDark(DEFAULT_BUBBLE_THEME.agentTextDark);
+    setBubbleAgentNameColor(DEFAULT_BUBBLE_THEME.agentName);
+    setBubbleAgentNameDark(DEFAULT_BUBBLE_THEME.agentNameDark);
+    setBubbleClientMetaColor(DEFAULT_BUBBLE_THEME.clientMeta);
+    setBubbleClientMetaDark(DEFAULT_BUBBLE_THEME.clientMetaDark);
+    setBubbleAgentMetaColor(DEFAULT_BUBBLE_THEME.agentMeta);
+    setBubbleAgentMetaDark(DEFAULT_BUBBLE_THEME.agentMetaDark);
   };
 
-  const bubblePreviewStyle = (bg: string, text: string) => ({ backgroundColor: bg, color: text });
+  const bubblePreviewStyle = (
+    bg: string,
+    text: string,
+    meta?: string,
+    agentName?: string,
+  ): CSSProperties => ({
+    backgroundColor: bg,
+    color: text,
+    ...(meta ? { ["--crm-bubble-meta" as string]: meta } : {}),
+    ...(agentName ? { ["--org-bubble-agent-name" as string]: agentName } : {}),
+  });
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -1708,6 +1755,18 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
                           />
                         </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleTime")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientMetaColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientMetaColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
                         <p className="pt-1 text-xs font-medium text-ink-500 dark:text-ink-400">{t("settings.appearanceAgentBubble")}</p>
                         <label className="flex items-center justify-between gap-3">
                           <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
@@ -1722,13 +1781,42 @@ export function SettingsPage() {
                           />
                         </label>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <span className="text-sm text-ink-700 dark:text-ink-300">
+                            {t("settings.appearanceBubbleText")}
+                            <span className="mt-0.5 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                              {t("settings.appearanceBubbleTextHint")}
+                            </span>
+                          </span>
                           <input
                             type="color"
                             value={bubbleAgentTextColor}
                             onChange={(e) => {
                               setAppearanceUsesDefaults(false);
                               setBubbleAgentTextColor(e.target.value);
+                            }}
+                            className="h-9 w-14 shrink-0 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceBubbleTime")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentMetaColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentMetaColor(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAgentName")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentNameColor}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentNameColor(e.target.value);
                             }}
                             className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
                           />
@@ -1737,15 +1825,25 @@ export function SettingsPage() {
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-white p-3 dark:bg-ink-900/60">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-white/10"
-                          style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor)}
+                          style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor, bubbleClientMetaColor)}
                         >
-                          {t("settings.appearancePreviewClient")}
+                          <p>{t("settings.appearancePreviewClient")}</p>
+                          <div className="crm-bubble-meta mt-1 flex justify-end">
+                            <span>14:30</span>
+                          </div>
                         </div>
                         <div
                           className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-500/25 px-3 py-2 text-sm dark:border-brand-400/30"
-                          style={bubblePreviewStyle(bubbleAgentColor, bubbleAgentTextColor)}
+                          style={bubblePreviewStyle(bubbleAgentColor, bubbleAgentTextColor, bubbleAgentMetaColor, bubbleAgentNameColor)}
                         >
-                          {t("settings.appearancePreviewAgent")}
+                          <p className="crm-bubble-agent-name" style={{ color: bubbleAgentNameColor }}>
+                            {t("settings.appearancePreviewAgentName")}
+                          </p>
+                          <p>{t("settings.appearancePreviewAgent")}</p>
+                          <div className="crm-bubble-meta mt-1 flex items-center justify-end gap-1">
+                            <span>14:31</span>
+                            <CheckCheck className="crm-bubble-read-status is-read h-4 w-4" aria-hidden />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1780,6 +1878,18 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
                           />
                         </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleTime")}</span>
+                          <input
+                            type="color"
+                            value={bubbleClientMetaDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleClientMetaDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
                         <p className="pt-1 text-xs font-medium text-ink-400">{t("settings.appearanceAgentBubble")}</p>
                         <label className="flex items-center justify-between gap-3">
                           <span className="text-sm text-ink-300">{t("settings.appearanceBubbleBackground")}</span>
@@ -1794,13 +1904,42 @@ export function SettingsPage() {
                           />
                         </label>
                         <label className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleText")}</span>
+                          <span className="text-sm text-ink-300">
+                            {t("settings.appearanceBubbleText")}
+                            <span className="mt-0.5 block text-[11px] font-normal text-ink-500">
+                              {t("settings.appearanceBubbleTextHint")}
+                            </span>
+                          </span>
                           <input
                             type="color"
                             value={bubbleAgentTextDark}
                             onChange={(e) => {
                               setAppearanceUsesDefaults(false);
                               setBubbleAgentTextDark(e.target.value);
+                            }}
+                            className="h-9 w-14 shrink-0 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceBubbleTime")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentMetaDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentMetaDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAgentName")}</span>
+                          <input
+                            type="color"
+                            value={bubbleAgentNameDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setBubbleAgentNameDark(e.target.value);
                             }}
                             className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
                           />
@@ -1809,15 +1948,25 @@ export function SettingsPage() {
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0e1624] p-3">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm"
-                          style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark)}
+                          style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark, bubbleClientMetaDark)}
                         >
-                          {t("settings.appearancePreviewClient")}
+                          <p>{t("settings.appearancePreviewClient")}</p>
+                          <div className="crm-bubble-meta mt-1 flex justify-end">
+                            <span>14:30</span>
+                          </div>
                         </div>
                         <div
                           className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-400/30 px-3 py-2 text-sm"
-                          style={bubblePreviewStyle(bubbleAgentDark, bubbleAgentTextDark)}
+                          style={bubblePreviewStyle(bubbleAgentDark, bubbleAgentTextDark, bubbleAgentMetaDark, bubbleAgentNameDark)}
                         >
-                          {t("settings.appearancePreviewAgent")}
+                          <p className="crm-bubble-agent-name" style={{ color: bubbleAgentNameDark }}>
+                            {t("settings.appearancePreviewAgentName")}
+                          </p>
+                          <p>{t("settings.appearancePreviewAgent")}</p>
+                          <div className="crm-bubble-meta mt-1 flex items-center justify-end gap-1">
+                            <span>14:31</span>
+                            <CheckCheck className="crm-bubble-read-status is-read h-4 w-4" aria-hidden />
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -181,6 +181,7 @@
   .crm-bubble-in {
     --crm-bubble-bg: var(--org-bubble-client-bg, #ffffff);
     --crm-bubble-text: var(--org-bubble-client-text, #0f172a);
+    --crm-bubble-meta: var(--org-bubble-client-meta, rgba(100, 116, 139, 0.72));
     --crm-bubble-border: rgba(15, 23, 42, 0.08);
     --crm-bubble-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   }
@@ -188,18 +189,21 @@
   .dark .crm-bubble-in {
     --crm-bubble-bg: var(--org-bubble-client-bg-dark, rgba(30, 41, 59, 0.95));
     --crm-bubble-text: var(--org-bubble-client-text-dark, rgba(248, 250, 252, 0.96));
+    --crm-bubble-meta: var(--org-bubble-client-meta-dark, rgba(148, 163, 184, 0.75));
     --crm-bubble-border: rgba(255, 255, 255, 0.08);
   }
 
   .crm-bubble-out {
     --crm-bubble-bg: var(--org-bubble-agent-bg, rgba(var(--brand-secondary-rgb), 0.12));
     --crm-bubble-text: var(--org-bubble-agent-text, #0f172a);
+    --crm-bubble-meta: var(--org-bubble-agent-meta, rgba(100, 116, 139, 0.72));
     --crm-bubble-shadow: 0 1px 2px rgba(var(--brand-primary-rgb), 0.05);
   }
 
   .dark .crm-bubble-out {
     --crm-bubble-bg: var(--org-bubble-agent-bg-dark, rgba(var(--brand-primary-rgb), 0.32));
     --crm-bubble-text: var(--org-bubble-agent-text-dark, rgba(248, 250, 252, 0.98));
+    --crm-bubble-meta: var(--org-bubble-agent-meta-dark, rgba(226, 232, 240, 0.65));
     --crm-bubble-meta: rgba(226, 232, 240, 0.65);
   }
 
@@ -219,8 +223,35 @@
     line-height: 1.2;
   }
 
+  .crm-bubble-meta .crm-bubble-unread-dot {
+    background-color: currentColor;
+    opacity: 0.75;
+  }
+
+  .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status {
+    color: var(--crm-bubble-text);
+  }
+
+  .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status.is-delivered,
+  .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status.is-sent {
+    opacity: 0.65;
+  }
+
+  .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status.is-read {
+    opacity: 1;
+  }
+
+  .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status.is-failed {
+    color: #ef4444;
+    opacity: 1;
+  }
+
+  .dark .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status.is-failed {
+    color: #f87171;
+  }
+
   .crm-bubble-agent-name {
-    color: var(--brand-primary);
+    color: var(--org-bubble-agent-name, var(--brand-primary));
     font-size: 13px;
     font-weight: 600;
     line-height: 1.3;
@@ -228,7 +259,7 @@
   }
 
   .dark .crm-bubble-agent-name {
-    color: rgba(167, 139, 250, 0.95);
+    color: var(--org-bubble-agent-name-dark, rgba(167, 139, 250, 0.95));
   }
 
   .crm-bubble-private {
