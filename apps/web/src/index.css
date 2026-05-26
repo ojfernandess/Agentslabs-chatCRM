@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --brand-primary: #6734ff;
+    --brand-secondary: #6366f1;
+    --brand-primary-rgb: 103 52 255;
+    --brand-secondary-rgb: 99 102 241;
+  }
+
   * {
     box-sizing: border-box;
   }
@@ -22,9 +29,9 @@
   .dark body {
     background-color: #0e1624;
     background-image:
-      radial-gradient(1200px 600px at 30% 0%, rgba(123, 92, 255, 0.22), transparent 55%),
-      radial-gradient(900px 500px at 85% 10%, rgba(255, 122, 89, 0.10), transparent 60%),
-      radial-gradient(1000px 700px at 50% 110%, rgba(59, 130, 246, 0.10), transparent 55%);
+      radial-gradient(1200px 600px at 30% 0%, rgba(var(--brand-primary-rgb), 0.22), transparent 55%),
+      radial-gradient(900px 500px at 85% 10%, rgba(var(--brand-secondary-rgb), 0.14), transparent 60%),
+      radial-gradient(1000px 700px at 50% 110%, rgba(59, 130, 246, 0.08), transparent 55%);
     background-attachment: fixed;
   }
 
@@ -82,7 +89,7 @@
 }
 
 /**
- * Design system — estados hover / active / disabled (primário HubSpot coral).
+ * Design system — estados hover / active / disabled (primário violeta #6734ff, hover #6366f1).
  * Preferir estas classes em novos ecrãs; utilitários Tailwind herdados continuam válidos.
  */
 @layer components {
@@ -170,13 +177,13 @@
   }
 
   .crm-bubble-out {
-    --crm-bubble-bg: rgba(255, 122, 89, 0.10);
-    --crm-bubble-border: rgba(255, 122, 89, 0.22);
+    --crm-bubble-bg: rgba(var(--brand-primary-rgb), 0.10);
+    --crm-bubble-border: rgba(var(--brand-primary-rgb), 0.22);
   }
 
   .dark .crm-bubble-out {
-    --crm-bubble-bg: rgba(255, 122, 89, 0.14);
-    --crm-bubble-border: rgba(255, 122, 89, 0.25);
+    --crm-bubble-bg: rgba(var(--brand-primary-rgb), 0.14);
+    --crm-bubble-border: rgba(var(--brand-secondary-rgb), 0.28);
   }
 
   .crm-bubble-unread {

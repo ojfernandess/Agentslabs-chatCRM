@@ -65,7 +65,7 @@ const COLOR_ACCENTS: Record<string, string> = {
   violet: "from-violet-500/20 to-fuchsia-500/10 ring-violet-500/20",
   sky: "from-sky-500/20 to-cyan-500/10 ring-sky-500/20",
   emerald: "from-emerald-500/20 to-teal-500/10 ring-emerald-500/20",
-  amber: "from-amber-500/20 to-orange-500/10 ring-amber-500/20",
+  amber: "from-brand-500/20 to-brand-600/10 ring-brand-500/20",
   rose: "from-rose-500/20 to-pink-500/10 ring-rose-500/20",
   slate: "from-slate-500/15 to-zinc-500/10 ring-slate-500/20",
 };

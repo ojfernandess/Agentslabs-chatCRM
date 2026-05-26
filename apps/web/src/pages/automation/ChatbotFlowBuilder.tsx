@@ -247,7 +247,7 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
                 t === "date_input" ||
                 t === "rating_input"
               ) {
-                return "#ea580c";
+                return "#6734ff";
               }
               if (
                 t === "condition" ||

@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-/** HubSpot-inspired: coral primário #ff7a59, texto/cinzas #33475b, raio 3px, grelha 8px (escala Tailwind padrão). */
+/** Design system: primário #6734ff, secundário/hover #6366f1, texto/cinzas #33475b. */
 export default {
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -32,17 +32,17 @@ export default {
       },
       colors: {
         brand: {
-          50: "#fff4f0",
-          100: "#ffe3d9",
-          200: "#ffc9b8",
-          300: "#ffa48a",
-          400: "#ff8866",
-          500: "#ff7a59",
-          600: "#e86245",
-          700: "#c24a32",
-          800: "#9e3d2b",
-          900: "#7a3326",
-          950: "#42140f",
+          50: "#f4f2ff",
+          100: "#ebe6ff",
+          200: "#d9d1ff",
+          300: "#bdb0ff",
+          400: "#8f74ff",
+          500: "#6734ff",
+          600: "#6366f1",
+          700: "#5528db",
+          800: "#4521b0",
+          900: "#381c8f",
+          950: "#1f0f52",
         },
         ink: {
           DEFAULT: "#33475b",

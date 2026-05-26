@@ -549,7 +549,7 @@ export function ReportsPage() {
                         <Tooltip />
                         <Legend />
                         <Bar dataKey="messagesInbound" name={t("reportsPage.seriesInbound")} fill="#6366f1" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="messagesOutbound" name={t("reportsPage.seriesOutbound")} fill="#f97316" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="messagesOutbound" name={t("reportsPage.seriesOutbound")} fill="#6734ff" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

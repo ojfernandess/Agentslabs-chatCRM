@@ -2161,7 +2161,7 @@ export function ConversationDetailPage() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(123,92,255,0.16),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <motion.div
           className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55 lg:px-5"

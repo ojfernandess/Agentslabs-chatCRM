@@ -345,7 +345,7 @@ export function ConversationsPage() {
   return (
     <PageTransition>
       <div className="relative h-full min-h-0">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(255,122,89,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(124,152,182,0.16),transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
         <div className="relative flex h-full min-h-0 w-full flex-col gap-4 p-4 sm:p-6 lg:p-8">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
