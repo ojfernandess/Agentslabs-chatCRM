@@ -14,6 +14,7 @@ import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from 
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
+import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
   loadLastReadAtByConversation,
@@ -1329,6 +1330,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
         return { conversation: conv, timelineDeal: dealMeta };
       });
+
+      if (
+        nextStatus === "RESOLVED" &&
+        existing.status !== "RESOLVED" &&
+        (existing.status === "OPEN" || existing.status === "PENDING")
+      ) {
+        try {
+          await clearAutomationConversationContext(organizationId, conversation.id);
+        } catch (err) {
+          app.log.warn(
+            { err, conversationId: conversation.id },
+            "clear automation context on conversation resolve failed",
+          );
+        }
+      }
 
       if (timelineDeal) {
         await appendTimelineEvent({

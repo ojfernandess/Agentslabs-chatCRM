@@ -18,6 +18,11 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import { startAutomationExecution } from "./automationExecutionLog.js";
 import { botVisualChatbotFlowId } from "./chatbotFlowTypes.js";
 import { dispatchVisualChatbotFlow } from "./chatbotFlowExecutor.js";
+import {
+  buildWebhookConversationContext,
+  loadAutomationConversationContext,
+  mergeNativeTurnAutomationContext,
+} from "./automationConversationContextLib.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -57,8 +62,11 @@ export function buildAgentBotWebhookPayload(input: {
   bot: Pick<Bot, "id" | "name" | "type" | "webhookUrl">;
   /** Perfil de automação + ferramentas (config redigida) quando existe `AutomationAgentProfile` para o bot. */
   automation?: Record<string, unknown> | null;
+  /** Estado por conversa (ex.: follow-up enviado) para integradores externos. */
+  conversation_context?: Record<string, unknown> | null;
 }): Record<string, unknown> {
-  const { organizationId, inbox, conversation, contact, message, bot, automation } = input;
+  const { organizationId, inbox, conversation, contact, message, bot, automation, conversation_context } =
+    input;
   const base: Record<string, unknown> = {
     event: "message_created",
     version: "openconduit-v1",
@@ -101,6 +109,9 @@ export function buildAgentBotWebhookPayload(input: {
   };
   if (automation && typeof automation === "object" && Object.keys(automation).length > 0) {
     base.automation = automation;
+  }
+  if (conversation_context && Object.keys(conversation_context).length > 0) {
+    base.conversation_context = conversation_context;
   }
   return base;
 }
@@ -188,25 +199,11 @@ async function upsertAutomationConversationContextForNative(params: {
   botId: string;
   message: Message;
 }): Promise<void> {
-  const preview = (params.message.body ?? "").trim().slice(0, 500);
-  const state = {
-    source: "native_agent",
-    lastInboundMessageId: params.message.id,
-    lastInboundAt: params.message.createdAt.toISOString(),
-    lastPreview: preview,
-  };
-  await prisma.automationConversationContext.upsert({
-    where: { conversationId: params.conversationId },
-    create: {
-      organizationId: params.organizationId,
-      conversationId: params.conversationId,
-      botId: params.botId,
-      state,
-    },
-    update: {
-      botId: params.botId,
-      state,
-    },
+  await mergeNativeTurnAutomationContext({
+    organizationId: params.organizationId,
+    conversationId: params.conversationId,
+    botId: params.botId,
+    message: params.message,
   });
 }
 
@@ -574,6 +571,8 @@ export async function dispatchAgentBotWebhook(input: {
   }
 
   const automation = await loadAutomationWebhookBundle(organizationId, bot.id);
+  const ctxRow = await loadAutomationConversationContext(conversation.id);
+  const conversation_context = buildWebhookConversationContext(ctxRow.state, ctxRow.lastClearedAt);
   const bodyObj = buildAgentBotWebhookPayload({
     organizationId,
     inbox,
@@ -582,6 +581,7 @@ export async function dispatchAgentBotWebhook(input: {
     message,
     bot,
     automation,
+    conversation_context,
   });
   const rawBody = JSON.stringify(bodyObj);
 

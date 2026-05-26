@@ -6,6 +6,7 @@ import { buildCsatWhatsAppBody, newCsatSurveyToken } from "./csatSurvey.js";
 import { ensurePipelineStageForLeadType } from "./pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "./dealStageSync.js";
 import { createConversationClosureRecord } from "./conversationClosureRecords.js";
+import { clearAutomationConversationContext } from "./automationConversationContextLib.js";
 
 const AUTO_CLOSURE_REASON = "Resolução automática por inatividade.";
 const inFlight = new Set<string>();
@@ -140,6 +141,12 @@ async function processOneConversation(
       });
       return { conversation: conv };
     });
+
+    try {
+      await clearAutomationConversationContext(organizationId, conversationId);
+    } catch (err) {
+      log.warn({ err, conversationId }, "auto-resolve: clear automation context failed");
+    }
 
     if (wf.csatEnabled && conversation.csatSurveyToken) {
       const intro = wf.csatSurveyMessage?.trim() ?? "";

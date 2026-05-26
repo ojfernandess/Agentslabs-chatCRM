@@ -39,6 +39,7 @@ import {
 import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
 import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
+import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -2755,14 +2756,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
       const conversationId = request.params.conversationId;
-      const clearedAt = new Date();
-      const updated = await prisma.automationConversationContext.updateMany({
-        where: { conversationId, organizationId },
-        data: { state: asJson({}), lastClearedAt: clearedAt },
-      });
-      if (updated.count > 0) {
-        return { ok: true };
-      }
       const conv = await prisma.conversation.findFirst({
         where: { id: conversationId, organizationId },
         select: { id: true },
@@ -2770,12 +2763,19 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       if (!conv) {
         return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
       }
-      const settings = await prisma.settings.findUnique({
-        where: { organizationId },
-        select: { agentBotId: true },
+      const before = await prisma.automationConversationContext.findUnique({
+        where: { conversationId },
+        select: { id: true },
       });
-      const botId = settings?.agentBotId;
-      if (!botId) {
+      await clearAutomationConversationContext(organizationId, conversationId);
+      if (before) {
+        return { ok: true };
+      }
+      const after = await prisma.automationConversationContext.findUnique({
+        where: { conversationId },
+        select: { id: true },
+      });
+      if (!after) {
         return reply.status(404).send({
           error: "Not Found",
           message:
@@ -2783,17 +2783,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           statusCode: 404,
         });
       }
-      await prisma.automationConversationContext.upsert({
-        where: { conversationId },
-        create: {
-          organizationId,
-          conversationId,
-          botId,
-          state: asJson({ source: "context_cleared_before_first_native_turn" }),
-          lastClearedAt: clearedAt,
-        },
-        update: { state: asJson({}), lastClearedAt: clearedAt, botId },
-      });
       return { ok: true, createdContextRow: true };
     },
   );

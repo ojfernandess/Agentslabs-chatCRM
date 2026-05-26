@@ -19,6 +19,10 @@ import {
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
+import {
+  buildFollowUpCampaignPromptBlock,
+  loadAutomationConversationContext,
+} from "./automationConversationContextLib.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
@@ -820,14 +824,15 @@ export async function generateNativeAgentReply(input: {
         "», trate o que segue como o conteúdo falado numa nota de voz do cliente."
       : "";
 
-  const systemBase =
-    systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard + audioInboundHint;
+  const automationCtx = await loadAutomationConversationContext(conversation.id);
+  const followUpPrompt = automationCtx.state.followUpCampaign
+    ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
+    : "";
 
-  const automationCtxRow = await prisma.automationConversationContext.findUnique({
-    where: { conversationId: conversation.id },
-    select: { lastClearedAt: true },
-  });
-  const lastClearedAt = automationCtxRow?.lastClearedAt ?? null;
+  const systemBase =
+    systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard + audioInboundHint + followUpPrompt;
+
+  const lastClearedAt = automationCtx.lastClearedAt;
 
   const recent = await prisma.message.findMany({
     where: buildNativeAgentMessageWhere({

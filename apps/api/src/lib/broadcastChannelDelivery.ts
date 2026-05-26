@@ -12,6 +12,8 @@ import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { parseSegmentRules, substituteContactVars } from "./broadcastTypes.js";
 import type { BroadcastAbVariantPayload, FollowUpAfterSendMode } from "./broadcastTypes.js";
+import { seedFollowUpCampaignAutomationContext } from "./automationConversationContextLib.js";
+import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 
 function postSendPolicyForCampaign(campaign: BroadcastCampaign): PostSendConversationPolicy {
   const rules = parseSegmentRules(campaign.segmentRules);
@@ -233,7 +235,7 @@ export async function deliverBroadcastToContact(options: {
     sendInput = { contactId: contact.id, type: "TEXT", body, inboxId };
   }
 
-  const { message } = await deliverOutboundWhatsAppMessage({
+  const { message, conversation: outboundConversation } = await deliverOutboundWhatsAppMessage({
     organizationId: campaign.organizationId,
     data: sendInput,
     actor: { kind: "user", userId: actorUserId },
@@ -241,6 +243,41 @@ export async function deliverBroadcastToContact(options: {
     newConversation: newConversationForCampaign(campaign, actorUserId),
     postSendConversationPolicy: postSendPolicyForCampaign(campaign),
   });
+
+  const segmentRules = parseSegmentRules(campaign.segmentRules);
+  if (
+    segmentRules?.campaignKind === "followup" &&
+    message.status === "SENT" &&
+    channel === "WHATSAPP"
+  ) {
+    const agentCtx = await getAgentBotDispatchContextForInbox(campaign.organizationId, inboxId);
+    if (agentCtx?.agentBotId) {
+      const tpl =
+        payload.messageType === "TEMPLATE" && payload.templateId
+          ? await prisma.messageTemplate.findFirst({
+              where: { id: payload.templateId, organizationId: campaign.organizationId },
+              select: { name: true },
+            })
+          : null;
+      try {
+        await seedFollowUpCampaignAutomationContext({
+          organizationId: campaign.organizationId,
+          conversationId: outboundConversation.id,
+          botId: agentCtx.agentBotId,
+          campaign: { id: campaign.id, name: campaign.name },
+          outboundMessage: message,
+          messageType: payload.messageType,
+          templateId: payload.templateId ?? null,
+          templateName: tpl?.name ?? null,
+        });
+      } catch (err) {
+        log.warn(
+          { err, campaignId: campaign.id, conversationId: outboundConversation.id },
+          "follow-up: failed to seed automation conversation context",
+        );
+      }
+    }
+  }
 
   if (channel === "WHATSAPP" && message.status === "FAILED") {
     const providerKind = await getWhatsappProviderKindForInbox(campaign.organizationId, inboxId);
