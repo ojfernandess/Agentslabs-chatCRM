@@ -70,27 +70,27 @@ export function ConversationDismissibleBanner(props: ConversationDismissibleBann
       )}
       role="status"
     >
+      <button
+        type="button"
+        onClick={handleDismiss}
+        className="-ml-0.5 -mt-0.5 shrink-0 rounded-lg p-1 opacity-70 transition-opacity hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+        aria-label={t("common.close")}
+      >
+        <X className="h-4 w-4" />
+      </button>
       {icon ? (
         <span className="mt-0.5 shrink-0" aria-hidden>
           {icon}
         </span>
       ) : null}
       <div className="min-w-0 flex-1 leading-snug">{children}</div>
-      <button
-        type="button"
-        onClick={handleDismiss}
-        className="-mr-0.5 -mt-0.5 shrink-0 rounded-lg p-1 opacity-70 transition-opacity hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-        aria-label={t("common.close")}
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 
   if (!strip) return banner;
 
   return (
-    <div className="shrink-0 border-b border-ink-100/80 bg-white/70 px-3 py-2.5 backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/45 sm:px-5">
+    <div className="relative z-20 shrink-0 border-b border-ink-100/80 bg-white/70 px-3 py-2.5 backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/45 sm:px-5">
       {banner}
     </div>
   );
