@@ -15,7 +15,11 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
-import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
+import {
+  computeAgentBotTriageActive,
+  getAgentBotDispatchContextForInbox,
+  listInboxIdsWithAgentBotTriage,
+} from "../lib/agentBotTriage.js";
 import {
   loadLastReadAtByConversation,
   markConversationReadForUser,
@@ -56,6 +60,7 @@ const querySchema = z.object({
   leadTypeId: z.string().uuid().optional(),
   inboxId: z.string().uuid().optional(),
   mine: z.enum(["1", "true", "0", "false"]).optional(),
+  botAttendance: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 const auditQuerySchema = z.object({
@@ -181,8 +186,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     const query = querySchema.parse(request.query);
     const where: Prisma.ConversationWhereInput = { organizationId };
+    const botAttendance = isMineFlag(query.botAttendance);
 
-    if (query.status) {
+    if (!botAttendance && query.status) {
       where.status = query.status;
     }
 
@@ -222,8 +228,26 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       where.inboxId = ids.length > 0 ? { in: ids } : { in: [] };
     }
 
-    const mine = isMineFlag(query.mine);
+    const mine = botAttendance ? false : isMineFlag(query.mine);
     const effectiveAssigneeId = mine ? request.user.id : query.assignedToId;
+
+    if (botAttendance) {
+      let candidateInboxIds: string[] | undefined;
+      const inboxFilter = where.inboxId;
+      if (inboxFilter && typeof inboxFilter === "object" && "in" in inboxFilter && Array.isArray(inboxFilter.in)) {
+        candidateInboxIds = inboxFilter.in as string[];
+      } else if (typeof inboxFilter === "string") {
+        candidateInboxIds = [inboxFilter];
+      }
+      const triageInboxIds = await listInboxIdsWithAgentBotTriage(organizationId, candidateInboxIds);
+      if (triageInboxIds.length === 0) {
+        return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
+      }
+      where.inboxId = { in: triageInboxIds };
+      where.status = { in: ["OPEN", "PENDING"] };
+      where.assignedToId = null;
+      where.awaitingHumanHandoff = false;
+    }
 
     if (request.user.role === "AGENT") {
       if (effectiveAssigneeId) {

@@ -110,3 +110,25 @@ export function computeAgentBotTriageActive(
   if (!ctx) return false;
   return inboxChannelSupportsAgentBotTriage(inboxChannelType);
 }
+
+/** Caixas em que o bot de canal está operacional (para filtrar fila do bot). */
+export async function listInboxIdsWithAgentBotTriage(
+  organizationId: string,
+  inboxIds?: string[],
+): Promise<string[]> {
+  const inboxes = await prisma.inbox.findMany({
+    where: {
+      organizationId,
+      ...(inboxIds && inboxIds.length > 0 ? { id: { in: inboxIds } } : {}),
+    },
+    select: { id: true, channelType: true },
+  });
+  const active: string[] = [];
+  for (const inbox of inboxes) {
+    const ctx = await getAgentBotDispatchContextForInbox(organizationId, inbox.id);
+    if (computeAgentBotTriageActive(ctx, inbox.channelType)) {
+      active.push(inbox.id);
+    }
+  }
+  return active;
+}

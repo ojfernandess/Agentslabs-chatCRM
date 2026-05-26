@@ -73,12 +73,40 @@ export function ConversationsPage() {
   const mineActive =
     searchParams.get("mine") === "1" || searchParams.get("mine") === "true";
 
+  const botAttendanceActive =
+    searchParams.get("bot") === "1" || searchParams.get("botAttendance") === "1";
+
+  const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
+
   const setMineParam = (mine: boolean) => {
     setSearchParams(
       (prev) => {
         const n = new URLSearchParams(prev);
-        if (mine) n.set("mine", "1");
-        else n.delete("mine");
+        if (mine) {
+          n.set("mine", "1");
+          n.delete("bot");
+          n.delete("botAttendance");
+        } else {
+          n.delete("mine");
+        }
+        return n;
+      },
+      { replace: true },
+    );
+  };
+
+  const setBotAttendanceParam = (active: boolean) => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (active) {
+          n.set("bot", "1");
+          n.delete("mine");
+          n.delete("status");
+        } else {
+          n.delete("bot");
+          n.delete("botAttendance");
+        }
         return n;
       },
       { replace: true },
@@ -146,14 +174,36 @@ export function ConversationsPage() {
     void loadInboxes();
   }, []);
 
+  useEffect(() => {
+    async function loadChannelSettings() {
+      try {
+        const res = await api.get<{ agentBotTriageActive?: boolean }>("/settings/channel");
+        setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
+      } catch {
+        setOrgAgentBotTriageActive(false);
+      }
+    }
+    void loadChannelSettings();
+  }, []);
+
+  useEffect(() => {
+    if (botAttendanceActive && !orgAgentBotTriageActive) {
+      setBotAttendanceParam(false);
+    }
+  }, [botAttendanceActive, orgAgentBotTriageActive]);
+
   const loadConversations = useCallback(async () => {
     if (!hasAnimated.current) setLoading(true);
     try {
       const params = new URLSearchParams({ pageSize: "50" });
-      if (statusFilter) params.set("status", statusFilter);
+      if (botAttendanceActive) {
+        params.set("botAttendance", "1");
+      } else {
+        if (statusFilter) params.set("status", statusFilter);
+        if (mineActive) params.set("mine", "1");
+      }
       if (teamFilter) params.set("teamId", teamFilter);
       if (inboxFilter) params.set("inboxId", inboxFilter);
-      if (mineActive) params.set("mine", "1");
       const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
       setConversations(res.data);
       const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
@@ -173,7 +223,7 @@ export function ConversationsPage() {
       hasAnimated.current = true;
       setLoading(false);
     }
-  }, [statusFilter, teamFilter, inboxFilter, mineActive]);
+  }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive]);
 
   useEffect(() => {
     void loadConversations();
@@ -265,21 +315,29 @@ export function ConversationsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setMineParam(false)}
+                  onClick={() => {
+                    setBotAttendanceParam(false);
+                    setMineParam(false);
+                  }}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    !mineActive
+                    !mineActive && !botAttendanceActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
                   )}
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
                   {t("conversations.scopeOrg")}
-                  <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  {!botAttendanceActive && !mineActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMineParam(true)}
+                  onClick={() => {
+                    setBotAttendanceParam(false);
+                    setMineParam(true);
+                  }}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
                     mineActive
@@ -290,9 +348,32 @@ export function ConversationsPage() {
                   <UserCircle className="h-3.5 w-3.5" />
                   {t("conversations.myAssignments")}
                 </button>
+                {orgAgentBotTriageActive ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMineParam(false);
+                      setBotAttendanceParam(true);
+                      setStatusFilter("");
+                    }}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      botAttendanceActive
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                    )}
+                  >
+                    <Bot className="h-3.5 w-3.5" />
+                    {t("conversations.scopeBotAttendance")}
+                    {botAttendanceActive ? (
+                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                    ) : null}
+                  </button>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {!botAttendanceActive ? (
                 <div className="flex flex-wrap gap-1 rounded-full bg-ink-100 p-1 dark:bg-ink-900/60">
                   {filters.map((f) => (
                     <button
@@ -323,6 +404,7 @@ export function ConversationsPage() {
                     </button>
                   ))}
                 </div>
+                ) : null}
 
                 <div className="hidden items-center gap-2 md:flex">
                   <UsersRound className="h-4 w-4 shrink-0 text-ink-400 dark:text-ink-500" />
@@ -379,16 +461,20 @@ export function ConversationsPage() {
                   <p className="text-sm text-ink-600 dark:text-ink-400">
                     {listSearch.trim() && conversations.length > 0
                       ? t("conversations.emptySearchTitle")
-                      : mineActive
-                        ? t("conversations.emptyMineTitle")
-                        : t("conversations.emptyTitle")}
+                      : botAttendanceActive
+                        ? t("conversations.emptyBotTitle")
+                        : mineActive
+                          ? t("conversations.emptyMineTitle")
+                          : t("conversations.emptyTitle")}
                   </p>
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
                     {listSearch.trim() && conversations.length > 0
                       ? t("conversations.emptySearchHint")
-                      : mineActive
-                        ? t("conversations.emptyMineHint")
-                        : t("conversations.emptyHint")}
+                      : botAttendanceActive
+                        ? t("conversations.emptyBotHint")
+                        : mineActive
+                          ? t("conversations.emptyMineHint")
+                          : t("conversations.emptyHint")}
                   </p>
                 </motion.div>
               ) : (
