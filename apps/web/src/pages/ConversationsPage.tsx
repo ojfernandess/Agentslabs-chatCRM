@@ -324,22 +324,6 @@ export function ConversationsPage() {
           <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setScopeParam("org")}
-                  className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    !mineActive && !botAttendanceActive && !attendanceScopeActive
-                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
-                  )}
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {t("conversations.scopeOrg")}
-                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
-                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
-                  ) : null}
-                </button>
                 {orgAttendanceTabEnabled ? (
                   <button
                     type="button"
@@ -358,6 +342,22 @@ export function ConversationsPage() {
                     ) : null}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setScopeParam("org")}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    !mineActive && !botAttendanceActive && !attendanceScopeActive
+                      ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                      : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                  )}
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {t("conversations.scopeOrg")}
+                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                  ) : null}
+                </button>
                 <button
                   type="button"
                   onClick={() => setScopeParam("mine")}
