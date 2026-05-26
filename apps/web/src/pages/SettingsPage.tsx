@@ -108,6 +108,7 @@ interface AppSettings {
   resolveRequireClosureReason?: boolean;
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
+  conversationsAttendanceTabEnabled?: boolean;
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
@@ -250,6 +251,7 @@ export function SettingsPage() {
   const [wfRequireClosure, setWfRequireClosure] = useState(true);
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
   const [wfOfferReminder, setWfOfferReminder] = useState(true);
+  const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -545,6 +547,7 @@ export function SettingsPage() {
         setWfRequireClosure(data.resolveRequireClosureReason ?? true);
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWfOfferReminder(data.resolveOfferReminder ?? true);
+        setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -694,6 +697,7 @@ export function SettingsPage() {
         resolveRequireClosureReason: wfRequireClosure,
         resolveRequireLeadType: wfRequireLeadType,
         resolveOfferReminder: wfOfferReminder,
+        conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -707,6 +711,7 @@ export function SettingsPage() {
       setWfRequireClosure(data.resolveRequireClosureReason ?? true);
       setWfRequireLeadType(data.resolveRequireLeadType ?? true);
       setWfOfferReminder(data.resolveOfferReminder ?? true);
+      setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
@@ -1703,6 +1708,30 @@ export function SettingsPage() {
                     {t("settings.workflowTitle")}
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.workflowIntro")}</p>
+
+                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAttendanceTab")}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAttendanceTabHint")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={wfAttendanceTabEnabled}
+                      onClick={() => setWfAttendanceTabEnabled((v) => !v)}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        wfAttendanceTabEnabled ? "bg-brand-500" : "bg-gray-200",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          wfAttendanceTabEnabled ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
 
                   <div className="flex flex-col gap-4 border-b border-gray-100 pb-6">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

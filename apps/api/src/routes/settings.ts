@@ -136,6 +136,7 @@ const settingsSchema = z.object({
   aiPilotAccessEnabled: z.boolean().optional(),
   aiAlertWebhookUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
   aiAlertWebhookSecret: z.union([z.string().max(500), z.null()]).optional(),
+  conversationsAttendanceTabEnabled: z.boolean().optional(),
 });
 
 function maskSettings<
@@ -247,6 +248,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       ? await getAgentBotDispatchContextForInbox(organizationId, q.inboxId)
       : await getAgentBotDispatchContext(organizationId);
     const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, inboxChannelType);
+    const orgSettings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { conversationsAttendanceTabEnabled: true },
+    });
     return {
       whatsappProvider: p,
       /** Anexos / imagens / áudio na conversa (Evolution, Meta Cloud API, 360dialog). */
@@ -257,6 +262,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         richChatProvider === "360dialog",
       /** Há bot de canal configurado e pronto a receber webhooks (fila PENDING). */
       agentBotTriageActive,
+      /** Aba «Atendimento» activa em Conversas (OPEN à espera de agente). */
+      conversationsAttendanceTabEnabled: orgSettings?.conversationsAttendanceTabEnabled ?? false,
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
       evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
       /** Evolution Go gerida pela plataforma: tenants usam credenciais globais e guardam apenas instanceId. */

@@ -2124,6 +2124,9 @@ export const messages = {
       scopeBotAttendance: "Bot em atendimento",
       emptyBotTitle: "Nenhuma conversa com o bot",
       emptyBotHint: "Quando o bot estiver a atender clientes, as conversas aparecem aqui.",
+      scopeAttendance: "Atendimento",
+      emptyAttendanceTitle: "Ninguém aguardando atendimento",
+      emptyAttendanceHint: "Conversas abertas sem atendente humano aparecem aqui.",
       filterOpen: "Abertas",
       filterPending: "Pendentes",
       filterResolved: "Finalizadas",
@@ -2762,6 +2765,9 @@ export const messages = {
       workflowOfferReminder: "Oferecer criar lembrete ao finalizar atendimento",
       workflowOfferReminderHint:
         "Na finalização manual da conversa, o atendente pode marcar um lembrete para o contacto (como na página Lembretes).",
+      workflowAttendanceTab: "Aba «Atendimento» em Conversas",
+      workflowAttendanceTabHint:
+        "Mostra uma aba dedicada com conversas abertas (OPEN) à espera de um agente humano, sem atendente atribuído.",
       workflowSave: "Guardar fluxos de conversa",
       workflowSaveError: "Não foi possível guardar as configurações.",
       sectionTemplates: "Modelos de mensagem",
@@ -5333,6 +5339,9 @@ export const messages = {
       scopeBotAttendance: "Bot handling",
       emptyBotTitle: "No conversations with the bot",
       emptyBotHint: "When the bot is handling customers, conversations appear here.",
+      scopeAttendance: "Attendance",
+      emptyAttendanceTitle: "No one waiting for service",
+      emptyAttendanceHint: "Open conversations without a human agent appear here.",
       filterOpen: "Open",
       filterPending: "Pending",
       filterResolved: "Resolved",
@@ -5970,6 +5979,9 @@ export const messages = {
       workflowOfferReminder: "Offer to create a reminder when resolving a conversation",
       workflowOfferReminderHint:
         "On manual resolution, agents can schedule a follow-up reminder for the contact (same as the Reminders page).",
+      workflowAttendanceTab: "«Attendance» tab in Conversations",
+      workflowAttendanceTabHint:
+        "Shows a dedicated tab with open (OPEN) conversations waiting for a human agent, with no assignee.",
       workflowSave: "Save conversation workflows",
       workflowSaveError: "Could not save these settings.",
       sectionTemplates: "Message templates",

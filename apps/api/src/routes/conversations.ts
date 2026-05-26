@@ -61,6 +61,7 @@ const querySchema = z.object({
   inboxId: z.string().uuid().optional(),
   mine: z.enum(["1", "true", "0", "false"]).optional(),
   botAttendance: z.enum(["1", "true", "0", "false"]).optional(),
+  waitingAttendance: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 const auditQuerySchema = z.object({
@@ -187,8 +188,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const query = querySchema.parse(request.query);
     const where: Prisma.ConversationWhereInput = { organizationId };
     const botAttendance = isMineFlag(query.botAttendance);
+    const waitingAttendance = isMineFlag(query.waitingAttendance);
 
-    if (!botAttendance && query.status) {
+    if (!botAttendance && !waitingAttendance && query.status) {
       where.status = query.status;
     }
 
@@ -228,8 +230,20 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       where.inboxId = ids.length > 0 ? { in: ids } : { in: [] };
     }
 
-    const mine = botAttendance ? false : isMineFlag(query.mine);
+    const mine = botAttendance || waitingAttendance ? false : isMineFlag(query.mine);
     const effectiveAssigneeId = mine ? request.user.id : query.assignedToId;
+
+    if (waitingAttendance) {
+      const orgSettings = await prisma.settings.findUnique({
+        where: { organizationId },
+        select: { conversationsAttendanceTabEnabled: true },
+      });
+      if (!orgSettings?.conversationsAttendanceTabEnabled) {
+        return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
+      }
+      where.status = "OPEN";
+      where.assignedToId = null;
+    }
 
     if (botAttendance) {
       let candidateInboxIds: string[] | undefined;

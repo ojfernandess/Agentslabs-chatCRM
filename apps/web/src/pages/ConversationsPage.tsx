@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Search, SquarePen } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, SquarePen } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
@@ -76,9 +76,12 @@ export function ConversationsPage() {
   const botAttendanceActive =
     searchParams.get("bot") === "1" || searchParams.get("botAttendance") === "1";
 
-  const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
+  const attendanceScopeActive = searchParams.get("attendance") === "1";
 
-  type ConversationListScope = "org" | "mine" | "bot";
+  const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
+  const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
+
+  type ConversationListScope = "org" | "mine" | "bot" | "attendance";
 
   const setScopeParam = useCallback((scope: ConversationListScope) => {
     setSearchParams(
@@ -87,17 +90,21 @@ export function ConversationsPage() {
         n.delete("mine");
         n.delete("bot");
         n.delete("botAttendance");
+        n.delete("attendance");
         if (scope === "mine") {
           n.set("mine", "1");
         } else if (scope === "bot") {
           n.set("bot", "1");
+          n.delete("status");
+        } else if (scope === "attendance") {
+          n.set("attendance", "1");
           n.delete("status");
         }
         return n;
       },
       { replace: true },
     );
-    if (scope === "bot") {
+    if (scope === "bot" || scope === "attendance") {
       setStatusFilter("");
     }
   }, [setSearchParams]);
@@ -168,10 +175,15 @@ export function ConversationsPage() {
   useEffect(() => {
     async function loadChannelSettings() {
       try {
-        const res = await api.get<{ agentBotTriageActive?: boolean }>("/settings/channel");
+        const res = await api.get<{
+          agentBotTriageActive?: boolean;
+          conversationsAttendanceTabEnabled?: boolean;
+        }>("/settings/channel");
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
+        setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
       } catch {
         setOrgAgentBotTriageActive(false);
+        setOrgAttendanceTabEnabled(false);
       }
     }
     void loadChannelSettings();
@@ -183,12 +195,20 @@ export function ConversationsPage() {
     }
   }, [botAttendanceActive, orgAgentBotTriageActive, setScopeParam]);
 
+  useEffect(() => {
+    if (attendanceScopeActive && !orgAttendanceTabEnabled) {
+      setScopeParam("org");
+    }
+  }, [attendanceScopeActive, orgAttendanceTabEnabled, setScopeParam]);
+
   const loadConversations = useCallback(async () => {
     if (!hasAnimated.current) setLoading(true);
     try {
       const params = new URLSearchParams({ pageSize: "50" });
       if (botAttendanceActive) {
         params.set("botAttendance", "1");
+      } else if (attendanceScopeActive) {
+        params.set("waitingAttendance", "1");
       } else {
         if (statusFilter) params.set("status", statusFilter);
         if (mineActive) params.set("mine", "1");
@@ -214,7 +234,7 @@ export function ConversationsPage() {
       hasAnimated.current = true;
       setLoading(false);
     }
-  }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive]);
+  }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
 
   useEffect(() => {
     void loadConversations();
@@ -309,17 +329,35 @@ export function ConversationsPage() {
                   onClick={() => setScopeParam("org")}
                   className={clsx(
                     "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                    !mineActive && !botAttendanceActive
+                    !mineActive && !botAttendanceActive && !attendanceScopeActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
                   )}
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
                   {t("conversations.scopeOrg")}
-                  {!botAttendanceActive && !mineActive ? (
+                  {!botAttendanceActive && !mineActive && !attendanceScopeActive ? (
                     <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
                   ) : null}
                 </button>
+                {orgAttendanceTabEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => setScopeParam("attendance")}
+                    className={clsx(
+                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      attendanceScopeActive
+                        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
+                        : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
+                    )}
+                  >
+                    <Headset className="h-3.5 w-3.5" />
+                    {t("conversations.scopeAttendance")}
+                    {attendanceScopeActive ? (
+                      <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold">{counts.all}</span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setScopeParam("mine")}
@@ -354,7 +392,7 @@ export function ConversationsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {!botAttendanceActive ? (
+                {!botAttendanceActive && !attendanceScopeActive ? (
                 <div className="flex flex-wrap gap-1 rounded-full bg-ink-100 p-1 dark:bg-ink-900/60">
                   {filters.map((f) => (
                     <button
@@ -444,18 +482,22 @@ export function ConversationsPage() {
                       ? t("conversations.emptySearchTitle")
                       : botAttendanceActive
                         ? t("conversations.emptyBotTitle")
-                        : mineActive
-                          ? t("conversations.emptyMineTitle")
-                          : t("conversations.emptyTitle")}
+                        : attendanceScopeActive
+                          ? t("conversations.emptyAttendanceTitle")
+                          : mineActive
+                            ? t("conversations.emptyMineTitle")
+                            : t("conversations.emptyTitle")}
                   </p>
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
                     {listSearch.trim() && conversations.length > 0
                       ? t("conversations.emptySearchHint")
                       : botAttendanceActive
                         ? t("conversations.emptyBotHint")
-                        : mineActive
-                          ? t("conversations.emptyMineHint")
-                          : t("conversations.emptyHint")}
+                        : attendanceScopeActive
+                          ? t("conversations.emptyAttendanceHint")
+                          : mineActive
+                            ? t("conversations.emptyMineHint")
+                            : t("conversations.emptyHint")}
                   </p>
                 </motion.div>
               ) : (

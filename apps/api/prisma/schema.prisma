@@ -1158,6 +1158,9 @@ model Settings {
   /// Ao passar a conversa para a fila do bot (PENDING), não voltar a disparar o webhook com a última mensagem do cliente.
   silentTransferToAgentBot Boolean @default(false) @map("silent_transfer_to_agent_bot")
 
+  /// Mostrar aba «Atendimento» em Conversas (OPEN sem atendente humano).
+  conversationsAttendanceTabEnabled Boolean @default(false) @map("conversations_attendance_tab_enabled")
+
   /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
   aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)
   /// Segredo opcional para assinatura HMAC-SHA256 do webhook de alertas de IA.
