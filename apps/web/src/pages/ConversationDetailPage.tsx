@@ -85,6 +85,7 @@ import {
   DocumentAttachmentCard,
   isLikelyDocumentCaption,
 } from "@/components/conversation/MessageAttachmentViews";
+import { ConversationDismissibleBanner } from "@/components/conversation/ConversationDismissibleBanner";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
 import {
   timelineChannelLabel,
@@ -2422,6 +2423,31 @@ export function ConversationDetailPage() {
           </div>
         )}
 
+        {conversation.awaitingHumanHandoff ? (
+          <ConversationDismissibleBanner
+            scope="conversation"
+            conversationId={conversation.id}
+            bannerKey="awaiting_human"
+            variant="danger"
+            strip
+            icon={<Headset className="h-4 w-4 text-red-600 dark:text-red-300" />}
+          >
+            {t("conversationDetail.awaitingHumanBanner")}
+          </ConversationDismissibleBanner>
+        ) : null}
+        {inBotQueueOnly ? (
+          <ConversationDismissibleBanner
+            scope="conversation"
+            conversationId={conversation.id}
+            bannerKey="bot_triage"
+            variant="violet"
+            strip
+            icon={<Bot className="h-4 w-4 text-violet-600 dark:text-violet-300" />}
+          >
+            {t("conversationDetail.botTriageBanner")}
+          </ConversationDismissibleBanner>
+        ) : null}
+
         <div
           ref={messagesViewportRef}
           onScroll={onMessagesViewportScroll}
@@ -2429,24 +2455,6 @@ export function ConversationDetailPage() {
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           <div className="relative flex w-full min-w-0 flex-col gap-3">
-            {conversation.awaitingHumanHandoff ? (
-              <div
-                className="mb-4 flex items-start gap-2 rounded-xl border border-red-200/90 bg-red-50/95 px-3 py-2.5 text-xs text-red-950 shadow-sm dark:border-red-800/50 dark:bg-red-950/45 dark:text-red-100"
-                role="status"
-              >
-                <Headset className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-300" aria-hidden />
-                <p className="leading-snug">{t("conversationDetail.awaitingHumanBanner")}</p>
-              </div>
-            ) : null}
-            {inBotQueueOnly ? (
-              <div
-                className="mb-4 flex items-start gap-2 rounded-xl border border-violet-200/80 bg-violet-50/90 px-3 py-2.5 text-xs text-violet-950 shadow-sm dark:border-violet-800/40 dark:bg-violet-950/40 dark:text-violet-100"
-                role="status"
-              >
-                <Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden />
-                <p className="leading-snug">{t("conversationDetail.botTriageBanner")}</p>
-              </div>
-            ) : null}
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -2715,12 +2723,18 @@ export function ConversationDetailPage() {
                   <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
                 ) : null}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (
-                  <p className="mb-2 rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-950 dark:border-sky-800/50 dark:bg-sky-950/40 dark:text-sky-100">
-                    {t("conversationDetail.composerSignatureBanner")}{" "}
-                    <Link to="/profile" className="font-semibold text-brand-600 underline hover:text-brand-500 dark:text-brand-400">
-                      {t("conversationDetail.composerSignatureLink")}
-                    </Link>
-                  </p>
+                  <div className="mb-2">
+                    <ConversationDismissibleBanner
+                      scope="user"
+                      bannerKey="composer_signature"
+                      variant="info"
+                    >
+                      {t("conversationDetail.composerSignatureBanner")}{" "}
+                      <Link to="/profile" className="font-semibold text-brand-600 underline hover:text-brand-500 dark:text-brand-400">
+                        {t("conversationDetail.composerSignatureLink")}
+                      </Link>
+                    </ConversationDismissibleBanner>
+                  </div>
                 ) : null}
 
                 {voicePreview && voicePreviewUrl ? (
