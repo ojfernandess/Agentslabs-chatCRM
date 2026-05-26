@@ -61,6 +61,7 @@ import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } f
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { resolveCannedResponseVariables } from "@/lib/cannedResponseVariables";
+import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAuth } from "@/hooks/useAuth";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
@@ -1391,6 +1392,7 @@ export function ConversationDetailPage() {
           note: reminderPayload.note,
           dueAt,
         });
+        dispatchRemindersUpdated();
       } catch {
         setFlowError(t("conversationDetail.resolveReminderCreateFailed"));
       }

@@ -28,7 +28,8 @@ import { brandAssetUrl } from "@/lib/brandingAssets";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
-import { useReminderNotifications } from "@/hooks/useReminderNotifications";
+import { useActionableReminders } from "@/hooks/useActionableReminders";
+import { ReminderActionableBanner } from "@/components/reminders/ReminderActionableBanner";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -66,7 +67,10 @@ export function Layout() {
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
   const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
 
-  useReminderNotifications(!!user);
+  const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
+  const { reminders: actionableReminders, completingId, completeReminder } = useActionableReminders(
+    !!user && showRemindersFeature,
+  );
 
   useEffect(() => {
     if (orgLabel && orgLabel !== "—") {
@@ -589,6 +593,13 @@ export function Layout() {
               {t("common.exitUserImpersonation")}
             </button>
           </div>
+        ) : null}
+        {showRemindersFeature && actionableReminders.length > 0 ? (
+          <ReminderActionableBanner
+            reminders={actionableReminders}
+            completingId={completingId}
+            onComplete={(id) => void completeReminder(id)}
+          />
         ) : null}
         <main className="min-h-0 flex-1 overflow-auto bg-ink-50 dark:bg-transparent">
           <Outlet />

@@ -16,6 +16,7 @@ import { ReminderCard, type ReminderCardModel } from "@/components/reminders/Rem
 import { RemindersKanban } from "@/components/reminders/RemindersKanban";
 import { RemindersAgenda } from "@/components/reminders/RemindersAgenda";
 import { RemindersCalendar } from "@/components/reminders/RemindersCalendar";
+import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { ReminderDetailDrawer, type ReminderDetailModel } from "@/components/reminders/ReminderDetailDrawer";
 import { AiPlannerDrawer } from "@/components/reminders/AiPlannerDrawer";
 import {
@@ -248,6 +249,7 @@ export function RemindersPage() {
         note: noteTrim,
         dueAt,
       });
+      dispatchRemindersUpdated();
       setShowForm(false);
       void fetchReminders(false);
     } catch (e) {
@@ -261,6 +263,7 @@ export function RemindersPage() {
   const toggleComplete = async (id: string, completed: boolean) => {
     try {
       await api.put(`/reminders/${id}`, { completed: !completed });
+      dispatchRemindersUpdated();
       void fetchReminders(false);
     } catch {
       /* ignore */
@@ -270,6 +273,7 @@ export function RemindersPage() {
   const deleteReminder = async (id: string) => {
     try {
       await api.delete(`/reminders/${id}`);
+      dispatchRemindersUpdated();
       void fetchReminders(false);
     } catch {
       /* ignore */
@@ -278,11 +282,13 @@ export function RemindersPage() {
 
   const moveStatus = async (id: string, status: ReminderStatus) => {
     await api.put(`/reminders/${id}`, { status });
+    dispatchRemindersUpdated();
     await fetchReminders(false);
   };
 
   const saveReminder = async (id: string, patch: { note?: string; dueAt?: string; status?: ReminderStatus; priority?: ReminderPriorityDb }) => {
     await api.put(`/reminders/${id}`, patch);
+    dispatchRemindersUpdated();
     await fetchReminders(false);
   };
 

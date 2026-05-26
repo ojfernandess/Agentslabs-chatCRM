@@ -85,6 +85,30 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
+  /** Lembretes do dia (ou atrasados) ainda não concluídos — visíveis até marcar como feito. */
+  app.get("/actionable", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const now = new Date();
+    const startOfTomorrow = new Date(now);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    startOfTomorrow.setHours(0, 0, 0, 0);
+
+    return prisma.reminder.findMany({
+      where: {
+        organizationId,
+        userId: request.user.id,
+        completed: false,
+        status: { in: ["TODO", "DOING"] },
+        dueAt: { lt: startOfTomorrow },
+      },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+      orderBy: { dueAt: "asc" },
+      take: 50,
+    });
+  });
+
   app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
