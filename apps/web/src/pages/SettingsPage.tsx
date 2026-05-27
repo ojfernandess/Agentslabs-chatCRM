@@ -1135,8 +1135,8 @@ export function SettingsPage() {
 
   return (
     <PageTransition>
-      <div className="p-6 lg:p-8">
-        <div className="mx-auto max-w-6xl">
+      <div className="page-shell">
+        <div className="page-shell-inner">
           <div className="mb-8 border-b border-ink-200/80 pb-6 dark:border-white/10">
             <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("settings.title")}</h1>
             <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">{t("settings.subtitle")}</p>

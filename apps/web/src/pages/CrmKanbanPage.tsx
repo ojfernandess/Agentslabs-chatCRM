@@ -193,7 +193,7 @@ export function CrmKanbanPage() {
   return (
     <PageTransition>
       <div className="flex h-full flex-col bg-gray-50 dark:bg-ink-950">
-        <div className="border-b border-gray-200 bg-white px-8 py-6 dark:border-ink-800 dark:bg-ink-900/60">
+        <div className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6 dark:border-ink-800 dark:bg-ink-900/60">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">
@@ -203,7 +203,7 @@ export function CrmKanbanPage() {
               <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("crm.subtitle")}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[200px] flex-1 lg:max-w-sm">
+              <div className="relative min-w-0 w-full flex-1 sm:min-w-[12rem] lg:max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-ink-500" />
                 <input
                   type="search"

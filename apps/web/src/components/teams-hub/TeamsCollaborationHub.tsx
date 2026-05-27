@@ -323,9 +323,9 @@ export function TeamsCollaborationHub() {
 
   return (
     <PageTransition>
-      <div className="flex h-[calc(100vh-4rem)] min-h-0 flex-col bg-gradient-to-br from-slate-50 via-white to-violet-50/30 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/20">
+      <div className="flex min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-50 via-white to-violet-50/30 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/20 md:h-[calc(100dvh-3.5rem)]">
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-ink-200/80 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-ink-800 dark:bg-ink-950/80 lg:px-6">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/25">
               <UsersRound className="h-5 w-5" />
             </div>
@@ -334,6 +334,22 @@ export function TeamsCollaborationHub() {
               <p className="text-xs text-ink-500 dark:text-ink-400">{t("teamsHub.subtitle")}</p>
             </div>
           </div>
+          {teams.length > 0 ? (
+            <label className="flex w-full min-w-0 flex-col gap-1 md:hidden">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{t("teamsHub.mobileTeamSelect")}</span>
+              <select
+                className="input-field h-10 w-full text-sm"
+                value={selectedId ?? ""}
+                onChange={(e) => setSelectedId(e.target.value || null)}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="flex items-center gap-2">
             {realtimeOn ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">
@@ -353,8 +369,8 @@ export function TeamsCollaborationHub() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="flex w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/60 dark:border-ink-800 dark:bg-ink-950/40">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
+          <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/60 dark:border-ink-800 dark:bg-ink-950/40 md:flex">
             {isAdmin ? (
               <form onSubmit={handleCreateTeam} className="border-b border-ink-100 p-3 dark:border-ink-800">
                 <input

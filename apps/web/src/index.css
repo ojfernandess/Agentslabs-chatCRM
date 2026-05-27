@@ -17,11 +17,13 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
     @apply bg-ink-50;
     @apply dark:bg-[#0e1624];
   }
 
   body {
+    overflow-x: clip;
     @apply min-h-screen bg-ink-50 font-sans text-ink-900;
     @apply dark:text-ink-100;
   }
@@ -37,6 +39,10 @@
 
   #root {
     min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
   }
 
   img,
@@ -46,10 +52,10 @@
   }
 
   @media (pointer: coarse) {
-    button,
-    input,
-    select,
-    textarea {
+    button:not(.touch-target-compact),
+    input:not([type="checkbox"]):not([type="radio"]):not(.touch-target-compact),
+    select:not(.touch-target-compact),
+    textarea:not(.touch-target-compact) {
       min-height: 44px;
     }
   }
@@ -274,5 +280,13 @@
     --crm-bubble-border: rgba(245, 158, 11, 0.30);
     --crm-bubble-text: rgba(255, 251, 235, 0.95);
     --crm-bubble-meta: rgba(254, 243, 199, 0.70);
+  }
+
+  .page-shell {
+    @apply w-full max-w-full min-w-0 p-4 sm:p-6 lg:p-8;
+  }
+
+  .page-shell-inner {
+    @apply mx-auto w-full min-w-0 max-w-6xl;
   }
 }

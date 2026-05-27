@@ -303,7 +303,7 @@ export function BotsPage() {
 
   return (
     <PageTransition>
-      <div className="p-6 lg:p-8">
+      <div className="page-shell">
         <motion.header
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}

@@ -6,6 +6,13 @@ export const CANNED_ATTENDANT_NAME_VARIABLES = [
   "attendant.name",
 ] as const;
 
+/** Tokens canónicos para inserção no editor (build). */
+export const CANNED_VARIABLE_INSERT_OPTIONS = [
+  { token: "{{atendente}}", labelKey: "settings.cannedVarAtendente" },
+  { token: "{{nome_atendente}}", labelKey: "settings.cannedVarNomeAtendente" },
+  { token: "{{attendant_name}}", labelKey: "settings.cannedVarAttendantName" },
+] as const;
+
 const ATTENDANT_NAME_PATTERN = new RegExp(
   `\\{\\{\\s*(?:${CANNED_ATTENDANT_NAME_VARIABLES.map((v) => v.replace(".", "\\.")).join("|")})\\s*\\}\\}`,
   "gi",

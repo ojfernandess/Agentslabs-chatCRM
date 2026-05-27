@@ -44,8 +44,20 @@ export function AutomationChatbotHub() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flowsPanelOpen, setFlowsPanelOpen] = useState(true);
+  const [flowsPanelOpen, setFlowsPanelOpen] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : true,
+  );
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => {
+      if (!mq.matches) setFlowsPanelOpen(false);
+    };
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   const selected = flows.find((f) => f.id === selectedId) ?? null;
 
@@ -211,11 +223,11 @@ export function AutomationChatbotHub() {
   }
 
   return (
-    <div className="flex gap-4 lg:gap-6">
+    <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:gap-6">
       <aside
         className={clsx(
           "flex shrink-0 flex-col overflow-hidden rounded-xl border border-ink-200 bg-white transition-[width] duration-200 dark:border-ink-800 dark:bg-ink-900/60",
-          flowsPanelOpen ? "w-[280px]" : "w-11",
+          flowsPanelOpen ? "w-full lg:w-[280px]" : "w-full lg:w-11",
         )}
       >
         <div className="flex items-center gap-1 border-b border-ink-100 p-2 dark:border-ink-800">

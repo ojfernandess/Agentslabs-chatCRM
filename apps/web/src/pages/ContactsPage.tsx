@@ -249,7 +249,7 @@ export function ContactsPage() {
 
   return (
     <PageTransition>
-      <div className="min-h-full bg-gradient-to-b from-slate-50/90 to-white p-6 md:p-8 dark:from-ink-950 dark:to-ink-950">
+      <div className="page-shell min-h-full bg-gradient-to-b from-slate-50/90 to-white dark:from-ink-950 dark:to-ink-950">
         <motion.div
           className="mx-auto max-w-[1600px]"
           variants={staggerContainer}

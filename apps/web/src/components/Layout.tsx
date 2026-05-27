@@ -524,7 +524,7 @@ export function Layout() {
   );
 
   return (
-    <div className="flex h-[100dvh]">
+    <div className="flex h-[100dvh] w-full max-w-[100vw] min-w-0 overflow-x-clip">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
         {sidebarContent}
       </aside>
@@ -553,7 +553,7 @@ export function Layout() {
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
         <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-white/10 dark:bg-ink-950 lg:hidden">
           <button
             type="button"
@@ -604,7 +604,7 @@ export function Layout() {
             onComplete={(id) => void completeReminder(id)}
           />
         ) : null}
-        <main className="min-h-0 flex-1 overflow-auto bg-ink-50 dark:bg-transparent">
+        <main className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto bg-ink-50 dark:bg-transparent">
           <Outlet />
         </main>
       </div>

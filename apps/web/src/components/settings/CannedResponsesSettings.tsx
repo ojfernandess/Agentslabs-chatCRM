@@ -4,11 +4,11 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   settingsCard,
-  settingsInput,
   settingsListWrap,
   settingsMuted,
   settingsTitle,
 } from "@/components/settings/settingsUi";
+import { CannedMessageBuilderField } from "@/components/settings/CannedMessageBuilderField";
 
 export interface CannedResponseRow {
   id: string;
@@ -144,12 +144,12 @@ export function CannedResponsesSettings() {
 
       {modalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
           role="presentation"
           onClick={closeModal}
         >
           <div
-            className="relative w-full max-w-lg rounded-2xl border border-ink-200/80 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-[#111C2B]"
+            className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-ink-200/80 bg-white p-4 shadow-xl sm:max-h-[85vh] sm:rounded-2xl sm:p-6 dark:border-white/10 dark:bg-[#111C2B]"
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -179,8 +179,12 @@ export function CannedResponsesSettings() {
                   />
                 </div>
               </div>
-              <CannedMessageField form={form} setForm={setForm} t={t} />
-              <p className={`text-xs ${settingsMuted}`}>{t("settings.cannedVariablesHint")}</p>
+              <CannedMessageBuilderField
+                value={form.content}
+                onChange={(content) => setForm((f) => ({ ...f, content }))}
+                t={t}
+                placeholder={t("settings.cannedMessagePlaceholder")}
+              />
               {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeModal} className="btn-secondary">
@@ -220,30 +224,6 @@ function CannedResponsesHeader({ t, openCreate }: { t: (k: string) => string; op
         <Plus className="h-4 w-4" />
         {t("settings.cannedAdd")}
       </button>
-    </div>
-  );
-}
-
-function CannedMessageField({
-  form,
-  setForm,
-  t,
-}: {
-  form: CannedForm;
-  setForm: React.Dispatch<React.SetStateAction<CannedForm>>;
-  t: (k: string) => string;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("settings.cannedMessage")}</label>
-      <textarea
-        value={form.content}
-        onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-        rows={5}
-        placeholder={t("settings.cannedMessagePlaceholder")}
-        className={`${settingsInput} min-h-[120px]`}
-        required
-      />
     </div>
   );
 }
