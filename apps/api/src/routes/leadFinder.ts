@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { searchGoogleMaps, SerpApiError, type SerpMapsLocalResult } from "../lib/serpApiGoogleMaps.js";
 import { importLeadFinderContacts } from "../lib/leadFinderImport.js";
+import { normalizeLeadFinderPhone } from "../lib/leadFinderPhone.js";
 import { createLeadFinderFollowUp } from "../lib/leadFinderFollowUp.js";
 import { listLeadFinderSegments } from "../lib/leadFinderSegments.js";
 import { buildCronFromRecurrence, computeNextRunAt, parseFollowUpRecurrence } from "../lib/broadcastRecurrence.js";
@@ -135,6 +136,7 @@ const importSchema = z.object({
   createImportTag: z.boolean().optional(),
   importTagName: z.string().max(100).optional(),
   updateExisting: z.boolean().optional(),
+  searchCity: z.string().max(200).optional().nullable(),
   followUp: followUpBodySchema.optional(),
 });
 
@@ -453,9 +455,44 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
       const nextStart =
         serp.paginationNext && results.length > 0 ? start + results.length : null;
 
+      const normalizedPhones = results
+        .map((r) => normalizeLeadFinderPhone(r.phone))
+        .filter((p): p is string => Boolean(p));
+      const existingByPhone = new Map<
+        string,
+        { id: string; name: string; phone: string; company: string | null }
+      >();
+      if (normalizedPhones.length > 0) {
+        const existingRows = await prisma.contact.findMany({
+          where: { organizationId, phone: { in: normalizedPhones } },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            account: { select: { name: true } },
+          },
+        });
+        for (const row of existingRows) {
+          existingByPhone.set(row.phone, {
+            id: row.id,
+            name: row.name,
+            phone: row.phone,
+            company: row.account?.name ?? null,
+          });
+        }
+      }
+
+      const enrichedResults = results.map((r) => {
+        const phone = normalizeLeadFinderPhone(r.phone);
+        return {
+          ...r,
+          existingContact: phone ? (existingByPhone.get(phone) ?? null) : null,
+        };
+      });
+
       return {
         query: q,
-        results,
+        results: enrichedResults,
         localResultsState: serp.localResultsState,
         nextStart: nextStart != null && nextStart <= 100 ? nextStart : null,
       };
@@ -498,6 +535,7 @@ export async function leadFinderRoutes(app: FastifyInstance): Promise<void> {
         createImportTag: d.createImportTag,
         importTagName: d.importTagName,
         updateExisting: d.updateExisting,
+        searchCity: d.searchCity,
         createdById: request.user.id,
       });
 

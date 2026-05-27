@@ -120,6 +120,7 @@ export function ContactDetailPage() {
   const [editCompany, setEditCompany] = useState("");
   const [editDocument, setEditDocument] = useState("");
   const [editCity, setEditCity] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -167,6 +168,7 @@ export function ContactDetailPage() {
           metaFirstString(data.account?.metadata, ["document", "documento", "cpf", "cnpj", "taxId"]),
         );
         setEditCity(metaFirstString(data.account?.metadata, ["city", "cidade", "municipio"]));
+        setEditWebsite(data.account?.website ?? "");
         setEditNotes(data.notes ?? "");
         setAllTags(tags);
         setAllStages(stages.sort((a, b) => a.order - b.order));
@@ -192,6 +194,7 @@ export function ContactDetailPage() {
         company: editCompany.trim() === "" ? null : editCompany.trim(),
         document: editDocument.trim() === "" ? null : editDocument.trim(),
         city: editCity.trim() === "" ? null : editCity.trim(),
+        website: editWebsite.trim() === "" ? null : editWebsite.trim(),
       });
       setContact(updated);
       setEditName(updated.name);
@@ -202,6 +205,7 @@ export function ContactDetailPage() {
         metaFirstString(updated.account?.metadata, ["document", "documento", "cpf", "cnpj", "taxId"]),
       );
       setEditCity(metaFirstString(updated.account?.metadata, ["city", "cidade", "municipio"]));
+      setEditWebsite(updated.account?.website ?? "");
       setEditNotes(updated.notes ?? "");
       setEditing(false);
     } catch {
@@ -494,6 +498,18 @@ export function ContactDetailPage() {
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                    {t("contactEdit.fieldWebsite")}
+                  </label>
+                  <input
+                    type="url"
+                    value={editWebsite}
+                    onChange={(e) => setEditWebsite(e.target.value)}
+                    placeholder={t("contactEdit.placeholderOptional")}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                  />
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
@@ -633,6 +649,21 @@ export function ContactDetailPage() {
                 <div>
                   <dt className="text-xs text-gray-400 dark:text-ink-500">{t("contactDrawer.company")}</dt>
                   <dd className="text-sm text-gray-700 dark:text-ink-200">{contact.account.name}</dd>
+                </div>
+              ) : null}
+              {contact.account?.website ? (
+                <div>
+                  <dt className="text-xs text-gray-400 dark:text-ink-500">{t("contactDrawer.website")}</dt>
+                  <dd className="text-sm text-gray-700 dark:text-ink-200">
+                    <a
+                      href={contact.account.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      {contact.account.website}
+                    </a>
+                  </dd>
                 </div>
               ) : null}
               {contact.lifecycleStage ? (

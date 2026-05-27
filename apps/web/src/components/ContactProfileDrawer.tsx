@@ -17,6 +17,7 @@ import {
   FileText,
   StickyNote,
   Trash2,
+  Globe,
 } from "lucide-react";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
@@ -292,6 +293,26 @@ export function ContactProfileDrawer({
                         {t("contactDrawer.company")}
                       </dt>
                       <dd className="text-slate-800 dark:text-ink-200">{contact.account?.name ?? "—"}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="flex w-28 shrink-0 items-center gap-1.5 text-slate-400 dark:text-ink-500">
+                        <Globe className="h-3.5 w-3.5" />
+                        {t("contactDrawer.website")}
+                      </dt>
+                      <dd className="min-w-0 text-slate-800 dark:text-ink-200">
+                        {contact.account?.website ? (
+                          <a
+                            href={contact.account.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="break-all text-brand-600 hover:underline dark:text-brand-400"
+                          >
+                            {contact.account.website}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
                     </div>
                     <div className="flex gap-2">
                       <dt className="flex w-28 shrink-0 items-center gap-1.5 text-slate-400 dark:text-ink-500">

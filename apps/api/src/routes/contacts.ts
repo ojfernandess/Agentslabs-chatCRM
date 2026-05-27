@@ -32,6 +32,8 @@ const updateContactSchema = z.object({
   /** Gravado em account.metadata (chaves document / city). */
   document: z.string().max(120).nullable().optional(),
   city: z.string().max(120).nullable().optional(),
+  /** Site da empresa (Account.website). */
+  website: z.string().max(512).nullable().optional(),
   lifecycleStage: z.string().max(64).nullable().optional(),
   pipelineStageId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
@@ -488,6 +490,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const wantsCompany = parsed.data.company !== undefined;
+    const wantsWebsite = parsed.data.website !== undefined;
     const wantsMeta =
       parsed.data.document !== undefined || parsed.data.city !== undefined;
 
@@ -502,12 +505,14 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       data.accountId = parsed.data.accountId;
     }
 
-    if (wantsMeta && !wantsCompany) {
+    if ((wantsMeta || wantsWebsite) && !wantsCompany) {
       const doc = parsed.data.document;
       const city = parsed.data.city;
+      const web = parsed.data.website;
       const anyNonEmpty =
         (doc !== undefined && doc !== null && String(doc).trim() !== "") ||
-        (city !== undefined && city !== null && String(city).trim() !== "");
+        (city !== undefined && city !== null && String(city).trim() !== "") ||
+        (web !== undefined && web !== null && String(web).trim() !== "");
       if (!current.accountId && anyNonEmpty) {
         const acc = await prisma.account.create({
           data: { organizationId, name: current.name },
@@ -608,6 +613,23 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
               data: { metadata: nextMeta },
             });
           }
+        }
+      }
+
+      if (wantsWebsite) {
+        const row = await prisma.contact.findFirst({
+          where: { id: request.params.id, organizationId },
+          select: { accountId: true },
+        });
+        if (row?.accountId) {
+          const web =
+            parsed.data.website === null || parsed.data.website === undefined
+              ? null
+              : parsed.data.website.trim().slice(0, 512) || null;
+          await prisma.account.update({
+            where: { id: row.accountId },
+            data: { website: web },
+          });
         }
       }
 

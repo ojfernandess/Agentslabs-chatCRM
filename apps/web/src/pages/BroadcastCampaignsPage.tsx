@@ -618,7 +618,7 @@ export function BroadcastCampaignsPage() {
           <div className="hidden lg:block" />
         ) : null}
 
-        <div className={clsx("min-w-0", (centerTab === "followup" || centerTab === "leadfinder") && "max-w-3xl")}>
+        <div className={clsx("min-w-0", centerTab === "followup" && "max-w-3xl")}>
           {centerTab === "leadfinder" && showLeadFinder ? (
             <LeadFinderPanel
               tags={tags}

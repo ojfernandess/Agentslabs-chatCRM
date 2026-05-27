@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import { Link } from "react-router-dom";
 import {
   Building2,
   Download,
@@ -13,6 +14,7 @@ import {
   Star,
   Trash2,
   Globe,
+  AlertCircle,
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
@@ -31,6 +33,13 @@ import {
 } from "./FollowUpScheduleFields";
 import { LeadFinderAutomationsPanel } from "./LeadFinderAutomationsPanel";
 
+export interface LeadFinderExistingContact {
+  id: string;
+  name: string;
+  phone: string;
+  company: string | null;
+}
+
 export interface LeadFinderResult {
   placeId: string | null;
   title: string;
@@ -43,6 +52,11 @@ export interface LeadFinderResult {
   type: string | null;
   openState: string | null;
   unclaimedListing: boolean;
+  existingContact?: LeadFinderExistingContact | null;
+}
+
+function importableResultIndices(results: LeadFinderResult[]): number[] {
+  return results.map((r, i) => (r.existingContact ? -1 : i)).filter((i) => i >= 0);
 }
 
 export interface LeadFinderSegmentRow {
@@ -99,8 +113,13 @@ export function LeadFinderPanel({
   const [lastQuery, setLastQuery] = useState("");
   const [searchBusy, setSearchBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
+  const [followUpCreateBusy, setFollowUpCreateBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [lastImportedTagIds, setLastImportedTagIds] = useState<string[] | null>(null);
+  const [showPostImportFollowUp, setShowPostImportFollowUp] = useState(false);
+  const followUpSectionRef = useRef<HTMLDivElement>(null);
+  const postImportFollowUpRef = useRef<HTMLDivElement>(null);
   const [importTagIds, setImportTagIds] = useState<string[]>([]);
   const [leadTypeId, setLeadTypeId] = useState("");
   const [createImportTag, setCreateImportTag] = useState(true);
@@ -156,6 +175,25 @@ export function LeadFinderPanel({
     void loadStatus();
     void loadSegments();
   }, [loadStatus, loadSegments]);
+
+  useEffect(() => {
+    if (waInboxes.length > 0 && !inboxId) {
+      setInboxId(waInboxes[0].id);
+      onInboxChange(waInboxes[0].id);
+    }
+  }, [waInboxes, inboxId, onInboxChange]);
+
+  const scrollToFollowUpConfig = () => {
+    requestAnimationFrame(() => {
+      followUpSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const scrollToPostImportFollowUp = () => {
+    requestAnimationFrame(() => {
+      postImportFollowUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const patchFollowUpSchedule = (patch: Partial<FollowUpScheduleState>) =>
     setFollowUpSchedule((prev) => ({ ...prev, ...patch }));
@@ -225,6 +263,8 @@ export function LeadFinderPanel({
   const runSearch = async (start = 0, append = false) => {
     setSearchBusy(true);
     setError("");
+    setShowPostImportFollowUp(false);
+    setLastImportedTagIds(null);
     try {
       const payload =
         searchMode === "segment" && activeSegment
@@ -244,14 +284,16 @@ export function LeadFinderPanel({
           const offset = prev.length;
           setSelected((sel) => {
             const next = new Set(sel);
-            data.results.forEach((_, i) => next.add(offset + i));
+            data.results.forEach((row, i) => {
+              if (!row.existingContact) next.add(offset + i);
+            });
             return next;
           });
           return [...prev, ...data.results];
         });
       } else {
         setResults(data.results);
-        setSelected(new Set(data.results.map((_, i) => i)));
+        setSelected(new Set(importableResultIndices(data.results)));
         setSuccess("");
       }
     } catch (e) {
@@ -262,6 +304,7 @@ export function LeadFinderPanel({
   };
 
   const toggleSelect = (index: number) => {
+    if (results[index]?.existingContact) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
@@ -270,29 +313,64 @@ export function LeadFinderPanel({
     });
   };
 
+  const duplicateCount = useMemo(() => results.filter((r) => r.existingContact).length, [results]);
+
+  const selectedLeads = useMemo(
+    () => results.filter((row, i) => selected.has(i) && !row.existingContact),
+    [results, selected],
+  );
+
+  const importSearchCity = useMemo(() => {
+    if (searchMode === "segment" && activeSegment) return activeSegment.city.trim();
+    return city.trim();
+  }, [searchMode, activeSegment, city]);
+
   const toggleTag = (id: string) => {
     setImportTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const selectedLeads = useMemo(
-    () => results.filter((_, i) => selected.has(i)),
-    [results, selected],
-  );
+  const isFollowUpConfigValid =
+    Boolean(inboxId) &&
+    (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
+    (followUpSchedule.scheduleMode !== "scheduled" || Boolean(followUpSchedule.scheduledAt));
 
-  const canImportFollowUp =
-    !createFollowUp ||
-    (inboxId &&
-      (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
-      (followUpSchedule.scheduleMode !== "scheduled" || Boolean(followUpSchedule.scheduledAt)));
+  const canImportWithInlineFollowUp = !createFollowUp || isFollowUpConfigValid;
+
+  const buildFollowUpRequestPayload = (tagIds: string[], name: string) => {
+    const schedulePayload = buildFollowUpSchedulePayload(followUpSchedule);
+    return {
+      tagIds,
+      name,
+      inboxId,
+      messageType,
+      body: messageType === "TEXT" ? body.trim() : undefined,
+      templateId: messageType === "TEMPLATE" ? templateId : undefined,
+      scheduleType: schedulePayload.scheduleType,
+      scheduledAt: schedulePayload.scheduledAt,
+      segmentRules: schedulePayload.segmentRules,
+      cronExpression: schedulePayload.cronExpression,
+      autoStart: schedulePayload.autoStart,
+    };
+  };
 
   const handleImport = async () => {
-    if (selectedLeads.length === 0 || !canImportFollowUp) return;
+    if (selectedLeads.length === 0) return;
+
+    if (createFollowUp && !canImportWithInlineFollowUp) {
+      setError(t("leadFinder.followUpConfigRequired"));
+      scrollToFollowUpConfig();
+      return;
+    }
+
     setImportBusy(true);
     setError("");
     setSuccess("");
+    setShowPostImportFollowUp(false);
+    setLastImportedTagIds(null);
     try {
       const importTagName = lastQuery ? `Lead Finder: ${lastQuery}`.slice(0, 100) : undefined;
       const schedulePayload = createFollowUp ? buildFollowUpSchedulePayload(followUpSchedule) : null;
+      const followUpName = t("leadFinder.followUpDefaultName").replace("{query}", lastQuery || t("leadFinder.title"));
 
       const data = await api.post<{
         created: number;
@@ -316,9 +394,10 @@ export function LeadFinderPanel({
         createImportTag,
         importTagName,
         updateExisting,
+        searchCity: importSearchCity || null,
         followUp: createFollowUp
           ? {
-              name: t("leadFinder.followUpDefaultName").replace("{query}", lastQuery || t("leadFinder.title")),
+              name: followUpName,
               inboxId,
               messageType,
               body: messageType === "TEXT" ? body.trim() : undefined,
@@ -336,7 +415,13 @@ export function LeadFinderPanel({
         .replace("{created}", String(data.created))
         .replace("{updated}", String(data.updated))
         .replace("{skipped}", String(data.skipped));
-      if (data.followUp) msg += ` ${t("leadFinder.followUpSuccess")}`;
+      if (data.followUp) {
+        msg += ` ${t("leadFinder.followUpSuccess")}`;
+      } else if (data.tagIds.length > 0) {
+        setLastImportedTagIds(data.tagIds);
+        setShowPostImportFollowUp(true);
+        scrollToPostImportFollowUp();
+      }
       setSuccess(msg);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("leadFinder.importError"));
@@ -344,6 +429,82 @@ export function LeadFinderPanel({
       setImportBusy(false);
     }
   };
+
+  const handlePostImportFollowUp = async () => {
+    if (!lastImportedTagIds?.length) return;
+    if (!isFollowUpConfigValid) {
+      setError(t("leadFinder.followUpConfigRequired"));
+      scrollToPostImportFollowUp();
+      return;
+    }
+
+    setFollowUpCreateBusy(true);
+    setError("");
+    try {
+      const followUpName = t("leadFinder.followUpDefaultName").replace("{query}", lastQuery || t("leadFinder.title"));
+      await api.post("/lead-finder/create-follow-up", buildFollowUpRequestPayload(lastImportedTagIds, followUpName));
+      setSuccess((prev) => (prev ? `${prev} ${t("leadFinder.followUpSuccess")}` : t("leadFinder.followUpSuccess")));
+      setShowPostImportFollowUp(false);
+      setLastImportedTagIds(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("leadFinder.followUpError"));
+    } finally {
+      setFollowUpCreateBusy(false);
+    }
+  };
+
+  const renderFollowUpMessageFields = () => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label className="text-xs font-semibold text-ink-600">{t("broadcastPage.creatorInbox")}</label>
+        <select
+          className="input mt-1 w-full"
+          value={inboxId}
+          onChange={(e) => {
+            setInboxId(e.target.value);
+            onInboxChange(e.target.value);
+          }}
+        >
+          <option value="">{t("broadcastPage.selectInbox")}</option>
+          {waInboxes.map((inbox) => (
+            <option key={inbox.id} value={inbox.id}>
+              {inbox.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex gap-2 sm:col-span-2">
+        {(["TEMPLATE", "TEXT"] as const).map((mt) => (
+          <button
+            key={mt}
+            type="button"
+            onClick={() => setMessageType(mt)}
+            className={clsx(
+              "rounded-lg border px-3 py-2 text-xs font-semibold",
+              messageType === mt ? "border-brand-400 bg-brand-50" : "border-ink-200",
+            )}
+          >
+            {mt === "TEMPLATE" ? t("broadcastPage.typeTemplate") : t("broadcastPage.typeText")}
+          </button>
+        ))}
+      </div>
+      {messageType === "TEMPLATE" ? (
+        <div className="sm:col-span-2">
+          <select className="input w-full" value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={templatesLoading}>
+            <option value="">{templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}</option>
+            {visibleTemplates.map((tpl) => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.name}
+                {templateOptionStatusSuffix(tpl, t)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <textarea className="input min-h-[88px] sm:col-span-2" value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("broadcastPage.body")} />
+      )}
+    </div>
+  );
 
   if (statusLoading) {
     return <p className="text-sm text-ink-500">{t("common.loading")}</p>;
@@ -538,8 +699,19 @@ export function LeadFinderPanel({
                   <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">
                     {t("leadFinder.resultsTitle").replace("{count}", String(results.length))}
                   </h3>
-                  <span className="text-xs text-ink-500">{t("leadFinder.selectedCount").replace("{count}", String(selectedLeads.length))}</span>
+                  <span className="text-xs text-ink-500">
+                    {t("leadFinder.selectedCount").replace("{count}", String(selectedLeads.length))}
+                    {duplicateCount > 0
+                      ? ` · ${t("leadFinder.duplicateCount").replace("{count}", String(duplicateCount))}`
+                      : ""}
+                  </span>
                 </div>
+                {duplicateCount > 0 ? (
+                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {t("leadFinder.duplicateBanner")}
+                  </p>
+                ) : null}
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead>
@@ -550,13 +722,28 @@ export function LeadFinderPanel({
                         <th className="px-2 py-2">{t("leadFinder.colAddress")}</th>
                         <th className="px-2 py-2">{t("leadFinder.colType")}</th>
                         <th className="px-2 py-2">{t("leadFinder.colRating")}</th>
+                        <th className="px-2 py-2">{t("leadFinder.colStatus")}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {results.map((row, index) => (
-                        <tr key={`${row.placeId ?? row.title}-${index}`} className="border-b border-ink-100 dark:border-white/5">
+                      {results.map((row, index) => {
+                        const duplicate = row.existingContact;
+                        return (
+                        <tr
+                          key={`${row.placeId ?? row.title}-${index}`}
+                          className={clsx(
+                            "border-b border-ink-100 dark:border-white/5",
+                            duplicate && "bg-amber-50/60 dark:bg-amber-950/15",
+                          )}
+                        >
                           <td className="px-2 py-2">
-                            <input type="checkbox" checked={selected.has(index)} onChange={() => toggleSelect(index)} />
+                            <input
+                              type="checkbox"
+                              checked={selected.has(index)}
+                              disabled={Boolean(duplicate)}
+                              onChange={() => toggleSelect(index)}
+                              title={duplicate ? t("leadFinder.duplicateSkipHint") : undefined}
+                            />
                           </td>
                           <td className="px-2 py-2 font-medium text-ink-900 dark:text-ink-50">
                             <div>{row.title}</div>
@@ -599,8 +786,28 @@ export function LeadFinderPanel({
                               "—"
                             )}
                           </td>
+                          <td className="max-w-[240px] px-2 py-2 text-xs">
+                            {duplicate ? (
+                              <div className="space-y-1 text-amber-900 dark:text-amber-100">
+                                <p className="font-semibold">{t("leadFinder.duplicateSkipHint")}</p>
+                                <p className="text-ink-700 dark:text-ink-300">
+                                  {duplicate.name}
+                                  {duplicate.company ? ` · ${duplicate.company}` : ""}
+                                </p>
+                                <Link
+                                  to={`/contacts/${duplicate.id}`}
+                                  className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline dark:text-brand-400"
+                                >
+                                  {t("leadFinder.viewExistingContact")}
+                                </Link>
+                              </div>
+                            ) : (
+                              <span className="text-emerald-700 dark:text-emerald-400">{t("leadFinder.statusNew")}</span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -653,77 +860,75 @@ export function LeadFinderPanel({
                     {t("leadFinder.updateExisting")}
                   </label>
                   <label className="flex items-center gap-2 text-sm font-semibold text-ink-800">
-                    <input type="checkbox" checked={createFollowUp} onChange={(e) => setCreateFollowUp(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={createFollowUp}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setCreateFollowUp(checked);
+                        if (checked) scrollToFollowUpConfig();
+                      }}
+                    />
                     {t("leadFinder.createFollowUpOnImport")}
                   </label>
                 </div>
 
                 {createFollowUp ? (
-                  <div className="mt-4 space-y-4 rounded-xl border border-violet-200/80 bg-violet-50/40 p-4 dark:border-violet-800/40 dark:bg-violet-950/20">
+                  <div
+                    ref={followUpSectionRef}
+                    className="mt-4 space-y-4 rounded-xl border border-violet-200/80 bg-violet-50/40 p-4 dark:border-violet-800/40 dark:bg-violet-950/20"
+                  >
                     <FollowUpScheduleFields state={followUpSchedule} onChange={patchFollowUpSchedule} title={t("leadFinder.followUpWhenTitle")} />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="text-xs font-semibold text-ink-600">{t("broadcastPage.creatorInbox")}</label>
-                        <select
-                          className="input mt-1 w-full"
-                          value={inboxId}
-                          onChange={(e) => {
-                            setInboxId(e.target.value);
-                            onInboxChange(e.target.value);
-                          }}
-                        >
-                          <option value="">{t("broadcastPage.selectInbox")}</option>
-                          {waInboxes.map((inbox) => (
-                            <option key={inbox.id} value={inbox.id}>
-                              {inbox.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex gap-2 sm:col-span-2">
-                        {(["TEMPLATE", "TEXT"] as const).map((mt) => (
-                          <button
-                            key={mt}
-                            type="button"
-                            onClick={() => setMessageType(mt)}
-                            className={clsx(
-                              "rounded-lg border px-3 py-2 text-xs font-semibold",
-                              messageType === mt ? "border-brand-400 bg-brand-50" : "border-ink-200",
-                            )}
-                          >
-                            {mt === "TEMPLATE" ? t("broadcastPage.typeTemplate") : t("broadcastPage.typeText")}
-                          </button>
-                        ))}
-                      </div>
-                      {messageType === "TEMPLATE" ? (
-                        <div className="sm:col-span-2">
-                          <select className="input w-full" value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={templatesLoading}>
-                            <option value="">{templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}</option>
-                            {visibleTemplates.map((tpl) => (
-                              <option key={tpl.id} value={tpl.id}>
-                                {tpl.name}
-                                {templateOptionStatusSuffix(tpl, t)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <textarea className="input min-h-[88px] sm:col-span-2" value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("broadcastPage.body")} />
-                      )}
-                    </div>
+                    {renderFollowUpMessageFields()}
                   </div>
                 ) : null}
 
                 <button
                   type="button"
                   className="btn-primary mt-4 inline-flex items-center gap-2 text-sm"
-                  disabled={importBusy || selectedLeads.length === 0 || !canImportFollowUp}
+                  disabled={importBusy || selectedLeads.length === 0}
                   onClick={() => void handleImport()}
                 >
                   {importBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {t("leadFinder.importBtn").replace("{count}", String(selectedLeads.length))}
                 </button>
               </section>
+
+              {showPostImportFollowUp && lastImportedTagIds?.length ? (
+                <section
+                  ref={postImportFollowUpRef}
+                  className="rounded-2xl border border-violet-300/80 bg-violet-50/50 p-5 shadow-sm dark:border-violet-700/50 dark:bg-violet-950/25"
+                >
+                  <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("leadFinder.followUpTitle")}</h3>
+                  <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("leadFinder.followUpHint")}</p>
+                  <div className="mt-4 space-y-4">
+                    <FollowUpScheduleFields state={followUpSchedule} onChange={patchFollowUpSchedule} title={t("leadFinder.followUpWhenTitle")} />
+                    {renderFollowUpMessageFields()}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-primary inline-flex items-center gap-2 text-sm"
+                      disabled={followUpCreateBusy}
+                      onClick={() => void handlePostImportFollowUp()}
+                    >
+                      {followUpCreateBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {t("leadFinder.followUpBtn")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary text-sm"
+                      disabled={followUpCreateBusy}
+                      onClick={() => {
+                        setShowPostImportFollowUp(false);
+                        setLastImportedTagIds(null);
+                      }}
+                    >
+                      {t("leadFinder.followUpSkip")}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
             </>
           ) : null}
         </>
