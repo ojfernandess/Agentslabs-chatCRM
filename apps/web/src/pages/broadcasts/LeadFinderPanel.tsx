@@ -113,13 +113,9 @@ export function LeadFinderPanel({
   const [lastQuery, setLastQuery] = useState("");
   const [searchBusy, setSearchBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
-  const [followUpCreateBusy, setFollowUpCreateBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [lastImportedTagIds, setLastImportedTagIds] = useState<string[] | null>(null);
-  const [showPostImportFollowUp, setShowPostImportFollowUp] = useState(false);
   const followUpSectionRef = useRef<HTMLDivElement>(null);
-  const postImportFollowUpRef = useRef<HTMLDivElement>(null);
   const [importTagIds, setImportTagIds] = useState<string[]>([]);
   const [leadTypeId, setLeadTypeId] = useState("");
   const [createImportTag, setCreateImportTag] = useState(true);
@@ -186,12 +182,6 @@ export function LeadFinderPanel({
   const scrollToFollowUpConfig = () => {
     requestAnimationFrame(() => {
       followUpSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  };
-
-  const scrollToPostImportFollowUp = () => {
-    requestAnimationFrame(() => {
-      postImportFollowUpRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -263,8 +253,6 @@ export function LeadFinderPanel({
   const runSearch = async (start = 0, append = false) => {
     setSearchBusy(true);
     setError("");
-    setShowPostImportFollowUp(false);
-    setLastImportedTagIds(null);
     try {
       const payload =
         searchMode === "segment" && activeSegment
@@ -329,44 +317,18 @@ export function LeadFinderPanel({
     setImportTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const isFollowUpConfigValid =
-    Boolean(inboxId) &&
-    (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
-    (followUpSchedule.scheduleMode !== "scheduled" || Boolean(followUpSchedule.scheduledAt));
-
-  const canImportWithInlineFollowUp = !createFollowUp || isFollowUpConfigValid;
-
-  const buildFollowUpRequestPayload = (tagIds: string[], name: string) => {
-    const schedulePayload = buildFollowUpSchedulePayload(followUpSchedule);
-    return {
-      tagIds,
-      name,
-      inboxId,
-      messageType,
-      body: messageType === "TEXT" ? body.trim() : undefined,
-      templateId: messageType === "TEMPLATE" ? templateId : undefined,
-      scheduleType: schedulePayload.scheduleType,
-      scheduledAt: schedulePayload.scheduledAt,
-      segmentRules: schedulePayload.segmentRules,
-      cronExpression: schedulePayload.cronExpression,
-      autoStart: schedulePayload.autoStart,
-    };
-  };
+  const canImportFollowUp =
+    !createFollowUp ||
+    (Boolean(inboxId) &&
+      (messageType === "TEXT" ? body.trim().length > 0 : Boolean(templateId)) &&
+      (followUpSchedule.scheduleMode !== "scheduled" || Boolean(followUpSchedule.scheduledAt)));
 
   const handleImport = async () => {
-    if (selectedLeads.length === 0) return;
-
-    if (createFollowUp && !canImportWithInlineFollowUp) {
-      setError(t("leadFinder.followUpConfigRequired"));
-      scrollToFollowUpConfig();
-      return;
-    }
+    if (selectedLeads.length === 0 || !canImportFollowUp) return;
 
     setImportBusy(true);
     setError("");
     setSuccess("");
-    setShowPostImportFollowUp(false);
-    setLastImportedTagIds(null);
     try {
       const importTagName = lastQuery ? `Lead Finder: ${lastQuery}`.slice(0, 100) : undefined;
       const schedulePayload = createFollowUp ? buildFollowUpSchedulePayload(followUpSchedule) : null;
@@ -415,41 +377,12 @@ export function LeadFinderPanel({
         .replace("{created}", String(data.created))
         .replace("{updated}", String(data.updated))
         .replace("{skipped}", String(data.skipped));
-      if (data.followUp) {
-        msg += ` ${t("leadFinder.followUpSuccess")}`;
-      } else if (data.tagIds.length > 0) {
-        setLastImportedTagIds(data.tagIds);
-        setShowPostImportFollowUp(true);
-        scrollToPostImportFollowUp();
-      }
+      if (data.followUp) msg += ` ${t("leadFinder.followUpSuccess")}`;
       setSuccess(msg);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("leadFinder.importError"));
     } finally {
       setImportBusy(false);
-    }
-  };
-
-  const handlePostImportFollowUp = async () => {
-    if (!lastImportedTagIds?.length) return;
-    if (!isFollowUpConfigValid) {
-      setError(t("leadFinder.followUpConfigRequired"));
-      scrollToPostImportFollowUp();
-      return;
-    }
-
-    setFollowUpCreateBusy(true);
-    setError("");
-    try {
-      const followUpName = t("leadFinder.followUpDefaultName").replace("{query}", lastQuery || t("leadFinder.title"));
-      await api.post("/lead-finder/create-follow-up", buildFollowUpRequestPayload(lastImportedTagIds, followUpName));
-      setSuccess((prev) => (prev ? `${prev} ${t("leadFinder.followUpSuccess")}` : t("leadFinder.followUpSuccess")));
-      setShowPostImportFollowUp(false);
-      setLastImportedTagIds(null);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("leadFinder.followUpError"));
-    } finally {
-      setFollowUpCreateBusy(false);
     }
   };
 
@@ -893,42 +826,6 @@ export function LeadFinderPanel({
                   {t("leadFinder.importBtn").replace("{count}", String(selectedLeads.length))}
                 </button>
               </section>
-
-              {showPostImportFollowUp && lastImportedTagIds?.length ? (
-                <section
-                  ref={postImportFollowUpRef}
-                  className="rounded-2xl border border-violet-300/80 bg-violet-50/50 p-5 shadow-sm dark:border-violet-700/50 dark:bg-violet-950/25"
-                >
-                  <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("leadFinder.followUpTitle")}</h3>
-                  <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("leadFinder.followUpHint")}</p>
-                  <div className="mt-4 space-y-4">
-                    <FollowUpScheduleFields state={followUpSchedule} onChange={patchFollowUpSchedule} title={t("leadFinder.followUpWhenTitle")} />
-                    {renderFollowUpMessageFields()}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="btn-primary inline-flex items-center gap-2 text-sm"
-                      disabled={followUpCreateBusy}
-                      onClick={() => void handlePostImportFollowUp()}
-                    >
-                      {followUpCreateBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {t("leadFinder.followUpBtn")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary text-sm"
-                      disabled={followUpCreateBusy}
-                      onClick={() => {
-                        setShowPostImportFollowUp(false);
-                        setLastImportedTagIds(null);
-                      }}
-                    >
-                      {t("leadFinder.followUpSkip")}
-                    </button>
-                  </div>
-                </section>
-              ) : null}
             </>
           ) : null}
         </>
