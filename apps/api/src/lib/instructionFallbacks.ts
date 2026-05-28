@@ -56,8 +56,8 @@ export function buildInstructionFallbackBlock(
     isEn ? "[OpenConduit — instruction fallbacks]" : "[OpenConduit — fallbacks de instrução]",
     "",
     isEn
-      ? "When the conversation or the customer's latest message matches the «trigger excerpt» below (same topic, intent, or information), execute the action immediately — without extra confirmation unless main instructions say otherwise."
-      : "Quando a conversa ou a última mensagem do cliente corresponder ao «trecho gatilho» abaixo (mesmo tema, intenção ou informação), execute imediatamente a ação indicada — sem pedir confirmação extra, salvo se as instruções principais disserem o contrário.",
+      ? "When the situation in the conversation matches the «trigger excerpt» below — i.e. when you would apply that part of the main instructions (same topic, intent, or rule) — execute the indicated action immediately, without extra confirmation unless the main instructions say otherwise."
+      : "Quando a situação da conversa corresponder ao «trecho gatilho» abaixo — ou seja, quando aplicaria essa parte das instruções principais (mesmo tema, intenção ou regra) — execute imediatamente a ação indicada, sem pedir confirmação extra, salvo se as instruções principais disserem o contrário.",
     "",
   ];
 
@@ -105,29 +105,45 @@ export function buildInstructionFallbackBlock(
 const FALLBACK_MARKER_PT = "[OpenConduit — fallbacks de instrução]";
 const FALLBACK_MARKER_EN = "[OpenConduit — instruction fallbacks]";
 
+function stripInstructionFallbackBlocks(text: string): string {
+  let result = text;
+  for (const marker of [FALLBACK_MARKER_PT, FALLBACK_MARKER_EN]) {
+    let idx = result.indexOf(marker);
+    while (idx !== -1) {
+      const autoEnd = result.indexOf("\n<!-- /openconduit:auto-prompt -->", idx);
+      const nextOcSection = result.indexOf("\n[OpenConduit —", idx + marker.length);
+      let end: number;
+      if (autoEnd !== -1 && (nextOcSection === -1 || autoEnd < nextOcSection)) {
+        end = autoEnd;
+      } else if (nextOcSection !== -1) {
+        end = nextOcSection;
+      } else {
+        end = result.length;
+      }
+      result = `${result.slice(0, idx).trimEnd()}${result.slice(end)}`;
+      idx = result.indexOf(marker);
+    }
+  }
+  return result.replace(/\n{3,}/g, "\n\n");
+}
+
 export function mergeInstructionFallbacksIntoSystemPrompt(
   systemInstructions: string,
   fallbacks: InstructionFallback[],
   locale: "pt" | "en" = "pt",
 ): string {
+  const without = stripInstructionFallbackBlocks(systemInstructions);
   const rows = fallbacks.filter((f) => f.triggerText.trim());
-  if (rows.length === 0) return systemInstructions;
+  if (rows.length === 0) return without.trimEnd();
 
   const fbBlock = buildInstructionFallbackBlock(rows, locale);
-  if (!fbBlock) return systemInstructions;
-
-  if (
-    systemInstructions.includes(FALLBACK_MARKER_PT) ||
-    systemInstructions.includes(FALLBACK_MARKER_EN)
-  ) {
-    return systemInstructions;
-  }
+  if (!fbBlock) return without.trimEnd();
 
   const autoEnd = "\n<!-- /openconduit:auto-prompt -->";
-  const endIdx = systemInstructions.indexOf(autoEnd);
+  const endIdx = without.indexOf(autoEnd);
   if (endIdx !== -1) {
-    return `${systemInstructions.slice(0, endIdx).trimEnd()}\n\n${fbBlock}\n${systemInstructions.slice(endIdx)}`;
+    return `${without.slice(0, endIdx).trimEnd()}\n\n${fbBlock}\n${without.slice(endIdx)}`;
   }
 
-  return `${systemInstructions.trimEnd()}\n\n${fbBlock}`;
+  return `${without.trimEnd()}\n\n${fbBlock}`;
 }

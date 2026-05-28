@@ -519,9 +519,19 @@ function formToPayload(
         ? (ctx.orgTeams.find((o) => o.id === fb.teamId)?.name ?? fb.teamName ?? fb.teamId)
         : fb.teamName,
   }));
+  const nativeToolsWithFallbacks = { ...form.nativeTools } as Record<string, boolean>;
+  for (const fb of fallbacksResolved) {
+    if (fb.action === "transfer_human") nativeToolsWithFallbacks.call_human = true;
+    if (fb.action === "transfer_team") {
+      nativeToolsWithFallbacks.transfer_to_team = true;
+      nativeToolsWithFallbacks.list_teams = true;
+      nativeToolsWithFallbacks.assign_team_to_conversation = true;
+    }
+    if (fb.action === "set_pending") nativeToolsWithFallbacks.set_conversation_status = true;
+  }
 
   const autoInner = buildPromptAutoInstructionBlock({
-    nativeTools: form.nativeTools as Record<string, boolean>,
+    nativeTools: nativeToolsWithFallbacks,
     linkedArticleTitles: linkedTitles,
     connectedToolNames: connectedNames,
     connectedToolInstructions: connectedInstructions,
@@ -567,7 +577,7 @@ function formToPayload(
   const fu = form.followUpMessage.trim();
   const behaviorConfig: Record<string, unknown> = {
     ...defaultBehavior,
-    nativeTools: { ...form.nativeTools },
+    nativeTools: { ...nativeToolsWithFallbacks },
     connectedTools: form.connectedTools,
     connectedTags: form.connectedTags,
     escalationRules: {

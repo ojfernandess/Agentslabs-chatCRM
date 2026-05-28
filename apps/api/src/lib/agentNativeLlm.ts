@@ -37,6 +37,7 @@ import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 import {
   mergeInstructionFallbacksIntoSystemPrompt,
   parseInstructionFallbacks,
+  type InstructionFallback,
 } from "./instructionFallbacks.js";
 
 const STALL_RE =
@@ -71,6 +72,7 @@ export type NativeToolsFlags = {
   list_teams: boolean;
   call_human: boolean;
   assign_contact_tags: boolean;
+  set_conversation_status: boolean;
 };
 
 const defaultNativeTools = (): NativeToolsFlags => ({
@@ -79,7 +81,24 @@ const defaultNativeTools = (): NativeToolsFlags => ({
   list_teams: false,
   call_human: true,
   assign_contact_tags: false,
+  set_conversation_status: false,
 });
+
+function applyFallbackNativeToolFlags(
+  flags: NativeToolsFlags,
+  fallbacks: InstructionFallback[],
+): NativeToolsFlags {
+  const next = { ...flags };
+  for (const fb of fallbacks) {
+    if (fb.action === "transfer_human") next.call_human = true;
+    if (fb.action === "transfer_team") {
+      next.transfer_to_team = true;
+      next.list_teams = true;
+    }
+    if (fb.action === "set_pending") next.set_conversation_status = true;
+  }
+  return next;
+}
 
 export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlags {
   const base = defaultNativeTools();
@@ -97,6 +116,7 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
     list_teams: flag("list_teams", false) || assignOn || transferOn,
     call_human: flag("call_human", base.call_human),
     assign_contact_tags: flag("assign_contact_tags", base.assign_contact_tags),
+    set_conversation_status: flag("set_conversation_status", base.set_conversation_status),
   };
 }
 
@@ -259,6 +279,27 @@ function buildOpenAiTools(
             reason: { type: "string", description: "Motivo da transferência (visível só na equipa, nota interna)" },
             team_id: { type: "string", description: "UUID opcional da equipa para encaminhar" },
           },
+        },
+      },
+    });
+  }
+  if (flags.set_conversation_status) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "set_conversation_status",
+        description:
+          "Altera o estado da conversa no CRM. Use PENDING quando precisar marcar como pendente (ex.: aguarda resposta interna).",
+        parameters: {
+          type: "object",
+          properties: {
+            status: {
+              type: "string",
+              enum: ["OPEN", "PENDING", "RESOLVED"],
+              description: "Novo estado da conversa",
+            },
+          },
+          required: ["status"],
         },
       },
     });
@@ -454,6 +495,20 @@ async function executeNativeTool(input: {
         log.warn({ err, conversationId }, "recordNativeAgentTransferHandoff failed after call_human");
       }
       return JSON.stringify({ ok: true, message: "Conversa aberta para atendimento humano." });
+    }
+
+    if (name === "set_conversation_status" && flags.set_conversation_status) {
+      const statusRaw = args.status ?? args.conversationStatus;
+      const status =
+        typeof statusRaw === "string" ? statusRaw.trim().toUpperCase() : "";
+      if (status !== "OPEN" && status !== "PENDING" && status !== "RESOLVED") {
+        return JSON.stringify({ ok: false, error: "invalid_status" });
+      }
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { status, updatedAt: new Date() },
+      });
+      return JSON.stringify({ ok: true, status, message: "Estado da conversa actualizado." });
     }
   } catch (err) {
     log.warn({ err, tool: name }, "native agent tool failed");
@@ -683,9 +738,11 @@ export async function generateNativeAgentReply(input: {
   }
   systemInstructions = mergeInstructionFallbacksIntoSystemPrompt(systemInstructions, instructionFallbacks);
 
+  let flags = applyFallbackNativeToolFlags(
+    parseNativeToolsFromBehavior(profile.behaviorConfig),
+    instructionFallbacks,
+  );
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
-
-  const flags = parseNativeToolsFromBehavior(profile.behaviorConfig);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
