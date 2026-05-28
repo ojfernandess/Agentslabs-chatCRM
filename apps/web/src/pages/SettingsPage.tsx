@@ -117,6 +117,7 @@ interface AppSettings {
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
   conversationsAttendanceTabEnabled?: boolean;
+  conversationsListShowContactTags?: boolean;
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
@@ -274,6 +275,7 @@ export function SettingsPage() {
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
   const [wfOfferReminder, setWfOfferReminder] = useState(true);
   const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
+  const [wfListShowContactTags, setWfListShowContactTags] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -587,6 +589,7 @@ export function SettingsPage() {
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWfOfferReminder(data.resolveOfferReminder ?? true);
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
+        setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -753,6 +756,7 @@ export function SettingsPage() {
         resolveRequireLeadType: wfRequireLeadType,
         resolveOfferReminder: wfOfferReminder,
         conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
+        conversationsListShowContactTags: wfListShowContactTags,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -767,6 +771,7 @@ export function SettingsPage() {
       setWfRequireLeadType(data.resolveRequireLeadType ?? true);
       setWfOfferReminder(data.resolveOfferReminder ?? true);
       setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
+      setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
@@ -2148,6 +2153,30 @@ export function SettingsPage() {
                         className={clsx(
                           "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
                           wfAttendanceTabEnabled ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowListShowTags")}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowListShowTagsHint")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={wfListShowContactTags}
+                      onClick={() => setWfListShowContactTags((v) => !v)}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        wfListShowContactTags ? "bg-brand-500" : "bg-gray-200",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          wfListShowContactTags ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>

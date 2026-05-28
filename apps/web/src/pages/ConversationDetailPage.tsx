@@ -61,6 +61,12 @@ import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } f
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { resolveCannedResponseVariables } from "@/lib/cannedResponseVariables";
+import {
+  buildNewContactNoteEntry,
+  parseContactNotes,
+  serializeContactNotes,
+  type ContactNoteEntry,
+} from "@/lib/contactNotes";
 import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAuth } from "@/hooks/useAuth";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
@@ -312,6 +318,8 @@ export function ConversationDetailPage() {
   const [newContactNoteDraft, setNewContactNoteDraft] = useState("");
   const [contactNotesBusy, setContactNotesBusy] = useState(false);
   const [contactNotesError, setContactNotesError] = useState("");
+  const [editingContactNoteIndex, setEditingContactNoteIndex] = useState<number | null>(null);
+  const [editingContactNoteDraft, setEditingContactNoteDraft] = useState("");
   const [priorityBusy, setPriorityBusy] = useState(false);
   const [priorityError, setPriorityError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1485,17 +1493,19 @@ export function ConversationDetailPage() {
       : null;
 
   const addContactNote = async () => {
-    if (!conversation) return;
+    if (!conversation || !user?.id) return;
     const text = newContactNoteDraft.trim();
     if (!text) return;
     setContactNotesBusy(true);
     setContactNotesError("");
     try {
       const when = format(new Date(), "dd/MM/yyyy HH:mm", { locale: dateLocale });
-      const who = user?.displayName?.trim() || user?.name || "—";
-      const block = `---\n${when} · ${who}\n${text}`;
-      const existing = (conversation.contact.notes ?? "").trim();
-      const nextNotes = existing ? `${existing}\n\n${block}` : block;
+      const who = user.displayName?.trim() || user.name || "—";
+      const existing = parseContactNotes(conversation.contact.notes);
+      const nextNotes = serializeContactNotes([
+        ...existing,
+        buildNewContactNoteEntry({ userId: user.id, when, who, text }),
+      ]);
       await api.put(`/contacts/${conversation.contact.id}`, { notes: nextNotes });
       setConversation((c) => (c ? { ...c, contact: { ...c.contact, notes: nextNotes } } : c));
       setNewContactNoteDraft("");
@@ -1506,7 +1516,52 @@ export function ConversationDetailPage() {
     }
   };
 
-  const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => (
+  const saveContactNotesEntries = async (entries: ContactNoteEntry[]) => {
+    if (!conversation) return;
+    setContactNotesBusy(true);
+    setContactNotesError("");
+    try {
+      const nextNotes = serializeContactNotes(entries);
+      await api.put(`/contacts/${conversation.contact.id}`, { notes: nextNotes || null });
+      setConversation((c) => (c ? { ...c, contact: { ...c.contact, notes: nextNotes } } : c));
+      setEditingContactNoteIndex(null);
+      setEditingContactNoteDraft("");
+    } catch {
+      setContactNotesError(t("conversationDetail.contactNotesSaveFailed"));
+    } finally {
+      setContactNotesBusy(false);
+    }
+  };
+
+  const startEditContactNote = (index: number, body: string) => {
+    setEditingContactNoteIndex(index);
+    setEditingContactNoteDraft(body);
+    setContactNotesError("");
+  };
+
+  const saveEditedContactNote = async () => {
+    if (!conversation || editingContactNoteIndex == null || !user?.id) return;
+    const text = editingContactNoteDraft.trim();
+    if (!text) return;
+    const entries = parseContactNotes(conversation.contact.notes);
+    const entry = entries[editingContactNoteIndex];
+    if (!entry || entry.createdById !== user.id) return;
+    entries[editingContactNoteIndex] = { ...entry, body: text };
+    await saveContactNotesEntries(entries);
+  };
+
+  const deleteContactNote = async (index: number) => {
+    if (!conversation || !user?.id) return;
+    const entries = parseContactNotes(conversation.contact.notes);
+    const entry = entries[index];
+    if (!entry || entry.createdById !== user.id) return;
+    if (!window.confirm(t("conversationDetail.contactNotesDeleteConfirm"))) return;
+    await saveContactNotesEntries(entries.filter((_, i) => i !== index));
+  };
+
+  const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => {
+    const parsedContactNotes = parseContactNotes(conversation.contact.notes);
+    return (
     <div className="flex min-h-0 flex-col gap-4">
       <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3 dark:border-white/10">
         <p className="text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
@@ -1711,11 +1766,83 @@ export function ConversationDetailPage() {
             {t("conversationDetail.contactNotes")}
           </p>
           <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-400">{t("conversationDetail.contactNotesAddHint")}</p>
-          <div className="mt-2 max-h-36 overflow-y-auto rounded-xl border border-ink-200/80 bg-ink-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
-            {conversation.contact.notes?.trim() ? (
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink-700 dark:text-ink-200">
-                {conversation.contact.notes}
-              </p>
+          <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-ink-200/80 bg-ink-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+            {parsedContactNotes.length > 0 ? (
+              <ul className="space-y-3">
+                {parsedContactNotes.map((note, index) => {
+                  const canManage = Boolean(user?.id && note.createdById === user.id);
+                  const isEditing = editingContactNoteIndex === index;
+                  return (
+                    <li
+                      key={`${note.headerLine}-${index}`}
+                      className="rounded-lg border border-ink-200/70 bg-white/80 px-2.5 py-2 dark:border-white/10 dark:bg-ink-950/40"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[10px] font-medium text-ink-500 dark:text-ink-400">{note.headerLine}</p>
+                        {canManage && !isEditing ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEditContactNote(index, note.body)}
+                              disabled={contactNotesBusy}
+                              className="rounded p-1 text-ink-500 hover:bg-ink-100 hover:text-ink-800 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-ink-100"
+                              title={t("conversationDetail.contactNotesEdit")}
+                              aria-label={t("conversationDetail.contactNotesEdit")}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteContactNote(index)}
+                              disabled={contactNotesBusy}
+                              className="rounded p-1 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                              title={t("conversationDetail.contactNotesDelete")}
+                              aria-label={t("conversationDetail.contactNotesDelete")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      {isEditing ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={editingContactNoteDraft}
+                            onChange={(e) => setEditingContactNoteDraft(e.target.value)}
+                            rows={3}
+                            className="w-full resize-y rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-900 dark:border-white/10 dark:bg-ink-900 dark:text-ink-50"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingContactNoteIndex(null);
+                                setEditingContactNoteDraft("");
+                              }}
+                              disabled={contactNotesBusy}
+                              className="rounded-lg border border-ink-200 px-2 py-1 text-[11px] font-semibold text-ink-700 dark:border-white/10 dark:text-ink-200"
+                            >
+                              {t("common.cancel")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void saveEditedContactNote()}
+                              disabled={contactNotesBusy || !editingContactNoteDraft.trim()}
+                              className="rounded-lg bg-brand-500 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                            >
+                              {contactNotesBusy ? t("common.saving") : t("common.save")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-700 dark:text-ink-200">
+                          {note.body}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
               <p className="text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.contactNotesEmpty")}</p>
             )}
@@ -2157,7 +2284,8 @@ export function ConversationDetailPage() {
       </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row">

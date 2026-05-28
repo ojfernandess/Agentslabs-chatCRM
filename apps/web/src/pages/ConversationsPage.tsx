@@ -16,6 +16,7 @@ import {
 } from "@/components/ConversationContextMenu";
 import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
+import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
   id: string;
@@ -35,6 +36,7 @@ interface Conversation {
     thumbnail?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
+    tags?: { tag: { id: string; name: string; color: string } }[];
   };
   assignedTo: { id: string; name: string } | null;
   team: { id: string; name: string } | null;
@@ -82,6 +84,7 @@ export function ConversationsPage() {
     position: { x: number; y: number };
   } | null>(null);
   const hasAnimated = useRef(false);
+  const initialAttendanceScopeApplied = useRef(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -95,6 +98,8 @@ export function ConversationsPage() {
 
   const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
+  const [orgListShowContactTags, setOrgListShowContactTags] = useState(false);
+  const [scopeCountsLoaded, setScopeCountsLoaded] = useState(false);
   const [scopeCounts, setScopeCounts] = useState({
     org: 0,
     bot: 0,
@@ -222,9 +227,11 @@ export function ConversationsPage() {
         const res = await api.get<{
           agentBotTriageActive?: boolean;
           conversationsAttendanceTabEnabled?: boolean;
+          conversationsListShowContactTags?: boolean;
         }>("/settings/channel");
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
         setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
+        setOrgListShowContactTags(res.conversationsListShowContactTags === true);
       } catch {
         setOrgAgentBotTriageActive(false);
         setOrgAttendanceTabEnabled(false);
@@ -275,6 +282,26 @@ export function ConversationsPage() {
       );
     }
   }, [orgAttendanceTabEnabled, mineActive, attendanceScopeActive, botAttendanceActive, setSearchParams]);
+
+  /** Ao entrar em Conversas, abrir a aba Atendimento se houver conversas na fila. */
+  useEffect(() => {
+    if (!scopeCountsLoaded || !orgAttendanceTabEnabled || initialAttendanceScopeApplied.current) return;
+    const hasExplicitScope =
+      searchParams.get("mine") === "1" ||
+      searchParams.get("mine") === "true" ||
+      searchParams.get("bot") === "1" ||
+      searchParams.get("botAttendance") === "1" ||
+      searchParams.get("attendance") === "1";
+    initialAttendanceScopeApplied.current = true;
+    if (hasExplicitScope || scopeCounts.attendanceQueue <= 0) return;
+    setScopeParam("attendance");
+  }, [
+    scopeCountsLoaded,
+    orgAttendanceTabEnabled,
+    scopeCounts.attendanceQueue,
+    searchParams,
+    setScopeParam,
+  ]);
 
   const loadConversations = useCallback(async () => {
     if (!hasAnimated.current) setLoading(true);
@@ -347,6 +374,8 @@ export function ConversationsPage() {
       });
     } catch {
       /* ignore count errors */
+    } finally {
+      setScopeCountsLoaded(true);
     }
   }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled]);
 
@@ -764,6 +793,17 @@ export function ConversationsPage() {
                                   {fmtMoney(conv.closureValue)}
                                 </span>
                               ) : null}
+                              {orgListShowContactTags
+                                ? filterTagsForDisplay(conv.contact.tags ?? []).map(({ tag }) => (
+                                    <span
+                                      key={tag.id}
+                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                                      style={{ backgroundColor: tag.color }}
+                                    >
+                                      {tag.name}
+                                    </span>
+                                  ))
+                                : null}
                             </div>
                             <p
                               className={clsx(

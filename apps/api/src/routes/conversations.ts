@@ -336,6 +336,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       createdAt: true,
       assignedTo: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true } },
+      tags: {
+        select: {
+          tag: { select: { id: true, name: true, color: true } },
+        },
+      },
     } as const;
 
     const [data, total] = await Promise.all([

@@ -1160,6 +1160,8 @@ model Settings {
 
   /// Mostrar aba «Atendimento» em Conversas (OPEN sem atendente humano).
   conversationsAttendanceTabEnabled Boolean @default(false) @map("conversations_attendance_tab_enabled")
+  /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
+  conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
 
   /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
   aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)

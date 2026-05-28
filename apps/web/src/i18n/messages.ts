@@ -2363,6 +2363,9 @@ export const messages = {
       contactNotesAddHint: "A nota só é guardada ao clicar em Adicionar. Pode adicionar várias notas.",
       contactNotesEmpty: "Nenhuma nota interna ainda.",
       contactNotesSaveFailed: "Não foi possível guardar as anotações do contato.",
+      contactNotesEdit: "Editar nota",
+      contactNotesDelete: "Eliminar nota",
+      contactNotesDeleteConfirm: "Eliminar esta nota interna?",
       timelineTitle: "Histórico",
       noDealValue: "—",
       dragDropKanbanHint: "Arraste o cartão no Kanban para mudar de etapa.",
@@ -2810,6 +2813,9 @@ export const messages = {
       workflowAttendanceTab: "Aba «Atendimento» em Conversas",
       workflowAttendanceTabHint:
         "Mostra uma aba dedicada com conversas abertas (OPEN) à espera de um agente humano, sem atendente atribuído.",
+      workflowListShowTags: "Etiquetas na lista de conversas",
+      workflowListShowTagsHint:
+        "Quando activo, mostra as etiquetas do contacto em cada cartão da lista de conversas.",
       workflowSave: "Guardar fluxos de conversa",
       workflowSaveError: "Não foi possível guardar as configurações.",
       sectionTemplates: "Modelos de mensagem",
@@ -5628,6 +5634,9 @@ export const messages = {
       contactNotesAddHint: "The note is only saved when you click Add. You can add multiple notes.",
       contactNotesEmpty: "No internal notes yet.",
       contactNotesSaveFailed: "Could not save contact notes.",
+      contactNotesEdit: "Edit note",
+      contactNotesDelete: "Delete note",
+      contactNotesDeleteConfirm: "Delete this internal note?",
       timelineTitle: "Timeline",
       noDealValue: "—",
       dragDropKanbanHint: "Drag the card on the Kanban board to change stage.",
@@ -6074,6 +6083,9 @@ export const messages = {
       workflowAttendanceTab: "«Attendance» tab in Conversations",
       workflowAttendanceTabHint:
         "Shows a dedicated tab with open (OPEN) conversations waiting for a human agent, with no assignee.",
+      workflowListShowTags: "Tags on conversation list",
+      workflowListShowTagsHint:
+        "When enabled, shows the contact's tags on each card in the conversations list.",
       workflowSave: "Save conversation workflows",
       workflowSaveError: "Could not save these settings.",
       sectionTemplates: "Message templates",
