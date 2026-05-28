@@ -93,7 +93,9 @@ const defaultBehaviorConfig = () => ({
     scheduling_google: false,
     scheduling_outlook: false,
     ping: false,
+    assign_contact_tags: false,
   },
+  connectedTags: [] as Array<Record<string, unknown>>,
   escalationRules: {
     conditions: "",
     transferMessage: "",
@@ -1943,7 +1945,10 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   const promptBuilderSuggestSchema = z.object({
     kind: z.enum(["connected_tool", "team_transfer", "escalation", "connected_tag"]),
     locale: z.enum(["pt-BR", "en"]).optional().default("pt-BR"),
-    agentContextSnippet: z.string().max(8000).optional().default(""),
+    agentContextSnippet: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim().slice(0, 8000) : ""),
+      z.string().max(8000).optional().default(""),
+    ),
     toolName: z.string().max(240).optional(),
     toolDescription: z.string().max(4000).optional(),
     teamName: z.string().max(240).optional(),
@@ -1966,7 +1971,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       }
       const parsed = promptBuilderSuggestSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
-        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Pedido inválido para gerar instrução.",
+          statusCode: 400,
+        });
       }
       const d = parsed.data;
       const apiKey = config.openAiPromptPreviewKey.trim();
@@ -2359,6 +2368,30 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         })
         .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
 
+      const connectedTagRows = Array.isArray(behavior.connectedTags)
+        ? (behavior.connectedTags as Array<Record<string, unknown>>)
+        : [];
+      const enabledConnectedTags = connectedTagRows.filter(
+        (x) => x && x.enabled === true && typeof x.tagId === "string" && x.tagId.trim(),
+      );
+      const tagIds = enabledConnectedTags.map((x) => String(x.tagId).trim());
+      const tagRows = tagIds.length
+        ? await prisma.tag.findMany({
+            where: { organizationId, id: { in: tagIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const tagNameById = new Map(tagRows.map((t) => [t.id, t.name]));
+      const connectedTagInstructions = enabledConnectedTags
+        .map((x) => {
+          const tagId = String(x.tagId).trim();
+          const name = tagNameById.get(tagId);
+          const instruction = typeof x.agentInstruction === "string" ? x.agentInstruction.trim() : "";
+          if (!name || !instruction) return null;
+          return { name, instruction, tagId };
+        })
+        .filter((x): x is { name: string; instruction: string; tagId: string } => x != null);
+
       const hintsRaw = pb.teamTransferHints;
       const teamHintBase: Array<{ teamId: string; instruction: string }> = Array.isArray(hintsRaw)
         ? hintsRaw
@@ -2413,6 +2446,9 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             if (typeof v === "boolean") n[k] = v;
           }
         }
+        if (connectedTagInstructions.length > 0) {
+          n.assign_contact_tags = true;
+        }
         return n;
       })();
 
@@ -2438,6 +2474,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         linkedArticleTitles: linkedTitles,
         connectedToolNames,
         connectedToolInstructions,
+        connectedTagInstructions,
         teamTransferHints,
         escalation,
         instructionFallbacks,

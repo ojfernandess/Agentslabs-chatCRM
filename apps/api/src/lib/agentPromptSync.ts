@@ -25,6 +25,7 @@ export function nativeOpenAiToolFunctionName(toolId: string): string {
 }
 
 export type SyncedConnectedToolInstructionRow = { name: string; instruction: string; toolId: string };
+export type SyncedConnectedTagInstructionRow = { name: string; instruction: string; tagId: string };
 export type SyncedTeamTransferHint = { teamId: string; teamName: string; instruction: string };
 
 export type SyncedEscalationPromptContext = {
@@ -41,6 +42,7 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
   linkedArticleTitles: string[];
   connectedToolNames: string[];
   connectedToolInstructions?: SyncedConnectedToolInstructionRow[];
+  connectedTagInstructions?: SyncedConnectedTagInstructionRow[];
   teamTransferHints?: SyncedTeamTransferHint[];
   escalation?: SyncedEscalationPromptContext | null;
   instructionFallbacks?: InstructionFallback[];
@@ -50,6 +52,7 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
     linkedArticleTitles,
     connectedToolNames,
     connectedToolInstructions,
+    connectedTagInstructions,
     teamTransferHints,
     escalation,
     instructionFallbacks,
@@ -85,6 +88,17 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
     for (const row of ctInstr) {
       lines.push(`**${row.name}**`);
       lines.push(`Função: ${nativeOpenAiToolFunctionName(row.toolId)}`);
+      lines.push(row.instruction.trim());
+      lines.push("");
+    }
+  }
+
+  const tagInstr = (connectedTagInstructions ?? []).filter((x) => x.name && x.instruction?.trim() && x.tagId);
+  if (tagInstr.length && nativeTools.assign_contact_tags === true) {
+    lines.push("Instruções por etiqueta:");
+    lines.push("");
+    for (const row of tagInstr) {
+      lines.push(`**${row.name}** (\`tag_id\`: \`${row.tagId}\`)`);
       lines.push(row.instruction.trim());
       lines.push("");
     }

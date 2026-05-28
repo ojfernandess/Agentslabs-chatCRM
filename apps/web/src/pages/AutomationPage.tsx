@@ -17,8 +17,8 @@ import {
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
-import { isTenantAdmin } from "@/lib/authRole";
-import { api } from "@/lib/api";
+import { isTenantAdmin, isSuperAdminRole } from "@/lib/authRole";
+import { api, ApiError } from "@/lib/api";
 import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
@@ -124,6 +124,36 @@ const PROVIDER_OPTIONS = [
 
 /** Valor sintético no `<select>` quando o modelo guardado não está na lista fixa. */
 const OPENAI_MODEL_CUSTOM = "__oc_openai_custom_model__";
+
+/** Limite alinhado ao endpoint /prompt-builder/suggest-instruction (LLM usa ~6000). */
+const PROMPT_SUGGEST_CONTEXT_MAX = 6000;
+
+function prepareSuggestInstructionPayload(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  if (typeof next.agentContextSnippet === "string") {
+    next.agentContextSnippet = next.agentContextSnippet.trim().slice(0, PROMPT_SUGGEST_CONTEXT_MAX);
+  }
+  return next;
+}
+
+type SuggestInstructionErrorModal = { message: string; details?: string };
+
+function buildSuggestInstructionErrorModal(
+  err: unknown,
+  t: (key: string) => string,
+  showTechnicalDetails: boolean,
+): SuggestInstructionErrorModal {
+  const message = t("automationPage.promptBuilderSuggestError");
+  if (!showTechnicalDetails) return { message };
+  const raw =
+    err instanceof ApiError
+      ? `HTTP ${err.status}: ${err.message}`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  const details = raw.replace(/\s+/g, " ").trim().slice(0, 1200);
+  return details ? { message, details } : { message };
+}
 
 /** Sugestões alinhadas ao catálogo OpenAI (frontier + chat); «Outro modelo» abre campo de texto. */
 const MODELS_BY_PROVIDER: Record<string, string[]> = {
@@ -528,6 +558,9 @@ function formToPayload(
       nativeToolsWithFallbacks.assign_team_to_conversation = true;
     }
     if (fb.action === "set_pending") nativeToolsWithFallbacks.set_conversation_status = true;
+  }
+  if (connectedTagInstructions.length > 0) {
+    nativeToolsWithFallbacks.assign_contact_tags = true;
   }
 
   const autoInner = buildPromptAutoInstructionBlock({
@@ -1306,6 +1339,9 @@ export function AutomationPage() {
             orgTeams={orgTeamsForAgent}
             orgTags={orgTagsForAgent}
             suggestionLocale={locale}
+            showSuggestErrorDetails={
+              isTenantAdmin(user?.role, user?.actingOrganizationId) || isSuperAdminRole(user?.role)
+            }
           />
         ) : null}
 
@@ -1505,6 +1541,7 @@ function AgentsTab({
   orgTeams,
   orgTags,
   suggestionLocale,
+  showSuggestErrorDetails,
 }: {
   t: Translate;
   loading: boolean;
@@ -1528,6 +1565,7 @@ function AgentsTab({
   orgTeams: Array<{ id: string; name: string }>;
   orgTags: Array<{ id: string; name: string; color: string }>;
   suggestionLocale: string;
+  showSuggestErrorDetails: boolean;
 }) {
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
@@ -1542,6 +1580,7 @@ function AgentsTab({
   const [promptSyncBusy, setPromptSyncBusy] = useState(false);
   const [promptSyncStatus, setPromptSyncStatus] = useState<"ok" | "error" | null>(null);
   const [instructionSuggestBusy, setInstructionSuggestBusy] = useState<string | null>(null);
+  const [suggestErrorModal, setSuggestErrorModal] = useState<SuggestInstructionErrorModal | null>(null);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   useEffect(() => {
@@ -1550,6 +1589,7 @@ function AgentsTab({
       setKbArticleFilter("");
       setPromptSyncBusy(false);
       setPromptSyncStatus(null);
+      setSuggestErrorModal(null);
     }
   }, [agentModalOpen]);
 
@@ -1635,6 +1675,16 @@ function AgentsTab({
         return { name, instruction: ins, toolId: x.toolId };
       })
       .filter((x): x is { name: string; instruction: string; toolId: string } => x != null);
+    const connectedTagInstructions = agentForm.connectedTags
+      .filter((x) => x.enabled)
+      .map((x) => {
+        const tag = orgTags.find((tg) => tg.id === x.tagId);
+        const name = tag?.name;
+        const ins = (x.agentInstruction ?? "").trim();
+        if (!name || !ins) return null;
+        return { name, instruction: ins, tagId: x.tagId };
+      })
+      .filter((x): x is { name: string; instruction: string; tagId: string } => x != null);
     const teamHintsResolved = agentForm.teamTransferHints
       .filter((h) => h.instruction.trim())
       .map((h) => ({
@@ -1649,11 +1699,16 @@ function AgentsTab({
       Boolean(agentForm.escalationKeywords.trim()) ||
       Boolean(agentForm.escalationConditions.trim()) ||
       Boolean(agentForm.escalationTransferMessage.trim());
+    const previewNativeTools = { ...agentForm.nativeTools } as Record<string, boolean>;
+    if (connectedTagInstructions.length > 0) {
+      previewNativeTools.assign_contact_tags = true;
+    }
     return buildPromptAutoInstructionBlock({
-      nativeTools: agentForm.nativeTools as Record<string, boolean>,
+      nativeTools: previewNativeTools,
       linkedArticleTitles: linkedTitles,
       connectedToolNames: connectedNames,
       connectedToolInstructions: connectedInstructions,
+      connectedTagInstructions,
       teamTransferHints: teamHintsResolved,
       escalation: hasEsc
         ? {
@@ -1669,6 +1724,7 @@ function AgentsTab({
       t,
     });
   }, [
+    agentForm.connectedTags,
     agentForm.connectedTools,
     agentForm.instructionFallbacks,
     agentForm.escalationConditions,
@@ -1680,6 +1736,7 @@ function AgentsTab({
     agentForm.promptLinkedKnowledgeIds,
     agentForm.teamTransferHints,
     articles,
+    orgTags,
     orgTeams,
     tools,
     t,
@@ -1696,7 +1753,7 @@ function AgentsTab({
       try {
         const res = await api.post<{ instruction: string }>("/automation/prompt-builder/suggest-instruction", {
           locale: suggestLocaleApi,
-          ...body,
+          ...prepareSuggestInstructionPayload(body),
         });
         return (res.instruction ?? "").trim();
       } finally {
@@ -1704,6 +1761,13 @@ function AgentsTab({
       }
     },
     [suggestLocaleApi],
+  );
+
+  const reportSuggestInstructionError = useCallback(
+    (err: unknown) => {
+      setSuggestErrorModal(buildSuggestInstructionErrorModal(err, t, showSuggestErrorDetails));
+    },
+    [t, showSuggestErrorDetails],
   );
 
   const canTeamTransferHints =
@@ -2468,9 +2532,7 @@ function AgentsTab({
                           if (!text) return;
                           setAgentForm((f) => ({ ...f, escalationConditions: text }));
                         } catch (err) {
-                          window.alert(
-                            `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
-                          );
+                          reportSuggestInstructionError(err);
                         }
                       })();
                     }}
@@ -2896,9 +2958,7 @@ function AgentsTab({
                                             ),
                                           }));
                                         } catch (err) {
-                                          window.alert(
-                                            `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
-                                          );
+                                          reportSuggestInstructionError(err);
                                         }
                                       })();
                                     }}
@@ -3017,9 +3077,7 @@ function AgentsTab({
                                         ),
                                       }));
                                     } catch (err) {
-                                      window.alert(
-                                        `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
-                                      );
+                                      reportSuggestInstructionError(err);
                                     }
                                   })();
                                 }}
@@ -3098,9 +3156,7 @@ function AgentsTab({
                                     return { ...f, teamTransferHints: [...rest, { teamId: team.id, instruction: text }] };
                                   });
                                 } catch (err) {
-                                  window.alert(
-                                    `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
-                                  );
+                                  reportSuggestInstructionError(err);
                                 }
                               })();
                             }}
@@ -3179,6 +3235,58 @@ function AgentsTab({
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {t("automationPage.agentSaveProfile")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {suggestErrorModal ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink-900/45 backdrop-blur-sm"
+            onClick={() => setSuggestErrorModal(null)}
+            aria-label={t("common.close")}
+          />
+          <div
+            role="alertdialog"
+            aria-labelledby="suggest-error-title"
+            aria-describedby="suggest-error-desc"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-red-200 bg-white p-5 shadow-2xl dark:border-red-900/40 dark:bg-ink-950"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 id="suggest-error-title" className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("automationPage.promptBuilderSuggestErrorTitle")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSuggestErrorModal(null)}
+                className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p id="suggest-error-desc" className="mt-3 text-sm text-ink-700 dark:text-ink-200">
+              {suggestErrorModal.message}
+            </p>
+            {suggestErrorModal.details ? (
+              <div className="mt-3 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 dark:border-ink-700 dark:bg-ink-900/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+                  {t("automationPage.promptBuilderSuggestErrorDetails")}
+                </p>
+                <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-ink-700 dark:text-ink-300">
+                  {suggestErrorModal.details}
+                </p>
+              </div>
+            ) : null}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSuggestErrorModal(null)}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              >
+                {t("common.close")}
               </button>
             </div>
           </div>

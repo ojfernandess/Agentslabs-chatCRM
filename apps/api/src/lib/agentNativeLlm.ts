@@ -100,6 +100,19 @@ function applyFallbackNativeToolFlags(
   return next;
 }
 
+function applyConnectedTagNativeToolFlags(flags: NativeToolsFlags, behavior: unknown): NativeToolsFlags {
+  const next = { ...flags };
+  for (const row of parseConnectedTagsFromBehavior(behavior)) {
+    if (!row.enabled) continue;
+    const ins = typeof row.agentInstruction === "string" ? row.agentInstruction.trim() : "";
+    if (ins) {
+      next.assign_contact_tags = true;
+      break;
+    }
+  }
+  return next;
+}
+
 export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlags {
   const base = defaultNativeTools();
   if (!behavior || typeof behavior !== "object") return base;
@@ -738,9 +751,9 @@ export async function generateNativeAgentReply(input: {
   }
   systemInstructions = mergeInstructionFallbacksIntoSystemPrompt(systemInstructions, instructionFallbacks);
 
-  let flags = applyFallbackNativeToolFlags(
-    parseNativeToolsFromBehavior(profile.behaviorConfig),
-    instructionFallbacks,
+  let flags = applyConnectedTagNativeToolFlags(
+    applyFallbackNativeToolFlags(parseNativeToolsFromBehavior(profile.behaviorConfig), instructionFallbacks),
+    profile.behaviorConfig,
   );
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);

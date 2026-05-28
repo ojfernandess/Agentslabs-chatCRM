@@ -426,7 +426,10 @@ export const messages = {
         "Quando as regras de escalonamento forem satisfeitas, use transfer_to_team com o team_id acima (se existir) em conjunto com call_human / fluxo do integrador.",
       promptBuilderSuggestInstruction: "Gerar com IA",
       promptBuilderSuggestBusy: "A gerar…",
-      promptBuilderSuggestError: "Não foi possível gerar a instrução. Verifique a chave OPENAI_PROMPT_PREVIEW_KEY no servidor e tente novamente.",
+      promptBuilderSuggestErrorTitle: "Erro ao gerar instrução",
+      promptBuilderSuggestError:
+        "Não foi possível gerar a instrução com IA. Tente novamente. Se o prompt principal for muito longo, resuma-o e tente de novo.",
+      promptBuilderSuggestErrorDetails: "Detalhes técnicos (administrador)",
       agentConnectedToolInstruction: "Instruções para o agente (prompt automático)",
       agentConnectedToolInstructionHint:
         "Texto injectado no bloco automático quando grava — descreva quando e como usar esta ferramenta.",
@@ -3696,7 +3699,10 @@ export const messages = {
         "When escalation rules match, use transfer_to_team with the team_id above (if set) together with call_human / your integrator flow.",
       promptBuilderSuggestInstruction: "Generate with AI",
       promptBuilderSuggestBusy: "Generating…",
-      promptBuilderSuggestError: "Could not generate instructions. Ensure OPENAI_PROMPT_PREVIEW_KEY is set on the server and try again.",
+      promptBuilderSuggestErrorTitle: "Could not generate instruction",
+      promptBuilderSuggestError:
+        "Could not generate the instruction with AI. Please try again. If the main prompt is very long, shorten it and retry.",
+      promptBuilderSuggestErrorDetails: "Technical details (administrator)",
       agentConnectedToolInstruction: "Agent instructions (auto prompt block)",
       agentConnectedToolInstructionHint:
         "Text merged into the auto block on save — describe when and how to use this tool.",
