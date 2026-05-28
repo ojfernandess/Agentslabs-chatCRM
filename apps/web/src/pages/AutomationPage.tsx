@@ -3020,6 +3020,7 @@ function AgentsTab({
                                     if (!on) return { ...f, connectedTags: rest };
                                     return {
                                       ...f,
+                                      nativeTools: { ...f.nativeTools, assign_contact_tags: true },
                                       connectedTags: [
                                         ...rest,
                                         { tagId: tg.id, enabled: true, agentInstruction: undefined },

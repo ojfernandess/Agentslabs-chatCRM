@@ -837,6 +837,8 @@ export const messages = {
       agentConnectedTagInstructionHint: "Quando o agente deve aplicar esta etiqueta (critérios, exemplos).",
       agentConnectedToolsEmpty: "Instale ferramentas no separador Ferramentas primeiro.",
       promptBuilderConnectedTagsSection: "### Instruções por etiqueta",
+      promptBuilderConnectedTagsActionHint:
+        "Quando o critério de cada etiqueta se verificar, invoque `atribuir_etiquetas` com tag_ids=[tag_id] (modo add), sem pedir confirmação ao cliente salvo indicação contrária.",
       agentConnectedPermission: "Permissão",
       agentConnectedRunMode: "Execução",
       agentConnectedRunAuto: "Automática (modelo)",
@@ -4107,6 +4109,8 @@ export const messages = {
       agentConnectedTagInstructionHint: "When the agent should apply this tag (criteria, examples).",
       agentConnectedToolsEmpty: "Install tools under the Tools tab first.",
       promptBuilderConnectedTagsSection: "### Per-tag instructions",
+      promptBuilderConnectedTagsActionHint:
+        "When each tag's criteria match, invoke `assign_contact_tags` with tag_ids=[tag_id] (add mode), without asking the customer for confirmation unless your instructions say otherwise.",
       agentConnectedPermission: "Permission",
       agentConnectedRunMode: "Execution",
       agentConnectedRunAuto: "Automatic (model)",

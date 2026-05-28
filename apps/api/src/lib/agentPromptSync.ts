@@ -96,6 +96,9 @@ export function buildSyncedPromptAutoInstructionBlock(input: {
   const tagInstr = (connectedTagInstructions ?? []).filter((x) => x.name && x.instruction?.trim() && x.tagId);
   if (tagInstr.length && nativeTools.assign_contact_tags === true) {
     lines.push("Instruções por etiqueta:");
+    lines.push(
+      "Quando o critério de cada etiqueta se verificar, invoque `atribuir_etiquetas` com tag_ids=[tag_id] (modo add), sem pedir confirmação ao cliente salvo indicação contrária.",
+    );
     lines.push("");
     for (const row of tagInstr) {
       lines.push(`**${row.name}** (\`tag_id\`: \`${row.tagId}\`)`);

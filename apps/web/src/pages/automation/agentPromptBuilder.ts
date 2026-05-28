@@ -136,6 +136,8 @@ export function buildPromptAutoInstructionBlock(input: {
   const tagInstr = (connectedTagInstructions ?? []).filter((x) => x.name && x.instruction?.trim() && x.tagId);
   if (tagInstr.length && nativeTools.assign_contact_tags === true) {
     lines.push(t("automationPage.promptBuilderConnectedTagsSection"));
+    lines.push(t("automationPage.promptBuilderConnectedTagsActionHint"));
+    lines.push("");
     for (const row of tagInstr) {
       lines.push(`**${row.name}** (\`tag_id\`: \`${row.tagId}\`)`);
       lines.push(row.instruction.trim());

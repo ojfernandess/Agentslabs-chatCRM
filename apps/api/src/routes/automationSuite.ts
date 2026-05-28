@@ -22,7 +22,8 @@ import {
   rankedKnowledgeSearch,
   syncKnowledgeArticleBotsFromPromptBuilder,
 } from "../lib/knowledgeRetrieval.js";
-import { parseNativeToolsFromBehavior } from "../lib/agentNativeLlm.js";
+import { parseNativeToolsFromBehavior, generateNativeAgentReply } from "../lib/agentNativeLlm.js";
+import { ensureAgentProfileTestSandbox } from "../lib/agentTestChatSandbox.js";
 import {
   buildSyncedPromptAutoInstructionBlock,
   mergeSystemWithAutoBlock,
@@ -2536,7 +2537,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
       const profile = await prisma.automationAgentProfile.findFirst({
         where: { organizationId, botId: request.params.botId },
-        include: { bot: { select: { id: true, name: true } } },
+        include: { bot: true },
       });
       if (!profile) {
         return reply.status(404).send({ error: "Not Found", message: "Agent profile not found", statusCode: 404 });
@@ -2554,29 +2555,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             : provider === "google_gemini"
               ? config.geminiPromptPreviewKey.trim()
               : "";
-      const system = String(llm.systemInstructions ?? "");
-      const temperature = Number(llm.temperature ?? 0.7);
-      const maxTokens = Number(llm.maxTokens ?? 1024);
       const history = parsed.data.history as PreviewChatTurn[];
       const userMessage = parsed.data.message;
-
-      let systemEffective = system;
-      const nativeFlags = parseNativeToolsFromBehavior(profile.behaviorConfig);
-      if (nativeFlags.knowledge_search) {
-        try {
-          systemEffective =
-            system +
-            (await fetchProactiveKnowledgeSystemAppendix({
-              organizationId,
-              botId: profile.bot.id,
-              userMessage,
-              pinnedArticleIds: parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig),
-              debugLog: request.log,
-            }));
-        } catch (err) {
-          request.log.warn({ err, botId: profile.bot.id }, "test-chat proactive kb failed");
-        }
-      }
 
       if (!apiKey) {
         return reply.status(400).send({
@@ -2587,9 +2567,28 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         });
       }
 
-      try {
-        let assistantText = "";
-        if (provider === "google_gemini") {
+      if (provider === "google_gemini") {
+        const system = String(llm.systemInstructions ?? "");
+        const temperature = Number(llm.temperature ?? 0.7);
+        const maxTokens = Number(llm.maxTokens ?? 1024);
+        let systemEffective = system;
+        const nativeFlags = parseNativeToolsFromBehavior(profile.behaviorConfig);
+        if (nativeFlags.knowledge_search) {
+          try {
+            systemEffective =
+              system +
+              (await fetchProactiveKnowledgeSystemAppendix({
+                organizationId,
+                botId: profile.bot.id,
+                userMessage,
+                pinnedArticleIds: parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig),
+                debugLog: request.log,
+              }));
+          } catch (err) {
+            request.log.warn({ err, botId: profile.bot.id }, "test-chat proactive kb failed");
+          }
+        }
+        try {
           const r = await callGeminiGenerateContent({
             apiKey,
             model,
@@ -2600,21 +2599,43 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             userMessage,
             signal: AbortSignal.timeout(28_000),
           });
-          assistantText = r.text;
-        } else {
-          const r = await callOpenAiCompatibleChat({
-            baseUrl: (String(llm.apiBaseUrl ?? "").trim() || "https://api.openai.com/v1").replace(/\/+$/, ""),
-            apiKey,
+          return {
+            botId: profile.bot.id,
+            botName: profile.bot.name,
+            provider,
             model,
-            temperature: Number.isFinite(temperature) ? temperature : 0.7,
-            maxTokens: Number.isFinite(maxTokens) ? Math.max(16, Math.min(8192, Math.trunc(maxTokens))) : 1024,
-            system: systemEffective,
-            history,
-            userMessage,
-            signal: AbortSignal.timeout(28_000),
+            assistantMessage: (r.text ?? "").trim(),
+            toolsUsed: false,
+          };
+        } catch (err) {
+          const aborted = err instanceof Error && err.name === "AbortError";
+          const msg = err instanceof Error ? err.message : "Agent test chat failed";
+          return reply.status(aborted ? 504 : 502).send({
+            error: aborted ? "Gateway Timeout" : "Bad Gateway",
+            message: msg.slice(0, 1500),
+            statusCode: aborted ? 504 : 502,
           });
-          assistantText = r.text;
         }
+      }
+
+      try {
+        const { conversation } = await ensureAgentProfileTestSandbox(organizationId);
+        const message = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: "INBOUND",
+            type: "TEXT",
+            body: userMessage,
+          },
+        });
+        const assistantText = await generateNativeAgentReply({
+          organizationId,
+          bot: profile.bot,
+          conversation,
+          message,
+          log: request.log,
+          historyOverride: history,
+        });
 
         return {
           botId: profile.bot.id,
@@ -2622,6 +2643,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           provider,
           model,
           assistantMessage: (assistantText ?? "").trim(),
+          toolsUsed: true,
         };
       } catch (err) {
         const aborted = err instanceof Error && err.name === "AbortError";

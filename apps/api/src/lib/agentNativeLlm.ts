@@ -655,8 +655,10 @@ export async function generateNativeAgentReply(input: {
   log: FastifyBaseLogger;
   /** Opcional: registo de execução (Automação → Execuções) por mensagem inbound. */
   executionLog?: AutomationExecutionLogPort | null;
+  /** Test-chat: histórico vindo do cliente em vez da BD. */
+  historyOverride?: PreviewChatTurn[];
 }): Promise<string> {
-  const { organizationId, bot, conversation, message, log, executionLog: ex } = input;
+  const { organizationId, bot, conversation, message, log, executionLog: ex, historyOverride } = input;
   if (message.direction !== "INBOUND") return "";
   const userMessage = (message.body ?? "").trim();
   if (!userMessage) return "";
@@ -891,28 +893,45 @@ export async function generateNativeAgentReply(input: {
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
 
+  const tagToolGuard =
+    flags.assign_contact_tags && allowedTagIds.length > 0 && assignableTagsDescription.trim()
+      ? "\n\n[OpenConduit — etiquetas de contacto]\n" +
+        "Quando a mensagem do cliente cumprir os critérios da secção «Instruções por etiqueta» (ou equivalente) no system prompt, **deve invocar** `atribuir_etiquetas` com o `tag_id` correcto — não basta descrever a classificação na resposta sem chamar a ferramenta.\n" +
+        "Etiquetas permitidas:\n" +
+        assignableTagsDescription.trim()
+      : "";
+
   const systemBase =
-    systemInstructions + kbProactiveAppendix + toolPreamble + serverKbGuard + audioInboundHint + followUpPrompt;
+    systemInstructions +
+    kbProactiveAppendix +
+    toolPreamble +
+    serverKbGuard +
+    tagToolGuard +
+    audioInboundHint +
+    followUpPrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
-  const recent = await prisma.message.findMany({
-    where: buildNativeAgentMessageWhere({
-      conversationId: conversation.id,
-      excludeMessageId: message.id,
-      lastClearedAt,
-    }),
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: { direction: true, body: true },
-  });
-  const history = recent
-    .reverse()
-    .map((m) => ({
-      role: m.direction === "INBOUND" ? "user" : "assistant",
-      content: (m.body ?? "").trim(),
-    }))
-    .filter((m): m is PreviewChatTurn => Boolean(m.content));
+  const history =
+    historyOverride ??
+    (
+      await prisma.message.findMany({
+        where: buildNativeAgentMessageWhere({
+          conversationId: conversation.id,
+          excludeMessageId: message.id,
+          lastClearedAt,
+        }),
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { direction: true, body: true },
+      })
+    )
+      .reverse()
+      .map((m) => ({
+        role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
+        content: (m.body ?? "").trim(),
+      }))
+      .filter((m): m is PreviewChatTurn => Boolean(m.content));
 
   const signal = AbortSignal.timeout(28_000);
   let replyText = "";
