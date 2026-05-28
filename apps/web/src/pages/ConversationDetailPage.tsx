@@ -491,6 +491,14 @@ export function ConversationDetailPage() {
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName?.toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || !!el?.isContentEditable;
+      const inMessagesViewport = !!el && !!messagesViewportRef.current?.contains(el);
+      const sel = window.getSelection();
+      const selAnchorEl =
+        sel?.anchorNode?.nodeType === Node.TEXT_NODE
+          ? sel.anchorNode.parentElement
+          : (sel?.anchorNode as Element | null);
+      const selectionInMessages =
+        !!selAnchorEl && !!messagesViewportRef.current?.contains(selAnchorEl);
 
       const k = e.key.toLowerCase();
       const mod = e.metaKey || e.ctrlKey;
@@ -507,13 +515,15 @@ export function ConversationDetailPage() {
       }
 
       if (e.altKey && k === "a") {
+        if (typing || inMessagesViewport || selectionInMessages) return;
         e.preventDefault();
-        if (!typing) fileInputRef.current?.click();
+        fileInputRef.current?.click();
         return;
       }
       if (mod && k === "a") {
+        if (typing || inMessagesViewport || selectionInMessages) return;
         e.preventDefault();
-        if (!typing) fileInputRef.current?.click();
+        fileInputRef.current?.click();
         return;
       }
 
