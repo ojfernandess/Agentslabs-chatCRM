@@ -281,6 +281,155 @@ export async function analyzeConversationForInsights(
   return normalizeInsights(parsed);
 }
 
+export type BotTransferHandoffBrief = {
+  summary: string;
+  customerIntent: string;
+  keyFacts: string[];
+  pendingForHuman: string[];
+  urgency: string;
+  sentiment: string;
+};
+
+function normalizeBotTransferHandoffBrief(raw: unknown): BotTransferHandoffBrief {
+  const fallback: BotTransferHandoffBrief = {
+    summary: "—",
+    customerIntent: "—",
+    keyFacts: [],
+    pendingForHuman: [],
+    urgency: "normal",
+    sentiment: "neutral",
+  };
+  if (!raw || typeof raw !== "object") return fallback;
+  const o = raw as Record<string, unknown>;
+  const keyFacts = Array.isArray(o.keyFacts)
+    ? o.keyFacts.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const pendingForHuman = Array.isArray(o.pendingForHuman)
+    ? o.pendingForHuman.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean).slice(0, 6)
+    : [];
+  return {
+    summary: typeof o.summary === "string" ? o.summary.trim().slice(0, 2000) : fallback.summary,
+    customerIntent: typeof o.customerIntent === "string" ? o.customerIntent.trim().slice(0, 500) : fallback.customerIntent,
+    keyFacts,
+    pendingForHuman,
+    urgency: typeof o.urgency === "string" ? o.urgency.trim().slice(0, 120) : fallback.urgency,
+    sentiment: typeof o.sentiment === "string" ? o.sentiment.trim().slice(0, 80) : fallback.sentiment,
+  };
+}
+
+/** Gera briefing estruturado para nota interna quando o bot transfere para humano. */
+export async function generateBotTransferHandoffBrief(
+  input: {
+    contactName: string;
+    transcript: string;
+    transferReason: string | null;
+    language?: string;
+  },
+  credentials: AssistOpenAiCredentials,
+): Promise<BotTransferHandoffBrief> {
+  const lang = input.language || "pt";
+  const systemPrompts: Record<string, string[]> = {
+    pt: [
+      "És um analista de suporte. Um assistente automático acabou de transferir uma conversa para um atendente humano.",
+      "Analisa o histórico e produz um briefing útil para quem vai assumir o atendimento.",
+      "Responde APENAS com um único objecto JSON válido (sem markdown), com as chaves:",
+      '{"summary":"2-4 frases sobre o que aconteceu até agora","customerIntent":"intenção principal do cliente","keyFacts":["até 8 factos concretos já mencionados (datas, valores, pedidos, nomes, etc.)"],"pendingForHuman":["até 6 acções ou respostas que o humano deve tratar"],"urgency":"baixa|normal|alta|urgente","sentiment":"positive|neutral|negative|frustrated"}',
+      "Não inventes factos que não estejam no histórico. Usa a mesma língua do histórico.",
+    ],
+    en: [
+      "You are a support analyst. An automated assistant just transferred a conversation to a human agent.",
+      "Analyze the history and produce a useful briefing for whoever will take over.",
+      "Respond ONLY with a single valid JSON object (no markdown), with the keys:",
+      '{"summary":"2-4 sentences about what happened so far","customerIntent":"main customer intent","keyFacts":["up to 8 concrete facts already mentioned (dates, amounts, requests, names, etc.)"],"pendingForHuman":["up to 6 actions or answers the human should handle"],"urgency":"low|normal|high|urgent","sentiment":"positive|neutral|negative|frustrated"}',
+      "Do not invent facts not in the history. Use the same language as the history.",
+    ],
+  };
+
+  const system = (systemPrompts[lang] || systemPrompts["pt"]).join(" ");
+  const userParts = [
+    lang === "en" ? `Contact: ${input.contactName.trim() || "—"}` : `Contacto: ${input.contactName.trim() || "—"}`,
+    input.transferReason?.trim()
+      ? lang === "en"
+        ? `Transfer reason (from bot): ${input.transferReason.trim()}`
+        : `Motivo da transferência (informado pelo bot): ${input.transferReason.trim()}`
+      : null,
+    "",
+    lang === "en" ? "History:" : "Histórico:",
+    input.transcript.trim() || (lang === "en" ? "(empty)" : "(vazio)"),
+  ].filter((x): x is string => x !== null);
+
+  const { text } = await callOpenAiCompatibleChat({
+    baseUrl: credentials.baseUrl,
+    apiKey: credentials.apiKey,
+    model: assistOpenAiModel(),
+    temperature: 0.3,
+    maxTokens: 900,
+    system,
+    history: [],
+    userMessage: userParts.join("\n"),
+    signal: AbortSignal.timeout(22_000),
+  });
+
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+  try {
+    return normalizeBotTransferHandoffBrief(JSON.parse(cleaned) as unknown);
+  } catch {
+    return normalizeBotTransferHandoffBrief({
+      summary: text.trim().slice(0, 2000) || "Resumo indisponível.",
+      customerIntent: "—",
+      keyFacts: [],
+      pendingForHuman: [],
+      urgency: "normal",
+      sentiment: "neutral",
+    });
+  }
+}
+
+export function formatBotTransferHandoffNote(input: {
+  toolName: string;
+  teamName: string | null;
+  reason: string | null;
+  brief: BotTransferHandoffBrief | null;
+  fallbackSnippet: string;
+}): string {
+  const reasonLine = input.reason?.trim() || "(não indicado)";
+  const header = "[Nota interna — transferência do assistente automático]";
+  const meta = [
+    header,
+    `Ferramenta: ${input.toolName}`,
+    input.teamName ? `Equipe: ${input.teamName}` : null,
+    `Motivo informado pelo bot: ${reasonLine}`,
+  ].filter((line): line is string => Boolean(line));
+
+  if (input.brief && input.brief.summary !== "—") {
+    const lines = [...meta, "", "--- Resumo para o atendente ---"];
+    lines.push(input.brief.summary);
+    if (input.brief.customerIntent && input.brief.customerIntent !== "—") {
+      lines.push("", `Intenção do cliente: ${input.brief.customerIntent}`);
+    }
+    if (input.brief.keyFacts.length) {
+      lines.push("", "Factos importantes:");
+      for (const f of input.brief.keyFacts) lines.push(`• ${f}`);
+    }
+    if (input.brief.pendingForHuman.length) {
+      lines.push("", "Pendências para o atendente:");
+      for (const p of input.brief.pendingForHuman) lines.push(`• ${p}`);
+    }
+    const extras: string[] = [];
+    if (input.brief.sentiment && input.brief.sentiment !== "neutral") {
+      extras.push(`Sentimento: ${input.brief.sentiment}`);
+    }
+    if (input.brief.urgency && input.brief.urgency !== "normal") {
+      extras.push(`Urgência: ${input.brief.urgency}`);
+    }
+    if (extras.length) lines.push("", extras.join(" · "));
+    return lines.join("\n").slice(0, 8000);
+  }
+
+  const snippet = (input.fallbackSnippet ?? "").trim().slice(0, 800) || "(sem texto)";
+  return [...meta, "", `Última mensagem do cliente: ${snippet}`].join("\n");
+}
+
 export type AggregateHealthPayload = {
   overallHealth: "good" | "neutral" | "concerning" | "critical";
   summary: string;

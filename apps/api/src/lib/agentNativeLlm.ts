@@ -136,18 +136,12 @@ function parseConnectedTagAgentInstructions(behavior: unknown): Map<string, stri
 }
 
 async function resolveAgentAssignableTagIds(
-  organizationId: string,
+  _organizationId: string,
   behavior: unknown,
 ): Promise<string[]> {
-  const connected = parseConnectedTagsFromBehavior(behavior).filter((x) => x.enabled);
-  if (connected.length > 0) return connected.map((x) => x.tagId);
-  const tags = await prisma.tag.findMany({
-    where: { organizationId },
-    select: { id: true },
-    orderBy: { name: "asc" },
-    take: 80,
-  });
-  return tags.map((t) => t.id);
+  return parseConnectedTagsFromBehavior(behavior)
+    .filter((x) => x.enabled)
+    .map((x) => x.tagId);
 }
 
 function formatKnowledgeToolResult(
@@ -216,16 +210,14 @@ function buildOpenAiTools(
       },
     });
   }
-  if (flags.assign_contact_tags) {
-    const tagDesc =
-      opts?.assignableTagsDescription?.trim() ||
-      "Etiquetas configuradas para este agente (use listar_etiquetas para ver UUIDs).";
+  if (flags.assign_contact_tags && opts?.assignableTagsDescription?.trim()) {
+    const tagDesc = opts.assignableTagsDescription.trim();
     tools.push({
       type: "function",
       function: {
         name: "listar_etiquetas",
         description:
-          "Lista etiquetas (tags) que este agente pode atribuir ao contacto da conversa, com id UUID e nome.",
+          "Lista etiquetas (tags) que este agente pode atribuir ao contacto da conversa, com id UUID e nome. Use antes de atribuir_etiquetas se precisar confirmar UUIDs.",
         parameters: { type: "object", properties: {} },
       },
     });
@@ -234,7 +226,7 @@ function buildOpenAiTools(
       function: {
         name: "atribuir_etiquetas",
         description:
-          `Atribui etiquetas ao contacto desta conversa. Só use tag_ids permitidos para este agente.\n${tagDesc}`,
+          `Atribui etiquetas ao contacto desta conversa quando os critérios do system prompt se aplicarem. Siga as instruções por etiqueta. Só use tag_ids permitidos.\n${tagDesc}`,
         parameters: {
           type: "object",
           properties: {
@@ -787,15 +779,15 @@ export async function generateNativeAgentReply(input: {
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
       "- **`buscar_conhecimento`:** continua disponível. Se o seu prompt interno exigir uma chamada explícita à função antes de responder, invoque‑a com `query` adequada; se os excertos acima já bastarem, pode responder sem nova chamada.\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-      (flags.assign_contact_tags
-        ? "- `listar_etiquetas` / `atribuir_etiquetas`: etiquetas no contacto da conversa; use só UUIDs permitidos.\n"
+      (allowedTagIds.length > 0
+        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
         : "") +
       "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
       customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
       "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
-      (flags.assign_contact_tags
+      (allowedTagIds.length > 0
         ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
         : "") +
       "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre." +

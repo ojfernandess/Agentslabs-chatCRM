@@ -1941,13 +1941,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   );
 
   const promptBuilderSuggestSchema = z.object({
-    kind: z.enum(["connected_tool", "team_transfer", "escalation"]),
+    kind: z.enum(["connected_tool", "team_transfer", "escalation", "connected_tag"]),
     locale: z.enum(["pt-BR", "en"]).optional().default("pt-BR"),
     agentContextSnippet: z.string().max(8000).optional().default(""),
     toolName: z.string().max(240).optional(),
     toolDescription: z.string().max(4000).optional(),
     teamName: z.string().max(240).optional(),
     teamId: z.string().max(80).optional(),
+    tagName: z.string().max(240).optional(),
+    tagId: z.string().max(80).optional(),
     escalationMode: z.string().max(64).optional(),
     escalationKeywords: z.string().max(2000).optional(),
     escalationTransferMessage: z.string().max(2000).optional(),
@@ -1997,6 +1999,16 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           `Agent core context:\n${ctx || "(none)"}`,
           "",
           "Reply with ONLY the instruction paragraph(s) (when to route to this team, tone, confirm to customer).",
+        ].join("\n");
+      } else if (d.kind === "connected_tag") {
+        userContent = [
+          "Generate when-to-apply instructions for a customer-facing AI agent that assigns CRM tags via the atribuir_etiquetas tool.",
+          `Output language: ${lang}.`,
+          `Tag name: ${d.tagName ?? "tag"}`,
+          `Tag UUID: ${d.tagId ?? "(not set)"}`,
+          `Agent core context:\n${ctx || "(none)"}`,
+          "",
+          "Reply with ONLY the instruction text (2–6 short sentences): clear criteria for when to call atribuir_etiquetas with this tag_id, examples of customer phrases, and what NOT to tag. No markdown fences, no JSON.",
         ].join("\n");
       } else {
         userContent = [

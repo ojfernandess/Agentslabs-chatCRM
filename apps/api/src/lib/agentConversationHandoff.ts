@@ -1,10 +1,16 @@
 import { prisma } from "../db.js";
+import {
+  buildPublicConversationTranscript,
+  formatBotTransferHandoffNote,
+  generateBotTransferHandoffBrief,
+  getAssistOpenAiCredentialsForOrganization,
+} from "./agentAssistLlm.js";
 import { broadcastToOrganization } from "./workspaceHub.js";
 
 export type NativeHandoffToolName = "transfer_to_team" | "assign_team_to_conversation" | "call_human";
 
 /**
- * Marca a conversa como «à espera de humano», grava nota interna (resumo + motivo) e notifica o workspace.
+ * Marca a conversa como «à espera de humano», grava nota interna (resumo inteligente + motivo) e notifica o workspace.
  * Não envia WhatsApp — só `Message` com `isPrivate: true`.
  */
 export async function recordNativeAgentTransferHandoff(input: {
@@ -15,17 +21,45 @@ export async function recordNativeAgentTransferHandoff(input: {
   userMessageSnippet: string;
   teamName: string | null;
 }): Promise<void> {
-  const reasonLine = input.reason?.trim() || "(não indicado)";
-  const summary = (input.userMessageSnippet ?? "").trim().slice(0, 800) || "(sem texto)";
-  const body = [
-    "[Nota interna — transferência do assistente automático]",
-    `Ferramenta: ${input.toolName}`,
-    input.teamName ? `Equipe: ${input.teamName}` : null,
-    `Motivo: ${reasonLine}`,
-    `Resumo (última mensagem do cliente): ${summary}`,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
+  let brief = null;
+  try {
+    const [conv, credentials] = await Promise.all([
+      prisma.conversation.findFirst({
+        where: { id: input.conversationId, organizationId: input.organizationId },
+        select: {
+          contact: { select: { name: true } },
+          messages: {
+            orderBy: { createdAt: "asc" },
+            take: 60,
+            select: { direction: true, body: true, isPrivate: true },
+          },
+        },
+      }),
+      getAssistOpenAiCredentialsForOrganization(input.organizationId),
+    ]);
+    if (conv && credentials) {
+      const transcript = buildPublicConversationTranscript(conv.messages, 45);
+      brief = await generateBotTransferHandoffBrief(
+        {
+          contactName: conv.contact?.name ?? "",
+          transcript,
+          transferReason: input.reason,
+          language: "pt",
+        },
+        credentials,
+      );
+    }
+  } catch {
+    brief = null;
+  }
+
+  const body = formatBotTransferHandoffNote({
+    toolName: input.toolName,
+    teamName: input.teamName,
+    reason: input.reason,
+    brief,
+    fallbackSnippet: input.userMessageSnippet,
+  });
 
   await prisma.$transaction(async (tx) => {
     await tx.conversation.update({

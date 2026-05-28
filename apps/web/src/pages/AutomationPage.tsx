@@ -2986,6 +2986,40 @@ function AgentsTab({
                                   className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
                                 />
                               </label>
+                              <button
+                                type="button"
+                                disabled={Boolean(instructionSuggestBusy)}
+                                onClick={() => {
+                                  void (async () => {
+                                    const busyKey = `tag:${tg.id}`;
+                                    try {
+                                      const text = await runSuggestInstruction(busyKey, {
+                                        kind: "connected_tag",
+                                        tagId: tg.id,
+                                        tagName: tg.name,
+                                        agentContextSnippet: agentForm.promptUserCore,
+                                      });
+                                      if (!text) return;
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTags: f.connectedTags.map((x) =>
+                                          x.tagId === tg.id ? { ...x, agentInstruction: text } : x,
+                                        ),
+                                      }));
+                                    } catch (err) {
+                                      window.alert(
+                                        `${t("automationPage.promptBuilderSuggestError")}${err instanceof Error ? `\n${err.message}` : ""}`,
+                                      );
+                                    }
+                                  })();
+                                }}
+                                className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                              >
+                                <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                                {instructionSuggestBusy === `tag:${tg.id}`
+                                  ? t("automationPage.promptBuilderSuggestBusy")
+                                  : t("automationPage.promptBuilderSuggestInstruction")}
+                              </button>
                             </div>
                           ) : null}
                         </li>
