@@ -1160,6 +1160,8 @@ model Settings {
 
   /// Mostrar aba «Atendimento» em Conversas (OPEN sem atendente humano).
   conversationsAttendanceTabEnabled Boolean @default(false) @map("conversations_attendance_tab_enabled")
+  /// Ao entrar em Conversas, abrir a aba Atendimento se houver conversas na fila.
+  conversationsAttendanceTabAutoOpen Boolean @default(true) @map("conversations_attendance_tab_auto_open")
   /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
 

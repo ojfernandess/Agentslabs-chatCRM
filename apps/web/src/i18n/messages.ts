@@ -2813,6 +2813,9 @@ export const messages = {
       workflowAttendanceTab: "Aba «Atendimento» em Conversas",
       workflowAttendanceTabHint:
         "Mostra uma aba dedicada com conversas abertas (OPEN) à espera de um agente humano, sem atendente atribuído.",
+      workflowAttendanceTabAutoOpen: "Abrir aba Atendimento por defeito",
+      workflowAttendanceTabAutoOpenHint:
+        "Ao entrar em Conversas, abre automaticamente a aba Atendimento quando existirem conversas aguardando atendimento.",
       workflowListShowTags: "Etiquetas na lista de conversas",
       workflowListShowTagsHint:
         "Quando activo, mostra as etiquetas do contacto em cada cartão da lista de conversas.",
@@ -6083,6 +6086,9 @@ export const messages = {
       workflowAttendanceTab: "«Attendance» tab in Conversations",
       workflowAttendanceTabHint:
         "Shows a dedicated tab with open (OPEN) conversations waiting for a human agent, with no assignee.",
+      workflowAttendanceTabAutoOpen: "Open Attendance tab by default",
+      workflowAttendanceTabAutoOpenHint:
+        "When entering Conversations, automatically opens the Attendance tab if conversations are waiting for an agent.",
       workflowListShowTags: "Tags on conversation list",
       workflowListShowTagsHint:
         "When enabled, shows the contact's tags on each card in the conversations list.",

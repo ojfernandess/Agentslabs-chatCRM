@@ -98,7 +98,9 @@ export function ConversationsPage() {
 
   const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
+  const [orgAttendanceTabAutoOpen, setOrgAttendanceTabAutoOpen] = useState(true);
   const [orgListShowContactTags, setOrgListShowContactTags] = useState(false);
+  const [channelSettingsLoaded, setChannelSettingsLoaded] = useState(false);
   const [scopeCountsLoaded, setScopeCountsLoaded] = useState(false);
   const [scopeCounts, setScopeCounts] = useState({
     org: 0,
@@ -227,14 +229,20 @@ export function ConversationsPage() {
         const res = await api.get<{
           agentBotTriageActive?: boolean;
           conversationsAttendanceTabEnabled?: boolean;
+          conversationsAttendanceTabAutoOpen?: boolean;
           conversationsListShowContactTags?: boolean;
         }>("/settings/channel");
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
         setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
+        setOrgAttendanceTabAutoOpen(res.conversationsAttendanceTabAutoOpen !== false);
         setOrgListShowContactTags(res.conversationsListShowContactTags === true);
       } catch {
         setOrgAgentBotTriageActive(false);
         setOrgAttendanceTabEnabled(false);
+        setOrgAttendanceTabAutoOpen(false);
+        setOrgListShowContactTags(false);
+      } finally {
+        setChannelSettingsLoaded(true);
       }
     }
     void loadChannelSettings();
@@ -285,19 +293,35 @@ export function ConversationsPage() {
 
   /** Ao entrar em Conversas, abrir a aba Atendimento se houver conversas na fila. */
   useEffect(() => {
-    if (!scopeCountsLoaded || !orgAttendanceTabEnabled || initialAttendanceScopeApplied.current) return;
+    if (!channelSettingsLoaded || !scopeCountsLoaded || initialAttendanceScopeApplied.current) return;
+    if (!orgAttendanceTabEnabled || !orgAttendanceTabAutoOpen) {
+      initialAttendanceScopeApplied.current = true;
+      return;
+    }
+
     const hasExplicitScope =
       searchParams.get("mine") === "1" ||
       searchParams.get("mine") === "true" ||
       searchParams.get("bot") === "1" ||
       searchParams.get("botAttendance") === "1" ||
       searchParams.get("attendance") === "1";
+    if (hasExplicitScope) {
+      initialAttendanceScopeApplied.current = true;
+      return;
+    }
+
+    if (scopeCounts.attendanceQueue > 0) {
+      initialAttendanceScopeApplied.current = true;
+      setScopeParam("attendance");
+      return;
+    }
+
     initialAttendanceScopeApplied.current = true;
-    if (hasExplicitScope || scopeCounts.attendanceQueue <= 0) return;
-    setScopeParam("attendance");
   }, [
+    channelSettingsLoaded,
     scopeCountsLoaded,
     orgAttendanceTabEnabled,
+    orgAttendanceTabAutoOpen,
     scopeCounts.attendanceQueue,
     searchParams,
     setScopeParam,
@@ -342,6 +366,8 @@ export function ConversationsPage() {
   }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
 
   const loadScopeCounts = useCallback(async () => {
+    if (!channelSettingsLoaded) return;
+    setScopeCountsLoaded(false);
     try {
       const base = new URLSearchParams({ page: "1", pageSize: "1" });
       if (teamFilter) base.set("teamId", teamFilter);
@@ -377,7 +403,7 @@ export function ConversationsPage() {
     } finally {
       setScopeCountsLoaded(true);
     }
-  }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled]);
+  }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled, channelSettingsLoaded]);
 
   useEffect(() => {
     void loadConversations();

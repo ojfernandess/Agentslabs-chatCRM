@@ -117,6 +117,7 @@ interface AppSettings {
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
   conversationsAttendanceTabEnabled?: boolean;
+  conversationsAttendanceTabAutoOpen?: boolean;
   conversationsListShowContactTags?: boolean;
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
@@ -275,6 +276,7 @@ export function SettingsPage() {
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
   const [wfOfferReminder, setWfOfferReminder] = useState(true);
   const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
+  const [wfAttendanceTabAutoOpen, setWfAttendanceTabAutoOpen] = useState(true);
   const [wfListShowContactTags, setWfListShowContactTags] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
 
@@ -589,6 +591,7 @@ export function SettingsPage() {
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWfOfferReminder(data.resolveOfferReminder ?? true);
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
+        setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWorkflowError("");
         setAssistantOpenaiKey("");
@@ -756,6 +759,7 @@ export function SettingsPage() {
         resolveRequireLeadType: wfRequireLeadType,
         resolveOfferReminder: wfOfferReminder,
         conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
+        conversationsAttendanceTabAutoOpen: wfAttendanceTabAutoOpen,
         conversationsListShowContactTags: wfListShowContactTags,
       });
       setSettings(data);
@@ -771,6 +775,7 @@ export function SettingsPage() {
       setWfRequireLeadType(data.resolveRequireLeadType ?? true);
       setWfOfferReminder(data.resolveOfferReminder ?? true);
       setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
+      setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
@@ -2157,6 +2162,32 @@ export function SettingsPage() {
                       />
                     </button>
                   </div>
+
+                  {wfAttendanceTabEnabled && (
+                    <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 pl-4 sm:flex-row sm:items-center sm:justify-between sm:pl-6">
+                      <div>
+                        <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAttendanceTabAutoOpen")}</p>
+                        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAttendanceTabAutoOpenHint")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={wfAttendanceTabAutoOpen}
+                        onClick={() => setWfAttendanceTabAutoOpen((v) => !v)}
+                        className={clsx(
+                          "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                          wfAttendanceTabAutoOpen ? "bg-brand-500" : "bg-gray-200",
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                            wfAttendanceTabAutoOpen ? "translate-x-5" : "translate-x-0",
+                          )}
+                        />
+                      </button>
+                    </div>
+                  )}
 
                   <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div>
