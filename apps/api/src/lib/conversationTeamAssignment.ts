@@ -81,6 +81,7 @@ export async function assignConversationTeamForOrg(
     data: {
       teamId: body.teamId,
       ...(body.assignedToId !== undefined ? { assignedToId: body.assignedToId } : {}),
+      ...(body.assignedToId ? { awaitingHumanHandoff: false } : {}),
       ...teamPulse,
     },
     include: {

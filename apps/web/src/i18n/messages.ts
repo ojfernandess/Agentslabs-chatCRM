@@ -2169,6 +2169,7 @@ export const messages = {
       startChatFillRequired: "Preencha nome e telefone.",
       unreadBadge: "Não lida",
       listAssignee: "Atendente",
+      inAttendance: "Em atendimento",
       emptySearchTitle: "Nenhuma conversa coincide com a pesquisa",
       emptySearchHint: "Limpe o campo ou altere os termos.",
       contextMenu: {
@@ -5443,6 +5444,7 @@ export const messages = {
       startChatFillRequired: "Enter name and phone.",
       unreadBadge: "Unread",
       listAssignee: "Assignee",
+      inAttendance: "In service",
       emptySearchTitle: "No conversations match your search",
       emptySearchHint: "Clear the field or try different terms.",
       contextMenu: {

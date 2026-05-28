@@ -1231,6 +1231,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.assignedToId = request.user.id;
     }
 
+    /** Atribuição humana conclui a fila «aguardando atendimento». */
+    if (typeof data.assignedToId === "string" && data.assignedToId.length > 0) {
+      data.awaitingHumanHandoff = false;
+    }
+
     if (parsed.data.status === "OPEN" && existing.status === "RESOLVED") {
       data.closureReason = null;
       data.leadTypeId = null;

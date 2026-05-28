@@ -471,6 +471,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     convPatch.awaitingHumanHandoff = true;
   } else if (actor.kind === "user" && deliveredToClient) {
     convPatch.assignedToId = actor.userId;
+    convPatch.awaitingHumanHandoff = false;
     if (conversation.status === "PENDING") {
       convPatch.status = "OPEN";
     }

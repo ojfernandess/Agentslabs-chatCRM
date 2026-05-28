@@ -2337,7 +2337,16 @@ export function ConversationDetailPage() {
                         {statusLabel(conversation.status)}
                       </span>
                       <ConversationPriorityBadge priority={conversation.priority} />
-                      {conversation.awaitingHumanHandoff ? (
+                      {hasHumanAssignee &&
+                      (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
+                          title={`${conversation.assignedTo?.name ?? ""} · ${t("conversations.inAttendance")}`}
+                        >
+                          <Headset className="h-3 w-3 shrink-0" aria-hidden />
+                          {t("conversations.inAttendance")}
+                        </span>
+                      ) : conversation.awaitingHumanHandoff ? (
                         <span
                           className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"
                           title={t("conversationDetail.awaitingHumanBanner")}
@@ -2553,7 +2562,7 @@ export function ConversationDetailPage() {
           </div>
         )}
 
-        {conversation.awaitingHumanHandoff ? (
+        {conversation.awaitingHumanHandoff && !hasHumanAssignee ? (
           <ConversationDismissibleBanner
             scope="conversation"
             conversationId={conversation.id}

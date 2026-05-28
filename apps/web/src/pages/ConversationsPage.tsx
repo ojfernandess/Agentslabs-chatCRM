@@ -781,7 +781,18 @@ export function ConversationsPage() {
                                   {conv.inbox.name}
                                 </span>
                               ) : null}
-                              {conv.assignedTo?.name ? (
+                              {typeof conv.assignedTo?.id === "string" &&
+                              conv.assignedTo.id.length > 0 &&
+                              (conv.status === "OPEN" || conv.status === "PENDING") ? (
+                                <span
+                                  className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-100"
+                                  title={`${conv.assignedTo.name} · ${t("conversations.inAttendance")}`}
+                                >
+                                  <UserCircle className="h-3 w-3 shrink-0" aria-hidden />
+                                  <span className="truncate">{conv.assignedTo.name}</span>
+                                  <span className="shrink-0 opacity-90">· {t("conversations.inAttendance")}</span>
+                                </span>
+                              ) : conv.assignedTo?.name ? (
                                 <span
                                   className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
                                   title={`${t("conversations.listAssignee")}: ${conv.assignedTo.name}`}
@@ -790,7 +801,8 @@ export function ConversationsPage() {
                                   <span className="truncate">{conv.assignedTo.name}</span>
                                 </span>
                               ) : null}
-                              {conv.awaitingHumanHandoff ? (
+                              {conv.awaitingHumanHandoff &&
+                              !(typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0) ? (
                                 <span
                                   className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-900 dark:bg-red-950/45 dark:text-red-100"
                                   title={t("conversationDetail.awaitingHumanBanner")}
