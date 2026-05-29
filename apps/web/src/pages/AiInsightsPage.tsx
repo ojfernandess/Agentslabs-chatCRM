@@ -315,16 +315,13 @@ export function AiInsightsPage() {
                       aria-checked={aiPilotAccessEnabled}
                       onClick={() => void togglePilot()}
                       className={clsx(
-                        "relative h-6 w-11 rounded-full transition-colors",
-                        aiPilotAccessEnabled ? "bg-brand-500" : "bg-ink-300 dark:bg-ink-600",
+                        "touch-target-compact flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors",
+                        aiPilotAccessEnabled
+                          ? "justify-end bg-brand-500"
+                          : "justify-start bg-ink-300 dark:bg-ink-600",
                       )}
                     >
-                      <span
-                        className={clsx(
-                          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
-                          aiPilotAccessEnabled ? "translate-x-5" : "translate-x-0.5",
-                        )}
-                      />
+                      <span className="pointer-events-none h-5 w-5 rounded-full bg-white shadow" />
                     </button>
                   </label>
                   <button
