@@ -44,18 +44,24 @@ export function InsightMetricCards({ metrics }: Props) {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm dark:bg-ink-900/60">
                 <Icon className="h-5 w-5" />
               </div>
-              {m.trend !== "neutral" ? (
+              {m.trend !== "neutral" && !m.hideTrend ? (
                 <span className="inline-flex items-center gap-0.5 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold dark:bg-ink-900/50">
                   <TrendIcon className="h-3 w-3" />
                   {m.change}
                 </span>
-              ) : (
+              ) : m.hideTrend ? null : (
                 <span className="text-[10px] font-semibold opacity-70">{m.change}</span>
               )}
             </div>
             <p className="mt-4 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{m.value}</p>
             <p className="mt-1 text-xs font-medium text-ink-600 dark:text-ink-400">{t(m.labelKey)}</p>
-            <p className="mt-2 text-[10px] text-ink-500 dark:text-ink-500">{t("aiInsightsPage.metrics.vsLast7Days")}</p>
+            <p className="mt-2 text-[10px] text-ink-500 dark:text-ink-500">
+              {m.footnoteKey
+                ? m.id === "opportunity" && !m.hideTrend
+                  ? t(m.footnoteKey).replace("{count}", m.change)
+                  : t(m.footnoteKey)
+                : t("aiInsightsPage.metrics.vsLast7Days")}
+            </p>
           </div>
         );
       })}

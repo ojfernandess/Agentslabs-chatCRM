@@ -10,8 +10,10 @@ import { ConversationListPanel } from "@/components/ai/ConversationListPanel";
 import { ConversationPreview } from "@/components/ai/ConversationPreview";
 import { InsightMetricCards } from "@/components/ai/InsightMetricCards";
 import { SmartAlerts, SuggestedActions, type SmartAlertItem } from "@/components/ai/SuggestedActions";
+import { formatCurrencyUnits } from "@/lib/currency";
 import {
   buildInsightMetrics,
+  conversationHasLeadValue,
   type AiInsightsConversationRow,
   type ConversationInsightPayload,
 } from "@/lib/conversationInsights";
@@ -120,7 +122,10 @@ export function AiInsightsPage() {
     [rows, selectedId],
   );
 
-  const metrics = useMemo(() => buildInsightMetrics(rows, analyzedCount, t), [rows, analyzedCount, t]);
+  const metrics = useMemo(
+    () => buildInsightMetrics(rows, analyzedCount, t, formatCurrencyUnits),
+    [rows, analyzedCount, t],
+  );
 
   const smartAlerts = useMemo((): SmartAlertItem[] => {
     const alerts: SmartAlertItem[] = [];
@@ -169,15 +174,20 @@ export function AiInsightsPage() {
       });
     }
 
-    const openTagged = rows.find((r) => r.status === "OPEN" && (r.contact.tags?.length ?? 0) > 0);
-    if (openTagged) {
+    const openWithLeadValue = rows.find(
+      (r) => (r.status === "OPEN" || r.status === "PENDING") && conversationHasLeadValue(r),
+    );
+    if (openWithLeadValue) {
       alerts.push({
-        id: `opp-${openTagged.id}`,
+        id: `opp-${openWithLeadValue.id}`,
         type: "opportunity",
         titleKey: "aiInsightsPage.alerts.highOpportunity",
         bodyKey: "aiInsightsPage.alerts.highOpportunityBody",
-        bodyParams: { name: openTagged.contact.name },
-        conversationId: openTagged.id,
+        bodyParams: {
+          name: openWithLeadValue.contact.name,
+          value: formatCurrencyUnits(openWithLeadValue.closureValue ?? 0),
+        },
+        conversationId: openWithLeadValue.id,
         timeKey: "aiInsightsPage.alerts.recent",
       });
     }

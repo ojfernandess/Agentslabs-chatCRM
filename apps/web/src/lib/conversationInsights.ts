@@ -15,6 +15,8 @@ export type AiInsightsConversationRow = {
   updatedAt: string;
   isUnread?: boolean;
   awaitingHumanHandoff?: boolean;
+  closureValue?: number | null;
+  leadType?: { id: string; name: string; color: string; valueRollup?: string | null } | null;
   contact: {
     id: string;
     name: string;
@@ -36,6 +38,8 @@ export type InsightMetricCard = {
   trend: "up" | "down" | "neutral";
   icon: "flame" | "alert" | "money" | "clock" | "chart";
   accent: string;
+  footnoteKey?: string;
+  hideTrend?: boolean;
 };
 
 export function sentimentLabelKey(s: InsightSentiment): string {
@@ -88,15 +92,39 @@ export function formatRelativeTime(iso: string, locale: string | { code?: string
   return d.toLocaleDateString(localeStr, { day: "2-digit", month: "short" });
 }
 
+const OPEN_STATUSES = new Set(["OPEN", "PENDING"]);
+
+export function conversationHasLeadValue(row: AiInsightsConversationRow): boolean {
+  return row.closureValue != null && row.closureValue > 0;
+}
+
+export function sumOpenLeadValues(rows: AiInsightsConversationRow[]): {
+  total: number;
+  count: number;
+} {
+  let total = 0;
+  let count = 0;
+  for (const row of rows) {
+    if (!OPEN_STATUSES.has(row.status)) continue;
+    if (!conversationHasLeadValue(row)) continue;
+    total += row.closureValue ?? 0;
+    count += 1;
+  }
+  return { total, count };
+}
+
 export function buildInsightMetrics(
   rows: AiInsightsConversationRow[],
   analyzedCount: number,
   t: (k: string) => string,
+  formatMoney: (units: number) => string,
 ): InsightMetricCard[] {
   const hotLeads = rows.filter(
     (r) => r.isUnread || r.status === "OPEN" || (r.contact.tags?.length ?? 0) > 0,
   ).length;
   const atRisk = rows.filter((r) => r.status === "PENDING" || r.awaitingHumanHandoff).length;
+  const { total: opportunityTotal, count: opportunityCount } = sumOpenLeadValues(rows);
+  const hasOpportunityValue = opportunityTotal > 0;
 
   return [
     {
@@ -120,11 +148,15 @@ export function buildInsightMetrics(
     {
       id: "opportunity",
       labelKey: "aiInsightsPage.metrics.opportunities",
-      value: t("aiInsightsPage.metrics.opportunityValue"),
-      change: "+32%",
-      trend: "up",
+      value: hasOpportunityValue ? formatMoney(opportunityTotal) : t("aiInsightsPage.metrics.noLeadValue"),
+      change: hasOpportunityValue ? String(opportunityCount) : "0",
+      trend: hasOpportunityValue ? "up" : "neutral",
       icon: "money",
       accent: "sky",
+      footnoteKey: hasOpportunityValue
+        ? "aiInsightsPage.metrics.leadsWithValue"
+        : "aiInsightsPage.metrics.noLeadValueHint",
+      hideTrend: !hasOpportunityValue,
     },
     {
       id: "response",
