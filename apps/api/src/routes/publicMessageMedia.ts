@@ -1,8 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { openMessageMediaReadStream, readMessageMediaFile } from "../lib/mediaStorage.js";
-
-/** Nome: 32 hex + extensão (ex.: gravações WebM/OGG do browser). */
-const FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
+import { MESSAGE_MEDIA_FILENAME_RE } from "../lib/messageMediaFilename.js";
 
 function contentTypeForFilename(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
@@ -38,7 +36,7 @@ function contentTypeForFilename(name: string): string {
 export async function publicMessageMediaRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { name: string } }>("/api/v1/messages/media/:name", async (request, reply) => {
     const name = request.params.name;
-    if (!FILENAME_RE.test(name)) {
+    if (!MESSAGE_MEDIA_FILENAME_RE.test(name)) {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid media name", statusCode: 400 });
     }
 

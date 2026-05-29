@@ -26,6 +26,7 @@ import {
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
+import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
 
 interface OrgRow {
   id: string;
@@ -2352,6 +2353,8 @@ export function SuperAdminPage() {
               )}
             </div>
           )}
+
+          {section === "conversationMedia" && <SuperAdminConversationMediaSection />}
 
           {section === "featureFlags" && (
             <div className="mx-auto max-w-3xl space-y-6">

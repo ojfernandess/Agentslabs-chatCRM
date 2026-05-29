@@ -35,6 +35,14 @@ import {
   parseMediaStoragePlatformValue,
 } from "../lib/mediaStorageSettings.js";
 import { invalidateMediaStorageCache } from "../lib/mediaStorage.js";
+import {
+  buildConversationMediaInventory,
+  deleteConversationMediaFiles,
+  filterConversationMediaInventory,
+  getConversationMediaInventoryStats,
+  paginateConversationMediaInventory,
+} from "../lib/conversationMediaAdmin.js";
+import { MESSAGE_MEDIA_FILENAME_RE } from "../lib/messageMediaFilename.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 
@@ -145,6 +153,19 @@ const auditQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(40),
   organizationId: z.string().uuid().optional(),
+});
+
+const conversationMediaQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  q: z.string().max(200).optional(),
+  storage: z.enum(["all", "local", "minio", "both", "db_only"]).optional(),
+  organizationId: z.string().uuid().optional(),
+  type: z.string().max(32).optional(),
+});
+
+const conversationMediaBulkDeleteSchema = z.object({
+  filenames: z.array(z.string().min(1).max(128)).min(1).max(100),
 });
 
 const featureFlagPatchSchema = z.object({
@@ -1525,5 +1546,77 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       publicBaseUrl: value.publicBaseUrl ?? "",
       source: "platform",
     };
+  });
+
+  app.get("/conversation-media/stats", async () => {
+    const items = await buildConversationMediaInventory();
+    return getConversationMediaInventoryStats(items);
+  });
+
+  app.get("/conversation-media", async (request, reply) => {
+    const parsed = conversationMediaQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const items = await buildConversationMediaInventory();
+    const filtered = filterConversationMediaInventory(items, {
+      page: parsed.data.page,
+      limit: parsed.data.limit,
+      q: parsed.data.q,
+      storage: parsed.data.storage ?? "all",
+      organizationId: parsed.data.organizationId,
+      type: parsed.data.type,
+    });
+    const page = paginateConversationMediaInventory(filtered, parsed.data.page, parsed.data.limit);
+    return page;
+  });
+
+  app.delete<{ Params: { filename: string } }>("/conversation-media/:filename", async (request, reply) => {
+    const filename = request.params.filename;
+    if (!MESSAGE_MEDIA_FILENAME_RE.test(filename)) {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid filename", statusCode: 400 });
+    }
+    const result = await deleteConversationMediaFiles([filename]);
+    if (result.deleted.length === 0 && result.errors.length > 0) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: result.errors[0]?.message ?? "Delete failed",
+        statusCode: 400,
+      });
+    }
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.conversation_media.delete",
+      resourceType: "message_media",
+      resourceId: filename,
+      metadata: {
+        deleted: result.deleted,
+        clearedDbReferences: result.clearedDbReferences,
+      },
+      ip: clientIp(request),
+    });
+    return result;
+  });
+
+  app.post("/conversation-media/bulk-delete", async (request, reply) => {
+    const parsed = conversationMediaBulkDeleteSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const result = await deleteConversationMediaFiles(parsed.data.filenames);
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.conversation_media.bulk_delete",
+      resourceType: "message_media",
+      resourceId: "bulk",
+      metadata: {
+        requested: parsed.data.filenames.length,
+        deleted: result.deleted.length,
+        clearedDbReferences: result.clearedDbReferences,
+        errors: result.errors,
+      },
+      ip: clientIp(request),
+    });
+    return result;
   });
 }

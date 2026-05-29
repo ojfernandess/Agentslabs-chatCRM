@@ -5,6 +5,7 @@ import {
   BarChart3,
   Box,
   Building2,
+  HardDrive,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -30,6 +31,7 @@ export type SuperSection =
   | "monitoring"
   | "platformApps"
   | "auditLog"
+  | "conversationMedia"
   | "featureFlags";
 
 type NavItem = { id: SuperSection; labelKey: string; icon: typeof LayoutDashboard };
@@ -61,6 +63,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
     labelKey: "superAdmin.navGroupOperations",
     items: [
       { id: "monitoring", labelKey: "superAdmin.monitoring", icon: Activity },
+      { id: "conversationMedia", labelKey: "superAdmin.conversationMedia.nav", icon: HardDrive },
       { id: "platformApps", labelKey: "superAdmin.platformApps", icon: Box },
       { id: "auditLog", labelKey: "superAdmin.auditLog", icon: ScrollText },
     ],
@@ -86,6 +89,7 @@ const SECTION_TITLE_KEYS: Record<SuperSection, string> = {
   monitoring: "superAdmin.monitoring",
   platformApps: "superAdmin.platformApps",
   auditLog: "superAdmin.auditLog",
+  conversationMedia: "superAdmin.conversationMedia.nav",
   featureFlags: "superAdmin.featureFlags",
 };
 
@@ -97,6 +101,7 @@ const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
   globalSettings: "superAdmin.globalSettingsSubtitle",
   monitoring: "superAdmin.monitoringSubtitle",
   auditLog: "superAdmin.auditSubtitle",
+  conversationMedia: "superAdmin.conversationMedia.subtitle",
   featureFlags: "superAdmin.flagsSubtitle",
 };
 

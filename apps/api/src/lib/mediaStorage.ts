@@ -99,6 +99,11 @@ function resolveFromEnv(): ResolvedMediaStorage | null {
   };
 }
 
+/** Inventário super admin: MinIO via env mesmo quando o driver activo é local. */
+export function resolveFromEnvForAdmin(): ResolvedMediaStorage | null {
+  return resolveFromEnv();
+}
+
 /** Ordem: super admin (platform_settings) → env MINIO → disco local. */
 export async function getResolvedMediaStorage(): Promise<ResolvedMediaStorage> {
   const now = Date.now();
