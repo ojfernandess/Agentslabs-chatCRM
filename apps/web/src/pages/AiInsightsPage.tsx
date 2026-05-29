@@ -1,46 +1,48 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
-import { PageTransition, motion } from "@/components/Motion";
+import { PageTransition } from "@/components/Motion";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
+import { AIAnalysisPanel } from "@/components/ai/AIAnalysisPanel";
+import { ConversationListPanel } from "@/components/ai/ConversationListPanel";
+import { ConversationPreview } from "@/components/ai/ConversationPreview";
+import { InsightMetricCards } from "@/components/ai/InsightMetricCards";
+import { SmartAlerts, SuggestedActions, type SmartAlertItem } from "@/components/ai/SuggestedActions";
 import {
-  Brain,
-  Loader2,
-  MessageSquare,
-  AlertTriangle,
-  Lightbulb,
-  TrendingUp,
-  ListChecks,
-} from "lucide-react";
-
-interface ConversationListRow {
-  id: string;
-  status: string;
-  contact: { name: string; phone: string };
-}
-
-type InsightPayload = {
-  summary: string;
-  intent: string;
-  sentiment: "positive" | "neutral" | "negative" | "frustrated";
-  suggestedActions: string[];
-  conversionOutlook: string;
-  alerts: string[];
-};
+  buildInsightMetrics,
+  type AiInsightsConversationRow,
+  type ConversationInsightPayload,
+} from "@/lib/conversationInsights";
+import clsx from "clsx";
+import { Brain, Copy, Settings, Sparkles, X } from "lucide-react";
 
 export function AiInsightsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [rows, setRows] = useState<ConversationListRow[]>([]);
+
+  const [rows, setRows] = useState<AiInsightsConversationRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(() => searchParams.get("conversation") ?? "");
+  const [search, setSearch] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [periodFilter, setPeriodFilter] = useState("7");
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
+
   const [analyzing, setAnalyzing] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
-  const [insights, setInsights] = useState<InsightPayload | null>(null);
+  const [success, setSuccess] = useState("");
+  const [insights, setInsights] = useState<ConversationInsightPayload | null>(null);
+  const [analyzedAt, setAnalyzedAt] = useState<Date | null>(null);
+  const [analyzedCount, setAnalyzedCount] = useState(0);
+  const [generatedReply, setGeneratedReply] = useState<string | null>(null);
+
   const [assistantAiEnabled, setAssistantAiEnabled] = useState(true);
   const [aiPilotAccessEnabled, setAiPilotAccessEnabled] = useState(false);
 
@@ -50,17 +52,147 @@ export function AiInsightsPage() {
     void api
       .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
       .then((res) => {
-        if (!cancelled) setAssistantAiEnabled(res.assistantAiEnabled);
-        if (!cancelled) setAiPilotAccessEnabled(res.aiPilotAccessEnabled);
+        if (!cancelled) {
+          setAssistantAiEnabled(res.assistantAiEnabled);
+          setAiPilotAccessEnabled(res.aiPilotAccessEnabled);
+        }
       })
       .catch(() => {
-        if (!cancelled) setAssistantAiEnabled(true);
-        if (!cancelled) setAiPilotAccessEnabled(false);
+        if (!cancelled) {
+          setAssistantAiEnabled(true);
+          setAiPilotAccessEnabled(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      api.get<{ data: AiInsightsConversationRow[] }>("/conversations?pageSize=50"),
+      api.get<{ id: string; name: string }[]>("/users").catch(() => []),
+      api.get<{ id: string; name: string }[]>("/tags").catch(() => []),
+    ])
+      .then(([convRes, users, tagRows]) => {
+        if (cancelled) return;
+        setRows(convRes.data ?? []);
+        setAgents(users.map((u) => ({ id: u.id, name: u.name })));
+        setTags(tagRows.map((tag) => ({ id: tag.id, name: tag.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const c = searchParams.get("conversation");
+    if (c) setSelectedId(c);
+  }, [searchParams]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const periodDays = periodFilter === "all" ? null : Number(periodFilter);
+    const cutoff = periodDays ? Date.now() - periodDays * 86400000 : null;
+
+    return rows.filter((row) => {
+      if (q) {
+        const hay = `${row.contact.name} ${row.contact.phone}`.toLowerCase();
+        const tagNames = row.contact.tags?.map((t) => t.tag.name.toLowerCase()).join(" ") ?? "";
+        if (!hay.includes(q) && !tagNames.includes(q)) return false;
+      }
+      if (agentFilter && row.assignedTo?.id !== agentFilter) return false;
+      if (tagFilter && !row.contact.tags?.some((t) => t.tag.id === tagFilter)) return false;
+      if (cutoff && new Date(row.updatedAt).getTime() < cutoff) return false;
+      return true;
+    });
+  }, [rows, search, agentFilter, tagFilter, periodFilter]);
+
+  const selectedConversation = useMemo(
+    () => rows.find((r) => r.id === selectedId) ?? null,
+    [rows, selectedId],
+  );
+
+  const metrics = useMemo(() => buildInsightMetrics(rows, analyzedCount, t), [rows, analyzedCount, t]);
+
+  const smartAlerts = useMemo((): SmartAlertItem[] => {
+    const alerts: SmartAlertItem[] = [];
+    const now = Date.now();
+
+    for (const row of rows.slice(0, 20)) {
+      if (row.isUnread && row.status === "OPEN") {
+        alerts.push({
+          id: `hot-${row.id}`,
+          type: "hot",
+          titleKey: "aiInsightsPage.alerts.hotLead",
+          bodyKey: "aiInsightsPage.alerts.hotLeadBody",
+          bodyParams: { name: row.contact.name },
+          conversationId: row.id,
+          timeKey: "aiInsightsPage.alerts.now",
+        });
+        break;
+      }
+    }
+
+    for (const row of rows) {
+      const age = now - new Date(row.updatedAt).getTime();
+      if (row.status === "PENDING" && age > 3600000) {
+        alerts.push({
+          id: `wait-${row.id}`,
+          type: "waiting",
+          titleKey: "aiInsightsPage.alerts.longWait",
+          bodyKey: "aiInsightsPage.alerts.longWaitBody",
+          bodyParams: { count: "1" },
+          conversationId: row.id,
+          timeKey: "aiInsightsPage.alerts.minutesAgo",
+        });
+        break;
+      }
+    }
+
+    if (insights?.sentiment === "frustrated" || insights?.sentiment === "negative") {
+      alerts.push({
+        id: "insight-angry",
+        type: "angry",
+        titleKey: "aiInsightsPage.alerts.unhappy",
+        bodyKey: "aiInsightsPage.alerts.unhappyBody",
+        bodyParams: { name: selectedConversation?.contact.name ?? "—" },
+        conversationId: selectedId || undefined,
+        timeKey: "aiInsightsPage.alerts.now",
+      });
+    }
+
+    const openTagged = rows.find((r) => r.status === "OPEN" && (r.contact.tags?.length ?? 0) > 0);
+    if (openTagged) {
+      alerts.push({
+        id: `opp-${openTagged.id}`,
+        type: "opportunity",
+        titleKey: "aiInsightsPage.alerts.highOpportunity",
+        bodyKey: "aiInsightsPage.alerts.highOpportunityBody",
+        bodyParams: { name: openTagged.contact.name },
+        conversationId: openTagged.id,
+        timeKey: "aiInsightsPage.alerts.recent",
+      });
+    }
+
+    return alerts.slice(0, 4);
+  }, [rows, insights, selectedConversation, selectedId]);
+
+  const onSelectConversation = (id: string) => {
+    setSelectedId(id);
+    setSearchParams(id ? { conversation: id } : {}, { replace: true });
+    setInsights(null);
+    setAnalyzedAt(null);
+    setGeneratedReply(null);
+    setError("");
+  };
 
   const toggleAi = useCallback(async () => {
     if (!tenantAdmin) return;
@@ -97,46 +229,19 @@ export function AiInsightsPage() {
     }
   }, [aiPilotAccessEnabled, tenantAdmin, t, assistantAiEnabled]);
 
-  useEffect(() => {
-    const c = searchParams.get("conversation");
-    if (c) setSelectedId(c);
-  }, [searchParams]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setListLoading(true);
-    void api
-      .get<{ data: ConversationListRow[] }>("/conversations?pageSize=50")
-      .then((res) => {
-        if (!cancelled) setRows(res.data);
-      })
-      .catch(() => {
-        if (!cancelled) setRows([]);
-      })
-      .finally(() => {
-        if (!cancelled) setListLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const onSelectConversation = (id: string) => {
-    setSelectedId(id);
-    setSearchParams(id ? { conversation: id } : {}, { replace: true });
-    setInsights(null);
-    setError("");
-  };
-
   const runAnalyze = useCallback(async () => {
-    if (!selectedId.trim()) return;
-    if (!assistantAiEnabled) return;
+    if (!selectedId.trim() || !assistantAiEnabled) return;
     setAnalyzing(true);
     setError("");
+    setSuccess("");
     setInsights(null);
+    setGeneratedReply(null);
     try {
-      const res = await api.post<{ insights: InsightPayload }>(`/conversations/${selectedId.trim()}/insights`, {});
+      const res = await api.post<{ insights: ConversationInsightPayload }>(`/conversations/${selectedId.trim()}/insights`, {});
       setInsights(res.insights);
+      setAnalyzedAt(new Date());
+      setAnalyzedCount((c) => c + 1);
+      setSuccess(t("aiInsightsPage.analysisDone"));
     } catch (e) {
       if (e instanceof ApiError && (e as unknown as { code?: string }).code === "ai_disabled") {
         setAssistantAiEnabled(false);
@@ -149,169 +254,207 @@ export function AiInsightsPage() {
     }
   }, [selectedId, t, assistantAiEnabled]);
 
-  const sentimentClass = (s: string) => {
-    switch (s) {
-      case "positive":
-        return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100";
-      case "negative":
-      case "frustrated":
-        return "bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-100";
-      default:
-        return "bg-ink-100 text-ink-800 dark:bg-ink-800 dark:text-ink-100";
+  const runGenerateReply = useCallback(async () => {
+    if (!selectedId.trim() || !assistantAiEnabled) return;
+    setGenerating(true);
+    setError("");
+    try {
+      const res = await api.post<{ suggestion: string }>(`/conversations/${selectedId.trim()}/suggest-reply`, {});
+      setGeneratedReply(res.suggestion);
+      setSuccess(t("aiInsightsPage.replyGenerated"));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("conversationDetail.generateReplyError"));
+    } finally {
+      setGenerating(false);
+    }
+  }, [selectedId, assistantAiEnabled, t]);
+
+  const copyReply = async () => {
+    if (!generatedReply) return;
+    try {
+      await navigator.clipboard.writeText(generatedReply);
+      setSuccess(t("aiInsightsPage.replyCopied"));
+    } catch {
+      setError(t("aiInsightsPage.copyFailed"));
     }
   };
 
   return (
     <PageTransition>
-      <div className="mx-auto max-w-4xl space-y-8 px-4 py-8">
-        <header className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-100">
-            <Brain className="h-3.5 w-3.5" />
-            {t("aiInsightsPage.badge")}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("aiInsightsPage.title")}</h1>
-            {tenantAdmin ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void toggleAi()}
-                  className={assistantAiEnabled ? "btn-secondary" : "btn-primary"}
-                >
-                  {assistantAiEnabled ? t("aiInsightsPage.disableAi") : t("aiInsightsPage.enableAi")}
-                </button>
-                <button type="button" onClick={() => void togglePilot()} className={aiPilotAccessEnabled ? "btn-secondary" : "btn-ghost"}>
-                  {aiPilotAccessEnabled ? t("aiInsightsPage.pilotOn") : t("aiInsightsPage.pilotOff")}
-                </button>
+      <div className="mx-auto max-w-[1400px] space-y-8 px-4 py-8 lg:px-6">
+        <header className="relative overflow-hidden rounded-3xl border border-ink-200/80 bg-white p-6 shadow-sm dark:border-ink-700/60 dark:bg-ink-900/50 lg:p-8">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-brand-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-100">
+                <Brain className="h-3.5 w-3.5" />
+                {t("aiInsightsPage.badge")}
               </div>
-            ) : null}
+              <h1 className="text-3xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("aiInsightsPage.title")}</h1>
+              <p className="text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("aiInsightsPage.subtitlePremium")}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {tenantAdmin ? (
+                <>
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/80 px-3 py-2 text-xs font-medium dark:border-ink-700 dark:bg-ink-800/40">
+                    <span>{t("aiInsightsPage.autopilot")}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={aiPilotAccessEnabled}
+                      onClick={() => void togglePilot()}
+                      className={clsx(
+                        "relative h-6 w-11 rounded-full transition-colors",
+                        aiPilotAccessEnabled ? "bg-brand-500" : "bg-ink-300 dark:bg-ink-600",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                          aiPilotAccessEnabled ? "translate-x-5" : "translate-x-0.5",
+                        )}
+                      />
+                    </button>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void toggleAi()}
+                    className={assistantAiEnabled ? "btn-secondary text-xs" : "btn-primary text-xs"}
+                  >
+                    {assistantAiEnabled ? t("aiInsightsPage.disableAi") : t("aiInsightsPage.enableAi")}
+                  </button>
+                </>
+              ) : null}
+              <Link to="/settings" className="btn-secondary inline-flex items-center gap-2 text-xs">
+                <Settings className="h-4 w-4" />
+                {t("aiInsightsPage.aiSettings")}
+              </Link>
+            </div>
           </div>
-          <p className="max-w-2xl text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("aiInsightsPage.subtitle")}</p>
         </header>
 
-        <section className="card-surface space-y-4 p-6">
-          {!assistantAiEnabled ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
-              {t("aiInsightsPage.aiDisabled")}
-            </div>
-          ) : null}
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
-            <MessageSquare className="h-4 w-4 text-brand-500" />
-            {t("aiInsightsPage.analyzeSectionTitle")}
-          </h2>
-          <p className="text-xs text-ink-500 dark:text-ink-400">{t("aiInsightsPage.analyzeSectionHelp")}</p>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <label htmlFor="ai-insights-conv" className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-400">
-                {t("aiInsightsPage.selectConversation")}
-              </label>
-              <select
-                id="ai-insights-conv"
-                className="input-field w-full"
-                disabled={listLoading}
-                value={selectedId}
-                onChange={(e) => onSelectConversation(e.target.value)}
-              >
-                <option value="">{t("aiInsightsPage.selectPlaceholder")}</option>
-                {rows.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.contact.name} · {r.status} · {r.contact.phone}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              className="btn-primary inline-flex shrink-0 items-center justify-center gap-2"
-              disabled={!selectedId || analyzing}
-              onClick={() => void runAnalyze()}
-            >
-              {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
-              {analyzing ? t("aiInsightsPage.analyzing") : t("aiInsightsPage.analyzeButton")}
-            </button>
+        {!assistantAiEnabled ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+            {t("aiInsightsPage.aiDisabled")}
           </div>
-          {selectedId ? (
-            <p className="text-xs">
-              <Link to={`/conversations/${selectedId}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-                {t("aiInsightsPage.openConversation")} →
-              </Link>
-            </p>
-          ) : null}
-          {error ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100">
-              {error}
-            </p>
-          ) : null}
-        </section>
-
-        {insights ? (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-4"
-          >
-            <section className="card-surface p-6">
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
-                <ListChecks className="h-4 w-4 text-brand-500" />
-                {t("aiInsightsPage.summary")}
-              </h3>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-700 dark:text-ink-200">{insights.summary}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sentimentClass(insights.sentiment)}`}>
-                  {t("aiInsightsPage.sentiment")}: {insights.sentiment}
-                </span>
-                <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-950 dark:bg-sky-950/50 dark:text-sky-100">
-                  {t("aiInsightsPage.intent")}: {insights.intent}
-                </span>
-              </div>
-            </section>
-
-            {insights.alerts.length > 0 ? (
-              <section className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900/40 dark:bg-amber-950/25">
-                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
-                  <AlertTriangle className="h-4 w-4" />
-                  {t("aiInsightsPage.alerts")}
-                </h3>
-                <ul className="list-inside list-disc space-y-1 text-sm text-amber-950/95 dark:text-amber-100/90">
-                  {insights.alerts.map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-
-            <section className="card-surface p-6">
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
-                <TrendingUp className="h-4 w-4 text-brand-500" />
-                {t("aiInsightsPage.conversionOutlook")}
-              </h3>
-              <p className="text-sm leading-relaxed text-ink-700 dark:text-ink-200">{insights.conversionOutlook}</p>
-            </section>
-
-            {insights.suggestedActions.length > 0 ? (
-              <section className="card-surface p-6">
-                <h3 className="mb-3 text-sm font-semibold text-ink-900 dark:text-ink-50">{t("aiInsightsPage.suggestedActions")}</h3>
-                <ol className="list-decimal space-y-2 pl-5 text-sm text-ink-700 dark:text-ink-200">
-                  {insights.suggestedActions.map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ol>
-              </section>
-            ) : null}
-          </motion.div>
         ) : null}
 
-        <section className="rounded-xl border border-dashed border-ink-200 bg-ink-50/50 p-6 dark:border-ink-700 dark:bg-ink-900/30">
-          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("aiInsightsPage.visionTitle")}</h2>
-          <ul className="mt-3 grid gap-2 text-xs text-ink-600 dark:text-ink-400 sm:grid-cols-2">
-            <li>· {t("aiInsightsPage.visionBullet1")}</li>
-            <li>· {t("aiInsightsPage.visionBullet2")}</li>
-            <li>· {t("aiInsightsPage.visionBullet3")}</li>
-            <li>· {t("aiInsightsPage.visionBullet4")}</li>
-            <li>· {t("aiInsightsPage.visionBullet5")}</li>
-            <li>· {t("aiInsightsPage.visionBullet6")}</li>
-          </ul>
-        </section>
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100">
+            {error}
+          </div>
+        ) : null}
+        {success ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
+            {success}
+          </div>
+        ) : null}
+
+        <InsightMetricCards metrics={metrics} />
+
+        <div className="grid gap-6 xl:grid-cols-12">
+          <div className="xl:col-span-4">
+            <ConversationListPanel
+              rows={filteredRows}
+              loading={listLoading}
+              selectedId={selectedId}
+              search={search}
+              onSearchChange={setSearch}
+              agentFilter={agentFilter}
+              onAgentFilterChange={setAgentFilter}
+              tagFilter={tagFilter}
+              onTagFilterChange={setTagFilter}
+              periodFilter={periodFilter}
+              onPeriodFilterChange={setPeriodFilter}
+              agents={agents}
+              tags={tags}
+              onSelect={onSelectConversation}
+              onAnalyze={() => void runAnalyze()}
+              analyzing={analyzing}
+              analyzeDisabled={!assistantAiEnabled}
+            />
+          </div>
+
+          <div className="space-y-5 xl:col-span-5">
+            <div className="rounded-2xl border border-ink-200/80 bg-white p-5 shadow-sm dark:border-ink-700/60 dark:bg-ink-900/50">
+              <AIAnalysisPanel
+                insights={insights}
+                analyzing={analyzing}
+                hasSelection={Boolean(selectedId)}
+                analyzedAt={analyzedAt}
+              />
+              <div className="mt-5 border-t border-ink-100 pt-5 dark:border-ink-800">
+                <SuggestedActions
+                  conversationId={selectedId}
+                  onGenerateReply={() => void runGenerateReply()}
+                  generating={generating}
+                  disabled={!assistantAiEnabled}
+                />
+              </div>
+              {selectedId ? (
+                <p className="mt-3 text-xs">
+                  <Link to={`/conversations/${selectedId}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+                    {t("aiInsightsPage.openConversation")} →
+                  </Link>
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-4 xl:col-span-3">
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-ink-900 dark:text-ink-50">{t("aiInsightsPage.previewTitle")}</h3>
+              <ConversationPreview conversation={selectedConversation} insights={insights} />
+            </div>
+            {insights?.suggestedActions && insights.suggestedActions.length > 0 ? (
+              <div className="rounded-2xl border border-ink-200/80 bg-white p-4 shadow-sm dark:border-ink-700/60 dark:bg-ink-900/50">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500">{t("aiInsightsPage.recommendedActions")}</h3>
+                <ul className="mt-3 space-y-2">
+                  {insights.suggestedActions.slice(0, 3).map((action, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 rounded-xl bg-ink-50 px-3 py-2 text-xs dark:bg-ink-800/40">
+                      <span className="text-ink-700 dark:text-ink-200">{action}</span>
+                      <Link
+                        to={`/conversations/${selectedId}`}
+                        className="shrink-0 font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                      >
+                        {t("aiInsightsPage.execute")}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <SmartAlerts alerts={smartAlerts} />
+
+        {generatedReply ? (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-ink-900">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-ink-900 dark:text-ink-50">
+                  <Sparkles className="h-5 w-5 text-brand-500" />
+                  {t("aiInsightsPage.generatedReplyTitle")}
+                </h3>
+                <button type="button" onClick={() => setGeneratedReply(null)} className="btn-ghost rounded-lg p-2">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-ink-700 dark:text-ink-200">{generatedReply}</p>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={() => void copyReply()} className="btn-secondary inline-flex items-center gap-2">
+                  <Copy className="h-4 w-4" />
+                  {t("aiInsightsPage.copyReply")}
+                </button>
+                <Link to={`/conversations/${selectedId}`} className="btn-primary">
+                  {t("aiInsightsPage.openConversation")}
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </PageTransition>
   );
