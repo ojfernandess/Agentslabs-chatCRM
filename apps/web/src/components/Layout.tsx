@@ -31,6 +31,7 @@ import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import { useActionableReminders } from "@/hooks/useActionableReminders";
 import { ReminderActionableBanner } from "@/components/reminders/ReminderActionableBanner";
 import { useConversationBubbleTheme } from "@/hooks/useConversationBubbleTheme";
+import { useOrganizationBranding } from "@/hooks/useOrganizationBranding";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -74,6 +75,8 @@ export function Layout() {
   );
   const orgThemeKey = user?.actingOrganizationId ?? user?.organizationId ?? null;
   useConversationBubbleTheme(!!user, orgThemeKey);
+  const { organizationLogoUrl } = useOrganizationBranding(!!user, orgThemeKey);
+  const sidebarLogoSrc = organizationLogoUrl ?? brandAssetUrl("/logo.svg");
 
   useEffect(() => {
     if (orgLabel && orgLabel !== "—") {
@@ -276,7 +279,7 @@ export function Layout() {
       <div className="px-5 pt-6 pb-5">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src={brandAssetUrl("/logo.svg")}
+            src={sidebarLogoSrc}
             alt={orgLabel}
             className="h-9 w-auto max-w-[2.75rem] object-contain"
             decoding="async"

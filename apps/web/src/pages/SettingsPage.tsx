@@ -69,6 +69,8 @@ import {
   DEFAULT_BUBBLE_THEME,
   hasCustomBubbleTheme,
 } from "@/lib/conversationBubbleTheme";
+import { brandAssetUrl } from "@/lib/brandingAssets";
+import { notifyOrganizationBrandingUpdated } from "@/hooks/useOrganizationBranding";
 
 type SettingsSection =
   | "channel"
@@ -136,6 +138,7 @@ interface AppSettings {
   conversationBubbleClientMetaColorDark?: string | null;
   conversationBubbleAgentMetaColor?: string | null;
   conversationBubbleAgentMetaColorDark?: string | null;
+  organizationLogoUrl?: string | null;
 }
 
 interface AgentBotOption {
@@ -302,6 +305,11 @@ export function SettingsPage() {
   const [bubbleAgentMetaDark, setBubbleAgentMetaDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentMetaDark);
   const [appearanceSaveError, setAppearanceSaveError] = useState("");
   const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
+  const [organizationLogoUrl, setOrganizationLogoUrl] = useState<string | null>(null);
+  const [organizationLogoUrlInput, setOrganizationLogoUrlInput] = useState("");
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState("");
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
 
   const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
   const [embeddedBusy, setEmbeddedBusy] = useState(false);
@@ -615,6 +623,9 @@ export function SettingsPage() {
         setBubbleClientMetaDark(data.conversationBubbleClientMetaColorDark ?? DEFAULT_BUBBLE_THEME.clientMetaDark);
         setBubbleAgentMetaColor(data.conversationBubbleAgentMetaColor ?? DEFAULT_BUBBLE_THEME.agentMeta);
         setBubbleAgentMetaDark(data.conversationBubbleAgentMetaColorDark ?? DEFAULT_BUBBLE_THEME.agentMetaDark);
+        setOrganizationLogoUrl(data.organizationLogoUrl ?? null);
+        setOrganizationLogoUrlInput(data.organizationLogoUrl ?? "");
+        setLogoError("");
         setAgentBotId(data.agentBotId ?? "");
         setAgentBotOptions(botList.data.map((b) => ({ id: b.id, name: b.name })));
         setLeadTypes(
@@ -958,6 +969,64 @@ export function SettingsPage() {
     setBubbleClientMetaDark(DEFAULT_BUBBLE_THEME.clientMetaDark);
     setBubbleAgentMetaColor(DEFAULT_BUBBLE_THEME.agentMeta);
     setBubbleAgentMetaDark(DEFAULT_BUBBLE_THEME.agentMetaDark);
+  };
+
+  const handleSaveOrganizationLogoUrl = async () => {
+    setLogoError("");
+    setLogoBusy(true);
+    try {
+      const trimmed = organizationLogoUrlInput.trim();
+      const data = await api.put<AppSettings>("/settings", {
+        organizationLogoUrl: trimmed || null,
+      });
+      setSettings(data);
+      setOrganizationLogoUrl(data.organizationLogoUrl ?? null);
+      setOrganizationLogoUrlInput(data.organizationLogoUrl ?? "");
+      notifyOrganizationBrandingUpdated();
+    } catch {
+      setLogoError(t("settings.organizationLogoSaveError"));
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleClearOrganizationLogo = async () => {
+    setLogoError("");
+    setLogoBusy(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", { organizationLogoUrl: null });
+      setSettings(data);
+      setOrganizationLogoUrl(null);
+      setOrganizationLogoUrlInput("");
+      notifyOrganizationBrandingUpdated();
+    } catch {
+      setLogoError(t("settings.organizationLogoSaveError"));
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleOrganizationLogoFile = async (file: File | null) => {
+    if (!file) return;
+    setLogoError("");
+    setLogoBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const data = await api.postMultipart<{ organizationLogoUrl: string | null }>(
+        "/settings/organization-logo",
+        form,
+      );
+      setOrganizationLogoUrl(data.organizationLogoUrl ?? null);
+      setOrganizationLogoUrlInput(data.organizationLogoUrl ?? "");
+      setSettings((prev) => (prev ? { ...prev, organizationLogoUrl: data.organizationLogoUrl ?? null } : prev));
+      notifyOrganizationBrandingUpdated();
+    } catch {
+      setLogoError(t("settings.organizationLogoUploadError"));
+    } finally {
+      setLogoBusy(false);
+      if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+    }
   };
 
   const bubblePreviewStyle = (
@@ -1727,6 +1796,83 @@ export function SettingsPage() {
                     {t("settings.sectionAppearance")}
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.appearanceIntro")}</p>
+
+                  <div className="mb-8 rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-ink-950/40">
+                    <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                      {t("settings.organizationLogoTitle")}
+                    </h3>
+                    <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("settings.organizationLogoIntro")}</p>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-4">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-ink-200 bg-white p-2 dark:border-ink-600 dark:bg-ink-900">
+                        <img
+                          src={organizationLogoUrl || brandAssetUrl("/logo.svg")}
+                          alt={t("settings.organizationLogoTitle")}
+                          className="max-h-full max-w-full object-contain"
+                          decoding="async"
+                        />
+                      </div>
+                      <p className="text-xs text-ink-500 dark:text-ink-400">
+                        {organizationLogoUrl
+                          ? t("settings.organizationLogoUsingCustom")
+                          : t("settings.organizationLogoUsingSystem")}
+                      </p>
+                    </div>
+
+                    {logoError ? (
+                      <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                        {logoError}
+                      </p>
+                    ) : null}
+
+                    <label className="mt-4 block">
+                      <span className={settingsLabel}>{t("settings.organizationLogoUrlLabel")}</span>
+                      <input
+                        type="url"
+                        value={organizationLogoUrlInput}
+                        onChange={(e) => setOrganizationLogoUrlInput(e.target.value)}
+                        placeholder={t("settings.organizationLogoUrlPlaceholder")}
+                        className={clsx(settingsInput, "mt-1")}
+                        disabled={logoBusy}
+                      />
+                    </label>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        disabled={logoBusy}
+                        onClick={() => void handleSaveOrganizationLogoUrl()}
+                        className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                      >
+                        {logoBusy ? t("common.loading") : t("settings.organizationLogoSaveUrl")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={logoBusy}
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="btn-secondary px-4 py-2 text-sm"
+                      >
+                        {t("settings.organizationLogoUpload")}
+                      </button>
+                      {organizationLogoUrl ? (
+                        <button
+                          type="button"
+                          disabled={logoBusy}
+                          onClick={() => void handleClearOrganizationLogo()}
+                          className="btn-secondary px-4 py-2 text-sm"
+                        >
+                          {t("settings.organizationLogoClear")}
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      ref={logoFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                      className="hidden"
+                      onChange={(e) => void handleOrganizationLogoFile(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
 
                   {appearanceSaveError ? (
                     <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">

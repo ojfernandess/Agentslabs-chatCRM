@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import type { MultipartFile } from "@fastify/multipart";
 import { z } from "zod";
 import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
@@ -24,6 +25,7 @@ import {
 } from "../lib/whatsappWebhookVerify.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { putMessageMediaFile } from "../lib/mediaStorage.js";
 import { getAssistOpenAiCredentialsForOrganization } from "../lib/agentAssistLlm.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
@@ -155,6 +157,7 @@ const settingsSchema = z.object({
   conversationBubbleClientMetaColorDark: hexColorField,
   conversationBubbleAgentMetaColor: hexColorField,
   conversationBubbleAgentMetaColorDark: hexColorField,
+  organizationLogoUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
 });
 
 function maskSettings<
@@ -195,6 +198,67 @@ async function ensureWhatsappWebhookVerifyToken(
     data: { whatsappWebhookVerifyToken: generateWhatsappWebhookVerifyToken() },
     select: { whatsappProvider: true, whatsappWebhookVerifyToken: true },
   });
+}
+
+function allowOrganizationLogoUpload(mime: string): boolean {
+  const m = mime.split(";")[0].trim().toLowerCase();
+  return (
+    m === "image/png" ||
+    m === "image/jpeg" ||
+    m === "image/jpg" ||
+    m === "image/webp" ||
+    m === "image/gif" ||
+    m === "image/svg+xml"
+  );
+}
+
+function logoExtensionForMime(mime: string, originalFilename?: string): string {
+  const m = mime.split(";")[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+  };
+  if (map[m]) return map[m];
+  const ext = originalFilename?.split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "");
+  if (ext && ext.length <= 8) return ext;
+  return "png";
+}
+
+async function persistOrganizationLogoUpload(
+  file: MultipartFile,
+  reply: import("fastify").FastifyReply,
+): Promise<string | null> {
+  const rawMime = file.mimetype ?? "";
+  if (!allowOrganizationLogoUpload(rawMime)) {
+    await reply.status(415).send({
+      error: "Unsupported Media Type",
+      message: "Allowed: PNG, JPEG, WebP, GIF or SVG",
+      statusCode: 415,
+    });
+    return null;
+  }
+  const mime = rawMime.split(";")[0].trim().toLowerCase();
+  const buf = await file.toBuffer();
+  if (buf.length > 2 * 1024 * 1024) {
+    await reply.status(413).send({
+      error: "Payload Too Large",
+      message: "Logo must be 2 MB or smaller",
+      statusCode: 413,
+    });
+    return null;
+  }
+  const ext = logoExtensionForMime(rawMime, file.filename ?? undefined);
+  const filename = `${randomBytes(16).toString("hex")}.${ext}`;
+  const stored = await putMessageMediaFile({
+    filename,
+    buffer: buf,
+    contentType: mime || "application/octet-stream",
+  });
+  return stored.mediaUrl;
 }
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
@@ -276,6 +340,21 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationBubbleClientMetaColorDark: settings?.conversationBubbleClientMetaColorDark ?? null,
       conversationBubbleAgentMetaColor: settings?.conversationBubbleAgentMetaColor ?? null,
       conversationBubbleAgentMetaColorDark: settings?.conversationBubbleAgentMetaColorDark ?? null,
+    };
+  });
+
+  /** Logo opcional da organização — qualquer utilizador autenticado do tenant. */
+  app.get("/branding", { preHandler: [authenticate] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { organizationLogoUrl: true },
+    });
+
+    return {
+      organizationLogoUrl: settings?.organizationLogoUrl ?? null,
     };
   });
 
@@ -379,6 +458,37 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       };
     });
 
+    admin.post("/organization-logo", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const file = await request.file({ limits: { fileSize: 2 * 1024 * 1024 } });
+      if (!file) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "multipart file field required",
+          statusCode: 400,
+        });
+      }
+
+      const mediaUrl = await persistOrganizationLogoUpload(file, reply);
+      if (!mediaUrl) return;
+
+      let settings = await prisma.settings.findUnique({ where: { organizationId } });
+      if (!settings) {
+        settings = await prisma.settings.create({
+          data: { organizationId, organizationLogoUrl: mediaUrl },
+        });
+      } else {
+        settings = await prisma.settings.update({
+          where: { organizationId },
+          data: { organizationLogoUrl: mediaUrl },
+        });
+      }
+
+      return { organizationLogoUrl: settings.organizationLogoUrl };
+    });
+
     admin.put("/", async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
@@ -411,6 +521,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.conversationBubbleClientMetaColorDark === "") data.conversationBubbleClientMetaColorDark = null;
       if (data.conversationBubbleAgentMetaColor === "") data.conversationBubbleAgentMetaColor = null;
       if (data.conversationBubbleAgentMetaColorDark === "") data.conversationBubbleAgentMetaColorDark = null;
+      if (data.organizationLogoUrl === "") data.organizationLogoUrl = null;
 
       if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {
         const t = data.whatsappApiKey.trim();

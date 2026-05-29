@@ -1186,6 +1186,9 @@ model Settings {
   conversationBubbleAgentMetaColor      String? @map("conversation_bubble_agent_meta_color") @db.VarChar(7)
   conversationBubbleAgentMetaColorDark  String? @map("conversation_bubble_agent_meta_color_dark") @db.VarChar(7)
 
+  /// Logo opcional da organização (URL absoluta). Se null, a UI usa a logo do sistema.
+  organizationLogoUrl String? @map("organization_logo_url") @db.VarChar(2048)
+
   @@map("settings")
 }
 
