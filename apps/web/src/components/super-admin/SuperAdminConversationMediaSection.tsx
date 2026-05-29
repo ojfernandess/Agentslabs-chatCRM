@@ -242,7 +242,7 @@ export function SuperAdminConversationMediaSection() {
             <SuperAdminMetricCard
               label={t("superAdmin.conversationMedia.statMinio")}
               value={stats.minioCount}
-              accent="sky"
+              accent="violet"
             />
             <SuperAdminMetricCard
               label={t("superAdmin.conversationMedia.statSize")}
