@@ -47,6 +47,36 @@ type MediaStats = {
   publicOrigin: string;
 };
 
+type OrgSummaryRow = {
+  organizationId: string;
+  organizationName: string;
+  fileCount: number;
+  referencedCount: number;
+  totalBytes: number;
+};
+
+type RetentionSettings = {
+  enabled: boolean;
+  retentionMonths: 1 | 2 | 3 | 4 | 5;
+  lastRunAt?: string | null;
+  lastDeletedFiles?: number;
+  lastClearedReferences?: number;
+};
+
+type OrgOption = { id: string; name: string };
+
+function parseOrgList(raw: unknown): OrgOption[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((o): o is { id: string; name: string } => typeof o === "object" && o !== null && "id" in o && "name" in o)
+      .map((o) => ({ id: o.id, name: o.name }));
+  }
+  if (typeof raw === "object" && raw !== null && "organizations" in raw && Array.isArray((raw as { organizations: unknown }).organizations)) {
+    return parseOrgList((raw as { organizations: unknown }).organizations);
+  }
+  return [];
+}
+
 function formatBytes(bytes: number | null | undefined, t: (k: string) => string): string {
   if (bytes == null || !Number.isFinite(bytes)) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -62,44 +92,97 @@ function isImageItem(item: ConversationMediaItem): boolean {
 
 export function SuperAdminConversationMediaSection() {
   const { t } = useI18n();
+  const [viewMode, setViewMode] = useState<"list" | "organizations">("list");
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
   const [storage, setStorage] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState("");
+  const [organizationId, setOrganizationId] = useState("");
+  const [month, setMonth] = useState("");
+  const [day, setDay] = useState("");
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [orgsLoading, setOrgsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [retentionSaving, setRetentionSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [data, setData] = useState<MediaPage | null>(null);
   const [stats, setStats] = useState<MediaStats | null>(null);
+  const [orgSummaries, setOrgSummaries] = useState<OrgSummaryRow[]>([]);
+  const [orgs, setOrgs] = useState<OrgOption[]>([]);
+  const [retention, setRetention] = useState<RetentionSettings | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<ConversationMediaItem | null>(null);
+
+  const filterQuery = useCallback(() => {
+    const params = new URLSearchParams();
+    const trimmed = q.trim();
+    if (trimmed) params.set("q", trimmed);
+    if (storage !== "all") params.set("storage", storage);
+    if (typeFilter) params.set("type", typeFilter);
+    if (organizationId) params.set("organizationId", organizationId);
+    if (month) params.set("month", month);
+    if (day) params.set("day", day);
+    return params;
+  }, [q, storage, typeFilter, organizationId, month, day]);
+
+  const fetchOrgs = useCallback(async () => {
+    setOrgsLoading(true);
+    try {
+      const raw = await api.get<unknown>("/super/organizations");
+      setOrgs(parseOrgList(raw));
+    } catch {
+      setOrgs([]);
+    } finally {
+      setOrgsLoading(false);
+    }
+  }, []);
+
+  const fetchRetention = useCallback(async () => {
+    try {
+      const res = await api.get<RetentionSettings>("/super/conversation-media/retention");
+      setRetention(res);
+    } catch {
+      setRetention(null);
+    }
+  }, []);
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
-      const res = await api.get<MediaStats>("/super/conversation-media/stats");
+      const qs = filterQuery().toString();
+      const res = await api.get<MediaStats>(`/super/conversation-media/stats${qs ? `?${qs}` : ""}`);
       setStats(res);
     } catch {
       setStats(null);
     } finally {
       setStatsLoading(false);
     }
-  }, []);
+  }, [filterQuery]);
+
+  const fetchOrgSummaries = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (month) params.set("month", month);
+      if (day) params.set("day", day);
+      const qs = params.toString();
+      const res = await api.get<{ data: OrgSummaryRow[] }>(
+        `/super/conversation-media/by-organization${qs ? `?${qs}` : ""}`,
+      );
+      setOrgSummaries(res.data ?? []);
+    } catch {
+      setOrgSummaries([]);
+    }
+  }, [month, day]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: "25",
-      });
-      const trimmed = q.trim();
-      if (trimmed) params.set("q", trimmed);
-      if (storage !== "all") params.set("storage", storage);
-      if (typeFilter) params.set("type", typeFilter);
+      const params = filterQuery();
+      params.set("page", String(page));
+      params.set("limit", "25");
       const res = await api.get<MediaPage>(`/super/conversation-media?${params.toString()}`);
       setData(res);
       setSelected(new Set());
@@ -109,15 +192,29 @@ export function SuperAdminConversationMediaSection() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, storage, typeFilter, t]);
+  }, [page, filterQuery, t]);
+
+  useEffect(() => {
+    void fetchOrgs();
+    void fetchRetention();
+  }, [fetchOrgs, fetchRetention]);
 
   useEffect(() => {
     void fetchStats();
-  }, [fetchStats]);
+    void fetchOrgSummaries();
+  }, [fetchStats, fetchOrgSummaries]);
 
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
+
+  useEffect(() => {
+    if (day) setMonth("");
+  }, [day]);
+
+  useEffect(() => {
+    if (month) setDay("");
+  }, [month]);
 
   const allSelectedOnPage = useMemo(() => {
     if (!data?.data.length) return false;
@@ -147,7 +244,64 @@ export function SuperAdminConversationMediaSection() {
   };
 
   const refreshAll = async () => {
-    await Promise.all([fetchStats(), fetchList()]);
+    await Promise.all([fetchStats(), fetchOrgSummaries(), fetchList(), fetchRetention()]);
+  };
+
+  const saveRetention = async () => {
+    if (!retention) return;
+    setRetentionSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await api.put<RetentionSettings>("/super/conversation-media/retention", {
+        enabled: retention.enabled,
+        retentionMonths: retention.retentionMonths,
+      });
+      setRetention(res);
+      setSuccess(t("superAdmin.conversationMedia.retentionSaved"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("superAdmin.conversationMedia.retentionSaveError"));
+    } finally {
+      setRetentionSaving(false);
+    }
+  };
+
+  const runRetentionNow = async () => {
+    if (!retention?.enabled) {
+      setError(t("superAdmin.conversationMedia.retentionEnableFirst"));
+      return;
+    }
+    if (!window.confirm(t("superAdmin.conversationMedia.retentionRunConfirm"))) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await api.post<{ deletedFiles: number; clearedReferences: number; skipped?: boolean }>(
+        "/super/conversation-media/retention/run",
+        {},
+      );
+      await fetchRetention();
+      await refreshAll();
+      if (result.skipped) {
+        setSuccess(t("superAdmin.conversationMedia.retentionRunSkipped"));
+      } else {
+        setSuccess(
+          t("superAdmin.conversationMedia.retentionRunSuccess")
+            .replace("{files}", String(result.deletedFiles))
+            .replace("{refs}", String(result.clearedReferences)),
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("superAdmin.conversationMedia.retentionRunError"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const filterByOrganization = (orgId: string) => {
+    setOrganizationId(orgId);
+    setViewMode("list");
+    setPage(1);
   };
 
   const deleteFilenames = async (filenames: string[]) => {
@@ -258,78 +412,261 @@ export function SuperAdminConversationMediaSection() {
         </>
       )}
 
+      {retention ? (
+        <SuperAdminPanel className="space-y-3 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">{t("superAdmin.conversationMedia.retentionTitle")}</h3>
+            <p className="mt-1 text-xs text-slate-500">{t("superAdmin.conversationMedia.retentionHint")}</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={retention.enabled}
+                onChange={(e) => setRetention((r) => (r ? { ...r, enabled: e.target.checked } : r))}
+              />
+              {t("superAdmin.conversationMedia.retentionEnabled")}
+            </label>
+            <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-slate-600">
+              {t("superAdmin.conversationMedia.retentionMonths")}
+              <select
+                value={String(retention.retentionMonths)}
+                onChange={(e) =>
+                  setRetention((r) =>
+                    r ? { ...r, retentionMonths: Number(e.target.value) as RetentionSettings["retentionMonths"] } : r,
+                  )
+                }
+                className="input-field"
+              >
+                {[1, 2, 3, 4, 5].map((m) => (
+                  <option key={m} value={m}>
+                    {t("superAdmin.conversationMedia.retentionMonthsOption").replace("{count}", String(m))}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={retentionSaving || busy}
+              onClick={() => void saveRetention()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {retentionSaving ? t("common.saving") : t("common.save")}
+            </button>
+            <button
+              type="button"
+              disabled={busy || retentionSaving}
+              onClick={() => void runRetentionNow()}
+              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {busy ? t("superAdmin.conversationMedia.retentionRunning") : t("superAdmin.conversationMedia.retentionRunNow")}
+            </button>
+          </div>
+          {retention.lastRunAt ? (
+            <p className="text-xs text-slate-500">
+              {t("superAdmin.conversationMedia.retentionLastRun")
+                .replace("{date}", new Date(retention.lastRunAt).toLocaleString())
+                .replace("{files}", String(retention.lastDeletedFiles ?? 0))
+                .replace("{refs}", String(retention.lastClearedReferences ?? 0))}
+            </p>
+          ) : null}
+        </SuperAdminPanel>
+      ) : null}
+
       <SuperAdminPanel className="space-y-4 p-4">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-sm font-medium",
+              viewMode === "list" ? "bg-violet-600 text-white" : "border border-slate-200 text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            {t("superAdmin.conversationMedia.viewList")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("organizations")}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-sm font-medium",
+              viewMode === "organizations"
+                ? "bg-violet-600 text-white"
+                : "border border-slate-200 text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            {t("superAdmin.conversationMedia.viewByOrganization")}
+          </button>
+        </div>
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-          <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
-            {t("superAdmin.conversationMedia.search")}
+          {viewMode === "list" ? (
+            <>
+              <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs font-medium text-slate-600">
+                {t("superAdmin.conversationMedia.search")}
+                <input
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder={t("superAdmin.conversationMedia.searchPlaceholder")}
+                  className="input-field"
+                />
+              </label>
+              <label className="flex min-w-[180px] flex-col gap-1 text-xs font-medium text-slate-600">
+                {t("superAdmin.conversationMedia.filterOrganization")}
+                <select
+                  value={organizationId}
+                  onChange={(e) => {
+                    setOrganizationId(e.target.value);
+                    setPage(1);
+                  }}
+                  className="input-field"
+                  disabled={orgsLoading}
+                >
+                  <option value="">{t("superAdmin.conversationMedia.filterAllOrgs")}</option>
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
+          <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-slate-600">
+            {t("superAdmin.conversationMedia.filterMonth")}
             <input
-              value={q}
+              type="month"
+              value={month}
+              disabled={Boolean(day)}
               onChange={(e) => {
-                setQ(e.target.value);
+                setMonth(e.target.value);
                 setPage(1);
               }}
-              placeholder={t("superAdmin.conversationMedia.searchPlaceholder")}
               className="input-field"
             />
           </label>
-          <label className="flex min-w-[180px] flex-col gap-1 text-xs font-medium text-slate-600">
-            {t("superAdmin.conversationMedia.filterStorage")}
-            <select
-              value={storage}
-              onChange={(e) => {
-                setStorage(e.target.value);
-                setPage(1);
-              }}
-              className="input-field"
-            >
-              <option value="all">{t("superAdmin.conversationMedia.filterAll")}</option>
-              <option value="local">{t("superAdmin.conversationMedia.storageLocal")}</option>
-              <option value="minio">{t("superAdmin.conversationMedia.storageMinio")}</option>
-              <option value="both">{t("superAdmin.conversationMedia.storageBoth")}</option>
-              <option value="db_only">{t("superAdmin.conversationMedia.storageDbOnly")}</option>
-            </select>
-          </label>
           <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-slate-600">
-            {t("superAdmin.conversationMedia.filterType")}
-            <select
-              value={typeFilter}
+            {t("superAdmin.conversationMedia.filterDay")}
+            <input
+              type="date"
+              value={day}
+              disabled={Boolean(month)}
               onChange={(e) => {
-                setTypeFilter(e.target.value);
+                setDay(e.target.value);
                 setPage(1);
               }}
               className="input-field"
-            >
-              <option value="">{t("superAdmin.conversationMedia.filterAll")}</option>
-              <option value="IMAGE">IMAGE</option>
-              <option value="DOCUMENT">DOCUMENT</option>
-              <option value="AUDIO">AUDIO</option>
-              <option value="VIDEO">VIDEO</option>
-              <option value="ATTACHMENT">ATTACHMENT</option>
-            </select>
+            />
           </label>
-          {selected.size > 0 ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    t("superAdmin.conversationMedia.bulkDeleteConfirm").replace("{count}", String(selected.size)),
-                  )
-                ) {
-                  void deleteFilenames([...selected]);
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              {t("superAdmin.conversationMedia.deleteSelected").replace("{count}", String(selected.size))}
-            </button>
+          {viewMode === "list" ? (
+            <>
+              <label className="flex min-w-[180px] flex-col gap-1 text-xs font-medium text-slate-600">
+                {t("superAdmin.conversationMedia.filterStorage")}
+                <select
+                  value={storage}
+                  onChange={(e) => {
+                    setStorage(e.target.value);
+                    setPage(1);
+                  }}
+                  className="input-field"
+                >
+                  <option value="all">{t("superAdmin.conversationMedia.filterAll")}</option>
+                  <option value="local">{t("superAdmin.conversationMedia.storageLocal")}</option>
+                  <option value="minio">{t("superAdmin.conversationMedia.storageMinio")}</option>
+                  <option value="both">{t("superAdmin.conversationMedia.storageBoth")}</option>
+                  <option value="db_only">{t("superAdmin.conversationMedia.storageDbOnly")}</option>
+                </select>
+              </label>
+              <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-slate-600">
+                {t("superAdmin.conversationMedia.filterType")}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => {
+                    setTypeFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="input-field"
+                >
+                  <option value="">{t("superAdmin.conversationMedia.filterAll")}</option>
+                  <option value="IMAGE">IMAGE</option>
+                  <option value="DOCUMENT">DOCUMENT</option>
+                  <option value="AUDIO">AUDIO</option>
+                  <option value="VIDEO">VIDEO</option>
+                  <option value="ATTACHMENT">ATTACHMENT</option>
+                </select>
+              </label>
+              {selected.size > 0 ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        t("superAdmin.conversationMedia.bulkDeleteConfirm").replace("{count}", String(selected.size)),
+                      )
+                    ) {
+                      void deleteFilenames([...selected]);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("superAdmin.conversationMedia.deleteSelected").replace("{count}", String(selected.size))}
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       </SuperAdminPanel>
 
-      {loading || !data ? (
+      {viewMode === "organizations" ? (
+        loading ? (
+          <p className="text-sm text-slate-500">{t("common.loading")}</p>
+        ) : (
+          <SuperAdminPanel className="overflow-x-auto p-0">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <th className="px-3 py-2">{t("superAdmin.conversationMedia.colOrgs")}</th>
+                  <th className="px-3 py-2">{t("superAdmin.conversationMedia.statTotal")}</th>
+                  <th className="px-3 py-2">{t("superAdmin.conversationMedia.colSize")}</th>
+                  <th className="px-3 py-2">{t("superAdmin.conversationMedia.colRefs")}</th>
+                  <th className="px-3 py-2">{t("superAdmin.conversationMedia.colActions")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {orgSummaries.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                      {t("superAdmin.conversationMedia.empty")}
+                    </td>
+                  </tr>
+                ) : (
+                  orgSummaries.map((row) => (
+                    <tr key={row.organizationId}>
+                      <td className="px-3 py-3 text-sm text-slate-800">{row.organizationName}</td>
+                      <td className="px-3 py-3 text-sm text-slate-700">{row.fileCount.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-sm text-slate-700">{formatBytes(row.totalBytes, t)}</td>
+                      <td className="px-3 py-3 text-sm text-slate-700">{row.referencedCount.toLocaleString()}</td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => filterByOrganization(row.organizationId === "__none__" ? "" : row.organizationId)}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          {t("superAdmin.conversationMedia.viewFiles")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </SuperAdminPanel>
+        )
+      ) : loading || !data ? (
         <p className="text-sm text-slate-500">{t("common.loading")}</p>
       ) : (
         <>

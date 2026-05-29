@@ -52,6 +52,7 @@ import { registerBroadcastQueueWorker, closeBroadcastQueue } from "./lib/broadca
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
+import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 
 const app = Fastify({
   logger: {
@@ -188,6 +189,11 @@ try {
     void runChatbotFlowSchedulerTick(app);
   }, chatbotSchedulerMs);
   void runChatbotFlowSchedulerTick(app);
+  const mediaRetentionMs = 60 * 60 * 1000;
+  setInterval(() => {
+    void runConversationMediaRetentionTick({ log: app.log });
+  }, mediaRetentionMs);
+  void runConversationMediaRetentionTick({ log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

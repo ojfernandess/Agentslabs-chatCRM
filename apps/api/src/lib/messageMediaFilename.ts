@@ -20,3 +20,21 @@ export function extractMessageMediaFilename(url: string | null | undefined): str
     return MESSAGE_MEDIA_FILENAME_RE.test(decoded) ? decoded : null;
   }
 }
+
+/** Nome de ficheiro a partir da URL de media (ex.: `…/media/abc.pdf` → `abc.pdf`). */
+export function filenameFromMediaUrl(mediaUrl: string | null | undefined): string | undefined {
+  const extracted = extractMessageMediaFilename(mediaUrl);
+  if (extracted) return extracted;
+  if (!mediaUrl || typeof mediaUrl !== "string") return undefined;
+  try {
+    const path = new URL(mediaUrl).pathname;
+    const last = path.split("/").pop();
+    if (!last) return undefined;
+    const decoded = decodeURIComponent(last.split("?")[0] ?? "");
+    return decoded.length > 0 ? decoded : undefined;
+  } catch {
+    const tail = mediaUrl.split("/").pop() ?? "";
+    const decoded = decodeURIComponent(tail.split("?")[0] ?? "");
+    return decoded.length > 0 ? decoded : undefined;
+  }
+}

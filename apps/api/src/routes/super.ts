@@ -41,8 +41,15 @@ import {
   filterConversationMediaInventory,
   getConversationMediaInventoryStats,
   paginateConversationMediaInventory,
+  summarizeConversationMediaByOrganization,
 } from "../lib/conversationMediaAdmin.js";
 import { MESSAGE_MEDIA_FILENAME_RE } from "../lib/messageMediaFilename.js";
+import {
+  getConversationMediaRetentionFromDb,
+  saveConversationMediaRetentionValue,
+  type ConversationMediaRetentionMonths,
+} from "../lib/conversationMediaRetentionSettings.js";
+import { runConversationMediaRetentionTick } from "../lib/conversationMediaRetentionJob.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 
@@ -162,10 +169,23 @@ const conversationMediaQuerySchema = z.object({
   storage: z.enum(["all", "local", "minio", "both", "db_only"]).optional(),
   organizationId: z.string().uuid().optional(),
   type: z.string().max(32).optional(),
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const conversationMediaBulkDeleteSchema = z.object({
   filenames: z.array(z.string().min(1).max(128)).min(1).max(100),
+});
+
+const conversationMediaRetentionPutSchema = z.object({
+  enabled: z.boolean(),
+  retentionMonths: z.union([
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+  ]),
 });
 
 const featureFlagPatchSchema = z.object({
@@ -1548,9 +1568,84 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get("/conversation-media/stats", async () => {
+  app.get("/conversation-media/stats", async (request, reply) => {
+    const q = conversationMediaQuerySchema
+      .pick({ q: true, storage: true, organizationId: true, type: true, month: true, day: true })
+      .safeParse(request.query);
+    if (!q.success) {
+      return reply.status(400).send({ error: "Bad Request", message: q.error.message, statusCode: 400 });
+    }
     const items = await buildConversationMediaInventory();
-    return getConversationMediaInventoryStats(items);
+    const filtered = filterConversationMediaInventory(items, {
+      page: 1,
+      limit: 1,
+      q: q.data.q,
+      storage: q.data.storage ?? "all",
+      organizationId: q.data.organizationId,
+      type: q.data.type,
+      month: q.data.month,
+      day: q.data.day,
+    });
+    return getConversationMediaInventoryStats(filtered);
+  });
+
+  app.get("/conversation-media/by-organization", async (request, reply) => {
+    const q = conversationMediaQuerySchema
+      .pick({ q: true, storage: true, type: true, month: true, day: true })
+      .safeParse(request.query);
+    if (!q.success) {
+      return reply.status(400).send({ error: "Bad Request", message: q.error.message, statusCode: 400 });
+    }
+    const items = await buildConversationMediaInventory();
+    const filtered = filterConversationMediaInventory(items, {
+      page: 1,
+      limit: 1,
+      q: q.data.q,
+      storage: q.data.storage ?? "all",
+      type: q.data.type,
+      month: q.data.month,
+      day: q.data.day,
+    });
+    return { data: summarizeConversationMediaByOrganization(filtered) };
+  });
+
+  app.get("/conversation-media/retention", async () => {
+    return getConversationMediaRetentionFromDb();
+  });
+
+  app.put("/conversation-media/retention", async (request, reply) => {
+    const parsed = conversationMediaRetentionPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const current = await getConversationMediaRetentionFromDb();
+    const value = await saveConversationMediaRetentionValue({
+      ...current,
+      enabled: parsed.data.enabled,
+      retentionMonths: parsed.data.retentionMonths as ConversationMediaRetentionMonths,
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.conversation_media.retention_update",
+      resourceType: "platform_setting",
+      resourceId: "conversation_media_retention",
+      metadata: { enabled: value.enabled, retentionMonths: value.retentionMonths },
+      ip: clientIp(request),
+    });
+    return value;
+  });
+
+  app.post("/conversation-media/retention/run", async (request) => {
+    const result = await runConversationMediaRetentionTick({ force: true });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.conversation_media.retention_run",
+      resourceType: "platform_setting",
+      resourceId: "conversation_media_retention",
+      metadata: result ?? { deletedFiles: 0, clearedReferences: 0 },
+      ip: clientIp(request),
+    });
+    return result ?? { deletedFiles: 0, clearedReferences: 0, skipped: true };
   });
 
   app.get("/conversation-media", async (request, reply) => {
@@ -1566,6 +1661,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       storage: parsed.data.storage ?? "all",
       organizationId: parsed.data.organizationId,
       type: parsed.data.type,
+      month: parsed.data.month,
+      day: parsed.data.day,
     });
     const page = paginateConversationMediaInventory(filtered, parsed.data.page, parsed.data.limit);
     return page;

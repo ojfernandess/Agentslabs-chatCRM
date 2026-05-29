@@ -296,7 +296,84 @@ export type ConversationMediaInventoryQuery = {
   storage?: ConversationMediaStorageKind | "all";
   organizationId?: string;
   type?: string;
+  month?: string;
+  day?: string;
 };
+
+function parseMonthRange(month: string): { start: Date; end: Date } | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(month.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const mon = Number(m[2]);
+  if (mon < 1 || mon > 12) return null;
+  const start = new Date(Date.UTC(year, mon - 1, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, mon, 1, 0, 0, 0, 0));
+  return { start, end };
+}
+
+function parseDayRange(day: string): { start: Date; end: Date } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const mon = Number(m[2]);
+  const d = Number(m[3]);
+  const start = new Date(Date.UTC(year, mon - 1, d, 0, 0, 0, 0));
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
+function itemInDateRange(item: ConversationMediaInventoryItem, start: Date, end: Date): boolean {
+  if (!item.lastUsedAt) return false;
+  const t = new Date(item.lastUsedAt);
+  return t >= start && t < end;
+}
+
+export type ConversationMediaOrgSummary = {
+  organizationId: string;
+  organizationName: string;
+  fileCount: number;
+  referencedCount: number;
+  totalBytes: number;
+};
+
+export function summarizeConversationMediaByOrganization(
+  items: ConversationMediaInventoryItem[],
+): ConversationMediaOrgSummary[] {
+  const map = new Map<string, ConversationMediaOrgSummary>();
+  const ensure = (id: string, name: string) => {
+    const existing = map.get(id);
+    if (existing) return existing;
+    const row: ConversationMediaOrgSummary = {
+      organizationId: id,
+      organizationName: name,
+      fileCount: 0,
+      referencedCount: 0,
+      totalBytes: 0,
+    };
+    map.set(id, row);
+    return row;
+  };
+
+  for (const item of items) {
+    if (item.organizations.length === 0) {
+      const row = ensure("__none__", "—");
+      row.fileCount += 1;
+      if (item.referencedInDb) row.referencedCount += 1;
+      if (item.sizeBytes != null) row.totalBytes += item.sizeBytes;
+      continue;
+    }
+    for (const org of item.organizations) {
+      const row = ensure(org.id, org.name);
+      row.fileCount += 1;
+      if (item.referencedInDb) row.referencedCount += 1;
+      if (item.sizeBytes != null) row.totalBytes += item.sizeBytes;
+    }
+  }
+
+  return [...map.values()].sort((a, b) => b.fileCount - a.fileCount);
+}
 
 export function filterConversationMediaInventory(
   items: ConversationMediaInventoryItem[],
@@ -322,6 +399,13 @@ export function filterConversationMediaInventory(
   }
   if (query.type) {
     filtered = filtered.filter((item) => item.messageTypes.includes(query.type!));
+  }
+  if (query.day) {
+    const range = parseDayRange(query.day);
+    if (range) filtered = filtered.filter((item) => itemInDateRange(item, range.start, range.end));
+  } else if (query.month) {
+    const range = parseMonthRange(query.month);
+    if (range) filtered = filtered.filter((item) => itemInDateRange(item, range.start, range.end));
   }
   return filtered;
 }
@@ -365,6 +449,7 @@ export async function getConversationMediaInventoryStats(items: ConversationMedi
     bothCount,
     dbOnlyCount,
     totalBytes,
+    byOrganization: summarizeConversationMediaByOrganization(items),
     activeDriver: (await getResolvedMediaStorage()).driver,
     localDir: config.mediaUploadDir,
     publicOrigin: getPublicOrigin(),

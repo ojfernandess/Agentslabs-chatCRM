@@ -6,6 +6,7 @@ import {
   StatusUpdate,
 } from "./types.js";
 import { evolutionGoGetStatus } from "../lib/evolutionGoApi.js";
+import { filenameFromMediaUrl } from "../lib/messageMediaFilename.js";
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -134,6 +135,10 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       DOCUMENT: "document",
     };
     const mappedType = typeMap[params.type] ?? "document";
+    const caption =
+      params.type === "AUDIO" ? undefined : params.body?.trim() || undefined;
+    const documentFilename =
+      params.type === "DOCUMENT" ? filenameFromMediaUrl(params.mediaUrl) : undefined;
     const url = `${this.baseUrl}/send/media`;
     const response = await fetch(url, {
       method: "POST",
@@ -142,8 +147,8 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
         number: destinationForSend(params.to),
         type: mappedType,
         url: params.mediaUrl,
-        caption: params.type === "AUDIO" ? undefined : params.body?.trim() || undefined,
-        filename: params.type === "DOCUMENT" ? params.body?.trim() || undefined : undefined,
+        caption,
+        filename: documentFilename,
       }),
     });
     if (!response.ok) {
