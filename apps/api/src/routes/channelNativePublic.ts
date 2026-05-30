@@ -22,8 +22,9 @@ const chatwootClientMessageSchema = z.object({
   content: z.string().min(1).max(16000),
   echo_id: z.string().max(128).optional(),
   name: z.string().max(255).optional(),
-  email: z.string().email().optional(),
+  email: z.union([z.string().email(), z.literal("")]).optional(),
   phone: z.string().max(32).optional(),
+  preChatFormData: z.record(z.string().max(500)).optional(),
 });
 
 function facebookVerifyTokenFromConfig(cfg: unknown): string | null {
@@ -147,8 +148,9 @@ export async function channelNativePublicRoutes(app: FastifyInstance): Promise<v
           channelType: inbox.channelType,
           participantId: pid,
           participantName: p.name,
-          email: p.email ?? null,
+          email: p.email?.trim() ? p.email.trim() : null,
           visitorPhone: p.phone ?? null,
+          preChatFormData: p.preChatFormData ?? null,
           body: p.content,
           type: "TEXT" as MessageType,
           externalMessageId: p.echo_id ?? null,

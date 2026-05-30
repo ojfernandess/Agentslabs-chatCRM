@@ -9,6 +9,7 @@ import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { ensureConversationForChannelInbox } from "./conversationRouting.js";
+import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
 
 export function newIngestToken(): string {
   return randomBytes(32).toString("hex");
@@ -28,6 +29,7 @@ export type ChannelInboundInput = {
   participantName?: string;
   email?: string | null;
   visitorPhone?: string | null;
+  preChatFormData?: Record<string, string> | null;
   body?: string | null;
   type?: MessageType;
   mediaUrl?: string | null;
@@ -49,6 +51,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     participantName,
     email,
     visitorPhone,
+    preChatFormData,
     body,
     type = "TEXT",
     mediaUrl,
@@ -58,7 +61,14 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   } = input;
 
   const phone = participantPhoneKey(channelType, participantId);
+  const preChatUpdates = applyPreChatFormToContact({
+    participantName,
+    email,
+    visitorPhone,
+    preChatFormData,
+  });
   const displayName =
+    preChatUpdates.name?.trim() ||
     participantName?.trim() ||
     (channelType === "EMAIL" && email ? email : null) ||
     participantId;
@@ -73,24 +83,32 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
         phone,
         name: displayName,
         email:
+          preChatUpdates.email?.trim() ||
           email?.trim() ||
           (channelType === "EMAIL" ? participantId.trim() : undefined) ||
           undefined,
-        notes: visitorPhone?.trim() ? `Telefone: ${visitorPhone.trim()}` : undefined,
+        notes: preChatUpdates.notes,
       },
     });
   } else {
     const updates: { email?: string; name?: string; notes?: string } = {};
-    if (email?.trim() && !contact.email) updates.email = email.trim();
-    if (participantName?.trim() && contact.name !== participantName.trim()) {
+    if (preChatUpdates.email?.trim()) updates.email = preChatUpdates.email.trim();
+    else if (email?.trim() && !contact.email) updates.email = email.trim();
+
+    if (preChatUpdates.name?.trim()) updates.name = preChatUpdates.name.trim();
+    else if (participantName?.trim() && contact.name !== participantName.trim()) {
       updates.name = participantName.trim();
     }
-    if (visitorPhone?.trim()) {
+
+    if (preChatUpdates.notes) {
+      updates.notes = mergeContactNotes(contact.notes, preChatUpdates.notes);
+    } else if (visitorPhone?.trim()) {
       const noteLine = `Telefone: ${visitorPhone.trim()}`;
       if (!contact.notes?.includes(visitorPhone.trim())) {
         updates.notes = contact.notes ? `${contact.notes}\n${noteLine}` : noteLine;
       }
     }
+
     if (Object.keys(updates).length > 0) {
       contact = await prisma.contact.update({
         where: { id: contact.id },

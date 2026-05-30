@@ -21,6 +21,14 @@ export type PreChatFormField = {
   enabled: boolean;
 };
 
+export type WebsiteBusinessHoursDay = {
+  day: number;
+  enabled: boolean;
+  allDay?: boolean;
+  start?: string;
+  end?: string;
+};
+
 /** Configuração do widget de chat ao vivo (canal WEBSITE), estilo Chatwoot. */
 export type WebsiteWidgetConfig = {
   websiteUrl?: string;
@@ -38,6 +46,10 @@ export type WebsiteWidgetConfig = {
   preChatFormEnabled?: boolean;
   preChatFormMessage?: string;
   preChatFormFields?: PreChatFormField[];
+  businessHoursEnabled?: boolean;
+  businessHoursTimezone?: string;
+  businessHoursUnavailableMessage?: string;
+  businessHoursDays?: WebsiteBusinessHoursDay[];
 };
 
 export type ChannelNativeConfig = WebsiteWidgetConfig & {

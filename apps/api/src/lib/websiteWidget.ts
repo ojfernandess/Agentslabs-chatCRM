@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
 import type { ChannelNativeConfig, PreChatFormField, WebsiteWidgetConfig } from "./channelNativeTypes.js";
+import {
+  defaultWebsiteBusinessHoursDays,
+  websiteBusinessHoursFromChannelConfig,
+  type WebsiteBusinessHoursDay,
+} from "./websiteBusinessHours.js";
 
 /** Incrementar quando o JS público do widget mudar estruturalmente (cache bust global). */
-export const WIDGET_SDK_VERSION = "5";
+export const WIDGET_SDK_VERSION = "6";
 
 export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
   {
@@ -59,6 +64,25 @@ function parsePreChatFields(raw: unknown): PreChatFormField[] | undefined {
   return fields.length ? fields : undefined;
 }
 
+function parseBusinessHoursDays(raw: unknown): WebsiteBusinessHoursDay[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const days: WebsiteBusinessHoursDay[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const day = typeof o.day === "number" ? o.day : null;
+    if (day == null || day < 1 || day > 7) continue;
+    days.push({
+      day,
+      enabled: o.enabled === true,
+      allDay: o.allDay === true,
+      start: typeof o.start === "string" ? o.start : undefined,
+      end: typeof o.end === "string" ? o.end : undefined,
+    });
+  }
+  return days.length ? days : undefined;
+}
+
 export function parseWebsiteWidgetConfig(raw: unknown): WebsiteWidgetConfig {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const o = raw as Record<string, unknown>;
@@ -80,6 +104,10 @@ export function parseWebsiteWidgetConfig(raw: unknown): WebsiteWidgetConfig {
     preChatFormEnabled: o.preChatFormEnabled === true,
     preChatFormMessage: str(o.preChatFormMessage),
     preChatFormFields: parsePreChatFields(o.preChatFormFields),
+    businessHoursEnabled: o.businessHoursEnabled === true,
+    businessHoursTimezone: str(o.businessHoursTimezone),
+    businessHoursUnavailableMessage: str(o.businessHoursUnavailableMessage),
+    businessHoursDays: parseBusinessHoursDays(o.businessHoursDays),
   };
 }
 
@@ -95,6 +123,7 @@ export function publicWebsiteWidgetSettings(
   channelConfig: unknown,
 ): WebsiteWidgetConfig & { inboxName: string; revision: string; sdkVersion: string } {
   const cfg = parseWebsiteWidgetConfig(channelConfig);
+  const businessHours = websiteBusinessHoursFromChannelConfig(channelConfig);
   return {
     inboxName,
     revision: widgetConfigRevision(channelConfig),
@@ -117,6 +146,12 @@ export function publicWebsiteWidgetSettings(
     preChatFormMessage:
       cfg.preChatFormMessage ?? "Preencha as informações abaixo, para iniciar seu atendimento.",
     preChatFormFields: cfg.preChatFormFields ?? DEFAULT_PRE_CHAT_FIELDS,
+    businessHoursEnabled: businessHours.enabled,
+    businessHoursTimezone: businessHours.timezone,
+    businessHoursUnavailableMessage:
+      businessHours.unavailableMessage ??
+      "No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve.",
+    businessHoursDays: businessHours.days.length ? businessHours.days : defaultWebsiteBusinessHoursDays(),
   };
 }
 

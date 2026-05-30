@@ -9,6 +9,14 @@ export type PreChatFormField = {
   enabled: boolean;
 };
 
+export type WebsiteBusinessHoursDay = {
+  day: number;
+  enabled: boolean;
+  allDay?: boolean;
+  start?: string;
+  end?: string;
+};
+
 export type WebsiteWidgetForm = {
   websiteUrl: string;
   widgetColor: string;
@@ -25,6 +33,10 @@ export type WebsiteWidgetForm = {
   preChatFormEnabled: boolean;
   preChatFormMessage: string;
   preChatFormFields: PreChatFormField[];
+  businessHoursEnabled: boolean;
+  businessHoursTimezone: string;
+  businessHoursUnavailableMessage: string;
+  businessHoursDays: WebsiteBusinessHoursDay[];
 };
 
 export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
@@ -54,6 +66,16 @@ export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
   },
 ];
 
+export const DEFAULT_BUSINESS_HOURS_DAYS: WebsiteBusinessHoursDay[] = [
+  { day: 1, enabled: true, start: "09:00", end: "18:00" },
+  { day: 2, enabled: true, start: "09:00", end: "18:00" },
+  { day: 3, enabled: true, start: "09:00", end: "18:00" },
+  { day: 4, enabled: true, start: "09:00", end: "17:00" },
+  { day: 5, enabled: true, start: "09:00", end: "17:00" },
+  { day: 6, enabled: false, start: "09:00", end: "17:00" },
+  { day: 7, enabled: false, start: "09:00", end: "17:00" },
+];
+
 export const emptyWebsiteWidgetForm = (inboxName = ""): WebsiteWidgetForm => ({
   websiteUrl: "",
   widgetColor: "#2563eb",
@@ -71,6 +93,11 @@ export const emptyWebsiteWidgetForm = (inboxName = ""): WebsiteWidgetForm => ({
   preChatFormEnabled: false,
   preChatFormMessage: "Preencha as informações abaixo, para iniciar seu atendimento.",
   preChatFormFields: DEFAULT_PRE_CHAT_FIELDS.map((f) => ({ ...f })),
+  businessHoursEnabled: false,
+  businessHoursTimezone: "America/Sao_Paulo",
+  businessHoursUnavailableMessage:
+    "No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve.",
+  businessHoursDays: DEFAULT_BUSINESS_HOURS_DAYS.map((d) => ({ ...d })),
 });
 
 function str(v: unknown): string {
@@ -99,6 +126,30 @@ function parsePreChatFields(raw: unknown): PreChatFormField[] {
   return fields.length ? fields : DEFAULT_PRE_CHAT_FIELDS.map((f) => ({ ...f }));
 }
 
+function parseBusinessHoursDays(raw: unknown): WebsiteBusinessHoursDay[] {
+  if (!Array.isArray(raw)) return DEFAULT_BUSINESS_HOURS_DAYS.map((d) => ({ ...d }));
+  const days: WebsiteBusinessHoursDay[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const day = typeof o.day === "number" ? o.day : null;
+    if (day == null || day < 1 || day > 7) continue;
+    days.push({
+      day,
+      enabled: o.enabled === true,
+      allDay: o.allDay === true,
+      start: typeof o.start === "string" ? o.start : "09:00",
+      end: typeof o.end === "string" ? o.end : "18:00",
+    });
+  }
+  if (!days.length) return DEFAULT_BUSINESS_HOURS_DAYS.map((d) => ({ ...d }));
+  const byDay = new Map(DEFAULT_BUSINESS_HOURS_DAYS.map((d) => [d.day, { ...d }]));
+  for (const d of days) {
+    byDay.set(d.day, { ...byDay.get(d.day)!, ...d });
+  }
+  return [...byDay.values()].sort((a, b) => a.day - b.day);
+}
+
 export function websiteWidgetFromChannelConfig(
   raw: unknown,
   inboxName = "",
@@ -124,6 +175,11 @@ export function websiteWidgetFromChannelConfig(
     preChatFormEnabled: o.preChatFormEnabled === true,
     preChatFormMessage: str(o.preChatFormMessage) || base.preChatFormMessage,
     preChatFormFields: parsePreChatFields(o.preChatFormFields),
+    businessHoursEnabled: o.businessHoursEnabled === true,
+    businessHoursTimezone: str(o.businessHoursTimezone) || base.businessHoursTimezone,
+    businessHoursUnavailableMessage:
+      str(o.businessHoursUnavailableMessage) || base.businessHoursUnavailableMessage,
+    businessHoursDays: parseBusinessHoursDays(o.businessHoursDays),
   };
 }
 
@@ -151,6 +207,10 @@ export function websiteWidgetToChannelConfig(form: WebsiteWidgetForm): Record<st
   o.preChatFormEnabled = form.preChatFormEnabled;
   set("preChatFormMessage", form.preChatFormMessage);
   o.preChatFormFields = form.preChatFormFields.map((f) => ({ ...f }));
+  o.businessHoursEnabled = form.businessHoursEnabled;
+  set("businessHoursTimezone", form.businessHoursTimezone);
+  set("businessHoursUnavailableMessage", form.businessHoursUnavailableMessage);
+  o.businessHoursDays = form.businessHoursDays.map((d) => ({ ...d }));
   return o;
 }
 

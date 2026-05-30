@@ -78,7 +78,62 @@
       name: profile.fullName || profile.name || undefined,
       email: profile.emailAddress || profile.email || undefined,
       phone: profile.phoneNumber || profile.phone || undefined,
+      preChatFormData: profile,
     };
+  }
+
+  function parseHmBusiness(s) {
+    if (!s) return null;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(s).trim());
+    if (!m) return null;
+    var h = Number(m[1]);
+    var mi = Number(m[2]);
+    if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+
+  function weekdayToIsoBusiness(short) {
+    var map = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+    return map[short] || null;
+  }
+
+  function isWithinWebsiteBusinessHours(settings) {
+    if (!settings || settings.businessHoursEnabled !== true) return true;
+    var tz = settings.businessHoursTimezone || "America/Sao_Paulo";
+    var days = Array.isArray(settings.businessHoursDays) ? settings.businessHoursDays : [];
+    var formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    var parts = formatter.formatToParts(new Date());
+    var weekday = "";
+    var hour = 0;
+    var minute = 0;
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === "weekday") weekday = parts[i].value;
+      if (parts[i].type === "hour") hour = Number(parts[i].value);
+      if (parts[i].type === "minute") minute = Number(parts[i].value);
+    }
+    var isoDow = weekdayToIsoBusiness(weekday);
+    if (!isoDow) return true;
+    var dayCfg = null;
+    for (var j = 0; j < days.length; j++) {
+      if (days[j] && days[j].day === isoDow) {
+        dayCfg = days[j];
+        break;
+      }
+    }
+    if (!dayCfg || dayCfg.enabled !== true) return false;
+    if (dayCfg.allDay === true) return true;
+    var openMin = parseHmBusiness(dayCfg.start || "09:00");
+    var closeMin = parseHmBusiness(dayCfg.end || "18:00");
+    if (openMin == null || closeMin == null) return false;
+    var nowMin = hour * 60 + minute;
+    if (closeMin <= openMin) return nowMin >= openMin || nowMin < closeMin;
+    return nowMin >= openMin && nowMin < closeMin;
   }
 
   function mountWidget(opts, settings) {
@@ -106,7 +161,15 @@
           return f && f.enabled !== false;
         })
       : [];
+    var businessHoursEnabled = settings.businessHoursEnabled === true;
+    var businessHoursUnavailableMessage =
+      settings.businessHoursUnavailableMessage ||
+      "No momento estamos fora do horário de atendimento. Deixe sua mensagem que retornaremos em breve.";
     var storedProfile = loadProfile(token);
+
+    function currentlyOpen() {
+      return isWithinWebsiteBusinessHours(settings);
+    }
 
     function escapeHtml(text) {
       return String(text)
@@ -216,6 +279,13 @@
     body.appendChild(h3);
     body.appendChild(p);
 
+    var unavailableBanner = el("div");
+    unavailableBanner.setAttribute(
+      "style",
+      "display:none;margin-top:16px;padding:12px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;font-size:13px;line-height:1.55;color:#475569;text-align:left;max-width:280px;",
+    );
+    body.appendChild(unavailableBanner);
+
     var preChat = el("div");
     preChat.setAttribute(
       "style",
@@ -223,6 +293,12 @@
     );
     var preChatScroll = el("div");
     preChatScroll.setAttribute("style", "flex:1;overflow:auto;padding:20px 20px 12px;");
+    var preChatUnavailable = el("div");
+    preChatUnavailable.setAttribute(
+      "style",
+      "display:none;margin-bottom:16px;padding:12px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;font-size:13px;line-height:1.55;color:#475569;",
+    );
+    preChatScroll.appendChild(preChatUnavailable);
     var preChatIntro = el("p", null, preChatMessage);
     preChatIntro.setAttribute("style", "margin:0 0 16px;font-size:14px;line-height:1.55;color:#64748b;");
     preChatScroll.appendChild(preChatIntro);
@@ -338,6 +414,31 @@
 
     var visitorProfile = storedProfile;
 
+    function refreshBusinessHoursUi() {
+      var openNow = currentlyOpen();
+      var showUnavailable = businessHoursEnabled && !openNow;
+      if (showUnavailable) {
+        unavailableBanner.textContent = businessHoursUnavailableMessage;
+        unavailableBanner.style.display = "block";
+        preChatUnavailable.textContent = businessHoursUnavailableMessage;
+        preChatUnavailable.style.display = "block";
+        startBtn.disabled = true;
+        startBtn.style.opacity = "0.55";
+        startBtn.style.cursor = "not-allowed";
+      } else {
+        unavailableBanner.style.display = "none";
+        preChatUnavailable.style.display = "none";
+        startBtn.disabled = false;
+        startBtn.style.opacity = "1";
+        startBtn.style.cursor = "pointer";
+      }
+    }
+
+    function shouldShowPreChat() {
+      if (!preChatEnabled || preChatFields.length === 0 || visitorProfile) return false;
+      return true;
+    }
+
     function showChatView() {
       body.style.display = "none";
       footer.style.display = "none";
@@ -354,7 +455,8 @@
     function showInitialView() {
       stopPolling();
       chat.style.display = "none";
-      if (preChatEnabled && !visitorProfile && preChatFields.length > 0) {
+      refreshBusinessHoursUi();
+      if (shouldShowPreChat()) {
         body.style.display = "none";
         footer.style.display = "none";
         preChat.style.display = "flex";
@@ -493,7 +595,10 @@
     bubble.addEventListener("click", toggle);
     closeBtn.addEventListener("click", toggle);
 
-    startBtn.addEventListener("click", showChatView);
+    startBtn.addEventListener("click", function () {
+      if (businessHoursEnabled && !currentlyOpen()) return;
+      showChatView();
+    });
 
     preChatSubmit.addEventListener("click", function () {
       preChatError.style.display = "none";
@@ -570,6 +675,7 @@
         if (profile.name) bodyPayload.name = profile.name;
         if (profile.email) bodyPayload.email = profile.email;
         if (profile.phone) bodyPayload.phone = profile.phone;
+        if (profile.preChatFormData) bodyPayload.preChatFormData = profile.preChatFormData;
       }
 
       return fetch(url, {

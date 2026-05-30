@@ -7,6 +7,10 @@ import {
   type WebsiteWidgetForm,
 } from "@/lib/websiteWidget";
 import { WebsitePreChatFormSettings, WebsitePreChatPreview } from "@/components/WebsitePreChatFormSettings";
+import {
+  WebsiteBusinessHoursPreview,
+  WebsiteBusinessHoursSettings,
+} from "@/components/WebsiteBusinessHoursSettings";
 
 type Props = {
   form: WebsiteWidgetForm;
@@ -18,7 +22,7 @@ type Props = {
 export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = true }: Props) {
   const { t } = useI18n();
   const [tab, setTab] = useState<"preview" | "script">("preview");
-  const [builderTab, setBuilderTab] = useState<"widget" | "preChat">("widget");
+  const [builderTab, setBuilderTab] = useState<"widget" | "preChat" | "businessHours">("widget");
   const [previewMode, setPreviewMode] = useState<"welcome" | "preChat">("welcome");
   const [copied, setCopied] = useState(false);
   const [systemName, setSystemName] = useState("OpenNexo CRM");
@@ -73,10 +77,22 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
             >
               {t("inboxesPage.wizard.widget.tabPreChat")}
             </button>
+            <button
+              type="button"
+              onClick={() => setBuilderTab("businessHours")}
+              className={clsx(
+                "rounded-lg px-3 py-1.5 text-sm font-medium",
+                builderTab === "businessHours" ? "bg-brand-600 text-white" : "bg-ink-100 text-ink-700",
+              )}
+            >
+              {t("inboxesPage.wizard.widget.tabBusinessHours")}
+            </button>
           </div>
 
           {builderTab === "preChat" ? (
             <WebsitePreChatFormSettings form={form} onChange={onChange} />
+          ) : builderTab === "businessHours" ? (
+            <WebsiteBusinessHoursSettings form={form} onChange={onChange} />
           ) : (
             <>
           <label className="block">
@@ -284,10 +300,12 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
                 </div>
                 {form.preChatFormEnabled && previewMode === "preChat" ? (
                   <div className="bg-gradient-to-b from-slate-50 to-white px-5 py-6">
+                    <WebsiteBusinessHoursPreview form={form} color={color} />
                     <WebsitePreChatPreview form={form} color={color} />
                   </div>
                 ) : (
                 <div className="flex flex-col items-center bg-gradient-to-b from-slate-50 to-white px-6 py-8 text-center">
+                  <WebsiteBusinessHoursPreview form={form} color={color} />
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-md">
                     👋
                   </div>
