@@ -1,21 +1,7 @@
 import { useState, useEffect, type FormEvent, type ComponentType } from "react";
-import {
-  MessageSquare,
-  Share2,
-  Mail,
-  Smartphone,
-  Code2,
-  Send,
-  Phone,
-  Globe,
-  Image as ImageIcon,
-  PanelTop,
-} from "lucide-react";
+import { MessageSquare, Send, Image as ImageIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
-import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
-import { InstagramBrandIcon } from "@/components/InstagramBrandIcon";
-import { TelegramBrandIcon } from "@/components/TelegramBrandIcon";
 import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
 import {
   emptyWebsiteWidgetForm,
@@ -33,34 +19,15 @@ import {
 } from "@/lib/inboxWhatsappConfig";
 import { whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 
-/** Ordem e IDs alinhados à UX do [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings). */
-export const INBOX_CHANNEL_ORDER = [
-  "WEBSITE",
-  "FACEBOOK",
-  "WHATSAPP",
-  "SMS",
-  "EMAIL",
-  "API",
-  "TELEGRAM",
-  "LINE",
-  "INSTAGRAM",
-  "VOICE",
-] as const;
+import {
+  INBOX_CHANNEL_ORDER,
+  INBOX_CHANNEL_ICONS,
+  type InboxChannelId,
+} from "@/lib/inboxChannelUi";
 
-export type InboxChannelId = (typeof INBOX_CHANNEL_ORDER)[number];
+export { INBOX_CHANNEL_ORDER, type InboxChannelId };
 
-const CHANNEL_ICONS: Record<InboxChannelId, ComponentType<{ className?: string }>> = {
-  WEBSITE: PanelTop,
-  FACEBOOK: Share2,
-  WHATSAPP: WhatsAppBrandIcon,
-  SMS: Smartphone,
-  EMAIL: Mail,
-  API: Code2,
-  TELEGRAM: TelegramBrandIcon,
-  LINE: Globe,
-  INSTAGRAM: InstagramBrandIcon,
-  VOICE: Phone,
-};
+const CHANNEL_ICONS = INBOX_CHANNEL_ICONS;
 
 type OrgUser = { id: string; name: string; email: string; role: string };
 

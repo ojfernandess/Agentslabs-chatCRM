@@ -1,11 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
-import { Inbox, ChevronDown, ChevronRight, Pencil, Trash2, Check, Copy } from "lucide-react";
+import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER } from "@/components/InboxCreateWizard";
+import { InboxesKpiStrip, type InboxKpiStats } from "@/components/inboxes/InboxesKpiStrip";
+import {
+  InboxesToolbar,
+  type InboxChannelFilter,
+  type InboxStatusFilter,
+  type InboxViewMode,
+} from "@/components/inboxes/InboxesToolbar";
+import { InboxCard } from "@/components/inboxes/InboxCard";
+import { InboxesTipBanner } from "@/components/inboxes/InboxesTipBanner";
+import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
 import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
 import {
   websiteWidgetFromChannelConfig,
@@ -15,11 +25,10 @@ import {
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import {
   buildInboxWhatsappChannelConfig,
-  isInboxWhatsappConfigured,
   isWhatsAppCloudApiProvider,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
-import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
+import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
@@ -52,6 +61,7 @@ type InboxRow = {
   agentBotId?: string | null;
   agentBot?: InboxBotSummary | null;
   members?: InboxMemberRow[];
+  createdAt?: string;
   _count: { members: number; conversations: number };
 };
 
@@ -89,7 +99,7 @@ function nativeUrlsForChannel(channelType: string, token: string, baseNative: st
 }
 
 export function InboxesPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { user } = useAuth();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
 
@@ -120,6 +130,10 @@ export function InboxesPage() {
   const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
   const [waTestBusy, setWaTestBusy] = useState(false);
   const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
+  const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<InboxStatusFilter>("ALL");
+  const [viewMode, setViewMode] = useState<InboxViewMode>("list");
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -369,6 +383,55 @@ export function InboxesPage() {
     }
   };
 
+  const kpiStats = useMemo((): InboxKpiStats => {
+    let whatsappReady = 0;
+    let connectedChannels = 0;
+    let totalConversations = 0;
+    let totalMemberSlots = 0;
+    for (const row of rows) {
+      totalConversations += row._count.conversations;
+      totalMemberSlots += row._count.members;
+      if (inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured)) {
+        connectedChannels += 1;
+      }
+      if (row.channelType === "WHATSAPP" && row.whatsappConfigured) {
+        whatsappReady += 1;
+      }
+    }
+    return {
+      inboxCount: rows.length,
+      totalConversations,
+      totalMemberSlots,
+      connectedChannels,
+      whatsappReady,
+    };
+  }, [rows]);
+
+  const maxConversations = useMemo(
+    () => Math.max(1, ...rows.map((r) => r._count.conversations)),
+    [rows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (q) {
+        const hay = `${row.name} ${row.description ?? ""} ${row.id}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (channelFilter !== "ALL" && row.channelType !== channelFilter) return false;
+      const ready = inboxIsChannelReady(
+        row.channelType,
+        row.channelConfig,
+        row.ingestToken,
+        row.whatsappConfigured,
+      );
+      if (statusFilter === "READY" && !ready) return false;
+      if (statusFilter === "SETUP" && ready) return false;
+      return true;
+    });
+  }, [rows, search, channelFilter, statusFilter]);
+
   const handleDeleteInbox = async (row: InboxRow) => {
     if (!isAdmin) return;
     const msg = t("inboxesPage.deleteConfirm").replace("{name}", row.name);
@@ -394,177 +457,10 @@ export function InboxesPage() {
     }
   };
 
-  return (
-    <PageTransition>
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">
-              <Inbox className="h-7 w-7 text-brand-600 dark:text-brand-400" />
-              {t("inboxesPage.title")}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("inboxesPage.subtitle")}</p>
-            {!isAdmin ? (
-              <p className="mt-2 text-sm text-amber-700 dark:text-amber-300/90">{t("inboxesPage.readOnlyHint")}</p>
-            ) : null}
-          </div>
-          {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => setWizardOpen(true)}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 dark:bg-brand-600 dark:hover:bg-brand-500"
-            >
-              {t("inboxesPage.create")}
-            </button>
-          ) : null}
-        </div>
-
-        <InboxCreateWizard
-          open={wizardOpen}
-          onClose={() => {
-            setWizardOpen(false);
-            void refreshChannelSettings();
-          }}
-          onCreated={() => void load()}
-          orgUsers={orgUsers}
-          agentBots={agentBots}
-        />
-
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-ink-400">{t("inboxesPage.empty")}</p>
-        ) : (
-          <div className="space-y-2">
-            {rows.map((row) => {
-              const open = !!expanded[row.id];
-              const members = row.members ?? [];
-              return (
-                <div
-                  key={row.id}
-                  className="rounded-xl border border-gray-200 bg-white dark:border-ink-700 dark:bg-[#161f2c]/80"
-                >
-                  <div className="flex w-full items-stretch gap-2 px-2 py-2 sm:px-4 sm:py-3">
-                    <button
-                      type="button"
-                      onClick={() => toggle(row.id)}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                    >
-                      {open ? (
-                        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-gray-900 dark:text-ink-50">{row.name}</span>
-                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800 dark:bg-violet-950/45 dark:text-violet-200">
-                            {channelShort(row.channelType)}
-                          </span>
-                          {row.isDefault ? (
-                            <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-800 dark:bg-brand-900/50 dark:text-brand-200">
-                              {t("inboxesPage.defaultBadge")}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-ink-400">
-                          {t("inboxesPage.memberCount")}: {row._count.members} · {t("inboxesPage.conversations")}:{" "}
-                          {row._count.conversations}
-                        </p>
-                        {row.channelType === "WHATSAPP" ? (() => {
-                          const waRow = parseInboxWhatsappFromChannelConfig(row.channelConfig);
-                          const waOk =
-                            row.whatsappConfigured ?? isInboxWhatsappConfigured(waRow);
-                          return (
-                            <p
-                              className={`mt-0.5 text-[11px] font-medium ${
-                                waOk
-                                  ? "text-emerald-700 dark:text-emerald-300"
-                                  : "text-amber-800 dark:text-amber-200"
-                              }`}
-                            >
-                              {waOk
-                                ? `${t("inboxesPage.wizard.whatsappMeta.inboxStatusConfigured")} · ${whatsappProviderLabel(waRow.whatsappProvider)}`
-                                : t("inboxesPage.wizard.whatsappMeta.inboxStatusNotConfigured")}
-                            </p>
-                          );
-                        })() : null}
-                        {row.agentBot ? (
-                          <p className="mt-0.5 text-[11px] text-violet-700 dark:text-violet-300/90">
-                            {t("inboxesPage.agentBotField")}: {row.agentBot.name}
-                            {!row.agentBot.isActive
-                              ? ` ${t("inboxesPage.wizard.agentBotInactive")}`
-                              : ""}
-                          </p>
-                        ) : (
-                          <p className="mt-0.5 text-[11px] text-gray-500 dark:text-ink-500">
-                            {t("inboxesPage.agentBotField")}: {t("inboxesPage.agentBotOrgDefault")}
-                          </p>
-                        )}
-                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-ink-500">
-                            {t("inboxesPage.inboxId")}
-                          </span>
-                          <code className="max-w-[min(100%,28rem)] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-800 dark:bg-ink-800/80 dark:text-ink-100 sm:max-w-md">
-                            {row.id}
-                          </code>
-                          <button
-                            type="button"
-                            className="inline-flex shrink-0 rounded p-1 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-ink-400 dark:hover:bg-ink-700 dark:hover:text-ink-50"
-                            title={t("inboxesPage.copyInboxId")}
-                            aria-label={t("inboxesPage.copyInboxId")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void copyInboxId(row.id);
-                            }}
-                          >
-                            {copiedInboxId === row.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </button>
-                    {isAdmin ? (
-                      <div className="flex shrink-0 flex-col items-end justify-center gap-1 sm:flex-row sm:items-center">
-                        <button
-                          type="button"
-                          onClick={() => void startEdit(row)}
-                          className="btn-secondary flex items-center gap-1 px-2 py-1 text-xs"
-                          title={t("common.edit")}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">{t("common.edit")}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteInbox(row)}
-                          disabled={rows.length <= 1 || patchingId === row.id}
-                          className="flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/40"
-                          title={rows.length <= 1 ? t("inboxesPage.deleteOnlyInbox") : t("inboxesPage.deleteInbox")}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">{t("common.delete")}</span>
-                        </button>
-                        {!row.isDefault ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleSetDefault(row.id)}
-                            disabled={patchingId === row.id}
-                            className="btn-secondary shrink-0 px-2 py-1 text-xs"
-                          >
-                            {patchingId === row.id ? t("inboxesPage.saving") : t("inboxesPage.setDefault")}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                  {open && isAdmin && members.length >= 0 ? (
-                    <div className="border-t border-gray-100 px-4 pb-4 pt-2 dark:border-ink-700">
+  const renderExpandedPanel = (row: InboxRow) => {
+    const members = row.members ?? [];
+    return (
+      <div>
                       {editingId === row.id ? (
                         <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
                           <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-brand-800 dark:text-brand-200">
@@ -871,12 +767,115 @@ export function InboxesPage() {
                         ))}
                       </ul>
                     </div>
-                  ) : null}
-                </div>
+    );
+  };
+
+  return (
+    <PageTransition>
+      <div className="mx-auto max-w-[1400px] space-y-6 p-4 sm:p-6 lg:p-8">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50 sm:text-3xl">
+              {t("inboxesPage.title")}
+              <span className="sr-only">{t("inboxesPage.subtitle")}</span>
+              <HelpCircle className="h-5 w-5 text-ink-400" aria-hidden />
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">{t("inboxesPage.subtitle")}</p>
+            {!isAdmin ? (
+              <p className="mt-2 text-sm text-amber-700 dark:text-amber-300/90">{t("inboxesPage.readOnlyHint")}</p>
+            ) : null}
+          </div>
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-700 dark:shadow-brand-900/30"
+            >
+              <Plus className="h-4 w-4" />
+              {t("inboxesPage.create")}
+            </button>
+          ) : null}
+        </header>
+
+        <InboxCreateWizard
+          open={wizardOpen}
+          onClose={() => {
+            setWizardOpen(false);
+            void refreshChannelSettings();
+          }}
+          onCreated={() => void load()}
+          orgUsers={orgUsers}
+          agentBots={agentBots}
+        />
+
+        {!loading && rows.length > 0 ? <InboxesKpiStrip stats={kpiStats} /> : null}
+
+        {!loading && rows.length > 0 ? (
+          <InboxesToolbar
+            search={search}
+            onSearchChange={setSearch}
+            channelFilter={channelFilter}
+            onChannelFilterChange={setChannelFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            channelLabel={channelShort}
+          />
+        ) : null}
+
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-ink-200 bg-ink-50/50 py-16 text-center dark:border-ink-700 dark:bg-ink-950/30">
+            <p className="text-sm text-ink-500 dark:text-ink-400">{t("inboxesPage.empty")}</p>
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setWizardOpen(true)}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+              >
+                <Plus className="h-4 w-4" />
+                {t("inboxesPage.create")}
+              </button>
+            ) : null}
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <p className="rounded-2xl border border-ink-200 bg-white py-12 text-center text-sm text-ink-500 dark:border-ink-700 dark:bg-ink-950/50">
+            {t("inboxesPage.dashboard.emptyFilter")}
+          </p>
+        ) : (
+          <div className={viewMode === "grid" ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3" : "space-y-4"}>
+            {filteredRows.map((row) => {
+              const open = !!expanded[row.id];
+              return (
+                <InboxCard
+                  key={row.id}
+                  row={row}
+                  open={open}
+                  viewMode={viewMode}
+                  maxConversations={maxConversations}
+                  locale={locale}
+                  isAdmin={isAdmin}
+                  canDelete={rows.length > 1}
+                  patching={patchingId === row.id}
+                  copiedId={copiedInboxId}
+                  channelLabel={channelShort}
+                  onToggle={() => toggle(row.id)}
+                  onEdit={() => void startEdit(row)}
+                  onDelete={() => void handleDeleteInbox(row)}
+                  onSetDefault={() => void handleSetDefault(row.id)}
+                  onCopyId={() => void copyInboxId(row.id)}
+                  expandedContent={open && isAdmin ? renderExpandedPanel(row) : undefined}
+                />
               );
             })}
           </div>
         )}
+
+        {!loading && rows.length > 0 ? <InboxesTipBanner /> : null}
       </div>
     </PageTransition>
   );
