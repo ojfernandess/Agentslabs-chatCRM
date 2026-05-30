@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
-import { brandAssetUrl } from "@/lib/brandingAssets";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
@@ -32,6 +31,7 @@ import { useActionableReminders } from "@/hooks/useActionableReminders";
 import { ReminderActionableBanner } from "@/components/reminders/ReminderActionableBanner";
 import { useConversationBubbleTheme } from "@/hooks/useConversationBubbleTheme";
 import { useOrganizationBranding } from "@/hooks/useOrganizationBranding";
+import { OrganizationSidebarLogo } from "@/components/OrganizationSidebarLogo";
 import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
@@ -75,8 +75,7 @@ export function Layout() {
   );
   const orgThemeKey = user?.actingOrganizationId ?? user?.organizationId ?? null;
   useConversationBubbleTheme(!!user, orgThemeKey);
-  const { organizationLogoUrl } = useOrganizationBranding(!!user, orgThemeKey);
-  const sidebarLogoSrc = organizationLogoUrl ?? brandAssetUrl("/logo.svg");
+  const { organizationLogoUrl, brandingReady } = useOrganizationBranding(!!user, orgThemeKey);
 
   useEffect(() => {
     if (orgLabel && orgLabel !== "—") {
@@ -278,11 +277,10 @@ export function Layout() {
     <>
       <div className="px-5 pt-6 pb-5">
         <Link to="/" className="flex items-center gap-3">
-          <img
-            src={sidebarLogoSrc}
+          <OrganizationSidebarLogo
+            organizationLogoUrl={organizationLogoUrl}
+            brandingReady={brandingReady}
             alt={orgLabel}
-            className="h-9 w-auto max-w-[2.75rem] object-contain"
-            decoding="async"
           />
           <span className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{orgLabel}</span>
         </Link>
