@@ -17,6 +17,7 @@ import {
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
 import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
+import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
 
 const testWhatsappConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
@@ -381,12 +382,58 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const connected = await provider.healthCheck();
+        if (connected) {
+          const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+          if (isMetaCloudWhatsappProvider(parsed.whatsappProvider)) {
+            const base =
+              draftConfig && typeof draftConfig === "object" && !Array.isArray(draftConfig)
+                ? { ...(draftConfig as Record<string, unknown>) }
+                : {};
+            if (!str(base.whatsappConnectedAt)) {
+              base.whatsappConnectedAt = new Date().toISOString();
+              await prisma.inbox.update({
+                where: { id: inbox.id },
+                data: { channelConfig: base as Prisma.InputJsonValue },
+              });
+            }
+          }
+        }
         return { connected };
       } catch {
         return { connected: false };
       }
     },
   );
+
+  function str(v: unknown): string | undefined {
+    return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  }
+
+  app.get<{ Params: { id: string } }>("/:id/whatsapp-account-health", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, channelType: true, channelConfig: true, updatedAt: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== InboxChannelType.WHATSAPP) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not a WhatsApp channel",
+        statusCode: 400,
+      });
+    }
+
+    const health = await fetchMetaWhatsappAccountHealth({
+      organizationId,
+      inbox: { channelConfig: inbox.channelConfig, updatedAt: inbox.updatedAt },
+    });
+    return health;
+  });
 
   app.post<{ Params: { id: string } }>(
     "/:id/rotate-ingest-token",

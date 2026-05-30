@@ -30,6 +30,7 @@ import {
 } from "@/lib/inboxWhatsappConfig";
 import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
+import { WhatsAppMetaAccountHealthPanel } from "@/components/inboxes/WhatsAppMetaAccountHealthPanel";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "";
@@ -461,6 +462,18 @@ export function InboxesPage() {
     const members = row.members ?? [];
     return (
       <div>
+        {row.channelType === "WHATSAPP" &&
+        isWhatsAppCloudApiProvider(
+          parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider ?? "",
+        ) ? (
+          <div className="mb-5">
+            <WhatsAppMetaAccountHealthPanel
+              inboxId={row.id}
+              inboxName={row.name}
+              channelConfig={row.channelConfig}
+            />
+          </div>
+        ) : null}
                       {editingId === row.id ? (
                         <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
                           <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-brand-800 dark:text-brand-200">
