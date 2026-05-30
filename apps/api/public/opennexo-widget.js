@@ -54,6 +54,33 @@
     document.head.appendChild(s);
   }
 
+  function profileKey(token) {
+    return "opennexo_profile_" + token;
+  }
+
+  function loadProfile(token) {
+    try {
+      var raw = localStorage.getItem(profileKey(token));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveProfile(token, data) {
+    try {
+      localStorage.setItem(profileKey(token), JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function profilePayload(profile) {
+    return {
+      name: profile.fullName || profile.name || undefined,
+      email: profile.emailAddress || profile.email || undefined,
+      phone: profile.phoneNumber || profile.phone || undefined,
+    };
+  }
+
   function mountWidget(opts, settings) {
     injectStyles();
 
@@ -70,6 +97,23 @@
     var launcherText = settings.bubbleLauncherTitle || "Fale conosco";
     var isExpanded = settings.bubbleType === "expanded";
     var avatarUrl = settings.avatarUrl || "";
+    var preChatEnabled = settings.preChatFormEnabled === true;
+    var preChatMessage =
+      settings.preChatFormMessage || "Preencha as informações abaixo, para iniciar seu atendimento.";
+    var preChatFields = Array.isArray(settings.preChatFormFields)
+      ? settings.preChatFormFields.filter(function (f) {
+          return f && f.enabled !== false;
+        })
+      : [];
+    var storedProfile = loadProfile(token);
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
 
     var root = el("div");
     root.id = "opennexo-widget-root";
@@ -171,6 +215,52 @@
     body.appendChild(h3);
     body.appendChild(p);
 
+    var preChat = el("div");
+    preChat.setAttribute(
+      "style",
+      "display:none;flex:1;flex-direction:column;min-height:0;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);",
+    );
+    var preChatScroll = el("div");
+    preChatScroll.setAttribute("style", "flex:1;overflow:auto;padding:20px 20px 12px;");
+    var preChatIntro = el("p", null, preChatMessage);
+    preChatIntro.setAttribute("style", "margin:0 0 16px;font-size:14px;line-height:1.55;color:#64748b;");
+    preChatScroll.appendChild(preChatIntro);
+    var preChatInputs = {};
+    preChatFields.forEach(function (field) {
+      var wrap = el("label");
+      wrap.setAttribute("style", "display:block;margin-bottom:12px;");
+      var label = el("span", null, field.label + (field.required ? " *" : ""));
+      label.setAttribute("style", "display:block;margin-bottom:6px;font-size:12px;font-weight:600;color:#334155;");
+      var inputField = el("input");
+      inputField.type = field.type === "email" ? "email" : field.type === "tel" ? "tel" : "text";
+      inputField.placeholder = field.placeholder || "";
+      inputField.setAttribute(
+        "style",
+        "width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;",
+      );
+      if (storedProfile && storedProfile[field.key]) inputField.value = storedProfile[field.key];
+      preChatInputs[field.key] = inputField;
+      wrap.appendChild(label);
+      wrap.appendChild(inputField);
+      preChatScroll.appendChild(wrap);
+    });
+    var preChatError = el("div");
+    preChatError.setAttribute("style", "display:none;margin-top:4px;font-size:12px;color:#b91c1c;");
+    preChatScroll.appendChild(preChatError);
+    var preChatFooter = el("div");
+    preChatFooter.setAttribute("style", "padding:0 20px 16px;flex-shrink:0;");
+    var preChatSubmit = el("button", null, "Iniciar atendimento");
+    preChatSubmit.type = "button";
+    preChatSubmit.setAttribute(
+      "style",
+      "width:100%;background:" +
+        color +
+        ";color:#fff;border:none;border-radius:14px;padding:14px 18px;font-weight:600;font-size:15px;cursor:pointer;",
+    );
+    preChatFooter.appendChild(preChatSubmit);
+    preChat.appendChild(preChatScroll);
+    preChat.appendChild(preChatFooter);
+
     var chat = el("div");
     chat.setAttribute("style", "display:none;flex:1;flex-direction:column;min-height:0;background:#f1f5f9;");
     var messages = el("div");
@@ -240,9 +330,33 @@
 
     panel.appendChild(header);
     panel.appendChild(body);
+    panel.appendChild(preChat);
     panel.appendChild(chat);
     panel.appendChild(footer);
     panel.appendChild(powered);
+
+    var visitorProfile = storedProfile;
+
+    function showChatView() {
+      body.style.display = "none";
+      footer.style.display = "none";
+      preChat.style.display = "none";
+      chat.style.display = "flex";
+      input.focus();
+    }
+
+    function showInitialView() {
+      chat.style.display = "none";
+      if (preChatEnabled && !visitorProfile && preChatFields.length > 0) {
+        body.style.display = "none";
+        footer.style.display = "none";
+        preChat.style.display = "flex";
+      } else {
+        preChat.style.display = "none";
+        body.style.display = "flex";
+        footer.style.display = "block";
+      }
+    }
 
     var bubble = el("button", "onx-launcher");
     bubble.type = "button";
@@ -291,6 +405,7 @@
     function setOpen(next) {
       open = next;
       panel.style.display = open ? "flex" : "none";
+      if (open) showInitialView();
       if (isExpanded) {
         bubble.style.display = open ? "none" : "inline-flex";
       } else {
@@ -305,20 +420,40 @@
     bubble.addEventListener("click", toggle);
     closeBtn.addEventListener("click", toggle);
 
-    startBtn.addEventListener("click", function () {
-      body.style.display = "none";
-      footer.style.display = "none";
-      chat.style.display = "flex";
-      input.focus();
-    });
+    startBtn.addEventListener("click", showChatView);
 
-    function escapeHtml(text) {
-      return String(text)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
+    preChatSubmit.addEventListener("click", function () {
+      preChatError.style.display = "none";
+      var values = {};
+      for (var i = 0; i < preChatFields.length; i++) {
+        var field = preChatFields[i];
+        var node = preChatInputs[field.key];
+        var val = node ? String(node.value || "").trim() : "";
+        if (field.required && !val) {
+          preChatError.textContent = "Preencha o campo: " + field.label;
+          preChatError.style.display = "block";
+          if (node) node.focus();
+          return;
+        }
+        if (val) values[field.key] = val;
+      }
+      visitorProfile = values;
+      saveProfile(token, values);
+      var payload = profilePayload(values);
+      var registerText = "Início do atendimento via formulário pré-chat.";
+      preChatSubmit.disabled = true;
+      sendMessage(registerText, payload)
+        .then(function () {
+          showChatView();
+        })
+        .catch(function () {
+          preChatError.textContent = "Não foi possível iniciar o atendimento. Tente novamente.";
+          preChatError.style.display = "block";
+        })
+        .finally(function () {
+          preChatSubmit.disabled = false;
+        });
+    });
 
     function appendMsg(text, outbound, isError) {
       var wrap = el("div", "onx-msg");
@@ -347,7 +482,7 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
-    function sendMessage(text) {
+    function sendMessage(text, extra) {
       var url =
         base +
         "/api/v1/public/channels/inboxes/" +
@@ -356,10 +491,18 @@
         encodeURIComponent(visitorId()) +
         "/messages";
 
+      var bodyPayload = { content: text };
+      var profile = extra || (visitorProfile ? profilePayload(visitorProfile) : null);
+      if (profile) {
+        if (profile.name) bodyPayload.name = profile.name;
+        if (profile.email) bodyPayload.email = profile.email;
+        if (profile.phone) bodyPayload.phone = profile.phone;
+      }
+
       return fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify(bodyPayload),
       }).then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
@@ -394,6 +537,10 @@
   function run(opts) {
     if (!opts || !opts.websiteToken) {
       console.error("[OpenNexo] websiteToken is required");
+      return;
+    }
+    if (opts.settings) {
+      mountWidget(opts, opts.settings);
       return;
     }
     var base = (opts.baseUrl || "").replace(/\/+$/, "");

@@ -1,9 +1,62 @@
-import type { ChannelNativeConfig, WebsiteWidgetConfig } from "./channelNativeTypes.js";
+import { createHash } from "node:crypto";
+import type { ChannelNativeConfig, PreChatFormField, WebsiteWidgetConfig } from "./channelNativeTypes.js";
+
+/** Incrementar quando o JS público do widget mudar estruturalmente (cache bust global). */
+export const WIDGET_SDK_VERSION = "4";
+
+export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
+  {
+    key: "emailAddress",
+    type: "email",
+    label: "E-mail",
+    placeholder: "Endereço de e-mail",
+    required: true,
+    enabled: true,
+  },
+  {
+    key: "fullName",
+    type: "text",
+    label: "Nome",
+    placeholder: "Seu nome",
+    required: true,
+    enabled: true,
+  },
+  {
+    key: "phoneNumber",
+    type: "tel",
+    label: "Telefone",
+    placeholder: "11 - 99999-9999",
+    required: false,
+    enabled: true,
+  },
+];
 
 function str(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined;
   const t = v.trim();
   return t.length ? t : undefined;
+}
+
+function parsePreChatFields(raw: unknown): PreChatFormField[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const fields: PreChatFormField[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const key = str(o.key);
+    if (!key) continue;
+    const typeRaw = str(o.type);
+    const type = typeRaw === "email" || typeRaw === "tel" ? typeRaw : "text";
+    fields.push({
+      key,
+      type,
+      label: str(o.label) ?? key,
+      placeholder: str(o.placeholder) ?? "",
+      required: o.required === true,
+      enabled: o.enabled !== false,
+    });
+  }
+  return fields.length ? fields : undefined;
 }
 
 export function parseWebsiteWidgetConfig(raw: unknown): WebsiteWidgetConfig {
@@ -24,16 +77,28 @@ export function parseWebsiteWidgetConfig(raw: unknown): WebsiteWidgetConfig {
     bubbleLauncherTitle: str(o.bubbleLauncherTitle),
     greetingEnabled: o.greetingEnabled === true,
     responseTimeLabel: str(o.responseTimeLabel),
+    preChatFormEnabled: o.preChatFormEnabled === true,
+    preChatFormMessage: str(o.preChatFormMessage),
+    preChatFormFields: parsePreChatFields(o.preChatFormFields),
   };
+}
+
+export function widgetConfigRevision(channelConfig: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(channelConfig ?? {}))
+    .digest("hex")
+    .slice(0, 12);
 }
 
 export function publicWebsiteWidgetSettings(
   inboxName: string,
   channelConfig: unknown,
-): WebsiteWidgetConfig & { inboxName: string } {
+): WebsiteWidgetConfig & { inboxName: string; revision: string; sdkVersion: string } {
   const cfg = parseWebsiteWidgetConfig(channelConfig);
   return {
     inboxName,
+    revision: widgetConfigRevision(channelConfig),
+    sdkVersion: WIDGET_SDK_VERSION,
     siteName: cfg.siteName ?? inboxName,
     widgetColor: cfg.widgetColor ?? "#2563eb",
     welcomeTitle: cfg.welcomeTitle ?? "Olá!",
@@ -48,6 +113,10 @@ export function publicWebsiteWidgetSettings(
     bubbleType: cfg.bubbleType ?? "standard",
     bubbleLauncherTitle: cfg.bubbleLauncherTitle ?? "Fale conosco no chat",
     greetingEnabled: cfg.greetingEnabled === true,
+    preChatFormEnabled: cfg.preChatFormEnabled === true,
+    preChatFormMessage:
+      cfg.preChatFormMessage ?? "Preencha as informações abaixo, para iniciar seu atendimento.",
+    preChatFormFields: cfg.preChatFormFields ?? DEFAULT_PRE_CHAT_FIELDS,
   };
 }
 

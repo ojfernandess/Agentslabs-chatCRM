@@ -6,6 +6,7 @@ import {
   buildWebsiteEmbedScript,
   type WebsiteWidgetForm,
 } from "@/lib/websiteWidget";
+import { WebsitePreChatFormSettings, WebsitePreChatPreview } from "@/components/WebsitePreChatFormSettings";
 
 type Props = {
   form: WebsiteWidgetForm;
@@ -17,6 +18,8 @@ type Props = {
 export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = true }: Props) {
   const { t } = useI18n();
   const [tab, setTab] = useState<"preview" | "script">("preview");
+  const [builderTab, setBuilderTab] = useState<"widget" | "preChat">("widget");
+  const [previewMode, setPreviewMode] = useState<"welcome" | "preChat">("welcome");
   const [copied, setCopied] = useState(false);
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const color = form.widgetColor || "#2563eb";
@@ -38,6 +41,33 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
     <div className="space-y-4">
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setBuilderTab("widget")}
+              className={clsx(
+                "rounded-lg px-3 py-1.5 text-sm font-medium",
+                builderTab === "widget" ? "bg-brand-600 text-white" : "bg-ink-100 text-ink-700",
+              )}
+            >
+              {t("inboxesPage.wizard.widget.tabBuilder")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBuilderTab("preChat")}
+              className={clsx(
+                "rounded-lg px-3 py-1.5 text-sm font-medium",
+                builderTab === "preChat" ? "bg-brand-600 text-white" : "bg-ink-100 text-ink-700",
+              )}
+            >
+              {t("inboxesPage.wizard.widget.tabPreChat")}
+            </button>
+          </div>
+
+          {builderTab === "preChat" ? (
+            <WebsitePreChatFormSettings form={form} onChange={onChange} />
+          ) : (
+            <>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-ink-600">{t("inboxesPage.wizard.widget.siteName")}</span>
             <input
@@ -170,6 +200,8 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
             />
             {t("inboxesPage.wizard.widget.greetingEnabled")}
           </label>
+            </>
+          )}
         </div>
 
         <div>
@@ -194,6 +226,30 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
 
           {tab === "preview" ? (
             <div className="relative rounded-xl border border-ink-200 bg-gradient-to-br from-slate-100 to-slate-200/80 p-6 dark:border-ink-600 dark:from-ink-950/50 dark:to-ink-900/40">
+              {form.preChatFormEnabled ? (
+                <div className="mb-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode("welcome")}
+                    className={clsx(
+                      "rounded-lg px-3 py-1 text-xs font-medium",
+                      previewMode === "welcome" ? "bg-brand-600 text-white" : "bg-white text-ink-700",
+                    )}
+                  >
+                    {t("inboxesPage.wizard.widget.previewWelcome")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode("preChat")}
+                    className={clsx(
+                      "rounded-lg px-3 py-1 text-xs font-medium",
+                      previewMode === "preChat" ? "bg-brand-600 text-white" : "bg-white text-ink-700",
+                    )}
+                  >
+                    {t("inboxesPage.wizard.widget.previewPreChat")}
+                  </button>
+                </div>
+              ) : null}
               <div
                 className={`mx-auto max-w-[340px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_64px_rgba(15,23,42,0.12)] ring-1 ring-ink-200/60 ${form.widgetPosition === "left" ? "mr-auto" : "ml-auto"}`}
               >
@@ -215,6 +271,11 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
                     </div>
                   </div>
                 </div>
+                {form.preChatFormEnabled && previewMode === "preChat" ? (
+                  <div className="bg-gradient-to-b from-slate-50 to-white px-5 py-6">
+                    <WebsitePreChatPreview form={form} color={color} />
+                  </div>
+                ) : (
                 <div className="flex flex-col items-center bg-gradient-to-b from-slate-50 to-white px-6 py-8 text-center">
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-md">
                     👋
@@ -229,6 +290,7 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
                     {t("inboxesPage.wizard.widget.startConversation")}
                   </button>
                 </div>
+                )}
                 <p className="border-t border-ink-100 py-2 text-center text-[10px] text-ink-400">
                   Powered by OpenConduit
                 </p>

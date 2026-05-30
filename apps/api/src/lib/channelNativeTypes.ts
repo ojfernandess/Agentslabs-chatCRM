@@ -10,6 +10,17 @@ import type { InboxChannelType } from "@prisma/client";
 export type WebsiteWidgetPosition = "left" | "right";
 export type WebsiteWidgetBubbleType = "standard" | "expanded";
 
+export type PreChatFormFieldType = "text" | "email" | "tel";
+
+export type PreChatFormField = {
+  key: string;
+  type: PreChatFormFieldType;
+  label: string;
+  placeholder: string;
+  required: boolean;
+  enabled: boolean;
+};
+
 /** Configuração do widget de chat ao vivo (canal WEBSITE), estilo Chatwoot. */
 export type WebsiteWidgetConfig = {
   websiteUrl?: string;
@@ -24,6 +35,9 @@ export type WebsiteWidgetConfig = {
   bubbleLauncherTitle?: string;
   greetingEnabled?: boolean;
   responseTimeLabel?: string;
+  preChatFormEnabled?: boolean;
+  preChatFormMessage?: string;
+  preChatFormFields?: PreChatFormField[];
 };
 
 export type ChannelNativeConfig = WebsiteWidgetConfig & {

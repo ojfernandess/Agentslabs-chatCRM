@@ -27,6 +27,7 @@ export type ChannelInboundInput = {
   participantId: string;
   participantName?: string;
   email?: string | null;
+  visitorPhone?: string | null;
   body?: string | null;
   type?: MessageType;
   mediaUrl?: string | null;
@@ -47,6 +48,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     participantId,
     participantName,
     email,
+    visitorPhone,
     body,
     type = "TEXT",
     mediaUrl,
@@ -74,13 +76,27 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
           email?.trim() ||
           (channelType === "EMAIL" ? participantId.trim() : undefined) ||
           undefined,
+        notes: visitorPhone?.trim() ? `Telefone: ${visitorPhone.trim()}` : undefined,
       },
     });
-  } else if (email?.trim() && !contact.email) {
-    contact = await prisma.contact.update({
-      where: { id: contact.id },
-      data: { email: email.trim() },
-    });
+  } else {
+    const updates: { email?: string; name?: string; notes?: string } = {};
+    if (email?.trim() && !contact.email) updates.email = email.trim();
+    if (participantName?.trim() && contact.name !== participantName.trim()) {
+      updates.name = participantName.trim();
+    }
+    if (visitorPhone?.trim()) {
+      const noteLine = `Telefone: ${visitorPhone.trim()}`;
+      if (!contact.notes?.includes(visitorPhone.trim())) {
+        updates.notes = contact.notes ? `${contact.notes}\n${noteLine}` : noteLine;
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      contact = await prisma.contact.update({
+        where: { id: contact.id },
+        data: updates,
+      });
+    }
   }
 
   if (externalMessageId) {

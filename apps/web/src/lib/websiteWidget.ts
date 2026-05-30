@@ -1,3 +1,14 @@
+export type PreChatFormFieldType = "text" | "email" | "tel";
+
+export type PreChatFormField = {
+  key: string;
+  type: PreChatFormFieldType;
+  label: string;
+  placeholder: string;
+  required: boolean;
+  enabled: boolean;
+};
+
 export type WebsiteWidgetForm = {
   websiteUrl: string;
   widgetColor: string;
@@ -11,7 +22,37 @@ export type WebsiteWidgetForm = {
   bubbleLauncherTitle: string;
   greetingEnabled: boolean;
   responseTimeLabel: string;
+  preChatFormEnabled: boolean;
+  preChatFormMessage: string;
+  preChatFormFields: PreChatFormField[];
 };
+
+export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
+  {
+    key: "emailAddress",
+    type: "email",
+    label: "E-mail",
+    placeholder: "Endereço de e-mail",
+    required: true,
+    enabled: true,
+  },
+  {
+    key: "fullName",
+    type: "text",
+    label: "Nome",
+    placeholder: "Seu nome",
+    required: true,
+    enabled: true,
+  },
+  {
+    key: "phoneNumber",
+    type: "tel",
+    label: "Telefone",
+    placeholder: "11 - 99999-9999",
+    required: false,
+    enabled: true,
+  },
+];
 
 export const emptyWebsiteWidgetForm = (inboxName = ""): WebsiteWidgetForm => ({
   websiteUrl: "",
@@ -27,10 +68,35 @@ export const emptyWebsiteWidgetForm = (inboxName = ""): WebsiteWidgetForm => ({
   bubbleLauncherTitle: "Fale conosco no chat",
   greetingEnabled: false,
   responseTimeLabel: "Respondemos em alguns minutos",
+  preChatFormEnabled: false,
+  preChatFormMessage: "Preencha as informações abaixo, para iniciar seu atendimento.",
+  preChatFormFields: DEFAULT_PRE_CHAT_FIELDS.map((f) => ({ ...f })),
 });
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function parsePreChatFields(raw: unknown): PreChatFormField[] {
+  if (!Array.isArray(raw)) return DEFAULT_PRE_CHAT_FIELDS.map((f) => ({ ...f }));
+  const fields: PreChatFormField[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const key = str(o.key);
+    if (!key) continue;
+    const typeRaw = str(o.type);
+    const type = typeRaw === "email" || typeRaw === "tel" ? typeRaw : "text";
+    fields.push({
+      key,
+      type,
+      label: str(o.label) || key,
+      placeholder: str(o.placeholder),
+      required: o.required === true,
+      enabled: o.enabled !== false,
+    });
+  }
+  return fields.length ? fields : DEFAULT_PRE_CHAT_FIELDS.map((f) => ({ ...f }));
 }
 
 export function websiteWidgetFromChannelConfig(
@@ -55,6 +121,9 @@ export function websiteWidgetFromChannelConfig(
     bubbleLauncherTitle: str(o.bubbleLauncherTitle) || base.bubbleLauncherTitle,
     greetingEnabled: o.greetingEnabled === true,
     responseTimeLabel: str(o.responseTimeLabel) || base.responseTimeLabel,
+    preChatFormEnabled: o.preChatFormEnabled === true,
+    preChatFormMessage: str(o.preChatFormMessage) || base.preChatFormMessage,
+    preChatFormFields: parsePreChatFields(o.preChatFormFields),
   };
 }
 
@@ -62,7 +131,7 @@ export function websiteWidgetToChannelConfig(form: WebsiteWidgetForm): Record<st
   const o: Record<string, unknown> = {};
   const set = (k: string, v: string | boolean) => {
     if (typeof v === "boolean") {
-      if (v) o[k] = v;
+      o[k] = v;
       return;
     }
     if (v.trim()) o[k] = v.trim();
@@ -78,7 +147,10 @@ export function websiteWidgetToChannelConfig(form: WebsiteWidgetForm): Record<st
   o.bubbleType = form.bubbleType;
   set("bubbleLauncherTitle", form.bubbleLauncherTitle);
   set("responseTimeLabel", form.responseTimeLabel);
-  if (form.greetingEnabled) o.greetingEnabled = true;
+  o.greetingEnabled = form.greetingEnabled;
+  o.preChatFormEnabled = form.preChatFormEnabled;
+  set("preChatFormMessage", form.preChatFormMessage);
+  o.preChatFormFields = form.preChatFormFields.map((f) => ({ ...f }));
   return o;
 }
 
@@ -88,16 +160,35 @@ export function buildWebsiteEmbedScript(baseUrl: string, websiteToken: string): 
   return `<script>
   (function(d,t) {
     var BASE_URL="${base}";
-    var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
-    g.src=BASE_URL+"/api/v1/public/widget/opennexo-widget.js";
-    g.async=true;
-    s.parentNode.insertBefore(g,s);
-    g.onload=function(){
-      window.opennexoSDK.run({
-        websiteToken: '${token}',
-        baseUrl: BASE_URL
+    var TOKEN='${token}';
+    fetch(BASE_URL+"/api/v1/public/widget/"+encodeURIComponent(TOKEN)+"/settings")
+      .then(function(r){ if(!r.ok) throw new Error("settings"); return r.json(); })
+      .then(function(settings){
+        var rev=(settings.revision||"1")+"."+(settings.sdkVersion||"1");
+        var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+        g.src=BASE_URL+"/api/v1/public/widget/opennexo-widget.js?v="+encodeURIComponent(rev);
+        g.async=true;
+        s.parentNode.insertBefore(g,s);
+        g.onload=function(){
+          window.opennexoSDK.run({
+            websiteToken: TOKEN,
+            baseUrl: BASE_URL,
+            settings: settings
+          });
+        };
+        g.onerror=function(){
+          console.error("[OpenConduit] Falha ao carregar widget.js");
+        };
+      })
+      .catch(function(){
+        var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+        g.src=BASE_URL+"/api/v1/public/widget/opennexo-widget.js?v=1";
+        g.async=true;
+        s.parentNode.insertBefore(g,s);
+        g.onload=function(){
+          window.opennexoSDK.run({ websiteToken: TOKEN, baseUrl: BASE_URL });
+        };
       });
-    };
   })(document,"script");
 </script>`;
 }
