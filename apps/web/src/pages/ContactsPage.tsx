@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import {
   Users,
   Plus,
@@ -16,6 +16,9 @@ import {
   Send,
   Mail,
   Trash2,
+  Upload,
+  Download,
+  Loader2,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -117,6 +120,22 @@ export function ContactsPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importUpdateExisting, setImportUpdateExisting] = useState(true);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: { row: number; reason: string }[];
+  } | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
   const [allTags, setAllTags] = useState<TagItem[]>([]);
   const [allStages, setAllStages] = useState<StageItem[]>([]);
 
@@ -172,6 +191,17 @@ export function ContactsPage() {
     }
     init();
   }, []);
+
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [showExportMenu]);
 
   const handleSearch = () => {
     loadContacts(search);
@@ -247,6 +277,76 @@ export function ContactsPage() {
     setStagePickerFor(null);
   };
 
+  const exportContacts = async (format: "csv" | "xlsx" | "vcf") => {
+    setExportBusy(true);
+    setShowExportMenu(false);
+    try {
+      const params = new URLSearchParams({ format });
+      if (search.trim()) params.set("search", search.trim());
+      const blob = await api.fetchBlob(`/contacts/export?${params}`);
+      const ext = format === "vcf" ? "vcf" : format;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contacts-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.alert(t("contacts.importExport.exportFailed"));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const openImportModal = () => {
+    setShowImport(true);
+    setImportFile(null);
+    setImportError(null);
+    setImportResult(null);
+    setImportUpdateExisting(true);
+  };
+
+  const closeImportModal = () => {
+    if (importBusy) return;
+    setShowImport(false);
+    setImportFile(null);
+    setImportError(null);
+    setImportResult(null);
+  };
+
+  const importErrorLabel = (reason: string) => {
+    if (reason === "invalid_phone") return t("contacts.importExport.errorInvalidPhone");
+    if (reason === "duplicate") return t("contacts.importExport.errorDuplicate");
+    return reason;
+  };
+
+  const submitImport = async () => {
+    if (!importFile) return;
+    setImportBusy(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      form.append("updateExisting", importUpdateExisting ? "true" : "false");
+      const res = await api.postMultipart<{
+        created: number;
+        updated: number;
+        skipped: number;
+        errors: { row: number; reason: string }[];
+      }>("/contacts/import", form);
+      setImportResult(res);
+      if (res.created > 0 || res.updated > 0) {
+        await loadContacts(search);
+        void api.get<TagItem[]>("/tags").then(setAllTags);
+      }
+    } catch (e) {
+      setImportError(e instanceof ApiError ? e.message : t("contacts.importExport.importFailed"));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   return (
     <PageTransition>
       <div className="page-shell min-h-full bg-gradient-to-b from-slate-50/90 to-white dark:from-ink-950 dark:to-ink-950">
@@ -270,14 +370,64 @@ export function ContactsPage() {
               </h1>
               <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-ink-400">{t("contacts.subtitle")}</p>
             </div>
-            <motion.button
-              onClick={() => setShowCreate(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600"
-              whileTap={{ scale: 0.97 }}
-            >
-              <Plus className="h-4 w-4" />
-              {t("contacts.addContact")}
-            </motion.button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={() => setShowExportMenu((v) => !v)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+                >
+                  {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {t("contacts.importExport.export")}
+                  <ChevronDown className="h-4 w-4 opacity-60" />
+                </button>
+                <AnimatePresence>
+                  {showExportMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="absolute right-0 z-20 mt-2 min-w-[180px] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+                    >
+                      {(["csv", "xlsx", "vcf"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => void exportContacts(fmt)}
+                          className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-ink-200 dark:hover:bg-ink-800"
+                        >
+                          {fmt === "csv"
+                            ? t("contacts.importExport.exportCsv")
+                            : fmt === "xlsx"
+                              ? t("contacts.importExport.exportXlsx")
+                              : t("contacts.importExport.exportVcf")}
+                        </button>
+                      ))}
+                      <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400 dark:border-ink-800 dark:text-ink-500">
+                        {t("contacts.importExport.exportScopeHint")}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <button
+                type="button"
+                onClick={openImportModal}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                <Upload className="h-4 w-4" />
+                {t("contacts.importExport.import")}
+              </button>
+              <motion.button
+                onClick={() => setShowCreate(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600"
+                whileTap={{ scale: 0.97 }}
+              >
+                <Plus className="h-4 w-4" />
+                {t("contacts.addContact")}
+              </motion.button>
+            </div>
           </motion.div>
 
           <motion.div variants={staggerItem} className="mb-6 grid gap-3 sm:grid-cols-3">
@@ -387,6 +537,130 @@ export function ContactsPage() {
                       whileTap={{ scale: 0.97 }}
                     >
                       {t("contacts.create")}
+                    </motion.button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {showImport && (
+              <motion.div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 dark:bg-black/60"
+                variants={backdropVariants}
+                initial="hidden"
+                animate="show"
+                exit="exit"
+                onClick={closeImportModal}
+              >
+                <motion.div
+                  className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-ink-700 dark:bg-ink-900"
+                  variants={modalVariants}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900 dark:text-ink-50">
+                        {t("contacts.importExport.importTitle")}
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-ink-400">
+                        {t("contacts.importExport.importHint")}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeImportModal}
+                      disabled={importBusy}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {importError && (
+                    <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                      {importError}
+                    </div>
+                  )}
+
+                  {importResult && (
+                    <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                      {t("contacts.importExport.importSuccess")
+                        .replace("{created}", String(importResult.created))
+                        .replace("{updated}", String(importResult.updated))
+                        .replace("{skipped}", String(importResult.skipped))}
+                    </div>
+                  )}
+
+                  {importResult && importResult.errors.length > 0 && (
+                    <div className="mb-3 max-h-32 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                      <p className="mb-1 font-semibold">{t("contacts.importExport.errorsTitle")}</p>
+                      <ul className="space-y-0.5">
+                        {importResult.errors.slice(0, 12).map((err) => (
+                          <li key={`${err.row}-${err.reason}`}>
+                            #{err.row}: {importErrorLabel(err.reason)}
+                          </li>
+                        ))}
+                        {importResult.errors.length > 12 && (
+                          <li>… +{importResult.errors.length - 12}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.vcf,.vcard,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/vcard"
+                    className="hidden"
+                    onChange={(e) => {
+                      setImportFile(e.target.files?.[0] ?? null);
+                      setImportError(null);
+                      setImportResult(null);
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    disabled={importBusy}
+                    onClick={() => importInputRef.current?.click()}
+                    className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm font-medium text-slate-600 hover:border-brand-400 hover:bg-brand-50/50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-950/50 dark:text-ink-300 dark:hover:border-brand-700"
+                  >
+                    {importFile ? importFile.name : t("contacts.importExport.chooseFile")}
+                  </button>
+
+                  <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-ink-300">
+                    <input
+                      type="checkbox"
+                      checked={importUpdateExisting}
+                      disabled={importBusy}
+                      onChange={(e) => setImportUpdateExisting(e.target.checked)}
+                    />
+                    {t("contacts.importExport.updateExisting")}
+                  </label>
+
+                  <div className="mt-6 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={closeImportModal}
+                      disabled={importBusy}
+                      className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+                    >
+                      {t("contacts.cancel")}
+                    </button>
+                    <motion.button
+                      type="button"
+                      onClick={() => void submitImport()}
+                      disabled={!importFile || importBusy}
+                      className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      {importBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {importBusy ? t("contacts.importExport.importing") : t("contacts.importExport.importSubmit")}
                     </motion.button>
                   </div>
                 </motion.div>

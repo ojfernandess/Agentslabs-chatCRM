@@ -13,6 +13,14 @@ import {
   syncContactProfilePicture,
   syncContactProfilePicturesBatch,
 } from "../lib/contactProfilePictureResolve.js";
+import {
+  buildContactsCsv,
+  buildContactsVcf,
+  buildContactsXlsx,
+  fetchContactsForExport,
+  importContactRows,
+  parseContactImportFile,
+} from "../lib/contactImportExport.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -343,6 +351,116 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     return syncContactProfilePicturesBatch({
       organizationId,
       contactIds: body.contactIds,
+    });
+  });
+
+  app.get("/export", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const formatRaw = String((request.query as { format?: string }).format ?? "csv").toLowerCase();
+    if (formatRaw !== "csv" && formatRaw !== "xlsx" && formatRaw !== "vcf") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "format must be csv, xlsx, or vcf",
+        statusCode: 400,
+      });
+    }
+
+    const search = typeof (request.query as { search?: string }).search === "string"
+      ? (request.query as { search?: string }).search
+      : undefined;
+
+    const rows = await fetchContactsForExport({ organizationId, search });
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    if (formatRaw === "csv") {
+      const buf = buildContactsCsv(rows);
+      return reply
+        .header("Content-Type", "text/csv; charset=utf-8")
+        .header("Content-Disposition", `attachment; filename="contacts-${stamp}.csv"`)
+        .send(buf);
+    }
+    if (formatRaw === "xlsx") {
+      const buf = buildContactsXlsx(rows);
+      return reply
+        .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .header("Content-Disposition", `attachment; filename="contacts-${stamp}.xlsx"`)
+        .send(buf);
+    }
+
+    const buf = buildContactsVcf(rows);
+    return reply
+      .header("Content-Type", "text/vcard; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="contacts-${stamp}.vcf"`)
+      .send(buf);
+  });
+
+  app.post("/import", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    let fileBuf: Buffer | null = null;
+    let fileName = "upload";
+    let fileMime = "";
+    const fields: Record<string, string> = {};
+
+    try {
+      for await (const part of request.parts()) {
+        if (part.type === "file") {
+          fileBuf = await part.toBuffer();
+          fileName = part.filename || "upload";
+          fileMime = part.mimetype || "";
+        } else {
+          fields[part.fieldname] = String(part.value ?? "");
+        }
+      }
+    } catch (err) {
+      request.log.warn({ err }, "contacts import multipart parse failed");
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid multipart body",
+        statusCode: 400,
+      });
+    }
+
+    if (!fileBuf?.length) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Expected one file field in multipart form",
+        statusCode: 400,
+      });
+    }
+
+    let parsed: ReturnType<typeof parseContactImportFile>;
+    try {
+      parsed = parseContactImportFile(fileBuf, fileName, fileMime);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "parse_failed";
+      const status = code === "unsupported_format" ? 415 : 400;
+      return reply.status(status).send({
+        error: status === 415 ? "Unsupported Media Type" : "Bad Request",
+        code,
+        message:
+          code === "unsupported_format"
+            ? "Use CSV, XLSX, or VCF (.vcf)"
+            : code === "empty_file"
+              ? "No contacts found in file"
+              : "Could not parse file",
+        statusCode: status,
+      });
+    }
+
+    const updateExisting = fields.updateExisting !== "false" && fields.updateExisting !== "0";
+
+    const result = await importContactRows(app, organizationId, parsed.rows, {
+      updateExisting,
+      createdById: request.user.id,
+    });
+
+    return reply.status(200).send({
+      format: parsed.format,
+      ...result,
     });
   });
 
