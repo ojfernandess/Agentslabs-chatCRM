@@ -14,6 +14,7 @@ function setCorsPublic(reply: FastifyReply) {
   reply.header("Access-Control-Allow-Origin", "*");
   reply.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  reply.header("Cross-Origin-Resource-Policy", "cross-origin");
 }
 
 const chatwootClientMessageSchema = z.object({

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, MessageSquare } from "lucide-react";
+import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   buildWebsiteEmbedScript,
@@ -192,37 +193,66 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
           </div>
 
           {tab === "preview" ? (
-            <div className="relative rounded-xl border border-ink-200 bg-slate-100 p-6 dark:border-ink-600 dark:bg-ink-950/50">
+            <div className="relative rounded-xl border border-ink-200 bg-gradient-to-br from-slate-100 to-slate-200/80 p-6 dark:border-ink-600 dark:from-ink-950/50 dark:to-ink-900/40">
               <div
-                className={`mx-auto max-w-[320px] overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-ink-200/80 ${form.widgetPosition === "left" ? "mr-auto" : "ml-auto"}`}
+                className={`mx-auto max-w-[340px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_64px_rgba(15,23,42,0.12)] ring-1 ring-ink-200/60 ${form.widgetPosition === "left" ? "mr-auto" : "ml-auto"}`}
               >
-                <div className="px-4 py-3 text-white" style={{ background: color }}>
-                  <p className="font-semibold">{form.siteName || "Site"}</p>
-                  <p className="text-xs opacity-90">{form.responseTimeLabel}</p>
+                <div
+                  className="px-5 py-4 text-white"
+                  style={{ background: `linear-gradient(145deg, ${color} 0%, ${color}dd 100%)` }}
+                >
+                  <div className="flex items-center gap-3">
+                    {form.avatarUrl ? (
+                      <img src={form.avatarUrl} alt="" className="h-11 w-11 rounded-full border-2 border-white/30 object-cover" />
+                    ) : (
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-lg font-bold">
+                        {(form.siteName || "S").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{form.siteName || "Site"}</p>
+                      <p className="text-xs opacity-90">{form.responseTimeLabel}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2 p-4">
+                <div className="flex flex-col items-center bg-gradient-to-b from-slate-50 to-white px-6 py-8 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-md">
+                    👋
+                  </div>
                   <p className="font-semibold text-ink-900">{form.welcomeTitle}</p>
-                  <p className="text-sm text-ink-600">{form.welcomeMessage}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-600">{form.welcomeMessage}</p>
                   <button
                     type="button"
-                    className="mt-4 w-full rounded-lg py-2.5 text-sm font-semibold text-white"
-                    style={{ background: color }}
+                    className="mt-6 w-full rounded-[14px] py-3.5 text-sm font-semibold text-white shadow-lg"
+                    style={{ background: color, boxShadow: `0 8px 24px ${color}44` }}
                   >
                     {t("inboxesPage.wizard.widget.startConversation")}
                   </button>
                 </div>
                 <p className="border-t border-ink-100 py-2 text-center text-[10px] text-ink-400">
-                  © OpenNexo CRM
+                  Powered by OpenConduit
                 </p>
               </div>
               <div
-                className={`mt-4 flex ${form.widgetPosition === "left" ? "justify-start" : "justify-end"}`}
+                className={`mt-5 flex ${form.widgetPosition === "left" ? "justify-start" : "justify-end"}`}
               >
                 <span
-                  className="inline-flex h-14 min-w-[3.5rem] items-center justify-center rounded-full px-4 text-sm font-semibold text-white shadow-lg"
-                  style={{ background: color }}
+                  className={clsx(
+                    "inline-flex items-center justify-center text-sm font-semibold text-white shadow-lg",
+                    form.bubbleType === "expanded"
+                      ? "h-[52px] max-w-[220px] gap-2 rounded-full px-5"
+                      : "h-14 w-14 rounded-full",
+                  )}
+                  style={{ background: color, boxShadow: `0 8px 28px ${color}55` }}
                 >
-                  {form.bubbleType === "expanded" ? form.bubbleLauncherTitle : "💬"}
+                  {form.bubbleType === "expanded" ? (
+                    <>
+                      <MessageSquare className="h-5 w-5 shrink-0" />
+                      <span className="truncate">{form.bubbleLauncherTitle}</span>
+                    </>
+                  ) : (
+                    <MessageSquare className="h-6 w-6" />
+                  )}
                 </span>
               </div>
             </div>

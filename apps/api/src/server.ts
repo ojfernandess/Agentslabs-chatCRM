@@ -76,8 +76,30 @@ await app.register(helmet, {
   crossOriginResourcePolicy: { policy: "cross-origin" },
 });
 await app.register(cors, {
-  origin: config.isProduction ? config.publicUrl : config.corsOrigin,
-  credentials: true,
+  delegator: (req, callback) => {
+    const path = (req.url ?? "").split("?")[0] ?? "";
+    const isPublicEmbed =
+      path.startsWith("/api/v1/public/widget/") ||
+      path.startsWith("/api/v1/public/channels/") ||
+      path.startsWith("/api/v1/public/chatbot/") ||
+      path.startsWith("/api/v1/public/csat/") ||
+      path.startsWith("/api/v1/public/inbox/");
+
+    if (isPublicEmbed) {
+      callback(null, {
+        origin: true,
+        credentials: false,
+        methods: ["GET", "POST", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+      });
+      return;
+    }
+
+    callback(null, {
+      origin: config.isProduction ? config.publicUrl : config.corsOrigin,
+      credentials: true,
+    });
+  },
 });
 await app.register(rateLimit, {
   max: 100,

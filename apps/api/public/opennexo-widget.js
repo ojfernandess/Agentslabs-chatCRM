@@ -2,6 +2,14 @@
   "use strict";
 
   var VISITOR_KEY = "opennexo_visitor_id";
+  var STYLE_ID = "opennexo-widget-styles";
+
+  var ICON_CHAT =
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  var ICON_SEND =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4 20-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  var ICON_CLOSE =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
   function uuid() {
     if (global.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -21,147 +29,325 @@
     }
   }
 
-  function el(tag, cls, text) {
+  function el(tag, cls, html) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
-    if (text != null) n.textContent = text;
+    if (html != null) {
+      if (typeof html === "string" && html.indexOf("<") >= 0) n.innerHTML = html;
+      else n.textContent = html;
+    }
     return n;
   }
 
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent =
+      "#opennexo-widget-root,#opennexo-widget-root *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}" +
+      "@keyframes onx-slide-up{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}" +
+      "@keyframes onx-pop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}" +
+      "@keyframes onx-msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}" +
+      ".onx-panel{animation:onx-slide-up .32s cubic-bezier(.22,1,.36,1)}" +
+      ".onx-launcher{animation:onx-pop .24s ease-out}" +
+      ".onx-msg{animation:onx-msg-in .2s ease-out}";
+    document.head.appendChild(s);
+  }
+
   function mountWidget(opts, settings) {
+    injectStyles();
+
     var base = (opts.baseUrl || "").replace(/\/+$/, "");
     var token = opts.websiteToken;
     var color = settings.widgetColor || "#2563eb";
     var position = settings.widgetPosition === "left" ? "left" : "right";
     var siteName = settings.siteName || settings.inboxName || "Chat";
     var welcomeTitle = settings.welcomeTitle || "Olá!";
-    var tagline = settings.welcomeTagline || settings.responseTimeLabel || "";
+    var tagline = settings.welcomeTagline || settings.responseTimeLabel || "Respondemos em alguns minutos";
     var welcomeMsg =
       settings.welcomeMessage ||
       "Nós tornamos simples a conexão conosco. Pergunte qualquer assunto ou compartilhe seus comentários.";
-    var launcher =
-      settings.bubbleLauncherTitle || (settings.bubbleType === "expanded" ? siteName : "💬");
+    var launcherText = settings.bubbleLauncherTitle || "Fale conosco";
+    var isExpanded = settings.bubbleType === "expanded";
+    var avatarUrl = settings.avatarUrl || "";
 
     var root = el("div");
     root.id = "opennexo-widget-root";
     root.setAttribute(
       "style",
-      "position:fixed;z-index:2147483000;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;" +
-        position +
-        ":20px;bottom:20px;",
+      "position:fixed;z-index:2147483000;" + position + ":24px;bottom:24px;display:flex;flex-direction:column;align-items:" +
+        (position === "left" ? "flex-start" : "flex-end") +
+        ";gap:12px;",
     );
 
-    var panel = el("div");
+    var panel = el("div", "onx-panel");
     panel.setAttribute(
       "style",
-      "display:none;width:min(400px,calc(100vw - 40px));height:min(520px,calc(100vh - 100px));background:#fff;border-radius:16px;box-shadow:0 12px 48px rgba(0,0,0,.18);overflow:hidden;flex-direction:column;margin-bottom:12px;",
+      "display:none;width:min(392px,calc(100vw - 32px));height:min(560px,calc(100vh - 96px));background:#fff;border-radius:20px;box-shadow:0 24px 64px rgba(15,23,42,.18),0 0 0 1px rgba(15,23,42,.06);overflow:hidden;flex-direction:column;",
     );
 
     var header = el("div");
-    header.setAttribute("style", "background:" + color + ";color:#fff;padding:16px 18px;");
-    header.appendChild(el("div", null, siteName));
+    header.setAttribute(
+      "style",
+      "position:relative;background:linear-gradient(145deg," +
+        color +
+        " 0%," +
+        color +
+        "dd 100%);color:#fff;padding:20px 20px 18px;flex-shrink:0;",
+    );
+
+    var headerTop = el("div");
+    headerTop.setAttribute("style", "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;");
+
+    var headerBrand = el("div");
+    headerBrand.setAttribute("style", "display:flex;align-items:center;gap:12px;min-width:0;flex:1;");
+
+    if (avatarUrl) {
+      var avatar = el("img");
+      avatar.src = avatarUrl;
+      avatar.alt = "";
+      avatar.setAttribute(
+        "style",
+        "width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.35);flex-shrink:0;",
+      );
+      headerBrand.appendChild(avatar);
+    } else {
+      var avatarFallback = el("div", null, siteName.charAt(0).toUpperCase());
+      avatarFallback.setAttribute(
+        "style",
+        "width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;flex-shrink:0;",
+      );
+      headerBrand.appendChild(avatarFallback);
+    }
+
+    var headerText = el("div");
+    headerText.setAttribute("style", "min-width:0;");
+    var titleEl = el("div", null, siteName);
+    titleEl.setAttribute("style", "font-size:17px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
     var sub = el("div", null, tagline);
-    sub.setAttribute("style", "font-size:12px;opacity:.9;margin-top:4px;");
-    header.appendChild(sub);
+    sub.setAttribute("style", "font-size:12px;opacity:.92;margin-top:4px;line-height:1.35;");
+    headerText.appendChild(titleEl);
+    headerText.appendChild(sub);
+    headerBrand.appendChild(headerText);
+
+    var closeBtn = el("button", null, ICON_CLOSE);
+    closeBtn.type = "button";
+    closeBtn.setAttribute(
+      "aria-label",
+      "Fechar chat",
+    );
+    closeBtn.setAttribute(
+      "style",
+      "width:36px;height:36px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;",
+    );
+    closeBtn.onmouseenter = function () {
+      closeBtn.style.background = "rgba(255,255,255,.28)";
+    };
+    closeBtn.onmouseleave = function () {
+      closeBtn.style.background = "rgba(255,255,255,.16)";
+    };
+
+    headerTop.appendChild(headerBrand);
+    headerTop.appendChild(closeBtn);
+    header.appendChild(headerTop);
 
     var body = el("div");
-    body.setAttribute("style", "flex:1;padding:20px;overflow:auto;background:#f8fafc;");
-    body.appendChild(el("h3", null, welcomeTitle));
+    body.setAttribute(
+      "style",
+      "flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 24px;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);text-align:center;",
+    );
+
+    var wave = el("div", null, "👋");
+    wave.setAttribute(
+      "style",
+      "width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:0 4px 16px rgba(15,23,42,.08);display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:16px;",
+    );
+    var h3 = el("h3", null, welcomeTitle);
+    h3.setAttribute("style", "margin:0 0 8px;font-size:20px;font-weight:700;color:#0f172a;");
     var p = el("p", null, welcomeMsg);
-    p.setAttribute("style", "margin-top:8px;font-size:14px;line-height:1.5;color:#475569;");
+    p.setAttribute("style", "margin:0;font-size:14px;line-height:1.6;color:#64748b;max-width:280px;");
+
+    body.appendChild(wave);
+    body.appendChild(h3);
     body.appendChild(p);
 
     var chat = el("div");
-    chat.setAttribute("style", "display:none;flex:1;flex-direction:column;min-height:0;");
+    chat.setAttribute("style", "display:none;flex:1;flex-direction:column;min-height:0;background:#f1f5f9;");
     var messages = el("div");
-    messages.setAttribute("style", "flex:1;overflow:auto;padding:12px;font-size:14px;");
+    messages.setAttribute("style", "flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px;");
+
     var form = el("form");
-    form.setAttribute("style", "display:flex;gap:8px;padding:12px;border-top:1px solid #e2e8f0;background:#fff;");
-    var input = el("input");
-    input.type = "text";
+    form.setAttribute(
+      "style",
+      "display:flex;gap:8px;padding:12px 14px;border-top:1px solid #e2e8f0;background:#fff;align-items:flex-end;",
+    );
+    var input = el("textarea");
+    input.rows = 1;
     input.placeholder = "Escreva a sua mensagem…";
-    input.setAttribute("style", "flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:14px;");
-    var send = el("button", null, "Enviar");
+    input.setAttribute(
+      "style",
+      "flex:1;resize:none;border:1px solid #e2e8f0;border-radius:14px;padding:10px 14px;font-size:14px;line-height:1.4;max-height:96px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s;",
+    );
+    input.onfocus = function () {
+      input.style.borderColor = color;
+      input.style.boxShadow = "0 0 0 3px " + color + "22";
+    };
+    input.onblur = function () {
+      input.style.borderColor = "#e2e8f0";
+      input.style.boxShadow = "none";
+    };
+
+    var send = el("button", null, ICON_SEND);
     send.type = "submit";
+    send.setAttribute("aria-label", "Enviar");
     send.setAttribute(
       "style",
-      "background:" + color + ";color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;",
+      "width:42px;height:42px;border-radius:50%;background:" +
+        color +
+        ";color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .12s,opacity .12s;",
     );
+
     form.appendChild(input);
     form.appendChild(send);
     chat.appendChild(messages);
     chat.appendChild(form);
 
     var footer = el("div");
-    footer.setAttribute("style", "padding:14px 16px;border-top:1px solid #e2e8f0;background:#fff;");
-    var startBtn = el("button", null, "Iniciar conversa →");
+    footer.setAttribute("style", "padding:0 20px 20px;background:linear-gradient(180deg,#fff 0%,#f8fafc 100%);flex-shrink:0;");
+    var startBtn = el("button", null, "Iniciar conversa");
     startBtn.type = "button";
     startBtn.setAttribute(
       "style",
-      "width:100%;background:" + color + ";color:#fff;border:none;border-radius:10px;padding:12px;font-weight:600;cursor:pointer;",
+      "width:100%;background:" +
+        color +
+        ";color:#fff;border:none;border-radius:14px;padding:14px 18px;font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 24px " +
+        color +
+        "44;transition:transform .12s,box-shadow .12s;",
     );
+    startBtn.onmouseenter = function () {
+      startBtn.style.transform = "translateY(-1px)";
+    };
+    startBtn.onmouseleave = function () {
+      startBtn.style.transform = "none";
+    };
     footer.appendChild(startBtn);
+
+    var powered = el("div", null, "Powered by OpenConduit");
+    powered.setAttribute(
+      "style",
+      "padding:8px;text-align:center;font-size:10px;color:#94a3b8;background:#fff;border-top:1px solid #f1f5f9;flex-shrink:0;",
+    );
 
     panel.appendChild(header);
     panel.appendChild(body);
     panel.appendChild(chat);
     panel.appendChild(footer);
+    panel.appendChild(powered);
 
-    var bubble = el("button", null, launcher);
+    var bubble = el("button", "onx-launcher");
     bubble.type = "button";
-    bubble.setAttribute(
-      "style",
-      "width:" +
-        (settings.bubbleType === "expanded" ? "auto" : "56px") +
-        ";height:56px;min-width:56px;border-radius:999px;background:" +
-        color +
-        ";color:#fff;border:none;box-shadow:0 4px 20px rgba(0,0,0,.2);cursor:pointer;font-size:" +
-        (settings.bubbleType === "expanded" ? "14px" : "22px") +
-        ";padding:0 16px;font-weight:600;",
-    );
+    bubble.setAttribute("aria-label", "Abrir chat");
 
-    root.style.display = "flex";
-    root.style.flexDirection = "column";
-    root.style.alignItems = position === "left" ? "flex-start" : "flex-end";
+    if (isExpanded) {
+      bubble.innerHTML =
+        '<span style="display:inline-flex;align-items:center;gap:8px;max-width:220px;">' +
+        ICON_CHAT +
+        '<span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+        escapeHtml(launcherText) +
+        "</span></span>";
+      bubble.setAttribute(
+        "style",
+        "height:52px;padding:0 18px;border-radius:999px;background:" +
+          color +
+          ";color:#fff;border:none;box-shadow:0 8px 28px " +
+          color +
+          "55;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s;",
+      );
+    } else {
+      bubble.innerHTML = ICON_CHAT;
+      bubble.setAttribute(
+        "style",
+        "width:56px;height:56px;border-radius:50%;background:" +
+          color +
+          ";color:#fff;border:none;box-shadow:0 8px 28px " +
+          color +
+          "55;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s,box-shadow .15s;",
+      );
+    }
+
+    bubble.onmouseenter = function () {
+      bubble.style.transform = "scale(1.04)";
+    };
+    bubble.onmouseleave = function () {
+      bubble.style.transform = "scale(1)";
+    };
+
     root.appendChild(panel);
     root.appendChild(bubble);
     document.body.appendChild(root);
 
     var open = false;
-    var inChat = false;
+
+    function setOpen(next) {
+      open = next;
+      panel.style.display = open ? "flex" : "none";
+      if (isExpanded) {
+        bubble.style.display = open ? "none" : "inline-flex";
+      } else {
+        bubble.innerHTML = open ? ICON_CLOSE : ICON_CHAT;
+      }
+    }
 
     function toggle() {
-      open = !open;
-      panel.style.display = open ? "flex" : "none";
-      bubble.textContent = open ? "✕" : launcher;
+      setOpen(!open);
     }
 
     bubble.addEventListener("click", toggle);
+    closeBtn.addEventListener("click", toggle);
 
     startBtn.addEventListener("click", function () {
-      inChat = true;
       body.style.display = "none";
       footer.style.display = "none";
       chat.style.display = "flex";
+      input.focus();
     });
 
-    function appendMsg(text, outbound) {
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function appendMsg(text, outbound, isError) {
+      var wrap = el("div", "onx-msg");
+      wrap.setAttribute("style", "display:flex;" + (outbound ? "justify-content:flex-end;" : "justify-content:flex-start;"));
       var m = el("div", null, text);
+      var bg = isError ? "#fef2f2" : outbound ? color : "#fff";
+      var fg = isError ? "#b91c1c" : outbound ? "#fff" : "#0f172a";
+      var border = isError ? "1px solid #fecaca" : outbound ? "none" : "1px solid #e2e8f0";
       m.setAttribute(
         "style",
-        "margin:6px 0;padding:8px 12px;border-radius:12px;max-width:85%;" +
-          (outbound ? "background:" + color + ";color:#fff;margin-left:auto;" : "background:#e2e8f0;color:#0f172a;"),
+        "padding:10px 14px;border-radius:16px;max-width:82%;font-size:14px;line-height:1.45;word-break:break-word;" +
+          "background:" +
+          bg +
+          ";color:" +
+          fg +
+          ";border:" +
+          border +
+          ";" +
+          (outbound ? "border-bottom-right-radius:4px;" : "border-bottom-left-radius:4px;") +
+          "box-shadow:" +
+          (outbound || isError ? "none" : "0 1px 2px rgba(15,23,42,.06)") +
+          ";",
       );
-      messages.appendChild(m);
+      wrap.appendChild(m);
+      messages.appendChild(wrap);
       messages.scrollTop = messages.scrollHeight;
     }
 
-    form.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      var text = (input.value || "").trim();
-      if (!text) return;
-      input.value = "";
-      appendMsg(text, true);
+    function sendMessage(text) {
       var url =
         base +
         "/api/v1/public/channels/inboxes/" +
@@ -169,19 +355,39 @@
         "/contacts/" +
         encodeURIComponent(visitorId()) +
         "/messages";
-      fetch(url, {
+
+      return fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: text }),
-      }).catch(function () {
-        appendMsg("Não foi possível enviar. Tente novamente.", false);
+      }).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
       });
+    }
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var text = (input.value || "").trim();
+      if (!text) return;
+      input.value = "";
+      appendMsg(text, true, false);
+      sendMessage(text).catch(function () {
+        appendMsg("Não foi possível enviar. Tente novamente.", false, true);
+      });
+    });
+
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        form.requestSubmit();
+      }
     });
 
     if (settings.greetingEnabled) {
       setTimeout(function () {
-        if (!open) toggle();
-      }, 800);
+        if (!open) setOpen(true);
+      }, 1200);
     }
   }
 
@@ -195,6 +401,7 @@
       base + "/api/v1/public/widget/" + encodeURIComponent(opts.websiteToken) + "/settings";
     fetch(settingsUrl)
       .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
         return r.json();
       })
       .then(function (settings) {
@@ -206,6 +413,7 @@
           widgetColor: "#2563eb",
           welcomeTitle: "Olá!",
           welcomeMessage: "Como podemos ajudar?",
+          responseTimeLabel: "Respondemos em alguns minutos",
         });
       });
   }
