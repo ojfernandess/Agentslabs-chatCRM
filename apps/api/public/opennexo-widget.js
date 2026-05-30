@@ -97,6 +97,7 @@
     var launcherText = settings.bubbleLauncherTitle || "Fale conosco";
     var isExpanded = settings.bubbleType === "expanded";
     var avatarUrl = settings.avatarUrl || "";
+    var systemName = settings.systemName || settings.siteName || "OpenNexo CRM";
     var preChatEnabled = settings.preChatFormEnabled === true;
     var preChatMessage =
       settings.preChatFormMessage || "Preencha as informações abaixo, para iniciar seu atendimento.";
@@ -322,7 +323,7 @@
     };
     footer.appendChild(startBtn);
 
-    var powered = el("div", null, "Powered by OpenConduit");
+    var powered = el("div", null, "Powered by " + systemName);
     powered.setAttribute(
       "style",
       "padding:8px;text-align:center;font-size:10px;color:#94a3b8;background:#fff;border-top:1px solid #f1f5f9;flex-shrink:0;",
@@ -342,10 +343,16 @@
       footer.style.display = "none";
       preChat.style.display = "none";
       chat.style.display = "flex";
-      input.focus();
+      loadChatHistory()
+        .catch(function () {})
+        .finally(function () {
+          startPolling();
+          input.focus();
+        });
     }
 
     function showInitialView() {
+      stopPolling();
       chat.style.display = "none";
       if (preChatEnabled && !visitorProfile && preChatFields.length > 0) {
         body.style.display = "none";
@@ -401,10 +408,76 @@
     document.body.appendChild(root);
 
     var open = false;
+    var seenMessageIds = {};
+    var lastMessageId = null;
+    var pollTimer = null;
+
+    function messagesUrl(afterId) {
+      var url =
+        base +
+        "/api/v1/public/channels/inboxes/" +
+        encodeURIComponent(token) +
+        "/contacts/" +
+        encodeURIComponent(visitorId()) +
+        "/messages";
+      if (afterId) url += "?after=" + encodeURIComponent(afterId);
+      return url;
+    }
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function applyRemoteMessages(items, replaceAll) {
+      if (replaceAll) {
+        messages.innerHTML = "";
+        seenMessageIds = {};
+        lastMessageId = null;
+      }
+      (items || []).forEach(function (m) {
+        if (!m || !m.id || seenMessageIds[m.id]) return;
+        seenMessageIds[m.id] = true;
+        appendMsg(m.body, m.direction === "INBOUND", false);
+        lastMessageId = m.id;
+      });
+    }
+
+    function pollMessages() {
+      if (!open || chat.style.display === "none") return;
+      fetch(messagesUrl(lastMessageId))
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          applyRemoteMessages(data.messages, false);
+        })
+        .catch(function () {});
+    }
+
+    function startPolling() {
+      stopPolling();
+      pollTimer = setInterval(pollMessages, 3000);
+    }
+
+    function loadChatHistory() {
+      return fetch(messagesUrl(null))
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function (data) {
+          applyRemoteMessages(data.messages, true);
+        });
+    }
 
     function setOpen(next) {
       open = next;
       panel.style.display = open ? "flex" : "none";
+      if (!open) stopPolling();
       if (open) showInitialView();
       if (isExpanded) {
         bubble.style.display = open ? "none" : "inline-flex";
@@ -515,9 +588,17 @@
       if (!text) return;
       input.value = "";
       appendMsg(text, true, false);
-      sendMessage(text).catch(function () {
-        appendMsg("Não foi possível enviar. Tente novamente.", false, true);
-      });
+      sendMessage(text)
+        .then(function (res) {
+          if (res && res.messageId) {
+            seenMessageIds[res.messageId] = true;
+            lastMessageId = res.messageId;
+          }
+          pollMessages();
+        })
+        .catch(function () {
+          appendMsg("Não foi possível enviar. Tente novamente.", false, true);
+        });
     });
 
     input.addEventListener("keydown", function (ev) {
@@ -557,6 +638,7 @@
       .catch(function () {
         mountWidget(opts, {
           siteName: "Chat",
+          systemName: "OpenNexo CRM",
           widgetColor: "#2563eb",
           welcomeTitle: "Olá!",
           welcomeMessage: "Como podemos ajudar?",

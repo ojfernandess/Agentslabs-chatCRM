@@ -114,3 +114,15 @@ export async function getResendEmailConfigFromDb(): Promise<ResendEmailConfig | 
   });
   return parseResendEmailValue(row?.value);
 }
+
+/** Nome público do sistema (Super Admin → E-mail transacional → Nome do remetente). */
+export async function getPlatformSystemName(): Promise<string> {
+  const row = await prisma.platformSetting.findUnique({
+    where: { key: RESEND_EMAIL_PLATFORM_KEY },
+  });
+  if (!row?.value || typeof row.value !== "object" || row.value === null) {
+    return "OpenNexo CRM";
+  }
+  const fromName = String((row.value as Record<string, unknown>).fromName ?? "").trim();
+  return fromName || "OpenNexo CRM";
+}

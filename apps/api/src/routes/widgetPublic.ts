@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { prisma } from "../db.js";
 import { getPublicOrigin } from "../config.js";
 import { publicWebsiteWidgetSettings, WIDGET_SDK_VERSION } from "../lib/websiteWidget.js";
+import { getPlatformSystemName } from "../lib/resendEmailSettings.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -51,8 +52,10 @@ export async function widgetPublicRoutes(app: FastifyInstance): Promise<void> {
     if (!inbox || !inbox.organization.isActive) {
       return reply.status(404).send({ error: "Not Found", statusCode: 404 });
     }
+    const systemName = await getPlatformSystemName();
     return {
       ...publicWebsiteWidgetSettings(inbox.name, inbox.channelConfig),
+      systemName,
       baseUrl: getPublicOrigin(),
       websiteToken: token,
     };

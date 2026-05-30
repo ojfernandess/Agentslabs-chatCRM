@@ -3,6 +3,7 @@ import formbody from "@fastify/formbody";
 import { z } from "zod";
 import { processChannelInboxInbound } from "../lib/channelInboxIngest.js";
 import { loadInboxByIngestToken } from "../lib/publicInboxLookup.js";
+import { listWebsiteVisitorMessages } from "../lib/websiteWidgetVisitorMessages.js";
 import type { MessageType } from "@prisma/client";
 import type { ChannelNativeConfig } from "../lib/channelNativeTypes.js";
 
@@ -160,6 +161,44 @@ export async function channelNativePublicRoutes(app: FastifyInstance): Promise<v
       }
     },
   );
+
+  /**
+   * Lista mensagens da conversa do visitante (polling do widget).
+   * GET .../contacts/:contactIdentifier/messages?after=<messageId>
+   */
+  app.get<{
+    Params: { token: string; contactIdentifier: string };
+    Querystring: { after?: string };
+  }>("/inboxes/:token/contacts/:contactIdentifier/messages", async (request, reply) => {
+    setCorsPublic(reply);
+    reply.header("Cache-Control", "no-store, max-age=0");
+    const inbox = await loadInboxByIngestToken(request.params.token);
+    if (!inbox || !inbox.organization.isActive) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== "WEBSITE" && inbox.channelType !== "API") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "This endpoint is for Website or API channel inboxes",
+        statusCode: 400,
+      });
+    }
+
+    const pid = request.params.contactIdentifier?.trim();
+    if (!pid || pid.length > 500) {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid contact identifier", statusCode: 400 });
+    }
+
+    const afterId = request.query.after?.trim() || null;
+    const result = await listWebsiteVisitorMessages({
+      organizationId: inbox.organizationId,
+      inboxId: inbox.id,
+      channelType: inbox.channelType,
+      participantId: pid,
+      afterId,
+    });
+    return result;
+  });
 
   /** Facebook Messenger: verificação do webhook (Graph API). */
   app.get<{

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, Check, MessageSquare } from "lucide-react";
 import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -21,10 +21,21 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
   const [builderTab, setBuilderTab] = useState<"widget" | "preChat">("widget");
   const [previewMode, setPreviewMode] = useState<"welcome" | "preChat">("welcome");
   const [copied, setCopied] = useState(false);
+  const [systemName, setSystemName] = useState("OpenNexo CRM");
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const color = form.widgetColor || "#2563eb";
   const embed =
     ingestToken && showEmbed ? buildWebsiteEmbedScript(baseUrl, ingestToken) : "";
+
+  useEffect(() => {
+    if (!ingestToken || !baseUrl) return;
+    fetch(`${baseUrl}/api/v1/public/widget/${encodeURIComponent(ingestToken)}/settings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((settings) => {
+        if (settings?.systemName) setSystemName(String(settings.systemName));
+      })
+      .catch(() => {});
+  }, [ingestToken, baseUrl]);
 
   const copyEmbed = async () => {
     if (!embed) return;
@@ -292,7 +303,7 @@ export function WebsiteWidgetBuilder({ form, onChange, ingestToken, showEmbed = 
                 </div>
                 )}
                 <p className="border-t border-ink-100 py-2 text-center text-[10px] text-ink-400">
-                  Powered by OpenConduit
+                  Powered by {systemName}
                 </p>
               </div>
               <div

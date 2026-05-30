@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { ChannelNativeConfig, PreChatFormField, WebsiteWidgetConfig } from "./channelNativeTypes.js";
 
 /** Incrementar quando o JS público do widget mudar estruturalmente (cache bust global). */
-export const WIDGET_SDK_VERSION = "4";
+export const WIDGET_SDK_VERSION = "5";
 
 export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
   {
