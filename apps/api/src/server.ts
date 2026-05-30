@@ -72,6 +72,8 @@ app.log.warn(
 // Security plugins
 await app.register(helmet, {
   contentSecurityPolicy: config.isProduction ? undefined : false,
+  /** Widget e media publicos sao carregados em sites de terceiros. */
+  crossOriginResourcePolicy: { policy: "cross-origin" },
 });
 await app.register(cors, {
   origin: config.isProduction ? config.publicUrl : config.corsOrigin,

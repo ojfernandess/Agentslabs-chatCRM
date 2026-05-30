@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prisma } from "../db.js";
@@ -11,6 +12,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 function setCorsPublic(reply: FastifyReply): void {
   reply.header("Access-Control-Allow-Origin", "*");
   reply.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  reply.header("Cross-Origin-Resource-Policy", "cross-origin");
+}
+
+function resolveWidgetScriptPath(): string {
+  const candidates = [
+    join(__dirname, "../../public/opennexo-widget.js"),
+    join(process.cwd(), "apps/api/public/opennexo-widget.js"),
+    join(process.cwd(), "public/opennexo-widget.js"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
 }
 
 export async function widgetPublicRoutes(app: FastifyInstance): Promise<void> {
@@ -45,12 +59,13 @@ export async function widgetPublicRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/v1/public/widget/opennexo-widget.js", async (_request, reply) => {
     setCorsPublic(reply);
-    const path = join(__dirname, "../../public/opennexo-widget.js");
+    const path = resolveWidgetScriptPath();
     try {
       const js = await readFile(path, "utf8");
       reply.header("Cache-Control", "public, max-age=3600");
       return reply.type("application/javascript; charset=utf-8").send(js);
-    } catch {
+    } catch (err) {
+      reply.log.warn({ err, path }, "widget_script_not_found");
       return reply.status(404).send({ error: "Not Found", statusCode: 404 });
     }
   });
