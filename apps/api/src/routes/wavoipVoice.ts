@@ -180,6 +180,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       phone: z.string().min(3).max(64),
       wavoipDeviceId: z.string().uuid().optional(),
       contactId: z.string().uuid().optional(),
+      conversationId: z.string().uuid().optional(),
     });
     const parsed = schema.safeParse(request.query);
     if (!parsed.success) {
@@ -212,6 +213,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       wavoipDeviceId: deviceId,
       phone: parsed.data.phone,
       contactId: parsed.data.contactId ?? null,
+      conversationId: parsed.data.conversationId ?? null,
     });
 
     return {

@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
+import { resolveTerminalCallStatus } from "@/lib/callDuration";
 import { useI18n } from "@/i18n/I18nProvider";
 
 type SessionDevice = {
@@ -41,6 +42,8 @@ type WavoipVoiceContextValue = {
   activeCall: CallActive | CallOutgoing | null;
   callStatus: string | null;
   activeCallConversationId: string | null;
+  callStartedAt: number | null;
+  callElapsedSec: number;
   isOnCallForConversation: (conversationId: string) => boolean;
   acceptIncoming: () => Promise<void>;
   rejectIncoming: () => Promise<void>;
@@ -109,6 +112,8 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const [activeCall, setActiveCall] = useState<CallActive | CallOutgoing | null>(null);
   const [callStatus, setCallStatus] = useState<string | null>(null);
   const [activeCallConversationId, setActiveCallConversationId] = useState<string | null>(null);
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callElapsedSec, setCallElapsedSec] = useState(0);
 
   const finalizeCall = useCallback(async (status: string) => {
     const meta = activeMetaRef.current;
@@ -116,9 +121,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     if (finalizedCallIdsRef.current.has(meta.clientCallId)) return;
     finalizedCallIdsRef.current.add(meta.clientCallId);
     const durationSec = Math.max(0, Math.round((Date.now() - meta.startedAt) / 1000));
-    await reportCallComplete(meta, status, durationSec > 0 ? durationSec : null);
+    await reportCallComplete(meta, resolveTerminalCallStatus(status), durationSec > 0 ? durationSec : null);
     activeMetaRef.current = null;
     setActiveCallConversationId(null);
+    setCallStartedAt(null);
+    setCallElapsedSec(0);
   }, []);
 
   const bindActiveCall = useCallback(
@@ -126,16 +133,20 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       if (meta) {
         activeMetaRef.current = meta;
         setActiveCallConversationId(meta.conversationId);
+        setCallStartedAt(meta.startedAt);
+        setCallElapsedSec(0);
       }
       setActiveCall(call);
       setCallStatus(call.status);
       callStatusRef.current = call.status;
 
       const onEnded = () => {
-        void finalizeCall(callStatusRef.current ?? "ENDED");
+        void finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
         setActiveCall(null);
         setCallStatus(null);
         callStatusRef.current = null;
+        setCallStartedAt(null);
+        setCallElapsedSec(0);
       };
 
       if (call.direction === "OUTGOING") {
@@ -221,6 +232,16 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   }, [user, locale]);
 
   useEffect(() => {
+    if (!activeCall || callStartedAt == null) return;
+    const tick = () => {
+      setCallElapsedSec(Math.max(0, Math.floor((Date.now() - callStartedAt) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [activeCall, callStartedAt]);
+
+  useEffect(() => {
     const onIncoming = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as {
         caller?: string;
@@ -287,11 +308,13 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     const meta = activeMetaRef.current;
     await activeCall.end();
     if (meta && !finalizedCallIdsRef.current.has(meta.clientCallId)) {
-      await finalizeCall(callStatusRef.current ?? "ENDED");
+      await finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
     }
     setActiveCall(null);
     setCallStatus(null);
     callStatusRef.current = null;
+    setCallStartedAt(null);
+    setCallElapsedSec(0);
   }, [activeCall, finalizeCall]);
 
   const startOutboundCall = useCallback(
@@ -327,7 +350,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
           contact: { id: string; name: string; phone: string } | null;
           conversationId: string | null;
         }>(
-          `/wavoip/calls/resolve-context?phone=${encodeURIComponent(params.phone)}&wavoipDeviceId=${encodeURIComponent(sessionDevice.id)}${params.contactId ? `&contactId=${encodeURIComponent(params.contactId)}` : ""}`,
+          `/wavoip/calls/resolve-context?phone=${encodeURIComponent(params.phone)}&wavoipDeviceId=${encodeURIComponent(sessionDevice.id)}${params.contactId ? `&contactId=${encodeURIComponent(params.contactId)}` : ""}${params.conversationId ? `&conversationId=${encodeURIComponent(params.conversationId)}` : ""}`,
         );
         if (prep.dialPhone) dialPhone = prep.dialPhone;
         if (!resolvedContactId && prep.contact?.id) resolvedContactId = prep.contact.id;
@@ -386,6 +409,8 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       activeCall,
       callStatus,
       activeCallConversationId,
+      callStartedAt,
+      callElapsedSec,
       isOnCallForConversation,
       acceptIncoming,
       rejectIncoming,
@@ -400,6 +425,8 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       activeCall,
       callStatus,
       activeCallConversationId,
+      callStartedAt,
+      callElapsedSec,
       isOnCallForConversation,
       acceptIncoming,
       rejectIncoming,

@@ -10,6 +10,8 @@ const TERMINAL_STATUSES = new Set([
   "DISCONNECTED",
 ]);
 
+const OUTBOUND_ACTIVE_STATUSES = new Set(["CALLING", "RINGING", "ACTIVE"]);
+
 export function formatWavoipCallMessageBody(input: {
   direction: string;
   status: string;
@@ -36,11 +38,19 @@ export function callMessageDirection(direction: string): MessageDirection {
   return direction === "OUTGOING" ? "OUTBOUND" : "INBOUND";
 }
 
-/** Only one timeline message per call — terminal status updates the same row. */
+/** Only one timeline message per call — active/terminal status updates the same row. */
 export function shouldCreateTimelineMessage(status: string, direction?: string): boolean {
   const s = status.toUpperCase();
   if (direction === "INCOMING" && (s === "RINGING" || s === "NONE")) return true;
+  if (direction === "OUTGOING" && OUTBOUND_ACTIVE_STATUSES.has(s)) return true;
   return TERMINAL_STATUSES.has(s);
+}
+
+export function normalizeTerminalCallStatus(status: string): string {
+  const s = status.toUpperCase();
+  if (TERMINAL_STATUSES.has(s)) return s === "DISCONNECTED" ? "ENDED" : s;
+  if (s === "ACTIVE" || s === "CALLING" || s === "RINGING" || s === "NONE") return "ENDED";
+  return "ENDED";
 }
 
 export function wavoipCallProviderMsgId(input: {

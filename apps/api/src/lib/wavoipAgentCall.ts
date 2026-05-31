@@ -1,7 +1,7 @@
 import { subMinutes } from "date-fns";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
-import { upsertWavoipTimelineMessage } from "./wavoipCallTimeline.js";
+import { upsertWavoipTimelineMessage, normalizeTerminalCallStatus } from "./wavoipCallTimeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { resolveWavoipCallContext } from "./wavoipCallContext.js";
 
@@ -137,6 +137,27 @@ export async function startAgentOutboundCall(input: {
   }
 
   if (conversationId) {
+    const messageId = await upsertWavoipTimelineMessage({
+      conversationId,
+      whatsappCallId: placeholderId,
+      clientCallId: input.clientCallId,
+      direction: "OUTGOING",
+      status: "CALLING",
+      caller,
+      receiver,
+      durationSec: null,
+    });
+    if (messageId) {
+      await prisma.wavoipCallLog.update({
+        where: {
+          wavoipDeviceId_whatsappCallId: {
+            wavoipDeviceId: device.id,
+            whatsappCallId: placeholderId,
+          },
+        },
+        data: { messageId },
+      });
+    }
     broadcastConversationUpdated(input.organizationId, conversationId);
   }
 
@@ -157,15 +178,16 @@ export async function completeAgentOutboundCall(input: {
   });
   if (!log) return;
 
+  const normalizedStatus = normalizeTerminalCallStatus(input.status);
   const terminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED", "DISCONNECTED"].includes(
-    input.status.toUpperCase(),
+    normalizedStatus,
   );
   const now = new Date();
 
   await prisma.wavoipCallLog.update({
     where: { id: log.id },
     data: {
-      status: input.status.toUpperCase(),
+      status: normalizedStatus,
       durationSec: input.durationSec ?? log.durationSec,
       endedAt: terminal ? now : log.endedAt,
       initiatedByUserId: log.initiatedByUserId ?? input.userId,
@@ -180,11 +202,11 @@ export async function completeAgentOutboundCall(input: {
       eventType: "wavoip_call",
       channel: "WAVOIP",
       actorUserId: log.initiatedByUserId ?? input.userId,
-      sourceId: `${input.clientCallId}:${input.status.toUpperCase()}`,
+      sourceId: `${input.clientCallId}:${normalizedStatus}`,
       payload: {
-        title: `Chamada Wavoip — ${input.status.toUpperCase()}`,
+        title: `Chamada Wavoip — ${normalizedStatus}`,
         direction: log.direction,
-        status: input.status.toUpperCase(),
+        status: normalizedStatus,
         agentName: input.userName,
         durationSec: input.durationSec ?? log.durationSec,
         clientCallId: input.clientCallId,
@@ -192,13 +214,13 @@ export async function completeAgentOutboundCall(input: {
     });
   }
 
-  if (log.conversationId && terminal) {
+  if (log.conversationId) {
     const messageId = await upsertWavoipTimelineMessage({
       conversationId: log.conversationId,
       whatsappCallId: log.whatsappCallId,
       clientCallId: log.clientCallId,
       direction: log.direction,
-      status: input.status.toUpperCase(),
+      status: normalizedStatus,
       caller: log.caller,
       receiver: log.receiver,
       durationSec: input.durationSec ?? log.durationSec,
