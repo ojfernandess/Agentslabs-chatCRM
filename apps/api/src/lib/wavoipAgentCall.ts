@@ -1,9 +1,9 @@
 import { subMinutes } from "date-fns";
-import { normalizePhoneE164 } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { upsertWavoipTimelineMessage } from "./wavoipCallTimeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { resolveWavoipCallContext } from "./wavoipCallContext.js";
 
 export function placeholderWhatsappCallId(clientCallId: string): number {
   let h = 5381;
@@ -63,15 +63,28 @@ export async function startAgentOutboundCall(input: {
   phone: string;
   contactId?: string | null;
   conversationId?: string | null;
-}): Promise<{ ok: true } | { ok: false; message: string }> {
+}): Promise<
+  | { ok: true; dialPhone: string; contactId: string | null; conversationId: string | null }
+  | { ok: false; message: string }
+> {
   const device = await prisma.wavoipDevice.findFirst({
     where: { id: input.wavoipDeviceId, organizationId: input.organizationId, status: "OPEN" },
   });
   if (!device) return { ok: false, message: "device_not_available" };
 
-  const receiver = (normalizePhoneE164(input.phone) ?? input.phone.trim()).slice(0, 32);
+  const ctx = await resolveWavoipCallContext({
+    organizationId: input.organizationId,
+    wavoipDeviceId: input.wavoipDeviceId,
+    phone: input.phone,
+    contactId: input.contactId ?? null,
+    conversationId: input.conversationId ?? null,
+  });
+
+  const receiver = ctx.dialPhone.slice(0, 32);
   const caller = (device.linkedPhone ?? "").slice(0, 32);
   const placeholderId = placeholderWhatsappCallId(input.clientCallId);
+  const contactId = ctx.contactId;
+  const conversationId = ctx.conversationId;
 
   await prisma.wavoipCallLog.upsert({
     where: {
@@ -91,8 +104,8 @@ export async function startAgentOutboundCall(input: {
       status: "CALLING",
       initiatedByUserId: input.userId,
       clientCallId: input.clientCallId,
-      contactId: input.contactId ?? null,
-      conversationId: input.conversationId ?? null,
+      contactId,
+      conversationId,
       startedAt: new Date(),
     },
     update: {
@@ -103,11 +116,11 @@ export async function startAgentOutboundCall(input: {
     },
   });
 
-  if (input.contactId) {
+  if (contactId) {
     await appendTimelineEvent({
       organizationId: input.organizationId,
       subjectType: "CONTACT",
-      subjectId: input.contactId,
+      subjectId: contactId,
       eventType: "wavoip_call",
       channel: "WAVOIP",
       actorUserId: input.userId,
@@ -123,11 +136,11 @@ export async function startAgentOutboundCall(input: {
     });
   }
 
-  if (input.conversationId) {
-    broadcastConversationUpdated(input.organizationId, input.conversationId);
+  if (conversationId) {
+    broadcastConversationUpdated(input.organizationId, conversationId);
   }
 
-  return { ok: true };
+  return { ok: true, dialPhone: ctx.dialPhone, contactId, conversationId };
 }
 
 export async function completeAgentOutboundCall(input: {

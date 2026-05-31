@@ -19,6 +19,12 @@ type ContactRow = { id: string; name: string; phone: string; email: string | nul
 
 type Tab = "dial" | "contacts";
 
+type ResolveContext = {
+  dialPhone: string;
+  contact: { id: string; name: string; phone: string } | null;
+  conversationId: string | null;
+};
+
 const DIAL_KEYS: { digit: string; sub?: string }[] = [
   { digit: "1" },
   { digit: "2", sub: "ABC" },
@@ -38,11 +44,13 @@ function digitsOnly(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
-function phonesMatch(a: string, b: string): boolean {
-  const da = digitsOnly(a);
-  const db = digitsOnly(b);
-  if (!da || !db) return false;
-  return da === db || da.endsWith(db) || db.endsWith(da);
+function sanitizeDialInput(raw: string): string {
+  return raw.replace(/[^\d+*#]/g, "");
+}
+
+function isValidDialLength(phone: string): boolean {
+  const d = digitsOnly(phone);
+  return d.length >= 10 && d.length <= 15;
 }
 
 type Props = {
@@ -62,7 +70,8 @@ export function WavoipDialModal({ open, onClose }: Props) {
   const [contactQ, setContactQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [contacts, setContacts] = useState<ContactRow[]>([]);
-  const [phoneMatches, setPhoneMatches] = useState<ContactRow[]>([]);
+  const [resolvedContext, setResolvedContext] = useState<ResolveContext | null>(null);
+  const [resolvingPhone, setResolvingPhone] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [calling, setCalling] = useState(false);
   const [error, setError] = useState("");
@@ -76,20 +85,23 @@ export function WavoipDialModal({ open, onClose }: Props) {
   }, [contactQ]);
 
   useEffect(() => {
+    const raw = digits.trim();
+    if (!isValidDialLength(raw)) {
+      setResolvedContext(null);
+      return;
+    }
     const id = window.setTimeout(() => {
-      const d = digits.trim();
-      if (d.length < 4) {
-        setPhoneMatches([]);
-        return;
-      }
       void (async () => {
+        setResolvingPhone(true);
         try {
-          const params = new URLSearchParams({ pageSize: "5", search: d });
-          const res = await api.get<{ data: ContactRow[] }>(`/contacts?${params}`);
-          const rows = (res.data ?? []).filter((c) => phonesMatch(c.phone, d));
-          setPhoneMatches(rows);
+          const ctx = await api.get<ResolveContext>(
+            `/wavoip/calls/resolve-context?phone=${encodeURIComponent(raw)}`,
+          );
+          setResolvedContext(ctx);
         } catch {
-          setPhoneMatches([]);
+          setResolvedContext(null);
+        } finally {
+          setResolvingPhone(false);
         }
       })();
     }, 350);
@@ -122,27 +134,30 @@ export function WavoipDialModal({ open, onClose }: Props) {
       setContactQ("");
       setDebouncedQ("");
       setContacts([]);
-      setPhoneMatches([]);
+      setResolvedContext(null);
       setError("");
       setShowRegister(false);
       setNewName("");
     }
   }, [open]);
 
-  const matchedContact = useMemo(() => {
-    if (!digits.trim()) return null;
-    return phoneMatches.find((c) => phonesMatch(c.phone, digits)) ?? null;
-  }, [digits, phoneMatches]);
+  const matchedContact = resolvedContext?.contact ?? null;
 
-  const isNewNumber = digits.trim().length >= 8 && !matchedContact;
+  const isNewNumber = isValidDialLength(digits) && !matchedContact;
+
+  const setDialValue = (value: string) => {
+    setError("");
+    setShowRegister(false);
+    setDigits(sanitizeDialInput(value));
+  };
 
   const appendDigit = (d: string) => {
-    setError("");
-    setDigits((prev) => `${prev}${d}`);
+    setDialValue(`${digits}${d}`);
   };
 
   const backspace = () => {
     setError("");
+    setShowRegister(false);
     setDigits((prev) => prev.slice(0, -1));
   };
 
@@ -155,7 +170,7 @@ export function WavoipDialModal({ open, onClose }: Props) {
       return;
     }
     const phone = input.phone.trim();
-    if (phone.length < 8) {
+    if (!isValidDialLength(phone)) {
       setError(t("wavoip.dial.invalidPhone"));
       return;
     }
@@ -164,7 +179,7 @@ export function WavoipDialModal({ open, onClose }: Props) {
     try {
       const res = await voice.startOutboundCall({
         phone,
-        contactId: input.contactId ?? null,
+        contactId: input.contactId ?? matchedContact?.id ?? null,
       });
       if (!res.ok) {
         setError(res.message === "no_devices" ? t("wavoip.voice.noDevices") : res.message);
@@ -179,7 +194,7 @@ export function WavoipDialModal({ open, onClose }: Props) {
   const registerAndCall = async () => {
     const name = newName.trim();
     const phone = digits.trim();
-    if (!name || phone.length < 8) {
+    if (!name || !isValidDialLength(phone)) {
       setError(t("wavoip.dial.registerFillRequired"));
       return;
     }
@@ -194,8 +209,18 @@ export function WavoipDialModal({ open, onClose }: Props) {
     } catch (e: unknown) {
       const st = e instanceof ApiError ? e.status : 0;
       if (st === 409) {
+        try {
+          const ctx = await api.get<ResolveContext>(
+            `/wavoip/calls/resolve-context?phone=${encodeURIComponent(phone)}`,
+          );
+          if (ctx.contact) {
+            await placeCall({ phone: ctx.dialPhone || phone, contactId: ctx.contact.id });
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
         setError(t("wavoip.dial.duplicatePhone"));
-        void fetchContacts(phone);
       } else {
         setError(t("wavoip.dial.registerFailed"));
       }
@@ -203,6 +228,11 @@ export function WavoipDialModal({ open, onClose }: Props) {
       setRegisterBusy(false);
     }
   };
+
+  const dialPhoneForCall = useMemo(
+    () => resolvedContext?.dialPhone || digits.trim(),
+    [resolvedContext, digits],
+  );
 
   if (!canCall) return null;
 
@@ -265,16 +295,34 @@ export function WavoipDialModal({ open, onClose }: Props) {
 
             {tab === "dial" ? (
               <div className="p-5">
-                <p
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={digits}
+                  onChange={(e) => setDialValue(e.target.value)}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    setDialValue(e.clipboardData.getData("text"));
+                  }}
+                  placeholder={t("wavoip.dial.typePlaceholder")}
+                  aria-label={t("wavoip.dial.typePlaceholder")}
                   className={clsx(
-                    "min-h-[2.5rem] text-center text-xl font-medium tracking-wide tabular-nums",
+                    "w-full border-0 bg-transparent text-center text-xl font-medium tracking-wide tabular-nums outline-none ring-0",
+                    "placeholder:text-gray-400 dark:placeholder:text-ink-500",
                     digits ? "text-gray-900 dark:text-ink-50" : "text-gray-400 dark:text-ink-500",
                   )}
-                >
-                  {digits || t("wavoip.dial.typePlaceholder")}
+                  autoFocus
+                />
+                <p className="mt-1 text-center text-[10px] text-gray-400 dark:text-ink-500">
+                  {t("wavoip.dial.pasteHint")}
                 </p>
 
-                {matchedContact ? (
+                {resolvingPhone ? (
+                  <div className="mt-2 flex justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-brand-500" />
+                  </div>
+                ) : matchedContact ? (
                   <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-center dark:border-emerald-900/40 dark:bg-emerald-950/30">
                     <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">
                       {matchedContact.name}
@@ -336,8 +384,13 @@ export function WavoipDialModal({ open, onClose }: Props) {
                   <div className="w-10" />
                   <button
                     type="button"
-                    disabled={calling || !!voice?.activeCall || digits.trim().length < 8}
-                    onClick={() => void placeCall({ phone: digits, contactId: matchedContact?.id })}
+                    disabled={calling || !!voice?.activeCall || !isValidDialLength(digits)}
+                    onClick={() =>
+                      void placeCall({
+                        phone: dialPhoneForCall,
+                        contactId: matchedContact?.id,
+                      })
+                    }
                     className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition hover:bg-emerald-600 active:scale-95 disabled:opacity-40"
                     aria-label={t("wavoip.voice.callButton")}
                   >

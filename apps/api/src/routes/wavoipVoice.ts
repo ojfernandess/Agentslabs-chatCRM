@@ -9,6 +9,7 @@ import {
   completeAgentOutboundCall,
   startAgentOutboundCall,
 } from "../lib/wavoipAgentCall.js";
+import { resolveWavoipCallContext } from "../lib/wavoipCallContext.js";
 import { z } from "zod";
 
 function deviceAccessFilter(userId: string) {
@@ -128,7 +129,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const schema = z.object({
       clientCallId: z.string().min(1).max(128),
       wavoipDeviceId: z.string().uuid(),
-      phone: z.string().min(3).max(32),
+      phone: z.string().min(3).max(64),
       contactId: z.string().uuid().nullable().optional(),
       conversationId: z.string().uuid().nullable().optional(),
     });
@@ -156,7 +157,61 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     if (!result.ok) {
       return reply.status(400).send({ error: "Bad Request", message: result.message, statusCode: 400 });
     }
-    return { ok: true };
+    return {
+      ok: true,
+      dialPhone: result.dialPhone,
+      contactId: result.contactId,
+      conversationId: result.conversationId,
+    };
+  });
+
+  app.get("/calls/resolve-context", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      phone: z.string().min(3).max(64),
+      wavoipDeviceId: z.string().uuid().optional(),
+      contactId: z.string().uuid().optional(),
+    });
+    const parsed = schema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    let deviceId = parsed.data.wavoipDeviceId;
+    if (!deviceId) {
+      const device = await prisma.wavoipDevice.findFirst({
+        where: { organizationId, status: "OPEN", ...deviceAccessFilter(request.user.id) },
+        select: { id: true },
+        orderBy: { name: "asc" },
+      });
+      if (!device) {
+        return reply.status(400).send({ error: "Bad Request", message: "no_devices", statusCode: 400 });
+      }
+      deviceId = device.id;
+    } else {
+      const device = await prisma.wavoipDevice.findFirst({
+        where: { id: deviceId, organizationId, ...deviceAccessFilter(request.user.id) },
+        select: { id: true },
+      });
+      if (!device) {
+        return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
+      }
+    }
+
+    const ctx = await resolveWavoipCallContext({
+      organizationId,
+      wavoipDeviceId: deviceId,
+      phone: parsed.data.phone,
+      contactId: parsed.data.contactId ?? null,
+    });
+
+    return {
+      dialPhone: ctx.dialPhone,
+      contact: ctx.contact,
+      conversationId: ctx.conversationId,
+    };
   });
 
   app.post("/calls/outbound/complete", async (request, reply) => {

@@ -267,23 +267,42 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         if (matchedDevices.length > 0) fromTokens = matchedDevices.map((d) => d.token);
       }
 
-      const { call, err } = await wavoip.startCall({ to: params.phone, fromTokens });
+      const sessionDevice = matchedDevices[0] ?? deviceList[0];
+
+      let dialPhone = params.phone;
+      let resolvedContactId = params.contactId ?? null;
+      let resolvedConversationId = params.conversationId ?? null;
+      try {
+        const prep = await api.get<{
+          dialPhone: string;
+          contact: { id: string; name: string; phone: string } | null;
+          conversationId: string | null;
+        }>(
+          `/wavoip/calls/resolve-context?phone=${encodeURIComponent(params.phone)}&wavoipDeviceId=${encodeURIComponent(sessionDevice.id)}${params.contactId ? `&contactId=${encodeURIComponent(params.contactId)}` : ""}`,
+        );
+        if (prep.dialPhone) dialPhone = prep.dialPhone;
+        if (!resolvedContactId && prep.contact?.id) resolvedContactId = prep.contact.id;
+        if (!resolvedConversationId && prep.conversationId) resolvedConversationId = prep.conversationId;
+      } catch {
+        /* continue with raw phone */
+      }
+
+      const { call, err } = await wavoip.startCall({ to: dialPhone, fromTokens });
       if (!call) {
         const msg = typeof err === "object" && err && "message" in err ? String(err.message) : "call_failed";
         return { ok: false as const, message: msg };
       }
 
-      const sessionDevice =
+      const callDevice =
         matchedDevices.find((d) => d.token === call.device_token) ??
         deviceList.find((d) => d.token === call.device_token) ??
-        matchedDevices[0] ??
-        deviceList[0];
+        sessionDevice;
 
       const meta: ActiveCallMeta = {
         clientCallId: call.id,
-        deviceId: sessionDevice.id,
-        conversationId: params.conversationId ?? null,
-        contactId: params.contactId ?? null,
+        deviceId: callDevice.id,
+        conversationId: resolvedConversationId,
+        contactId: resolvedContactId,
         startedAt: Date.now(),
       };
 
@@ -291,9 +310,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         await api.post("/wavoip/calls/outbound/start", {
           clientCallId: meta.clientCallId,
           wavoipDeviceId: meta.deviceId,
-          phone: params.phone,
-          contactId: params.contactId ?? null,
-          conversationId: params.conversationId ?? null,
+          phone: dialPhone,
+          contactId: resolvedContactId,
+          conversationId: resolvedConversationId,
         });
       } catch {
         /* continue — SDK call is active */

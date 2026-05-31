@@ -57,15 +57,24 @@ async function ensureContactForCall(
   let contact = await findContactByInboundPhone(prisma, organizationId, normalized);
   if (contact) return { contactId: contact.id, created: false };
 
-  contact = await prisma.contact.create({
-    data: {
-      organizationId,
-      phone: normalized,
-      name: normalized,
-      notes: deviceLinkedPhone ? `[Wavoip] Chamada vinculada ao device ${deviceLinkedPhone}` : "[Wavoip] Contato via chamada",
-    },
-  });
-  return { contactId: contact.id, created: true };
+  try {
+    contact = await prisma.contact.create({
+      data: {
+        organizationId,
+        phone: normalized,
+        name: normalized,
+        notes: deviceLinkedPhone ? `[Wavoip] Chamada vinculada ao device ${deviceLinkedPhone}` : "[Wavoip] Contato via chamada",
+      },
+    });
+    return { contactId: contact.id, created: true };
+  } catch (err) {
+    const code = typeof err === "object" && err && "code" in err ? String((err as { code: string }).code) : "";
+    if (code === "P2002") {
+      contact = await findContactByInboundPhone(prisma, organizationId, normalized);
+      if (contact) return { contactId: contact.id, created: false };
+    }
+    throw err;
+  }
 }
 
 async function handleDeviceEvent(
