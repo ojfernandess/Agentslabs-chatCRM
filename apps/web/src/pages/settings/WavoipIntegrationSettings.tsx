@@ -150,6 +150,12 @@ export function WavoipIntegrationSettings() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const onDeviceUpdated = () => void load();
+    window.addEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
+    return () => window.removeEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
+  }, [load]);
+
   const createDevice = async () => {
     if (!name.trim() || !deviceToken.trim()) return;
     setSaving(true);

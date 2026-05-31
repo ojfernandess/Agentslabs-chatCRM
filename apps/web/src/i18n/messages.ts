@@ -1789,6 +1789,9 @@ export const messages = {
       qrUnavailable: "QR Code indisponível. Verifique o token do dispositivo.",
       qrWaiting: "A iniciar dispositivo Wavoip… o QR Code aparecerá em instantes.",
       qrWakeError: "Não foi possível reiniciar o pareamento. Tente novamente.",
+      qrConnectionLost: "Conexão Wavoip perdida. Verifique a rede ou use Atualizar para parear novamente.",
+      qrWebhookReminder:
+        "Configure o webhook abaixo no painel Wavoip (Integrações > Webhook) para manter o status sincronizado e receber chamadas.",
       qrModeOnly: "QR Code disponível apenas para dispositivos no modo QR Code Wavoip.",
       qrStep1: "Abra o WhatsApp no telemóvel",
       qrStep2: "Menu → Dispositivos conectados → Conectar dispositivo",
@@ -5532,6 +5535,9 @@ export const messages = {
       qrUnavailable: "QR code unavailable. Check the device token.",
       qrWaiting: "Starting Wavoip device… the QR code will appear shortly.",
       qrWakeError: "Could not restart pairing. Please try again.",
+      qrConnectionLost: "Wavoip connection lost. Check your network or use Refresh to pair again.",
+      qrWebhookReminder:
+        "Set the webhook below in the Wavoip panel (Integrations > Webhook) to keep status in sync and receive calls.",
       qrModeOnly: "QR code is only available for devices in Wavoip QR code mode.",
       qrStep1: "Open WhatsApp on your phone",
       qrStep2: "Menu → Linked devices → Link a device",

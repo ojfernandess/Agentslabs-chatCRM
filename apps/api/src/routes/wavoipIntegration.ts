@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
+import { broadcastToOrganization } from "../lib/workspaceHub.js";
 import { wavoipWebhookUrlForDevice } from "../config.js";
 import {
   DEFAULT_WAVOIP_WEBHOOK_EVENTS,
@@ -12,6 +13,7 @@ import {
   decryptWavoipSecret,
   encryptWavoipSecret,
   generateWavoipWebhookSecret,
+  mapSdkDeviceStatusToDb,
   prepareDeviceTokenForSave,
   wavoipQrImageUrl,
 } from "../lib/wavoipDeviceConfig.js";
@@ -395,6 +397,51 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       qrImageUrl: wavoipQrImageUrl(token),
       webhookUrl: wavoipWebhookUrlForDevice(organizationId, device.id),
     };
+  });
+
+  app.post<{ Params: { id: string } }>("/devices/:id/sync-status", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const bodySchema = z.object({
+      sdkStatus: z.string().min(1).max(64),
+      linkedPhone: z.string().max(32).nullable().optional(),
+    });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const device = await prisma.wavoipDevice.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!device) {
+      return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
+    }
+
+    const status = mapSdkDeviceStatusToDb(parsed.data.sdkStatus);
+    const linkedPhone = parsed.data.linkedPhone?.trim() || undefined;
+    const isError = status === "ERROR" || status === "EXTERNAL_INTEGRATION_ERROR";
+
+    const updated = await prisma.wavoipDevice.update({
+      where: { id: device.id },
+      data: {
+        status,
+        ...(linkedPhone ? { linkedPhone: linkedPhone.slice(0, 32) } : {}),
+        lastStatusAt: new Date(),
+        lastError: isError ? parsed.data.sdkStatus : status === "OPEN" ? null : device.lastError,
+      },
+      include: deviceInclude,
+    });
+
+    broadcastToOrganization(organizationId, {
+      type: "wavoip.device.updated",
+      deviceId: updated.id,
+      status,
+      linkedPhone: updated.linkedPhone,
+    });
+
+    return deviceToClientRow(updated, wavoipWebhookUrlForDevice(organizationId, updated.id), false);
   });
 
   app.get<{ Params: { id: string } }>("/devices/:id/logs", async (request, reply) => {

@@ -69,6 +69,7 @@ export function mapWavoipWebhookDeviceStatus(raw: string | undefined | null): Wa
       return "CONNECTING";
     case "open":
     case "connected":
+    case "up":
       return "OPEN";
     case "close":
     case "disconnected":
@@ -86,6 +87,11 @@ export function mapWavoipWebhookDeviceStatus(raw: string | undefined | null): Wa
     default:
       return "DISCONNECTED";
   }
+}
+
+/** Status reported by @wavoip/wavoip-api Device.status / statusChanged. */
+export function mapSdkDeviceStatusToDb(raw: string | undefined | null): WavoipDeviceStatus {
+  return mapWavoipWebhookDeviceStatus(raw);
 }
 
 export function wavoipStatusLabelKey(status: WavoipDeviceStatus): string {

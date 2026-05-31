@@ -43,7 +43,12 @@ function mapSdkStatusToLabel(status: DeviceStatus | string): string {
   if (s === "BUILDING") return "BUILDING";
   if (s === "RESTARTING") return "RESTARTING";
   if (s === "DISCONNECTED" || s === "CLOSE") return "DISCONNECTED";
+  if (s === "ERROR") return "ERROR";
   return s;
+}
+
+function isTerminalDisconnect(status: DeviceStatus): boolean {
+  return status === "disconnected" || status === "close" || status === "error";
 }
 
 function needsWakeUp(status: DeviceStatus): boolean {
@@ -63,14 +68,34 @@ async function ensureDevicePairing(device: Device): Promise<void> {
 export function WavoipQrConnectPage() {
   const { deviceId } = useParams<{ deviceId: string }>();
   const { t, locale } = useI18n();
+  const wavoipRef = useRef<Wavoip | null>(null);
   const deviceRef = useRef<Device | null>(null);
+  const wasOpenRef = useRef(false);
   const [config, setConfig] = useState<QrPayload | null>(null);
   const [serverStatus, setServerStatus] = useState<StatusPayload | null>(null);
   const [sdkStatus, setSdkStatus] = useState<DeviceStatus | string>("disconnected");
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [waking, setWaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const syncStatusToServer = useCallback(
+    async (status: DeviceStatus, phone?: string | null) => {
+      if (!deviceId) return;
+      try {
+        await api.post(`/settings/wavoip/devices/${deviceId}/sync-status`, {
+          sdkStatus: status,
+          linkedPhone: phone ?? null,
+        });
+        const statusRes = await api.get<StatusPayload>(`/settings/wavoip/devices/${deviceId}/status`);
+        setServerStatus(statusRes);
+      } catch {
+        /* server sync is best-effort; webhook may still update later */
+      }
+    },
+    [deviceId],
+  );
 
   const refreshServerStatus = useCallback(async () => {
     if (!deviceId) return;
@@ -93,6 +118,7 @@ export function WavoipQrConnectPage() {
       ]);
       setConfig(qrRes);
       setServerStatus(statusRes);
+      setLinkedPhone(statusRes.linkedPhone ?? qrRes.linkedPhone);
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : t("wavoip.loadError");
       setError(msg === "qr_not_applicable_for_connection_mode" ? t("wavoip.qrModeOnly") : msg);
@@ -109,12 +135,14 @@ export function WavoipQrConnectPage() {
     if (!config?.deviceToken) return;
 
     let cancelled = false;
+    const token = config.deviceToken;
     const lang = locale.startsWith("pt") ? "pt-BR" : locale.startsWith("es") ? "es" : "en";
     const wavoip = new Wavoip({
-      tokens: [config.deviceToken],
+      tokens: [token],
       platform: "openconduit",
       language: lang,
     });
+    wavoipRef.current = wavoip;
 
     const device = wavoip.getDevices()[0];
     if (!device) return;
@@ -122,13 +150,32 @@ export function WavoipQrConnectPage() {
     deviceRef.current = device;
     setSdkStatus(device.status);
     setQrCode(device.qrCode ?? null);
+    if (device.contact?.phone) setLinkedPhone(device.contact.phone);
+
+    const handleStatus = (status: DeviceStatus) => {
+      setSdkStatus(status);
+      if (status === "open") {
+        wasOpenRef.current = true;
+        setError(null);
+        void syncStatusToServer(status, device.contact?.phone ?? null);
+      } else if (wasOpenRef.current && isTerminalDisconnect(status)) {
+        setError(t("wavoip.qrConnectionLost"));
+        void syncStatusToServer(status);
+      } else if (status === "connecting" || status === "BUILDING" || status === "restarting") {
+        void syncStatusToServer(status);
+      }
+    };
 
     const unsubQr = device.on("qrCodeChanged", (code) => {
       setQrCode(code ?? null);
     });
-    const unsubStatus = device.on("statusChanged", (status) => {
-      setSdkStatus(status);
-      if (status === "open") void refreshServerStatus();
+    const unsubStatus = device.on("statusChanged", handleStatus);
+    const unsubContact = device.on("contactChanged", (contact) => {
+      const phone = contact?.phone ?? null;
+      setLinkedPhone(phone);
+      if (device.status === "open") {
+        void syncStatusToServer("open", phone);
+      }
     });
 
     setWaking(true);
@@ -144,12 +191,20 @@ export function WavoipQrConnectPage() {
       cancelled = true;
       unsubQr();
       unsubStatus();
+      unsubContact();
+      try {
+        wavoip.removeDevices([token]);
+      } catch {
+        /* ignore cleanup errors */
+      }
+      wavoipRef.current = null;
       deviceRef.current = null;
+      wasOpenRef.current = false;
     };
-  }, [config?.deviceToken, locale, refreshServerStatus, t]);
+  }, [config?.deviceToken, locale, syncStatusToServer, t]);
 
   useEffect(() => {
-    const timer = setInterval(() => void refreshServerStatus(), 5000);
+    const timer = setInterval(() => void refreshServerStatus(), 8000);
     return () => clearInterval(timer);
   }, [refreshServerStatus]);
 
@@ -158,6 +213,7 @@ export function WavoipQrConnectPage() {
     if (!device) return;
     setWaking(true);
     setError(null);
+    wasOpenRef.current = false;
     try {
       await device.restart();
     } catch {
@@ -167,10 +223,8 @@ export function WavoipQrConnectPage() {
     }
   };
 
-  const displayStatus = mapSdkStatusToLabel(
-    sdkStatus === "open" || serverStatus?.status === "OPEN" ? "OPEN" : sdkStatus || serverStatus?.status || "DISCONNECTED",
-  );
-  const connected = displayStatus === "OPEN" || sdkStatus === "open";
+  const displayStatus = mapSdkStatusToLabel(sdkStatus || serverStatus?.status || "DISCONNECTED");
+  const connected = sdkStatus === "open" && !isTerminalDisconnect(sdkStatus as DeviceStatus);
   const waitingForQr =
     !connected && !qrCode && (waking || ["BUILDING", "RESTARTING", "CONNECTING", "DISCONNECTED"].includes(displayStatus));
 
@@ -219,11 +273,10 @@ export function WavoipQrConnectPage() {
         <div className="mt-10 flex flex-col items-center rounded-2xl border border-emerald-200 bg-emerald-50/80 p-10 text-center dark:border-emerald-900/50 dark:bg-emerald-950/30">
           <CheckCircle2 className="h-16 w-16 text-emerald-600 dark:text-emerald-400" />
           <p className="mt-4 text-lg font-semibold text-emerald-900 dark:text-emerald-100">{t("wavoip.connected")}</p>
-          {(serverStatus?.linkedPhone || config?.linkedPhone) && (
-            <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-200">
-              {serverStatus?.linkedPhone ?? config?.linkedPhone}
-            </p>
+          {linkedPhone && (
+            <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-200">{linkedPhone}</p>
           )}
+          <p className="mt-4 text-xs text-emerald-800/90 dark:text-emerald-200/90">{t("wavoip.qrWebhookReminder")}</p>
         </div>
       ) : (
         <div className="mt-8 flex flex-col items-center">
