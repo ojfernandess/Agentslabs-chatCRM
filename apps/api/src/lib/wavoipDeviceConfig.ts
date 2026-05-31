@@ -55,7 +55,8 @@ export function maskDeviceTokenForClient(_hasToken: boolean): string {
 }
 
 export function wavoipQrImageUrl(deviceToken: string): string {
-  return `https://devices.wavoip.com/${encodeURIComponent(deviceToken.trim())}/whatsapp/qr-image`;
+  const token = deviceToken.trim();
+  return `https://devices.wavoip.com/${token}/whatsapp/qr-image`;
 }
 
 /** Map Wavoip webhook DEVICE status strings to Prisma enum. */
@@ -128,11 +129,9 @@ export function deviceToClientRow(
     lastError: device.lastError,
     hasDeviceToken: Boolean(token),
     qrImageUrl:
-      includeQrUrl && token && (device.status === "CONNECTING" || device.status === "DISCONNECTED")
+      includeQrUrl && token && device.connectionMode === "QR_NATIVE"
         ? wavoipQrImageUrl(token)
-        : device.status === "CONNECTING" && token
-          ? wavoipQrImageUrl(token)
-          : null,
+        : null,
     createdAt: device.createdAt.toISOString(),
     updatedAt: device.updatedAt.toISOString(),
   };

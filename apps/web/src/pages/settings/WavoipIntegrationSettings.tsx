@@ -424,13 +424,15 @@ export function WavoipIntegrationSettings() {
                       <Settings2 className="h-3.5 w-3.5" />
                       {t("wavoip.editDevice")}
                     </button>
-                    <Link
-                      to={`/settings/wavoip/${device.id}/qr`}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-ink-700 dark:hover:bg-ink-800"
-                    >
-                      <QrCode className="h-3.5 w-3.5" />
-                      {t("wavoip.openQr")}
-                    </Link>
+                    {device.connectionMode === "QR_NATIVE" && (
+                      <Link
+                        to={`/settings/wavoip/${device.id}/qr`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-ink-700 dark:hover:bg-ink-800"
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                        {t("wavoip.openQr")}
+                      </Link>
+                    )}
                     <button
                       type="button"
                       onClick={() => void copyWebhook(device)}

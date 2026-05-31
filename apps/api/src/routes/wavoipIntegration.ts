@@ -379,9 +379,19 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       return reply.status(400).send({ error: "Bad Request", message: "Device token missing", statusCode: 400 });
     }
 
+    if (device.connectionMode !== "QR_NATIVE") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "qr_not_applicable_for_connection_mode",
+        statusCode: 400,
+      });
+    }
+
     return {
       status: device.status,
+      connectionMode: device.connectionMode,
       linkedPhone: device.linkedPhone,
+      deviceToken: token,
       qrImageUrl: wavoipQrImageUrl(token),
       webhookUrl: wavoipWebhookUrlForDevice(organizationId, device.id),
     };
