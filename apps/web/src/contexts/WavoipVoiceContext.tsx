@@ -37,6 +37,8 @@ type ActiveCallMeta = {
 
 type WavoipVoiceContextValue = {
   ready: boolean;
+  /** True when Wavoip is enabled and at least one device is OPEN (connected). */
+  canPlaceCalls: boolean;
   devices: SessionDevice[];
   incomingOffer: Offer | null;
   activeCall: CallActive | CallOutgoing | null;
@@ -182,20 +184,24 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     }
     if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
     if (user.organizationFeatures?.wavoip_voice === false) {
+      setDevices([]);
+      devicesRef.current = [];
       setReady(true);
       return;
     }
 
     let cancelled = false;
 
-    const init = async () => {
+    const bootstrapSession = async () => {
       try {
         const session = await api.get<{ devices: SessionDevice[] }>("/wavoip/session");
         if (cancelled) return;
         const list = session.devices ?? [];
         setDevices(list);
         devicesRef.current = list;
+
         if (list.length === 0) {
+          wavoipRef.current = null;
           setReady(true);
           return;
         }
@@ -219,14 +225,25 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
 
         setReady(true);
       } catch {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          setDevices([]);
+          devicesRef.current = [];
+          wavoipRef.current = null;
+          setReady(true);
+        }
       }
     };
 
-    void init();
+    void bootstrapSession();
+
+    const onDeviceUpdated = () => {
+      void bootstrapSession();
+    };
+    window.addEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
       wavoipRef.current = null;
     };
   }, [user, locale]);
@@ -401,9 +418,12 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     [activeCallConversationId, activeCall],
   );
 
+  const canPlaceCalls = ready && devices.length > 0;
+
   const value = useMemo(
     () => ({
       ready,
+      canPlaceCalls,
       devices,
       incomingOffer,
       activeCall,
@@ -420,6 +440,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     }),
     [
       ready,
+      canPlaceCalls,
       devices,
       incomingOffer,
       activeCall,
@@ -449,4 +470,9 @@ export function useWavoipVoice(): WavoipVoiceContextValue {
 
 export function useWavoipVoiceOptional(): WavoipVoiceContextValue | null {
   return useContext(WavoipVoiceContext);
+}
+
+/** Wavoip feature on + at least one device OPEN (connected) for this agent. */
+export function useWavoipCanPlaceCalls(): boolean {
+  return useWavoipVoiceOptional()?.canPlaceCalls ?? false;
 }

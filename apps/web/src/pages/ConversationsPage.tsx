@@ -11,6 +11,7 @@ import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { WavoipDialModal } from "@/components/wavoip/WavoipDialModal";
+import { useWavoipCanPlaceCalls } from "@/contexts/WavoipVoiceContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
@@ -72,7 +73,9 @@ function ScopeTabCount({ count, selected }: { count: number; selected: boolean }
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
-  const wavoipDialEnabled = user?.organizationFeatures?.wavoip_voice !== false;
+  const wavoipCanPlaceCalls = useWavoipCanPlaceCalls();
+  const showWavoipDial =
+    user?.organizationFeatures?.wavoip_voice !== false && wavoipCanPlaceCalls;
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -498,7 +501,7 @@ export function ConversationsPage() {
               >
                 <SquarePen className="h-5 w-5" />
               </button>
-              {wavoipDialEnabled ? (
+              {showWavoipDial ? (
                 <button
                   type="button"
                   onClick={() => setDialOpen(true)}
@@ -909,7 +912,7 @@ export function ConversationsPage() {
           setComposeOpen(false);
         }}
       />
-      <WavoipDialModal open={dialOpen} onClose={() => setDialOpen(false)} />
+      <WavoipDialModal open={dialOpen && showWavoipDial} onClose={() => setDialOpen(false)} />
       <ContactQuickMessageModal
         open={!!quickContact}
         contact={quickContact}

@@ -34,7 +34,7 @@ export function WavoipCallButton({
   const [error, setError] = useState<string | null>(null);
   const wavoipEnabled = user?.organizationFeatures?.wavoip_voice !== false;
 
-  if (!wavoipEnabled || !voice?.ready || voice.devices.length === 0 || !phone?.trim()) return null;
+  if (!phone?.trim() || !wavoipEnabled || !voice) return null;
 
   const onThisConversation =
     !!conversationId && voice.isOnCallForConversation(conversationId);
@@ -80,6 +80,8 @@ export function WavoipCallButton({
       </span>
     );
   }
+
+  if (!voice.canPlaceCalls) return null;
 
   if (voice.activeCall && !iconOnly) return null;
 
