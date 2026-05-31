@@ -94,6 +94,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const devicesRef = useRef<SessionDevice[]>([]);
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
   const callStatusRef = useRef<string | null>(null);
+  const finalizedCallIdsRef = useRef<Set<string>>(new Set());
   const [devices, setDevices] = useState<SessionDevice[]>([]);
   const [ready, setReady] = useState(false);
   const [incomingOffer, setIncomingOffer] = useState<Offer | null>(null);
@@ -103,10 +104,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
 
   const finalizeCall = useCallback(async (status: string) => {
     const meta = activeMetaRef.current;
-    if (meta) {
-      const durationSec = Math.max(0, Math.round((Date.now() - meta.startedAt) / 1000));
-      await reportCallComplete(meta, status, durationSec > 0 ? durationSec : null);
-    }
+    if (!meta) return;
+    if (finalizedCallIdsRef.current.has(meta.clientCallId)) return;
+    finalizedCallIdsRef.current.add(meta.clientCallId);
+    const durationSec = Math.max(0, Math.round((Date.now() - meta.startedAt) / 1000));
+    await reportCallComplete(meta, status, durationSec > 0 ? durationSec : null);
     activeMetaRef.current = null;
     setActiveCallConversationId(null);
   }, []);
@@ -233,8 +235,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
 
   const endActiveCall = useCallback(async () => {
     if (!activeCall) return;
+    const meta = activeMetaRef.current;
     await activeCall.end();
-    await finalizeCall(callStatusRef.current ?? "ENDED");
+    if (meta && !finalizedCallIdsRef.current.has(meta.clientCallId)) {
+      await finalizeCall(callStatusRef.current ?? "ENDED");
+    }
     setActiveCall(null);
     setCallStatus(null);
     callStatusRef.current = null;

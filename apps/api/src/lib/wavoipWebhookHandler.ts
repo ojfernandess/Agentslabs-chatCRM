@@ -179,10 +179,12 @@ async function handleCallEvent(
 
   let initiatedByUserId: string | null = null;
   let clientCallId: string | null = null;
-  const provisional = await findProvisionalCallLog(device.id, contactId);
+  let absorbedMessageId: string | null = null;
+  const provisional = await findProvisionalCallLog(device.id, contactId, peerPhone);
   if (provisional && direction === "OUTGOING") {
     initiatedByUserId = provisional.initiatedByUserId;
     clientCallId = provisional.clientCallId;
+    absorbedMessageId = provisional.messageId;
     conversationId = provisional.conversationId ?? conversationId;
     await prisma.wavoipCallLog.delete({ where: { id: provisional.id } });
   }
@@ -226,11 +228,12 @@ async function handleCallEvent(
     },
   });
 
-  let messageId: string | null = callLog.messageId;
-  if (conversationId && !messageId) {
+  let messageId: string | null = callLog.messageId ?? absorbedMessageId;
+  if (conversationId && isTerminal) {
     messageId = await upsertWavoipTimelineMessage({
       conversationId,
       whatsappCallId,
+      clientCallId,
       direction,
       status,
       caller,
@@ -238,7 +241,7 @@ async function handleCallEvent(
       durationSec,
       recordUrl: null,
     });
-    if (messageId) {
+    if (messageId && messageId !== callLog.messageId) {
       await prisma.wavoipCallLog.update({
         where: { id: callLog.id },
         data: { messageId },
@@ -375,10 +378,11 @@ async function handleRecordEvent(
     },
   });
 
-  if (callLog.conversationId && recordUrl && !callLog.messageId) {
+  if (callLog.conversationId && recordUrl) {
     const messageId = await upsertWavoipTimelineMessage({
       conversationId: callLog.conversationId,
       whatsappCallId,
+      clientCallId: callLog.clientCallId,
       direction: callLog.direction,
       status: "ENDED",
       caller: callLog.caller,

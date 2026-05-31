@@ -14,17 +14,44 @@ export function placeholderWhatsappCallId(clientCallId: string): number {
   return n > 0 ? -n : -1;
 }
 
-export async function findProvisionalCallLog(wavoipDeviceId: string, contactId: string | null) {
-  if (!contactId) return null;
-  return prisma.wavoipCallLog.findFirst({
+export async function findProvisionalCallLog(
+  wavoipDeviceId: string,
+  contactId: string | null,
+  peerPhone?: string | null,
+) {
+  const recent = { gte: subMinutes(new Date(), 15) };
+  if (contactId) {
+    return prisma.wavoipCallLog.findFirst({
+      where: {
+        wavoipDeviceId,
+        contactId,
+        whatsappCallId: { lt: 0 },
+        createdAt: recent,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  const digits = (peerPhone ?? "").replace(/\D/g, "");
+  if (digits.length < 8) return null;
+
+  const candidates = await prisma.wavoipCallLog.findMany({
     where: {
       wavoipDeviceId,
-      contactId,
       whatsappCallId: { lt: 0 },
-      createdAt: { gte: subMinutes(new Date(), 15) },
+      clientCallId: { not: null },
+      createdAt: recent,
     },
     orderBy: { createdAt: "desc" },
+    take: 10,
   });
+
+  return (
+    candidates.find((c) => {
+      const r = c.receiver.replace(/\D/g, "");
+      return r === digits || r.endsWith(digits.slice(-10)) || digits.endsWith(r.slice(-10));
+    }) ?? null
+  );
 }
 
 export async function startAgentOutboundCall(input: {
@@ -97,15 +124,6 @@ export async function startAgentOutboundCall(input: {
   }
 
   if (input.conversationId) {
-    await upsertWavoipTimelineMessage({
-      conversationId: input.conversationId,
-      whatsappCallId: placeholderId,
-      direction: "OUTGOING",
-      status: "CALLING",
-      caller,
-      receiver,
-      durationSec: null,
-    });
     broadcastConversationUpdated(input.organizationId, input.conversationId);
   }
 
@@ -165,6 +183,7 @@ export async function completeAgentOutboundCall(input: {
     const messageId = await upsertWavoipTimelineMessage({
       conversationId: log.conversationId,
       whatsappCallId: log.whatsappCallId,
+      clientCallId: log.clientCallId,
       direction: log.direction,
       status: input.status.toUpperCase(),
       caller: log.caller,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, SquarePen } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, SquarePen, Phone } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
@@ -10,6 +10,8 @@ import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversatio
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
+import { WavoipDialModal } from "@/components/wavoip/WavoipDialModal";
+import { useAuth } from "@/hooks/useAuth";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
   ConversationContextMenu,
@@ -69,11 +71,14 @@ function ScopeTabCount({ count, selected }: { count: number; selected: boolean }
 
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
+  const { user } = useAuth();
+  const wavoipDialEnabled = user?.organizationFeatures?.wavoip_voice !== false;
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [listSearch, setListSearch] = useState(() => searchParams.get("q") ?? "");
   const [composeOpen, setComposeOpen] = useState(false);
+  const [dialOpen, setDialOpen] = useState(false);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [teamFilter, setTeamFilter] = useState<string>(() => searchParams.get("teamId") ?? "");
@@ -493,6 +498,17 @@ export function ConversationsPage() {
               >
                 <SquarePen className="h-5 w-5" />
               </button>
+              {wavoipDialEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setDialOpen(true)}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition hover:bg-emerald-600 hover:shadow-lg"
+                  title={t("wavoip.dial.openTooltip")}
+                  aria-label={t("wavoip.dial.openTooltip")}
+                >
+                  <Phone className="h-5 w-5" />
+                </button>
+              ) : null}
             </div>
           </header>
 
@@ -893,6 +909,7 @@ export function ConversationsPage() {
           setComposeOpen(false);
         }}
       />
+      <WavoipDialModal open={dialOpen} onClose={() => setDialOpen(false)} />
       <ContactQuickMessageModal
         open={!!quickContact}
         contact={quickContact}

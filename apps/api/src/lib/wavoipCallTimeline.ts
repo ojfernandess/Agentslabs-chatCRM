@@ -7,6 +7,7 @@ const TERMINAL_STATUSES = new Set([
   "NOT_ANSWERED",
   "FAILED",
   "HANDLED_REMOTELY",
+  "DISCONNECTED",
 ]);
 
 export function formatWavoipCallMessageBody(input: {
@@ -19,11 +20,12 @@ export function formatWavoipCallMessageBody(input: {
 }): string {
   const peer = input.direction === "INCOMING" ? input.caller : input.receiver;
   const dirLabel = input.direction === "INCOMING" ? "recebida" : "realizada";
+  const status = input.status.toUpperCase() === "DISCONNECTED" ? "ENDED" : input.status.toUpperCase();
   const dur =
     input.durationSec != null && input.durationSec > 0
       ? ` (${Math.floor(input.durationSec / 60)}m ${input.durationSec % 60}s)`
       : "";
-  let body = `[Wavoip] Chamada ${dirLabel} — ${peer} — ${input.status}${dur}`;
+  let body = `[Wavoip] Chamada ${dirLabel} — ${peer} — ${status}${dur}`;
   if (input.recordUrl?.trim()) {
     body += `\nGravação: ${input.recordUrl.trim()}`;
   }
@@ -31,20 +33,27 @@ export function formatWavoipCallMessageBody(input: {
 }
 
 export function callMessageDirection(direction: string): MessageDirection {
-  return direction === "OUTCOMING" ? "OUTBOUND" : "INBOUND";
+  return direction === "OUTGOING" ? "OUTBOUND" : "INBOUND";
 }
 
+/** Only one timeline message per call — terminal status updates the same row. */
 export function shouldCreateTimelineMessage(status: string): boolean {
-  return TERMINAL_STATUSES.has(status.toUpperCase()) || status.toUpperCase() === "ACTIVE";
+  return TERMINAL_STATUSES.has(status.toUpperCase());
 }
 
-export function wavoipCallProviderMsgId(whatsappCallId: number, status: string): string {
-  return `wavoip:call:${whatsappCallId}:${status.toUpperCase()}`;
+export function wavoipCallProviderMsgId(input: {
+  whatsappCallId: number;
+  clientCallId?: string | null;
+}): string {
+  const client = input.clientCallId?.trim();
+  if (client) return `wavoip:call:${client}`;
+  return `wavoip:call:wid:${input.whatsappCallId}`;
 }
 
 export async function upsertWavoipTimelineMessage(input: {
   conversationId: string;
   whatsappCallId: number;
+  clientCallId?: string | null;
   direction: string;
   status: string;
   caller: string;
@@ -53,17 +62,31 @@ export async function upsertWavoipTimelineMessage(input: {
   recordUrl?: string | null;
   mediaUrl?: string | null;
 }): Promise<string | null> {
-  if (!shouldCreateTimelineMessage(input.status)) return null;
+  const status = input.status.toUpperCase();
+  if (!shouldCreateTimelineMessage(status)) return null;
 
-  const providerMsgId = wavoipCallProviderMsgId(input.whatsappCallId, input.status);
+  const providerMsgId = wavoipCallProviderMsgId({
+    whatsappCallId: input.whatsappCallId,
+    clientCallId: input.clientCallId,
+  });
+  const body = formatWavoipCallMessageBody(input);
+  const type = input.mediaUrl || input.recordUrl ? "AUDIO" : "TEXT";
+
   const existing = await prisma.message.findFirst({
     where: { conversationId: input.conversationId, providerMsgId },
     select: { id: true },
   });
-  if (existing) return existing.id;
-
-  const body = formatWavoipCallMessageBody(input);
-  const type = input.mediaUrl || input.recordUrl ? "AUDIO" : "TEXT";
+  if (existing) {
+    await prisma.message.update({
+      where: { id: existing.id },
+      data: {
+        body,
+        type,
+        mediaUrl: input.mediaUrl ?? input.recordUrl ?? null,
+      },
+    });
+    return existing.id;
+  }
 
   const msg = await prisma.message.create({
     data: {
