@@ -24,16 +24,18 @@ interface LeadTypeRow {
 }
 
 interface AuditRow {
+  recordType?: "closure" | "wavoip_call";
   id: string;
-  conversationId: string;
-  sessionIndex: number;
+  conversationId: string | null;
+  sessionIndex?: number;
   status: string;
   updatedAt: string;
-  resolvedAt: string;
-  reopenedAt: string | null;
-  isNewAttendance: boolean;
-  closureValue: number | null;
-  closureReason: string | null;
+  resolvedAt?: string;
+  occurredAt?: string;
+  reopenedAt?: string | null;
+  isNewAttendance?: boolean;
+  closureValue?: number | null;
+  closureReason?: string | null;
   contact: {
     id: string;
     name: string;
@@ -41,10 +43,15 @@ interface AuditRow {
     createdAt: string;
     assignedTo: { id: string; name: string; email: string } | null;
     createdBy: { id: string; name: string; email: string } | null;
-  };
-  assignedTo: { id: string; name: string; email: string } | null;
-  team: { id: string; name: string } | null;
-  leadType: { id: string; name: string; color: string; valueRollup?: string } | null;
+  } | null;
+  assignedTo?: { id: string; name: string; email: string } | null;
+  team?: { id: string; name: string } | null;
+  leadType?: { id: string; name: string; color: string; valueRollup?: string } | null;
+  direction?: string;
+  durationSec?: number | null;
+  caller?: string;
+  receiver?: string;
+  deviceName?: string | null;
 }
 
 export function ConversationAuditPage() {
@@ -126,12 +133,14 @@ export function ConversationAuditPage() {
     return <Navigate to="/" replace />;
   }
 
-  const pageRollupRows = rows.map((r) => ({
-    conversationId: r.conversationId,
-    sessionIndex: r.sessionIndex,
-    closureValue: r.closureValue,
-    leadType: r.leadType,
-  }));
+  const pageRollupRows = rows
+    .filter((r) => r.recordType !== "wavoip_call")
+    .map((r) => ({
+      conversationId: r.conversationId ?? "",
+      sessionIndex: r.sessionIndex ?? 0,
+      closureValue: r.closureValue ?? null,
+      leadType: r.leadType ?? null,
+    }));
   const { wonValue: sumPageWon, pipelineValue: sumPagePipeline } =
     computeClosureRollupTotals(pageRollupRows);
 
@@ -261,36 +270,52 @@ export function ConversationAuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-ink-800">
-                {rows.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/80 dark:hover:bg-ink-800/50">
+                {rows.map((r) => {
+                  const when = r.resolvedAt ?? r.occurredAt ?? r.updatedAt;
+                  const isCall = r.recordType === "wavoip_call";
+                  return (
+                  <tr key={`${r.recordType ?? "closure"}-${r.id}`} className="hover:bg-gray-50/80 dark:hover:bg-ink-800/50">
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-ink-300">
                       <span className="flex items-center gap-1 text-xs">
                         <Clock className="h-3 w-3" />
-                        {formatDistanceToNow(new Date(r.resolvedAt), { addSuffix: true, locale: dateLocale })}
+                        {formatDistanceToNow(new Date(when), { addSuffix: true, locale: dateLocale })}
                       </span>
                       <span className="text-[10px] text-gray-400 dark:text-ink-500">
-                        {format(new Date(r.resolvedAt), "Pp", { locale: dateLocale })}
+                        {format(new Date(when), "Pp", { locale: dateLocale })}
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <span
-                        className={
-                          r.reopenedAt
-                            ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                            : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                        }
-                      >
-                        {r.reopenedAt ? t("audit.statusReopened") : t("audit.statusResolved")}
-                      </span>
-                      {r.isNewAttendance ? (
-                        <span className="mt-1 block text-[10px] text-violet-600 dark:text-violet-300">
-                          {t("conversationDetail.attendanceNew")}
+                      {isCall ? (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                          {t("audit.statusWavoipCall")} · {r.status}
                         </span>
-                      ) : null}
+                      ) : (
+                        <>
+                          <span
+                            className={
+                              r.reopenedAt
+                                ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                                : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                            }
+                          >
+                            {r.reopenedAt ? t("audit.statusReopened") : t("audit.statusResolved")}
+                          </span>
+                          {r.isNewAttendance ? (
+                            <span className="mt-1 block text-[10px] text-violet-600 dark:text-violet-300">
+                              {t("conversationDetail.attendanceNew")}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </td>
                     <td className="px-3 py-2">
-                      <p className="font-medium text-gray-900 dark:text-ink-50">{r.contact.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-ink-400">{r.contact.phone}</p>
+                      <p className="font-medium text-gray-900 dark:text-ink-50">{r.contact?.name ?? "—"}</p>
+                      <p className="text-xs text-gray-500 dark:text-ink-400">
+                        {r.contact?.phone ?? (isCall ? r.caller : "—")}
+                      </p>
+                      {isCall && r.deviceName ? (
+                        <p className="text-[10px] text-gray-400 dark:text-ink-500">{r.deviceName}</p>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-gray-700 dark:text-ink-200">
                       {r.assignedTo?.name ?? "—"}
@@ -306,36 +331,57 @@ export function ConversationAuditPage() {
                         >
                           {r.leadType.name}
                         </span>
+                      ) : isCall ? (
+                        <span className="text-xs text-gray-500 dark:text-ink-400">
+                          {r.direction === "INCOMING" ? t("audit.callIncoming") : t("audit.callOutgoing")}
+                        </span>
                       ) : (
                         "—"
                       )}
                     </td>
                     <td className="px-3 py-2 text-gray-800 dark:text-ink-100">
-                      {r.closureValue != null && r.closureValue > 0 ? fmtMoney(r.closureValue) : "—"}
+                      {isCall
+                        ? r.durationSec != null && r.durationSec > 0
+                          ? `${Math.floor(r.durationSec / 60)}m ${r.durationSec % 60}s`
+                          : "—"
+                        : r.closureValue != null && r.closureValue > 0
+                          ? fmtMoney(r.closureValue)
+                          : "—"}
                     </td>
                     <td className="max-w-[220px] px-3 py-2 text-xs text-gray-600 dark:text-ink-300">
-                      <p>
-                        <span className="font-medium text-gray-700 dark:text-ink-200">{t("audit.contactOwner")}:</span>{" "}
-                        {r.contact.assignedTo?.name ?? "—"}
-                      </p>
-                      <p className="mt-0.5">
-                        <span className="font-medium text-gray-700 dark:text-ink-200">{t("audit.contactCreatedBy")}:</span>{" "}
-                        {r.contact.createdBy?.name ?? t("audit.sourceInbound")}
-                      </p>
-                      <p className="mt-0.5 text-[10px] text-gray-400 dark:text-ink-500">
-                        {t("audit.contactCreatedAt")}: {format(new Date(r.contact.createdAt), "P", { locale: dateLocale })}
-                      </p>
+                      {r.contact ? (
+                        <>
+                          <p>
+                            <span className="font-medium text-gray-700 dark:text-ink-200">{t("audit.contactOwner")}:</span>{" "}
+                            {r.contact.assignedTo?.name ?? "—"}
+                          </p>
+                          <p className="mt-0.5">
+                            <span className="font-medium text-gray-700 dark:text-ink-200">{t("audit.contactCreatedBy")}:</span>{" "}
+                            {r.contact.createdBy?.name ?? t("audit.sourceInbound")}
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-gray-400 dark:text-ink-500">
+                            {t("audit.contactCreatedAt")}: {format(new Date(r.contact.createdAt), "P", { locale: dateLocale })}
+                          </p>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <Link
-                        to={`/conversations/${r.conversationId}`}
-                        className="text-xs font-medium text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300"
-                      >
-                        {t("audit.open")}
-                      </Link>
+                      {r.conversationId ? (
+                        <Link
+                          to={`/conversations/${r.conversationId}`}
+                          className="text-xs font-medium text-brand-600 hover:text-brand-800 dark:text-brand-400 dark:hover:text-brand-300"
+                        >
+                          {t("audit.open")}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

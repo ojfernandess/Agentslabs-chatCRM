@@ -19,6 +19,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { WavoipEvolutionBridgePanel } from "@/components/wavoip/WavoipEvolutionBridgePanel";
 import { WavoipMetricsPanel } from "@/components/wavoip/WavoipMetricsPanel";
 import { WavoipOutboundIntegrationsPanel } from "@/components/wavoip/WavoipOutboundIntegrationsPanel";
+import { WavoipIncomingQueuePanel } from "@/components/wavoip/WavoipIncomingQueuePanel";
 
 type WavoipDeviceRow = {
   id: string;
@@ -51,6 +52,13 @@ type WavoipDeviceRow = {
     n8n?: { url: string | null; secret?: string | null; events: string[] } | null;
     chatwoot?: { url: string | null; secret?: string | null; events: string[] } | null;
   };
+  incomingQueue: {
+    mode: "all" | "assignee" | "team";
+    teamId: string | null;
+    teamName: string | null;
+  };
+  assignedUserId: string | null;
+  assignedUserName: string | null;
   inboxId: string | null;
   inboxName: string | null;
   lastStatusAt: string | null;
@@ -60,6 +68,8 @@ type WavoipDeviceRow = {
 };
 
 type InboxOption = { id: string; name: string; isDefault: boolean };
+type UserOption = { id: string; name: string };
+type TeamOption = { id: string; name: string };
 
 type SipInfo = {
   deviceId: string;
@@ -107,6 +117,8 @@ export function WavoipIntegrationSettings() {
   const { t } = useI18n();
   const [devices, setDevices] = useState<WavoipDeviceRow[]>([]);
   const [inboxes, setInboxes] = useState<InboxOption[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,12 +145,16 @@ export function WavoipIntegrationSettings() {
     setLoading(true);
     setError(null);
     try {
-      const [devs, inboxList] = await Promise.all([
+      const [devs, inboxList, userList, teamList] = await Promise.all([
         api.get<WavoipDeviceRow[]>("/settings/wavoip/devices"),
         api.get<InboxOption[]>("/settings/wavoip/inboxes"),
+        api.get<{ id: string; name: string }[]>("/users"),
+        api.get<{ data: { id: string; name: string }[] }>("/teams"),
       ]);
       setDevices(devs);
       setInboxes(inboxList);
+      setUsers(userList.map((u) => ({ id: u.id, name: u.name })));
+      setTeams(teamList.data.map((t) => ({ id: t.id, name: t.name })));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("wavoip.loadError"));
     } finally {
@@ -270,12 +286,12 @@ export function WavoipIntegrationSettings() {
         <h2 className="text-lg font-semibold text-slate-900 dark:text-ink-50">{t("wavoip.title")}</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-ink-400">{t("wavoip.subtitle")}</p>
         <a
-          href="https://wavoip.gitbook.io/api"
+          href="https://app.wavoip.com/"
           target="_blank"
           rel="noreferrer"
           className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
-          {t("wavoip.docsLink")}
+          {t("wavoip.panelLink")}
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
@@ -472,6 +488,16 @@ export function WavoipIntegrationSettings() {
                     </ul>
                   </div>
                 )}
+
+                <WavoipIncomingQueuePanel
+                  deviceId={device.id}
+                  initialMode={device.incomingQueue?.mode ?? "all"}
+                  initialTeamId={device.incomingQueue?.teamId ?? null}
+                  initialAssignedUserId={device.assignedUserId}
+                  users={users}
+                  teams={teams}
+                  onSaved={() => void load()}
+                />
 
                 <WavoipEvolutionBridgePanel
                   deviceId={device.id}

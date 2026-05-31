@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { WavoipConnectionMode } from "@prisma/client";
+import { WavoipConnectionMode, type Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -35,6 +35,17 @@ import {
   prepareOutboundIntegrationsForSave,
   type WavoipOutboundIntegrationsFields,
 } from "../lib/wavoipOutboundIntegrations.js";
+import {
+  mergeIncomingQueueIntoExternalConfig,
+  parseIncomingQueue,
+} from "../lib/wavoipIncomingQueue.js";
+
+const incomingQueueSchema = z
+  .object({
+    mode: z.enum(["all", "assignee", "team"]),
+    teamId: z.string().uuid().nullable().optional(),
+  })
+  .optional();
 
 const externalConfigSchema = z
   .object({
@@ -82,12 +93,36 @@ const updateDeviceSchema = z.object({
   sipEnabled: z.boolean().optional(),
   externalConfig: externalConfigSchema,
   outboundIntegrations: outboundIntegrationsSchema,
+  incomingQueue: incomingQueueSchema,
 });
 
 const deviceInclude = {
   inbox: { select: { name: true } },
   assignedUser: { select: { name: true } },
 } as const;
+
+async function teamNameForDevice(
+  organizationId: string,
+  externalConfig: unknown,
+): Promise<string | null> {
+  const queue = parseIncomingQueue(externalConfig);
+  if (!queue.teamId) return null;
+  const team = await prisma.team.findFirst({
+    where: { id: queue.teamId, organizationId },
+    select: { name: true },
+  });
+  return team?.name ?? null;
+}
+
+function deviceToClientRowWithTeam(
+  device: Parameters<typeof deviceToClientRow>[0],
+  organizationId: string,
+  webhookUrl: string,
+  includeQrUrl: boolean,
+  teamName?: string | null,
+) {
+  return deviceToClientRow(device, webhookUrl, includeQrUrl, teamName);
+}
 
 export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -137,8 +172,32 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       orderBy: { createdAt: "desc" },
     });
 
-    return rows.map((d) =>
-      deviceToClientRow(d, wavoipWebhookUrlForDevice(organizationId, d.id), false),
+    const teamIds = [
+      ...new Set(
+        rows
+          .map((d) => parseIncomingQueue(d.externalConfig).teamId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const teams =
+      teamIds.length > 0
+        ? await prisma.team.findMany({
+            where: { organizationId, id: { in: teamIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+    const teamById = new Map(teams.map((t) => [t.id, t.name]));
+
+    return Promise.all(
+      rows.map((d) =>
+        deviceToClientRowWithTeam(
+          d,
+          organizationId,
+          wavoipWebhookUrlForDevice(organizationId, d.id),
+          false,
+          teamById.get(parseIncomingQueue(d.externalConfig).teamId ?? "") ?? null,
+        ),
+      ),
     );
   });
 
@@ -225,7 +284,14 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
     }
 
-    return deviceToClientRow(device, wavoipWebhookUrlForDevice(organizationId, device.id), true);
+    const teamName = await teamNameForDevice(organizationId, device.externalConfig);
+    return deviceToClientRowWithTeam(
+      device,
+      organizationId,
+      wavoipWebhookUrlForDevice(organizationId, device.id),
+      true,
+      teamName,
+    );
   });
 
   app.patch<{ Params: { id: string } }>("/devices/:id", async (request, reply) => {
@@ -263,6 +329,42 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       }
     }
 
+    if (parsed.data.assignedUserId !== undefined && parsed.data.assignedUserId !== null) {
+      const user = await prisma.user.findFirst({
+        where: { id: parsed.data.assignedUserId, organizationId },
+      });
+      if (!user) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedUserId", statusCode: 400 });
+      }
+    }
+
+    if (parsed.data.incomingQueue?.mode === "team" && parsed.data.incomingQueue.teamId) {
+      const team = await prisma.team.findFirst({
+        where: { id: parsed.data.incomingQueue.teamId, organizationId },
+      });
+      if (!team) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid incomingQueue.teamId", statusCode: 400 });
+      }
+    }
+
+    let externalConfigData: Prisma.InputJsonValue | undefined;
+    const evolutionConfig = prepareExternalConfigForSave(
+      parsed.data.externalConfig as WavoipExternalConfigFields | undefined,
+      current.externalConfig,
+    );
+    if (evolutionConfig !== undefined) {
+      externalConfigData = evolutionConfig;
+    }
+    if (parsed.data.incomingQueue !== undefined) {
+      externalConfigData = mergeIncomingQueueIntoExternalConfig(
+        externalConfigData ?? current.externalConfig,
+        {
+          mode: parsed.data.incomingQueue.mode,
+          teamId: parsed.data.incomingQueue.teamId ?? null,
+        },
+      ) as Prisma.InputJsonValue;
+    }
+
     const device = await prisma.wavoipDevice.update({
       where: { id: current.id },
       data: {
@@ -274,17 +376,7 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
         ...(parsed.data.webhookEnabled !== undefined ? { webhookEnabled: parsed.data.webhookEnabled } : {}),
         ...(parsed.data.webhookEvents !== undefined ? { webhookEvents: parsed.data.webhookEvents } : {}),
         ...(parsed.data.sipEnabled !== undefined ? { sipEnabled: parsed.data.sipEnabled } : {}),
-        ...(prepareExternalConfigForSave(
-          parsed.data.externalConfig as WavoipExternalConfigFields | undefined,
-          current.externalConfig,
-        ) !== undefined
-          ? {
-              externalConfig: prepareExternalConfigForSave(
-                parsed.data.externalConfig as WavoipExternalConfigFields | undefined,
-                current.externalConfig,
-              ),
-            }
-          : {}),
+        ...(externalConfigData !== undefined ? { externalConfig: externalConfigData } : {}),
         ...(prepareOutboundIntegrationsForSave(
           parsed.data.outboundIntegrations as WavoipOutboundIntegrationsFields | undefined,
           current.outboundIntegrations,
@@ -309,7 +401,14 @@ export async function wavoipIntegrationRoutes(app: FastifyInstance): Promise<voi
       ip: clientIp(request),
     });
 
-    return deviceToClientRow(device, wavoipWebhookUrlForDevice(organizationId, device.id), true);
+    const teamName = await teamNameForDevice(organizationId, device.externalConfig);
+    return deviceToClientRowWithTeam(
+      device,
+      organizationId,
+      wavoipWebhookUrlForDevice(organizationId, device.id),
+      true,
+      teamName,
+    );
   });
 
   app.delete<{ Params: { id: string } }>("/devices/:id", async (request, reply) => {

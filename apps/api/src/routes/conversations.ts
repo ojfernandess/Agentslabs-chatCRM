@@ -536,7 +536,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       createdBy: { select: { id: true, name: true, email: true } },
     } as const;
 
-    const [records, total] = await Promise.all([
+    const fetchLimit = query.page * query.pageSize;
+
+    const callWhere: Prisma.WavoipCallLogWhereInput = { organizationId };
+    if (query.assignedToId) {
+      callWhere.initiatedByUserId = query.assignedToId;
+    }
+    if (query.inboxId) {
+      callWhere.conversation = { inboxId: query.inboxId };
+    }
+    if (query.resolvedFrom || query.resolvedTo) {
+      const range: Prisma.DateTimeFilter = {};
+      if (query.resolvedFrom) {
+        const a = new Date(query.resolvedFrom);
+        if (!Number.isNaN(a.getTime())) range.gte = a;
+      }
+      if (query.resolvedTo) {
+        const b = new Date(query.resolvedTo);
+        if (!Number.isNaN(b.getTime())) range.lte = b;
+      }
+      if (Object.keys(range).length > 0) {
+        callWhere.OR = [{ endedAt: range }, { endedAt: null, createdAt: range }];
+      }
+    }
+
+    const [records, closureTotal, callLogs, callTotal] = await Promise.all([
       prisma.conversationClosureRecord.findMany({
         where,
         include: {
@@ -549,10 +573,25 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           },
         },
         orderBy: { resolvedAt: "desc" },
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
+        take: fetchLimit,
       }),
       prisma.conversationClosureRecord.count({ where }),
+      prisma.wavoipCallLog.findMany({
+        where: callWhere,
+        include: {
+          contact: { select: contactAuditSelect },
+          conversation: {
+            include: {
+              inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+            },
+          },
+          initiatedByUser: { select: { id: true, name: true, email: true } },
+          wavoipDevice: { select: { id: true, name: true } },
+        },
+        orderBy: [{ endedAt: "desc" }, { createdAt: "desc" }],
+        take: fetchLimit,
+      }),
+      prisma.wavoipCallLog.count({ where: callWhere }),
     ]);
 
     const triageByInbox = await buildAgentBotTriageMapForInboxes(
@@ -560,31 +599,92 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       records.map((r) => ({ inboxId: r.conversation.inboxId })),
     );
 
-    return {
-      data: records.map((row) => ({
+    type AuditEntry = {
+      recordType: "closure" | "wavoip_call";
+      id: string;
+      occurredAt: string;
+      conversationId: string | null;
+      sessionIndex?: number;
+      status: string;
+      updatedAt: string;
+      resolvedAt?: string;
+      reopenedAt?: string | null;
+      isNewAttendance?: boolean;
+      closureValue?: number | null;
+      closureReason?: string | null;
+      contact: (typeof records)[number]["conversation"]["contact"] | null;
+      assignedTo?: (typeof records)[number]["assignedTo"];
+      team?: (typeof records)[number]["team"];
+      leadType?: (typeof records)[number]["leadType"];
+      resolvedBy?: (typeof records)[number]["resolvedBy"];
+      reopenedBy?: (typeof records)[number]["reopenedBy"];
+      inbox?: (typeof records)[number]["conversation"]["inbox"] | null;
+      csatScore?: number | null;
+      csatComment?: string | null;
+      csatRecordedAt?: string | null;
+      agentBotTriageActive?: boolean;
+      direction?: string;
+      durationSec?: number | null;
+      caller?: string;
+      receiver?: string;
+      deviceName?: string | null;
+      initiatedBy?: { id: string; name: string; email: string } | null;
+    };
+
+    const closureEntries: AuditEntry[] = records.map((row) => ({
+      recordType: "closure" as const,
+      id: row.id,
+      conversationId: row.conversationId,
+      sessionIndex: row.sessionIndex,
+      status: row.reopenedAt ? "REOPENED" : "RESOLVED",
+      updatedAt: row.resolvedAt.toISOString(),
+      occurredAt: row.resolvedAt.toISOString(),
+      resolvedAt: row.resolvedAt.toISOString(),
+      reopenedAt: row.reopenedAt?.toISOString() ?? null,
+      isNewAttendance: row.isNewAttendance,
+      closureValue: row.closureValue,
+      closureReason: row.closureReason,
+      contact: row.conversation.contact,
+      assignedTo: row.assignedTo,
+      team: row.team,
+      leadType: row.leadType,
+      resolvedBy: row.resolvedBy,
+      reopenedBy: row.reopenedBy,
+      inbox: row.conversation.inbox,
+      csatScore: row.csatScore,
+      csatComment: row.csatComment,
+      csatRecordedAt: row.csatRecordedAt?.toISOString() ?? null,
+      agentBotTriageActive: triageByInbox.get(row.conversation.inboxId) ?? false,
+    }));
+
+    const callEntries: AuditEntry[] = callLogs.map((row) => {
+      const occurred = row.endedAt ?? row.createdAt;
+      return {
+        recordType: "wavoip_call" as const,
         id: row.id,
         conversationId: row.conversationId,
-        sessionIndex: row.sessionIndex,
-        status: row.reopenedAt ? "REOPENED" : "RESOLVED",
-        updatedAt: row.resolvedAt.toISOString(),
-        resolvedAt: row.resolvedAt.toISOString(),
-        reopenedAt: row.reopenedAt?.toISOString() ?? null,
-        isNewAttendance: row.isNewAttendance,
-        closureValue: row.closureValue,
-        closureReason: row.closureReason,
-        contact: row.conversation.contact,
-        assignedTo: row.assignedTo,
-        team: row.team,
-        leadType: row.leadType,
-        resolvedBy: row.resolvedBy,
-        reopenedBy: row.reopenedBy,
-        inbox: row.conversation.inbox,
-        csatScore: row.csatScore,
-        csatComment: row.csatComment,
-        csatRecordedAt: row.csatRecordedAt?.toISOString() ?? null,
-        agentBotTriageActive: triageByInbox.get(row.conversation.inboxId) ?? false,
-      })),
-      total,
+        status: row.status,
+        updatedAt: occurred.toISOString(),
+        occurredAt: occurred.toISOString(),
+        contact: row.contact,
+        assignedTo: row.initiatedByUser,
+        initiatedBy: row.initiatedByUser,
+        inbox: row.conversation?.inbox ?? null,
+        direction: row.direction,
+        durationSec: row.durationSec,
+        caller: row.caller,
+        receiver: row.receiver,
+        deviceName: row.wavoipDevice?.name ?? null,
+      };
+    });
+
+    const merged = [...closureEntries, ...callEntries]
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+      .slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
+
+    return {
+      data: merged,
+      total: closureTotal + callTotal,
       page: query.page,
       pageSize: query.pageSize,
     };

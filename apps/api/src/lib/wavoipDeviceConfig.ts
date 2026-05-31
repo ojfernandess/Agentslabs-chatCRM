@@ -3,6 +3,7 @@ import type { WavoipConnectionMode, WavoipDevice, WavoipDeviceStatus } from "@pr
 import { encrypt, decrypt } from "./encryption.js";
 import { maskExternalConfigForClient, type WavoipBridgeStatusClient, bridgeStatusFromExternalConfig } from "./wavoipExternalConfig.js";
 import { maskOutboundIntegrationsForClient } from "./wavoipOutboundIntegrations.js";
+import { parseIncomingQueue } from "./wavoipIncomingQueue.js";
 
 export const MASKED_WAVOIP_SECRET = "••••••••";
 
@@ -22,6 +23,11 @@ export type WavoipDeviceClientRow = {
     evolutionUrl?: string | null;
     evolutionApiKey?: string | null;
     evolutionInstance?: string | null;
+  };
+  incomingQueue: {
+    mode: "all" | "assignee" | "team";
+    teamId: string | null;
+    teamName: string | null;
   };
   bridgeStatus: WavoipBridgeStatusClient;
   outboundIntegrations: import("./wavoipOutboundIntegrations.js").WavoipOutboundIntegrationsClient;
@@ -112,8 +118,10 @@ export function deviceToClientRow(
   },
   webhookUrl: string,
   includeQrUrl: boolean,
+  teamName?: string | null,
 ): WavoipDeviceClientRow {
   const token = decryptWavoipSecret(device.deviceTokenEnc);
+  const incomingQueue = parseIncomingQueue(device.externalConfig);
   return {
     id: device.id,
     name: device.name,
@@ -125,6 +133,11 @@ export function deviceToClientRow(
     webhookUrl,
     sipEnabled: device.sipEnabled,
     externalConfig: maskExternalConfigForClient(device.externalConfig),
+    incomingQueue: {
+      mode: incomingQueue.mode,
+      teamId: incomingQueue.teamId,
+      teamName: teamName ?? null,
+    },
     bridgeStatus: bridgeStatusFromExternalConfig(device.externalConfig),
     outboundIntegrations: maskOutboundIntegrationsForClient(device.outboundIntegrations),
     inboxId: device.inboxId,

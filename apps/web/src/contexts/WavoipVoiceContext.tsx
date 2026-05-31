@@ -19,6 +19,13 @@ type SessionDevice = {
   token: string;
 };
 
+type PendingIncomingMeta = {
+  conversationId: string | null;
+  contactId: string | null;
+  caller: string;
+  whatsappCallId?: number;
+};
+
 type ActiveCallMeta = {
   clientCallId: string;
   deviceId: string;
@@ -93,6 +100,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const wavoipRef = useRef<Wavoip | null>(null);
   const devicesRef = useRef<SessionDevice[]>([]);
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
+  const pendingIncomingRef = useRef<PendingIncomingMeta | null>(null);
   const callStatusRef = useRef<string | null>(null);
   const finalizedCallIdsRef = useRef<Set<string>>(new Set());
   const [devices, setDevices] = useState<SessionDevice[]>([]);
@@ -212,15 +220,56 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     };
   }, [user, locale]);
 
+  useEffect(() => {
+    const onIncoming = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as {
+        caller?: string;
+        conversationId?: string | null;
+        contactId?: string | null;
+        whatsappCallId?: number;
+      };
+      pendingIncomingRef.current = {
+        caller: (detail.caller ?? "").trim(),
+        conversationId: detail.conversationId ?? null,
+        contactId: detail.contactId ?? null,
+        whatsappCallId: detail.whatsappCallId,
+      };
+    };
+    window.addEventListener("openconduit:wavoip-call-incoming", onIncoming);
+    return () => window.removeEventListener("openconduit:wavoip-call-incoming", onIncoming);
+  }, []);
+
   const acceptIncoming = useCallback(async () => {
     const offer = incomingOffer;
     if (!offer) return;
     void unlockAudioAlerts();
+    const pending = pendingIncomingRef.current;
     const { call, err } = await offer.accept();
     if (err || !call) return;
     setIncomingOffer(null);
-    bindActiveCall(call);
-  }, [incomingOffer, bindActiveCall]);
+
+    const conversationId = pending?.conversationId ?? null;
+    if (conversationId && user?.id) {
+      try {
+        await api.patch(`/conversations/${conversationId}`, {
+          status: "OPEN",
+          assignedToId: user.id,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    const meta: ActiveCallMeta = {
+      clientCallId: call.id,
+      deviceId: devicesRef.current.find((d) => d.token === call.device_token)?.id ?? devicesRef.current[0]?.id ?? "",
+      conversationId,
+      contactId: pending?.contactId ?? null,
+      startedAt: Date.now(),
+    };
+    pendingIncomingRef.current = null;
+    bindActiveCall(call, meta);
+  }, [incomingOffer, bindActiveCall, user?.id]);
 
   const rejectIncoming = useCallback(async () => {
     const offer = incomingOffer;

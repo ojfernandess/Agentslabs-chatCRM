@@ -72,7 +72,7 @@ export function prepareExternalConfigForSave(
   if (incoming === undefined) return undefined;
 
   const cur = parseExternalConfig(current);
-  const next: Record<string, string> = {};
+  const next: Record<string, unknown> = { ...(asRecord(current) ?? {}) };
 
   if (incoming.evolutionUrl !== undefined) {
     const v = incoming.evolutionUrl?.trim() ?? "";

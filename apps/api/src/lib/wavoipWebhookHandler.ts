@@ -13,6 +13,7 @@ import { logWavoipIntegration } from "./wavoipIntegrationLog.js";
 import { upsertWavoipTimelineMessage } from "./wavoipCallTimeline.js";
 import { dispatchWavoipOutboundIntegrations } from "./wavoipOutboundIntegrations.js";
 import { findProvisionalCallLog } from "./wavoipAgentCall.js";
+import { resolveIncomingCallTargetUserIds } from "./wavoipIncomingQueue.js";
 
 type WavoipWebhookPayload = {
   type?: string;
@@ -144,6 +145,8 @@ async function handleCallEvent(
     linkedPhone: string | null;
     outboundIntegrations: unknown;
     webhookEvents: unknown;
+    externalConfig: Prisma.JsonValue;
+    assignedUserId: string | null;
   },
   payload: WavoipWebhookPayload,
 ): Promise<void> {
@@ -165,6 +168,9 @@ async function handleCallEvent(
   let conversationId: string | null = null;
   let contactId: string | null = contactResult?.contactId ?? null;
 
+  const isIncoming = direction === "INCOMING";
+  const conversationStatus = isIncoming ? "PENDING" : "OPEN";
+
   if (contactId) {
     const settings = await prisma.settings.findUnique({ where: { organizationId: device.organizationId } });
     const inboxId = await resolveInboxIdForDevice(device, device.organizationId);
@@ -173,8 +179,8 @@ async function handleCallEvent(
       contactId,
       inboxId,
       lockSingleConversation: settings?.lockSingleConversation ?? true,
-      activeConversationStatus: "OPEN",
-      createDefaults: { status: "OPEN" },
+      activeConversationStatus: conversationStatus,
+      createDefaults: { status: conversationStatus },
     });
     conversationId = conv.id;
 
@@ -237,14 +243,18 @@ async function handleCallEvent(
     },
   });
 
+  const isIncomingRing =
+    isIncoming && !isTerminal && (status === "RINGING" || payload.action === "CREATE" || status === "NONE");
+  const timelineStatus = isIncomingRing ? "RINGING" : status;
+
   let messageId: string | null = callLog.messageId ?? absorbedMessageId;
-  if (conversationId && isTerminal) {
+  if (conversationId && (isTerminal || isIncomingRing)) {
     messageId = await upsertWavoipTimelineMessage({
       conversationId,
       whatsappCallId,
       clientCallId,
       direction,
-      status,
+      status: timelineStatus,
       caller,
       receiver,
       durationSec,
@@ -263,12 +273,13 @@ async function handleCallEvent(
     }
   }
 
-  const isIncomingRing =
-    direction === "INCOMING" &&
-    !isTerminal &&
-    (status === "RINGING" || payload.action === "CREATE" || status === "NONE");
-
   if (isIncomingRing) {
+    const targetUserIds = await resolveIncomingCallTargetUserIds(device, device.organizationId);
+    let contactName: string | null = null;
+    if (contactId) {
+      const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { name: true } });
+      contactName = c?.name ?? null;
+    }
     broadcastToOrganization(device.organizationId, {
       type: "wavoip.call.incoming",
       deviceId: device.id,
@@ -277,7 +288,8 @@ async function handleCallEvent(
       receiver: receiver.slice(0, 32),
       contactId,
       conversationId,
-      contactName: null,
+      contactName,
+      targetUserIds,
     });
   }
 

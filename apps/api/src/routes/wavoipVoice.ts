@@ -10,6 +10,7 @@ import {
   startAgentOutboundCall,
 } from "../lib/wavoipAgentCall.js";
 import { resolveWavoipCallContext } from "../lib/wavoipCallContext.js";
+import { filterWavoipDevicesForAgent } from "../lib/wavoipIncomingQueue.js";
 import { z } from "zod";
 
 function deviceAccessFilter(userId: string) {
@@ -37,7 +38,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const devices = await prisma.wavoipDevice.findMany({
+    const allDevices = await prisma.wavoipDevice.findMany({
       where: {
         organizationId,
         status: "OPEN",
@@ -51,11 +52,14 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
         inboxId: true,
         connectionMode: true,
         sipEnabled: true,
+        assignedUserId: true,
+        externalConfig: true,
       },
       orderBy: { name: "asc" },
     });
+    const devices = await filterWavoipDevicesForAgent(request.user.id, allDevices);
 
-    return { data: devices };
+    return { data: devices.map(({ assignedUserId: _a, externalConfig: _e, ...d }) => d) };
   });
 
   /** Tokens for @wavoip/wavoip-api — only OPEN devices the agent may use. */
@@ -63,7 +67,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const devices = await prisma.wavoipDevice.findMany({
+    const allDevices = await prisma.wavoipDevice.findMany({
       where: {
         organizationId,
         status: "OPEN",
@@ -75,9 +79,12 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
         linkedPhone: true,
         inboxId: true,
         deviceTokenEnc: true,
+        assignedUserId: true,
+        externalConfig: true,
       },
       orderBy: { name: "asc" },
     });
+    const devices = await filterWavoipDevicesForAgent(request.user.id, allDevices);
 
     const sessionDevices = devices
       .map((d) => {

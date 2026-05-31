@@ -1756,6 +1756,7 @@ export const messages = {
       title: "Integração Wavoip",
       subtitle: "Chamadas de voz WhatsApp via dispositivos Wavoip. Mensagens continuam pela caixa WhatsApp (Meta/Evolution).",
       docsLink: "Documentação Wavoip",
+      panelLink: "Abrir painel Wavoip",
       messagingNote:
         "A Wavoip integra ligações de voz. Mensagens de texto e mídia continuam pelos inboxes WhatsApp já configurados (Meta Cloud API, Evolution, etc.).",
       addDevice: "Adicionar dispositivo",
@@ -1870,6 +1871,21 @@ export const messages = {
             "Evolution sem coluna wavoipToken — atualize/migre a Evolution API (v2.2.3+).",
           evolution_unreachable: "Não foi possível contactar a Evolution API.",
         },
+      },
+      incomingQueue: {
+        title: "Fila de chamadas recebidas",
+        subtitle:
+          "Define quem recebe ligações entrantes neste dispositivo. A Wavoip não possui fila nativa — o roteamento é feito pelo OpenConduit.",
+        mode: "Modo de distribuição",
+        modeAll: "Todos os atendentes",
+        modeAssignee: "Atendente específico",
+        modeTeam: "Equipe / fila",
+        assignee: "Atendente",
+        assigneeNone: "Selecione um atendente",
+        team: "Equipe",
+        teamNone: "Selecione uma equipe",
+        save: "Guardar fila",
+        saveError: "Não foi possível guardar a fila de chamadas.",
       },
       voice: {
         callButton: "Ligar",
@@ -2833,6 +2849,9 @@ export const messages = {
       contactCreatedBy: "Registado por",
       contactCreatedAt: "Contato criado",
       sourceInbound: "Entrada (WhatsApp / sistema)",
+      statusWavoipCall: "Ligação Wavoip",
+      callIncoming: "Recebida",
+      callOutgoing: "Realizada",
     },
     contacts: {
       title: "Contatos",
@@ -5531,6 +5550,7 @@ export const messages = {
       title: "Wavoip integration",
       subtitle: "WhatsApp voice calls via Wavoip devices. Messaging stays on your WhatsApp inbox (Meta/Evolution).",
       docsLink: "Wavoip documentation",
+      panelLink: "Open Wavoip panel",
       messagingNote:
         "Wavoip handles voice calls. Text and media messages continue through existing WhatsApp inboxes (Meta Cloud API, Evolution, etc.).",
       addDevice: "Add device",
@@ -5645,6 +5665,21 @@ export const messages = {
             "Evolution missing wavoipToken column — upgrade/migrate Evolution API (v2.2.3+).",
           evolution_unreachable: "Could not reach Evolution API.",
         },
+      },
+      incomingQueue: {
+        title: "Incoming call queue",
+        subtitle:
+          "Choose who receives inbound calls on this device. Wavoip has no native queue — routing is handled by OpenConduit.",
+        mode: "Distribution mode",
+        modeAll: "All agents",
+        modeAssignee: "Specific agent",
+        modeTeam: "Team / queue",
+        assignee: "Agent",
+        assigneeNone: "Select an agent",
+        team: "Team",
+        teamNone: "Select a team",
+        save: "Save queue",
+        saveError: "Could not save call queue settings.",
       },
       voice: {
         callButton: "Call",
@@ -6604,6 +6639,9 @@ export const messages = {
       contactCreatedBy: "Registered by",
       contactCreatedAt: "Contact created",
       sourceInbound: "Inbound (WhatsApp / system)",
+      statusWavoipCall: "Wavoip call",
+      callIncoming: "Inbound",
+      callOutgoing: "Outbound",
     },
     contacts: {
       title: "Contacts",

@@ -37,8 +37,10 @@ export function callMessageDirection(direction: string): MessageDirection {
 }
 
 /** Only one timeline message per call — terminal status updates the same row. */
-export function shouldCreateTimelineMessage(status: string): boolean {
-  return TERMINAL_STATUSES.has(status.toUpperCase());
+export function shouldCreateTimelineMessage(status: string, direction?: string): boolean {
+  const s = status.toUpperCase();
+  if (direction === "INCOMING" && (s === "RINGING" || s === "NONE")) return true;
+  return TERMINAL_STATUSES.has(s);
 }
 
 export function wavoipCallProviderMsgId(input: {
@@ -63,7 +65,7 @@ export async function upsertWavoipTimelineMessage(input: {
   mediaUrl?: string | null;
 }): Promise<string | null> {
   const status = input.status.toUpperCase();
-  if (!shouldCreateTimelineMessage(status)) return null;
+  if (!shouldCreateTimelineMessage(status, input.direction)) return null;
 
   const providerMsgId = wavoipCallProviderMsgId({
     whatsappCallId: input.whatsappCallId,

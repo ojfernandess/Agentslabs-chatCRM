@@ -66,6 +66,7 @@ export function WorkspaceRealtime() {
       contactId?: string | null;
       status?: string;
       linkedPhone?: string | null;
+      targetUserIds?: string[] | null;
     }) => {
       if (data.type === "conversation.transferred") {
         const contact = data.contact?.name ?? "—";
@@ -85,6 +86,14 @@ export function WorkspaceRealtime() {
           }),
         );
       } else if (data.type === "wavoip.call.incoming") {
+        if (
+          Array.isArray(data.targetUserIds) &&
+          data.targetUserIds.length > 0 &&
+          user?.id &&
+          !data.targetUserIds.includes(user.id)
+        ) {
+          return;
+        }
         const caller = (data.caller ?? "").trim() || translate(locale, "wavoip.voice.unknownCaller");
         const msg = translate(locale, "wavoip.voice.incomingToast").replace("{caller}", caller);
         pushToast(msg);
