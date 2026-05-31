@@ -9,6 +9,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
+import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
   ConversationContextMenu,
@@ -731,10 +732,10 @@ export function ConversationsPage() {
                           });
                         }}
                       >
-                        <Link
-                          to={`/conversations/${conv.id}`}
+                        <div
                           className={clsx(
-                            "group flex items-center gap-4 rounded-2xl border p-4 transition-all",
+                            "flex items-center gap-1",
+                            "rounded-2xl border transition-all",
                             "border-ink-200 bg-white/80 shadow-sm hover:-translate-y-0.5 hover:shadow-md",
                             "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
                             priorityListCardClass(conv.priority),
@@ -742,6 +743,10 @@ export function ConversationsPage() {
                             conv.isUnread &&
                               "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
                           )}
+                        >
+                        <Link
+                          to={`/conversations/${conv.id}`}
+                          className="group flex min-w-0 flex-1 items-center gap-4 p-4"
                         >
                           <ConversationListAvatar
                             contactId={conv.contact.id}
@@ -860,6 +865,17 @@ export function ConversationsPage() {
                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
                           </div>
                         </Link>
+                        <div className="flex shrink-0 flex-col items-center justify-center gap-2 pr-3">
+                          <WavoipCallButton
+                            phone={conv.contact.phone}
+                            inboxId={conv.inbox?.id}
+                            conversationId={conv.id}
+                            contactId={conv.contact.id}
+                            iconOnly
+                            stopPropagation
+                          />
+                        </div>
+                        </div>
                       </div>
                     );
                   })}

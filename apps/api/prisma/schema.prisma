@@ -493,6 +493,7 @@ model User {
   teamChannelMessageReactions  TeamChannelMessageReaction[]  @relation("TeamChannelMessageReactionUser")
   teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
   assignedWavoipDevices        WavoipDevice[]                @relation("WavoipDeviceAssignee")
+  wavoipCallsInitiated         WavoipCallLog[]               @relation("WavoipCallInitiator")
 
   @@index([organizationId])
   @@map("users")
@@ -1797,9 +1798,14 @@ model WavoipCallLog {
   messageId String?  @unique @map("message_id") @db.Uuid
   message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
+  initiatedByUser   User?   @relation("WavoipCallInitiator", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  clientCallId      String? @unique @map("client_call_id") @db.VarChar(128)
+
   @@unique([wavoipDeviceId, whatsappCallId])
   @@index([organizationId])
   @@index([wavoipDeviceId])
+  @@index([initiatedByUserId])
   @@map("wavoip_call_logs")
 }
 

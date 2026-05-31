@@ -5,6 +5,11 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { decryptWavoipSecret } from "../lib/wavoipDeviceConfig.js";
 import { buildWavoipSipInfo } from "../lib/wavoipSipInfo.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import {
+  completeAgentOutboundCall,
+  startAgentOutboundCall,
+} from "../lib/wavoipAgentCall.js";
+import { z } from "zod";
 
 function deviceAccessFilter(userId: string) {
   return {
@@ -114,5 +119,109 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return buildWavoipSipInfo(device, token);
+  });
+
+  app.post("/calls/outbound/start", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      clientCallId: z.string().min(1).max(128),
+      wavoipDeviceId: z.string().uuid(),
+      phone: z.string().min(3).max(32),
+      contactId: z.string().uuid().nullable().optional(),
+      conversationId: z.string().uuid().nullable().optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const agent = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { name: true },
+    });
+    const userName = agent?.name?.trim() || request.user.email.split("@")[0] || "Agent";
+
+    const result = await startAgentOutboundCall({
+      organizationId,
+      userId: request.user.id,
+      userName,
+      wavoipDeviceId: parsed.data.wavoipDeviceId,
+      clientCallId: parsed.data.clientCallId,
+      phone: parsed.data.phone,
+      contactId: parsed.data.contactId ?? null,
+      conversationId: parsed.data.conversationId ?? null,
+    });
+    if (!result.ok) {
+      return reply.status(400).send({ error: "Bad Request", message: result.message, statusCode: 400 });
+    }
+    return { ok: true };
+  });
+
+  app.post("/calls/outbound/complete", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      clientCallId: z.string().min(1).max(128),
+      status: z.string().min(1).max(64),
+      durationSec: z.number().int().min(0).nullable().optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const agent = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { name: true },
+    });
+    const userName = agent?.name?.trim() || request.user.email.split("@")[0] || "Agent";
+
+    await completeAgentOutboundCall({
+      organizationId,
+      userId: request.user.id,
+      userName,
+      clientCallId: parsed.data.clientCallId,
+      status: parsed.data.status,
+      durationSec: parsed.data.durationSec ?? null,
+    });
+    return { ok: true };
+  });
+
+  app.get("/calls/my-recent", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const logs = await prisma.wavoipCallLog.findMany({
+      where: {
+        organizationId,
+        initiatedByUserId: request.user.id,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        contact: { select: { id: true, name: true, phone: true } },
+        conversation: { select: { id: true } },
+        initiatedByUser: { select: { id: true, name: true } },
+      },
+    });
+
+    return {
+      data: logs.map((log) => ({
+        id: log.id,
+        direction: log.direction,
+        status: log.status,
+        durationSec: log.durationSec,
+        caller: log.caller,
+        receiver: log.receiver,
+        createdAt: log.createdAt.toISOString(),
+        endedAt: log.endedAt?.toISOString() ?? null,
+        contact: log.contact,
+        conversationId: log.conversationId,
+        agent: log.initiatedByUser,
+      })),
+    };
   });
 }

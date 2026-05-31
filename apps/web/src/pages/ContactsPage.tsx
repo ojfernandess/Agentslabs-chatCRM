@@ -37,6 +37,7 @@ import { format } from "date-fns";
 import { ContactProfileDrawer } from "@/components/ContactProfileDrawer";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
+import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 
@@ -989,6 +990,12 @@ export function ContactsPage() {
                           </td>
                           <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-wrap items-center gap-1.5">
+                              <WavoipCallButton
+                                phone={contact.phone}
+                                contactId={contact.id}
+                                iconOnly
+                                stopPropagation
+                              />
                               <button
                                 type="button"
                                 onClick={() =>

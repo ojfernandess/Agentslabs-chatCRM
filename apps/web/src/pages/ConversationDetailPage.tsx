@@ -55,6 +55,7 @@ import {
   Brain,
   Mail,
   MoreHorizontal,
+  PhoneCall,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -80,6 +81,7 @@ import {
 } from "@/lib/closureValueRollup";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
+import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
@@ -790,6 +792,15 @@ export function ConversationDetailPage() {
   useDebouncedConversationUpdated(() => {
     void loadConversation();
   }, { conversationId: id });
+
+  useEffect(() => {
+    const onCallLogged = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail;
+      if (detail?.conversationId === id) void loadConversation();
+    };
+    window.addEventListener("openconduit:wavoip-call-logged", onCallLogged);
+    return () => window.removeEventListener("openconduit:wavoip-call-logged", onCallLogged);
+  }, [id, loadConversation]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -1599,16 +1610,26 @@ export function ConversationDetailPage() {
             <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
               <span>{phone}</span>
               {hasPhone ? (
-                <a
-                  href={`https://wa.me/${phoneDigits}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-ink-200 bg-white/80 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
-                  aria-label="WhatsApp"
-                  title="WhatsApp"
-                >
-                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
-                </a>
+                <>
+                  <a
+                    href={`https://wa.me/${phoneDigits}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-ink-200 bg-white/80 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
+                    aria-label="WhatsApp"
+                    title="WhatsApp"
+                  >
+                    <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                  </a>
+                  <WavoipCallButton
+                    phone={phone}
+                    inboxId={conversation.inbox?.id}
+                    conversationId={conversation.id}
+                    contactId={conversation.contact.id}
+                    iconOnly
+                    compact
+                  />
+                </>
               ) : null}
             </div>
           );
@@ -2250,6 +2271,8 @@ export function ConversationDetailPage() {
                 ) : (
                   <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
                 );
+              } else if (ev.eventType === "wavoip_call") {
+                icon = <PhoneCall className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
               }
               const showLine = index < contactTimelinePreview.length - 1;
               return (
@@ -2348,6 +2371,7 @@ export function ConversationDetailPage() {
                         {statusLabel(conversation.status)}
                       </span>
                       <ConversationPriorityBadge priority={conversation.priority} />
+                      <WavoipConversationOnCallBadge conversationId={conversation.id} />
                       {hasHumanAssignee &&
                       (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
                         <span
@@ -2403,6 +2427,8 @@ export function ConversationDetailPage() {
                     <WavoipCallButton
                       phone={conversation.contact.phone}
                       inboxId={conversation.inbox?.id}
+                      conversationId={conversation.id}
+                      contactId={conversation.contact.id}
                       compact
                     />
                     {copilotEnabled ? (

@@ -23,11 +23,13 @@ const EVENT_I18N: Record<string, string> = {
   "deal.created": "contactDetail.timelineDealCreated",
   "deal.linked": "contactDetail.timelineDealLinked",
   "deal.updated": "contactDetail.timelineDealUpdated",
+  wavoip_call: "contactDetail.timelineWavoipCall",
 };
 
 const CHANNEL_I18N: Record<string, string> = {
   whatsapp: "contactDetail.timelineChannelWhatsapp",
   conversation: "contactDetail.timelineChannelConversation",
+  wavoip: "contactDetail.timelineChannelWavoip",
 };
 
 function humanizeUnknownEventType(eventType: string): string {
@@ -129,6 +131,27 @@ export function timelineEventSummary(
     case "message.inbound":
     case "message.outbound":
       return messageSummary(payload, t);
+    case "wavoip_call": {
+      const bits: string[] = [];
+      const dir = typeof payload.direction === "string" ? payload.direction.toUpperCase() : "";
+      if (dir === "OUTGOING") bits.push(t("contactDetail.timelineCallOutbound"));
+      else if (dir === "INCOMING") bits.push(t("contactDetail.timelineCallInbound"));
+      const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
+      if (status) {
+        const statusKey = `wavoip.voice.callStatus.${status}`;
+        const label = t(statusKey);
+        bits.push(label !== statusKey ? label : status);
+      }
+      const agent =
+        typeof payload.agentName === "string" && payload.agentName.trim()
+          ? payload.agentName.trim()
+          : null;
+      if (agent) bits.push(`${t("contactDetail.timelineCallAgent")}: ${agent}`);
+      if (typeof payload.durationSec === "number" && payload.durationSec > 0) {
+        bits.push(`${t("contactDetail.timelineCallDuration")}: ${payload.durationSec}s`);
+      }
+      return bits.length ? bits.join(" · ") : null;
+    }
     default: {
       if (typeof payload.body === "string" && payload.body.trim()) {
         return payload.body.trim();

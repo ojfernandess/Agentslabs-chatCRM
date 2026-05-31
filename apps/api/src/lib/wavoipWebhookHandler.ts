@@ -12,6 +12,7 @@ import { decryptWavoipSecret, mapWavoipWebhookDeviceStatus, parseWebhookEventsJs
 import { logWavoipIntegration } from "./wavoipIntegrationLog.js";
 import { upsertWavoipTimelineMessage } from "./wavoipCallTimeline.js";
 import { dispatchWavoipOutboundIntegrations } from "./wavoipOutboundIntegrations.js";
+import { findProvisionalCallLog } from "./wavoipAgentCall.js";
 
 type WavoipWebhookPayload = {
   type?: string;
@@ -176,6 +177,16 @@ async function handleCallEvent(
   const now = new Date();
   const isTerminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED"].includes(status);
 
+  let initiatedByUserId: string | null = null;
+  let clientCallId: string | null = null;
+  const provisional = await findProvisionalCallLog(device.id, contactId);
+  if (provisional && direction === "OUTGOING") {
+    initiatedByUserId = provisional.initiatedByUserId;
+    clientCallId = provisional.clientCallId;
+    conversationId = provisional.conversationId ?? conversationId;
+    await prisma.wavoipCallLog.delete({ where: { id: provisional.id } });
+  }
+
   const callLog = await prisma.wavoipCallLog.upsert({
     where: {
       wavoipDeviceId_whatsappCallId: {
@@ -196,6 +207,8 @@ async function handleCallEvent(
       recordStatus: payload.record_status ?? null,
       contactId,
       conversationId,
+      initiatedByUserId,
+      clientCallId,
       startedAt: payload.action === "CREATE" ? now : null,
       endedAt: isTerminal ? now : null,
       rawPayload: payload as Prisma.InputJsonValue,
@@ -206,6 +219,8 @@ async function handleCallEvent(
       recordStatus: payload.record_status ?? undefined,
       contactId: contactId ?? undefined,
       conversationId: conversationId ?? undefined,
+      initiatedByUserId: initiatedByUserId ?? undefined,
+      clientCallId: clientCallId ?? undefined,
       endedAt: isTerminal ? now : undefined,
       rawPayload: payload as Prisma.InputJsonValue,
     },
@@ -255,18 +270,28 @@ async function handleCallEvent(
   }
 
   if (contactId) {
+    let agentName: string | null = null;
+    if (callLog.initiatedByUserId) {
+      const agent = await prisma.user.findUnique({
+        where: { id: callLog.initiatedByUserId },
+        select: { name: true },
+      });
+      agentName = agent?.name ?? null;
+    }
     await appendTimelineEvent({
       organizationId: device.organizationId,
       subjectType: "CONTACT",
       subjectId: contactId,
       eventType: "wavoip_call",
       channel: "WAVOIP",
+      actorUserId: callLog.initiatedByUserId,
       payload: {
         title: `Chamada Wavoip — ${status}`,
         whatsappCallId,
         direction,
         status,
         durationSec,
+        agentName,
       },
     });
   }
