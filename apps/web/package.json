@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@openconduit/shared": "*",
+    "@wavoip/wavoip-api": "^2.4.2",
     "@xyflow/react": "^12.10.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

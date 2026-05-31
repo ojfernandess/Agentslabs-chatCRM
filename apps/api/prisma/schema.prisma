@@ -208,6 +208,9 @@ model Organization {
   chatbotFlows                   ChatbotFlow[]
   leadFinderSegments             LeadFinderSegment[]
   leadFinderSchedules            LeadFinderSchedule[]
+  wavoipDevices                  WavoipDevice[]
+  wavoipCallLogs                 WavoipCallLog[]
+  wavoipIntegrationLogs          WavoipIntegrationLog[]
 
   @@map("organizations")
 }
@@ -248,6 +251,7 @@ model Inbox {
   members            InboxMember[]
   conversations      Conversation[]
   broadcastCampaigns BroadcastCampaign[]
+  wavoipDevices      WavoipDevice[]
 
   @@index([organizationId])
   @@index([agentBotId])
@@ -488,6 +492,7 @@ model User {
   teamChannelMessages          TeamChannelMessage[]          @relation("TeamChannelMessageAuthor")
   teamChannelMessageReactions  TeamChannelMessageReaction[]  @relation("TeamChannelMessageReactionUser")
   teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
+  assignedWavoipDevices        WavoipDevice[]                @relation("WavoipDeviceAssignee")
 
   @@index([organizationId])
   @@map("users")
@@ -577,6 +582,7 @@ model Contact {
   reminders           Reminder[]
   dealsPrimary        Deal[]                       @relation("DealPrimaryContact")
   broadcastRecipients BroadcastCampaignRecipient[]
+  wavoipCallLogs      WavoipCallLog[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -841,6 +847,7 @@ model Conversation {
   automationInteractions AutomationInteraction[]
   automationExecutions   AutomationExecution[]
   chatbotFlowSession     ChatbotFlowSession?
+  wavoipCallLogs         WavoipCallLog[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -910,6 +917,7 @@ model Message {
 
   actorUserId String? @map("actor_user_id") @db.Uuid
   actorUser   User?   @relation("MessageActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  wavoipCallLog WavoipCallLog?
 
   @@index([conversationId])
   @@index([providerMsgId])
@@ -1701,4 +1709,114 @@ model LeadFinderSchedule {
   @@index([organizationId])
   @@index([enabled, nextRunAt])
   @@map("lead_finder_schedules")
+}
+
+enum WavoipConnectionMode {
+  QR_NATIVE
+  EXTERNAL_EVOLUTION
+  EXTERNAL_BAILEYS
+  SIP
+}
+
+enum WavoipDeviceStatus {
+  DISCONNECTED
+  BUILDING
+  CONNECTING
+  OPEN
+  CLOSE
+  RESTARTING
+  HIBERNATING
+  WAITING_PAYMENT
+  EXTERNAL_INTEGRATION_ERROR
+  ERROR
+}
+
+model WavoipDevice {
+  id               String               @id @default(uuid()) @db.Uuid
+  name             String               @db.VarChar(120)
+  deviceTokenEnc   String               @map("device_token_enc") @db.Text
+  connectionMode   WavoipConnectionMode @default(QR_NATIVE) @map("connection_mode")
+  status           WavoipDeviceStatus   @default(DISCONNECTED)
+  linkedPhone      String?              @map("linked_phone") @db.VarChar(32)
+  webhookSecretEnc String?              @map("webhook_secret_enc") @db.Text
+  webhookEnabled   Boolean              @default(true) @map("webhook_enabled")
+  webhookEvents    Json?                @map("webhook_events")
+  sipEnabled       Boolean              @default(false) @map("sip_enabled")
+  outboundIntegrations Json?              @map("outbound_integrations")
+  inboxId          String?              @map("inbox_id") @db.Uuid
+  assignedUserId   String?              @map("assigned_user_id") @db.Uuid
+  externalConfig   Json?                @map("external_config")
+  lastStatusAt     DateTime?            @map("last_status_at")
+  lastError        String?              @map("last_error") @db.Text
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inbox          Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  assignedUser   User?        @relation("WavoipDeviceAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  callLogs        WavoipCallLog[]
+  integrationLogs WavoipIntegrationLog[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("wavoip_devices")
+}
+
+model WavoipCallLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  whatsappCallId Int       @map("whatsapp_call_id")
+  idSession      Int       @map("id_session")
+  direction      String    @db.VarChar(16)
+  caller         String    @db.VarChar(32)
+  receiver       String    @db.VarChar(32)
+  status         String    @db.VarChar(64)
+  durationSec    Int?      @map("duration_sec")
+  recordStatus   String?   @map("record_status") @db.VarChar(32)
+  recordUrl      String?   @map("record_url") @db.VarChar(2048)
+  callType       String?   @map("call_type") @db.VarChar(32)
+  startedAt      DateTime? @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  rawPayload     Json?     @map("raw_payload")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  wavoipDeviceId String       @map("wavoip_device_id") @db.Uuid
+  wavoipDevice   WavoipDevice @relation(fields: [wavoipDeviceId], references: [id], onDelete: Cascade)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  messageId String?  @unique @map("message_id") @db.Uuid
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@unique([wavoipDeviceId, whatsappCallId])
+  @@index([organizationId])
+  @@index([wavoipDeviceId])
+  @@map("wavoip_call_logs")
+}
+
+model WavoipIntegrationLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  level     String   @db.VarChar(16)
+  eventType String   @map("event_type") @db.VarChar(64)
+  message   String   @db.Text
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  wavoipDeviceId String?       @map("wavoip_device_id") @db.Uuid
+  wavoipDevice   WavoipDevice? @relation(fields: [wavoipDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("wavoip_integration_logs")
 }

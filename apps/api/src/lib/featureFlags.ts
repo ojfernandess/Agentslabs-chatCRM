@@ -62,6 +62,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "teams_realtime_ops",
     defaultEnabled: false,
   },
+  {
+    key: "wavoip_voice",
+    defaultEnabled: true,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

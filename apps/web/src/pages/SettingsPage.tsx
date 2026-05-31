@@ -22,7 +22,9 @@ import {
   Search,
   Palette,
   CheckCheck,
+  Phone,
 } from "lucide-react";
+import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
 import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvidersOverview";
@@ -85,7 +87,8 @@ type SettingsSection =
   | "crm"
   | "templates"
   | "tags"
-  | "team";
+  | "team"
+  | "wavoip";
 
 type CsatRatingType = "number" | "star" | "emoji";
 
@@ -203,13 +206,15 @@ export function SettingsPage() {
   const { t } = useI18n();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const showLeadFinder = user?.organizationFeatures?.lead_finder ?? false;
+  const showWavoip = (user?.organizationFeatures?.wavoip_voice ?? true) && isAdmin;
   const initialSection = searchParams.get("section");
   const [section, setSection] = useState<SettingsSection>(() => {
     if (initialSection === "leadFinder" && showLeadFinder) return "leadFinder";
+    if (initialSection === "wavoip" && showWavoip) return "wavoip";
     return "channel";
   });
-  const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const effectiveOrgId = user?.actingOrganizationId ?? user?.organizationId ?? null;
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1238,6 +1243,7 @@ export function SettingsPage() {
                   ["assistant", t("settings.sectionAssistant"), Sparkles],
                   ...(showLeadFinder ? ([["leadFinder", t("settings.sectionLeadFinder"), Search]] as const) : []),
                   ["crm", t("settings.sectionCrm"), Tag],
+                  ...(showWavoip ? ([["wavoip", t("settings.sectionWavoip"), Phone]] as const) : []),
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["tags", t("settings.sectionTags"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -2922,6 +2928,12 @@ export function SettingsPage() {
                     {t("settings.sectionTeam")}
                   </h2>
                   <TeamSettingsPanel isAdmin={isAdmin} currentUserId={user?.id} />
+                </motion.div>
+              )}
+
+              {section === "wavoip" && showWavoip && (
+                <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
+                  <WavoipIntegrationSettings />
                 </motion.div>
               )}
             </motion.div>

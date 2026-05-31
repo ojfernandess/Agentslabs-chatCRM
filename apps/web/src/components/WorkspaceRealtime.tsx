@@ -60,6 +60,12 @@ export function WorkspaceRealtime() {
       teamName?: string | null;
       conversationId?: string;
       awaitingHumanHandoff?: boolean;
+      caller?: string;
+      deviceId?: string;
+      whatsappCallId?: number;
+      contactId?: string | null;
+      status?: string;
+      linkedPhone?: string | null;
     }) => {
       if (data.type === "conversation.transferred") {
         const contact = data.contact?.name ?? "—";
@@ -78,6 +84,14 @@ export function WorkspaceRealtime() {
             detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
           }),
         );
+      } else if (data.type === "wavoip.call.incoming") {
+        const caller = (data.caller ?? "").trim() || translate(locale, "wavoip.voice.unknownCaller");
+        const msg = translate(locale, "wavoip.voice.incomingToast").replace("{caller}", caller);
+        pushToast(msg);
+        playTransferChime();
+        window.dispatchEvent(new CustomEvent("openconduit:wavoip-call-incoming", { detail: data }));
+      } else if (data.type === "wavoip.device.updated") {
+        window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));
       }
     };
 

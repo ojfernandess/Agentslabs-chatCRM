@@ -19,6 +19,8 @@ import { settingsRoutes } from "./routes/settings.js";
 import { userRoutes } from "./routes/users.js";
 import { userInvitationRoutes } from "./routes/userInvitations.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { wavoipIntegrationRoutes } from "./routes/wavoipIntegration.js";
+import { wavoipVoiceRoutes } from "./routes/wavoipVoice.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { reportsRoutes } from "./routes/reports.js";
@@ -53,6 +55,7 @@ import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
+import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
 
 const app = Fastify({
   logger: {
@@ -159,6 +162,8 @@ await app.register(cannedResponseRoutes, { prefix: "/api/v1/canned-responses" })
 await app.register(broadcastRoutes, { prefix: "/api/v1/broadcasts" });
 await app.register(leadFinderRoutes, { prefix: "/api/v1/lead-finder" });
 await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
+await app.register(wavoipIntegrationRoutes, { prefix: "/api/v1/settings/wavoip" });
+await app.register(wavoipVoiceRoutes, { prefix: "/api/v1/wavoip" });
 await app.register(userRoutes, { prefix: "/api/v1/users" });
 await app.register(userInvitationRoutes, { prefix: "/api/v1/users/invites" });
 await app.register(inboxRoutes, { prefix: "/api/v1/inboxes" });
@@ -218,6 +223,11 @@ try {
     void runConversationMediaRetentionTick({ log: app.log });
   }, mediaRetentionMs);
   void runConversationMediaRetentionTick({ log: app.log });
+  const wavoipStatusSyncMs = 5 * 60 * 1000;
+  setInterval(() => {
+    void runWavoipStatusSyncTick(app.log);
+  }, wavoipStatusSyncMs);
+  void runWavoipStatusSyncTick(app.log);
 } catch (err) {
   app.log.error(err);
   process.exit(1);

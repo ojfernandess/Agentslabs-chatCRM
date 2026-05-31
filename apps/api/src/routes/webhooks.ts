@@ -29,6 +29,7 @@ import {
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
+import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -813,4 +814,52 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       },
     );
   }
+
+  app.post<{ Params: { organizationId: string; deviceId: string } }>(
+    "/wavoip/:organizationId/:deviceId",
+    webhookPostOpts,
+    async (request, reply) => {
+      const device = await prisma.wavoipDevice.findFirst({
+        where: {
+          id: request.params.deviceId,
+          organizationId: request.params.organizationId,
+        },
+      });
+      if (!device) {
+        return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
+      }
+
+      const headerSecret =
+        (request.headers["x-wavoip-webhook-secret"] as string | undefined) ??
+        (request.headers["x-openconduit-token"] as string | undefined);
+
+      if (!verifyWavoipWebhookSecret(device, headerSecret)) {
+        return reply.status(401).send({ error: "Unauthorized", message: "Invalid webhook secret", statusCode: 401 });
+      }
+
+      const body = normalizeJsonBody(request.body);
+      if (body === null) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid JSON body", statusCode: 400 });
+      }
+
+      try {
+        const result = await handleWavoipWebhook(
+          app,
+          request.params.organizationId,
+          request.params.deviceId,
+          body,
+        );
+        if (!result.ok) {
+          return reply.status(result.status).send({
+            error: result.status === 404 ? "Not Found" : "Error",
+            message: result.message,
+            statusCode: result.status,
+          });
+        }
+        return { ok: true };
+      } catch {
+        return reply.status(500).send({ error: "Internal Server Error", message: "Webhook failed", statusCode: 500 });
+      }
+    },
+  );
 }

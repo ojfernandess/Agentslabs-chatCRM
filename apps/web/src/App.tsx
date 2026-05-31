@@ -13,6 +13,7 @@ import { ContactsPage } from "@/pages/ContactsPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { RemindersPage } from "@/pages/RemindersPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { WavoipQrConnectPage } from "@/pages/settings/WavoipQrConnectPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { CrmKanbanPage } from "@/pages/CrmKanbanPage";
 import { DealsPage } from "@/pages/DealsPage";
@@ -145,6 +146,7 @@ export function App() {
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/wavoip/:deviceId/qr" element={<WavoipQrConnectPage />} />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="inboxes" element={<InboxesPage />} />
         <Route path="bots" element={<BotsPage />} />

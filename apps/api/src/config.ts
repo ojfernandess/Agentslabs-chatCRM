@@ -49,6 +49,11 @@ export function webhookUrlForInbox(organizationId: string, inboxId: string): str
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}/${inboxId}`;
 }
 
+/** Webhook Wavoip (Beta) por dispositivo. */
+export function wavoipWebhookUrlForDevice(organizationId: string, deviceId: string): string {
+  return `${getPublicOrigin()}/webhooks/wavoip/${organizationId}/${deviceId}`;
+}
+
 /** Callback único para todas as organizações quando se usa WhatsApp Embedded (Meta). */
 export function metaEmbeddedWebhookUrl(): string {
   return `${getPublicOrigin()}/webhooks/meta/whatsapp`;

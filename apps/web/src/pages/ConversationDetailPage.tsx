@@ -79,6 +79,7 @@ import {
   shouldDisplayClosureValueBadge,
 } from "@/lib/closureValueRollup";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
+import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
@@ -2399,6 +2400,11 @@ export function ConversationDetailPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <WavoipCallButton
+                      phone={conversation.contact.phone}
+                      inboxId={conversation.inbox?.id}
+                      compact
+                    />
                     {copilotEnabled ? (
                       <Link
                         to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
