@@ -8,7 +8,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
-import { unlockAudioAlerts } from "@/lib/audioAlerts";
+import { playIncomingCallRing, stopIncomingCallRing, unlockAudioAlerts } from "@/lib/audioAlerts";
 import { resolveTerminalCallStatus } from "@/lib/callDuration";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -60,24 +60,6 @@ type WavoipVoiceContextValue = {
 };
 
 const WavoipVoiceContext = createContext<WavoipVoiceContextValue | null>(null);
-
-function playIncomingRing(): void {
-  try {
-    const ctx = new AudioContext();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.frequency.value = 660;
-    g.gain.setValueAtTime(0.06, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    o.start(ctx.currentTime);
-    o.stop(ctx.currentTime + 0.35);
-    setTimeout(() => void ctx.close(), 500);
-  } catch {
-    /* ignore */
-  }
-}
 
 async function reportCallComplete(meta: ActiveCallMeta, status: string, durationSec: number | null) {
   try {
@@ -215,12 +197,15 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         wavoipRef.current = wavoip;
 
         wavoip.on("offer", (offer) => {
-          void unlockAudioAlerts();
-          playIncomingRing();
+          void playIncomingCallRing();
           setIncomingOffer(offer);
-          offer.on("ended", () => setIncomingOffer((cur) => (cur === offer ? null : cur)));
-          offer.on("acceptedElsewhere", () => setIncomingOffer((cur) => (cur === offer ? null : cur)));
-          offer.on("rejectedElsewhere", () => setIncomingOffer((cur) => (cur === offer ? null : cur)));
+          const clearOffer = () => {
+            stopIncomingCallRing();
+            setIncomingOffer((cur) => (cur === offer ? null : cur));
+          };
+          offer.on("ended", clearOffer);
+          offer.on("acceptedElsewhere", clearOffer);
+          offer.on("rejectedElsewhere", clearOffer);
         });
 
         setReady(true);
@@ -284,6 +269,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     const pending = pendingIncomingRef.current;
     const { call, err } = await offer.accept();
     if (err || !call) return;
+    stopIncomingCallRing();
     setIncomingOffer(null);
 
     const conversationId = pending?.conversationId ?? null;
@@ -313,10 +299,12 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     const offer = incomingOffer;
     if (!offer) return;
     await offer.reject();
+    stopIncomingCallRing();
     setIncomingOffer(null);
   }, [incomingOffer]);
 
   const dismissIncoming = useCallback(() => {
+    stopIncomingCallRing();
     setIncomingOffer(null);
   }, []);
 

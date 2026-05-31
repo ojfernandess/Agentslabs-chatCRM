@@ -4,6 +4,7 @@ import { isSuperAdminRole } from "@/lib/authRole";
 import { AnimatePresence, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { translate } from "@/i18n/messages";
+import { playIncomingCallRing } from "@/lib/audioAlerts";
 
 const TOKEN_KEY = "openconduit_token";
 
@@ -97,7 +98,7 @@ export function WorkspaceRealtime() {
         const caller = (data.caller ?? "").trim() || translate(locale, "wavoip.voice.unknownCaller");
         const msg = translate(locale, "wavoip.voice.incomingToast").replace("{caller}", caller);
         pushToast(msg);
-        playTransferChime();
+        void playIncomingCallRing();
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-call-incoming", { detail: data }));
       } else if (data.type === "wavoip.device.updated") {
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));

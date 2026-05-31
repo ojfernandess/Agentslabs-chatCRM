@@ -76,3 +76,82 @@ export async function playAudioAlert(sound: AudioAlertSoundPref, volume = 0.9) {
   }
 }
 
+let incomingRingGeneration = 0;
+let incomingRingInterval: ReturnType<typeof setInterval> | null = null;
+let incomingRingStopTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleTone(
+  c: AudioContext,
+  master: GainNode,
+  t0: number,
+  freq: number,
+  at: number,
+  dur: number,
+  peakGain: number,
+) {
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq, t0 + at);
+  gain.gain.setValueAtTime(0.0001, t0 + at);
+  gain.gain.exponentialRampToValueAtTime(peakGain, t0 + at + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+  osc.connect(gain);
+  gain.connect(master);
+  osc.start(t0 + at);
+  osc.stop(t0 + at + dur + 0.05);
+}
+
+async function playIncomingRingBurst(volume = 0.22): Promise<void> {
+  const c = getCtx();
+  if (c.state !== "running") await c.resume();
+  const t0 = c.currentTime;
+  const master = c.createGain();
+  master.gain.value = Math.max(0, Math.min(1, volume));
+  master.connect(c.destination);
+  scheduleTone(c, master, t0, 440, 0, 0.22, 0.85);
+  scheduleTone(c, master, t0, 480, 0.26, 0.22, 0.85);
+  scheduleTone(c, master, t0, 440, 0.55, 0.22, 0.85);
+  scheduleTone(c, master, t0, 480, 0.81, 0.22, 0.85);
+}
+
+/** Stops the repeating Wavoip incoming-call ring. */
+export function stopIncomingCallRing(): void {
+  incomingRingGeneration += 1;
+  if (incomingRingInterval) {
+    clearInterval(incomingRingInterval);
+    incomingRingInterval = null;
+  }
+  if (incomingRingStopTimer) {
+    clearTimeout(incomingRingStopTimer);
+    incomingRingStopTimer = null;
+  }
+}
+
+/**
+ * Repeating phone-style ring for inbound Wavoip calls.
+ * Uses the shared AudioContext (must be unlocked via user gesture in Layout).
+ */
+export async function playIncomingCallRing(): Promise<void> {
+  try {
+    await unlockAudioAlerts();
+    if (incomingRingInterval) return;
+
+    const gen = ++incomingRingGeneration;
+
+    const tick = () => {
+      if (gen !== incomingRingGeneration) return;
+      void playIncomingRingBurst();
+    };
+
+    await playIncomingRingBurst();
+    incomingRingInterval = setInterval(tick, 2400);
+
+    incomingRingStopTimer = setTimeout(() => {
+      if (gen === incomingRingGeneration) stopIncomingCallRing();
+    }, 45_000);
+  } catch {
+    /* ignore */
+  }
+}
+
