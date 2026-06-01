@@ -25,9 +25,10 @@ Integrações externas em `outboundIntegrations` (JSON): targets `n8n` e `chatwo
 
 - Chave: `wavoip_voice` (Super Admin → Funcionalidades por tenant)
 - Default: **desativado** (ativar por organização no Super Admin)
-- Quando desativado: rotas admin `/settings/wavoip/*`, rotas agente `/wavoip/*`, webhook `POST /webhooks/wavoip/...` (403 `wavoip_voice_disabled`) e shell de voz no browser ficam ocultos
+- Quando desativado: rotas admin `/settings/wavoip/*`, rotas agente `/wavoip/*` e shell de voz no browser ficam ocultos. O webhook `POST /webhooks/wavoip/...` **continua a processar** eventos CALL/DEVICE para CRM (conversa, timeline, WS); orgs com dispositivos em `wavoip_devices` são tratadas como activas enquanto não existir linha explícita na flag.
 - **Migração legacy:** `20260612120000_wavoip_voice_legacy_backfill` activa `wavoip_voice` automaticamente para organizações que já têm linhas em `wavoip_devices` (sem alterar flags explicitamente definidas). No arranque da API, `ensureWavoipVoiceEnabledForOrgsWithDevices` repete a mesma regra por segurança.
-- Após deploy: agentes com sessão antiga podem precisar de **logout/login** para `organizationFeatures.wavoip_voice` actualizar na UI.
+- **Deploy:** reconstruir **API e web** (`docker compose build api web --no-cache && docker compose up -d api web`). Só actualizar a API deixa o browser com JS antigo (sem screen pop / eventos WS novos).
+- Após deploy: a UI refresca flags via `/auth/me` ao abrir o workspace; logout/login só se ainda não aparecer Wavoip.
 
 ## API (admin)
 

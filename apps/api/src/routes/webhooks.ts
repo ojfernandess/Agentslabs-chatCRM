@@ -830,23 +830,19 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
       }
 
-      const wavoipEnabled = await isOrganizationFeatureEnabled(
+      // Webhook CRM (conversa, timeline, WS) corre sempre que o device existe; a flag só bloqueia UI/API de agente.
+      const wavoipUiDisabled = !(await isOrganizationFeatureEnabled(
         request.params.organizationId,
         "wavoip_voice",
-      );
-      if (!wavoipEnabled) {
+      ));
+      if (wavoipUiDisabled) {
         await logWavoipIntegration({
           organizationId: request.params.organizationId,
           wavoipDeviceId: device.id,
-          level: "warn",
-          eventType: "webhook_blocked_flag",
+          level: "info",
+          eventType: "webhook_flag_ui_off",
           message:
-            "Webhook rejected: wavoip_voice disabled. Enable in Super Admin > Funcionalidades or pair a device after migration backfill.",
-        });
-        return reply.status(403).send({
-          error: "Forbidden",
-          message: "wavoip_voice_disabled",
-          statusCode: 403,
+            "Webhook processed with wavoip_voice off for UI; enable in Super Admin > Funcionalidades for agent voice shell.",
         });
       }
 

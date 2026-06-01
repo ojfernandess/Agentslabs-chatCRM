@@ -85,8 +85,18 @@ export async function isOrganizationFeatureEnabled(
     where: { organizationId_key: { organizationId, key } },
     select: { enabled: true },
   });
-  if (!row) return fallback;
-  return row.enabled;
+  if (row) return row.enabled;
+
+  // Tenants that already paired Wavoip before opt-in: treat as enabled until Super Admin sets a row.
+  if (key === "wavoip_voice") {
+    const legacyDevice = await prisma.wavoipDevice.findFirst({
+      where: { organizationId },
+      select: { id: true },
+    });
+    if (legacyDevice) return true;
+  }
+
+  return fallback;
 }
 
 /** Mapa de todas as flags conhecidas para o tenant (valores efectivos após fallback). */

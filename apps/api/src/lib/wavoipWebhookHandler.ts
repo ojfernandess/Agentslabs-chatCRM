@@ -341,7 +341,12 @@ async function handleCallEvent(
     notifyConversationCallActivity(device.organizationId, conversationId);
   }
 
-  if (isIncomingRing) {
+  const shouldNotifyIncoming =
+    isIncoming &&
+    !isTerminal &&
+    conversationId != null &&
+    (isIncomingRing || shouldWriteTimeline);
+  if (shouldNotifyIncoming) {
     const targetUserIds = await resolveIncomingCallTargetUserIds(device, device.organizationId);
     let contactName: string | null = null;
     if (contactId) {

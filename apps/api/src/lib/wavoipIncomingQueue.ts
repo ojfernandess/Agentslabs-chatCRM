@@ -78,12 +78,7 @@ export async function resolveIncomingCallTargetUserIds(
   const queue = parseIncomingQueue(device.externalConfig);
 
   if (queue.mode === "all") {
-    if (device.assignedUserId) return [device.assignedUserId];
-    const users = await prisma.user.findMany({
-      where: { organizationId },
-      select: { id: true },
-    });
-    return users.map((u) => u.id);
+    return null;
   }
 
   if (queue.mode === "assignee") {
