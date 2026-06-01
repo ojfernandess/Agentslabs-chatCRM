@@ -10,7 +10,10 @@ import {
   startAgentOutboundCall,
 } from "../lib/wavoipAgentCall.js";
 import { resolveWavoipCallContext } from "../lib/wavoipCallContext.js";
-import { filterWavoipDevicesForAgent } from "../lib/wavoipIncomingQueue.js";
+import {
+  filterWavoipDevicesForOutbound,
+  parseIncomingQueue,
+} from "../lib/wavoipIncomingQueue.js";
 import { runWavoipInboundScreenPop } from "../lib/wavoipInboundScreenPop.js";
 import { z } from "zod";
 
@@ -58,7 +61,7 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       },
       orderBy: { name: "asc" },
     });
-    const devices = await filterWavoipDevicesForAgent(request.user.id, allDevices);
+    const devices = await filterWavoipDevicesForOutbound(request.user.id, allDevices);
 
     return { data: devices.map(({ assignedUserId: _a, externalConfig: _e, ...d }) => d) };
   });
@@ -85,18 +88,21 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       },
       orderBy: { name: "asc" },
     });
-    const devices = await filterWavoipDevicesForAgent(request.user.id, allDevices);
+    const devices = await filterWavoipDevicesForOutbound(request.user.id, allDevices);
 
     const sessionDevices = devices
       .map((d) => {
         const token = decryptWavoipSecret(d.deviceTokenEnc);
         if (!token) return null;
+        const queue = parseIncomingQueue(d.externalConfig);
         return {
           id: d.id,
           name: d.name,
           linkedPhone: d.linkedPhone,
           inboxId: d.inboxId,
           token,
+          incomingQueueMode: queue.mode,
+          incomingQueueTeamId: queue.teamId,
         };
       })
       .filter((d): d is NonNullable<typeof d> => d != null);

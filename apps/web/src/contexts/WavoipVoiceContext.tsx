@@ -19,11 +19,18 @@ type SessionDevice = {
   linkedPhone: string | null;
   inboxId: string | null;
   token: string;
+  incomingQueueMode?: "all" | "assignee" | "team";
+  incomingQueueTeamId?: string | null;
 };
 
-type PendingIncomingMeta = {
+type IncomingCallEntry = {
+  offer: Offer;
+  deviceId: string;
+  incomingQueueMode: "all" | "assignee" | "team";
+  incomingQueueTeamId: string | null;
   conversationId: string | null;
   contactId: string | null;
+  contactName: string | null;
   caller: string;
   whatsappCallId?: number;
 };
@@ -42,6 +49,11 @@ type WavoipVoiceContextValue = {
   canPlaceCalls: boolean;
   devices: SessionDevice[];
   incomingOffer: Offer | null;
+  incomingCallCount: number;
+  incomingMinimized: boolean;
+  minimizeIncoming: () => void;
+  expandIncoming: () => void;
+  cycleIncomingCall: () => void;
   incomingScreenPopConversationId: string | null;
   incomingScreenPopContactName: string | null;
   openIncomingConversation: () => void;
@@ -115,19 +127,39 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const wavoipRef = useRef<Wavoip | null>(null);
   const devicesRef = useRef<SessionDevice[]>([]);
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
-  const pendingIncomingRef = useRef<PendingIncomingMeta | null>(null);
   const callStatusRef = useRef<string | null>(null);
   const finalizedCallIdsRef = useRef<Set<string>>(new Set());
   const [devices, setDevices] = useState<SessionDevice[]>([]);
   const [ready, setReady] = useState(false);
-  const [incomingOffer, setIncomingOffer] = useState<Offer | null>(null);
-  const [incomingScreenPopConversationId, setIncomingScreenPopConversationId] = useState<string | null>(null);
-  const [incomingScreenPopContactName, setIncomingScreenPopContactName] = useState<string | null>(null);
+  const [incomingCalls, setIncomingCalls] = useState<IncomingCallEntry[]>([]);
+  const [incomingMinimized, setIncomingMinimized] = useState(false);
   const [activeCall, setActiveCall] = useState<CallActive | CallOutgoing | null>(null);
   const [callStatus, setCallStatus] = useState<string | null>(null);
   const [activeCallConversationId, setActiveCallConversationId] = useState<string | null>(null);
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [callElapsedSec, setCallElapsedSec] = useState(0);
+
+  const headIncoming = incomingCalls[0] ?? null;
+  const incomingOffer = headIncoming?.offer ?? null;
+  const incomingScreenPopConversationId = headIncoming?.conversationId ?? null;
+  const incomingScreenPopContactName = headIncoming?.contactName ?? null;
+
+  const removeIncomingCall = useCallback((offerId: string) => {
+    setIncomingCalls((prev) => {
+      const next = prev.filter((e) => e.offer.id !== offerId);
+      if (next.length === 0) {
+        stopIncomingCallRing();
+        setIncomingMinimized(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const minimizeIncoming = useCallback(() => setIncomingMinimized(true), []);
+  const expandIncoming = useCallback(() => setIncomingMinimized(false), []);
+  const cycleIncomingCall = useCallback(() => {
+    setIncomingCalls((prev) => (prev.length < 2 ? prev : [...prev.slice(1), prev[0]!]));
+  }, []);
 
   const finalizeCall = useCallback(async (status: string) => {
     const meta = activeMetaRef.current;
@@ -227,21 +259,32 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         wavoipRef.current = wavoip;
 
         wavoip.on("offer", (offer) => {
-          void playIncomingCallRing();
-          setIncomingOffer(offer);
-          const clearOffer = () => {
-            stopIncomingCallRing();
-            setIncomingOffer((cur) => (cur === offer ? null : cur));
-            setIncomingScreenPopConversationId(null);
-            setIncomingScreenPopContactName(null);
+          const phone = (offer.peer.phone ?? "").trim();
+          const device =
+            devicesRef.current.find((d) => d.token === offer.device_token) ?? devicesRef.current[0];
+
+          const baseEntry: IncomingCallEntry = {
+            offer,
+            deviceId: device?.id ?? "",
+            incomingQueueMode: device?.incomingQueueMode ?? "all",
+            incomingQueueTeamId: device?.incomingQueueTeamId ?? null,
+            conversationId: null,
+            contactId: null,
+            contactName: offer.peer.displayName?.trim() || null,
+            caller: phone,
           };
+
+          setIncomingCalls((prev) => {
+            if (prev.some((e) => e.offer.id === offer.id)) return prev;
+            return [...prev, baseEntry];
+          });
+          void playIncomingCallRing();
+
+          const clearOffer = () => removeIncomingCall(offer.id);
           offer.on("ended", clearOffer);
           offer.on("acceptedElsewhere", clearOffer);
           offer.on("rejectedElsewhere", clearOffer);
 
-          const phone = (offer.peer.phone ?? "").trim();
-          const device =
-            devicesRef.current.find((d) => d.token === offer.device_token) ?? devicesRef.current[0];
           if (device && phone) {
             void api
               .post<{
@@ -258,21 +301,26 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
                 displayName: offer.peer.displayName ?? undefined,
               })
               .then((res) => {
-                pendingIncomingRef.current = {
-                  caller: res.caller,
-                  conversationId: res.conversationId,
-                  contactId: res.contactId,
-                  whatsappCallId: res.whatsappCallId,
-                };
-                setIncomingScreenPopConversationId(res.conversationId);
-                setIncomingScreenPopContactName(res.contactName);
+                setIncomingCalls((prev) =>
+                  prev.map((e) =>
+                    e.offer.id === offer.id
+                      ? {
+                          ...e,
+                          conversationId: res.conversationId,
+                          contactId: res.contactId,
+                          contactName: res.contactName,
+                          caller: res.caller,
+                          whatsappCallId: res.whatsappCallId,
+                        }
+                      : e,
+                  ),
+                );
                 dispatchInboundCrmEvents({
                   conversationId: res.conversationId,
                   contactId: res.contactId,
                   caller: res.caller,
                   whatsappCallId: res.whatsappCallId,
                 });
-                navigate(`/conversations/${res.conversationId}`);
               })
               .catch(() => {
                 /* webhook may still update later */
@@ -306,9 +354,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   }, [user, locale, navigate]);
 
   const openIncomingConversation = useCallback(() => {
-    const id = incomingScreenPopConversationId ?? pendingIncomingRef.current?.conversationId;
+    const id = headIncoming?.conversationId;
     if (id) navigate(`/conversations/${id}`);
-  }, [incomingScreenPopConversationId, navigate]);
+  }, [headIncoming?.conversationId, navigate]);
 
   useEffect(() => {
     if (!activeCall || callStartedAt == null) return;
@@ -320,36 +368,17 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(id);
   }, [activeCall, callStartedAt]);
 
-  useEffect(() => {
-    const onIncoming = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail as {
-        caller?: string;
-        conversationId?: string | null;
-        contactId?: string | null;
-        whatsappCallId?: number;
-      };
-      pendingIncomingRef.current = {
-        caller: (detail.caller ?? "").trim(),
-        conversationId: detail.conversationId ?? null,
-        contactId: detail.contactId ?? null,
-        whatsappCallId: detail.whatsappCallId,
-      };
-    };
-    window.addEventListener("openconduit:wavoip-call-incoming", onIncoming);
-    return () => window.removeEventListener("openconduit:wavoip-call-incoming", onIncoming);
-  }, []);
-
   const acceptIncoming = useCallback(async () => {
-    const offer = incomingOffer;
+    const entry = headIncoming;
+    const offer = entry?.offer;
     if (!offer) return;
     void unlockAudioAlerts();
-    const pending = pendingIncomingRef.current;
     const { call, err } = await offer.accept();
     if (err || !call) return;
-    stopIncomingCallRing();
-    setIncomingOffer(null);
+    removeIncomingCall(offer.id);
+    setIncomingMinimized(false);
 
-    const conversationId = pending?.conversationId ?? null;
+    const conversationId = entry.conversationId;
     if (conversationId && user?.id) {
       try {
         await api.patch(`/conversations/${conversationId}`, {
@@ -361,29 +390,38 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (entry.incomingQueueMode === "team" && entry.incomingQueueTeamId) {
+      navigate(`/teams?teamId=${encodeURIComponent(entry.incomingQueueTeamId)}`);
+    } else if (conversationId) {
+      navigate(`/conversations/${conversationId}`);
+    }
+
     const meta: ActiveCallMeta = {
       clientCallId: call.id,
       deviceId: devicesRef.current.find((d) => d.token === call.device_token)?.id ?? devicesRef.current[0]?.id ?? "",
       conversationId,
-      contactId: pending?.contactId ?? null,
+      contactId: entry.contactId,
       startedAt: Date.now(),
     };
-    pendingIncomingRef.current = null;
     bindActiveCall(call, meta);
-  }, [incomingOffer, bindActiveCall, user?.id]);
+  }, [headIncoming, bindActiveCall, user?.id, navigate, removeIncomingCall]);
 
   const rejectIncoming = useCallback(async () => {
-    const offer = incomingOffer;
+    const offer = headIncoming?.offer;
     if (!offer) return;
     await offer.reject();
-    stopIncomingCallRing();
-    setIncomingOffer(null);
-  }, [incomingOffer]);
+    removeIncomingCall(offer.id);
+  }, [headIncoming, removeIncomingCall]);
 
   const dismissIncoming = useCallback(() => {
-    stopIncomingCallRing();
-    setIncomingOffer(null);
-  }, []);
+    const offer = headIncoming?.offer;
+    if (offer) removeIncomingCall(offer.id);
+    else {
+      stopIncomingCallRing();
+      setIncomingCalls([]);
+      setIncomingMinimized(false);
+    }
+  }, [headIncoming, removeIncomingCall]);
 
   const endActiveCall = useCallback(async () => {
     if (!activeCall) return;
@@ -491,6 +529,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       canPlaceCalls,
       devices,
       incomingOffer,
+      incomingCallCount: incomingCalls.length,
+      incomingMinimized,
+      minimizeIncoming,
+      expandIncoming,
+      cycleIncomingCall,
       incomingScreenPopConversationId,
       incomingScreenPopContactName,
       openIncomingConversation,
@@ -511,6 +554,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       canPlaceCalls,
       devices,
       incomingOffer,
+      incomingCalls.length,
+      incomingMinimized,
+      minimizeIncoming,
+      expandIncoming,
+      cycleIncomingCall,
       incomingScreenPopConversationId,
       incomingScreenPopContactName,
       openIncomingConversation,

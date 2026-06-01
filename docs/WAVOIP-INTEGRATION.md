@@ -98,6 +98,13 @@ Falhas são registadas em `wavoip_integration_logs` (`outbound_n8n`, `outbound_c
 
 Respeita `wavoip_voice` por organização.
 
+### Fila de entrada vs. discagem
+
+- **Fila** (`incomingQueue`: all / assignee / team) define quem recebe **notificações** e offers de chamada entrante.
+- **Discagem** (ícones Ligar, discador, contatos) permanece disponível para agentes com acesso ao device (`assignedUserId` exclusivo), independentemente da fila.
+- Várias chamadas a tocar: fila no browser (ciclo entre chamadas); SDK Wavoip gere o device.
+- Ao **atender** com fila `team`, redireciona para `/teams?teamId=…`.
+
 ## UI
 
 ### Fase 1 — Admin

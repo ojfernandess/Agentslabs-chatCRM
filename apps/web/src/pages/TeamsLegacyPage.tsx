@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -10,6 +11,8 @@ import { TeamOperationalAdmin } from "@/components/teams-hub/TeamOperationalAdmi
 export function TeamsLegacyPage() {
   const { t } = useI18n();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const teamIdFromUrl = searchParams.get("teamId")?.trim() || undefined;
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const [newTeamName, setNewTeamName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -68,7 +71,7 @@ export function TeamsLegacyPage() {
             </form>
           </div>
         </motion.header>
-        <TeamOperationalAdmin key={refreshKey} />
+        <TeamOperationalAdmin key={refreshKey} teamId={teamIdFromUrl} />
       </div>
     </PageTransition>
   );

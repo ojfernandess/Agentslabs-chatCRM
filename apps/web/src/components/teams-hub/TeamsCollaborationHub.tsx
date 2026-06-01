@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -87,6 +87,7 @@ interface WorkspaceItem {
 export function TeamsCollaborationHub() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
 
   const channelsOn = user?.organizationFeatures?.teams_channels ?? false;
@@ -123,14 +124,16 @@ export function TeamsCollaborationHub() {
     try {
       const res = await api.get<{ data: TeamRow[] }>("/teams");
       setTeams(res.data);
+      const teamFromUrl = searchParams.get("teamId")?.trim();
       setSelectedId((prev) => {
+        if (teamFromUrl && res.data.some((t) => t.id === teamFromUrl)) return teamFromUrl;
         if (prev && res.data.some((t) => t.id === prev)) return prev;
         return res.data[0]?.id ?? null;
       });
     } catch {
       setTeams([]);
     }
-  }, []);
+  }, [searchParams]);
 
   const loadOverview = useCallback(async (teamId: string) => {
     try {

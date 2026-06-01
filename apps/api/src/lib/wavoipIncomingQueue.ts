@@ -34,16 +34,36 @@ export function mergeIncomingQueueIntoExternalConfig(
   return base;
 }
 
-export async function agentCanUseWavoipDevice(userId: string, device: WavoipDeviceQueueContext): Promise<boolean> {
+/** Discagem / sessão SDK: só exclui device reservado a outro agente (fila de entrada não bloqueia ícones). */
+export function agentCanPlaceCallsOnWavoipDevice(
+  userId: string,
+  device: WavoipDeviceQueueContext,
+): boolean {
   if (device.assignedUserId && device.assignedUserId !== userId) {
     return false;
   }
+  return true;
+}
+
+export async function filterWavoipDevicesForOutbound<T extends WavoipDeviceQueueContext>(
+  userId: string,
+  devices: T[],
+): Promise<T[]> {
+  return devices.filter((d) => agentCanPlaceCallsOnWavoipDevice(userId, d));
+}
+
+/** Quem pode receber notificação / offer de entrada conforme fila configurada. */
+export async function agentCanReceiveWavoipIncoming(
+  userId: string,
+  device: WavoipDeviceQueueContext,
+): Promise<boolean> {
+  if (!agentCanPlaceCallsOnWavoipDevice(userId, device)) return false;
 
   const queue = parseIncomingQueue(device.externalConfig);
   if (queue.mode === "all") return true;
 
   if (queue.mode === "assignee") {
-    return device.assignedUserId === userId;
+    return !device.assignedUserId || device.assignedUserId === userId;
   }
 
   if (queue.mode === "team") {
@@ -58,13 +78,21 @@ export async function agentCanUseWavoipDevice(userId: string, device: WavoipDevi
   return true;
 }
 
+/** @deprecated Use filterWavoipDevicesForOutbound ou agentCanReceiveWavoipIncoming conforme o caso. */
+export async function agentCanUseWavoipDevice(
+  userId: string,
+  device: WavoipDeviceQueueContext,
+): Promise<boolean> {
+  return agentCanReceiveWavoipIncoming(userId, device);
+}
+
 export async function filterWavoipDevicesForAgent<T extends WavoipDeviceQueueContext>(
   userId: string,
   devices: T[],
 ): Promise<T[]> {
   const results: T[] = [];
   for (const device of devices) {
-    if (await agentCanUseWavoipDevice(userId, device)) {
+    if (await agentCanReceiveWavoipIncoming(userId, device)) {
       results.push(device);
     }
   }
