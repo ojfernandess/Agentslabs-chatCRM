@@ -9,7 +9,11 @@ import type { JwtPayload } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { getRedisHealth } from "../lib/redisHealth.js";
-import { FEATURE_FLAG_DEFINITIONS, type FeatureFlagKey } from "../lib/featureFlags.js";
+import {
+  FEATURE_FLAG_DEFINITIONS,
+  isOrganizationFeatureEnabled,
+  type FeatureFlagKey,
+} from "../lib/featureFlags.js";
 import {
   DEFAULT_PIPELINE_STAGES,
   DEFAULT_TAGS,
@@ -370,14 +374,36 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       where: { organizationId: org.id },
     });
     const map = new Map(rows.map((r) => [r.key, r.enabled]));
+    const [wavoipDeviceCount, lastWavoipLog] = await Promise.all([
+      prisma.wavoipDevice.count({ where: { organizationId: org.id } }),
+      prisma.wavoipIntegrationLog.findFirst({
+        where: { organizationId: org.id },
+        orderBy: { createdAt: "desc" },
+        select: { eventType: true, message: true, level: true, createdAt: true },
+      }),
+    ]);
+    const flags = await Promise.all(
+      FEATURE_FLAG_DEFINITIONS.map(async (def) => {
+        const configuredInDb = map.has(def.key);
+        const dbEnabled = configuredInDb ? map.get(def.key)! : null;
+        const effectiveEnabled = await isOrganizationFeatureEnabled(org.id, def.key);
+        return {
+          key: def.key,
+          defaultEnabled: def.defaultEnabled,
+          configuredInDb,
+          dbEnabled,
+          enabled: effectiveEnabled,
+        };
+      }),
+    );
     return {
       organizationId: org.id,
       organizationName: org.name,
-      flags: FEATURE_FLAG_DEFINITIONS.map((def) => ({
-        key: def.key,
-        enabled: map.has(def.key) ? map.get(def.key)! : def.defaultEnabled,
-        defaultEnabled: def.defaultEnabled,
-      })),
+      wavoipDiagnostics: {
+        deviceCount: wavoipDeviceCount,
+        lastLog: lastWavoipLog,
+      },
+      flags,
     };
   });
 

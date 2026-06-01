@@ -18,7 +18,9 @@ RUN npm run build -w packages/shared
 FROM build-shared AS build
 COPY apps/web/ apps/web/
 ARG VITE_PUBLIC_ASSETS_VERSION=
+ARG APP_VERSION=0.1.0
 ENV VITE_PUBLIC_ASSETS_VERSION=$VITE_PUBLIC_ASSETS_VERSION
+ENV VITE_APP_VERSION=$APP_VERSION
 RUN npm run build -w apps/web
 
 # Serve with nginx

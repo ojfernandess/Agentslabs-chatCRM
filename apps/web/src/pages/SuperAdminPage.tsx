@@ -126,13 +126,25 @@ interface AuditPage {
 
 interface FeatureFlagRow {
   key: string;
+  /** Estado efectivo para o tenant (inclui legacy Wavoip com dispositivos pareados). */
   enabled: boolean;
   defaultEnabled: boolean;
+  configuredInDb: boolean;
+  dbEnabled: boolean | null;
 }
 
 interface FeatureFlagsPayload {
   organizationId: string;
   organizationName: string;
+  wavoipDiagnostics?: {
+    deviceCount: number;
+    lastLog: {
+      eventType: string;
+      message: string;
+      level: string;
+      createdAt: string;
+    } | null;
+  };
   flags: FeatureFlagRow[];
 }
 
@@ -2361,6 +2373,9 @@ export function SuperAdminPage() {
               <div>
                 <h1 className="text-xl font-bold text-gray-900">{t("superAdmin.featureFlags")}</h1>
                 <p className="mt-1 text-sm text-gray-500">{t("superAdmin.flagsSubtitle")}</p>
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {t("superAdmin.flagsSuperAdminHint")}
+                </p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600">{t("superAdmin.selectOrg")}</label>
@@ -2379,6 +2394,28 @@ export function SuperAdminPage() {
               {flagsLoading || !flagsPayload ? (
                 <p className="text-sm text-gray-500">{t("common.loading")}</p>
               ) : (
+                <>
+                  {flagsPayload.wavoipDiagnostics &&
+                  flagsPayload.wavoipDiagnostics.deviceCount > 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                      <p className="font-medium">{t("superAdmin.wavoipDiagTitle")}</p>
+                      <p className="mt-1 text-slate-600">
+                        {t("superAdmin.wavoipDiagDevices").replace(
+                          "{count}",
+                          String(flagsPayload.wavoipDiagnostics.deviceCount),
+                        )}
+                      </p>
+                      {flagsPayload.wavoipDiagnostics.lastLog ? (
+                        <p className="mt-2 font-mono text-xs text-slate-600">
+                          {flagsPayload.wavoipDiagnostics.lastLog.createdAt} ·{" "}
+                          {flagsPayload.wavoipDiagnostics.lastLog.eventType}:{" "}
+                          {flagsPayload.wavoipDiagnostics.lastLog.message.slice(0, 120)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-amber-700">{t("superAdmin.wavoipDiagNoLogs")}</p>
+                      )}
+                    </div>
+                  ) : null}
                 <ul className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                   {flagsPayload.flags.map((f) => (
                     <li
@@ -2389,6 +2426,21 @@ export function SuperAdminPage() {
                         <p className="font-medium text-gray-900">{flagTitle(f.key)}</p>
                         <p className="text-xs text-gray-500">
                           {f.key} · omissão: {f.defaultEnabled ? "on" : "off"}
+                          {f.configuredInDb
+                            ? ` · BD: ${f.dbEnabled ? "on" : "off"}`
+                            : " · BD: —"}
+                          {f.key === "wavoip_voice" &&
+                          f.configuredInDb &&
+                          f.dbEnabled === false &&
+                          (flagsPayload.wavoipDiagnostics?.deviceCount ?? 0) > 0 ? (
+                            <span className="block text-amber-700">{t("superAdmin.wavoipExplicitOff")}</span>
+                          ) : null}
+                          {f.key === "wavoip_voice" &&
+                          !f.configuredInDb &&
+                          (flagsPayload.wavoipDiagnostics?.deviceCount ?? 0) > 0 &&
+                          f.enabled ? (
+                            <span className="block text-emerald-700">{t("superAdmin.wavoipLegacyOn")}</span>
+                          ) : null}
                         </p>
                       </div>
                       <button
@@ -2411,6 +2463,7 @@ export function SuperAdminPage() {
                     </li>
                   ))}
                 </ul>
+                </>
               )}
             </div>
           )}

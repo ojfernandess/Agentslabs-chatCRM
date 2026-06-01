@@ -27,6 +27,9 @@ RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 # Build API
 FROM prisma-gen AS api-build
 
+ARG APP_VERSION=0.1.0
+ENV APP_VERSION=$APP_VERSION
+
 COPY apps/api/ apps/api/
 
 RUN npm run build -w apps/api
@@ -39,6 +42,8 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
+ARG APP_VERSION=0.1.0
+ENV APP_VERSION=$APP_VERSION
 
 # Raiz + node_modules aninhados do workspace (npm coloca ex. date-fns em apps/api/node_modules)
 COPY --from=deps /app/node_modules ./node_modules

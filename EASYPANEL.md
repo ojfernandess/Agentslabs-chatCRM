@@ -41,5 +41,20 @@ Se o deploy falhar com “port 80 already allocated”, não forces `80:80` no o
 
 - Contentores **api**, **web**, **caddy** em execução.
 - Abrir o URL configurado: o frontend deve responder; login chama `/api/v1/...`.
+- Versão da API em produção: `GET https://SEU_DOMINIO/health` → campo `version` (confirma rebuild da imagem **api**).
+- **Wavoip / alterações no CRM:** o EasyPanel costuma só reconstruir o serviço que mudou. Força rebuild de **api** e **web** (sem cache) e `up -d` nos dois; só API deixa o browser com JavaScript antigo.
+
+Comando no servidor (raiz do projeto):
+
+```bash
+docker compose build api web --no-cache
+docker compose up -d api web
+```
+
+## 6. Super admin e Wavoip
+
+- No painel **`/super`** não há chamadas de voz nem WebSocket do tenant — é normal.
+- Para testar ligações: **Organizações → Entrar na organização**, depois abrir **Conversas** como um agente.
+- **Funcionalidades:** o interruptor `wavoip_voice` mostra o estado **efectivo**; se existir dispositivo Wavoip e o último log estiver vazio, o webhook não está a chegar à API (rever `PUBLIC_URL` e URL no painel Wavoip).
 
 Se o domínio abrir mas o login falhar, confere logs da **api** e se `PUBLIC_URL` coincide com o que usas no browser (`https` vs `http`, subdomínio certo).

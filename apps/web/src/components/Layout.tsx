@@ -54,7 +54,7 @@ const navItems = [
 ] as const;
 
 export function Layout() {
-  const { user, logout, exitUserImpersonation } = useAuth();
+  const { user, logout, exitUserImpersonation, refreshUser } = useAuth();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,6 +84,11 @@ export function Layout() {
       document.title = orgLabel;
     }
   }, [orgLabel]);
+
+  useEffect(() => {
+    if (!user?.actingOrganizationId) return;
+    void refreshUser();
+  }, [user?.actingOrganizationId, refreshUser]);
 
   useEffect(() => {
     let cancelled = false;

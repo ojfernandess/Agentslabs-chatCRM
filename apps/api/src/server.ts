@@ -185,7 +185,10 @@ await app.register(botRoutes, { prefix: "/api/v1/bots" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check
-app.get("/health", async () => ({ status: "ok" }));
+app.get("/health", async () => ({
+  status: "ok",
+  version: process.env.APP_VERSION ?? "0.1.0",
+}));
 
 // Graceful shutdown
 const shutdown = async () => {

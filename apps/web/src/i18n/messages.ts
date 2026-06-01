@@ -3645,7 +3645,16 @@ export const messages = {
       resource: "Recurso",
       when: "Quando",
       flagsSubtitle:
-        "Ligar ou desligar módulos por tenant. Valores padrão aplicam-se quando não há registro. Quem já está com sessão aberta pode precisar recarregar a página.",
+        "Ligar ou desligar módulos por tenant. O interruptor reflecte o estado efectivo no tenant (o que a API aplica). Valores padrão aplicam-se quando não há registro na BD.",
+      flagsSuperAdminHint:
+        "Super admin: chamadas Wavoip, WebSocket e screen pop só funcionam depois de Entrar na organização (lista Organizações). No console /super não há voz nem lista de conversas do tenant.",
+      wavoipDiagTitle: "Diagnóstico Wavoip (tenant seleccionado)",
+      wavoipDiagDevices: "{count} dispositivo(s) pareado(s).",
+      wavoipDiagNoLogs:
+        "Sem logs de webhook — confirme PUBLIC_URL no EasyPanel, URL no painel Wavoip e rebuild dos serviços api + web.",
+      wavoipExplicitOff:
+        "Desligado na BD com dispositivos pareados: o tenant fica sem voz até activar aqui.",
+      wavoipLegacyOn: "Activo por legacy (dispositivos pareados, sem linha na BD).",
       selectOrg: "Organização",
       platformApiHint: "API REST para integrações (Bearer token)",
       prev: "Anterior",
@@ -7485,7 +7494,16 @@ export const messages = {
       resource: "Resource",
       when: "When",
       flagsSubtitle:
-        "Enable or disable modules per tenant. Defaults apply when there is no stored override. Users with an open session may need to refresh the page.",
+        "Enable or disable modules per tenant. The toggle reflects the effective state for the tenant (what the API applies). Defaults apply when there is no DB row.",
+      flagsSuperAdminHint:
+        "Super admin: Wavoip calls, WebSocket, and screen pop only work after Enter organization (Organizations list). On /super there is no tenant voice or conversation list.",
+      wavoipDiagTitle: "Wavoip diagnostics (selected tenant)",
+      wavoipDiagDevices: "{count} paired device(s).",
+      wavoipDiagNoLogs:
+        "No webhook logs yet — verify PUBLIC_URL on EasyPanel, Wavoip webhook URL, and rebuild api + web services.",
+      wavoipExplicitOff:
+        "Disabled in DB with paired devices: tenant voice stays off until enabled here.",
+      wavoipLegacyOn: "On via legacy (paired devices, no DB row).",
       selectOrg: "Organization",
       platformApiHint: "REST API for integrations (Bearer token)",
       prev: "Previous",
