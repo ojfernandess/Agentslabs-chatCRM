@@ -12,7 +12,7 @@ import {
 import clsx from "clsx";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
-import { isSuperAdminRole } from "@/lib/authRole";
+import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
 import { AnimatePresence, motion } from "@/components/Motion";
 
 const AVAIL_STORAGE = "openconduit_availability";
@@ -53,6 +53,7 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const superAdmin = isSuperAdminRole(user.role);
+  const tenantAdmin = isTenantAdmin(user.role, user.actingOrganizationId);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -251,17 +252,19 @@ export function UserProfileMenu({ user, className, onLogout }: UserProfileMenuPr
                 <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
                 <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.profileSettings")}</span>
               </button>
-              <button
-                type="button"
-                className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
-                onClick={() => {
-                  setOpen(false);
-                  navigate("/settings");
-                }}
-              >
-                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
-                <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.organizationSettings")}</span>
-              </button>
+              {tenantAdmin ? (
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60"
+                  onClick={() => {
+                    setOpen(false);
+                    navigate("/settings");
+                  }}
+                >
+                  <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
+                  <span className="min-w-0 flex-1 leading-snug">{t("profileMenu.organizationSettings")}</span>
+                </button>
+              ) : null}
               {superAdmin && user.actingOrganizationId ? (
                 <button
                   type="button"

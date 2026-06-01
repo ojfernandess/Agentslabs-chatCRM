@@ -949,21 +949,6 @@ export function AutomationPage() {
     void refreshTab();
   }, [refreshTab]);
 
-  if (!canAccess) {
-    return (
-      <PageTransition>
-      <div className="p-4 sm:p-6 lg:p-8">
-          <p className="text-ink-600 dark:text-ink-400">{t("automationPage.adminOnly")}</p>
-        </div>
-      </PageTransition>
-    );
-  }
-
-  const openNewAgentModal = () => {
-    setAgentForm(emptyAgentForm());
-    setAgentModalOpen(true);
-  };
-
   const openAgentFromPromptModule = useCallback((row: PromptModuleRow) => {
     const base = emptyAgentForm();
     const merged = applyPromptModuleSelectionToAgentForm(base, [row.id], [row]);
@@ -981,6 +966,21 @@ export function AutomationPage() {
     setTab("agents");
     setAgentModalOpen(true);
   }, []);
+
+  if (!canAccess) {
+    return (
+      <PageTransition>
+      <div className="p-4 sm:p-6 lg:p-8">
+          <p className="text-ink-600 dark:text-ink-400">{t("automationPage.adminOnly")}</p>
+        </div>
+      </PageTransition>
+    );
+  }
+
+  const openNewAgentModal = () => {
+    setAgentForm(emptyAgentForm());
+    setAgentModalOpen(true);
+  };
 
   const openEditAgentModal = (row: AgentProfileRow) => {
     setAgentForm(profileToForm(row));

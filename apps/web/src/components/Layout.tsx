@@ -141,6 +141,7 @@ export function Layout() {
         return;
       }
       if (k === "s") {
+        if (!tenantAdmin) return;
         e.preventDefault();
         navigate("/settings");
         return;
@@ -177,7 +178,7 @@ export function Layout() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate, location.pathname, location.search]);
+  }, [navigate, location.pathname, location.search, tenantAdmin]);
 
   useEffect(() => {
     const on = () => {

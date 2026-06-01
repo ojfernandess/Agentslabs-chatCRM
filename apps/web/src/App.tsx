@@ -29,6 +29,7 @@ import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { InboxesPage } from "@/pages/InboxesPage";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
+import { TenantAdminRoute } from "@/components/TenantAdminRoute";
 
 const ORG_FEATURE_DEFAULT_ENABLED = {
   crm_kanban: true,
@@ -134,7 +135,14 @@ export function App() {
         <Route path="conversations" element={<ConversationsPage />} />
         <Route path="conversations/:id" element={<ConversationDetailPage />} />
         <Route path="my-attendance" element={<MyAttendancePage />} />
-        <Route path="conversation-audit" element={<ConversationAuditPage />} />
+        <Route
+          path="conversation-audit"
+          element={
+            <TenantAdminRoute>
+              <ConversationAuditPage />
+            </TenantAdminRoute>
+          }
+        />
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="contacts/:id" element={<ContactDetailPage />} />
         <Route
@@ -155,20 +163,43 @@ export function App() {
         />
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route
+          path="settings"
+          element={
+            <TenantAdminRoute>
+              <SettingsPage />
+            </TenantAdminRoute>
+          }
+        />
         <Route
           path="settings/wavoip/:deviceId/qr"
           element={
-            <OrgFeatureRoute flagKey="wavoip_voice">
-              <WavoipQrConnectPage />
-            </OrgFeatureRoute>
+            <TenantAdminRoute>
+              <OrgFeatureRoute flagKey="wavoip_voice">
+                <WavoipQrConnectPage />
+              </OrgFeatureRoute>
+            </TenantAdminRoute>
           }
         />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="inboxes" element={<InboxesPage />} />
-        <Route path="bots" element={<BotsPage />} />
+        <Route
+          path="bots"
+          element={
+            <TenantAdminRoute>
+              <BotsPage />
+            </TenantAdminRoute>
+          }
+        />
         <Route path="automation" element={<AutomationPage />} />
-        <Route path="broadcasts" element={<BroadcastCampaignsPage />} />
+        <Route
+          path="broadcasts"
+          element={
+            <TenantAdminRoute>
+              <BroadcastCampaignsPage />
+            </TenantAdminRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
