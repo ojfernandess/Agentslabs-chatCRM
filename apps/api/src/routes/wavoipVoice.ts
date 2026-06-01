@@ -11,6 +11,7 @@ import {
 } from "../lib/wavoipAgentCall.js";
 import { resolveWavoipCallContext } from "../lib/wavoipCallContext.js";
 import { filterWavoipDevicesForAgent } from "../lib/wavoipIncomingQueue.js";
+import { runWavoipInboundScreenPop } from "../lib/wavoipInboundScreenPop.js";
 import { z } from "zod";
 
 function deviceAccessFilter(userId: string) {
@@ -127,6 +128,54 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return buildWavoipSipInfo(device, token);
+  });
+
+  /** Screen pop ao receber offer no browser (SDK) — não depende só do webhook Wavoip. */
+  app.post("/calls/incoming/screen-pop", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      wavoipDeviceId: z.string().uuid(),
+      phone: z.string().min(3).max(64),
+      clientCallId: z.string().min(1).max(128).optional(),
+      displayName: z.string().max(255).optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const device = await prisma.wavoipDevice.findFirst({
+      where: {
+        id: parsed.data.wavoipDeviceId,
+        organizationId,
+        status: "OPEN",
+        ...deviceAccessFilter(request.user.id),
+      },
+      select: { id: true },
+    });
+    if (!device) {
+      return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
+    }
+
+    const result = await runWavoipInboundScreenPop({
+      organizationId,
+      wavoipDeviceId: device.id,
+      callerPhone: parsed.data.phone,
+      clientCallId: parsed.data.clientCallId ?? null,
+      displayName: parsed.data.displayName ?? null,
+      broadcastWs: true,
+    });
+    if (!result) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "screen_pop_failed",
+        statusCode: 400,
+      });
+    }
+
+    return { ok: true, ...result };
   });
 
   app.post("/calls/outbound/start", async (request, reply) => {

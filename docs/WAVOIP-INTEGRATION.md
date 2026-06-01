@@ -59,6 +59,7 @@ Prefixo: `/api/v1/wavoip` (agente autenticado + `wavoip_voice`)
 |--------|------|-----------|
 | GET | `/devices/available` | Devices OPEN atribuíveis ao agente |
 | GET | `/session` | Tokens para `@wavoip/wavoip-api` (browser) |
+| POST | `/calls/incoming/screen-pop` | Screen pop CRM ao receber offer no browser |
 | GET | `/devices/:deviceId/sip` | Credenciais SIP (se permitido) |
 
 ## Webhook público
@@ -72,6 +73,7 @@ Eventos suportados ([Webhook Beta Wavoip](https://wavoip.gitbook.io/api/webhook-
 
 - **DEVICE** — atualiza status (`CONNECTING`, `OPEN`, etc.) + WS `wavoip.device.updated`
 - **CALL** — no primeiro toque (CREATE/RINGING): cria/reabre contacto e conversa **PENDING**, mensagem na timeline, WS `wavoip.call.incoming` + `conversation.updated` (screen pop estilo CRM). Ao encerrar, atualiza a mesma mensagem com duração/estado final.
+- **SDK offer (browser)** — ao tocar, `POST /wavoip/calls/incoming/screen-pop` garante fila/conversa sem depender só do webhook.
 - **RECORD** — anexa URL de gravação à chamada/conversa
 
 Configure a URL no painel Wavoip: **Integrações > Webhook**.

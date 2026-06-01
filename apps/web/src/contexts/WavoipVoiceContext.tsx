@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, createContext, useContext, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Wavoip,
   type CallActive,
@@ -41,6 +42,9 @@ type WavoipVoiceContextValue = {
   canPlaceCalls: boolean;
   devices: SessionDevice[];
   incomingOffer: Offer | null;
+  incomingScreenPopConversationId: string | null;
+  incomingScreenPopContactName: string | null;
+  openIncomingConversation: () => void;
   activeCall: CallActive | CallOutgoing | null;
   callStatus: string | null;
   activeCallConversationId: string | null;
@@ -81,9 +85,33 @@ async function reportCallComplete(meta: ActiveCallMeta, status: string, duration
   }
 }
 
+function dispatchInboundCrmEvents(detail: {
+  conversationId: string;
+  contactId: string | null;
+  caller: string;
+  whatsappCallId?: number;
+}) {
+  window.dispatchEvent(
+    new CustomEvent("openconduit:conversation-updated", {
+      detail: { conversationId: detail.conversationId },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("openconduit:wavoip-call-logged", {
+      detail: { conversationId: detail.conversationId, contactId: detail.contactId },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent("openconduit:wavoip-call-incoming", {
+      detail,
+    }),
+  );
+}
+
 export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { locale } = useI18n();
+  const navigate = useNavigate();
   const wavoipRef = useRef<Wavoip | null>(null);
   const devicesRef = useRef<SessionDevice[]>([]);
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
@@ -93,6 +121,8 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const [devices, setDevices] = useState<SessionDevice[]>([]);
   const [ready, setReady] = useState(false);
   const [incomingOffer, setIncomingOffer] = useState<Offer | null>(null);
+  const [incomingScreenPopConversationId, setIncomingScreenPopConversationId] = useState<string | null>(null);
+  const [incomingScreenPopContactName, setIncomingScreenPopContactName] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<CallActive | CallOutgoing | null>(null);
   const [callStatus, setCallStatus] = useState<string | null>(null);
   const [activeCallConversationId, setActiveCallConversationId] = useState<string | null>(null);
@@ -202,10 +232,52 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
           const clearOffer = () => {
             stopIncomingCallRing();
             setIncomingOffer((cur) => (cur === offer ? null : cur));
+            setIncomingScreenPopConversationId(null);
+            setIncomingScreenPopContactName(null);
           };
           offer.on("ended", clearOffer);
           offer.on("acceptedElsewhere", clearOffer);
           offer.on("rejectedElsewhere", clearOffer);
+
+          const phone = (offer.peer.phone ?? "").trim();
+          const device =
+            devicesRef.current.find((d) => d.token === offer.device_token) ?? devicesRef.current[0];
+          if (device && phone) {
+            void api
+              .post<{
+                ok: true;
+                conversationId: string;
+                contactId: string;
+                contactName: string | null;
+                whatsappCallId: number;
+                caller: string;
+              }>("/wavoip/calls/incoming/screen-pop", {
+                wavoipDeviceId: device.id,
+                phone,
+                clientCallId: offer.id,
+                displayName: offer.peer.displayName ?? undefined,
+              })
+              .then((res) => {
+                pendingIncomingRef.current = {
+                  caller: res.caller,
+                  conversationId: res.conversationId,
+                  contactId: res.contactId,
+                  whatsappCallId: res.whatsappCallId,
+                };
+                setIncomingScreenPopConversationId(res.conversationId);
+                setIncomingScreenPopContactName(res.contactName);
+                dispatchInboundCrmEvents({
+                  conversationId: res.conversationId,
+                  contactId: res.contactId,
+                  caller: res.caller,
+                  whatsappCallId: res.whatsappCallId,
+                });
+                navigate(`/conversations/${res.conversationId}`);
+              })
+              .catch(() => {
+                /* webhook may still update later */
+              });
+          }
         });
 
         setReady(true);
@@ -231,7 +303,12 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
       wavoipRef.current = null;
     };
-  }, [user, locale]);
+  }, [user, locale, navigate]);
+
+  const openIncomingConversation = useCallback(() => {
+    const id = incomingScreenPopConversationId ?? pendingIncomingRef.current?.conversationId;
+    if (id) navigate(`/conversations/${id}`);
+  }, [incomingScreenPopConversationId, navigate]);
 
   useEffect(() => {
     if (!activeCall || callStartedAt == null) return;
@@ -414,6 +491,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       canPlaceCalls,
       devices,
       incomingOffer,
+      incomingScreenPopConversationId,
+      incomingScreenPopContactName,
+      openIncomingConversation,
       activeCall,
       callStatus,
       activeCallConversationId,
@@ -431,6 +511,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       canPlaceCalls,
       devices,
       incomingOffer,
+      incomingScreenPopConversationId,
+      incomingScreenPopContactName,
+      openIncomingConversation,
       activeCall,
       callStatus,
       activeCallConversationId,

@@ -27,7 +27,11 @@ export function formatWavoipCallMessageBody(input: {
     input.durationSec != null && input.durationSec > 0
       ? ` (${Math.floor(input.durationSec / 60)}m ${input.durationSec % 60}s)`
       : "";
-  let body = `[Wavoip] Chamada ${dirLabel} — ${peer} — ${status}${dur}`;
+  const statusLabel =
+    input.direction === "INCOMING" && (status === "RINGING" || status === "NONE" || status === "CALLING")
+      ? "a tocar"
+      : status;
+  let body = `[Wavoip] Chamada ${dirLabel} — ${peer} — ${statusLabel}${dur}`;
   if (input.recordUrl?.trim()) {
     body += `\nGravação: ${input.recordUrl.trim()}`;
   }

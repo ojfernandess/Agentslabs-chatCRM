@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { findContactByInboundPhone } from "./contactPhoneMatch.js";
 import {
   ensureConversationForChannelInbox,
-  reopenResolvedConversationData,
 } from "./conversationRouting.js";
-import { normalizeDialPhone } from "./wavoipCallContext.js";
+import {
+  ensureContactForInboundCall,
+  touchConversationForInboundCall,
+} from "./wavoipInboundScreenPop.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { fireBroadcastEventTriggers } from "./broadcastEventHooks.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
@@ -50,80 +51,8 @@ async function resolveInboxIdForDevice(device: { inboxId: string | null }, organ
   return getDefaultInboxId(organizationId);
 }
 
-/** Atualiza conversa ao tocar (screen pop estilo CRM): sobe na fila e reabre pendente se necessário. */
-async function touchConversationForInboundCall(
-  conversationId: string,
-  isTerminal: boolean,
-): Promise<void> {
-  const conv = await prisma.conversation.findUnique({
-    where: { id: conversationId },
-    select: { status: true, assignedToId: true },
-  });
-  if (!conv) return;
-
-  if (isTerminal) {
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-    return;
-  }
-
-  if (conv.status === "RESOLVED") {
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: reopenResolvedConversationData("PENDING"),
-    });
-    return;
-  }
-
-  if (!conv.assignedToId && conv.status === "OPEN") {
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { status: "PENDING", updatedAt: new Date() },
-    });
-    return;
-  }
-
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { updatedAt: new Date() },
-  });
-}
-
 function notifyConversationCallActivity(organizationId: string, conversationId: string): void {
   broadcastConversationUpdated(organizationId, conversationId);
-}
-
-async function ensureContactForCall(
-  organizationId: string,
-  peerPhoneRaw: string,
-  deviceLinkedPhone: string | null,
-): Promise<{ contactId: string; created: boolean } | null> {
-  const normalized = normalizeDialPhone(peerPhoneRaw);
-  if (!normalized) return null;
-
-  let contact = await findContactByInboundPhone(prisma, organizationId, normalized);
-  if (contact) return { contactId: contact.id, created: false };
-
-  try {
-    contact = await prisma.contact.create({
-      data: {
-        organizationId,
-        phone: normalized,
-        name: normalized,
-        notes: deviceLinkedPhone ? `[Wavoip] Chamada vinculada ao device ${deviceLinkedPhone}` : "[Wavoip] Contato via chamada",
-      },
-    });
-    return { contactId: contact.id, created: true };
-  } catch (err) {
-    const code = typeof err === "object" && err && "code" in err ? String((err as { code: string }).code) : "";
-    if (code === "P2002") {
-      contact = await findContactByInboundPhone(prisma, organizationId, normalized);
-      if (contact) return { contactId: contact.id, created: false };
-    }
-    throw err;
-  }
 }
 
 async function handleDeviceEvent(
@@ -211,7 +140,7 @@ async function handleCallEvent(
   const durationSec = typeof payload.duration === "number" ? payload.duration : null;
 
   const peerPhone = direction === "INCOMING" ? caller : receiver;
-  const contactResult = await ensureContactForCall(device.organizationId, peerPhone, device.linkedPhone);
+  const contactResult = await ensureContactForInboundCall(device.organizationId, peerPhone, device.linkedPhone);
 
   let conversationId: string | null = null;
   let contactId: string | null = contactResult?.contactId ?? null;
@@ -255,6 +184,24 @@ async function handleCallEvent(
     absorbedMessageId = provisional.messageId;
     conversationId = provisional.conversationId ?? conversationId;
     await prisma.wavoipCallLog.delete({ where: { id: provisional.id } });
+  }
+
+  let absorbedProvisionalMessageId: string | null = null;
+  if (isIncoming && contactId && whatsappCallId > 0) {
+    const provisionalRing = await prisma.wavoipCallLog.findFirst({
+      where: {
+        wavoipDeviceId: device.id,
+        contactId,
+        direction: "INCOMING",
+        whatsappCallId: { lt: 0 },
+        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (provisionalRing) {
+      absorbedProvisionalMessageId = provisionalRing.messageId;
+      await prisma.wavoipCallLog.delete({ where: { id: provisionalRing.id } }).catch(() => {});
+    }
   }
 
   const callLog = await prisma.wavoipCallLog.upsert({
@@ -305,7 +252,7 @@ async function handleCallEvent(
     (isIncoming && ["ACTIVE", "CALLING", "CONNECTING"].includes(status)) ||
     (direction === "OUTGOING" && !isTerminal);
 
-  let messageId: string | null = callLog.messageId ?? absorbedMessageId;
+  let messageId: string | null = callLog.messageId ?? absorbedMessageId ?? absorbedProvisionalMessageId;
   if (conversationId && shouldWriteTimeline) {
     messageId =
       (await upsertWavoipTimelineMessage({
