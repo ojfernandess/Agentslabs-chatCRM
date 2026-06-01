@@ -70,9 +70,27 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "threecx_voice",
     defaultEnabled: false,
   },
+  {
+    key: "nvoip_voice",
+    defaultEnabled: false,
+  },
+  {
+    key: "nvoip_sms",
+    defaultEnabled: false,
+  },
+  {
+    key: "nvoip_otp",
+    defaultEnabled: false,
+  },
+  {
+    key: "nvoip_whatsapp",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];
+
+const NVOIP_FEATURE_KEYS = ["nvoip_voice", "nvoip_sms", "nvoip_otp", "nvoip_whatsapp"] as const;
 
 export async function isOrganizationFeatureEnabled(
   organizationId: string,
@@ -97,6 +115,13 @@ export async function isOrganizationFeatureEnabled(
   }
 
   return fallback;
+}
+
+export async function isAnyNvoipFeatureEnabled(organizationId: string): Promise<boolean> {
+  for (const key of NVOIP_FEATURE_KEYS) {
+    if (await isOrganizationFeatureEnabled(organizationId, key)) return true;
+  }
+  return false;
 }
 
 /** Mapa de todas as flags conhecidas para o tenant (valores efectivos após fallback). */

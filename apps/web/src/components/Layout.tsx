@@ -36,6 +36,7 @@ import type { LocaleCode } from "@/i18n/messages";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WavoipVoiceShell } from "@/components/wavoip/WavoipVoiceShell";
 import { ThreeCxVoiceShell } from "@/components/threecx/ThreeCxVoiceShell";
+import { NvoipVoiceShell } from "@/components/nvoip/NvoipVoiceShell";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
@@ -535,6 +536,7 @@ export function Layout() {
   return (
     <WavoipVoiceShell>
     <ThreeCxVoiceShell>
+    <NvoipVoiceShell>
     <div className="flex h-[100dvh] w-full max-w-[100vw] min-w-0 overflow-x-clip">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200 bg-white dark:border-white/10 dark:bg-ink-950 lg:flex">
         {sidebarContent}
@@ -621,6 +623,7 @@ export function Layout() {
       </div>
       <WorkspaceRealtime />
     </div>
+    </NvoipVoiceShell>
     </ThreeCxVoiceShell>
     </WavoipVoiceShell>
   );

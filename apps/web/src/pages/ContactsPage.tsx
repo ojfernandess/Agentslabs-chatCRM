@@ -39,6 +39,10 @@ import { ContactAvatar } from "@/components/ContactAvatar";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
+import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
+import { ContactNvoipSmsModal } from "@/components/nvoip/ContactNvoipSmsModal";
+import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTemplateModal";
+import { useAuth } from "@/hooks/useAuth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 
@@ -106,6 +110,9 @@ function ChannelIcon({ channel }: { channel: string | null }) {
 
 export function ContactsPage() {
   const { t, dateLocale } = useI18n();
+  const { user } = useAuth();
+  const nvoipSmsEnabled = user?.organizationFeatures?.nvoip_sms ?? false;
+  const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
   const [contacts, setContacts] = useState<ContactListRow[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<{ withOpenDeals: number; avgEngagementOnPage: number } | null>(null);
@@ -118,6 +125,12 @@ export function ContactsPage() {
 
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [nvoipSmsContact, setNvoipSmsContact] = useState<{ id: string; name: string; phone: string } | null>(
+    null,
+  );
+  const [nvoipWaContact, setNvoipWaContact] = useState<{ id: string; name: string; phone: string } | null>(
+    null,
+  );
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1003,6 +1016,12 @@ export function ContactsPage() {
                                 iconOnly
                                 stopPropagation
                               />
+                              <NvoipCallButton
+                                phone={contact.phone}
+                                contactId={contact.id}
+                                iconOnly
+                                stopPropagation
+                              />
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1013,6 +1032,38 @@ export function ContactsPage() {
                                 <Send className="h-3.5 w-3.5" />
                                 {t("contacts.quickMessage")}
                               </button>
+                              {nvoipSmsEnabled ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNvoipSmsContact({
+                                      id: contact.id,
+                                      name: contact.name,
+                                      phone: contact.phone,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                  {t("nvoip.sms.send")}
+                                </button>
+                              ) : null}
+                              {nvoipWhatsappEnabled ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNvoipWaContact({
+                                      id: contact.id,
+                                      name: contact.name,
+                                      phone: contact.phone,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                  {t("nvoip.whatsapp.send")}
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 disabled={deleteBusy && deleteTarget?.id === contact.id}
@@ -1064,6 +1115,16 @@ export function ContactsPage() {
         open={quickContact != null}
         onClose={() => setQuickContact(null)}
         contact={quickContact}
+      />
+      <ContactNvoipSmsModal
+        open={nvoipSmsContact != null}
+        onClose={() => setNvoipSmsContact(null)}
+        contact={nvoipSmsContact}
+      />
+      <ContactNvoipWaTemplateModal
+        open={nvoipWaContact != null}
+        onClose={() => setNvoipWaContact(null)}
+        contact={nvoipWaContact}
       />
 
       <ConfirmDialog

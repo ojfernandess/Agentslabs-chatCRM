@@ -14,6 +14,8 @@ import { parseSegmentRules, substituteContactVars } from "./broadcastTypes.js";
 import type { BroadcastAbVariantPayload, FollowUpAfterSendMode } from "./broadcastTypes.js";
 import { seedFollowUpCampaignAutomationContext } from "./automationConversationContextLib.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { deliverNvoipVoiceTorpedo } from "./nvoipTorpedo.js";
+import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 
 function postSendPolicyForCampaign(campaign: BroadcastCampaign): PostSendConversationPolicy {
   const rules = parseSegmentRules(campaign.segmentRules);
@@ -195,6 +197,19 @@ export async function deliverBroadcastToContact(options: {
     const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
     const cfg = (inbox?.channelConfig ?? {}) as ChannelNativeConfig;
     await sendViaTwilioSms(cfg, contact.phone, body);
+    return;
+  }
+
+  if (channel === "VOICE") {
+    const voiceEnabled = await isOrganizationFeatureEnabled(campaign.organizationId, "nvoip_voice");
+    if (!voiceEnabled) throw new Error("nvoip_voice_disabled");
+    if (!contact.phone?.trim()) throw new Error("Contact has no phone");
+    await deliverNvoipVoiceTorpedo({
+      campaign,
+      contact,
+      body,
+      actorUserId,
+    });
     return;
   }
 

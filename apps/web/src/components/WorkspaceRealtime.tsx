@@ -86,7 +86,11 @@ export function WorkspaceRealtime() {
             detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
           }),
         );
-      } else if (data.type === "wavoip.call.incoming" || data.type === "threecx.call.incoming") {
+      } else if (
+        data.type === "wavoip.call.incoming" ||
+        data.type === "threecx.call.incoming" ||
+        data.type === "nvoip.call.incoming"
+      ) {
         if (
           Array.isArray(data.targetUserIds) &&
           data.targetUserIds.length > 0 &&
@@ -96,21 +100,33 @@ export function WorkspaceRealtime() {
           return;
         }
         const isThreeCx = data.type === "threecx.call.incoming";
+        const isNvoip = data.type === "nvoip.call.incoming";
         const caller =
           (data.caller ?? "").trim() ||
-          translate(locale, isThreeCx ? "threecx.voice.unknownCaller" : "wavoip.voice.unknownCaller");
+          translate(
+            locale,
+            isThreeCx
+              ? "threecx.voice.unknownCaller"
+              : isNvoip
+                ? "nvoip.voice.unknownCaller"
+                : "wavoip.voice.unknownCaller",
+          );
         const msg = translate(
           locale,
-          isThreeCx ? "threecx.voice.incomingToast" : "wavoip.voice.incomingToast",
+          isThreeCx
+            ? "threecx.voice.incomingToast"
+            : isNvoip
+              ? "nvoip.voice.incomingToast"
+              : "wavoip.voice.incomingToast",
         ).replace("{caller}", caller);
         pushToast(msg);
         void playIncomingCallRing();
-        window.dispatchEvent(
-          new CustomEvent(
-            isThreeCx ? "openconduit:threecx-call-incoming" : "openconduit:wavoip-call-incoming",
-            { detail: data },
-          ),
-        );
+        const incomingEvent = isThreeCx
+          ? "openconduit:threecx-call-incoming"
+          : isNvoip
+            ? "openconduit:nvoip-call-incoming"
+            : "openconduit:wavoip-call-incoming";
+        window.dispatchEvent(new CustomEvent(incomingEvent, { detail: data }));
         if (typeof data.conversationId === "string" && data.conversationId) {
           window.dispatchEvent(
             new CustomEvent("openconduit:conversation-updated", {

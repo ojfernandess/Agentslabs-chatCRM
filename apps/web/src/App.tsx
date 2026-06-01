@@ -36,6 +36,10 @@ const ORG_FEATURE_DEFAULT_ENABLED = {
   crm_deals: true,
   wavoip_voice: false,
   threecx_voice: false,
+  nvoip_voice: false,
+  nvoip_sms: false,
+  nvoip_otp: false,
+  nvoip_whatsapp: false,
 } as const;
 
 type OrgFeatureFlagKey = keyof typeof ORG_FEATURE_DEFAULT_ENABLED;

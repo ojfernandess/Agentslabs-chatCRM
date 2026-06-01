@@ -214,6 +214,14 @@ model Organization {
   threeCxRoutePoints             ThreeCxRoutePoint[]
   threeCxCallLogs                ThreeCxCallLog[]
   threeCxIntegrationLogs         ThreeCxIntegrationLog[]
+  nvoipAccount                   NvoipAccount?
+  nvoipAgentExtensions           NvoipAgentExtension[]
+  nvoipCallLogs                  NvoipCallLog[]
+  nvoipIntegrationLogs           NvoipIntegrationLog[]
+  nvoipTorpedoDispatches         NvoipTorpedoDispatch[]
+  nvoipScheduledTorpedos         NvoipScheduledTorpedo[]
+  nvoipSipUsers                  NvoipSipUser[]
+  nvoipOtpChallenges             NvoipOtpChallenge[]
 
   @@map("organizations")
 }
@@ -256,6 +264,7 @@ model Inbox {
   broadcastCampaigns BroadcastCampaign[]
   wavoipDevices      WavoipDevice[]
   threeCxRoutePoints ThreeCxRoutePoint[]
+  nvoipAccounts      NvoipAccount[]
 
   @@index([organizationId])
   @@index([agentBotId])
@@ -500,6 +509,9 @@ model User {
   wavoipCallsInitiated         WavoipCallLog[]               @relation("WavoipCallInitiator")
   assignedThreeCxRoutePoints   ThreeCxRoutePoint[]           @relation("ThreeCxRoutePointAssignee")
   threeCxCallsInitiated        ThreeCxCallLog[]              @relation("ThreeCxCallInitiator")
+  nvoipAgentExtensions         NvoipAgentExtension[]
+  nvoipCallsInitiated          NvoipCallLog[]                @relation("NvoipCallInitiator")
+  nvoipOtpChallenges           NvoipOtpChallenge[]
 
   @@index([organizationId])
   @@map("users")
@@ -591,6 +603,9 @@ model Contact {
   broadcastRecipients BroadcastCampaignRecipient[]
   wavoipCallLogs      WavoipCallLog[]
   threeCxCallLogs     ThreeCxCallLog[]
+  nvoipCallLogs          NvoipCallLog[]
+  nvoipTorpedoDispatches NvoipTorpedoDispatch[]
+  nvoipOtpChallenges     NvoipOtpChallenge[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -857,6 +872,7 @@ model Conversation {
   chatbotFlowSession     ChatbotFlowSession?
   wavoipCallLogs         WavoipCallLog[]
   threeCxCallLogs        ThreeCxCallLog[]
+  nvoipCallLogs          NvoipCallLog[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -928,6 +944,7 @@ model Message {
   actorUser   User?   @relation("MessageActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   wavoipCallLog WavoipCallLog?
   threeCxCallLog ThreeCxCallLog?
+  nvoipCallLog   NvoipCallLog?
 
   @@index([conversationId])
   @@index([providerMsgId])
@@ -1057,6 +1074,8 @@ model BroadcastCampaign {
 
   tags       BroadcastCampaignTag[]
   recipients BroadcastCampaignRecipient[]
+  nvoipTorpedoDispatches NvoipTorpedoDispatch[]
+  nvoipScheduledTorpedos NvoipScheduledTorpedo[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -1931,4 +1950,243 @@ model ThreeCxIntegrationLog {
 
   @@index([organizationId, createdAt])
   @@map("threecx_integration_logs")
+}
+
+enum NvoipAccountStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum NvoipOtpProvider {
+  DISABLED
+  NVOIP
+}
+
+/// Conta Nvoip (OAuth) por organização — telefonia PSTN/SIP via API v2.
+model NvoipAccount {
+  id               String             @id @default(uuid()) @db.Uuid
+  numbersip        String             @db.VarChar(64)
+  userTokenEnc     String             @map("user_token_enc") @db.Text
+  napikeyEnc       String?            @map("napikey_enc") @db.Text
+  accessTokenEnc   String?            @map("access_token_enc") @db.Text
+  refreshTokenEnc  String?            @map("refresh_token_enc") @db.Text
+  tokenExpiresAt   DateTime?          @map("token_expires_at")
+  defaultCaller    String             @map("default_caller") @db.VarChar(32)
+  status           NvoipAccountStatus @default(DISCONNECTED)
+  inboxId          String?            @map("inbox_id") @db.Uuid
+  lastBalance      String?            @map("last_balance") @db.VarChar(32)
+  lastStatusAt     DateTime?          @map("last_status_at")
+  lastError        String?            @map("last_error") @db.Text
+  otpProvider      NvoipOtpProvider   @default(DISABLED) @map("otp_provider")
+  otpDefaultChannel String            @default("sms") @map("otp_default_channel") @db.VarChar(16)
+  waInstance        String?           @map("wa_instance") @db.VarChar(128)
+  waDefaultLanguage String            @default("pt_BR") @map("wa_default_language") @db.VarChar(16)
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  organizationId String       @unique @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inbox          Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+
+  agentExtensions NvoipAgentExtension[]
+  callLogs        NvoipCallLog[]
+  integrationLogs NvoipIntegrationLog[]
+  torpedoDispatches NvoipTorpedoDispatch[]
+  scheduledTorpedos NvoipScheduledTorpedo[]
+  sipUsers          NvoipSipUser[]
+  otpChallenges     NvoipOtpChallenge[]
+
+  @@map("nvoip_accounts")
+}
+
+/// Desafio OTP Nvoip (key externa + validação local).
+model NvoipOtpChallenge {
+  id          String   @id @default(uuid()) @db.Uuid
+  purpose     String   @db.VarChar(64)
+  channel     String   @db.VarChar(16)
+  destination String   @db.VarChar(128)
+  nvoipKey    String   @map("nvoip_key") @db.VarChar(128)
+  status      String   @default("PENDING") @db.VarChar(16)
+  expiresAt   DateTime @map("expires_at")
+  verifiedAt  DateTime? @map("verified_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  userId String? @map("user_id") @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([nvoipKey])
+  @@map("nvoip_otp_challenges")
+}
+
+/// Ramal SIP Nvoip por agente (valor de `caller` em POST /calls/).
+model NvoipAgentExtension {
+  id            String   @id @default(uuid()) @db.Uuid
+  caller        String   @db.VarChar(32)
+  nvoipNumbersip String? @map("nvoip_numbersip") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([nvoipAccountId])
+  @@map("nvoip_agent_extensions")
+}
+
+/// Ramais secundários Nvoip (cache de GET /list/users).
+model NvoipSipUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  numbersip String   @db.VarChar(64)
+  name      String?  @db.VarChar(200)
+  caller    String?  @db.VarChar(32)
+  blocked   Boolean  @default(false)
+  webphone  Boolean?
+  rawPayload Json?   @map("raw_payload")
+  syncedAt  DateTime @map("synced_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([nvoipAccountId, numbersip])
+  @@index([organizationId])
+  @@map("nvoip_sip_users")
+}
+
+model NvoipCallLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  externalCallId String    @map("external_call_id") @db.VarChar(128)
+  direction      String    @db.VarChar(16)
+  caller         String    @db.VarChar(32)
+  receiver       String    @db.VarChar(32)
+  status         String    @db.VarChar(64)
+  durationSec    Int?      @map("duration_sec")
+  recordUrl      String?   @map("record_url") @db.VarChar(2048)
+  startedAt      DateTime? @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  rawPayload     Json?     @map("raw_payload")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  messageId String?  @unique @map("message_id") @db.Uuid
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
+  initiatedByUser   User?   @relation("NvoipCallInitiator", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  clientCallId      String? @unique @map("client_call_id") @db.VarChar(128)
+
+  @@unique([nvoipAccountId, externalCallId])
+  @@index([organizationId])
+  @@index([nvoipAccountId])
+  @@index([initiatedByUserId])
+  @@map("nvoip_call_logs")
+}
+
+model NvoipIntegrationLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  level     String   @db.VarChar(16)
+  eventType String   @map("event_type") @db.VarChar(64)
+  message   String   @db.Text
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String?       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount? @relation(fields: [nvoipAccountId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("nvoip_integration_logs")
+}
+
+model NvoipTorpedoDispatch {
+  id             String   @id @default(uuid()) @db.Uuid
+  calledPhone    String   @map("called_phone") @db.VarChar(32)
+  caller         String   @db.VarChar(32)
+  messageText    String   @map("message_text") @db.Text
+  webhookToken   String   @unique @map("webhook_token") @db.VarChar(64)
+  externalCallId String?  @map("external_call_id") @db.VarChar(128)
+  schedkey       String?  @db.VarChar(128)
+  status         String   @default("SENT") @db.VarChar(32)
+  dtmfRules      Json?    @map("dtmf_rules")
+  dtmfPressed    Json?    @map("dtmf_pressed")
+  rawPayload     Json?    @map("raw_payload")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  campaignId String?            @map("campaign_id") @db.Uuid
+  campaign   BroadcastCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([contactId])
+  @@map("nvoip_torpedo_dispatches")
+}
+
+model NvoipScheduledTorpedo {
+  id              String    @id @default(uuid()) @db.Uuid
+  schedkey        String    @unique @db.VarChar(128)
+  status          String    @default("SCHEDULED") @db.VarChar(32)
+  recipientCount  Int       @default(0) @map("recipient_count")
+  payload         Json?
+  scheduledAt     DateTime? @map("scheduled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  campaignId String?            @map("campaign_id") @db.Uuid
+  campaign   BroadcastCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("nvoip_scheduled_torpedos")
 }

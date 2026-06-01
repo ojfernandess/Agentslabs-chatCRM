@@ -25,6 +25,12 @@ const EVENT_I18N: Record<string, string> = {
   "deal.updated": "contactDetail.timelineDealUpdated",
   wavoip_call: "contactDetail.timelineWavoipCall",
   threecx_call: "contactDetail.timelineThreeCxCall",
+  nvoip_call: "contactDetail.timelineNvoipCall",
+  nvoip_torpedo: "contactDetail.timelineNvoipTorpedo",
+  nvoip_dtmf: "contactDetail.timelineNvoipDtmf",
+  nvoip_sms: "contactDetail.timelineNvoipSms",
+  nvoip_otp_verified: "contactDetail.timelineNvoipOtpVerified",
+  nvoip_wa_template: "contactDetail.timelineNvoipWaTemplate",
 };
 
 const CHANNEL_I18N: Record<string, string> = {
@@ -133,7 +139,8 @@ export function timelineEventSummary(
     case "message.outbound":
       return messageSummary(payload, t);
     case "wavoip_call":
-    case "threecx_call": {
+    case "threecx_call":
+    case "nvoip_call": {
       const bits: string[] = [];
       const dir = typeof payload.direction === "string" ? payload.direction.toUpperCase() : "";
       if (dir === "OUTGOING") bits.push(t("contactDetail.timelineCallOutbound"));
@@ -143,7 +150,9 @@ export function timelineEventSummary(
         const statusKey =
           eventType === "threecx_call"
             ? `threecx.voice.callStatus.${status}`
-            : `wavoip.voice.callStatus.${status}`;
+            : eventType === "nvoip_call"
+              ? `nvoip.voice.callStatus.${status}`
+              : `wavoip.voice.callStatus.${status}`;
         const label = t(statusKey);
         bits.push(label !== statusKey ? label : status);
       }

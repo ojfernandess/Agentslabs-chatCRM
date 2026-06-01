@@ -78,8 +78,20 @@ const createCampaignSchema = z
     if (!segmentHasAudienceFilters(data.tagIds, seg)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tagIds or segment filters required", path: ["tagIds"] });
     }
-    if (data.messageType === "TEXT" && !data.body?.trim() && data.channel !== "EMAIL") {
+    if (
+      data.messageType === "TEXT" &&
+      !data.body?.trim() &&
+      data.channel !== "EMAIL" &&
+      data.channel !== "VOICE"
+    ) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["body"], message: "body is required for TEXT" });
+    }
+    if (data.channel === "VOICE" && !data.body?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["body"],
+        message: "body is required for voice torpedo (TTS script)",
+      });
     }
     if (data.messageType === "TEMPLATE" && !data.templateId && data.channel === "WHATSAPP") {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["templateId"], message: "templateId required" });

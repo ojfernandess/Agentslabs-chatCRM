@@ -15,6 +15,7 @@ import {
   Send,
   Mail,
   Building2,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
@@ -30,6 +31,10 @@ import {
   type TimelinePayload,
 } from "@/lib/contactTimeline";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
+import { ContactNvoipSmsModal } from "@/components/nvoip/ContactNvoipSmsModal";
+import { ContactNvoipOtpPanel } from "@/components/nvoip/ContactNvoipOtpPanel";
+import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTemplateModal";
+import { useAuth } from "@/hooks/useAuth";
 
 interface TagItem {
   id: string;
@@ -137,6 +142,12 @@ export function ContactDetailPage() {
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
   const [detailTab, setDetailTab] = useState<"overview" | "chats">("overview");
   const [quickOpen, setQuickOpen] = useState(false);
+  const [nvoipSmsOpen, setNvoipSmsOpen] = useState(false);
+  const { user } = useAuth();
+  const nvoipSmsEnabled = user?.organizationFeatures?.nvoip_sms ?? false;
+  const nvoipOtpEnabled = user?.organizationFeatures?.nvoip_otp ?? false;
+  const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
+  const [nvoipWaOpen, setNvoipWaOpen] = useState(false);
 
   useEffect(() => {
     if (editing) setDetailTab("overview");
@@ -323,6 +334,26 @@ export function ContactDetailPage() {
             <Send className="h-4 w-4" />
             {t("contacts.quickMessage")}
           </button>
+          {nvoipSmsEnabled && contact ? (
+            <button
+              type="button"
+              onClick={() => setNvoipSmsOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+            >
+              <MessageSquare className="h-4 w-4" />
+              {t("nvoip.sms.send")}
+            </button>
+          ) : null}
+          {nvoipWhatsappEnabled && contact ? (
+            <button
+              type="button"
+              onClick={() => setNvoipWaOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {t("nvoip.whatsapp.send")}
+            </button>
+          ) : null}
           <button
             onClick={() => setEditing(!editing)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
@@ -571,6 +602,9 @@ export function ContactDetailPage() {
 
           {detailTab === "overview" && !editing ? (
             <>
+              {nvoipOtpEnabled && contact ? (
+                <ContactNvoipOtpPanel contactId={contact.id} phone={contact.phone} />
+              ) : null}
               {contact.notes && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
                   <h2 className="mb-2 text-sm font-medium text-gray-500 dark:text-ink-400">{t("contactEdit.fieldNotes")}</h2>
@@ -828,6 +862,16 @@ export function ContactDetailPage() {
       <ContactQuickMessageModal
         open={quickOpen}
         onClose={() => setQuickOpen(false)}
+        contact={contact ? { id: contact.id, name: contact.name, phone: contact.phone } : null}
+      />
+      <ContactNvoipSmsModal
+        open={nvoipSmsOpen}
+        onClose={() => setNvoipSmsOpen(false)}
+        contact={contact ? { id: contact.id, name: contact.name, phone: contact.phone } : null}
+      />
+      <ContactNvoipWaTemplateModal
+        open={nvoipWaOpen}
+        onClose={() => setNvoipWaOpen(false)}
         contact={contact ? { id: contact.id, name: contact.name, phone: contact.phone } : null}
       />
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
@@ -145,7 +145,35 @@ interface FeatureFlagsPayload {
       createdAt: string;
     } | null;
   };
+  nvoipDiagnostics?: {
+    hasAccount: boolean;
+    accountStatus: string | null;
+    numbersip: string | null;
+    lastBalance: string | null;
+    callCount30d: number;
+    lastLog: {
+      eventType: string;
+      message: string;
+      level: string;
+      createdAt: string;
+    } | null;
+  };
   flags: FeatureFlagRow[];
+}
+
+interface NvoipPlatformMetricsPayload {
+  periodDays: number;
+  organizationsWithAccount: number;
+  connectedAccounts: number;
+  calls: { total: number; totalDurationSec: number };
+  torpedoDispatches: number;
+  estimatedCostBrl: number | null;
+  topOrganizations: {
+    organizationId: string;
+    organizationName: string;
+    callCount: number;
+    durationSec: number;
+  }[];
 }
 
 interface UsageOrgRow {
@@ -287,6 +315,9 @@ export function SuperAdminPage() {
   const [flagBusy, setFlagBusy] = useState<string | null>(null);
 
   const [usageMetrics, setUsageMetrics] = useState<UsageMetricsPayload | null>(null);
+  const [nvoipMetrics, setNvoipMetrics] = useState<NvoipPlatformMetricsPayload | null>(null);
+  const [nvoipMetricsLoading, setNvoipMetricsLoading] = useState(false);
+  const [nvoipMetricsError, setNvoipMetricsError] = useState<string | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettingRow[]>([]);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -571,6 +602,22 @@ export function SuperAdminPage() {
     }
   }, []);
 
+  const fetchNvoipMetrics = useCallback(async () => {
+    setNvoipMetricsLoading(true);
+    setNvoipMetricsError(null);
+    try {
+      const data = await api.get<NvoipPlatformMetricsPayload>("/super/nvoip/metrics?days=30");
+      setNvoipMetrics(data);
+    } catch (e) {
+      setNvoipMetrics(null);
+      setNvoipMetricsError(
+        e instanceof ApiError ? e.message : t("superAdmin.nvoipMetricsLoadError"),
+      );
+    } finally {
+      setNvoipMetricsLoading(false);
+    }
+  }, [t]);
+
   const fetchPlatformSettingsList = useCallback(async () => {
     setSettingsLoading(true);
     try {
@@ -594,8 +641,11 @@ export function SuperAdminPage() {
   }, [platformSettings]);
 
   useEffect(() => {
-    if (section === "usageMetrics") void fetchUsageMetrics();
-  }, [section, fetchUsageMetrics]);
+    if (section === "usageMetrics") {
+      void fetchUsageMetrics();
+      void fetchNvoipMetrics();
+    }
+  }, [section, fetchUsageMetrics, fetchNvoipMetrics]);
 
   useEffect(() => {
     if (section === "globalSettings") void fetchPlatformSettingsList();
@@ -1395,6 +1445,97 @@ export function SuperAdminPage() {
                     </tbody>
                   </table>
                 </SuperAdminPanel>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-semibold text-slate-900">
+                          {t("superAdmin.nvoipMetricsTitle")}
+                        </h2>
+                        <p className="mt-1 text-sm text-slate-500">{t("superAdmin.nvoipMetricsSubtitle")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50"
+                        disabled={nvoipMetricsLoading}
+                        onClick={() => void fetchNvoipMetrics()}
+                      >
+                        {t("superAdmin.nvoipMetricsRefresh")}
+                      </button>
+                    </div>
+                    {nvoipMetricsError ? (
+                      <p className="mt-3 text-sm text-red-600">{nvoipMetricsError}</p>
+                    ) : null}
+                    {nvoipMetricsLoading && !nvoipMetrics ? (
+                      <p className="mt-4 text-sm text-slate-500">{t("common.loading")}</p>
+                    ) : nvoipMetrics ? (
+                      <>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsAccounts")}
+                            value={nvoipMetrics.organizationsWithAccount}
+                            accent="violet"
+                          />
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsConnected")}
+                            value={nvoipMetrics.connectedAccounts}
+                            accent="emerald"
+                          />
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsCalls")}
+                            value={nvoipMetrics.calls.total}
+                            accent="amber"
+                          />
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsDuration")}
+                            value={`${Math.floor(nvoipMetrics.calls.totalDurationSec / 60)} min`}
+                            accent="violet"
+                          />
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsTorpedo")}
+                            value={nvoipMetrics.torpedoDispatches}
+                            accent="emerald"
+                          />
+                          <SuperAdminMetricCard
+                            label={t("superAdmin.nvoipMetricsCost")}
+                            value={
+                              nvoipMetrics.estimatedCostBrl != null
+                                ? `R$ ${nvoipMetrics.estimatedCostBrl.toFixed(2)}`
+                                : "—"
+                            }
+                            accent="amber"
+                          />
+                        </div>
+                        {nvoipMetrics.topOrganizations.length > 0 ? (
+                          <SuperAdminPanel className="mt-4 overflow-x-auto p-0">
+                            <p className="border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-600">
+                              {t("superAdmin.nvoipMetricsTopOrgs")}
+                            </p>
+                            <table className="w-full min-w-[480px] text-left text-sm">
+                              <thead>
+                                <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase text-slate-600">
+                                  <th className="px-4 py-2">{t("superAdmin.org")}</th>
+                                  <th className="px-4 py-2 text-right">{t("superAdmin.nvoipMetricsCalls")}</th>
+                                  <th className="px-4 py-2 text-right">{t("superAdmin.nvoipMetricsDuration")}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {nvoipMetrics.topOrganizations.map((row) => (
+                                  <tr key={row.organizationId}>
+                                    <td className="px-4 py-2 font-medium">{row.organizationName}</td>
+                                    <td className="px-4 py-2 text-right tabular-nums">{row.callCount}</td>
+                                    <td className="px-4 py-2 text-right tabular-nums">
+                                      {Math.floor(row.durationSec / 60)} min
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </SuperAdminPanel>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 </>
               )}
             </div>
@@ -2414,6 +2555,39 @@ export function SuperAdminPage() {
                       ) : (
                         <p className="mt-2 text-xs text-amber-700">{t("superAdmin.wavoipDiagNoLogs")}</p>
                       )}
+                    </div>
+                  ) : null}
+                  {flagsPayload.nvoipDiagnostics?.hasAccount ? (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+                      <p className="font-medium">{t("superAdmin.nvoipDiagTitle")}</p>
+                      <p className="mt-1 text-violet-800">
+                        {t("superAdmin.nvoipDiagAccount")
+                          .replace("{status}", flagsPayload.nvoipDiagnostics.accountStatus ?? "—")
+                          .replace("{numbersip}", flagsPayload.nvoipDiagnostics.numbersip ?? "—")}
+                        {flagsPayload.nvoipDiagnostics.lastBalance
+                          ? ` · ${flagsPayload.nvoipDiagnostics.lastBalance}`
+                          : ""}
+                      </p>
+                      <p className="mt-1 text-violet-700">
+                        {t("superAdmin.nvoipDiagCalls30d").replace(
+                          "{count}",
+                          String(flagsPayload.nvoipDiagnostics.callCount30d),
+                        )}
+                      </p>
+                      {flagsPayload.nvoipDiagnostics.lastLog ? (
+                        <p className="mt-2 font-mono text-xs text-violet-700">
+                          {flagsPayload.nvoipDiagnostics.lastLog.createdAt} ·{" "}
+                          {flagsPayload.nvoipDiagnostics.lastLog.eventType}:{" "}
+                          {flagsPayload.nvoipDiagnostics.lastLog.message.slice(0, 120)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-amber-800">{t("superAdmin.nvoipDiagNoLogs")}</p>
+                      )}
+                    </div>
+                  ) : flagsPayload.flags.some((f) => f.key.startsWith("nvoip_") && f.enabled) ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <p className="font-medium">{t("superAdmin.nvoipDiagTitle")}</p>
+                      <p className="mt-1">{t("superAdmin.nvoipDiagNoAccount")}</p>
                     </div>
                   ) : null}
                 <ul className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">

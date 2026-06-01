@@ -82,6 +82,7 @@ import {
 import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
+import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
@@ -1637,6 +1638,13 @@ export function ConversationDetailPage() {
                     iconOnly
                     compact
                   />
+                  <NvoipCallButton
+                    phone={phone}
+                    conversationId={conversation.id}
+                    contactId={conversation.contact.id}
+                    iconOnly
+                    compact
+                  />
                 </>
               ) : null}
             </div>
@@ -2279,7 +2287,11 @@ export function ConversationDetailPage() {
                 ) : (
                   <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
                 );
-              } else if (ev.eventType === "wavoip_call" || ev.eventType === "threecx_call") {
+              } else if (
+                ev.eventType === "wavoip_call" ||
+                ev.eventType === "threecx_call" ||
+                ev.eventType === "nvoip_call"
+              ) {
                 icon = <PhoneCall className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
               }
               const showLine = index < contactTimelinePreview.length - 1;
@@ -2440,6 +2452,12 @@ export function ConversationDetailPage() {
                       compact
                     />
                     <ThreeCxCallButton
+                      phone={conversation.contact.phone}
+                      conversationId={conversation.id}
+                      contactId={conversation.contact.id}
+                      compact
+                    />
+                    <NvoipCallButton
                       phone={conversation.contact.phone}
                       conversationId={conversation.id}
                       contactId={conversation.contact.id}

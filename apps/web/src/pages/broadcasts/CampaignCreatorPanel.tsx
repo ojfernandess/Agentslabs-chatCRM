@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { X, Sparkles, Blocks, Send, Wand2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/hooks/useAuth";
 import { filterTemplatesForWhatsappInbox } from "@/lib/campaignTemplates";
 import { isWhatsAppCloudApiProvider, parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
 import {
@@ -102,6 +103,11 @@ export function CampaignCreatorPanel({
   onSubmit,
 }: Props) {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const nvoipVoiceEnabled = user?.organizationFeatures?.nvoip_voice ?? false;
+  const channelOptions = OMNICHANNEL_CHANNELS.map((ch) =>
+    ch.id === "voice" ? { ...ch, available: ch.available && nvoipVoiceEnabled } : ch,
+  );
   const [tab, setTab] = useState<CreatorTab>(initialTab);
   const [draft, setDraft] = useState<CreatorDraft>({ ...defaultDraft, ...initialDraft });
   const [aiPrompt, setAiPrompt] = useState("");
@@ -186,7 +192,7 @@ export function CampaignCreatorPanel({
     setDraft((d) => ({
       ...d,
       templateId: "",
-      messageType: channel === "email" ? "TEXT" : d.messageType,
+      messageType: channel === "email" || channel === "voice" ? "TEXT" : d.messageType,
       advanced: { ...d.advanced, channel, inboxId },
     }));
   };
@@ -214,8 +220,10 @@ export function CampaignCreatorPanel({
     setTab("quick");
   };
 
-  const needsInbox = channelNeedsInbox(draft.advanced.channel);
+  const needsInbox = channelNeedsInbox(draft.advanced.channel) && draft.advanced.channel !== "voice";
   const inboxOk = !needsInbox || Boolean(draft.advanced.inboxId);
+
+  const isVoiceChannel = draft.advanced.channel === "voice";
 
   const canSubmit =
     Boolean(draft.name.trim()) &&
@@ -223,9 +231,11 @@ export function CampaignCreatorPanel({
     inboxOk &&
     (draft.advanced.channel === "email"
       ? Boolean(draft.body.trim() || draft.advanced.subject.trim())
-      : draft.messageType === "TEXT"
+      : isVoiceChannel
         ? Boolean(draft.body.trim())
-        : Boolean(draft.templateId));
+        : draft.messageType === "TEXT"
+          ? Boolean(draft.body.trim())
+          : Boolean(draft.templateId));
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true">
@@ -278,7 +288,7 @@ export function CampaignCreatorPanel({
                   {t("broadcastPage.creatorChannel")}
                 </label>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {OMNICHANNEL_CHANNELS.map((ch) => (
+                  {channelOptions.map((ch) => (
                     <button
                       key={ch.id}
                       type="button"
@@ -347,7 +357,7 @@ export function CampaignCreatorPanel({
                         templateId: e.target.value === "TEMPLATE" ? d.templateId : "",
                       }))
                     }
-                    disabled={draft.advanced.channel === "email"}
+                    disabled={draft.advanced.channel === "email" || isVoiceChannel}
                     className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5 disabled:opacity-60"
                   >
                     <option value="TEMPLATE">{t("broadcastPage.typeTemplate")}</option>
@@ -355,7 +365,7 @@ export function CampaignCreatorPanel({
                   </select>
                 </div>
                 <div>
-                  {draft.messageType === "TEMPLATE" && draft.advanced.channel !== "email" ? (
+                  {draft.messageType === "TEMPLATE" && draft.advanced.channel !== "email" && !isVoiceChannel ? (
                     <>
                       <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
                         {t("broadcastPage.template")}
@@ -394,9 +404,16 @@ export function CampaignCreatorPanel({
                         onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                         rows={4}
                         className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5"
-                        maxLength={4096}
-                        placeholder={t("broadcastPage.dynamicVarsHint")}
+                        maxLength={isVoiceChannel ? 900 : 4096}
+                        placeholder={isVoiceChannel ? t("broadcastPage.nvoipVoiceScriptPlaceholder") : undefined}
                       />
+                      {isVoiceChannel ? (
+                        <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">
+                          {t("broadcastPage.nvoipVoiceScriptHint")}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-ink-500">{t("broadcastPage.dynamicVarsHint")}</p>
+                      )}
                     </>
                   )}
                 </div>
@@ -439,6 +456,7 @@ export function CampaignCreatorPanel({
                 onChange={(advanced) => setDraft((d) => ({ ...d, advanced }))}
                 integrationTools={integrationTools}
                 pipelineStages={pipelineStages}
+                tags={tags}
               />
             </div>
           ) : null}

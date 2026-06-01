@@ -38,6 +38,7 @@ import {
   MEDIA_STORAGE_PLATFORM_KEY,
   parseMediaStoragePlatformValue,
 } from "../lib/mediaStorageSettings.js";
+import { buildNvoipPlatformMetrics } from "../lib/nvoipInsights.js";
 import { invalidateMediaStorageCache } from "../lib/mediaStorage.js";
 import {
   buildConversationMediaInventory,
@@ -374,14 +375,28 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       where: { organizationId: org.id },
     });
     const map = new Map(rows.map((r) => [r.key, r.enabled]));
-    const [wavoipDeviceCount, lastWavoipLog] = await Promise.all([
-      prisma.wavoipDevice.count({ where: { organizationId: org.id } }),
-      prisma.wavoipIntegrationLog.findFirst({
-        where: { organizationId: org.id },
-        orderBy: { createdAt: "desc" },
-        select: { eventType: true, message: true, level: true, createdAt: true },
-      }),
-    ]);
+    const since30d = new Date(Date.now() - 30 * 86_400_000);
+    const [wavoipDeviceCount, lastWavoipLog, nvoipAccount, lastNvoipLog, nvoipCallCount30d] =
+      await Promise.all([
+        prisma.wavoipDevice.count({ where: { organizationId: org.id } }),
+        prisma.wavoipIntegrationLog.findFirst({
+          where: { organizationId: org.id },
+          orderBy: { createdAt: "desc" },
+          select: { eventType: true, message: true, level: true, createdAt: true },
+        }),
+        prisma.nvoipAccount.findUnique({
+          where: { organizationId: org.id },
+          select: { status: true, numbersip: true, lastBalance: true },
+        }),
+        prisma.nvoipIntegrationLog.findFirst({
+          where: { organizationId: org.id },
+          orderBy: { createdAt: "desc" },
+          select: { eventType: true, message: true, level: true, createdAt: true },
+        }),
+        prisma.nvoipCallLog.count({
+          where: { organizationId: org.id, createdAt: { gte: since30d } },
+        }),
+      ]);
     const flags = await Promise.all(
       FEATURE_FLAG_DEFINITIONS.map(async (def) => {
         const configuredInDb = map.has(def.key);
@@ -403,8 +418,30 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         deviceCount: wavoipDeviceCount,
         lastLog: lastWavoipLog,
       },
+      nvoipDiagnostics: {
+        hasAccount: !!nvoipAccount,
+        accountStatus: nvoipAccount?.status ?? null,
+        numbersip: nvoipAccount?.numbersip ?? null,
+        lastBalance: nvoipAccount?.lastBalance ?? null,
+        callCount30d: nvoipCallCount30d,
+        lastLog: lastNvoipLog,
+      },
       flags,
     };
+  });
+
+  app.get("/nvoip/metrics", async (request, reply) => {
+    const q = z.object({ days: z.coerce.number().int().min(1).max(90).optional() }).safeParse(request.query);
+    const periodDays = q.success && q.data.days ? q.data.days : 30;
+    try {
+      return await buildNvoipPlatformMetrics(periodDays);
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "nvoip_metrics_failed",
+        statusCode: 400,
+      });
+    }
   });
 
   app.patch<{ Params: { id: string } }>("/organizations/:id/feature-flags", async (request, reply) => {

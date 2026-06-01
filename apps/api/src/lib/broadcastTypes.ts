@@ -11,6 +11,18 @@ export type BroadcastCampaignKind = "followup" | "broadcast" | "ai" | "flow";
 /** Após envio de follow-up: fila do bot ou handoff para atendente humano. */
 export type FollowUpAfterSendMode = "bot" | "human_handoff";
 
+export interface NvoipTorpedoDtmfRule {
+  digit: string;
+  label?: string;
+  tagId?: string;
+  pipelineStageId?: string;
+}
+
+export interface NvoipTorpedoCampaignConfig {
+  caller?: string;
+  dtmfRules?: NvoipTorpedoDtmfRule[];
+}
+
 export interface BroadcastSegmentRules {
   tagIds?: string[];
   tagLogic?: "ANY" | "ALL";
@@ -23,6 +35,7 @@ export interface BroadcastSegmentRules {
   noResponseSinceDays?: number;
   followUpRecurrence?: FollowUpRecurrence;
   followUpAfterSend?: FollowUpAfterSendMode;
+  nvoipTorpedo?: NvoipTorpedoCampaignConfig;
 }
 
 export interface BroadcastAbVariantPayload {
@@ -118,6 +131,28 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
       o.campaignKind === "flow"
         ? o.campaignKind
         : undefined,
+    nvoipTorpedo: parseNvoipTorpedoConfig(o.nvoipTorpedo),
+  };
+}
+
+function parseNvoipTorpedoConfig(raw: unknown): NvoipTorpedoCampaignConfig | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const dtmfRaw = o.dtmfRules;
+  const dtmfRules = Array.isArray(dtmfRaw)
+    ? dtmfRaw
+        .filter((r): r is Record<string, unknown> => r != null && typeof r === "object")
+        .map((r) => ({
+          digit: String(r.digit ?? "").replace(/\D/g, "").slice(0, 1),
+          label: typeof r.label === "string" ? r.label : undefined,
+          tagId: typeof r.tagId === "string" ? r.tagId : undefined,
+          pipelineStageId: typeof r.pipelineStageId === "string" ? r.pipelineStageId : undefined,
+        }))
+        .filter((r) => r.digit)
+    : undefined;
+  return {
+    caller: typeof o.caller === "string" ? o.caller : undefined,
+    dtmfRules: dtmfRules?.length ? dtmfRules : undefined,
   };
 }
 

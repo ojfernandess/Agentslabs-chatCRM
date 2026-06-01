@@ -3,6 +3,13 @@ import { useI18n } from "@/i18n/I18nProvider";
 import type { CampaignChannel } from "./campaignTypes";
 import { OMNICHANNEL_CHANNELS } from "./campaignTypes";
 
+export interface NvoipTorpedoDtmfRule {
+  digit: string;
+  label?: string;
+  tagId?: string;
+  pipelineStageId?: string;
+}
+
 export interface SegmentRules {
   tagLogic?: "ANY" | "ALL";
   pipelineStageIds?: string[];
@@ -11,6 +18,10 @@ export interface SegmentRules {
   optedInOnly?: boolean;
   minDealValue?: number;
   noResponseSinceDays?: number;
+  nvoipTorpedo?: {
+    caller?: string;
+    dtmfRules?: NvoipTorpedoDtmfRule[];
+  };
 }
 
 export interface AbConfig {
@@ -48,11 +59,17 @@ interface PipelineStage {
   name: string;
 }
 
+interface TagOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   value: AdvancedCampaignOptions;
   onChange: (v: AdvancedCampaignOptions) => void;
   integrationTools: IntegrationTool[];
   pipelineStages: PipelineStage[];
+  tags?: TagOption[];
 }
 
 const CHANNEL_API: Record<CampaignChannel, string> = {
@@ -67,10 +84,15 @@ const CHANNEL_API: Record<CampaignChannel, string> = {
   voice: "VOICE",
 };
 
-export function CampaignAdvancedOptions({ value, onChange, integrationTools, pipelineStages }: Props) {
+export function CampaignAdvancedOptions({ value, onChange, integrationTools, pipelineStages, tags = [] }: Props) {
   const { t } = useI18n();
 
   const patch = (partial: Partial<AdvancedCampaignOptions>) => onChange({ ...value, ...partial });
+  const patchSegment = (partial: Partial<SegmentRules>) =>
+    onChange({ ...value, segmentRules: { ...value.segmentRules, ...partial } });
+  const patchNvoip = (partial: NonNullable<SegmentRules["nvoipTorpedo"]>) =>
+    patchSegment({ nvoipTorpedo: { ...value.segmentRules.nvoipTorpedo, ...partial } });
+  const dtmfRules = value.segmentRules.nvoipTorpedo?.dtmfRules ?? [];
 
   return (
     <div className="space-y-4 border-t border-ink-100 pt-4 dark:border-white/10">
@@ -107,6 +129,75 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             onChange={(e) => patch({ subject: e.target.value })}
             className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
           />
+        </div>
+      ) : null}
+
+      {value.channel === "voice" ? (
+        <div className="space-y-3 rounded-lg border border-orange-200/60 bg-orange-50/50 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
+          <p className="text-[11px] font-semibold text-orange-900 dark:text-orange-200">
+            {t("broadcastPage.nvoipTorpedoTitle")}
+          </p>
+          <label className="block text-[11px] font-medium">
+            {t("nvoip.field.defaultCaller")}
+            <input
+              value={value.segmentRules.nvoipTorpedo?.caller ?? ""}
+              onChange={(e) => patchNvoip({ caller: e.target.value })}
+              placeholder={t("broadcastPage.nvoipCallerPlaceholder")}
+              className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
+            />
+          </label>
+          <div>
+            <p className="text-[11px] font-medium">{t("broadcastPage.nvoipDtmfTitle")}</p>
+            <p className="text-[10px] text-slate-500 dark:text-ink-400">{t("broadcastPage.nvoipDtmfHint")}</p>
+            <ul className="mt-2 space-y-2">
+              {dtmfRules.map((rule, idx) => (
+                <li key={idx} className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={rule.digit}
+                    onChange={(e) => {
+                      const next = [...dtmfRules];
+                      next[idx] = { ...rule, digit: e.target.value.replace(/\D/g, "").slice(0, 1) };
+                      patchNvoip({ dtmfRules: next });
+                    }}
+                    className="w-12 rounded border border-ink-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-white/5"
+                    placeholder="1"
+                  />
+                  <select
+                    value={rule.tagId ?? ""}
+                    onChange={(e) => {
+                      const next = [...dtmfRules];
+                      next[idx] = { ...rule, tagId: e.target.value || undefined };
+                      patchNvoip({ dtmfRules: next });
+                    }}
+                    className="min-w-0 flex-1 rounded border border-ink-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-white/5"
+                  >
+                    <option value="">{t("broadcastPage.nvoipDtmfTagNone")}</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="text-xs text-red-600 dark:text-red-400"
+                    onClick={() => patchNvoip({ dtmfRules: dtmfRules.filter((_, i) => i !== idx) })}
+                  >
+                    {t("common.remove")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="mt-2 text-xs font-medium text-brand-600 dark:text-brand-400"
+              onClick={() =>
+                patchNvoip({ dtmfRules: [...dtmfRules, { digit: String((dtmfRules.length % 9) + 1) }] })
+              }
+            >
+              {t("broadcastPage.nvoipDtmfAdd")}
+            </button>
+          </div>
         </div>
       ) : null}
 

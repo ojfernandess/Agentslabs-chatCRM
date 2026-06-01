@@ -160,4 +160,11 @@ export const config = {
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
   /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */
   agentKbDebug: parseTruthyEnv("AGENT_KB_DEBUG"),
+  /** API Nvoip v2 — https://nvoip.docs.apiary.io/ */
+  nvoipApiBaseUrl: optionalEnv("NVOIP_API_BASE_URL", "https://api.nvoip.com.br/v2").replace(/\/+$/, ""),
+  /** Basic auth para POST /oauth/token (credencial pública da documentação Nvoip). */
+  nvoipOAuthBasic: optionalEnv(
+    "NVOIP_OAUTH_BASIC",
+    "TnZvaXBBcGlWMjpUblp2YVhCQmNHbFdNakl3TWpFPQ==",
+  ).trim(),
 } as const;

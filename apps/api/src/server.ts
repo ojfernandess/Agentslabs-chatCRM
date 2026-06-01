@@ -24,6 +24,11 @@ import { wavoipVoiceRoutes } from "./routes/wavoipVoice.js";
 import { threecxIntegrationRoutes } from "./routes/threecxIntegration.js";
 import { threecxVoiceRoutes } from "./routes/threecxVoice.js";
 import { threeCxCrmRoutes } from "./lib/threeCxCrm.js";
+import { nvoipIntegrationRoutes } from "./routes/nvoipIntegration.js";
+import { nvoipVoiceRoutes } from "./routes/nvoipVoice.js";
+import { nvoipContactMessagingRoutes } from "./routes/nvoipContactMessaging.js";
+import { nvoipSecurityRoutes } from "./routes/nvoipSecurity.js";
+import { nvoipWhatsappRoutes } from "./routes/nvoipWhatsapp.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { reportsRoutes } from "./routes/reports.js";
@@ -59,6 +64,7 @@ import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
+import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
 import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
 
 const app = Fastify({
@@ -181,6 +187,11 @@ await app.register(wavoipVoiceRoutes, { prefix: "/api/v1/wavoip" });
 await app.register(threecxIntegrationRoutes, { prefix: "/api/v1/settings/threecx" });
 await app.register(threecxVoiceRoutes, { prefix: "/api/v1/threecx" });
 await app.register(threeCxCrmRoutes);
+await app.register(nvoipIntegrationRoutes, { prefix: "/api/v1/settings/nvoip" });
+await app.register(nvoipVoiceRoutes, { prefix: "/api/v1/nvoip" });
+await app.register(nvoipContactMessagingRoutes, { prefix: "/api/v1" });
+await app.register(nvoipSecurityRoutes, { prefix: "/api/v1/nvoip/security" });
+await app.register(nvoipWhatsappRoutes, { prefix: "/api/v1/nvoip/whatsapp" });
 await app.register(userRoutes, { prefix: "/api/v1/users" });
 await app.register(userInvitationRoutes, { prefix: "/api/v1/users/invites" });
 await app.register(inboxRoutes, { prefix: "/api/v1/inboxes" });
@@ -248,6 +259,11 @@ try {
     void runWavoipStatusSyncTick(app.log);
   }, wavoipStatusSyncMs);
   void runWavoipStatusSyncTick(app.log);
+  const nvoipHistorySyncMs = 90_000;
+  setInterval(() => {
+    void runNvoipHistorySyncTick(app.log);
+  }, nvoipHistorySyncMs);
+  void runNvoipHistorySyncTick(app.log);
   void ensureWavoipVoiceEnabledForOrgsWithDevices().then((count) => {
     if (count > 0) {
       app.log.info({ count }, "Enabled wavoip_voice for organizations with existing Wavoip devices");
