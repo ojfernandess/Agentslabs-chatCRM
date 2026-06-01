@@ -30,11 +30,19 @@ import { InboxesPage } from "@/pages/InboxesPage";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 
+const ORG_FEATURE_DEFAULT_ENABLED = {
+  crm_kanban: true,
+  crm_deals: true,
+  wavoip_voice: false,
+} as const;
+
+type OrgFeatureFlagKey = keyof typeof ORG_FEATURE_DEFAULT_ENABLED;
+
 function OrgFeatureRoute({
   flagKey,
   children,
 }: {
-  flagKey: "crm_kanban" | "crm_deals";
+  flagKey: OrgFeatureFlagKey;
   children: React.ReactNode;
 }) {
   const { user, loading } = useAuth();
@@ -45,7 +53,8 @@ function OrgFeatureRoute({
       </div>
     );
   }
-  const enabled = user?.organizationFeatures?.[flagKey] ?? true;
+  const enabled =
+    user?.organizationFeatures?.[flagKey] ?? ORG_FEATURE_DEFAULT_ENABLED[flagKey];
   if (!enabled) {
     return <Navigate to="/" replace />;
   }
@@ -146,7 +155,14 @@ export function App() {
         <Route path="reminders" element={<RemindersPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="settings/wavoip/:deviceId/qr" element={<WavoipQrConnectPage />} />
+        <Route
+          path="settings/wavoip/:deviceId/qr"
+          element={
+            <OrgFeatureRoute flagKey="wavoip_voice">
+              <WavoipQrConnectPage />
+            </OrgFeatureRoute>
+          }
+        />
         <Route path="teams" element={<TeamsPage />} />
         <Route path="inboxes" element={<InboxesPage />} />
         <Route path="bots" element={<BotsPage />} />

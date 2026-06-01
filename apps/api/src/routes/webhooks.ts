@@ -829,6 +829,18 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Not Found", message: "Device not found", statusCode: 404 });
       }
 
+      const wavoipEnabled = await isOrganizationFeatureEnabled(
+        request.params.organizationId,
+        "wavoip_voice",
+      );
+      if (!wavoipEnabled) {
+        return reply.status(403).send({
+          error: "Forbidden",
+          message: "wavoip_voice_disabled",
+          statusCode: 403,
+        });
+      }
+
       const headerSecret =
         (request.headers["x-wavoip-webhook-secret"] as string | undefined) ??
         (request.headers["x-openconduit-token"] as string | undefined);

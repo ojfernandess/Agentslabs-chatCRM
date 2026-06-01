@@ -32,7 +32,7 @@ export function WavoipCallButton({
   const voice = useWavoipVoiceOptional();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const wavoipEnabled = user?.organizationFeatures?.wavoip_voice !== false;
+  const wavoipEnabled = user?.organizationFeatures?.wavoip_voice ?? false;
 
   if (!phone?.trim() || !wavoipEnabled || !voice) return null;
 

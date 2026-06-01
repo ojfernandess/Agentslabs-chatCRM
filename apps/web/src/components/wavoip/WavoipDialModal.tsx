@@ -62,7 +62,7 @@ export function WavoipDialModal({ open, onClose }: Props) {
   const { t } = useI18n();
   const { user } = useAuth();
   const voice = useWavoipVoiceOptional();
-  const wavoipEnabled = user?.organizationFeatures?.wavoip_voice !== false;
+  const wavoipEnabled = user?.organizationFeatures?.wavoip_voice ?? false;
   const canCall = wavoipEnabled && (voice?.canPlaceCalls ?? false);
 
   const [tab, setTab] = useState<Tab>("dial");

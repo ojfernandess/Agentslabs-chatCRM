@@ -24,7 +24,7 @@ Integrações externas em `outboundIntegrations` (JSON): targets `n8n` e `chatwo
 ## Feature flag
 
 - Chave: `wavoip_voice` (Super Admin → Funcionalidades por tenant)
-- Default: **ativado**
+- Default: **desativado** (ativar por organização no Super Admin)
 - Quando desativado: rotas admin `/settings/wavoip/*`, rotas agente `/wavoip/*` e shell de voz no browser retornam 403 / ficam ocultos
 
 ## API (admin)

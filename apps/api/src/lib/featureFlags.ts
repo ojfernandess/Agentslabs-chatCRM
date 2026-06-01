@@ -64,7 +64,7 @@ export const FEATURE_FLAG_DEFINITIONS = [
   },
   {
     key: "wavoip_voice",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
 ] as const;
 

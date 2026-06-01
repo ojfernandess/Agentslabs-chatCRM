@@ -75,7 +75,7 @@ export function ConversationsPage() {
   const { user } = useAuth();
   const wavoipCanPlaceCalls = useWavoipCanPlaceCalls();
   const showWavoipDial =
-    user?.organizationFeatures?.wavoip_voice !== false && wavoipCanPlaceCalls;
+    (user?.organizationFeatures?.wavoip_voice ?? false) && wavoipCanPlaceCalls;
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);

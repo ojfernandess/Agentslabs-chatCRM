@@ -165,7 +165,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
-    if (user.organizationFeatures?.wavoip_voice === false) {
+    if (!(user.organizationFeatures?.wavoip_voice ?? false)) {
       setDevices([]);
       devicesRef.current = [];
       setReady(true);

@@ -11,7 +11,7 @@ const QR_PAIRING_PATH = /^\/settings\/wavoip\/[^/]+\/qr\/?$/;
 export function WavoipVoiceShell({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
-  const enabled = user?.organizationFeatures?.wavoip_voice !== false;
+  const enabled = user?.organizationFeatures?.wavoip_voice ?? false;
   const isQrPairingRoute = QR_PAIRING_PATH.test(location.pathname);
 
   // Avoid duplicate WebSocket sessions with the QR pairing page (same device token).

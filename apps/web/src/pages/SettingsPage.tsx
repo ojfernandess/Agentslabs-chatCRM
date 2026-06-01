@@ -208,7 +208,7 @@ export function SettingsPage() {
   const [searchParams] = useSearchParams();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const showLeadFinder = user?.organizationFeatures?.lead_finder ?? false;
-  const showWavoip = (user?.organizationFeatures?.wavoip_voice ?? true) && isAdmin;
+  const showWavoip = (user?.organizationFeatures?.wavoip_voice ?? false) && isAdmin;
   const initialSection = searchParams.get("section");
   const [section, setSection] = useState<SettingsSection>(() => {
     if (initialSection === "leadFinder" && showLeadFinder) return "leadFinder";
