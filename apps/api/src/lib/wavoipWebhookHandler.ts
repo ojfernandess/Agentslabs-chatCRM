@@ -200,6 +200,9 @@ async function handleCallEvent(
     });
     if (provisionalRing) {
       absorbedProvisionalMessageId = provisionalRing.messageId;
+      if (provisionalRing.clientCallId?.trim()) {
+        clientCallId = provisionalRing.clientCallId.trim();
+      }
       await prisma.wavoipCallLog.delete({ where: { id: provisionalRing.id } }).catch(() => {});
     }
   }
@@ -265,6 +268,7 @@ async function handleCallEvent(
         receiver,
         durationSec,
         recordUrl: callLog.recordUrl,
+        existingMessageId: messageId,
       })) ?? messageId;
 
     if (messageId && messageId !== callLog.messageId) {

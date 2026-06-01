@@ -68,6 +68,71 @@ export function wavoipCallProviderMsgId(input: {
   return `wavoip:call:wid:${input.whatsappCallId}`;
 }
 
+/** IDs alternativos (SDK offer vs webhook) para a mesma chamada. */
+export function wavoipCallProviderMsgIds(input: {
+  whatsappCallId: number;
+  clientCallId?: string | null;
+}): string[] {
+  const ids = new Set<string>();
+  const client = input.clientCallId?.trim();
+  if (client) ids.add(`wavoip:call:${client}`);
+  if (Number.isFinite(input.whatsappCallId)) {
+    ids.add(`wavoip:call:wid:${input.whatsappCallId}`);
+  }
+  return [...ids];
+}
+
+async function findExistingWavoipCallMessage(input: {
+  conversationId: string;
+  providerMsgIds: string[];
+  existingMessageId?: string | null;
+  peerPhone?: string;
+  direction: string;
+  status: string;
+}): Promise<{ id: string; providerMsgId: string | null } | null> {
+  if (input.existingMessageId) {
+    const row = await prisma.message.findFirst({
+      where: { id: input.existingMessageId, conversationId: input.conversationId },
+      select: { id: true, providerMsgId: true },
+    });
+    if (row) return row;
+  }
+
+  if (input.providerMsgIds.length > 0) {
+    const row = await prisma.message.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        providerMsgId: { in: input.providerMsgIds },
+      },
+      select: { id: true, providerMsgId: true },
+    });
+    if (row) return row;
+  }
+
+  const s = input.status.toUpperCase();
+  const isIncomingRing =
+    input.direction === "INCOMING" &&
+    INCOMING_ACTIVE_STATUSES.has(s) &&
+    !TERMINAL_STATUSES.has(s);
+  if (!isIncomingRing || !input.peerPhone?.trim()) return null;
+
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const peer = input.peerPhone.trim();
+  const candidates = await prisma.message.findMany({
+    where: {
+      conversationId: input.conversationId,
+      direction: "INBOUND",
+      createdAt: { gte: since },
+      body: { startsWith: "[Wavoip] Chamada recebida" },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    select: { id: true, providerMsgId: true, body: true },
+  });
+  const match = candidates.find((m) => (m.body ?? "").includes(peer));
+  return match ? { id: match.id, providerMsgId: match.providerMsgId } : null;
+}
+
 export async function upsertWavoipTimelineMessage(input: {
   conversationId: string;
   whatsappCallId: number;
@@ -79,20 +144,31 @@ export async function upsertWavoipTimelineMessage(input: {
   durationSec?: number | null;
   recordUrl?: string | null;
   mediaUrl?: string | null;
+  /** Mensagem criada pelo screen-pop (SDK) antes do webhook. */
+  existingMessageId?: string | null;
 }): Promise<string | null> {
   const status = input.status.toUpperCase();
   if (!shouldCreateTimelineMessage(status, input.direction)) return null;
 
-  const providerMsgId = wavoipCallProviderMsgId({
+  const providerMsgIds = wavoipCallProviderMsgIds({
+    whatsappCallId: input.whatsappCallId,
+    clientCallId: input.clientCallId,
+  });
+  const canonicalProviderMsgId = wavoipCallProviderMsgId({
     whatsappCallId: input.whatsappCallId,
     clientCallId: input.clientCallId,
   });
   const body = formatWavoipCallMessageBody(input);
   const type = input.mediaUrl || input.recordUrl ? "AUDIO" : "TEXT";
+  const peerPhone = input.direction === "INCOMING" ? input.caller : input.receiver;
 
-  const existing = await prisma.message.findFirst({
-    where: { conversationId: input.conversationId, providerMsgId },
-    select: { id: true },
+  const existing = await findExistingWavoipCallMessage({
+    conversationId: input.conversationId,
+    providerMsgIds,
+    existingMessageId: input.existingMessageId,
+    peerPhone,
+    direction: input.direction,
+    status,
   });
   if (existing) {
     await prisma.message.update({
@@ -101,6 +177,7 @@ export async function upsertWavoipTimelineMessage(input: {
         body,
         type,
         mediaUrl: input.mediaUrl ?? input.recordUrl ?? null,
+        providerMsgId: canonicalProviderMsgId,
       },
     });
     return existing.id;
@@ -113,7 +190,7 @@ export async function upsertWavoipTimelineMessage(input: {
       type,
       body,
       mediaUrl: input.mediaUrl ?? input.recordUrl ?? null,
-      providerMsgId,
+      providerMsgId: canonicalProviderMsgId,
       status: "DELIVERED",
     },
   });
