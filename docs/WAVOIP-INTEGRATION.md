@@ -25,7 +25,9 @@ Integrações externas em `outboundIntegrations` (JSON): targets `n8n` e `chatwo
 
 - Chave: `wavoip_voice` (Super Admin → Funcionalidades por tenant)
 - Default: **desativado** (ativar por organização no Super Admin)
-- Quando desativado: rotas admin `/settings/wavoip/*`, rotas agente `/wavoip/*` e shell de voz no browser retornam 403 / ficam ocultos
+- Quando desativado: rotas admin `/settings/wavoip/*`, rotas agente `/wavoip/*`, webhook `POST /webhooks/wavoip/...` (403 `wavoip_voice_disabled`) e shell de voz no browser ficam ocultos
+- **Migração legacy:** `20260612120000_wavoip_voice_legacy_backfill` activa `wavoip_voice` automaticamente para organizações que já têm linhas em `wavoip_devices` (sem alterar flags explicitamente definidas). No arranque da API, `ensureWavoipVoiceEnabledForOrgsWithDevices` repete a mesma regra por segurança.
+- Após deploy: agentes com sessão antiga podem precisar de **logout/login** para `organizationFeatures.wavoip_voice` actualizar na UI.
 
 ## API (admin)
 

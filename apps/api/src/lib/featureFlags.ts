@@ -100,3 +100,29 @@ export async function getOrganizationFeatureMap(
   );
   return Object.fromEntries(entries) as Record<FeatureFlagKey, boolean>;
 }
+
+/**
+ * Enables `wavoip_voice` for orgs that already have paired devices but no explicit flag row
+ * (e.g. after opt-in default changed). Does not override an existing row (including disabled).
+ */
+export async function ensureWavoipVoiceEnabledForOrgsWithDevices(): Promise<number> {
+  const devices = await prisma.wavoipDevice.findMany({
+    distinct: ["organizationId"],
+    select: { organizationId: true },
+  });
+  if (devices.length === 0) return 0;
+
+  let enabled = 0;
+  for (const { organizationId } of devices) {
+    const existing = await prisma.organizationFeatureFlag.findUnique({
+      where: { organizationId_key: { organizationId, key: "wavoip_voice" } },
+      select: { id: true },
+    });
+    if (existing) continue;
+    await prisma.organizationFeatureFlag.create({
+      data: { organizationId, key: "wavoip_voice", enabled: true },
+    });
+    enabled++;
+  }
+  return enabled;
+}

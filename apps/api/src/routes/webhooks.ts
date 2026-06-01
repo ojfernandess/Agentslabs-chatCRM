@@ -30,6 +30,7 @@ import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
+import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -834,6 +835,14 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         "wavoip_voice",
       );
       if (!wavoipEnabled) {
+        await logWavoipIntegration({
+          organizationId: request.params.organizationId,
+          wavoipDeviceId: device.id,
+          level: "warn",
+          eventType: "webhook_blocked_flag",
+          message:
+            "Webhook rejected: wavoip_voice disabled. Enable in Super Admin > Funcionalidades or pair a device after migration backfill.",
+        });
         return reply.status(403).send({
           error: "Forbidden",
           message: "wavoip_voice_disabled",

@@ -59,6 +59,7 @@ import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
+import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
 
 const app = Fastify({
   logger: {
@@ -234,6 +235,11 @@ try {
     void runWavoipStatusSyncTick(app.log);
   }, wavoipStatusSyncMs);
   void runWavoipStatusSyncTick(app.log);
+  void ensureWavoipVoiceEnabledForOrgsWithDevices().then((count) => {
+    if (count > 0) {
+      app.log.info({ count }, "Enabled wavoip_voice for organizations with existing Wavoip devices");
+    }
+  });
 } catch (err) {
   app.log.error(err);
   process.exit(1);
