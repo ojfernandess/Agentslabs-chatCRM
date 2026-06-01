@@ -2032,6 +2032,7 @@ export const messages = {
       subtitle:
         "Telefonia Nvoip (API v2): OAuth, click-to-call e estado da chamada por polling. Ative a funcionalidade no Super Admin antes de configurar.",
       docsLink: "Documentação Nvoip API v2",
+      panelLink: "Abrir painel Nvoip",
       loadError: "Não foi possível carregar a integração Nvoip.",
       saveError: "Não foi possível guardar a conta Nvoip.",
       testError: "Falha ao testar ligação com a Nvoip.",
@@ -6180,6 +6181,7 @@ export const messages = {
       subtitle:
         "Nvoip telephony (API v2): OAuth, click-to-call, and call status via polling. Enable the feature in Super Admin first.",
       docsLink: "Nvoip API v2 documentation",
+      panelLink: "Open Nvoip dashboard",
       loadError: "Could not load Nvoip integration.",
       saveError: "Could not save Nvoip account.",
       testError: "Nvoip connection test failed.",

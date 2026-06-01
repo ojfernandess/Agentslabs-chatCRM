@@ -1,7 +1,7 @@
 import { prisma } from "../db.js";
 import { findContactByInboundPhone } from "./contactPhoneMatch.js";
 import {
-  ensureConversationForChannelInbox,
+  ensureInboundCallConversation,
   reopenResolvedConversationData,
 } from "./conversationRouting.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
@@ -137,17 +137,12 @@ export async function runWavoipInboundScreenPop(input: {
   );
   if (!contactResult) return null;
 
-  const settings = await prisma.settings.findUnique({
-    where: { organizationId: device.organizationId },
-  });
   const inboxId = await resolveInboxIdForDevice(device, device.organizationId);
-  const conv = await ensureConversationForChannelInbox({
+  const conv = await ensureInboundCallConversation({
     organizationId: device.organizationId,
     contactId: contactResult.contactId,
     inboxId,
-    lockSingleConversation: settings?.lockSingleConversation ?? true,
     activeConversationStatus: "PENDING",
-    createDefaults: { status: "PENDING" },
   });
 
   const conversationId = conv.id;

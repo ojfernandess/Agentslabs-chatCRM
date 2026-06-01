@@ -1,9 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import {
-  ensureConversationForChannelInbox,
-} from "./conversationRouting.js";
+import { ensureInboundCallConversation } from "./conversationRouting.js";
 import {
   ensureContactForInboundCall,
   touchConversationForInboundCall,
@@ -150,15 +148,12 @@ async function handleCallEvent(
   const conversationStatus = isIncoming ? "PENDING" : "OPEN";
 
   if (contactId) {
-    const settings = await prisma.settings.findUnique({ where: { organizationId: device.organizationId } });
     const inboxId = await resolveInboxIdForDevice(device, device.organizationId);
-    const conv = await ensureConversationForChannelInbox({
+    const conv = await ensureInboundCallConversation({
       organizationId: device.organizationId,
       contactId,
       inboxId,
-      lockSingleConversation: settings?.lockSingleConversation ?? true,
       activeConversationStatus: conversationStatus,
-      createDefaults: { status: conversationStatus },
     });
     conversationId = conv.id;
 

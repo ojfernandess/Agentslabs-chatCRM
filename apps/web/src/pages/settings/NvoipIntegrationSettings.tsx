@@ -330,12 +330,12 @@ export function NvoipIntegrationSettings() {
       <h2 className="text-lg font-semibold text-slate-900 dark:text-ink-50">{t("nvoip.title")}</h2>
       <p className="mt-1 text-sm text-slate-600 dark:text-ink-400">{t("nvoip.subtitle")}</p>
       <a
-        href="https://nvoip.docs.apiary.io/"
+        href={NVOIP_PANEL_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="mt-2 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
       >
-        {t("nvoip.docsLink")}
+        {t("nvoip.panelLink")}
       </a>
 
       {error ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
