@@ -68,7 +68,7 @@ Header: X-Wavoip-Webhook-Secret: {secret gerado na criação}
 Eventos suportados ([Webhook Beta Wavoip](https://wavoip.gitbook.io/api/webhook-beta.md)):
 
 - **DEVICE** — atualiza status (`CONNECTING`, `OPEN`, etc.) + WS `wavoip.device.updated`
-- **CALL** — regista chamada, contacto/conversa, timeline + WS `wavoip.call.incoming` (entrantes)
+- **CALL** — no primeiro toque (CREATE/RINGING): cria/reabre contacto e conversa **PENDING**, mensagem na timeline, WS `wavoip.call.incoming` + `conversation.updated` (screen pop estilo CRM). Ao encerrar, atualiza a mesma mensagem com duração/estado final.
 - **RECORD** — anexa URL de gravação à chamada/conversa
 
 Configure a URL no painel Wavoip: **Integrações > Webhook**.

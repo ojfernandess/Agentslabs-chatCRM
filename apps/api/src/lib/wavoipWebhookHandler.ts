@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma } from "@prisma/client";
-import { normalizePhoneE164 } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { findContactByInboundPhone } from "./contactPhoneMatch.js";
-import { ensureConversationForChannelInbox } from "./conversationRouting.js";
+import {
+  ensureConversationForChannelInbox,
+  reopenResolvedConversationData,
+} from "./conversationRouting.js";
+import { normalizeDialPhone } from "./wavoipCallContext.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { fireBroadcastEventTriggers } from "./broadcastEventHooks.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
@@ -47,12 +50,57 @@ async function resolveInboxIdForDevice(device: { inboxId: string | null }, organ
   return getDefaultInboxId(organizationId);
 }
 
+/** Atualiza conversa ao tocar (screen pop estilo CRM): sobe na fila e reabre pendente se necessário. */
+async function touchConversationForInboundCall(
+  conversationId: string,
+  isTerminal: boolean,
+): Promise<void> {
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { status: true, assignedToId: true },
+  });
+  if (!conv) return;
+
+  if (isTerminal) {
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+    return;
+  }
+
+  if (conv.status === "RESOLVED") {
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: reopenResolvedConversationData("PENDING"),
+    });
+    return;
+  }
+
+  if (!conv.assignedToId && conv.status === "OPEN") {
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: "PENDING", updatedAt: new Date() },
+    });
+    return;
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { updatedAt: new Date() },
+  });
+}
+
+function notifyConversationCallActivity(organizationId: string, conversationId: string): void {
+  broadcastConversationUpdated(organizationId, conversationId);
+}
+
 async function ensureContactForCall(
   organizationId: string,
   peerPhoneRaw: string,
   deviceLinkedPhone: string | null,
 ): Promise<{ contactId: string; created: boolean } | null> {
-  const normalized = normalizePhoneE164(peerPhoneRaw);
+  const normalized = normalizeDialPhone(peerPhoneRaw);
   if (!normalized) return null;
 
   let contact = await findContactByInboundPhone(prisma, organizationId, normalized);
@@ -169,6 +217,7 @@ async function handleCallEvent(
   let contactId: string | null = contactResult?.contactId ?? null;
 
   const isIncoming = direction === "INCOMING";
+  const isTerminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED", "DISCONNECTED"].includes(status);
   const conversationStatus = isIncoming ? "PENDING" : "OPEN";
 
   if (contactId) {
@@ -187,10 +236,14 @@ async function handleCallEvent(
     if (contactResult?.created) {
       fireBroadcastEventTriggers(app, device.organizationId, "NEW_LEAD", { contactId });
     }
+
+    if (isIncoming) {
+      await touchConversationForInboundCall(conversationId, isTerminal);
+      notifyConversationCallActivity(device.organizationId, conversationId);
+    }
   }
 
   const now = new Date();
-  const isTerminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED"].includes(status);
 
   let initiatedByUserId: string | null = null;
   let clientCallId: string | null = null;
@@ -246,31 +299,46 @@ async function handleCallEvent(
   const isIncomingRing =
     isIncoming && !isTerminal && (status === "RINGING" || payload.action === "CREATE" || status === "NONE");
   const timelineStatus = isIncomingRing ? "RINGING" : status;
+  const shouldWriteTimeline =
+    isTerminal ||
+    isIncomingRing ||
+    (isIncoming && ["ACTIVE", "CALLING", "CONNECTING"].includes(status)) ||
+    (direction === "OUTGOING" && !isTerminal);
 
   let messageId: string | null = callLog.messageId ?? absorbedMessageId;
-  if (conversationId && (isTerminal || isIncomingRing)) {
-    messageId = await upsertWavoipTimelineMessage({
-      conversationId,
-      whatsappCallId,
-      clientCallId,
-      direction,
-      status: timelineStatus,
-      caller,
-      receiver,
-      durationSec,
-      recordUrl: null,
-    });
+  if (conversationId && shouldWriteTimeline) {
+    messageId =
+      (await upsertWavoipTimelineMessage({
+        conversationId,
+        whatsappCallId,
+        clientCallId,
+        direction,
+        status: timelineStatus,
+        caller,
+        receiver,
+        durationSec,
+        recordUrl: callLog.recordUrl,
+      })) ?? messageId;
+
     if (messageId && messageId !== callLog.messageId) {
       await prisma.wavoipCallLog.update({
         where: { id: callLog.id },
         data: { messageId },
       });
+    }
+
+    if (isIncoming) {
+      await touchConversationForInboundCall(conversationId, isTerminal);
+    } else {
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { updatedAt: new Date() },
       });
-      broadcastConversationUpdated(device.organizationId, conversationId);
     }
+    notifyConversationCallActivity(device.organizationId, conversationId);
+  } else if (conversationId && isIncoming) {
+    await touchConversationForInboundCall(conversationId, isTerminal);
+    notifyConversationCallActivity(device.organizationId, conversationId);
   }
 
   if (isIncomingRing) {
@@ -414,8 +482,12 @@ async function handleRecordEvent(
     });
     if (messageId) {
       await prisma.wavoipCallLog.update({ where: { id: callLog.id }, data: { messageId } });
-      broadcastConversationUpdated(device.organizationId, callLog.conversationId);
     }
+    await prisma.conversation.update({
+      where: { id: callLog.conversationId },
+      data: { updatedAt: new Date() },
+    });
+    notifyConversationCallActivity(device.organizationId, callLog.conversationId);
   }
 
   await logWavoipIntegration({

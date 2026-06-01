@@ -38,10 +38,12 @@ export function callMessageDirection(direction: string): MessageDirection {
   return direction === "OUTGOING" ? "OUTBOUND" : "INBOUND";
 }
 
+const INCOMING_ACTIVE_STATUSES = new Set(["RINGING", "NONE", "ACTIVE", "CALLING", "CONNECTING"]);
+
 /** Only one timeline message per call — active/terminal status updates the same row. */
 export function shouldCreateTimelineMessage(status: string, direction?: string): boolean {
   const s = status.toUpperCase();
-  if (direction === "INCOMING" && (s === "RINGING" || s === "NONE")) return true;
+  if (direction === "INCOMING" && INCOMING_ACTIVE_STATUSES.has(s)) return true;
   if (direction === "OUTGOING" && OUTBOUND_ACTIVE_STATUSES.has(s)) return true;
   return TERMINAL_STATUSES.has(s);
 }

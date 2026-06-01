@@ -111,6 +111,21 @@ export function WorkspaceRealtime() {
             { detail: data },
           ),
         );
+        if (typeof data.conversationId === "string" && data.conversationId) {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-updated", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+          window.dispatchEvent(
+            new CustomEvent("openconduit:wavoip-call-logged", {
+              detail: {
+                conversationId: data.conversationId,
+                contactId: data.contactId ?? null,
+              },
+            }),
+          );
+        }
       } else if (data.type === "wavoip.device.updated") {
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));
       }
