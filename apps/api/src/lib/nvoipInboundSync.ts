@@ -11,36 +11,9 @@ import {
 import { resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { upsertNvoipTimelineMessage } from "./nvoipCallTimeline.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
+import { resolveNvoipIncomingTargetUserIds } from "./nvoipIncomingQueue.js";
 
-function digitsOnly(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
-function extensionMatchesReceiver(extensionCaller: string, receiver: string): boolean {
-  const a = digitsOnly(extensionCaller);
-  const b = digitsOnly(receiver);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const tail = Math.min(8, a.length, b.length);
-  return a.slice(-tail) === b.slice(-tail);
-}
-
-export async function resolveNvoipIncomingTargetUserIds(
-  organizationId: string,
-  receiver: string,
-): Promise<string[] | null> {
-  const receiverDigits = digitsOnly(receiver);
-  if (!receiverDigits) return null;
-
-  const extensions = await prisma.nvoipAgentExtension.findMany({
-    where: { organizationId },
-    select: { userId: true, caller: true },
-  });
-  const matched = extensions
-    .filter((ext) => extensionMatchesReceiver(ext.caller, receiver))
-    .map((ext) => ext.userId);
-  return matched.length > 0 ? matched : null;
-}
+export { resolveNvoipIncomingTargetUserIds };
 
 export function mapNvoipHistoryStateToCrmStatus(
   state: string,
@@ -65,10 +38,12 @@ async function emitNvoipIncomingScreenPop(input: {
   receiver: string;
   contactId: string | null;
   conversationId: string | null;
+  accountExternalConfig: unknown;
 }): Promise<void> {
   const targetUserIds = await resolveNvoipIncomingTargetUserIds(
     input.organizationId,
     input.receiver,
+    input.accountExternalConfig,
   );
   broadcastToOrganization(input.organizationId, {
     type: "nvoip.call.incoming",
@@ -208,6 +183,7 @@ export async function ingestNvoipInboundHistoryItem(
       receiver,
       contactId: ctx.contactId,
       conversationId: ctx.conversationId,
+      accountExternalConfig: account.externalConfig,
     });
   }
 

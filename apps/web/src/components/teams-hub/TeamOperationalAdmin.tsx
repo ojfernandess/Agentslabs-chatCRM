@@ -51,9 +51,12 @@ interface Props {
   /** When set, shows admin for a single team (hub mode). */
   teamId?: string;
   onBack?: () => void;
+  /** Renders inside hub tabs (no full-page chrome). */
+  embedded?: boolean;
+  onTeamMutated?: () => void;
 }
 
-export function TeamOperationalAdmin({ teamId, onBack }: Props) {
+export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamMutated }: Props) {
   const { t } = useI18n();
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -137,6 +140,7 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
       };
       await api.patch(`/teams/${team.id}`, body);
       await loadTeams();
+      onTeamMutated?.();
     } finally {
       setSaving(false);
     }
@@ -152,6 +156,7 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
     try {
       await api.delete(`/teams/${team.id}`);
       await loadTeams();
+      onTeamMutated?.();
       if (teamId && onBack) onBack();
     } finally {
       setDeleting(false);
@@ -163,18 +168,21 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
     await api.post(`/teams/${team.id}/members`, { userId: addUserId, role: addRole });
     setAddUserId("");
     await loadTeams();
+    onTeamMutated?.();
   };
 
   const handleRoleChange = async (userId: string, role: TeamMemberRole) => {
     if (!team) return;
     await api.patch(`/teams/${team.id}/members/${userId}`, { role });
     await loadTeams();
+    onTeamMutated?.();
   };
 
   const handleRemoveMember = async (userId: string) => {
     if (!team) return;
     await api.delete(`/teams/${team.id}/members/${userId}`);
     await loadTeams();
+    onTeamMutated?.();
   };
 
   if (loading) {
@@ -192,12 +200,16 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
   const memberIds = new Set(team.members.map((m) => m.userId));
   const candidates = orgUsers.filter((u) => !memberIds.has(u.id));
 
-  return (
-    <PageTransition>
-      <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-violet-50/20 p-4 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/10 lg:p-6">
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+  const inner = (
+    <>
+        <header
+          className={clsx(
+            "mb-6 flex flex-wrap items-start justify-between gap-4",
+            embedded && "mb-4",
+          )}
+        >
           <div className="flex min-w-0 items-start gap-3">
-            {onBack ? (
+            {onBack && !embedded ? (
               <button
                 type="button"
                 onClick={onBack}
@@ -208,10 +220,19 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
               </button>
             ) : null}
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                {t("teamsHub.adminTitle")}
-              </p>
-              <h1 className="truncate text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{team.name}</h1>
+              {!embedded ? (
+                <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+                  {t("teamsHub.adminTitle")}
+                </p>
+              ) : null}
+              <h1
+                className={clsx(
+                  "truncate font-bold tracking-tight text-ink-900 dark:text-ink-50",
+                  embedded ? "text-lg" : "text-2xl",
+                )}
+              >
+                {team.name}
+              </h1>
               <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("teamsHub.adminSubtitle")}</p>
             </div>
           </div>
@@ -396,6 +417,17 @@ export function TeamOperationalAdmin({ teamId, onBack }: Props) {
             </div>
           </aside>
         </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="mx-auto max-w-6xl">{inner}</div>;
+  }
+
+  return (
+    <PageTransition>
+      <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-violet-50/20 p-4 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/10 lg:p-6">
+        {inner}
       </div>
     </PageTransition>
   );

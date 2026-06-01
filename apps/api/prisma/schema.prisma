@@ -222,6 +222,7 @@ model Organization {
   nvoipScheduledTorpedos         NvoipScheduledTorpedo[]
   nvoipSipUsers                  NvoipSipUser[]
   nvoipOtpChallenges             NvoipOtpChallenge[]
+  nvoipTrunks                    NvoipTrunk[]
 
   @@map("organizations")
 }
@@ -1982,6 +1983,7 @@ model NvoipAccount {
   otpDefaultChannel String            @default("sms") @map("otp_default_channel") @db.VarChar(16)
   waInstance        String?           @map("wa_instance") @db.VarChar(128)
   waDefaultLanguage String            @default("pt_BR") @map("wa_default_language") @db.VarChar(16)
+  externalConfig    Json?             @map("external_config")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 
@@ -1996,8 +1998,29 @@ model NvoipAccount {
   scheduledTorpedos NvoipScheduledTorpedo[]
   sipUsers          NvoipSipUser[]
   otpChallenges     NvoipOtpChallenge[]
+  trunks            NvoipTrunk[]
 
   @@map("nvoip_accounts")
+}
+
+/// Perfil de origem (caller) por organização — múltiplos ramais/DIDs de saída.
+model NvoipTrunk {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.VarChar(128)
+  defaultCaller String   @map("default_caller") @db.VarChar(32)
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  nvoipAccountId String       @map("nvoip_account_id") @db.Uuid
+  nvoipAccount   NvoipAccount @relation(fields: [nvoipAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([nvoipAccountId, name])
+  @@index([organizationId])
+  @@map("nvoip_trunks")
 }
 
 /// Desafio OTP Nvoip (key externa + validação local).

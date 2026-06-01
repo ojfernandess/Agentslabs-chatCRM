@@ -1,5 +1,6 @@
 import { FastifyInstance, type FastifyReply } from "fastify";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -18,9 +19,22 @@ import {
   nvoipListDids,
   nvoipListScheduledTorpedos,
   nvoipListUra,
+  nvoipDeleteScheduledTorpedo,
+  nvoipScheduleVoiceTorpedo,
+  nvoipUpdateDid,
+  nvoipCreateSipUser,
 } from "../lib/nvoipClient.js";
+import { maybeAlertNvoipLowBalance } from "../lib/nvoipBalanceAlert.js";
+import { type NvoipIncomingQueueConfig } from "../lib/nvoipIncomingQueue.js";
+import { mergeNvoipExternalConfig, readNvoipExternalConfig } from "../lib/nvoipExternalConfig.js";
+import {
+  ensureSingleDefaultTrunk,
+  listNvoipTrunks,
+  trunkToClient,
+} from "../lib/nvoipTrunks.js";
+import { runNvoipHomologation } from "../lib/nvoipHomologation.js";
 import { writeNvoipIntegrationLog } from "../lib/nvoipIntegrationLog.js";
-import { sendNvoipTorpedoTest } from "../lib/nvoipTorpedo.js";
+import { sendNvoipTorpedoTest, nvoipVoiceSafeText } from "../lib/nvoipTorpedo.js";
 import { listCachedNvoipSipUsers, syncNvoipSipUsers } from "../lib/nvoipDirectorySync.js";
 import { sendNvoipSmsToPhone } from "../lib/nvoipSms.js";
 import { resolveOrgOtpProvider } from "../lib/otp/resolveOtpProvider.js";
@@ -42,6 +56,15 @@ const upsertSchema = z.object({
   otpDefaultChannel: z.enum(["sms", "voice", "email"]).optional(),
   waInstance: z.string().max(128).nullable().optional(),
   waDefaultLanguage: z.string().max(16).optional(),
+  incomingQueue: z
+    .object({
+      mode: z.enum(["all", "team"]),
+      teamId: z.string().uuid().nullable().optional(),
+    })
+    .optional(),
+  lowBalanceAlertBrl: z.number().positive().max(1_000_000).nullable().optional(),
+  balanceAlertEmails: z.string().max(2000).optional(),
+  recordingRetentionDays: z.number().int().min(1).max(3650).nullable().optional(),
 });
 
 const extensionSchema = z.object({
@@ -117,6 +140,40 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       });
     }
 
+    let externalConfigPatch: Prisma.InputJsonValue | undefined;
+    if (
+      parsed.data.incomingQueue !== undefined ||
+      parsed.data.lowBalanceAlertBrl !== undefined ||
+      parsed.data.balanceAlertEmails !== undefined ||
+      parsed.data.recordingRetentionDays !== undefined
+    ) {
+      const base = existing?.externalConfig ?? {};
+      const queue: NvoipIncomingQueueConfig | undefined =
+        parsed.data.incomingQueue !== undefined
+          ? {
+              mode: parsed.data.incomingQueue.mode,
+              teamId: parsed.data.incomingQueue.teamId ?? null,
+            }
+          : undefined;
+      const emails =
+        parsed.data.balanceAlertEmails !== undefined
+          ? parsed.data.balanceAlertEmails
+              .split(/[,;]+/)
+              .map((e) => e.trim().toLowerCase())
+              .filter((e) => e.includes("@"))
+          : undefined;
+      externalConfigPatch = mergeNvoipExternalConfig(base, {
+        incomingQueue: queue,
+        lowBalanceAlertBrl:
+          parsed.data.lowBalanceAlertBrl !== undefined ? parsed.data.lowBalanceAlertBrl : undefined,
+        balanceAlertEmails: emails,
+        recordingRetentionDays:
+          parsed.data.recordingRetentionDays !== undefined
+            ? parsed.data.recordingRetentionDays
+            : undefined,
+      });
+    }
+
     let row;
     if (existing) {
       row = await prisma.nvoipAccount.update({
@@ -125,6 +182,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
           numbersip: parsed.data.numbersip.trim(),
           defaultCaller: parsed.data.defaultCaller.trim(),
           inboxId: parsed.data.inboxId ?? null,
+          ...(externalConfigPatch !== undefined ? { externalConfig: externalConfigPatch } : {}),
           ...(parsed.data.otpProvider !== undefined ? { otpProvider: parsed.data.otpProvider } : {}),
           ...(parsed.data.otpDefaultChannel !== undefined
             ? { otpDefaultChannel: parsed.data.otpDefaultChannel }
@@ -154,6 +212,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
           waInstance: parsed.data.waInstance?.trim() || null,
           waDefaultLanguage: parsed.data.waDefaultLanguage?.trim() || "pt_BR",
           status: "DISCONNECTED",
+          ...(externalConfigPatch !== undefined ? { externalConfig: externalConfigPatch } : {}),
         },
         include: { inbox: { select: { name: true } } },
       });
@@ -468,11 +527,12 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
 
     try {
       const { balance } = await nvoipGetBalance(account);
+      const alert = await maybeAlertNvoipLowBalance(account, balance);
       await prisma.nvoipAccount.update({
         where: { id: account.id },
-        data: { lastBalance: balance },
+        data: { lastBalance: balance, lastStatusAt: new Date() },
       });
-      return { balance };
+      return { balance, balanceLow: alert.low, balanceAlertThresholdBrl: alert.thresholdBrl };
     } catch (err) {
       return reply.status(400).send({
         error: "Bad Request",
@@ -534,6 +594,218 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     });
 
     return { data: remote, local };
+  });
+
+  app.delete<{ Params: { schedkey: string } }>("/torpedos/scheduled/:schedkey", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const schedkey = request.params.schedkey.trim();
+    if (!schedkey) {
+      return reply.status(400).send({ error: "Bad Request", message: "invalid_schedkey", statusCode: 400 });
+    }
+
+    try {
+      await nvoipDeleteScheduledTorpedo(account, schedkey);
+      await prisma.nvoipScheduledTorpedo.deleteMany({ where: { organizationId, schedkey } });
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: account.id,
+        level: "info",
+        eventType: "torpedo_sched_cancelled",
+        message: `Cancelled scheduled torpedo ${schedkey}`,
+      });
+      return { ok: true };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "cancel_sched_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.post("/torpedos/schedule", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        phone: z.string().min(8),
+        message: z.string().min(1).max(900),
+        scheduledAt: z.string().datetime(),
+        caller: z.string().max(32).optional(),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const caller = (body.data.caller ?? account.defaultCaller).trim();
+    if (!caller) {
+      return reply.status(400).send({ error: "Bad Request", message: "nvoip_no_caller", statusCode: 400 });
+    }
+
+    const scheduledAt = new Date(body.data.scheduledAt);
+    if (scheduledAt.getTime() <= Date.now()) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "scheduled_at_must_be_future",
+        statusCode: 400,
+      });
+    }
+
+    const text = nvoipVoiceSafeText(body.data.message);
+    if (!text) {
+      return reply.status(400).send({ error: "Bad Request", message: "empty_message", statusCode: 400 });
+    }
+
+    try {
+      const { schedkey, raw } = await nvoipScheduleVoiceTorpedo(account, {
+        caller,
+        called: body.data.phone.trim(),
+        audios: [{ text }],
+        scheduledAt,
+      });
+      await prisma.nvoipScheduledTorpedo.upsert({
+        where: { schedkey },
+        create: {
+          organizationId,
+          nvoipAccountId: account.id,
+          schedkey,
+          status: "SCHEDULED",
+          recipientCount: 1,
+          scheduledAt,
+          payload: raw as object,
+        },
+        update: {
+          status: "SCHEDULED",
+          scheduledAt,
+          payload: raw as object,
+        },
+      });
+      return { ok: true, schedkey };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "schedule_torpedo_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.put("/dids", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        number: z.string().min(4).max(32),
+        destination: z.string().min(1).max(256),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const raw = await nvoipUpdateDid(account, body.data);
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: account.id,
+        level: "info",
+        eventType: "did_updated",
+        message: `DID ${body.data.number} → ${body.data.destination}`,
+      });
+      return { ok: true, raw };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "update_did_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.post("/users", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        name: z.string().min(1).max(128),
+        caller: z.string().min(1).max(32),
+        sipPassword: z.string().min(4).max(64).optional(),
+        webphone: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const raw = await nvoipCreateSipUser(account, body.data);
+      await syncNvoipSipUsers(account);
+      return { ok: true, raw };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "create_user_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.get("/teams", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const teams = await prisma.team.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    return { data: teams };
   });
 
   app.post("/torpedo/test", async (request, reply) => {
@@ -811,5 +1083,127 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
         statusCode: 400,
       });
     }
+  });
+
+  app.get("/trunks", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+    const data = await listNvoipTrunks(organizationId);
+    return { data };
+  });
+
+  app.post("/trunks", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        name: z.string().min(1).max(128),
+        defaultCaller: z.string().min(1).max(32),
+        isDefault: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account) {
+      return reply.status(400).send({ error: "Bad Request", message: "account_not_found", statusCode: 400 });
+    }
+
+    const row = await prisma.nvoipTrunk.create({
+      data: {
+        organizationId,
+        nvoipAccountId: account.id,
+        name: body.data.name.trim(),
+        defaultCaller: body.data.defaultCaller.trim(),
+        isDefault: body.data.isDefault ?? false,
+      },
+    });
+    if (body.data.isDefault) {
+      await ensureSingleDefaultTrunk(organizationId, account.id, row.id);
+    }
+    return { trunk: trunkToClient(row) };
+  });
+
+  app.put<{ Params: { id: string } }>("/trunks/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        name: z.string().min(1).max(128).optional(),
+        defaultCaller: z.string().min(1).max(32).optional(),
+        isDefault: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.nvoipTrunk.findFirst({
+      where: { id: request.params.id, organizationId },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "trunk_not_found", statusCode: 404 });
+    }
+
+    const row = await prisma.nvoipTrunk.update({
+      where: { id: existing.id },
+      data: {
+        ...(body.data.name !== undefined ? { name: body.data.name.trim() } : {}),
+        ...(body.data.defaultCaller !== undefined
+          ? { defaultCaller: body.data.defaultCaller.trim() }
+          : {}),
+        ...(body.data.isDefault !== undefined ? { isDefault: body.data.isDefault } : {}),
+      },
+    });
+    if (body.data.isDefault) {
+      await ensureSingleDefaultTrunk(organizationId, existing.nvoipAccountId, row.id);
+    }
+    return { trunk: trunkToClient(row) };
+  });
+
+  app.delete<{ Params: { id: string } }>("/trunks/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const deleted = await prisma.nvoipTrunk.deleteMany({
+      where: { id: request.params.id, organizationId },
+    });
+    if (deleted.count === 0) {
+      return reply.status(404).send({ error: "Not Found", message: "trunk_not_found", statusCode: 404 });
+    }
+    return reply.status(204).send();
+  });
+
+  app.post("/homologation/run", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    try {
+      return await runNvoipHomologation(organizationId);
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "homologation_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.get("/homologation/last", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    const ext = readNvoipExternalConfig(account?.externalConfig ?? null);
+    return { last: ext.homologationLast };
   });
 }

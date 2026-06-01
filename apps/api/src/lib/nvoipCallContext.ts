@@ -17,13 +17,16 @@ export async function resolveCallerForUser(
   accountId: string,
   userId: string,
   defaultCaller: string,
+  trunkId?: string | null,
 ): Promise<string> {
-  const ext = await prisma.nvoipAgentExtension.findUnique({
-    where: { organizationId_userId: { organizationId, userId } },
-    select: { caller: true },
+  const { resolveNvoipOutboundCaller } = await import("./nvoipTrunks.js");
+  return resolveNvoipOutboundCaller({
+    organizationId,
+    accountId,
+    userId,
+    accountDefaultCaller: defaultCaller,
+    trunkId,
   });
-  const caller = (ext?.caller ?? defaultCaller).trim();
-  return caller.slice(0, 32);
 }
 
 export async function resolveNvoipCallContext(input: {

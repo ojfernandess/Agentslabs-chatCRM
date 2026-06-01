@@ -27,6 +27,7 @@ import {
 import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
 import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { NvoipIntegrationSettings } from "@/pages/settings/NvoipIntegrationSettings";
+import { NvoipAgent2faPanel } from "@/components/nvoip/NvoipAgent2faPanel";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
 import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvidersOverview";
@@ -1238,6 +1239,8 @@ export function SettingsPage() {
             <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("settings.title")}</h1>
             <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">{t("settings.subtitle")}</p>
           </div>
+
+          {user?.organizationFeatures?.nvoip_otp ? <NvoipAgent2faPanel /> : null}
 
           <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
             <nav

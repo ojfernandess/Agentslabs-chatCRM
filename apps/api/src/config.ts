@@ -163,6 +163,8 @@ export const config = {
   /** API Nvoip v2 — https://nvoip.docs.apiary.io/ */
   nvoipApiBaseUrl: optionalEnv("NVOIP_API_BASE_URL", "https://api.nvoip.com.br/v2").replace(/\/+$/, ""),
   /** Basic auth para POST /oauth/token (credencial pública da documentação Nvoip). */
+  /** Alerta de saldo baixo (R$) ao atualizar saldo Nvoip; pode ser sobreposto por conta (externalConfig). */
+  nvoipDefaultBalanceAlertBrl: Number(optionalEnv("NVOIP_BALANCE_ALERT_BRL", "5")) || 5,
   nvoipOAuthBasic: optionalEnv(
     "NVOIP_OAUTH_BASIC",
     "TnZvaXBBcGlWMjpUblp2YVhCQmNHbFdNakl3TWpFPQ==",

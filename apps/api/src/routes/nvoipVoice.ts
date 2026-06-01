@@ -5,6 +5,7 @@ import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { resolveCallerForUser } from "../lib/nvoipCallContext.js";
+import { listNvoipTrunks } from "../lib/nvoipTrunks.js";
 import {
   completeAgentOutboundCall,
   startAgentOutboundCall,
@@ -51,6 +52,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       request.user.id,
       account.defaultCaller,
     );
+    const trunks = await listNvoipTrunks(organizationId);
 
     return {
       ready: true,
@@ -58,6 +60,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       caller: caller || null,
       balance: account.lastBalance,
       accountId: account.id,
+      trunks,
     };
   });
 
@@ -70,6 +73,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       phone: z.string().min(3).max(64),
       contactId: z.string().uuid().nullable().optional(),
       conversationId: z.string().uuid().nullable().optional(),
+      trunkId: z.string().uuid().nullable().optional(),
     });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
@@ -90,6 +94,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       phone: parsed.data.phone,
       contactId: parsed.data.contactId ?? null,
       conversationId: parsed.data.conversationId ?? null,
+      trunkId: parsed.data.trunkId ?? null,
     });
     if (!result.ok) {
       return reply.status(400).send({ error: "Bad Request", message: result.message, statusCode: 400 });

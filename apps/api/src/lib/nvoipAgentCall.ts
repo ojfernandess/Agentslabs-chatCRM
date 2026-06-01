@@ -21,6 +21,7 @@ export async function startAgentOutboundCall(input: {
   phone: string;
   contactId?: string | null;
   conversationId?: string | null;
+  trunkId?: string | null;
 }): Promise<
   | {
       ok: true;
@@ -41,6 +42,7 @@ export async function startAgentOutboundCall(input: {
     account.id,
     input.userId,
     account.defaultCaller,
+    input.trunkId,
   );
   if (!caller) return { ok: false, message: "nvoip_no_caller" };
 

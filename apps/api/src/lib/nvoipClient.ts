@@ -136,6 +136,21 @@ export async function getNvoipAccessToken(account: NvoipAccount): Promise<string
   return tokens.access_token;
 }
 
+async function fetchWithRateLimitBackoff(url: string, init: RequestInit, maxAttempts = 4): Promise<Response> {
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429) return res;
+    last = res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : Math.min(1500 * 2 ** attempt, 12_000);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return last!;
+}
+
 export async function nvoipAuthorizedFetch(
   account: NvoipAccount,
   path: string,
@@ -147,7 +162,7 @@ export async function nvoipAuthorizedFetch(
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(apiUrl(path), { ...init, headers });
+  return fetchWithRateLimitBackoff(apiUrl(path), { ...init, headers });
 }
 
 export async function nvoipGetBalance(account: NvoipAccount): Promise<{ balance: string }> {
@@ -525,6 +540,83 @@ export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUse
     throw new Error(err?.error ?? `list_users_failed_${res.status}`);
   }
   return normalizeSipUserList(data);
+}
+
+export async function nvoipCreateSipUser(
+  account: NvoipAccount,
+  input: { name: string; caller: string; sipPassword?: string; webphone?: boolean },
+): Promise<Record<string, unknown>> {
+  const res = await nvoipAuthorizedFetch(account, "/users", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name.trim(),
+      caller: input.caller.trim(),
+      ...(input.sipPassword ? { sipPassword: input.sipPassword } : {}),
+      ...(input.webphone != null ? { webphone: input.webphone } : {}),
+    }),
+  });
+  const data = await parseJson<Record<string, unknown>>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : `create_user_failed_${res.status}`,
+    );
+  }
+  return data;
+}
+
+export async function nvoipUpdateSipUser(
+  account: NvoipAccount,
+  input: {
+    numbersip: string;
+    name?: string;
+    blocked?: boolean;
+    webphone?: boolean;
+    sipPassword?: string;
+  },
+): Promise<Record<string, unknown>> {
+  const res = await nvoipAuthorizedFetch(account, "/update/users", {
+    method: "PUT",
+    body: JSON.stringify({
+      numbersip: input.numbersip.trim(),
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.blocked !== undefined ? { blocked: input.blocked } : {}),
+      ...(input.webphone !== undefined ? { webphone: input.webphone } : {}),
+      ...(input.sipPassword ? { sipPassword: input.sipPassword } : {}),
+    }),
+  });
+  const data = await parseJson<Record<string, unknown>>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : `update_user_failed_${res.status}`,
+    );
+  }
+  return data;
+}
+
+export async function nvoipUpdateDid(
+  account: NvoipAccount,
+  input: { number: string; destination: string },
+): Promise<Record<string, unknown>> {
+  const res = await nvoipAuthorizedFetch(account, "/update/dids", {
+    method: "PUT",
+    body: JSON.stringify({
+      number: input.number.trim(),
+      destination: input.destination.trim(),
+    }),
+  });
+  const data = await parseJson<Record<string, unknown>>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : `update_did_failed_${res.status}`,
+    );
+  }
+  return data;
 }
 
 export async function nvoipListDids(account: NvoipAccount): Promise<NvoipDidItem[]> {

@@ -90,6 +90,7 @@ export function TeamsCollaborationHub() {
   const [searchParams] = useSearchParams();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
 
+  const hubOn = user?.organizationFeatures?.teams_collaboration_hub ?? false;
   const channelsOn = user?.organizationFeatures?.teams_channels ?? false;
   const workspaceOn = user?.organizationFeatures?.teams_workspace ?? false;
   const aiOn = user?.organizationFeatures?.teams_ai_copilot ?? false;
@@ -97,7 +98,12 @@ export function TeamsCollaborationHub() {
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<HubTab>("overview");
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: HubTab =
+    tabFromUrl === "channels" || tabFromUrl === "workspace" || tabFromUrl === "admin"
+      ? tabFromUrl
+      : "overview";
+  const [tab, setTab] = useState<HubTab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [newTeamName, setNewTeamName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -113,7 +119,6 @@ export function TeamsCollaborationHub() {
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
   const [channelModal, setChannelModal] = useState<"create" | "edit" | null>(null);
   const [channelModalBusy, setChannelModalBusy] = useState(false);
   const [channelDeletingId, setChannelDeletingId] = useState<string | null>(null);
@@ -135,14 +140,21 @@ export function TeamsCollaborationHub() {
     }
   }, [searchParams]);
 
-  const loadOverview = useCallback(async (teamId: string) => {
-    try {
-      const data = await api.get<HubOverview>(`/teams/${teamId}/hub/overview`);
-      setOverview(data);
-    } catch {
-      setOverview(null);
-    }
-  }, []);
+  const loadOverview = useCallback(
+    async (teamId: string) => {
+      if (!hubOn) {
+        setOverview(null);
+        return;
+      }
+      try {
+        const data = await api.get<HubOverview>(`/teams/${teamId}/hub/overview`);
+        setOverview(data);
+      } catch {
+        setOverview(null);
+      }
+    },
+    [hubOn],
+  );
 
   const loadChannels = useCallback(async (teamId: string) => {
     if (!channelsOn) return;
@@ -182,11 +194,36 @@ export function TeamsCollaborationHub() {
   }, [loadTeams]);
 
   useEffect(() => {
+    const next = searchParams.get("tab");
+    if (next === "overview" || next === "channels" || next === "workspace" || next === "admin") {
+      setTab(next);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!selected?.id) return;
     void loadOverview(selected.id);
     void loadChannels(selected.id);
     if (workspaceOn) void loadWorkspace(selected.id, workspaceFilter);
   }, [selected?.id, loadOverview, loadChannels, loadWorkspace, workspaceFilter, workspaceOn]);
+
+  const refreshTeamContext = useCallback(() => {
+    void loadTeams();
+    if (selected?.id) {
+      void loadOverview(selected.id);
+      if (channelsOn) void loadChannels(selected.id);
+      if (workspaceOn) void loadWorkspace(selected.id, workspaceFilter);
+    }
+  }, [
+    loadTeams,
+    loadOverview,
+    loadChannels,
+    loadWorkspace,
+    selected?.id,
+    channelsOn,
+    workspaceOn,
+    workspaceFilter,
+  ]);
 
   useEffect(() => {
     if (!realtimeOn || !selected?.id) return;
@@ -264,7 +301,7 @@ export function TeamsCollaborationHub() {
       list.push({ id: "tab-workspace", label: t("teamsHub.tabWorkspace"), onRun: () => setTab("workspace") });
     }
     if (isAdmin) {
-      list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setShowAdmin(true) });
+      list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setTab("admin") });
     }
     for (const team of teams) {
       list.push({
@@ -311,10 +348,6 @@ export function TeamsCollaborationHub() {
       setChannelDeletingId(null);
     }
   };
-
-  if (showAdmin && isAdmin && selected) {
-    return <TeamOperationalAdmin teamId={selected.id} onBack={() => setShowAdmin(false)} />;
-  }
 
   if (loading) {
     return (
@@ -423,21 +456,18 @@ export function TeamsCollaborationHub() {
                   {(
                     [
                       { id: "overview" as const, label: t("teamsHub.tabOverview"), icon: LayoutDashboard },
-                      channelsOn ? { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash } : null,
-                      workspaceOn ? { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen } : null,
+                      { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash },
+                      { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen },
                       isAdmin ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound } : null,
                     ].filter(Boolean) as { id: HubTab; label: string; icon: typeof LayoutDashboard }[]
                   ).map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => {
-                        if (item.id === "admin") setShowAdmin(true);
-                        else setTab(item.id);
-                      }}
+                      onClick={() => setTab(item.id)}
                       className={clsx(
                         "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                        (item.id === "admin" ? showAdmin : tab === item.id)
+                        tab === item.id
                           ? "bg-ink-900 text-white dark:bg-ink-100 dark:text-ink-900"
                           : "text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-900",
                       )}
@@ -449,7 +479,20 @@ export function TeamsCollaborationHub() {
                 </nav>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
-                  {tab === "overview" && overview ? (
+                  {tab === "overview" && !hubOn ? (
+                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 p-6 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                      <p className="font-semibold">{t("teamsHub.hubDisabledTitle")}</p>
+                      <p className="mt-2 text-amber-800/90 dark:text-amber-200/90">{t("teamsHub.hubDisabledHint")}</p>
+                      {selected?._count ? (
+                        <p className="mt-4 text-xs">
+                          {t("teams.memberCount")}: {selected._count.members} · {t("teams.conversations")}:{" "}
+                          {selected._count.conversations}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {tab === "overview" && hubOn && overview ? (
                     <div className="space-y-6">
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {[
@@ -514,6 +557,12 @@ export function TeamsCollaborationHub() {
                         </div>
                       </section>
                     </div>
+                  ) : null}
+
+                  {tab === "channels" && !channelsOn ? (
+                    <p className="rounded-2xl border border-ink-200/80 bg-white/90 p-6 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-950/60 dark:text-ink-300">
+                      {t("teamsHub.featureDisabledChannels")}
+                    </p>
                   ) : null}
 
                   {tab === "channels" && channelsOn && selected ? (
@@ -590,6 +639,12 @@ export function TeamsCollaborationHub() {
                         />
                       </div>
                     </div>
+                  ) : null}
+
+                  {tab === "workspace" && !workspaceOn ? (
+                    <p className="rounded-2xl border border-ink-200/80 bg-white/90 p-6 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-950/60 dark:text-ink-300">
+                      {t("teamsHub.featureDisabledWorkspace")}
+                    </p>
                   ) : null}
 
                   {tab === "workspace" && workspaceOn && selected ? (
@@ -675,6 +730,14 @@ export function TeamsCollaborationHub() {
                         </ul>
                       </div>
                     </div>
+                  ) : null}
+
+                  {tab === "admin" && isAdmin && selected ? (
+                    <TeamOperationalAdmin
+                      embedded
+                      teamId={selected.id}
+                      onTeamMutated={refreshTeamContext}
+                    />
                   ) : null}
                 </div>
               </>

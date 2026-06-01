@@ -32,6 +32,7 @@ import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
+import { handleNvoipCallWebhook } from "../lib/nvoipCallWebhook.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -878,6 +879,30 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       } catch {
         return reply.status(500).send({ error: "Internal Server Error", message: "Webhook failed", statusCode: 500 });
       }
+    },
+  );
+
+  app.post<{ Params: { organizationId: string } }>(
+    "/nvoip/:organizationId",
+    async (request, reply) => {
+      const body =
+        request.body && typeof request.body === "object"
+          ? (request.body as Record<string, unknown>)
+          : {};
+
+      const result = await handleNvoipCallWebhook({
+        organizationId: request.params.organizationId,
+        body,
+      });
+
+      if (!result.ok) {
+        return reply.status(result.status).send({
+          error: result.status === 404 ? "Not Found" : "Error",
+          message: result.message,
+          statusCode: result.status,
+        });
+      }
+      return { ok: true };
     },
   );
 

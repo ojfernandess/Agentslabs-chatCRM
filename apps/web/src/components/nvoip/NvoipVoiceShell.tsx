@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { NvoipVoiceProvider } from "@/contexts/NvoipVoiceContext";
 import { NvoipActiveCallBar } from "@/components/nvoip/NvoipActiveCallBar";
+import { NvoipTrunkPicker } from "@/components/nvoip/NvoipTrunkPicker";
 
 export function NvoipVoiceShell({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
   return (
     <NvoipVoiceProvider>
       {children}
+      <NvoipTrunkPicker />
       <NvoipActiveCallBar />
     </NvoipVoiceProvider>
   );

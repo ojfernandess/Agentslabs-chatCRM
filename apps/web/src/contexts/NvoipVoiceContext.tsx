@@ -12,12 +12,19 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 
+type TrunkRow = { id: string; name: string; defaultCaller: string; isDefault: boolean };
+
 type SessionPayload = {
   ready: boolean;
   canPlaceCalls: boolean;
   caller: string | null;
   balance: string | null;
+  trunks?: TrunkRow[];
 };
+
+function trunkStorageKey(organizationId: string) {
+  return `nvoip_trunk_${organizationId}`;
+}
 
 type ActiveCall = {
   clientCallId: string;
@@ -33,6 +40,9 @@ type OutboundResult =
 type NvoipVoiceContextValue = {
   ready: boolean;
   canPlaceCalls: boolean;
+  trunks: TrunkRow[];
+  selectedTrunkId: string | null;
+  setSelectedTrunkId: (id: string | null) => void;
   activeCall: ActiveCall | null;
   startOutboundCall: (input: {
     phone: string;
@@ -52,8 +62,22 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [ready, setReady] = useState(false);
   const [canPlaceCalls, setCanPlaceCalls] = useState(false);
+  const [trunks, setTrunks] = useState<TrunkRow[]>([]);
+  const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const setSelectedTrunkId = useCallback(
+    (id: string | null) => {
+      setSelectedTrunkIdState(id);
+      const orgId = user?.actingOrganizationId ?? user?.organizationId;
+      if (orgId) {
+        if (id) localStorage.setItem(trunkStorageKey(orgId), id);
+        else localStorage.removeItem(trunkStorageKey(orgId));
+      }
+    },
+    [user?.actingOrganizationId, user?.organizationId],
+  );
 
   useEffect(() => {
     if (!user) {
@@ -72,7 +96,20 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const res = await api.get<SessionPayload>("/nvoip/session");
-        if (!cancelled) setCanPlaceCalls(!!res.canPlaceCalls);
+        if (!cancelled) {
+          setCanPlaceCalls(!!res.canPlaceCalls);
+          const list = res.trunks ?? [];
+          setTrunks(list);
+          const orgId = user?.actingOrganizationId ?? user?.organizationId;
+          if (orgId) {
+            const stored = localStorage.getItem(trunkStorageKey(orgId));
+            const valid =
+              stored && list.some((t) => t.id === stored)
+                ? stored
+                : list.find((t) => t.isDefault)?.id ?? null;
+            setSelectedTrunkIdState(valid);
+          }
+        }
       } catch {
         if (!cancelled) setCanPlaceCalls(false);
       } finally {
@@ -83,7 +120,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, user?.actingOrganizationId, user?.organizationId]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -158,6 +195,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           phone: input.phone,
           contactId: input.contactId ?? null,
           conversationId: input.conversationId ?? null,
+          trunkId: selectedTrunkId,
         });
         if (!res.ok || !res.callId) {
           return { ok: false, message: res.message ?? "call_failed" };
@@ -178,7 +216,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: e instanceof Error ? e.message : "call_failed" };
       }
     },
-    [],
+    [selectedTrunkId],
   );
 
   const endActiveCall = useCallback(async () => {
@@ -202,11 +240,23 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       canPlaceCalls,
+      trunks,
+      selectedTrunkId,
+      setSelectedTrunkId,
       activeCall,
       startOutboundCall,
       endActiveCall,
     }),
-    [ready, canPlaceCalls, activeCall, startOutboundCall, endActiveCall],
+    [
+      ready,
+      canPlaceCalls,
+      trunks,
+      selectedTrunkId,
+      setSelectedTrunkId,
+      activeCall,
+      startOutboundCall,
+      endActiveCall,
+    ],
   );
 
   return <NvoipVoiceContext.Provider value={value}>{children}</NvoipVoiceContext.Provider>;

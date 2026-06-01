@@ -255,7 +255,8 @@ Enums: `NvoipCallStatus` alinhado aos estados API; `NvoipAccountStatus` CONNECTE
 
 **Webhooks** (se Nvoip fornecer URL de eventos — confirmar com suporte)
 
-- `POST /webhooks/nvoip/:organizationId` — normalizar eventos de chamada; senão job `nvoipCallSyncJob` a cada N segundos.
+- [x] `POST /webhooks/nvoip/:organizationId` — eventos de chamada (best-effort; fallback: job histórico 90s)
+- [x] `POST /webhooks/nvoip/:orgId/dtmf/:dispatchId` — DTMF torpedo
 
 ### 4.4 Frontend
 
@@ -339,6 +340,16 @@ Implementação OpenConduit: cliente HTTP TypeScript em `apps/api/src/lib/nvoipC
 - [x] Relatório org (`GET /settings/nvoip/insights`) — volume, tarifas, custo estimado
 - [x] Métricas Super Admin (`GET /super/nvoip/metrics`, diagnóstico em feature-flags)
 
+### Lacunas fechadas (pós-fase 7)
+
+- [x] UI logs integração, torpedos agendados (listar/cancelar/agendar), fila inbound (equipa), alerta saldo
+- [x] UI 2FA agente + histórico `GET /nvoip/calls/my-recent` em Meu atendimento
+- [x] API `POST/DELETE` torpedo agendado, `PUT /dids`, `POST /users`, webhook chamadas
+- [x] Refresh OAuth proactivo (job 10 min), backoff HTTP 429 no cliente
+- [x] `nvoip_trunks` — tabela `nvoip_trunks`, CRUD em Settings, `trunkId` em outbound
+- [x] Homologação §8 — runner automático (`POST /settings/nvoip/homologation/run`) + UI checklist
+- [x] Alerta saldo por e-mail (Resend + `balanceAlertEmails` na conta)
+
 ---
 
 ## 7. Riscos e dependências
@@ -354,12 +365,16 @@ Implementação OpenConduit: cliente HTTP TypeScript em `apps/api/src/lib/nvoipC
 
 ## 8. Checklist homologação com Nvoip
 
-- [ ] Confirmar existência de **webhooks** para `established` / `finished` / inbound
-- [ ] Confirmar formato internacional de `called` (DDI+DDD+número)
-- [ ] Validar se `caller` deve ser `numbersip` ou ramal secundário
-- [ ] Testar refresh token em produção
-- [ ] Política de gravação e retenção de `linkAudio` (LGPD)
-- [ ] Licenciamento WhatsApp template (`instance` Meta)
+No produto: **Definições → Nvoip → Homologação → Executar checklist** (`runNvoipHomologation`). Confirme na Nvoip o que ficar em estado `manual` ou `warn`.
+
+- [ ] Confirmar existência de **webhooks** para `established` / `finished` / inbound (URLs exibidas no runner)
+- [ ] Confirmar formato internacional de `called` (DDI+DDD+número) — teste de normalização no runner
+- [ ] Validar se `caller` deve ser `numbersip` ou ramal secundário — comparação com `/list/users`
+- [ ] Testar refresh token em produção — verificação de `tokenExpiresAt` + job 10 min
+- [ ] Política de gravação e retenção de `linkAudio` (LGPD) — campo `recordingRetentionDays` na conta
+- [ ] Licenciamento WhatsApp template (`instance` Meta) — se `nvoip_whatsapp` activo
+
+**Deploy:** migration `20260619120000_nvoip_trunks`. Env opcional `NVOIP_BALANCE_ALERT_BRL` (limiar global por defeito).
 
 ---
 

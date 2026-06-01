@@ -1,5 +1,6 @@
 import type { NvoipAccount, NvoipAccountStatus } from "@prisma/client";
 import { encrypt, decrypt } from "./encryption.js";
+import { readNvoipExternalConfig } from "./nvoipExternalConfig.js";
 
 export const MASKED_NVOIP_SECRET = "••••••••";
 
@@ -19,6 +20,17 @@ export type NvoipAccountClientRow = {
   waDefaultLanguage: string;
   hasUserToken: boolean;
   hasNapikey: boolean;
+  incomingQueue: { mode: string; teamId: string | null };
+  lowBalanceAlertBrl: number | null;
+  balanceAlertEmails: string[];
+  recordingRetentionDays: number | null;
+  homologationLast: {
+    ranAt: string;
+    pass: number;
+    fail: number;
+    warn: number;
+    manual: number;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,6 +47,7 @@ export function decryptNvoipSecret(stored: string | null | undefined): string | 
 export function accountToClientRow(
   row: NvoipAccount & { inbox?: { name: string } | null },
 ): NvoipAccountClientRow {
+  const ext = readNvoipExternalConfig(row.externalConfig);
   return {
     id: row.id,
     numbersip: row.numbersip,
@@ -51,6 +64,14 @@ export function accountToClientRow(
     waDefaultLanguage: row.waDefaultLanguage,
     hasUserToken: Boolean(row.userTokenEnc),
     hasNapikey: Boolean(row.napikeyEnc),
+    incomingQueue: {
+      mode: ext.incomingQueue.mode,
+      teamId: ext.incomingQueue.teamId,
+    },
+    lowBalanceAlertBrl: ext.lowBalanceAlertBrl,
+    balanceAlertEmails: ext.balanceAlertEmails,
+    recordingRetentionDays: ext.recordingRetentionDays,
+    homologationLast: ext.homologationLast,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

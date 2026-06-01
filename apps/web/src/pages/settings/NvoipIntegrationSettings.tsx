@@ -5,6 +5,8 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { NvoipInsightsPanel } from "@/components/nvoip/NvoipInsightsPanel";
+import { NvoipSettingsExtras } from "@/components/nvoip/NvoipSettingsExtras";
+import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomologationPanel";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -21,6 +23,17 @@ type AccountRow = {
   otpDefaultChannel?: string;
   waInstance?: string | null;
   waDefaultLanguage?: string;
+  incomingQueue?: { mode: string; teamId: string | null };
+  lowBalanceAlertBrl?: number | null;
+  balanceAlertEmails?: string[];
+  recordingRetentionDays?: number | null;
+  homologationLast?: {
+    ranAt: string;
+    pass: number;
+    fail: number;
+    warn: number;
+    manual: number;
+  } | null;
 };
 
 type InboxOption = { id: string; name: string; isDefault: boolean };
@@ -97,6 +110,12 @@ export function NvoipIntegrationSettings() {
   const [waTestTemplateId, setWaTestTemplateId] = useState("");
   const [waTestSending, setWaTestSending] = useState(false);
   const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
+  const [incomingQueueMode, setIncomingQueueMode] = useState<"all" | "team">("all");
+  const [incomingQueueTeamId, setIncomingQueueTeamId] = useState("");
+  const [lowBalanceAlertBrl, setLowBalanceAlertBrl] = useState("5");
+  const [balanceAlertEmails, setBalanceAlertEmails] = useState("");
+  const [recordingRetentionDays, setRecordingRetentionDays] = useState("");
+  const [balanceLow, setBalanceLow] = useState(false);
 
   const applyExtensionsPayload = (ext: {
     data?: ExtensionRow[];
@@ -145,6 +164,16 @@ export function NvoipIntegrationSettings() {
         );
         setWaInstance(acc.waInstance ?? "");
         setWaDefaultLanguage(acc.waDefaultLanguage ?? "pt_BR");
+        const qMode = acc.incomingQueue?.mode === "team" ? "team" : "all";
+        setIncomingQueueMode(qMode);
+        setIncomingQueueTeamId(acc.incomingQueue?.teamId ?? "");
+        setLowBalanceAlertBrl(
+          acc.lowBalanceAlertBrl != null ? String(acc.lowBalanceAlertBrl) : "5",
+        );
+        setBalanceAlertEmails((acc.balanceAlertEmails ?? []).join(", "));
+        setRecordingRetentionDays(
+          acc.recordingRetentionDays != null ? String(acc.recordingRetentionDays) : "",
+        );
         setUserToken("");
         setNapikey("");
       }
@@ -183,6 +212,17 @@ export function NvoipIntegrationSettings() {
         otpDefaultChannel,
         waInstance: waInstance.trim() || null,
         waDefaultLanguage: waDefaultLanguage.trim() || "pt_BR",
+        incomingQueue: {
+          mode: incomingQueueMode,
+          teamId: incomingQueueMode === "team" ? incomingQueueTeamId || null : null,
+        },
+        lowBalanceAlertBrl: lowBalanceAlertBrl.trim()
+          ? Number(lowBalanceAlertBrl.replace(",", "."))
+          : null,
+        balanceAlertEmails: balanceAlertEmails.trim() || "",
+        recordingRetentionDays: recordingRetentionDays.trim()
+          ? Number(recordingRetentionDays)
+          : null,
       };
       if (userToken.trim()) body.userToken = userToken.trim();
       if (napikey.trim()) body.napikey = napikey.trim();
@@ -254,7 +294,11 @@ export function NvoipIntegrationSettings() {
     setRefreshingBalance(true);
     setError(null);
     try {
-      const res = await api.get<{ balance: string }>("/settings/nvoip/balance");
+      const res = await api.get<{
+        balance: string;
+        balanceLow?: boolean;
+      }>("/settings/nvoip/balance");
+      setBalanceLow(!!res.balanceLow);
       setAccount((prev) => (prev ? { ...prev, lastBalance: res.balance } : prev));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("nvoip.testError"));
@@ -394,6 +438,9 @@ export function NvoipIntegrationSettings() {
                   {account.status}
                 </span>
                 {account.lastBalance ? ` · ${t("nvoip.balance")}: ${account.lastBalance}` : null}
+                {balanceLow ? (
+                  <span className="ml-1 text-amber-600"> · {t("nvoip.balanceLow")}</span>
+                ) : null}
                 {account.lastError ? ` · ${account.lastError}` : null}
               </p>
             ) : null}
@@ -829,6 +876,45 @@ export function NvoipIntegrationSettings() {
           {torpedoOk ? <p className="mt-2 text-xs text-emerald-600">{t("nvoip.torpedoSuccess")}</p> : null}
         </div>
       ) : null}
+
+      <NvoipSettingsExtras
+        voiceEnabled={voiceEnabled}
+        linked={!!linked}
+        incomingQueueMode={incomingQueueMode}
+        incomingQueueTeamId={incomingQueueTeamId}
+        lowBalanceAlertBrl={lowBalanceAlertBrl}
+        onRoutingChange={(patch) => {
+          if (patch.incomingQueueMode) setIncomingQueueMode(patch.incomingQueueMode);
+          if (patch.incomingQueueTeamId !== undefined) setIncomingQueueTeamId(patch.incomingQueueTeamId);
+          if (patch.lowBalanceAlertBrl !== undefined) setLowBalanceAlertBrl(patch.lowBalanceAlertBrl);
+        }}
+        dids={dids}
+        onDidsReload={() => void loadDids()}
+      />
+
+      <NvoipTrunksHomologationPanel
+        voiceEnabled={voiceEnabled}
+        linked={!!linked}
+        balanceAlertEmails={balanceAlertEmails}
+        recordingRetentionDays={recordingRetentionDays}
+        onPolicyChange={(patch) => {
+          if (patch.balanceAlertEmails !== undefined) setBalanceAlertEmails(patch.balanceAlertEmails);
+          if (patch.recordingRetentionDays !== undefined) {
+            setRecordingRetentionDays(patch.recordingRetentionDays);
+          }
+        }}
+        homologationLast={account?.homologationLast ?? null}
+        onHomologationComplete={(result) =>
+          setAccount((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  homologationLast: { ranAt: result.ranAt, ...result.summary },
+                }
+              : prev,
+          )
+        }
+      />
 
       {account?.status === "CONNECTED" && voiceEnabled ? (
         <NvoipInsightsPanel connected />

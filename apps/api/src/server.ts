@@ -65,6 +65,7 @@ import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
 import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
+import { runNvoipTokenRefreshTick } from "./lib/nvoipTokenRefreshJob.js";
 import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
 
 const app = Fastify({
@@ -264,6 +265,11 @@ try {
     void runNvoipHistorySyncTick(app.log);
   }, nvoipHistorySyncMs);
   void runNvoipHistorySyncTick(app.log);
+  const nvoipTokenRefreshMs = 10 * 60 * 1000;
+  setInterval(() => {
+    void runNvoipTokenRefreshTick(app.log);
+  }, nvoipTokenRefreshMs);
+  void runNvoipTokenRefreshTick(app.log);
   void ensureWavoipVoiceEnabledForOrgsWithDevices().then((count) => {
     if (count > 0) {
       app.log.info({ count }, "Enabled wavoip_voice for organizations with existing Wavoip devices");

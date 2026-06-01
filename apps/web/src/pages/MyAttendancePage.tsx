@@ -5,6 +5,7 @@ import { ClipboardCheck, Clock, PhoneCall } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/hooks/useAuth";
 import { formatCurrencyUnits } from "@/lib/currency";
 import {
   computeClosureRollupTotals,
@@ -28,8 +29,9 @@ interface Row {
   messages: { body: string | null; createdAt: string }[];
 }
 
-interface WavoipCallRow {
+interface RecentCallRow {
   id: string;
+  provider: "wavoip" | "nvoip";
   direction: string;
   status: string;
   durationSec: number | null;
@@ -41,8 +43,9 @@ interface WavoipCallRow {
 
 export function MyAttendancePage() {
   const { t, dateLocale } = useI18n();
+  const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
-  const [callRows, setCallRows] = useState<WavoipCallRow[]>([]);
+  const [callRows, setCallRows] = useState<RecentCallRow[]>([]);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState({ wonValue: 0, pipelineValue: 0 });
   const [loading, setLoading] = useState(true);
@@ -51,26 +54,50 @@ export function MyAttendancePage() {
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
   const callStatusLabel = (status: string) => {
-    const key = `wavoip.voice.callStatus.${status.toUpperCase()}`;
-    const label = t(key);
-    return label !== key ? label : status;
+    const key = `nvoip.voice.callStatus.${status.toUpperCase()}`;
+    const nvoipLabel = t(key);
+    if (nvoipLabel !== key) return nvoipLabel;
+    const wavoipKey = `wavoip.voice.callStatus.${status.toUpperCase()}`;
+    const wavoipLabel = t(wavoipKey);
+    return wavoipLabel !== wavoipKey ? wavoipLabel : status;
   };
 
   useEffect(() => {
     async function load() {
       if (!hasAnimated.current) setLoading(true);
       try {
-        const [attendanceRes, callsRes] = await Promise.all([
+        const wavoipEnabled = user?.organizationFeatures?.wavoip_voice ?? false;
+        const nvoipEnabled = user?.organizationFeatures?.nvoip_voice ?? false;
+
+        const [attendanceRes, wavoipCalls, nvoipCalls] = await Promise.all([
           api.get<{
             data: Row[];
             total: number;
             summary?: { wonValue: number; pipelineValue: number };
           }>("/conversations/my-attendance?pageSize=100"),
-          api.get<{ data: WavoipCallRow[] }>("/wavoip/calls/my-recent").catch(() => ({ data: [] as WavoipCallRow[] })),
+          wavoipEnabled
+            ? api
+                .get<{ data: Omit<RecentCallRow, "provider">[] }>("/wavoip/calls/my-recent")
+                .catch(() => ({ data: [] }))
+            : Promise.resolve({ data: [] }),
+          nvoipEnabled
+            ? api
+                .get<{ data: Omit<RecentCallRow, "provider">[] }>("/nvoip/calls/my-recent")
+                .catch(() => ({ data: [] }))
+            : Promise.resolve({ data: [] }),
         ]);
+
+        const merged: RecentCallRow[] = [
+          ...(wavoipCalls.data ?? []).map((c) => ({ ...c, provider: "wavoip" as const })),
+          ...(nvoipCalls.data ?? []).map((c) => ({ ...c, provider: "nvoip" as const })),
+        ].sort(
+          (a, b) =>
+            new Date(b.endedAt ?? b.createdAt).getTime() - new Date(a.endedAt ?? a.createdAt).getTime(),
+        );
+
         setRows(attendanceRes.data);
         setTotal(attendanceRes.total);
-        setCallRows(callsRes.data ?? []);
+        setCallRows(merged);
         if (attendanceRes.summary) {
           setSummary(attendanceRes.summary);
         } else {
@@ -86,7 +113,7 @@ export function MyAttendancePage() {
       }
     }
     void load();
-  }, []);
+  }, [user?.organizationFeatures?.nvoip_voice, user?.organizationFeatures?.wavoip_voice]);
 
   const totalWonValue = summary.wonValue;
   const totalPipelineValue = summary.pipelineValue;
@@ -134,7 +161,7 @@ export function MyAttendancePage() {
               <section>
                 <div className="mb-3 flex items-center gap-2">
                   <PhoneCall className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-ink-50">{t("attendance.wavoipCallsTitle")}</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-ink-50">{t("attendance.recentCallsTitle")}</h2>
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
                     {callRows.length}
                   </span>
@@ -143,7 +170,7 @@ export function MyAttendancePage() {
                   {callRows.map((call) => {
                     const when = call.endedAt ?? call.createdAt;
                     const dirLabel =
-                      call.direction === "OUTGOING"
+                      call.direction === "OUTBOUND" || call.direction === "OUTGOING"
                         ? t("attendance.wavoipCallOutbound")
                         : t("attendance.wavoipCallInbound");
                     const target = call.conversationId
@@ -163,6 +190,9 @@ export function MyAttendancePage() {
                             </span>
                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
                               {dirLabel}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-600 dark:bg-ink-800 dark:text-ink-300">
+                              {call.provider}
                             </span>
                             <span className="rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-medium text-ink-700 dark:bg-ink-800 dark:text-ink-300">
                               {callStatusLabel(call.status)}
