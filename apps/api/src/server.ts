@@ -109,23 +109,33 @@ await app.register(cors, {
   },
 });
 await app.register(rateLimit, {
-  max: 100,
+  max: 400,
   timeWindow: "1 minute",
-      allowList: (req) => {
-        const path = (req.url ?? "").split("?")[0] ?? "";
-        return (
-          path.startsWith("/webhooks") ||
-          path.startsWith("/api/v1/messages/media/") ||
-          path.startsWith("/api/v1/ws") ||
-          path.startsWith("/api/v1/public/csat/") ||
-          path.startsWith("/api/v1/public/inbox/") ||
-          path.startsWith("/api/v1/public/channels/") ||
-          path.startsWith("/api/v1/public/widget/") ||
-          path.startsWith("/api/v1/public/chatbot/") ||
-          path.startsWith("/api/v1/public/system-documentation") ||
-          path.startsWith("/api/v1/public/knowledge-source-push/")
-        );
-      },
+  /** Evita que vários agentes no mesmo IP (proxy EasyPanel/NAT) partilhem um único limite. */
+  keyGenerator: (req) => {
+    const auth = req.headers.authorization;
+    if (typeof auth === "string" && auth.startsWith("Bearer ") && auth.length > 24) {
+      return `sess:${auth.slice(7, 64)}`;
+    }
+    return `ip:${req.ip}`;
+  },
+  allowList: (req) => {
+    const path = (req.url ?? "").split("?")[0] ?? "";
+    return (
+      path.startsWith("/webhooks") ||
+      path.startsWith("/health") ||
+      path === "/api/v1/auth/me" ||
+      path.startsWith("/api/v1/messages/media/") ||
+      path.startsWith("/api/v1/ws") ||
+      path.startsWith("/api/v1/public/csat/") ||
+      path.startsWith("/api/v1/public/inbox/") ||
+      path.startsWith("/api/v1/public/channels/") ||
+      path.startsWith("/api/v1/public/widget/") ||
+      path.startsWith("/api/v1/public/chatbot/") ||
+      path.startsWith("/api/v1/public/system-documentation") ||
+      path.startsWith("/api/v1/public/knowledge-source-push/")
+    );
+  },
 });
 await app.register(multipart, {
   limits: { fileSize: 16 * 1024 * 1024 },

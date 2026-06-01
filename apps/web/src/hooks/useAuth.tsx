@@ -6,7 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { LoginResponse } from "@openconduit/shared";
 
 export interface AuthUser {
@@ -46,6 +46,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const TOKEN_KEY = "openconduit_token";
 
+/** Só invalida sessão quando o token foi rejeitado — não em 429/5xx/rede. */
+function isInvalidSessionError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,8 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const me = await api.get<AuthUser>("/auth/me");
       setUser(me);
-    } catch {
-      logout();
+    } catch (err) {
+      if (isInvalidSessionError(err)) logout();
     }
   }, [logout]);
 
@@ -90,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<AuthUser>("/auth/me")
       .then(setUser)
-      .catch(() => logout())
+      .catch((err) => {
+        if (isInvalidSessionError(err)) logout();
+      })
       .finally(() => setLoading(false));
   }, [logout]);
 

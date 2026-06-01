@@ -58,3 +58,8 @@ docker compose up -d api web
 - **Funcionalidades:** o interruptor `wavoip_voice` mostra o estado **efectivo**; se existir dispositivo Wavoip e o último log estiver vazio, o webhook não está a chegar à API (rever `PUBLIC_URL` e URL no painel Wavoip).
 
 Se o domínio abrir mas o login falhar, confere logs da **api** e se `PUBLIC_URL` coincide com o que usas no browser (`https` vs `http`, subdomínio certo).
+
+## 7. Vários agentes na mesma organização
+
+- Cada utilizador deve usar **browser/perfil separado** (o token fica em `localStorage` por origem — duas contas no mesmo Chrome partilham a mesma sessão).
+- A API aplica rate limit **por token JWT**, não só por IP, para vários agentes atrás do proxy EasyPanel não se deslogarem em massa.
