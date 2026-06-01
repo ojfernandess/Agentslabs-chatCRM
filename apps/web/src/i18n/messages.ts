@@ -89,6 +89,7 @@ export const messages = {
       enableDesktopNotifications: "Ativar notificações no desktop",
       superAdmin: "Super admin",
       teams: "Times",
+      teamCollaboration: "Colaboração",
       bots: "Bots",
       myAttendance: "Meu atendimento",
       conversationAudit: "Auditoria de conversas",
@@ -1641,6 +1642,8 @@ export const messages = {
       role: "Papel",
       removeMember: "Remover",
       empty: "Nenhum time ainda. Crie o primeiro acima.",
+      agentNoTeams:
+        "Você ainda não pertence a nenhuma equipa. Peça a um administrador para o adicionar em Times → Administração.",
       namePlaceholder: "Ex.: Suporte nível 1",
       selectUser: "Selecione o usuário…",
       description: "Descrição",
@@ -4244,6 +4247,7 @@ export const messages = {
       enableDesktopNotifications: "Enable desktop notifications",
       superAdmin: "Super admin",
       teams: "Teams",
+      teamCollaboration: "Collaboration",
       bots: "Bots",
       myAttendance: "My attendance",
       conversationAudit: "Conversation audit",
@@ -5787,6 +5791,8 @@ export const messages = {
       role: "Role",
       removeMember: "Remove",
       empty: "No teams yet. Create one above.",
+      agentNoTeams:
+        "You are not a member of any team yet. Ask an administrator to add you under Teams → Administration.",
       namePlaceholder: "e.g. Tier 1 support",
       selectUser: "Select user…",
       description: "Description",

@@ -742,7 +742,9 @@ export function TeamsCollaborationHub() {
                 </div>
               </>
             ) : (
-              <p className="p-8 text-ink-500">{t("teams.empty")}</p>
+              <p className="p-8 text-ink-500">
+                {isAdmin ? t("teams.empty") : t("teams.agentNoTeams")}
+              </p>
             )}
           </main>
 

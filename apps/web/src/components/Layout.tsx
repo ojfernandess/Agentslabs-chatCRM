@@ -200,6 +200,9 @@ export function Layout() {
     [sidebarTeams],
   );
 
+  /** Agentes membros de equipa precisam aceder ao centro de colaboração (não só admins). */
+  const showTeamsNav = tenantAdmin || sidebarTeams.length > 0;
+
   const conversationTeamId =
     location.pathname === "/conversations" ? new URLSearchParams(location.search).get("teamId") : null;
   const conversationInboxId =
@@ -351,6 +354,20 @@ export function Layout() {
                         </Link>
                       );
                     })}
+                    {showTeamsNav ? (
+                      <Link
+                        to={
+                          sidebarTeams.length === 1
+                            ? `/teams?teamId=${encodeURIComponent(sidebarTeams[0]!.id)}`
+                            : "/teams"
+                        }
+                        className={teamNavItemClass(location.pathname === "/teams")}
+                        title={t("nav.teamCollaboration")}
+                      >
+                        <UsersRound className="h-4 w-4 shrink-0 opacity-70" />
+                        <span className="min-w-0 flex-1 truncate">{t("nav.teamCollaboration")}</span>
+                      </Link>
+                    ) : null}
                   </div>
                 ) : null}
                 {sidebarInboxes.length > 0 ? (
@@ -419,6 +436,22 @@ export function Layout() {
           <ClipboardCheck className="h-5 w-5" />
           {t("nav.myAttendance")}
         </NavLink>
+        {showTeamsNav ? (
+          <NavLink
+            to="/teams"
+            className={({ isActive }) =>
+              clsx(
+                "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "nav-link-active"
+                  : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
+              )
+            }
+          >
+            <UsersRound className="h-5 w-5" />
+            {t("nav.teams")}
+          </NavLink>
+        ) : null}
         {tenantAdmin ? (
           <>
             <NavLink
@@ -434,20 +467,6 @@ export function Layout() {
             >
               <FileSearch className="h-5 w-5" />
               {t("nav.conversationAudit")}
-            </NavLink>
-            <NavLink
-              to="/teams"
-              className={({ isActive }) =>
-                clsx(
-                  "flex min-h-11 items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "nav-link-active"
-                    : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
-                )
-              }
-            >
-              <UsersRound className="h-5 w-5" />
-              {t("nav.teams")}
             </NavLink>
             <NavLink
               to="/bots"

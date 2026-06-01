@@ -80,6 +80,20 @@ async function ensureDefaultChannel(teamId: string, organizationId: string) {
 }
 
 export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
+  const memberGuard = async (
+    organizationId: string,
+    teamId: string,
+    user: JwtPayload,
+    reply: FastifyReply,
+  ) => {
+    const team = await loadTeamForHub(teamId, organizationId, user);
+    if (!team) {
+      reply.status(404).send({ error: "Not Found", message: "Team not found", statusCode: 404 });
+      return null;
+    }
+    return team;
+  };
+
   const hubGuard = async (
     organizationId: string,
     teamId: string,
@@ -87,12 +101,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     reply: FastifyReply,
   ) => {
     if (!(await requireTeamHubFeature(organizationId, "teams_collaboration_hub", reply))) return null;
-    const team = await loadTeamForHub(teamId, organizationId, user);
-    if (!team) {
-      reply.status(404).send({ error: "Not Found", message: "Team not found", statusCode: 404 });
-      return null;
-    }
-    return team;
+    return memberGuard(organizationId, teamId, user, reply);
   };
 
   app.get<{ Params: { id: string } }>("/:id/hub/overview", async (request, reply) => {
@@ -174,7 +183,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     await ensureDefaultChannel(team.id, organizationId);
@@ -215,7 +224,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
     if (!requireHubTenantAdmin(request.user, reply)) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const parsed = channelBodySchema.safeParse(request.body);
@@ -245,7 +254,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
     if (!requireHubTenantAdmin(request.user, reply)) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const parsed = channelBodySchema.partial().safeParse(request.body);
@@ -287,7 +296,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
     if (!requireHubTenantAdmin(request.user, reply)) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const channel = await prisma.teamChannel.findFirst({
@@ -314,7 +323,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const channel = await prisma.teamChannel.findFirst({
@@ -349,7 +358,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
       if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
-      const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+      const team = await memberGuard(organizationId, request.params.id, request.user, reply);
       if (!team) return;
 
       const parsed = channelMessageBodySchema.safeParse(request.body);
@@ -400,7 +409,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
       if (!(await requireTeamHubFeature(organizationId, "teams_channels", reply))) return;
-      const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+      const team = await memberGuard(organizationId, request.params.id, request.user, reply);
       if (!team) return;
 
       const parsed = z.object({ emoji: reactionEmojiSchema }).safeParse(request.body);
@@ -458,7 +467,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_workspace", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const typeFilter = request.query.type;
@@ -496,7 +505,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_workspace", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const parsed = workspaceSchema.safeParse(request.body);
@@ -527,7 +536,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_workspace", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const res = await prisma.teamWorkspaceItem.deleteMany({
@@ -543,7 +552,7 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireTeamHubFeature(organizationId, "teams_ai_copilot", reply))) return;
-    const team = await hubGuard(organizationId, request.params.id, request.user, reply);
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
     if (!team) return;
 
     const parsed = z.object({ prompt: z.string().min(1).max(4000) }).safeParse(request.body);
