@@ -24,6 +24,7 @@ const EVENT_I18N: Record<string, string> = {
   "deal.linked": "contactDetail.timelineDealLinked",
   "deal.updated": "contactDetail.timelineDealUpdated",
   wavoip_call: "contactDetail.timelineWavoipCall",
+  threecx_call: "contactDetail.timelineThreeCxCall",
 };
 
 const CHANNEL_I18N: Record<string, string> = {
@@ -131,14 +132,18 @@ export function timelineEventSummary(
     case "message.inbound":
     case "message.outbound":
       return messageSummary(payload, t);
-    case "wavoip_call": {
+    case "wavoip_call":
+    case "threecx_call": {
       const bits: string[] = [];
       const dir = typeof payload.direction === "string" ? payload.direction.toUpperCase() : "";
       if (dir === "OUTGOING") bits.push(t("contactDetail.timelineCallOutbound"));
       else if (dir === "INCOMING") bits.push(t("contactDetail.timelineCallInbound"));
       const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
       if (status) {
-        const statusKey = `wavoip.voice.callStatus.${status}`;
+        const statusKey =
+          eventType === "threecx_call"
+            ? `threecx.voice.callStatus.${status}`
+            : `wavoip.voice.callStatus.${status}`;
         const label = t(statusKey);
         bits.push(label !== statusKey ? label : status);
       }

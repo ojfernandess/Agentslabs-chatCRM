@@ -34,6 +34,7 @@ const ORG_FEATURE_DEFAULT_ENABLED = {
   crm_kanban: true,
   crm_deals: true,
   wavoip_voice: false,
+  threecx_voice: false,
 } as const;
 
 type OrgFeatureFlagKey = keyof typeof ORG_FEATURE_DEFAULT_ENABLED;

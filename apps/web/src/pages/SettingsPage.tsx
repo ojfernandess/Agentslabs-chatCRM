@@ -25,6 +25,7 @@ import {
   Phone,
 } from "lucide-react";
 import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
+import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
 import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvidersOverview";
@@ -88,7 +89,8 @@ type SettingsSection =
   | "templates"
   | "tags"
   | "team"
-  | "wavoip";
+  | "wavoip"
+  | "threecx";
 
 type CsatRatingType = "number" | "star" | "emoji";
 
@@ -209,10 +211,12 @@ export function SettingsPage() {
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const showLeadFinder = user?.organizationFeatures?.lead_finder ?? false;
   const showWavoip = (user?.organizationFeatures?.wavoip_voice ?? false) && isAdmin;
+  const showThreeCx = (user?.organizationFeatures?.threecx_voice ?? false) && isAdmin;
   const initialSection = searchParams.get("section");
   const [section, setSection] = useState<SettingsSection>(() => {
     if (initialSection === "leadFinder" && showLeadFinder) return "leadFinder";
     if (initialSection === "wavoip" && showWavoip) return "wavoip";
+    if (initialSection === "threecx" && showThreeCx) return "threecx";
     return "channel";
   });
   const effectiveOrgId = user?.actingOrganizationId ?? user?.organizationId ?? null;
@@ -1244,6 +1248,7 @@ export function SettingsPage() {
                   ...(showLeadFinder ? ([["leadFinder", t("settings.sectionLeadFinder"), Search]] as const) : []),
                   ["crm", t("settings.sectionCrm"), Tag],
                   ...(showWavoip ? ([["wavoip", t("settings.sectionWavoip"), Phone]] as const) : []),
+                  ...(showThreeCx ? ([["threecx", t("settings.sectionThreeCx"), Phone]] as const) : []),
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["tags", t("settings.sectionTags"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -2934,6 +2939,12 @@ export function SettingsPage() {
               {section === "wavoip" && showWavoip && (
                 <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
                   <WavoipIntegrationSettings />
+                </motion.div>
+              )}
+
+              {section === "threecx" && showThreeCx && (
+                <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
+                  <ThreeCxIntegrationSettings />
                 </motion.div>
               )}
             </motion.div>

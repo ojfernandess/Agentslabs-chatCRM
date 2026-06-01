@@ -211,6 +211,9 @@ model Organization {
   wavoipDevices                  WavoipDevice[]
   wavoipCallLogs                 WavoipCallLog[]
   wavoipIntegrationLogs          WavoipIntegrationLog[]
+  threeCxRoutePoints             ThreeCxRoutePoint[]
+  threeCxCallLogs                ThreeCxCallLog[]
+  threeCxIntegrationLogs         ThreeCxIntegrationLog[]
 
   @@map("organizations")
 }
@@ -252,6 +255,7 @@ model Inbox {
   conversations      Conversation[]
   broadcastCampaigns BroadcastCampaign[]
   wavoipDevices      WavoipDevice[]
+  threeCxRoutePoints ThreeCxRoutePoint[]
 
   @@index([organizationId])
   @@index([agentBotId])
@@ -494,6 +498,8 @@ model User {
   teamWorkspaceItemsAuthored   TeamWorkspaceItem[]           @relation("TeamWorkspaceItemAuthor")
   assignedWavoipDevices        WavoipDevice[]                @relation("WavoipDeviceAssignee")
   wavoipCallsInitiated         WavoipCallLog[]               @relation("WavoipCallInitiator")
+  assignedThreeCxRoutePoints   ThreeCxRoutePoint[]           @relation("ThreeCxRoutePointAssignee")
+  threeCxCallsInitiated        ThreeCxCallLog[]              @relation("ThreeCxCallInitiator")
 
   @@index([organizationId])
   @@map("users")
@@ -584,6 +590,7 @@ model Contact {
   dealsPrimary        Deal[]                       @relation("DealPrimaryContact")
   broadcastRecipients BroadcastCampaignRecipient[]
   wavoipCallLogs      WavoipCallLog[]
+  threeCxCallLogs     ThreeCxCallLog[]
 
   @@unique([organizationId, phone])
   @@index([organizationId])
@@ -849,6 +856,7 @@ model Conversation {
   automationExecutions   AutomationExecution[]
   chatbotFlowSession     ChatbotFlowSession?
   wavoipCallLogs         WavoipCallLog[]
+  threeCxCallLogs        ThreeCxCallLog[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -919,6 +927,7 @@ model Message {
   actorUserId String? @map("actor_user_id") @db.Uuid
   actorUser   User?   @relation("MessageActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   wavoipCallLog WavoipCallLog?
+  threeCxCallLog ThreeCxCallLog?
 
   @@index([conversationId])
   @@index([providerMsgId])
@@ -1825,4 +1834,101 @@ model WavoipIntegrationLog {
 
   @@index([organizationId, createdAt])
   @@map("wavoip_integration_logs")
+}
+
+enum ThreeCxRouteStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+model ThreeCxRoutePoint {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String             @db.VarChar(120)
+  pbxBaseUrl         String             @map("pbx_base_url") @db.VarChar(512)
+  clientId           String             @map("client_id") @db.VarChar(120)
+  apiKeyEnc          String             @map("api_key_enc") @db.Text
+  routePointDn       String             @map("route_point_dn") @db.VarChar(32)
+  sourceExtensionDn  String?            @map("source_extension_dn") @db.VarChar(32)
+  crmApiKeyEnc       String             @map("crm_api_key_enc") @db.Text
+  status             ThreeCxRouteStatus @default(DISCONNECTED)
+  inboxId            String?            @map("inbox_id") @db.Uuid
+  assignedUserId     String?            @map("assigned_user_id") @db.Uuid
+  externalConfig     Json?              @map("external_config")
+  monitoredDns       Json?              @map("monitored_dns")
+  lastStatusAt       DateTime?          @map("last_status_at")
+  lastError          String?            @map("last_error") @db.Text
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inbox          Inbox?       @relation(fields: [inboxId], references: [id], onDelete: SetNull)
+  assignedUser   User?        @relation("ThreeCxRoutePointAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  callLogs        ThreeCxCallLog[]
+  integrationLogs ThreeCxIntegrationLog[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("threecx_route_points")
+}
+
+model ThreeCxCallLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  externalCallId String    @map("external_call_id") @db.VarChar(128)
+  direction      String    @db.VarChar(16)
+  caller         String    @db.VarChar(32)
+  receiver       String    @db.VarChar(32)
+  status         String    @db.VarChar(64)
+  durationSec    Int?      @map("duration_sec")
+  recordUrl      String?   @map("record_url") @db.VarChar(2048)
+  startedAt      DateTime? @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  rawPayload     Json?     @map("raw_payload")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  threeCxRoutePointId String            @map("threecx_route_point_id") @db.Uuid
+  threeCxRoutePoint   ThreeCxRoutePoint @relation(fields: [threeCxRoutePointId], references: [id], onDelete: Cascade)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  messageId String?  @unique @map("message_id") @db.Uuid
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
+  initiatedByUser   User?   @relation("ThreeCxCallInitiator", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  clientCallId      String? @unique @map("client_call_id") @db.VarChar(128)
+
+  @@unique([threeCxRoutePointId, externalCallId])
+  @@index([organizationId])
+  @@index([threeCxRoutePointId])
+  @@index([initiatedByUserId])
+  @@map("threecx_call_logs")
+}
+
+model ThreeCxIntegrationLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  level     String   @db.VarChar(16)
+  eventType String   @map("event_type") @db.VarChar(64)
+  message   String   @db.Text
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  threeCxRoutePointId String?            @map("threecx_route_point_id") @db.Uuid
+  threeCxRoutePoint   ThreeCxRoutePoint? @relation(fields: [threeCxRoutePointId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("threecx_integration_logs")
 }

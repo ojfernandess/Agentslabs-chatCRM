@@ -24,7 +24,7 @@ interface LeadTypeRow {
 }
 
 interface AuditRow {
-  recordType?: "closure" | "wavoip_call";
+  recordType?: "closure" | "wavoip_call" | "threecx_call";
   id: string;
   conversationId: string | null;
   sessionIndex?: number;
@@ -134,7 +134,7 @@ export function ConversationAuditPage() {
   }
 
   const pageRollupRows = rows
-    .filter((r) => r.recordType !== "wavoip_call")
+    .filter((r) => r.recordType !== "wavoip_call" && r.recordType !== "threecx_call")
     .map((r) => ({
       conversationId: r.conversationId ?? "",
       sessionIndex: r.sessionIndex ?? 0,
@@ -272,7 +272,7 @@ export function ConversationAuditPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-ink-800">
                 {rows.map((r) => {
                   const when = r.resolvedAt ?? r.occurredAt ?? r.updatedAt;
-                  const isCall = r.recordType === "wavoip_call";
+                  const isCall = r.recordType === "wavoip_call" || r.recordType === "threecx_call";
                   return (
                   <tr key={`${r.recordType ?? "closure"}-${r.id}`} className="hover:bg-gray-50/80 dark:hover:bg-ink-800/50">
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-ink-300">
@@ -287,7 +287,10 @@ export function ConversationAuditPage() {
                     <td className="px-3 py-2">
                       {isCall ? (
                         <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                          {t("audit.statusWavoipCall")} · {r.status}
+                          {r.recordType === "threecx_call"
+                            ? t("audit.statusThreeCxCall")
+                            : t("audit.statusWavoipCall")}{" "}
+                          · {r.status}
                         </span>
                       ) : (
                         <>

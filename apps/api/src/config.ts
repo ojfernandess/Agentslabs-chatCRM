@@ -54,6 +54,11 @@ export function wavoipWebhookUrlForDevice(organizationId: string, deviceId: stri
   return `${getPublicOrigin()}/webhooks/wavoip/${organizationId}/${deviceId}`;
 }
 
+/** Base URL das rotas CRM 3CX (template no painel 3CX). */
+export function threeCxCrmBaseUrl(organizationId: string, routePointId: string): string {
+  return `${getPublicOrigin()}/integrations/3cx/crm/${organizationId}/${routePointId}`;
+}
+
 /** Callback único para todas as organizações quando se usa WhatsApp Embedded (Meta). */
 export function metaEmbeddedWebhookUrl(): string {
   return `${getPublicOrigin()}/webhooks/meta/whatsapp`;

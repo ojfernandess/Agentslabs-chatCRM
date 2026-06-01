@@ -66,6 +66,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "wavoip_voice",
     defaultEnabled: false,
   },
+  {
+    key: "threecx_voice",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

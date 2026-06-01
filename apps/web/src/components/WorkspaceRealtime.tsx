@@ -86,7 +86,7 @@ export function WorkspaceRealtime() {
             detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
           }),
         );
-      } else if (data.type === "wavoip.call.incoming") {
+      } else if (data.type === "wavoip.call.incoming" || data.type === "threecx.call.incoming") {
         if (
           Array.isArray(data.targetUserIds) &&
           data.targetUserIds.length > 0 &&
@@ -95,11 +95,22 @@ export function WorkspaceRealtime() {
         ) {
           return;
         }
-        const caller = (data.caller ?? "").trim() || translate(locale, "wavoip.voice.unknownCaller");
-        const msg = translate(locale, "wavoip.voice.incomingToast").replace("{caller}", caller);
+        const isThreeCx = data.type === "threecx.call.incoming";
+        const caller =
+          (data.caller ?? "").trim() ||
+          translate(locale, isThreeCx ? "threecx.voice.unknownCaller" : "wavoip.voice.unknownCaller");
+        const msg = translate(
+          locale,
+          isThreeCx ? "threecx.voice.incomingToast" : "wavoip.voice.incomingToast",
+        ).replace("{caller}", caller);
         pushToast(msg);
         void playIncomingCallRing();
-        window.dispatchEvent(new CustomEvent("openconduit:wavoip-call-incoming", { detail: data }));
+        window.dispatchEvent(
+          new CustomEvent(
+            isThreeCx ? "openconduit:threecx-call-incoming" : "openconduit:wavoip-call-incoming",
+            { detail: data },
+          ),
+        );
       } else if (data.type === "wavoip.device.updated") {
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));
       }
