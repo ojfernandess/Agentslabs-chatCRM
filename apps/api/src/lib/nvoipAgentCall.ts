@@ -1,3 +1,4 @@
+import { subMinutes } from "date-fns";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import {
@@ -7,6 +8,7 @@ import {
   nvoipGetCallStatus,
 } from "./nvoipClient.js";
 import {
+  isNvoipCallLogActive,
   normalizeNvoipTerminalStatus,
   upsertNvoipTimelineMessage,
 } from "./nvoipCallTimeline.js";
@@ -203,6 +205,35 @@ export async function syncNvoipCallFromApi(input: {
     recordUrl,
     durationSec: durationSec ?? null,
   };
+}
+
+export async function claimNvoipCallAgent(input: {
+  organizationId: string;
+  userId: string;
+  clientCallId?: string | null;
+  conversationId?: string | null;
+}): Promise<void> {
+  if (!input.clientCallId?.trim() && !input.conversationId) return;
+
+  const log = await prisma.nvoipCallLog.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      endedAt: null,
+      ...(input.clientCallId?.trim()
+        ? { clientCallId: input.clientCallId.trim() }
+        : { conversationId: input.conversationId!, createdAt: { gte: subMinutes(new Date(), 30) } }),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!log || !isNvoipCallLogActive(log)) return;
+
+  await prisma.nvoipCallLog.update({
+    where: { id: log.id },
+    data: { initiatedByUserId: input.userId },
+  });
+  if (log.conversationId) {
+    broadcastConversationUpdated(input.organizationId, log.conversationId);
+  }
 }
 
 export async function completeAgentOutboundCall(input: {

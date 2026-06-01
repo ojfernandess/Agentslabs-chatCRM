@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { upsertWavoipTimelineMessage, normalizeTerminalCallStatus } from "./wavoipCallTimeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { isWavoipCallLogActive } from "./wavoipCallTimeline.js";
 import { resolveWavoipCallContext } from "./wavoipCallContext.js";
 
 export function placeholderWhatsappCallId(clientCallId: string): number {
@@ -162,6 +163,36 @@ export async function startAgentOutboundCall(input: {
   }
 
   return { ok: true, dialPhone: ctx.dialPhone, contactId, conversationId };
+}
+
+/** Marca o atendente na chamada ativa (visível na lista de conversas para outros agentes). */
+export async function claimWavoipCallAgent(input: {
+  organizationId: string;
+  userId: string;
+  clientCallId?: string | null;
+  conversationId?: string | null;
+}): Promise<void> {
+  if (!input.clientCallId?.trim() && !input.conversationId) return;
+
+  const log = await prisma.wavoipCallLog.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      endedAt: null,
+      ...(input.clientCallId?.trim()
+        ? { clientCallId: input.clientCallId.trim() }
+        : { conversationId: input.conversationId!, createdAt: { gte: subMinutes(new Date(), 30) } }),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!log || !isWavoipCallLogActive(log)) return;
+
+  await prisma.wavoipCallLog.update({
+    where: { id: log.id },
+    data: { initiatedByUserId: input.userId },
+  });
+  if (log.conversationId) {
+    broadcastConversationUpdated(input.organizationId, log.conversationId);
+  }
 }
 
 export async function completeAgentOutboundCall(input: {

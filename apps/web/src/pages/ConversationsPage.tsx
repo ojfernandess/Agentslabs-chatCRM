@@ -11,7 +11,7 @@ import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { WavoipDialModal } from "@/components/wavoip/WavoipDialModal";
-import { useWavoipCanPlaceCalls } from "@/contexts/WavoipVoiceContext";
+import { useWavoipCanPlaceCalls, useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
@@ -20,6 +20,8 @@ import {
 } from "@/components/ConversationContextMenu";
 import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
+import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
+import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
@@ -47,6 +49,7 @@ interface Conversation {
   inbox?: { id: string; name: string; isDefault: boolean; channelType?: string } | null;
   leadType: { id: string; name: string; color: string } | null;
   messages: { body: string | null; direction: string; createdAt: string }[];
+  activeVoiceCall?: ActiveVoiceCall | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -74,6 +77,7 @@ export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const wavoipCanPlaceCalls = useWavoipCanPlaceCalls();
+  const wavoipVoice = useWavoipVoiceOptional();
   const showWavoipDial =
     (user?.organizationFeatures?.wavoip_voice ?? false) && wavoipCanPlaceCalls;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -825,6 +829,7 @@ export function ConversationsPage() {
                                   <span className="truncate">{conv.assignedTo.name}</span>
                                 </span>
                               ) : null}
+                              <ConversationVoiceCallListBadge activeVoiceCall={conv.activeVoiceCall} />
                               {conv.awaitingHumanHandoff &&
                               !(typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0) ? (
                                 <span
@@ -892,6 +897,20 @@ export function ConversationsPage() {
                             contactId={conv.contact.id}
                             iconOnly
                             stopPropagation
+                            peerOnCall={(() => {
+                              const call = conv.activeVoiceCall;
+                              if (!call) return null;
+                              if (call.agent?.id && call.agent.id !== user?.id) {
+                                return { agentName: call.agent.name };
+                              }
+                              if (
+                                !call.agent?.id &&
+                                !wavoipVoice?.isOnCallForConversation(conv.id)
+                              ) {
+                                return { agentName: "" };
+                              }
+                              return null;
+                            })()}
                           />
                         </div>
                         </div>

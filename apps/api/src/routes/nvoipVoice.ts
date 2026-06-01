@@ -7,6 +7,7 @@ import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { resolveCallerForUser } from "../lib/nvoipCallContext.js";
 import { listNvoipTrunks } from "../lib/nvoipTrunks.js";
 import {
+  claimNvoipCallAgent,
   completeAgentOutboundCall,
   startAgentOutboundCall,
   syncNvoipCallFromApi,
@@ -127,6 +128,35 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       clientCallId: parsed.data.clientCallId,
     });
     return { ok: true, ...sync };
+  });
+
+  app.post("/calls/claim-agent", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      clientCallId: z.string().min(1).max(128).optional(),
+      conversationId: z.string().uuid().optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    if (!parsed.data.clientCallId && !parsed.data.conversationId) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "clientCallId_or_conversationId_required",
+        statusCode: 400,
+      });
+    }
+
+    await claimNvoipCallAgent({
+      organizationId,
+      userId: request.user.id,
+      clientCallId: parsed.data.clientCallId ?? null,
+      conversationId: parsed.data.conversationId ?? null,
+    });
+    return { ok: true };
   });
 
   app.post("/calls/outbound/complete", async (request, reply) => {

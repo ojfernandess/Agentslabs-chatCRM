@@ -2882,6 +2882,8 @@ export const messages = {
       unreadBadge: "Não lida",
       listAssignee: "Atendente",
       inAttendance: "Em atendimento",
+      voiceCallInProgress: "Em ligação",
+      voiceCallBlockedTooltip: "Outro atendente está em ligação com este contacto",
       emptySearchTitle: "Nenhuma conversa coincide com a pesquisa",
       emptySearchHint: "Limpe o campo ou altere os termos.",
       contextMenu: {
@@ -7027,6 +7029,8 @@ export const messages = {
       unreadBadge: "Unread",
       listAssignee: "Assignee",
       inAttendance: "In service",
+      voiceCallInProgress: "On a call",
+      voiceCallBlockedTooltip: "Another agent is on a call with this contact",
       emptySearchTitle: "No conversations match your search",
       emptySearchHint: "Clear the field or try different terms.",
       contextMenu: {

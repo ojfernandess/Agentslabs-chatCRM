@@ -52,6 +52,23 @@ export function normalizeNvoipTerminalStatus(status: string): string {
   return "ENDED";
 }
 
+export function isNvoipCallStatusActive(status: string, direction: string): boolean {
+  const s = status.toUpperCase();
+  if (TERMINAL_STATUSES.has(s)) return false;
+  if (direction === "INCOMING" && INCOMING_ACTIVE_STATUSES.has(s)) return true;
+  if (direction === "OUTGOING" && (s === "DIALING" || s === "ACTIVE")) return true;
+  return false;
+}
+
+export function isNvoipCallLogActive(log: {
+  status: string;
+  direction: string;
+  endedAt: Date | null;
+}): boolean {
+  if (log.endedAt) return false;
+  return isNvoipCallStatusActive(log.status, log.direction);
+}
+
 export function nvoipCallProviderMsgId(input: {
   externalCallId: string;
   clientCallId?: string | null;

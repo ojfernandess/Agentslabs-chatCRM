@@ -84,6 +84,8 @@ import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
 import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
+import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
+import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
@@ -208,6 +210,7 @@ interface ConversationDetail {
   inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
   agentBotTriageActive?: boolean;
   awaitingHumanHandoff?: boolean;
+  activeVoiceCall?: ActiveVoiceCall | null;
   contact: {
     id: string;
     name: string;
@@ -2392,6 +2395,9 @@ export function ConversationDetailPage() {
                       </span>
                       <ConversationPriorityBadge priority={conversation.priority} />
                       <WavoipConversationOnCallBadge conversationId={conversation.id} />
+                      {conversation.activeVoiceCall?.agent?.id !== user?.id ? (
+                        <ConversationVoiceCallListBadge activeVoiceCall={conversation.activeVoiceCall} />
+                      ) : null}
                       {hasHumanAssignee &&
                       (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
                         <span

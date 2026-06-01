@@ -15,6 +15,8 @@ type Props = {
   compact?: boolean;
   iconOnly?: boolean;
   stopPropagation?: boolean;
+  /** Outro atendente em ligação nesta conversa — bloqueia nova chamada. */
+  peerOnCall?: { agentName: string } | null;
 };
 
 export function WavoipCallButton({
@@ -26,6 +28,7 @@ export function WavoipCallButton({
   compact,
   iconOnly,
   stopPropagation,
+  peerOnCall,
 }: Props) {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -60,6 +63,26 @@ export function WavoipCallButton({
       setLoading(false);
     }
   };
+
+  if (peerOnCall) {
+    const blockedTitle =
+      peerOnCall.agentName.trim().length > 0
+        ? `${peerOnCall.agentName} · ${t("conversations.voiceCallInProgress")}`
+        : t("conversations.voiceCallBlockedTooltip");
+    return (
+      <span
+        className={clsx(
+          "inline-flex items-center justify-center rounded-xl border border-ink-200 bg-ink-100/80 text-ink-400 dark:border-ink-700 dark:bg-ink-900/50 dark:text-ink-500",
+          iconOnly || compact ? "h-8 w-8" : "px-2.5 py-2",
+          className,
+        )}
+        title={blockedTitle}
+        aria-label={blockedTitle}
+      >
+        <Phone className="h-4 w-4 shrink-0 opacity-50" />
+      </span>
+    );
+  }
 
   if (onThisConversation) {
     return (

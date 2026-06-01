@@ -174,6 +174,15 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     setCallElapsedSec(0);
   }, []);
 
+  const claimCallAgent = useCallback((meta: ActiveCallMeta) => {
+    void api
+      .post("/wavoip/calls/claim-agent", {
+        clientCallId: meta.clientCallId,
+        ...(meta.conversationId ? { conversationId: meta.conversationId } : {}),
+      })
+      .catch(() => {});
+  }, []);
+
   const bindActiveCall = useCallback(
     (call: CallActive | CallOutgoing, meta?: ActiveCallMeta) => {
       if (meta) {
@@ -181,6 +190,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         setActiveCallConversationId(meta.conversationId);
         setCallStartedAt(meta.startedAt);
         setCallElapsedSec(0);
+        claimCallAgent(meta);
       }
       setActiveCall(call);
       setCallStatus(call.status);
@@ -215,7 +225,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       });
       active.on("ended", onEnded);
     },
-    [finalizeCall],
+    [claimCallAgent, finalizeCall],
   );
 
   useEffect(() => {

@@ -59,6 +59,23 @@ export function normalizeTerminalCallStatus(status: string): string {
   return "ENDED";
 }
 
+export function isWavoipCallStatusActive(status: string, direction: string): boolean {
+  const s = status.toUpperCase();
+  if (TERMINAL_STATUSES.has(s) || s === "DISCONNECTED") return false;
+  if (direction === "INCOMING" && INCOMING_ACTIVE_STATUSES.has(s)) return true;
+  if (direction === "OUTGOING" && OUTBOUND_ACTIVE_STATUSES.has(s)) return true;
+  return false;
+}
+
+export function isWavoipCallLogActive(log: {
+  status: string;
+  direction: string;
+  endedAt: Date | null;
+}): boolean {
+  if (log.endedAt) return false;
+  return isWavoipCallStatusActive(log.status, log.direction);
+}
+
 export function wavoipCallProviderMsgId(input: {
   whatsappCallId: number;
   clientCallId?: string | null;

@@ -49,6 +49,7 @@ import {
   getAssistOpenAiCredentialsForOrganization,
   suggestAgentReplyText,
 } from "../lib/agentAssistLlm.js";
+import { loadActiveVoiceCallsByConversation } from "../lib/activeVoiceCalls.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -385,6 +386,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     );
     void syncContactProfilePicturesBatch({ organizationId, contactIds: uniqueContactIds }).catch(() => {});
 
+    const activeVoiceByConversation = await loadActiveVoiceCallsByConversation(
+      organizationId,
+      withFlags.map((row) => row.id),
+    );
+
     return {
       data: withFlags.map((row) => {
         const { lastMessage: _lastMessage, ...rest } = row;
@@ -392,6 +398,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           ...stripCsatSurveyToken(rest),
           agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
           isUnread: row.isUnread,
+          activeVoiceCall: activeVoiceByConversation.get(row.id) ?? null,
           contact: {
             ...rest.contact,
             hasAvatar: avatarByContact.get(rest.contact.id) ?? false,
@@ -1214,8 +1221,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       lastClosure != null &&
       shouldCarryForwardClosureValue(lastClosure.leadType?.valueRollup);
 
+    const activeVoiceByConversation = await loadActiveVoiceCallsByConversation(organizationId, [
+      conversation.id,
+    ]);
+
     return {
       ...stripCsatSurveyToken(convRest),
+      activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
       contact: {
         ...conversation.contact,
         hasAvatar: contactHasAvatar,

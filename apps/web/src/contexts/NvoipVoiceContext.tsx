@@ -206,6 +206,12 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           status: "DIALING",
           elapsedSec: 0,
         });
+        void api
+          .post("/nvoip/calls/claim-agent", {
+            clientCallId,
+            ...(res.conversationId ? { conversationId: res.conversationId } : {}),
+          })
+          .catch(() => {});
         return {
           ok: true,
           dialPhone: res.dialPhone ?? input.phone,
