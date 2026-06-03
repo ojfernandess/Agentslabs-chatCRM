@@ -300,8 +300,14 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
+  const needsSeparateSenderPrefix =
+    !isPrivate &&
+    (type === "TEMPLATE" ||
+      (type === "AUDIO" && !messageBody?.trim()) ||
+      (inboxChannelType === "TELEGRAM" && type !== "TEXT"));
+
   let bodyForExternal = messageBody ?? "";
-  if (!isPrivate && actor.kind === "user") {
+  if (!isPrivate && !needsSeparateSenderPrefix && actor.kind === "user") {
     bodyForExternal = actor.forceNamePrefix
       ? await prefixOutboundBodyForcedAgentName(
           organizationId,
@@ -317,7 +323,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
           Boolean(isPrivate),
           inboxChannelType,
         );
-  } else if (!isPrivate && actor.kind === "agent_bot") {
+  } else if (!isPrivate && !needsSeparateSenderPrefix && actor.kind === "agent_bot") {
     bodyForExternal = await prefixOutboundBodyWithBotName(
       organizationId,
       actor.botId,
@@ -335,8 +341,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
 
-        const needsSeparatePrefix =
-          type === "TEMPLATE" || (type === "AUDIO" && !messageBody?.trim());
+        const needsSeparatePrefix = needsSeparateSenderPrefix;
         if (needsSeparatePrefix) {
           const nameOnly = await resolveOutboundSenderNamePrefix(
             organizationId,
@@ -377,8 +382,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
     if (token && chatId) {
-      const needsSeparatePrefix = type !== "TEXT";
-      if (needsSeparatePrefix) {
+      if (needsSeparateSenderPrefix) {
         const nameOnly = await resolveOutboundSenderNamePrefix(
           organizationId,
           actor,
