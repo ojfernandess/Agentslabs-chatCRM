@@ -54,6 +54,7 @@ export interface FollowUpEditInitial {
   recurrenceDayOfMonth: number;
   followUpAfterSend: FollowUpAfterSendMode;
   outboundSender: OutboundSenderMode;
+  outboundSenderDisabled: boolean;
 }
 
 function pad2(n: number): string {
@@ -135,5 +136,6 @@ export function campaignToFollowUpInitial(row: CampaignDetailRow): FollowUpEditI
       rules.outboundSender === "agent" || rules.outboundSender === "bot" || rules.outboundSender === "default"
         ? rules.outboundSender
         : "default",
+    outboundSenderDisabled: rules.outboundSenderDisabled === true,
   };
 }

@@ -15,6 +15,12 @@ export async function resolveBroadcastOutboundActor(options: {
   createdById: string;
   inboxId: string;
 }): Promise<OutboundActor> {
+  const rules = parseSegmentRules(options.segmentRules);
+
+  if (rules?.campaignKind === "followup" && rules.outboundSenderDisabled) {
+    return { kind: "user", userId: options.createdById, suppressNamePrefix: true };
+  }
+
   const mode = parseOutboundSenderMode(options.segmentRules);
 
   if (mode === "bot") {

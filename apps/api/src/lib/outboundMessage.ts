@@ -3,6 +3,8 @@ import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
+import { MetaCloudApiProvider } from "../providers/meta.js";
+import { isMetaCloudWhatsappProvider } from "./inboxWhatsappConfig.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import {
@@ -61,6 +63,17 @@ function notifyChannelOutboundWebhook(
   })();
 }
 
+async function isWhatsappSessionOpen(conversationId: string): Promise<boolean> {
+  const lastInbound = await prisma.message.findFirst({
+    where: { conversationId, direction: "INBOUND" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!lastInbound) return false;
+  const hoursSinceLastInbound =
+    (Date.now() - lastInbound.createdAt.getTime()) / (1000 * 60 * 60);
+  return hoursSinceLastInbound <= WHATSAPP_SESSION_WINDOW_HOURS;
+}
+
 async function resolveOutboundSenderNamePrefix(
   organizationId: string,
   actor: OutboundActor,
@@ -68,19 +81,25 @@ async function resolveOutboundSenderNamePrefix(
   channelType: InboxChannelType,
 ): Promise<string | null> {
   if (isPrivate) return null;
+  if (actor.kind === "user" && actor.suppressNamePrefix) return null;
   if (actor.kind === "user") {
     return actor.forceNamePrefix
-      ? agentNameOnlyPrefixForced(organizationId, actor.userId, isPrivate, channelType)
-      : agentNameOnlyPrefixForExternalChannel(organizationId, actor.userId, isPrivate, channelType);
+      ? await agentNameOnlyPrefixForced(organizationId, actor.userId, isPrivate, channelType)
+      : await agentNameOnlyPrefixForExternalChannel(
+          organizationId,
+          actor.userId,
+          isPrivate,
+          channelType,
+        );
   }
   if (actor.kind === "agent_bot") {
-    return botNameOnlyPrefix(organizationId, actor.botId, isPrivate, channelType);
+    return await botNameOnlyPrefix(organizationId, actor.botId, isPrivate, channelType);
   }
   return null;
 }
 
 export type OutboundActor =
-  | { kind: "user"; userId: string; forceNamePrefix?: boolean }
+  | { kind: "user"; userId: string; forceNamePrefix?: boolean; suppressNamePrefix?: boolean }
   | { kind: "agent_bot"; botId: string };
 
 export type PostSendConversationPolicy = "default" | "bot_queue" | "human_handoff";
@@ -245,7 +264,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
       (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
   }
 
-  const isMetaProvider = providerKind === "meta" || providerKind === "360dialog";
+  const isMetaCloudWhatsapp =
+    inboxChannelType === "WHATSAPP" && isMetaCloudWhatsappProvider(providerKind);
+  const isMetaProvider = isMetaCloudWhatsapp;
 
   if (type === "TEMPLATE" && !isPrivate && inboxChannelType !== "WHATSAPP") {
     throw new Error("WhatsApp message templates are only supported for WhatsApp inboxes");
@@ -255,20 +276,15 @@ export async function deliverOutboundWhatsAppMessage(options: {
   const enforceWhatsapp24hSession =
     inboxChannelType === "WHATSAPP" &&
     providerKind !== "evolution" &&
-    (providerKind === "meta" || providerKind === "360dialog" || providerKind === "twilio" || providerKind == null);
+    providerKind !== "evolution_go" &&
+    (isMetaCloudWhatsappProvider(providerKind) ||
+      providerKind === "twilio" ||
+      providerKind == null);
 
   if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession) {
-    const lastInbound = await prisma.message.findFirst({
-      where: { conversationId: conversation.id, direction: "INBOUND" },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (lastInbound) {
-      const hoursSinceLastInbound =
-        (Date.now() - lastInbound.createdAt.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLastInbound > WHATSAPP_SESSION_WINDOW_HOURS) {
-        throw new Error("Outside 24-hour session window. Only template messages can be sent.");
-      }
+    const sessionOpen = await isWhatsappSessionOpen(conversation.id);
+    if (!sessionOpen) {
+      throw new Error("Outside 24-hour session window. Only template messages can be sent.");
     }
   }
 
@@ -306,8 +322,17 @@ export async function deliverOutboundWhatsAppMessage(options: {
       (type === "AUDIO" && !messageBody?.trim()) ||
       (inboxChannelType === "TELEGRAM" && type !== "TEXT"));
 
+  /**
+   * Meta Cloud API: texto livre antes de template só é permitido dentro da janela de 24h.
+   * Campanhas (contatos frios) enviam só o template; Evolution suporta prefixo separado.
+   */
+  let shouldSendSeparateSenderPrefix = needsSeparateSenderPrefix;
+  if (needsSeparateSenderPrefix && isMetaCloudWhatsapp && type === "TEMPLATE") {
+    shouldSendSeparateSenderPrefix = await isWhatsappSessionOpen(conversation.id);
+  }
+
   let bodyForExternal = messageBody ?? "";
-  if (!isPrivate && !needsSeparateSenderPrefix && actor.kind === "user") {
+  if (!isPrivate && !needsSeparateSenderPrefix && actor.kind === "user" && !actor.suppressNamePrefix) {
     bodyForExternal = actor.forceNamePrefix
       ? await prefixOutboundBodyForcedAgentName(
           organizationId,
@@ -341,8 +366,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
 
-        const needsSeparatePrefix = needsSeparateSenderPrefix;
-        if (needsSeparatePrefix) {
+        if (shouldSendSeparateSenderPrefix) {
           const nameOnly = await resolveOutboundSenderNamePrefix(
             organizationId,
             actor,
@@ -358,18 +382,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
           }
         }
 
+        const usesMetaTemplateApi =
+          type === "TEMPLATE" &&
+          Boolean(templateRow?.providerTemplateId) &&
+          (isMetaProvider || provider instanceof MetaCloudApiProvider);
+
         providerMsgId = await provider.sendMessage({
           to,
           type,
           body: bodyForExternal,
           mediaUrl,
           mediaType,
-          ...(type === "TEMPLATE" && isMetaProvider && templateRow?.providerTemplateId
+          ...(usesMetaTemplateApi
             ? {
-                templateName: templateRow.providerTemplateId,
-                templateLanguage: templateRow.templateLanguage,
+                templateName: templateRow!.providerTemplateId!,
+                templateLanguage: templateRow!.templateLanguage,
                 templateBodyParameters:
-                  templateRow.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
+                  templateRow!.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
               }
             : {}),
         });

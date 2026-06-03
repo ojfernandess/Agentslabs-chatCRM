@@ -53,6 +53,7 @@ export interface FollowUpSubmitPayload {
     followUpRecurrence?: FollowUpRecurrence;
     followUpAfterSend?: FollowUpAfterSendMode;
     outboundSender?: OutboundSenderMode;
+    outboundSenderDisabled?: boolean;
     campaignKind?: "followup";
   };
   inboxId: string;
@@ -123,6 +124,7 @@ export function FollowUpCampaignPanel({
   const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState(1);
   const [followUpAfterSend, setFollowUpAfterSend] = useState<FollowUpAfterSendMode>("human_handoff");
   const [outboundSender, setOutboundSender] = useState<OutboundSenderMode>("default");
+  const [outboundSenderDisabled, setOutboundSenderDisabled] = useState(false);
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [newTplName, setNewTplName] = useState("");
   const [newTplBody, setNewTplBody] = useState("");
@@ -204,6 +206,7 @@ export function FollowUpCampaignPanel({
     setRecurrenceDayOfMonth(data.recurrenceDayOfMonth);
     setFollowUpAfterSend(data.followUpAfterSend);
     setOutboundSender(data.outboundSender ?? "default");
+    setOutboundSenderDisabled(data.outboundSenderDisabled ?? false);
     if (data.inboxId) onInboxChange(data.inboxId);
   }, [onInboxChange]);
 
@@ -257,7 +260,12 @@ export function FollowUpCampaignPanel({
     let scheduledAtIso: string | undefined;
     let cronExpression: string | undefined;
     let segmentRules: FollowUpSubmitPayload["segmentRules"] = segmentRulesWithKind(
-      { tagLogic, followUpAfterSend, outboundSender },
+      {
+        tagLogic,
+        followUpAfterSend,
+        outboundSender,
+        ...(outboundSenderDisabled ? { outboundSenderDisabled: true } : {}),
+      },
       "followup",
     ) as FollowUpSubmitPayload["segmentRules"];
 
@@ -275,7 +283,13 @@ export function FollowUpCampaignPanel({
         ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
       };
       segmentRules = segmentRulesWithKind(
-        { tagLogic, followUpRecurrence, followUpAfterSend, outboundSender },
+        {
+          tagLogic,
+          followUpRecurrence,
+          followUpAfterSend,
+          outboundSender,
+          ...(outboundSenderDisabled ? { outboundSenderDisabled: true } : {}),
+        },
         "followup",
       ) as FollowUpSubmitPayload["segmentRules"];
       cronExpression = buildCronFromRecurrence(followUpRecurrence);
@@ -579,11 +593,31 @@ export function FollowUpCampaignPanel({
 
       {inboxId ? (
         <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
-          <CampaignOutboundSenderFields
-            inboxId={inboxId}
-            value={outboundSender}
-            onChange={setOutboundSender}
-          />
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-ink-300"
+              checked={outboundSenderDisabled}
+              onChange={(e) => setOutboundSenderDisabled(e.target.checked)}
+            />
+            <span>
+              <span className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("broadcastPage.followUpOutboundSenderDisabled")}
+              </span>
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                {t("broadcastPage.followUpOutboundSenderDisabledHint")}
+              </p>
+            </span>
+          </label>
+          {!outboundSenderDisabled ? (
+            <div className="mt-4">
+              <CampaignOutboundSenderFields
+                inboxId={inboxId}
+                value={outboundSender}
+                onChange={setOutboundSender}
+              />
+            </div>
+          ) : null}
         </section>
       ) : null}
 

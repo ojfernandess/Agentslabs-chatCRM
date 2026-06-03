@@ -1406,6 +1406,9 @@ export const messages = {
       outboundSenderBot: "Nome do bot",
       outboundSenderBotFallback: "Bot",
       outboundSenderBotUnavailable: "Bot não ativo nesta caixa",
+      followUpOutboundSenderDisabled: "Não enviar nome no follow-up",
+      followUpOutboundSenderDisabledHint:
+        "Envia só a mensagem ou o template, sem cabeçalho com nome do atendente ou do bot. Recomendado para Meta Cloud API.",
       flowStart: "Início",
       flowEnd: "Fim",
       flowBuilderDragHint: "Arraste blocos para a área do fluxo. Ligações entre nós são guardadas automaticamente.",
@@ -5632,6 +5635,9 @@ export const messages = {
       outboundSenderBot: "Bot name",
       outboundSenderBotFallback: "Bot",
       outboundSenderBotUnavailable: "No active bot on this inbox",
+      followUpOutboundSenderDisabled: "Do not send sender name on follow-up",
+      followUpOutboundSenderDisabledHint:
+        "Sends only the message or template, without an agent or bot name header. Recommended for Meta Cloud API.",
       flowStart: "Start",
       flowEnd: "End",
       flowBuilderDragHint: "Drag blocks into the flow area. Connections between nodes are saved automatically.",

@@ -39,6 +39,8 @@ export interface BroadcastSegmentRules {
   followUpRecurrence?: FollowUpRecurrence;
   followUpAfterSend?: FollowUpAfterSendMode;
   outboundSender?: OutboundSenderMode;
+  /** Follow-up: não prefixar nome do atendente/bot no envio (Meta Cloud, etc.). */
+  outboundSenderDisabled?: boolean;
   nvoipTorpedo?: NvoipTorpedoCampaignConfig;
 }
 
@@ -132,6 +134,7 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
       o.outboundSender === "default" || o.outboundSender === "agent" || o.outboundSender === "bot"
         ? o.outboundSender
         : undefined,
+    outboundSenderDisabled: o.outboundSenderDisabled === true ? true : undefined,
     campaignKind:
       o.campaignKind === "followup" ||
       o.campaignKind === "broadcast" ||
