@@ -29,7 +29,7 @@ type NormalizedCall = {
 
 function classifyCallOutcome(call: NormalizedCall): CallOutcome {
   const s = call.status.toUpperCase();
-  const dir = call.direction.toUpperCase();
+  const dir = normalizeCallDirection(call.direction);
 
   if (!call.endedAt) {
     if (
@@ -54,6 +54,23 @@ function classifyCallOutcome(call: NormalizedCall): CallOutcome {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function normalizeCallDirection(direction: string): "INCOMING" | "OUTGOING" | "UNKNOWN" {
+  const d = direction.trim().toUpperCase();
+  if (d === "INCOMING" || d === "INBOUND") return "INCOMING";
+  if (d === "OUTGOING" || d === "OUTBOUND") return "OUTGOING";
+  return "UNKNOWN";
+}
+
+/** Chamada entra no período pela data de início ou, se ausente, pela de registro. */
+function callOccurredInRange(from: Date, to: Date) {
+  return {
+    OR: [
+      { startedAt: { gte: from, lte: to } },
+      { startedAt: null, createdAt: { gte: from, lte: to } },
+    ],
+  };
 }
 
 function fmtDurationSec(sec: number): string {
@@ -125,7 +142,7 @@ export async function buildTelephonyReports(input: {
     isOrganizationFeatureEnabled(organizationId, "threecx_voice"),
   ]);
 
-  const dateWhere = { gte: from, lte: to };
+  const dateWhere = callOccurredInRange(from, to);
   const callSelect = {
     direction: true,
     status: true,
@@ -142,21 +159,20 @@ export async function buildTelephonyReports(input: {
       ? prisma.wavoipCallLog.findMany({
           where: {
             organizationId,
-            createdAt: dateWhere,
-            whatsappCallId: { gte: 0 },
+            ...dateWhere,
           },
           select: callSelect,
         })
       : Promise.resolve([]),
     nvoipEnabled
       ? prisma.nvoipCallLog.findMany({
-          where: { organizationId, createdAt: dateWhere },
+          where: { organizationId, ...dateWhere },
           select: callSelect,
         })
       : Promise.resolve([]),
     threeCxEnabled
       ? prisma.threeCxCallLog.findMany({
-          where: { organizationId, createdAt: dateWhere },
+          where: { organizationId, ...dateWhere },
           select: callSelect,
         })
       : Promise.resolve([]),
@@ -257,7 +273,7 @@ export async function buildTelephonyReports(input: {
 
   for (const call of normalized) {
     totalCalls += 1;
-    const dir = call.direction.toUpperCase();
+    const dir = normalizeCallDirection(call.direction);
     if (dir === "INCOMING") inboundCalls += 1;
     else if (dir === "OUTGOING") outboundCalls += 1;
 

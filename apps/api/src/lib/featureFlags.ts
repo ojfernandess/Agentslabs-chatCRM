@@ -114,6 +114,22 @@ export async function isOrganizationFeatureEnabled(
     if (legacyDevice) return true;
   }
 
+  if (key === "nvoip_voice") {
+    const legacyAccount = await prisma.nvoipAccount.findFirst({
+      where: { organizationId, status: "CONNECTED" },
+      select: { id: true },
+    });
+    if (legacyAccount) return true;
+  }
+
+  if (key === "threecx_voice") {
+    const legacyRoute = await prisma.threeCxRoutePoint.findFirst({
+      where: { organizationId, status: "CONNECTED" },
+      select: { id: true },
+    });
+    if (legacyRoute) return true;
+  }
+
   return fallback;
 }
 

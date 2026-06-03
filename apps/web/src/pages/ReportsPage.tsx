@@ -361,6 +361,12 @@ export function ReportsPage() {
     return t("reportsPage.providerThreecx");
   };
 
+  const callStatusLabel = (status: string) => {
+    const key = `reportsPage.callStatus_${status}` as "reportsPage.callStatus_ENDED";
+    const translated = t(key);
+    return translated !== key ? translated : status;
+  };
+
   return (
     <PageTransition>
       <div className="flex min-h-full flex-col gap-6 p-6 sm:p-8">
@@ -368,7 +374,7 @@ export function ReportsPage() {
           <div>
             <div className="flex items-center gap-2 text-brand-600 dark:text-brand-400">
               <PieChart className="h-6 w-6" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Analytics</span>
+              <span className="text-xs font-semibold uppercase tracking-wide">{t("reportsPage.badgeCaption")}</span>
             </div>
             <h1 className="mt-1 text-2xl font-bold text-ink-900 dark:text-ink-50">{t("reportsPage.title")}</h1>
             <p className="mt-1 max-w-3xl text-sm text-ink-600 dark:text-ink-400">{t("reportsPage.subtitle")}</p>
@@ -976,7 +982,9 @@ export function ReportsPage() {
                           key={s.status}
                           className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-800/80"
                         >
-                          <span className="font-mono text-xs font-semibold text-ink-700 dark:text-ink-200">{s.status}</span>
+                          <span className="font-mono text-xs font-semibold text-ink-700 dark:text-ink-200">
+                            {callStatusLabel(s.status)}
+                          </span>
                           <span className="text-ink-500 dark:text-ink-400">({s.count})</span>
                         </li>
                       ))}
