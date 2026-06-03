@@ -13,6 +13,7 @@ import {
   getAssistOpenAiCredentialsForOrganization,
 } from "../lib/agentAssistLlm.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import { buildTelephonyReports } from "../lib/telephonyReports.js";
 
 const querySchema = z.object({
   from: z.string().datetime().optional(),
@@ -528,6 +529,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
     const botTelemetryEnabled = configuredBot != null || botTelemetryDetected;
 
+    const telephony = await buildTelephonyReports({
+      organizationId: org,
+      from,
+      to,
+      granularity,
+    });
+
     return {
       meta: {
         from: from.toISOString(),
@@ -593,6 +601,7 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         color: r.color,
         conversationsCount: r.n,
       })),
+      telephony,
     };
   });
 

@@ -58,7 +58,7 @@ import {
   flushAutomationLogBuffer,
   registerAutomationExecutionLogWorker,
 } from "./lib/automationExecutionLog.js";
-import { registerBroadcastQueueWorker, closeBroadcastQueue } from "./lib/broadcastQueue.js";
+import { initBroadcastQueue, closeBroadcastQueue } from "./lib/broadcastQueue.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
@@ -230,7 +230,7 @@ try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Server running at http://${config.host}:${config.port}`);
   registerAutomationExecutionLogWorker(app.log);
-  registerBroadcastQueueWorker(app);
+  await initBroadcastQueue(app);
   const autoResolveMs = 120_000;
   setInterval(() => {
     void runAutoResolveInactiveConversationsTick({ log: app.log });

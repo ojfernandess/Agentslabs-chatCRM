@@ -24,6 +24,8 @@ import {
   UsersRound,
   Tag,
   PieChart,
+  Phone,
+  PhoneCall,
 } from "lucide-react";
 import clsx from "clsx";
 import { PageTransition } from "@/components/Motion";
@@ -97,9 +99,61 @@ interface ReportsPayload {
   }>;
   heatmap: { cells: number[][]; max: number };
   tags: Array<{ tagId: string; name: string; color: string; conversationsCount: number }>;
+  telephony?: TelephonyReports;
 }
 
-type TabId = "overview" | "conversations" | "agents" | "teams" | "revenue";
+type TelephonyProvider = "wavoip" | "nvoip" | "threecx";
+
+interface TelephonyReports {
+  enabled: boolean;
+  providers: Record<TelephonyProvider, { enabled: boolean; hasData: boolean }>;
+  summary: {
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    answeredCalls: number;
+    missedCalls: number;
+    inProgressCalls: number;
+    inboundAnswered: number;
+    inboundMissed: number;
+    answerRatePct: number | null;
+    abandonRatePct: number | null;
+    avgTalkTimeSec: number | null;
+    totalTalkTimeSec: number;
+    recordingsCount: number;
+  };
+  timeSeries: Array<{
+    bucket: string;
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    answeredCalls: number;
+    missedCalls: number;
+  }>;
+  byProvider: Array<{
+    provider: TelephonyProvider;
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    answeredCalls: number;
+    missedCalls: number;
+    avgTalkTimeSec: number | null;
+  }>;
+  agents: Array<{
+    userId: string;
+    name: string;
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    answeredCalls: number;
+    missedCalls: number;
+    totalTalkTimeSec: number;
+    avgTalkTimeSec: number | null;
+  }>;
+  statusBreakdown: Array<{ status: string; count: number }>;
+}
+
+type TabId = "overview" | "conversations" | "agents" | "teams" | "revenue" | "telephony";
 
 function toInputDate(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -178,6 +232,14 @@ export function ReportsPage() {
     }));
   }, [data, dateLocale]);
 
+  const chartTelephonyData = useMemo(() => {
+    if (!data?.telephony?.timeSeries.length) return [];
+    return data.telephony.timeSeries.map((row) => ({
+      ...row,
+      label: formatBucketLabel(row.bucket, data.meta.granularity, dateLocale),
+    }));
+  }, [data, dateLocale]);
+
   const dowLabels = useMemo(
     () => [
       t("reportsPage.dowOff"),
@@ -225,6 +287,51 @@ export function ReportsPage() {
       ["agent", "conversations", "outbound_messages"],
       ...data.agents.map((a) => [a.name, String(a.conversationsTouched), String(a.outboundMessages)]),
     ];
+    if (data.telephony?.enabled) {
+      const tel = data.telephony;
+      rows.push(
+        [],
+        ["telephony_total_calls", String(tel.summary.totalCalls)],
+        ["telephony_inbound", String(tel.summary.inboundCalls)],
+        ["telephony_outbound", String(tel.summary.outboundCalls)],
+        ["telephony_answered", String(tel.summary.answeredCalls)],
+        ["telephony_missed", String(tel.summary.missedCalls)],
+        [
+          "telephony_answer_rate_pct",
+          tel.summary.answerRatePct != null ? String(tel.summary.answerRatePct) : "",
+        ],
+        [
+          "telephony_avg_talk_sec",
+          tel.summary.avgTalkTimeSec != null ? String(tel.summary.avgTalkTimeSec) : "",
+        ],
+        [],
+        [
+          "bucket",
+          "total_calls",
+          "inbound",
+          "outbound",
+          "answered",
+          "missed",
+        ],
+        ...tel.timeSeries.map((r) => [
+          r.bucket,
+          String(r.totalCalls),
+          String(r.inboundCalls),
+          String(r.outboundCalls),
+          String(r.answeredCalls),
+          String(r.missedCalls),
+        ]),
+        [],
+        ["agent", "calls", "answered", "missed", "talk_time_sec"],
+        ...tel.agents.map((a) => [
+          a.name,
+          String(a.totalCalls),
+          String(a.answeredCalls),
+          String(a.missedCalls),
+          String(a.totalTalkTimeSec),
+        ]),
+      );
+    }
     downloadCsv(`openconduit-reports-${fromStr}-${toStr}.csv`, rows);
   };
 
@@ -234,10 +341,25 @@ export function ReportsPage() {
     { id: "agents", label: t("reportsPage.tabAgents") },
     { id: "teams", label: t("reportsPage.tabTeams") },
     { id: "revenue", label: t("reportsPage.tabRevenue") },
+    ...(data?.telephony?.enabled
+      ? [{ id: "telephony" as const, label: t("reportsPage.tabTelephony") }]
+      : []),
   ];
 
   const fmtMin = (v: number | null) =>
     v != null && Number.isFinite(v) ? `${Math.round(v * 10) / 10} ${t("reportsPage.minutesAbbr")}` : t("reportsPage.na");
+
+  const fmtSec = (v: number | null) =>
+    v != null && Number.isFinite(v) ? formatTalkDuration(v) : t("reportsPage.na");
+
+  const fmtPct = (v: number | null) =>
+    v != null && Number.isFinite(v) ? `${Math.round(v * 10) / 10}%` : t("reportsPage.na");
+
+  const providerLabel = (p: TelephonyProvider) => {
+    if (p === "wavoip") return t("reportsPage.providerWavoip");
+    if (p === "nvoip") return t("reportsPage.providerNvoip");
+    return t("reportsPage.providerThreecx");
+  };
 
   return (
     <PageTransition>
@@ -659,6 +781,215 @@ export function ReportsPage() {
               </section>
             )}
 
+            {tab === "telephony" && data.telephony?.enabled ? (
+              <div className="space-y-8">
+                <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900 dark:text-ink-50">
+                      <Phone className="h-5 w-5 text-red-500" />
+                      {t("reportsPage.telephonySectionTitle")}
+                    </h2>
+                    <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">
+                      {t("reportsPage.telephonySectionSubtitle")}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(
+                        [
+                          ["wavoip", data.telephony.providers.wavoip],
+                          ["nvoip", data.telephony.providers.nvoip],
+                          ["threecx", data.telephony.providers.threecx],
+                        ] as const
+                      )
+                        .filter(([, p]) => p.enabled)
+                        .map(([key, p]) => (
+                          <span
+                            key={key}
+                            className={clsx(
+                              "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                              p.hasData
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
+                                : "bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400",
+                            )}
+                          >
+                            {providerLabel(key)}
+                            {p.hasData ? "" : " · —"}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+
+                  {data.telephony.summary.totalCalls === 0 ? (
+                    <p className="mt-6 text-sm text-ink-500">{t("reportsPage.emptyTelephony")}</p>
+                  ) : (
+                    <>
+                      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <Kpi icon={PhoneCall} label={t("reportsPage.telephonyKpiTotal")} value={data.telephony.summary.totalCalls} />
+                        <Kpi icon={Phone} label={t("reportsPage.telephonyKpiInbound")} value={data.telephony.summary.inboundCalls} />
+                        <Kpi icon={Phone} label={t("reportsPage.telephonyKpiOutbound")} value={data.telephony.summary.outboundCalls} />
+                        <Kpi icon={PhoneCall} label={t("reportsPage.telephonyKpiAnswered")} value={data.telephony.summary.answeredCalls} />
+                        <Kpi icon={Clock} label={t("reportsPage.telephonyKpiMissed")} value={data.telephony.summary.missedCalls} />
+                        <Kpi icon={Timer} label={t("reportsPage.telephonyKpiInProgress")} value={data.telephony.summary.inProgressCalls} />
+                        <Kpi icon={TrendingUp} label={t("reportsPage.telephonyKpiAnswerRate")} value={fmtPct(data.telephony.summary.answerRatePct)} />
+                        <Kpi icon={BarChart3} label={t("reportsPage.telephonyKpiAbandonRate")} value={fmtPct(data.telephony.summary.abandonRatePct)} />
+                        <Kpi icon={Clock} label={t("reportsPage.telephonyKpiAvgTalk")} value={fmtSec(data.telephony.summary.avgTalkTimeSec)} />
+                        <Kpi icon={Timer} label={t("reportsPage.telephonyKpiTotalTalk")} value={fmtSec(data.telephony.summary.totalTalkTimeSec)} />
+                        <Kpi icon={MessageSquare} label={t("reportsPage.telephonyKpiRecordings")} value={data.telephony.summary.recordingsCount} />
+                      </div>
+
+                      <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-2">
+                        <ChartCard title={t("reportsPage.chartTelephonyVolumeTitle")}>
+                          <div className="h-72 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartTelephonyData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                                <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="inboundCalls" name={t("reportsPage.seriesTelephonyInbound")} fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="outboundCalls" name={t("reportsPage.seriesTelephonyOutbound")} fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </ChartCard>
+                        <ChartCard title={t("reportsPage.chartTelephonyOutcomeTitle")}>
+                          <div className="h-72 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartTelephonyData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                                <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="answeredCalls" name={t("reportsPage.seriesTelephonyAnswered")} fill="#10b981" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="missedCalls" name={t("reportsPage.seriesTelephonyMissed")} fill="#ef4444" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </ChartCard>
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                {data.telephony.summary.totalCalls > 0 && data.telephony.byProvider.length > 0 ? (
+                  <section className="rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                    <div className="border-b border-ink-100 px-6 py-4 dark:border-ink-800">
+                      <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                        {t("reportsPage.telephonyProvidersTitle")}
+                      </h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-ink-100 bg-ink-50/80 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 dark:border-ink-800 dark:bg-ink-800/50 dark:text-ink-400">
+                            <th className="px-6 py-3">{t("reportsPage.colProvider")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colCalls")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colInbound")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colOutbound")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colAnswered")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colMissed")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colTalkTime")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.telephony.byProvider.map((row) => (
+                            <tr
+                              key={row.provider}
+                              className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
+                            >
+                              <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">
+                                {providerLabel(row.provider)}
+                              </td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.totalCalls}</td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.inboundCalls}</td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.outboundCalls}</td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.answeredCalls}</td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.missedCalls}</td>
+                              <td className="px-6 py-3 font-mono text-ink-700 dark:text-ink-300">
+                                {fmtSec(row.avgTalkTimeSec)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ) : null}
+
+                {data.telephony.summary.totalCalls > 0 ? (
+                  <section className="rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                    <div className="border-b border-ink-100 px-6 py-4 dark:border-ink-800">
+                      <h2 className="flex items-center gap-2 text-lg font-semibold text-ink-900 dark:text-ink-50">
+                        <UsersRound className="h-5 w-5 text-brand-500" />
+                        {t("reportsPage.telephonyAgentsTitle")}
+                      </h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      {data.telephony.agents.length === 0 ? (
+                        <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyTelephonyAgents")}</p>
+                      ) : (
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-ink-100 bg-ink-50/80 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 dark:border-ink-800 dark:bg-ink-800/50 dark:text-ink-400">
+                              <th className="px-6 py-3">{t("reportsPage.colAgent")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colCalls")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colInbound")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colOutbound")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colAnswered")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colMissed")}</th>
+                              <th className="px-6 py-3">{t("reportsPage.colTalkTime")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.telephony.agents.map((a) => (
+                              <tr
+                                key={a.userId}
+                                className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
+                              >
+                                <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">{a.name}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.totalCalls}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.inboundCalls}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.outboundCalls}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.answeredCalls}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.missedCalls}</td>
+                                <td className="px-6 py-3 font-mono text-ink-700 dark:text-ink-300">
+                                  {fmtSec(a.avgTalkTimeSec)} ({formatTalkDuration(a.totalTalkTimeSec)})
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </section>
+                ) : null}
+
+                {data.telephony.summary.totalCalls > 0 && data.telephony.statusBreakdown.length > 0 ? (
+                  <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                    <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                      {t("reportsPage.telephonyStatusTitle")}
+                    </h2>
+                    <ul className="mt-4 flex flex-wrap gap-2">
+                      {data.telephony.statusBreakdown.map((s) => (
+                        <li
+                          key={s.status}
+                          className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-800/80"
+                        >
+                          <span className="font-mono text-xs font-semibold text-ink-700 dark:text-ink-200">{s.status}</span>
+                          <span className="text-ink-500 dark:text-ink-400">({s.count})</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+
+                <footer className="rounded-xl border border-dashed border-ink-200 bg-ink-50/50 px-4 py-3 text-xs leading-relaxed text-ink-600 dark:border-ink-700 dark:bg-ink-900/40 dark:text-ink-400">
+                  <p>{t("reportsPage.telephonyFootnote")}</p>
+                </footer>
+              </div>
+            ) : null}
+
             {tab === "revenue" && (
               <section className="rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
                 <div className="border-b border-ink-100 px-6 py-4 dark:border-ink-800">
@@ -705,6 +1036,16 @@ export function ReportsPage() {
       </div>
     </PageTransition>
   );
+}
+
+function formatTalkDuration(totalSec: number): string {
+  const sec = Math.max(0, Math.round(totalSec));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function formatBucketLabel(bucketIso: string, g: Granularity, locale: Locale): string {

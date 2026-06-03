@@ -53,6 +53,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # AOF only: evita falha "Wrong RDB checksum" em dump.rdb corrompido no volume.
+    command:
+      - sh
+      - -c
+      - rm -f /data/dump.rdb && exec redis-server --appendonly yes --save ''
     volumes:
       - redisdata:/data
     ports:

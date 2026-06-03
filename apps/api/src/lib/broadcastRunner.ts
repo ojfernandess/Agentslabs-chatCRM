@@ -81,18 +81,28 @@ export async function runBroadcastCampaign(app: FastifyInstance, campaignId: str
 
   if (useQueue) {
     let delay = 0;
+    let queued = 0;
     for (const rec of pending) {
       const jobId = await enqueueBroadcastRecipientJob(campaignId, rec.id, delay);
       if (jobId) {
+        queued += 1;
         await prisma.broadcastCampaignRecipient.update({
           where: { id: rec.id },
           data: { queueJobId: jobId },
         });
       } else {
         await processBroadcastRecipient(app, campaignId, rec.id);
+        const state = await prisma.broadcastCampaign.findUnique({
+          where: { id: campaignId },
+          select: { status: true },
+        });
+        if (!state || state.status !== "RUNNING") return;
       }
       delay += throttleMs;
     }
+    if (queued > 0) return;
+    await finalizeBroadcastCampaignIfDone(campaignId);
+    await syncBroadcastCampaignEngagement(campaignId);
     return;
   }
 
