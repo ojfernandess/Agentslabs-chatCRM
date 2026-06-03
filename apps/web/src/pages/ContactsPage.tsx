@@ -366,7 +366,7 @@ export function ContactsPage() {
     <PageTransition>
       <div className="page-shell min-h-full bg-gradient-to-b from-slate-50/90 to-white dark:from-ink-950 dark:to-ink-950">
         <motion.div
-          className="mx-auto max-w-[1600px]"
+          className="mx-auto min-w-0 max-w-[1600px]"
           variants={staggerContainer}
           initial={hasAnimated.current ? false : "hidden"}
           animate="show"
@@ -699,10 +699,10 @@ export function ContactsPage() {
           ) : (
             <motion.div
               variants={staggerItem}
-              className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/40"
+              className="min-w-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/40"
             >
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-left text-sm">
+              <div className="overflow-x-auto overscroll-x-contain">
+                <table className="w-full min-w-[960px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/90 dark:border-ink-800 dark:bg-ink-900/80">
                       <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-ink-400">
@@ -735,7 +735,7 @@ export function ContactsPage() {
                       <th className="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:table-cell dark:text-ink-400">
                         {t("contacts.colSource")}
                       </th>
-                      <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-ink-400">
+                      <th className="sticky right-0 z-10 bg-slate-50/95 px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur-sm dark:bg-ink-900/95 dark:text-ink-400">
                         {t("contacts.colActions")}
                       </th>
                     </tr>
@@ -748,7 +748,7 @@ export function ContactsPage() {
                       return (
                         <tr
                           key={contact.id}
-                          className="cursor-pointer transition-colors hover:bg-slate-50/90 dark:hover:bg-ink-900/70"
+                          className="group cursor-pointer transition-colors hover:bg-slate-50/90 dark:hover:bg-ink-900/70"
                           onClick={() => setDrawerContactId(contact.id)}
                         >
                           <td className="px-4 py-3">
@@ -1002,8 +1002,11 @@ export function ContactsPage() {
                               {contact.lifecycleStage ?? t("contacts.sourceUnknown")}
                             </span>
                           </td>
-                          <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-wrap items-center gap-1.5">
+                          <td
+                            className="sticky right-0 z-10 bg-white px-3 py-3 group-hover:bg-slate-50/90 dark:bg-ink-900/40 dark:group-hover:bg-ink-900/70"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex flex-nowrap items-center gap-1">
                               <WavoipCallButton
                                 phone={contact.phone}
                                 contactId={contact.id}
@@ -1027,10 +1030,11 @@ export function ContactsPage() {
                                 onClick={() =>
                                   setQuickContact({ id: contact.id, name: contact.name, phone: contact.phone })
                                 }
-                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                title={t("contacts.quickMessage")}
                               >
                                 <Send className="h-3.5 w-3.5" />
-                                {t("contacts.quickMessage")}
+                                <span className="hidden 2xl:inline">{t("contacts.quickMessage")}</span>
                               </button>
                               {nvoipSmsEnabled ? (
                                 <button
@@ -1042,10 +1046,11 @@ export function ContactsPage() {
                                       phone: contact.phone,
                                     })
                                   }
-                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                  title={t("nvoip.sms.send")}
                                 >
                                   <MessageCircle className="h-3.5 w-3.5" />
-                                  {t("nvoip.sms.send")}
+                                  <span className="hidden 2xl:inline">{t("nvoip.sms.send")}</span>
                                 </button>
                               ) : null}
                               {nvoipWhatsappEnabled ? (
@@ -1058,10 +1063,11 @@ export function ContactsPage() {
                                       phone: contact.phone,
                                     })
                                   }
-                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:border-brand-700 dark:hover:text-brand-300"
+                                  title={t("nvoip.whatsapp.send")}
                                 >
                                   <MessageCircle className="h-3.5 w-3.5" />
-                                  {t("nvoip.whatsapp.send")}
+                                  <span className="hidden 2xl:inline">{t("nvoip.whatsapp.send")}</span>
                                 </button>
                               ) : null}
                               <button
@@ -1071,11 +1077,11 @@ export function ContactsPage() {
                                   setDeleteError(null);
                                   setDeleteTarget({ id: contact.id, name: contact.name });
                                 }}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-ink-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-ink-900 dark:text-red-400 dark:hover:bg-red-950/40"
                                 title={t("contacts.deleteContact")}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
-                                {t("contacts.deleteContact")}
+                                <span className="hidden 2xl:inline">{t("contacts.deleteContact")}</span>
                               </button>
                             </div>
                           </td>

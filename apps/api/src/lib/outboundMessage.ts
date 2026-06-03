@@ -61,6 +61,24 @@ function notifyChannelOutboundWebhook(
   })();
 }
 
+async function resolveOutboundSenderNamePrefix(
+  organizationId: string,
+  actor: OutboundActor,
+  isPrivate: boolean,
+  channelType: InboxChannelType,
+): Promise<string | null> {
+  if (isPrivate) return null;
+  if (actor.kind === "user") {
+    return actor.forceNamePrefix
+      ? agentNameOnlyPrefixForced(organizationId, actor.userId, isPrivate, channelType)
+      : agentNameOnlyPrefixForExternalChannel(organizationId, actor.userId, isPrivate, channelType);
+  }
+  if (actor.kind === "agent_bot") {
+    return botNameOnlyPrefix(organizationId, actor.botId, isPrivate, channelType);
+  }
+  return null;
+}
+
 export type OutboundActor =
   | { kind: "user"; userId: string; forceNamePrefix?: boolean }
   | { kind: "agent_bot"; botId: string };
@@ -317,25 +335,20 @@ export async function deliverOutboundWhatsAppMessage(options: {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
 
-        if (actor.kind === "user" && type === "AUDIO" && !messageBody?.trim()) {
-          const nameOnly = actor.forceNamePrefix
-            ? await agentNameOnlyPrefixForced(
-                organizationId,
-                actor.userId,
-                Boolean(isPrivate),
-                inboxChannelType,
-              )
-            : await agentNameOnlyPrefixForExternalChannel(
-                organizationId,
-                actor.userId,
-                Boolean(isPrivate),
-                inboxChannelType,
-              );
+        const needsSeparatePrefix =
+          type === "TEMPLATE" || (type === "AUDIO" && !messageBody?.trim());
+        if (needsSeparatePrefix) {
+          const nameOnly = await resolveOutboundSenderNamePrefix(
+            organizationId,
+            actor,
+            Boolean(isPrivate),
+            inboxChannelType,
+          );
           if (nameOnly) {
             try {
               await provider.sendMessage({ to, type: "TEXT", body: nameOnly });
             } catch (err) {
-              log.warn(err, "Failed to send agent name prefix before audio");
+              log.warn(err, "Failed to send sender name prefix before WhatsApp message");
             }
           }
         }
@@ -364,20 +377,14 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
     if (token && chatId) {
-      if (actor.kind === "user" && type !== "TEXT" && !messageBody?.trim()) {
-        const nameOnly = actor.forceNamePrefix
-          ? await agentNameOnlyPrefixForced(
-              organizationId,
-              actor.userId,
-              Boolean(isPrivate),
-              inboxChannelType,
-            )
-          : await agentNameOnlyPrefixForExternalChannel(
-              organizationId,
-              actor.userId,
-              Boolean(isPrivate),
-              inboxChannelType,
-            );
+      const needsSeparatePrefix = type !== "TEXT";
+      if (needsSeparatePrefix) {
+        const nameOnly = await resolveOutboundSenderNamePrefix(
+          organizationId,
+          actor,
+          Boolean(isPrivate),
+          inboxChannelType,
+        );
         if (nameOnly) {
           try {
             await sendTelegramNativeMessage({
@@ -388,7 +395,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
               parseMode: telegramParseModeForAgentPrefix(nameOnly),
             });
           } catch (err) {
-            log.warn(err, "Failed to send agent name prefix before telegram media");
+            log.warn(err, "Failed to send sender name prefix before telegram message");
           }
         }
       }

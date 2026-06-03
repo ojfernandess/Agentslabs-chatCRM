@@ -128,6 +128,10 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
       o.followUpAfterSend === "bot" || o.followUpAfterSend === "human_handoff"
         ? o.followUpAfterSend
         : undefined,
+    outboundSender:
+      o.outboundSender === "default" || o.outboundSender === "agent" || o.outboundSender === "bot"
+        ? o.outboundSender
+        : undefined,
     campaignKind:
       o.campaignKind === "followup" ||
       o.campaignKind === "broadcast" ||
