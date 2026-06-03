@@ -2,6 +2,9 @@ import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { CampaignChannel } from "./campaignTypes";
 import { OMNICHANNEL_CHANNELS } from "./campaignTypes";
+import { CampaignOutboundSenderFields, type OutboundSenderMode } from "./CampaignOutboundSenderFields";
+
+export type { OutboundSenderMode };
 
 export interface NvoipTorpedoDtmfRule {
   digit: string;
@@ -12,6 +15,7 @@ export interface NvoipTorpedoDtmfRule {
 
 export interface SegmentRules {
   tagLogic?: "ANY" | "ALL";
+  outboundSender?: OutboundSenderMode;
   pipelineStageIds?: string[];
   lifecycleStages?: string[];
   cities?: string[];
@@ -130,6 +134,17 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-white/10 dark:bg-white/5"
           />
         </div>
+      ) : null}
+
+      {value.inboxId &&
+      (value.channel === "whatsapp" || value.channel === "telegram" || value.channel === "instagram") ? (
+        <CampaignOutboundSenderFields
+          inboxId={value.inboxId}
+          value={(value.segmentRules.outboundSender as OutboundSenderMode | undefined) ?? "default"}
+          onChange={(mode) =>
+            patch({ segmentRules: { ...value.segmentRules, outboundSender: mode } })
+          }
+        />
       ) : null}
 
       {value.channel === "voice" ? (

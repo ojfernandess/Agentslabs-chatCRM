@@ -1060,6 +1060,7 @@ model BroadcastCampaign {
   useDistributedQueue Boolean  @default(true) @map("use_distributed_queue")
   revenuePerConversion Decimal? @map("revenue_per_conversion") @db.Decimal(12, 2)
 
+  pausedAt        DateTime? @map("paused_at")
   startedAt       DateTime? @map("started_at")
   completedAt     DateTime? @map("completed_at")
   totalRecipients Int       @default(0) @map("total_recipients")

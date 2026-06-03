@@ -11,6 +11,9 @@ export type BroadcastCampaignKind = "followup" | "broadcast" | "ai" | "flow";
 /** Após envio de follow-up: fila do bot ou handoff para atendente humano. */
 export type FollowUpAfterSendMode = "bot" | "human_handoff";
 
+/** Nome exibido no canal ao enviar campanha: preferência do atendente, forçar atendente ou bot. */
+export type OutboundSenderMode = "default" | "agent" | "bot";
+
 export interface NvoipTorpedoDtmfRule {
   digit: string;
   label?: string;
@@ -35,6 +38,7 @@ export interface BroadcastSegmentRules {
   noResponseSinceDays?: number;
   followUpRecurrence?: FollowUpRecurrence;
   followUpAfterSend?: FollowUpAfterSendMode;
+  outboundSender?: OutboundSenderMode;
   nvoipTorpedo?: NvoipTorpedoCampaignConfig;
 }
 

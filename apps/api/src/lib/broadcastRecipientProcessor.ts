@@ -17,7 +17,7 @@ export async function processBroadcastRecipient(
   if (!rec) return;
 
   const campaign = rec.campaign;
-  if (campaign.status !== "RUNNING") return;
+  if (campaign.status !== "RUNNING" || campaign.pausedAt) return;
 
   const { skipSend } = await runPreSendFlowSteps({ campaign, contactId: rec.contactId });
   if (skipSend) {

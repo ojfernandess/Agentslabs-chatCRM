@@ -441,6 +441,34 @@ export function BroadcastCampaignsPage() {
     }
   };
 
+  const pauseCampaign = async (id: string) => {
+    setActionBusy(id);
+    try {
+      await api.post(`/broadcasts/${id}/pause`);
+      void loadList();
+      void loadDashboard();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : t("broadcastPage.pauseError");
+      alert(msg);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const resumeCampaign = async (id: string) => {
+    setActionBusy(id);
+    try {
+      await api.post(`/broadcasts/${id}/resume`);
+      void loadList();
+      void loadDashboard();
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : t("broadcastPage.resumeError");
+      alert(msg);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   const deleteDraft = async (id: string, status?: string) => {
     const msg =
       status === "COMPLETED" ? t("broadcastPage.deleteCompletedConfirm") : t("broadcastPage.deleteConfirm");
@@ -682,6 +710,8 @@ export function BroadcastCampaignsPage() {
                       onDelete={(id) => deleteDraft(id, r.status)}
                       onApprove={approveCampaign}
                       onCancel={cancelCampaign}
+                      onPause={pauseCampaign}
+                      onResume={resumeCampaign}
                     />
                   ))}
                 </div>

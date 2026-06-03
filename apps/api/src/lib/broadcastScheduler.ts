@@ -9,6 +9,7 @@ export async function runBroadcastSchedulerTick(app: FastifyInstance): Promise<v
   const due = await prisma.broadcastCampaign.findMany({
     where: {
       status: "DRAFT",
+      pausedAt: null,
       scheduleType: { in: ["SCHEDULED", "RECURRING"] },
       nextRunAt: { lte: now },
       OR: [{ requiresApproval: false }, { approvalStatus: "APPROVED" }],

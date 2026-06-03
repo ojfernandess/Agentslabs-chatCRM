@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { format } from "date-fns";
-import { Play, Trash2, MessageSquare, Bot, Users, BarChart3, Check, X, Ban, Pencil } from "lucide-react";
+import { Play, Trash2, MessageSquare, Bot, Users, BarChart3, Check, X, Ban, Pencil, Pause, PlayCircle } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { campaignDeliveryRate, campaignProgress, CHANNEL_LABEL_KEYS, type CampaignRow } from "./campaignTypes";
 import { campaignKindBadgeClass, campaignKindLabelKey, resolveCampaignKind } from "./campaignKind";
@@ -14,6 +14,8 @@ interface Props {
   onEdit?: (id: string) => void;
   onApprove?: (id: string, approve: boolean) => void;
   onCancel?: (id: string) => void;
+  onPause?: (id: string) => void;
+  onResume?: (id: string) => void;
 }
 
 const statusStyles: Record<string, string> = {
@@ -24,7 +26,18 @@ const statusStyles: Record<string, string> = {
   CANCELLED: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400",
 };
 
-export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, onEdit, onApprove, onCancel }: Props) {
+export function CampaignCard({
+  row,
+  statusLabel,
+  actionBusy,
+  onStart,
+  onDelete,
+  onEdit,
+  onApprove,
+  onCancel,
+  onPause,
+  onResume,
+}: Props) {
   const { t, dateLocale } = useI18n();
   const campaignKind = resolveCampaignKind(row);
   const progress = campaignProgress(row);
@@ -35,6 +48,8 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
   const lastRun = row.startedAt ?? row.createdAt;
   const channelKey = CHANNEL_LABEL_KEYS[(row.channel ?? "WHATSAPP").toUpperCase()] ?? "broadcastPage.channelWhatsapp";
   const pendingApproval = row.requiresApproval && row.approvalStatus === "PENDING";
+  const isRecurring = row.scheduleType === "RECURRING";
+  const isPaused = Boolean(row.pausedAt);
 
   return (
     <article className="flex flex-col rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm transition-shadow hover:shadow-md dark:border-white/10 dark:bg-[#111C2B]/55">
@@ -69,6 +84,11 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
           {row.approvalStatus === "REJECTED" ? (
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-800 dark:bg-rose-900/35 dark:text-rose-100">
               {t("broadcastPage.approvalRejected")}
+            </span>
+          ) : null}
+          {isRecurring && isPaused ? (
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/35 dark:text-sky-100">
+              {t("broadcastPage.statusPaused")}
             </span>
           ) : null}
         </div>
@@ -167,8 +187,31 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
             {t("broadcastPage.reject")}
           </button>
         </div>
+      ) : isRecurring && isPaused && onResume ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={actionBusy === row.id}
+            onClick={() => onResume(row.id)}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-brand-500 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
+          >
+            <PlayCircle className="h-3.5 w-3.5" />
+            {t("broadcastPage.resumeCampaign")}
+          </button>
+        </div>
       ) : row.status === "DRAFT" && !pendingApproval && row.approvalStatus !== "REJECTED" ? (
         <div className="mt-3 flex flex-wrap gap-2">
+          {isRecurring && !isPaused && onPause ? (
+            <button
+              type="button"
+              disabled={actionBusy === row.id}
+              onClick={() => onPause(row.id)}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-50 dark:border-sky-900/50 dark:text-sky-200 dark:hover:bg-sky-950/30"
+            >
+              <Pause className="h-3.5 w-3.5" />
+              {t("broadcastPage.pauseCampaign")}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={actionBusy === row.id}
@@ -199,17 +242,30 @@ export function CampaignCard({ row, statusLabel, actionBusy, onStart, onDelete, 
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-      ) : row.status === "RUNNING" && onCancel ? (
-        <div className="mt-3">
-          <button
-            type="button"
-            disabled={actionBusy === row.id}
-            onClick={() => onCancel(row.id)}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-900/50 dark:text-amber-200 dark:hover:bg-amber-950/30"
-          >
-            <Ban className="h-3.5 w-3.5" />
-            {t("broadcastPage.cancelCampaign")}
-          </button>
+      ) : row.status === "RUNNING" && (onCancel || (isRecurring && onPause)) ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {isRecurring && !isPaused && onPause ? (
+            <button
+              type="button"
+              disabled={actionBusy === row.id}
+              onClick={() => onPause(row.id)}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-50 dark:border-sky-900/50 dark:text-sky-200 dark:hover:bg-sky-950/30"
+            >
+              <Pause className="h-3.5 w-3.5" />
+              {t("broadcastPage.pauseCampaign")}
+            </button>
+          ) : null}
+          {onCancel && (!isRecurring || !onPause) ? (
+            <button
+              type="button"
+              disabled={actionBusy === row.id}
+              onClick={() => onCancel(row.id)}
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-amber-200 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-900/50 dark:text-amber-200 dark:hover:bg-amber-950/30"
+            >
+              <Ban className="h-3.5 w-3.5" />
+              {t("broadcastPage.cancelCampaign")}
+            </button>
+          ) : null}
         </div>
       ) : row.status === "COMPLETED" || row.status === "CANCELLED" || row.status === "FAILED" ? (
         <div className="mt-3 flex flex-wrap gap-2">

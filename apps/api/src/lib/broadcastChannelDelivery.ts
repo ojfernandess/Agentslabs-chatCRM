@@ -14,6 +14,7 @@ import { parseSegmentRules, substituteContactVars } from "./broadcastTypes.js";
 import type { BroadcastAbVariantPayload, FollowUpAfterSendMode } from "./broadcastTypes.js";
 import { seedFollowUpCampaignAutomationContext } from "./automationConversationContextLib.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { resolveBroadcastOutboundActor } from "./broadcastOutboundActor.js";
 import { deliverNvoipVoiceTorpedo } from "./nvoipTorpedo.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 
@@ -250,10 +251,17 @@ export async function deliverBroadcastToContact(options: {
     sendInput = { contactId: contact.id, type: "TEXT", body, inboxId };
   }
 
+  const outboundActor = await resolveBroadcastOutboundActor({
+    organizationId: campaign.organizationId,
+    segmentRules: campaign.segmentRules,
+    createdById: actorUserId,
+    inboxId,
+  });
+
   const { message, conversation: outboundConversation } = await deliverOutboundWhatsAppMessage({
     organizationId: campaign.organizationId,
     data: sendInput,
-    actor: { kind: "user", userId: actorUserId },
+    actor: outboundActor,
     log,
     newConversation: newConversationForCampaign(campaign, actorUserId),
     postSendConversationPolicy: postSendPolicyForCampaign(campaign),

@@ -21,7 +21,11 @@ import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
 import {
   agentNameOnlyPrefixForExternalChannel,
+  agentNameOnlyPrefixForced,
+  botNameOnlyPrefix,
+  prefixOutboundBodyForcedAgentName,
   prefixOutboundBodyForExternalChannel,
+  prefixOutboundBodyWithBotName,
   telegramParseModeForAgentPrefix,
 } from "./outboundAgentFormatting.js";
 
@@ -58,7 +62,7 @@ function notifyChannelOutboundWebhook(
 }
 
 export type OutboundActor =
-  | { kind: "user"; userId: string }
+  | { kind: "user"; userId: string; forceNamePrefix?: boolean }
   | { kind: "agent_bot"; botId: string };
 
 export type PostSendConversationPolicy = "default" | "bot_queue" | "human_handoff";
@@ -280,9 +284,25 @@ export async function deliverOutboundWhatsAppMessage(options: {
 
   let bodyForExternal = messageBody ?? "";
   if (!isPrivate && actor.kind === "user") {
-    bodyForExternal = await prefixOutboundBodyForExternalChannel(
+    bodyForExternal = actor.forceNamePrefix
+      ? await prefixOutboundBodyForcedAgentName(
+          organizationId,
+          actor.userId,
+          messageBody,
+          Boolean(isPrivate),
+          inboxChannelType,
+        )
+      : await prefixOutboundBodyForExternalChannel(
+          organizationId,
+          actor.userId,
+          messageBody,
+          Boolean(isPrivate),
+          inboxChannelType,
+        );
+  } else if (!isPrivate && actor.kind === "agent_bot") {
+    bodyForExternal = await prefixOutboundBodyWithBotName(
       organizationId,
-      actor.userId,
+      actor.botId,
       messageBody,
       Boolean(isPrivate),
       inboxChannelType,
@@ -298,12 +318,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
 
         if (actor.kind === "user" && type === "AUDIO" && !messageBody?.trim()) {
-          const nameOnly = await agentNameOnlyPrefixForExternalChannel(
-            organizationId,
-            actor.userId,
-            Boolean(isPrivate),
-            inboxChannelType,
-          );
+          const nameOnly = actor.forceNamePrefix
+            ? await agentNameOnlyPrefixForced(
+                organizationId,
+                actor.userId,
+                Boolean(isPrivate),
+                inboxChannelType,
+              )
+            : await agentNameOnlyPrefixForExternalChannel(
+                organizationId,
+                actor.userId,
+                Boolean(isPrivate),
+                inboxChannelType,
+              );
           if (nameOnly) {
             try {
               await provider.sendMessage({ to, type: "TEXT", body: nameOnly });
@@ -338,12 +365,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
     if (token && chatId) {
       if (actor.kind === "user" && type !== "TEXT" && !messageBody?.trim()) {
-        const nameOnly = await agentNameOnlyPrefixForExternalChannel(
-          organizationId,
-          actor.userId,
-          Boolean(isPrivate),
-          inboxChannelType,
-        );
+        const nameOnly = actor.forceNamePrefix
+          ? await agentNameOnlyPrefixForced(
+              organizationId,
+              actor.userId,
+              Boolean(isPrivate),
+              inboxChannelType,
+            )
+          : await agentNameOnlyPrefixForExternalChannel(
+              organizationId,
+              actor.userId,
+              Boolean(isPrivate),
+              inboxChannelType,
+            );
         if (nameOnly) {
           try {
             await sendTelegramNativeMessage({

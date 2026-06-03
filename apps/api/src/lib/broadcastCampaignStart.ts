@@ -41,6 +41,7 @@ export async function materializeAndStartCampaign(
   });
   if (!campaign) throw new Error("not_found");
   if (campaign.status !== "DRAFT") throw new Error("invalid_status");
+  if (campaign.pausedAt) throw new Error("campaign_paused");
 
   if (campaign.requiresApproval && campaign.approvalStatus !== "APPROVED") {
     throw new Error("approval_required");

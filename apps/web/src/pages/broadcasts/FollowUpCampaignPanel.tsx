@@ -25,6 +25,10 @@ import type {
   FollowUpScheduleMode,
   FollowUpTagLogic,
 } from "./campaignDraftMapper";
+import {
+  CampaignOutboundSenderFields,
+  type OutboundSenderMode,
+} from "./CampaignOutboundSenderFields";
 
 export type { FollowUpAfterSendMode, FollowUpScheduleMode, FollowUpTagLogic };
 
@@ -48,6 +52,7 @@ export interface FollowUpSubmitPayload {
     tagLogic: FollowUpTagLogic;
     followUpRecurrence?: FollowUpRecurrence;
     followUpAfterSend?: FollowUpAfterSendMode;
+    outboundSender?: OutboundSenderMode;
     campaignKind?: "followup";
   };
   inboxId: string;
@@ -117,6 +122,7 @@ export function FollowUpCampaignPanel({
   const [recurrenceDayOfWeek, setRecurrenceDayOfWeek] = useState(1);
   const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState(1);
   const [followUpAfterSend, setFollowUpAfterSend] = useState<FollowUpAfterSendMode>("human_handoff");
+  const [outboundSender, setOutboundSender] = useState<OutboundSenderMode>("default");
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [newTplName, setNewTplName] = useState("");
   const [newTplBody, setNewTplBody] = useState("");
@@ -197,6 +203,7 @@ export function FollowUpCampaignPanel({
     setRecurrenceDayOfWeek(data.recurrenceDayOfWeek);
     setRecurrenceDayOfMonth(data.recurrenceDayOfMonth);
     setFollowUpAfterSend(data.followUpAfterSend);
+    setOutboundSender(data.outboundSender ?? "default");
     if (data.inboxId) onInboxChange(data.inboxId);
   }, [onInboxChange]);
 
@@ -250,7 +257,7 @@ export function FollowUpCampaignPanel({
     let scheduledAtIso: string | undefined;
     let cronExpression: string | undefined;
     let segmentRules: FollowUpSubmitPayload["segmentRules"] = segmentRulesWithKind(
-      { tagLogic, followUpAfterSend },
+      { tagLogic, followUpAfterSend, outboundSender },
       "followup",
     ) as FollowUpSubmitPayload["segmentRules"];
 
@@ -268,7 +275,7 @@ export function FollowUpCampaignPanel({
         ...(recurrenceFrequency === "monthly" ? { dayOfMonth: recurrenceDayOfMonth } : {}),
       };
       segmentRules = segmentRulesWithKind(
-        { tagLogic, followUpRecurrence, followUpAfterSend },
+        { tagLogic, followUpRecurrence, followUpAfterSend, outboundSender },
         "followup",
       ) as FollowUpSubmitPayload["segmentRules"];
       cronExpression = buildCronFromRecurrence(followUpRecurrence);
@@ -303,6 +310,7 @@ export function FollowUpCampaignPanel({
     setRecurrenceDayOfWeek(1);
     setRecurrenceDayOfMonth(1);
     setFollowUpAfterSend("human_handoff");
+    setOutboundSender("default");
     setShowCreateTemplate(false);
   }, []);
 
@@ -568,6 +576,16 @@ export function FollowUpCampaignPanel({
           </div>
         ) : null}
       </section>
+
+      {inboxId ? (
+        <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+          <CampaignOutboundSenderFields
+            inboxId={inboxId}
+            value={outboundSender}
+            onChange={setOutboundSender}
+          />
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.followUpAfterSendTitle")}</h3>

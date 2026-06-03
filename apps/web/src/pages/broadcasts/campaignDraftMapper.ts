@@ -2,9 +2,11 @@ import type { CampaignChannel } from "./campaignTypes";
 import type { CreatorDraft } from "./CampaignCreatorPanel";
 import { defaultAdvancedOptions } from "./CampaignAdvancedOptions";
 import type { FollowUpRecurrence, FollowUpRecurrenceFrequency } from "@/lib/broadcastRecurrence";
+import type { OutboundSenderMode } from "./CampaignOutboundSenderFields";
 export type FollowUpScheduleMode = "now" | "scheduled" | "recurring";
 export type FollowUpTagLogic = "ANY" | "ALL";
 export type FollowUpAfterSendMode = "bot" | "human_handoff";
+export type { OutboundSenderMode };
 
 const CHANNEL_FROM_API: Record<string, CampaignChannel> = {
   WHATSAPP: "whatsapp",
@@ -51,6 +53,7 @@ export interface FollowUpEditInitial {
   recurrenceDayOfWeek: number;
   recurrenceDayOfMonth: number;
   followUpAfterSend: FollowUpAfterSendMode;
+  outboundSender: OutboundSenderMode;
 }
 
 function pad2(n: number): string {
@@ -128,5 +131,9 @@ export function campaignToFollowUpInitial(row: CampaignDetailRow): FollowUpEditI
       rules.followUpAfterSend === "bot" || rules.followUpAfterSend === "human_handoff"
         ? rules.followUpAfterSend
         : "human_handoff",
+    outboundSender:
+      rules.outboundSender === "agent" || rules.outboundSender === "bot" || rules.outboundSender === "default"
+        ? rules.outboundSender
+        : "default",
   };
 }

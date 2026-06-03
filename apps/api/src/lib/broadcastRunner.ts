@@ -21,7 +21,7 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
 
   const campaign = await prisma.broadcastCampaign.findUnique({
     where: { id: campaignId },
-    select: { status: true, scheduleType: true, segmentRules: true },
+    select: { status: true, scheduleType: true, segmentRules: true, pausedAt: true },
   });
   if (!campaign || campaign.status !== "RUNNING") return;
 
@@ -30,7 +30,7 @@ export async function finalizeBroadcastCampaignIfDone(campaignId: string): Promi
     data: { status: "COMPLETED", completedAt: new Date() },
   });
 
-  if (campaign.scheduleType === "RECURRING") {
+  if (campaign.scheduleType === "RECURRING" && !campaign.pausedAt) {
     const rules = parseSegmentRules(campaign.segmentRules);
     const rec = rules?.followUpRecurrence;
     const next = rec ? computeNextRunAt(new Date(), rec) : fallbackRecurringNextRun();
@@ -64,7 +64,7 @@ function fallbackRecurringNextRun(): Date {
 
 export async function runBroadcastCampaign(app: FastifyInstance, campaignId: string): Promise<void> {
   const campaign = await prisma.broadcastCampaign.findUnique({ where: { id: campaignId } });
-  if (!campaign || campaign.status !== "RUNNING") return;
+  if (!campaign || campaign.status !== "RUNNING" || campaign.pausedAt) return;
 
   const pending = await prisma.broadcastCampaignRecipient.findMany({
     where: { campaignId, status: "PENDING" },
@@ -94,9 +94,9 @@ export async function runBroadcastCampaign(app: FastifyInstance, campaignId: str
         await processBroadcastRecipient(app, campaignId, rec.id);
         const state = await prisma.broadcastCampaign.findUnique({
           where: { id: campaignId },
-          select: { status: true },
+          select: { status: true, pausedAt: true },
         });
-        if (!state || state.status !== "RUNNING") return;
+        if (!state || state.status !== "RUNNING" || state.pausedAt) return;
       }
       delay += throttleMs;
     }
@@ -109,9 +109,9 @@ export async function runBroadcastCampaign(app: FastifyInstance, campaignId: str
   for (const rec of pending) {
     const state = await prisma.broadcastCampaign.findUnique({
       where: { id: campaignId },
-      select: { status: true },
+      select: { status: true, pausedAt: true },
     });
-    if (!state || state.status !== "RUNNING") return;
+    if (!state || state.status !== "RUNNING" || state.pausedAt) return;
 
     await processBroadcastRecipient(app, campaignId, rec.id);
     await sleep(throttleMs);

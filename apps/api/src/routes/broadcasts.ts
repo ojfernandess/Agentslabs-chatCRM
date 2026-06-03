@@ -8,6 +8,8 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { buildBroadcastDashboard } from "../lib/broadcastDashboard.js";
 import { materializeAndStartCampaign } from "../lib/broadcastCampaignStart.js";
+import { scheduleBroadcastCampaignRun } from "../lib/broadcastRunner.js";
+import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { syncBroadcastCampaignEngagement } from "../lib/broadcastMetrics.js";
 import {
   countBroadcastAudienceAdvanced,
@@ -174,6 +176,29 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     scheduleTypes: scheduleEnum.options,
     eventTriggers: BROADCAST_EVENT_TRIGGERS,
   }));
+
+  app.get("/sender-options", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inboxId = (request.query as { inboxId?: string }).inboxId?.trim();
+    const creatorRow = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { name: true, displayName: true },
+    });
+    const creatorName = creatorRow?.displayName?.trim() || creatorRow?.name?.trim() || null;
+
+    if (!inboxId) {
+      return { botAvailable: false, botName: null, creatorName };
+    }
+
+    const ctx = await getAgentBotDispatchContextForInbox(organizationId, inboxId);
+    return {
+      botAvailable: Boolean(ctx),
+      botName: ctx?.agentBot.name?.trim() ?? null,
+      creatorName,
+    };
+  });
 
   app.post("/audience-preview", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
@@ -650,6 +675,71 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     return updated;
   });
 
+  app.post<{ Params: { id: string } }>("/:id/pause", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const campaign = await prisma.broadcastCampaign.findFirst({
+      where: {
+        id: request.params.id,
+        organizationId,
+        scheduleType: "RECURRING",
+        status: { in: ["DRAFT", "RUNNING"] },
+        pausedAt: null,
+      },
+    });
+    if (!campaign) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Recurring campaign not found or already paused",
+        statusCode: 404,
+      });
+    }
+
+    const updated = await prisma.broadcastCampaign.update({
+      where: { id: campaign.id },
+      data: { pausedAt: new Date() },
+      include: campaignInclude(),
+    });
+    return updated;
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/resume", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const campaign = await prisma.broadcastCampaign.findFirst({
+      where: {
+        id: request.params.id,
+        organizationId,
+        scheduleType: "RECURRING",
+        pausedAt: { not: null },
+      },
+    });
+    if (!campaign) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Paused recurring campaign not found",
+        statusCode: 404,
+      });
+    }
+
+    const updated = await prisma.broadcastCampaign.update({
+      where: { id: campaign.id },
+      data: { pausedAt: null },
+      include: campaignInclude(),
+    });
+
+    if (updated.status === "RUNNING") {
+      const pending = await prisma.broadcastCampaignRecipient.count({
+        where: { campaignId: updated.id, status: "PENDING" },
+      });
+      if (pending > 0) scheduleBroadcastCampaignRun(app, updated.id);
+    }
+
+    return updated;
+  });
+
   app.post<{ Params: { id: string } }>("/:id/start", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -670,6 +760,13 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
       }
       if (code === "no_recipients") {
         return reply.status(400).send({ error: "Bad Request", message: "No contacts in segment", statusCode: 400 });
+      }
+      if (code === "campaign_paused") {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "Campaign is paused",
+          statusCode: 409,
+        });
       }
       if (code === "not_scheduled_yet") {
         return reply.status(400).send({

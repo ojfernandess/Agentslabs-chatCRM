@@ -35,6 +35,7 @@ export interface CampaignRow {
   requiresApproval?: boolean;
   approvalStatus?: string;
   scheduleType?: string;
+  pausedAt?: string | null;
   createdAt: string;
   startedAt?: string | null;
   completedAt?: string | null;
