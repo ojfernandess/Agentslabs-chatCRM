@@ -289,4 +289,9 @@
   .page-shell-inner {
     @apply mx-auto w-full min-w-0 max-w-6xl;
   }
+
+  .contacts-table-scroll {
+    @apply w-full max-w-full overflow-x-auto overscroll-x-contain;
+    scrollbar-gutter: stable;
+  }
 }

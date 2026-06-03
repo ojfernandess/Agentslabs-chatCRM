@@ -9,7 +9,7 @@ export type { Variants };
 export function PageTransition({ children }: { children: ReactNode }) {
   return (
     <motion.div
-      className="min-h-0 h-full"
+      className="h-full min-h-0 w-full min-w-0 max-w-full"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
