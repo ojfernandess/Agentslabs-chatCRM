@@ -97,9 +97,17 @@ export function buildInboxWhatsappChannelConfig(
   const phoneId = patch.whatsappPhoneNumberId?.trim();
   if (phoneId) base.whatsappPhoneNumberId = phoneId;
   const apiKey = patch.whatsappApiKey?.trim();
-  if (apiKey) base.whatsappApiKey = apiKey;
+  if (apiKey && apiKey !== MASKED_WHATSAPP_SECRET) {
+    base.whatsappApiKey = apiKey;
+  } else {
+    delete base.whatsappApiKey;
+  }
   const secret = patch.whatsappWebhookSecret?.trim();
-  if (secret) base.whatsappWebhookSecret = secret;
+  if (secret && secret !== MASKED_WHATSAPP_SECRET) {
+    base.whatsappWebhookSecret = secret;
+  } else {
+    delete base.whatsappWebhookSecret;
+  }
   const evo = patch.evolutionApiBaseUrl?.trim();
   if (evo) base.evolutionApiBaseUrl = evo;
   else if (patch.whatsappProvider !== "evolution" && patch.whatsappProvider !== "evolution_go") {

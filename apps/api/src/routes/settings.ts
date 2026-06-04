@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { MultipartFile } from "@fastify/multipart";
 import { z } from "zod";
-import type { InboxChannelType } from "@prisma/client";
+import { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { decrypt, encrypt } from "../lib/encryption.js";
@@ -704,7 +704,11 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (!organizationId) return;
 
       const parsed = z
-        .object({ channelConfig: z.record(z.unknown()) })
+        .object({
+          channelConfig: z.record(z.unknown()),
+          /** Mescla segredos gravados na caixa quando o cliente envia placeholder mascarado. */
+          inboxId: z.string().uuid().optional(),
+        })
         .safeParse(request.body ?? {});
       if (!parsed.success || !parsed.data.channelConfig) {
         return reply.status(400).send({
@@ -714,8 +718,24 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      let existingConfig: unknown = null;
+      if (parsed.data.inboxId) {
+        const inbox = await prisma.inbox.findFirst({
+          where: { id: parsed.data.inboxId, organizationId, channelType: InboxChannelType.WHATSAPP },
+          select: { channelConfig: true },
+        });
+        if (!inbox) {
+          return reply.status(404).send({
+            error: "Not Found",
+            message: "WhatsApp inbox not found",
+            statusCode: 404,
+          });
+        }
+        existingConfig = inbox.channelConfig;
+      }
+
       const prepared = prepareWhatsappChannelConfigForSave({
-        existingConfig: null,
+        existingConfig,
         incoming: parsed.data.channelConfig,
         ensureMetaVerifyToken: false,
       });

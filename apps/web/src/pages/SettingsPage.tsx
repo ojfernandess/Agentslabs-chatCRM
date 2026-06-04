@@ -1151,18 +1151,30 @@ export function SettingsPage() {
     setTestResult(null);
     try {
       if (provider === "meta" || provider === "360dialog") {
-        const channelConfig = buildInboxWhatsappChannelConfig(defaultWaInbox?.channelConfig ?? null, {
-          whatsappProvider: provider,
-          whatsappPhoneNumberId: phoneNumberId,
-          whatsappApiKey: apiKey,
-          whatsappWebhookSecret: webhookSecret,
-          whatsappDisplayPhone: waDisplayPhone,
-          whatsappBusinessAccountId: waWabaId,
-        });
-        const result = await api.post<{ connected: boolean }>("/settings/test-whatsapp-draft", {
-          channelConfig,
-        });
-        setTestResult(result.connected);
+        const hasNewApiKey = Boolean(apiKey.trim() && apiKey !== MASKED_WHATSAPP_SECRET);
+        const hasNewWebhookSecret = Boolean(
+          webhookSecret.trim() && webhookSecret !== MASKED_WHATSAPP_SECRET,
+        );
+        if (defaultWaInbox?.id && !hasNewApiKey && !hasNewWebhookSecret) {
+          const result = await api.post<{ connected: boolean }>(
+            `/settings/test-connection?inboxId=${encodeURIComponent(defaultWaInbox.id)}`,
+          );
+          setTestResult(result.connected);
+        } else {
+          const channelConfig = buildInboxWhatsappChannelConfig(defaultWaInbox?.channelConfig ?? null, {
+            whatsappProvider: provider,
+            whatsappPhoneNumberId: phoneNumberId,
+            whatsappApiKey: apiKey,
+            whatsappWebhookSecret: webhookSecret,
+            whatsappDisplayPhone: waDisplayPhone,
+            whatsappBusinessAccountId: waWabaId,
+          });
+          const result = await api.post<{ connected: boolean }>("/settings/test-whatsapp-draft", {
+            channelConfig,
+            ...(defaultWaInbox?.id ? { inboxId: defaultWaInbox.id } : {}),
+          });
+          setTestResult(result.connected);
+        }
       } else {
         const q = defaultWaInbox?.id ? `?inboxId=${encodeURIComponent(defaultWaInbox.id)}` : "";
         const result = await api.post<{ connected: boolean }>(`/settings/test-connection${q}`);
