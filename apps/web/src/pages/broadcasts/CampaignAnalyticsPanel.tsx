@@ -1,72 +1,79 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
 import { useI18n } from "@/i18n/I18nProvider";
-import type { BroadcastDashboard } from "./campaignTypes";
+import { CampaignAnalyticsCharts } from "@/pages/broadcasts/analytics/CampaignAnalyticsCharts";
+import { CampaignAnalyticsErrorsPanel } from "@/pages/broadcasts/analytics/CampaignAnalyticsErrorsPanel";
+import { CampaignAnalyticsFiltersBar } from "@/pages/broadcasts/analytics/CampaignAnalyticsFilters";
+import { CampaignAnalyticsSendLog } from "@/pages/broadcasts/analytics/CampaignAnalyticsSendLog";
+import { CampaignAnalyticsSummary } from "@/pages/broadcasts/analytics/CampaignAnalyticsSummary";
+import { openAnalyticsPdfReport } from "@/pages/broadcasts/analytics/exportAnalytics";
+import { useCampaignAnalytics } from "@/pages/broadcasts/analytics/useCampaignAnalytics";
 
-interface Props {
-  dashboard: BroadcastDashboard | null;
-  loading?: boolean;
-}
-
-export function CampaignAnalyticsPanel({ dashboard, loading }: Props) {
+export function CampaignAnalyticsPanel() {
   const { t } = useI18n();
-  const chartData = dashboard?.sendByDay ?? [];
-  const top = dashboard?.topCampaigns ?? [];
+  const { filters, patchFilters, data, loading, error, reload, exportCsv, exportBusy } =
+    useCampaignAnalytics();
 
-  if (loading) {
-    return <p className="text-sm text-ink-500">{t("common.loading")}</p>;
-  }
+  const handleExportPdf = () => {
+    if (!data) return;
+    openAnalyticsPdfReport(data, {
+      title: t("broadcastPage.tabAnalytics"),
+      period: t("broadcastPage.analyticsFiltersTitle"),
+      summary: t("broadcastPage.analyticsSummaryTotal"),
+      sendLog: t("broadcastPage.analyticsSendLogTitle"),
+      errors: t("broadcastPage.analyticsErrorsTitle"),
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-white/10 dark:bg-[#111C2B]/55">
-        <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsVolume")}</h3>
-        <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.analyticsVolumeSub")}</p>
-        <div className="mt-4 h-64">
-          {chartData.length === 0 ? (
-            <p className="flex h-full items-center justify-center text-sm text-ink-500">{t("broadcastPage.analyticsEmpty")}</p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="sent" name={t("broadcastPage.analyticsSent")} fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="failed" name={t("broadcastPage.analyticsFailed")} fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
+      <CampaignAnalyticsFiltersBar
+        filters={filters}
+        onChange={patchFilters}
+        onExportCsv={() => void exportCsv()}
+        onExportPdf={handleExportPdf}
+        onReload={() => void reload()}
+        exportBusy={exportBusy}
+        loading={loading}
+      />
 
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-white/10 dark:bg-[#111C2B]/55">
-        <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsTop")}</h3>
-        {top.length === 0 ? (
-          <p className="mt-4 text-sm text-ink-500">{t("broadcastPage.analyticsEmpty")}</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-ink-100 dark:divide-white/10">
-            {top.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-4 py-3 text-sm">
-                <span className="truncate font-medium text-ink-800 dark:text-ink-100">{c.name}</span>
-                <span className="shrink-0 tabular-nums text-ink-600 dark:text-ink-300">
-                  {c.sentCount} {t("broadcastPage.analyticsSent").toLowerCase()}
-                  {c.deliveryRate != null ? ` · ${c.deliveryRate}%` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-300/80 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-800/50 dark:bg-rose-950/30 dark:text-rose-100"
+        >
+          <p className="font-semibold">{t("broadcastPage.analyticsLoadError")}</p>
+          <p className="mt-1 text-xs opacity-90">{error}</p>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            className="mt-2 text-xs font-bold underline"
+          >
+            {t("broadcastPage.analyticsRefresh")}
+          </button>
+        </div>
+      ) : null}
+
+      <CampaignAnalyticsSummary summary={data?.summary} loading={loading} />
+
+      <CampaignAnalyticsErrorsPanel
+        errorsByCategory={data?.errorsByCategory ?? []}
+        errorSpikeAlert={data?.errorSpikeAlert ?? null}
+        loading={loading}
+      />
+
+      <CampaignAnalyticsCharts
+        sendByDay={data?.sendByDay ?? []}
+        ratesByDay={data?.ratesByDay ?? []}
+        topCampaigns={data?.topCampaigns ?? []}
+        loading={loading}
+      />
+
+      <CampaignAnalyticsSendLog
+        sendLog={data?.sendLog}
+        loading={loading}
+        page={filters.page}
+        pageSize={filters.pageSize}
+        onPageChange={(page) => patchFilters({ page })}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 p-4 dark:border-violet-900/40 dark:bg-violet-950/20">

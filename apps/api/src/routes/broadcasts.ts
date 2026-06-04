@@ -7,6 +7,12 @@ import { requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { buildBroadcastDashboard } from "../lib/broadcastDashboard.js";
+import {
+  buildBroadcastAnalytics,
+  buildAnalyticsExportCsv,
+  fetchAnalyticsExportRows,
+} from "../lib/broadcastAnalytics.js";
+import { analyticsQuerySchema } from "../lib/broadcastAnalyticsQuery.js";
 import { materializeAndStartCampaign } from "../lib/broadcastCampaignStart.js";
 import { scheduleBroadcastCampaignRun } from "../lib/broadcastRunner.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
@@ -227,6 +233,68 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     await syncBroadcastEngagementForOrg(organizationId);
     return buildBroadcastDashboard(organizationId);
+  });
+
+  app.get("/analytics", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = analyticsQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+    try {
+      await syncBroadcastEngagementForOrg(organizationId);
+      return await buildBroadcastAnalytics(organizationId, parsed.data);
+    } catch (err) {
+      request.log.error({ err, organizationId }, "broadcast analytics failed");
+      return reply.status(500).send({
+        error: "Internal Server Error",
+        message: "Failed to load campaign analytics",
+        statusCode: 500,
+      });
+    }
+  });
+
+  app.get("/analytics/export", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const parsed = analyticsQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+    const format = String((request.query as { format?: string }).format ?? "csv").toLowerCase();
+    try {
+      const rows = await fetchAnalyticsExportRows(organizationId, parsed.data);
+      if (format === "csv") {
+        const csv = buildAnalyticsExportCsv(rows);
+        reply.header("Content-Type", "text/csv; charset=utf-8");
+        reply.header(
+          "Content-Disposition",
+          `attachment; filename="campaign-analytics-${new Date().toISOString().slice(0, 10)}.csv"`,
+        );
+        return reply.send(csv);
+      }
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Unsupported export format. Use format=csv",
+        statusCode: 400,
+      });
+    } catch (err) {
+      request.log.error({ err, organizationId }, "broadcast analytics export failed");
+      return reply.status(500).send({
+        error: "Internal Server Error",
+        message: "Failed to export campaign analytics",
+        statusCode: 500,
+      });
+    }
   });
 
   app.get("/integration-tools", async (request, reply) => {

@@ -745,7 +745,7 @@ export function BroadcastCampaignsPage() {
             </div>
           ) : null}
 
-          {centerTab === "analytics" ? <CampaignAnalyticsPanel dashboard={dashboard} loading={dashLoading} /> : null}
+          {centerTab === "analytics" ? <CampaignAnalyticsPanel /> : null}
         </div>
       </div>
 
