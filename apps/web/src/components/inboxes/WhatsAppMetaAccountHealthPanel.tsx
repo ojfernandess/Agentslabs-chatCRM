@@ -14,7 +14,8 @@ export type WhatsappHealthCheckId =
   | "number_quality"
   | "display_name"
   | "payment_active"
-  | "business_verified";
+  | "business_verified"
+  | "inbound_webhook";
 
 type HealthCheck = {
   id: WhatsappHealthCheckId;
@@ -33,6 +34,13 @@ type HealthPayload = {
   phoneStatus: string | null;
   checks: HealthCheck[];
   lastCheckedAt: string;
+  webhook?: {
+    url: string;
+    verifyTokenConfigured: boolean;
+    appSecretConfigured: boolean;
+    lastInboundWebhookAt: string | null;
+    receivingOk: boolean;
+  };
   error?: string;
 };
 
@@ -243,6 +251,23 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
           <p className="mt-4 text-[11px] text-ink-400">
             {t("inboxesPage.whatsappHealth.lastCheck")}: {formatDateTime(health.lastCheckedAt, locale)}
           </p>
+        ) : null}
+
+        {health?.webhook ? (
+          <div className="mt-4 rounded-xl border border-ink-100 bg-ink-50/60 px-3 py-3 text-xs dark:border-ink-800 dark:bg-ink-900/40">
+            <p className="font-semibold text-ink-700 dark:text-ink-200">
+              {t("inboxesPage.whatsappHealth.webhookUrl")}
+            </p>
+            <p className="mt-1 break-all font-mono text-[11px] text-ink-600 dark:text-ink-300">
+              {health.webhook.url}
+            </p>
+            <p className="mt-2 text-ink-500">
+              {t("inboxesPage.whatsappHealth.webhookLastInbound")}:{" "}
+              {health.webhook.lastInboundWebhookAt
+                ? formatDateTime(health.webhook.lastInboundWebhookAt, locale)
+                : t("inboxesPage.whatsappHealth.webhookNever")}
+            </p>
+          </div>
         ) : null}
       </div>
     </div>

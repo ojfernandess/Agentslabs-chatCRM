@@ -197,8 +197,10 @@ export async function findWhatsappInboxByPhoneNumberId(
 
   const rows = await prisma.inbox.findMany({
     where: { organizationId, channelType: InboxChannelType.WHATSAPP },
-    select: { id: true, channelConfig: true },
+    select: { id: true, channelConfig: true, isDefault: true, createdAt: true },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
   });
+
   for (const row of rows) {
     const id = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
     if (id === needle) return row;
@@ -206,16 +208,26 @@ export async function findWhatsappInboxByPhoneNumberId(
 
   const settings = await prisma.settings.findFirst({
     where: { organizationId, whatsappPhoneNumberId: needle },
-    select: { organizationId: true },
+    select: { whatsappProvider: true },
   });
-  if (!settings) return null;
+  if (!settings || !isMetaCloudWhatsappProvider(settings.whatsappProvider)) {
+    return null;
+  }
 
-  const fallback = await prisma.inbox.findFirst({
-    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-    select: { id: true, channelConfig: true },
-  });
-  return fallback;
+  for (const row of rows) {
+    const parsed = parseInboxWhatsappFromChannelConfig(row.channelConfig);
+    if (!parsed.whatsappProvider) {
+      return row;
+    }
+    if (
+      isMetaCloudWhatsappProvider(parsed.whatsappProvider) &&
+      (!parsed.whatsappPhoneNumberId?.trim() || parsed.whatsappPhoneNumberId.trim() === needle)
+    ) {
+      return row;
+    }
+  }
+
+  return null;
 }
 
 export async function assertUniqueWhatsappProviderInOrg(

@@ -5,7 +5,9 @@ import {
   isMetaCloudWhatsappProvider,
   parseInboxWhatsappFromChannelConfig,
   resolveInboxWhatsappCredentials,
+  whatsappWebhookMetaFromConfig,
 } from "./inboxWhatsappConfig.js";
+import { metaWebhookDiagnosticsFromConfig } from "./whatsappWebhookRouting.js";
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
@@ -13,7 +15,8 @@ export type WhatsappHealthCheckId =
   | "number_quality"
   | "display_name"
   | "payment_active"
-  | "business_verified";
+  | "business_verified"
+  | "inbound_webhook";
 
 export type WhatsappHealthCheck = {
   id: WhatsappHealthCheckId;
@@ -33,6 +36,13 @@ export type WhatsappAccountHealthPayload = {
   phoneStatus: string | null;
   checks: WhatsappHealthCheck[];
   lastCheckedAt: string;
+  webhook?: {
+    url: string;
+    verifyTokenConfigured: boolean;
+    appSecretConfigured: boolean;
+    lastInboundWebhookAt: string | null;
+    receivingOk: boolean;
+  };
   error?: string;
 };
 
@@ -81,7 +91,7 @@ async function graphGet<T>(path: string, accessToken: string): Promise<T> {
 
 export async function fetchMetaWhatsappAccountHealth(input: {
   organizationId: string;
-  inbox: { channelConfig: unknown; updatedAt?: Date };
+  inbox: { id: string; channelConfig: unknown; updatedAt?: Date };
 }): Promise<WhatsappAccountHealthPayload> {
   const lastCheckedAt = new Date().toISOString();
   const parsed = parseInboxWhatsappFromChannelConfig(input.inbox.channelConfig);
@@ -148,6 +158,21 @@ export async function fetchMetaWhatsappAccountHealth(input: {
         null
       : input.inbox.updatedAt?.toISOString() ?? null;
 
+  const webhookMeta = whatsappWebhookMetaFromConfig(cfg, input.organizationId, input.inbox.id);
+  const webhookDiag = metaWebhookDiagnosticsFromConfig(cfg);
+  const lastInboundMs = webhookDiag.lastInboundWebhookAt
+    ? new Date(webhookDiag.lastInboundWebhookAt).getTime()
+    : null;
+  const receivingOk =
+    lastInboundMs != null && !Number.isNaN(lastInboundMs) && Date.now() - lastInboundMs < 7 * 24 * 60 * 60 * 1000;
+  const webhookBlock = {
+    url: webhookMeta.webhookUrl,
+    verifyTokenConfigured: webhookDiag.webhookVerifyTokenConfigured,
+    appSecretConfigured: webhookDiag.webhookSecretConfigured,
+    lastInboundWebhookAt: webhookDiag.lastInboundWebhookAt,
+    receivingOk,
+  };
+
   try {
     const phone = await graphGet<{
       verified_name?: string;
@@ -210,6 +235,13 @@ export async function fetchMetaWhatsappAccountHealth(input: {
           verificationStatus: waba.business_verification_status ?? "UNKNOWN",
         },
       },
+      {
+        id: "inbound_webhook",
+        ok: receivingOk,
+        meta: {
+          lastInboundWebhookAt: webhookDiag.lastInboundWebhookAt ?? "never",
+        },
+      },
     ];
 
     return {
@@ -223,6 +255,7 @@ export async function fetchMetaWhatsappAccountHealth(input: {
       phoneStatus: phone.status ?? null,
       checks,
       lastCheckedAt,
+      webhook: webhookBlock,
     };
   } catch (err) {
     return {
@@ -234,8 +267,15 @@ export async function fetchMetaWhatsappAccountHealth(input: {
       qualityRating: null,
       qualityLevel: "unknown",
       phoneStatus: null,
-      checks: [],
+      checks: [
+        {
+          id: "inbound_webhook",
+          ok: receivingOk,
+          meta: { lastInboundWebhookAt: webhookDiag.lastInboundWebhookAt ?? "never" },
+        },
+      ],
       lastCheckedAt,
+      webhook: webhookBlock,
       error: err instanceof Error ? err.message : "meta_api_error",
     };
   }

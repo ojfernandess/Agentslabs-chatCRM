@@ -430,7 +430,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
     const health = await fetchMetaWhatsappAccountHealth({
       organizationId,
-      inbox: { channelConfig: inbox.channelConfig, updatedAt: inbox.updatedAt },
+      inbox: { id: inbox.id, channelConfig: inbox.channelConfig, updatedAt: inbox.updatedAt },
     });
     return health;
   });

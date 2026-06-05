@@ -405,6 +405,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       }
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");
+      throw err instanceof Error ? err : new Error(String(err));
     }
   } else if (!isPrivate && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;

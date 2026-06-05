@@ -188,6 +188,9 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       if (msg.includes("session window")) {
         return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
       }
+      if (msg.includes("Meta API error") || msg.includes("WhatsApp delivery")) {
+        return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
+      }
       if (msg.includes("templates are only supported")) {
         return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
       }

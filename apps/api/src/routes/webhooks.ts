@@ -3,10 +3,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { getWhatsAppProviderForInbox, getWebhookSecretForInbox } from "../providers/factory.js";
 import {
-  findOrganizationByMetaPhoneNumberId,
-  findWhatsappInboxByPhoneNumberId,
-  resolveInboxWhatsappCredentials,
-} from "../lib/inboxWhatsappConfig.js";
+  recordWhatsappInboundWebhook,
+  resolveWhatsappWebhookTarget,
+} from "../lib/whatsappWebhookRouting.js";
+import { extractMetaWebhookPhoneNumberId, isMetaCloudWebhookPayload } from "../lib/metaWebhookPayload.js";
 import { MetaCloudApiProvider } from "../providers/meta.js";
 import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
@@ -20,7 +20,7 @@ import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundM
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
 import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
 import { decrypt } from "../lib/encryption.js";
-import { getDefaultInboxId } from "../lib/defaultInbox.js";
+import { findOrganizationByMetaPhoneNumberId, resolveInboxWhatsappCredentials } from "../lib/inboxWhatsappConfig.js";
 import {
   evolutionGoWebhookMatchesOrgInstance,
   findEvolutionGoWhatsappInboxId,
@@ -89,66 +89,6 @@ function normalizeJsonBody(body: unknown): unknown {
   return body;
 }
 
-function extractMetaWebhookPhoneNumberId(body: unknown): string | null {
-  const b = body as {
-    entry?: { changes?: { value?: { metadata?: { phone_number_id?: string } } }[] }[];
-  };
-  for (const entry of b.entry ?? []) {
-    for (const change of entry.changes ?? []) {
-      const id = change.value?.metadata?.phone_number_id;
-      if (id && typeof id === "string") return id;
-    }
-  }
-  return null;
-}
-
-type WhatsappWebhookTarget = {
-  inboxId: string;
-  whatsappProvider: string;
-};
-
-async function resolveWhatsappWebhookTarget(
-  organizationId: string,
-  options: { inboxId?: string; body?: unknown },
-): Promise<WhatsappWebhookTarget | null> {
-  let inboxId = options.inboxId;
-
-  if (!inboxId && options.body) {
-    const phoneId = extractMetaWebhookPhoneNumberId(options.body);
-    if (phoneId) {
-      const found = await findWhatsappInboxByPhoneNumberId(organizationId, phoneId);
-      if (found) inboxId = found.id;
-    }
-  }
-
-  if (!inboxId && options.body && isEvolutionGoWebhookPayload(options.body)) {
-    inboxId = (await findEvolutionGoWhatsappInboxId(organizationId)) ?? undefined;
-  }
-
-  if (inboxId) {
-    const inbox = await prisma.inbox.findFirst({
-      where: { id: inboxId, organizationId },
-      select: { id: true, channelConfig: true },
-    });
-    if (!inbox) return null;
-    const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
-    if (!creds) return null;
-    return { inboxId: inbox.id, whatsappProvider: creds.whatsappProvider };
-  }
-
-  const defaultInboxId = await getDefaultInboxId(organizationId);
-  const creds = await resolveInboxWhatsappCredentials(organizationId, {
-    channelConfig: (
-      await prisma.inbox.findFirst({
-        where: { id: defaultInboxId, organizationId },
-        select: { channelConfig: true },
-      })
-    )?.channelConfig,
-  });
-  if (!creds) return null;
-  return { inboxId: defaultInboxId, whatsappProvider: creds.whatsappProvider };
-}
-
 async function handleWhatsAppPost(
   app: FastifyInstance,
   request: FastifyRequest,
@@ -186,10 +126,14 @@ async function handleWhatsAppPost(
     if (evoInbox) resolvedInboxId = evoInbox;
   }
 
-  const target = await resolveWhatsappWebhookTarget(organizationId, {
-    inboxId: resolvedInboxId,
-    body,
-  });
+  const target = await resolveWhatsappWebhookTarget(
+    organizationId,
+    {
+      inboxId: resolvedInboxId,
+      body,
+    },
+    app.log,
+  );
   if (!target) {
     app.log.warn({ organizationId }, "Webhook received but no WhatsApp inbox/provider resolved");
     return reply.status(200).send();
@@ -252,7 +196,16 @@ async function handleWhatsAppPost(
     );
 
     if (!valid) {
-      app.log.warn({ organizationId }, "Webhook signature validation failed");
+      app.log.warn(
+        {
+          organizationId,
+          inboxId: target.inboxId,
+          provider: target.whatsappProvider,
+        },
+        target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog"
+          ? "Webhook signature validation failed — use Meta App Secret in whatsappWebhookSecret (not the verify token)"
+          : "Webhook signature validation failed",
+      );
       return reply.status(401).send({ error: "Invalid signature" });
     }
   }
@@ -271,7 +224,16 @@ async function handleWhatsAppPost(
     !Array.isArray(body)
   ) {
     const env = body as Record<string, unknown>;
-    if (target.whatsappProvider === "evolution") {
+    if (isMetaCloudWebhookPayload(body)) {
+      app.log.warn(
+        {
+          organizationId,
+          inboxId: target.inboxId,
+          provider: target.whatsappProvider,
+        },
+        "Meta Cloud webhook: payload received but no messages parsed — confirm webhook URL matches this inbox and phone_number_id is configured",
+      );
+    } else if (target.whatsappProvider === "evolution") {
       app.log.warn(
         {
           event: env.event,
@@ -356,9 +318,27 @@ async function handleWhatsAppPost(
   const useAgentBotOnInbox = Boolean(targetInboxAgentCtx);
 
   const whatsappGroupsEnabled = await isOrganizationFeatureEnabled(organizationId, "whatsapp_groups");
+  let processedWebhookEvents = 0;
 
   for (const msg of messages) {
     try {
+      if (msg.waMessageId) {
+        const duplicate = await prisma.message.findFirst({
+          where: {
+            providerMsgId: msg.waMessageId,
+            conversation: { organizationId },
+          },
+          select: { id: true },
+        });
+        if (duplicate) {
+          app.log.info(
+            { organizationId, waMessageId: msg.waMessageId },
+            "Skipping duplicate inbound WhatsApp message",
+          );
+          continue;
+        }
+      }
+
       if (msg.isGroup && !whatsappGroupsEnabled) {
         app.log.info(
           { organizationId, groupJid: msg.groupJid },
@@ -665,6 +645,7 @@ async function handleWhatsAppPost(
       }
 
       broadcastConversationUpdated(organizationId, conversation.id);
+      processedWebhookEvents += 1;
     } catch (err) {
       app.log.error(err, "Error processing incoming webhook message");
     }
@@ -689,9 +670,16 @@ async function handleWhatsAppPost(
       if (targetMsg) {
         broadcastConversationUpdated(organizationId, targetMsg.conversationId);
       }
+      processedWebhookEvents += 1;
     } catch (err) {
       app.log.error(err, "Error processing status update");
     }
+  }
+
+  if (processedWebhookEvents > 0 || statusUpdates.length > 0 || messages.length > 0) {
+    void recordWhatsappInboundWebhook(target.inboxId).catch((err) =>
+      app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook activity"),
+    );
   }
 
   return reply.status(200).send();

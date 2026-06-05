@@ -136,6 +136,9 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
                 button_reply?: { id: string; title: string };
                 list_reply?: { id: string; title: string };
               };
+              button?: { text?: string; payload?: string };
+              sticker?: { id: string; mime_type?: string };
+              location?: { latitude?: number; longitude?: number; name?: string; address?: string };
               image?: { id: string; mime_type: string; caption?: string };
               document?: { id: string; mime_type: string; filename?: string; caption?: string };
               audio?: { id: string; mime_type: string };
@@ -173,10 +176,18 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             document: "DOCUMENT",
             audio: "AUDIO",
             video: "VIDEO",
+            interactive: "TEXT",
+            button: "TEXT",
+            sticker: "IMAGE",
           };
 
           const metaMediaId =
-            msg.image?.id ?? msg.document?.id ?? msg.audio?.id ?? msg.video?.id ?? undefined;
+            msg.image?.id ??
+            msg.document?.id ??
+            msg.audio?.id ??
+            msg.video?.id ??
+            msg.sticker?.id ??
+            undefined;
           const caption =
             msg.image?.caption ?? msg.document?.caption ?? msg.video?.caption ?? undefined;
 
@@ -186,20 +197,39 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             msg.interactive?.list_reply?.title ??
             msg.interactive?.list_reply?.id;
 
+          const buttonBody = msg.button?.text ?? msg.button?.payload;
+          const locationBody =
+            msg.location?.name ??
+            msg.location?.address ??
+            (msg.location?.latitude != null && msg.location?.longitude != null
+              ? `${msg.location.latitude}, ${msg.location.longitude}`
+              : undefined);
+
+          const mappedType = typeMap[msg.type] ?? "TEXT";
+          const bodyText =
+            msg.text?.body ??
+            interactiveBody ??
+            buttonBody ??
+            locationBody ??
+            caption ??
+            (msg.type === "sticker" ? "[Sticker]" : undefined) ??
+            (mappedType === "TEXT" && !typeMap[msg.type] ? `[${msg.type}]` : undefined);
+
           const fromE164 = `+${msg.from}`;
           messages.push({
             from: fromE164,
             waMessageId: msg.id,
-            type: typeMap[msg.type] ?? "TEXT",
-            body: msg.text?.body ?? interactiveBody ?? caption,
+            type: mappedType,
+            body: bodyText,
             mediaType:
               msg.image?.mime_type ??
               msg.document?.mime_type ??
               msg.audio?.mime_type ??
-              msg.video?.mime_type,
+              msg.video?.mime_type ??
+              msg.sticker?.mime_type,
             metaMediaId,
             metaFileName: msg.document?.filename,
-            timestamp: new Date(parseInt(msg.timestamp) * 1000),
+            timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
             pushName: pushNameByWaId.get(msg.from) ?? pushNameByWaId.get(fromE164),
           });
         }

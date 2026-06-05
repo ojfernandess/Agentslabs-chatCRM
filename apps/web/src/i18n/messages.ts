@@ -2690,7 +2690,16 @@ export const messages = {
             ok: "Verificação concluída na Meta.",
             pending: "Conclua a verificação da empresa no Meta Business.",
           },
+          inbound_webhook: {
+            title: "Recebimento de mensagens (webhook)",
+            ok: "Webhook recebeu eventos recentemente.",
+            pending:
+              "Nenhum webhook recebido nos últimos 7 dias — confira URL, App Secret e phone_number_id na Meta.",
+          },
         },
+        webhookUrl: "URL do webhook",
+        webhookLastInbound: "Último evento recebido",
+        webhookNever: "Nunca",
       },
     },
     bots: {
@@ -6957,7 +6966,16 @@ export const messages = {
             ok: "Verification completed on Meta.",
             pending: "Complete business verification in Meta Business.",
           },
+          inbound_webhook: {
+            title: "Inbound messages (webhook)",
+            ok: "Webhook received events recently.",
+            pending:
+              "No webhook received in the last 7 days — check URL, App Secret and phone_number_id on Meta.",
+          },
         },
+        webhookUrl: "Webhook URL",
+        webhookLastInbound: "Last event received",
+        webhookNever: "Never",
       },
     },
     bots: {
