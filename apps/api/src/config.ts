@@ -156,6 +156,8 @@ export const config = {
   openAiEmbeddingModel: optionalEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").trim(),
   /** Modelo OpenAI para `POST /v1/audio/transcriptions` (ex.: whisper-1, gpt-4o-mini-transcribe). */
   openAiWhisperModel: optionalEnv("OPENAI_WHISPER_MODEL", "whisper-1").trim(),
+  /** Modelo OpenAI Vision para transcrição/OCR de imagens inbound. */
+  openAiVisionModel: optionalEnv("OPENAI_VISION_MODEL", "gpt-4o-mini").trim(),
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
   /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */

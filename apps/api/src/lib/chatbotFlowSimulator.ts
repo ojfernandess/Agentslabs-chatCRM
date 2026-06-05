@@ -2,6 +2,7 @@ import type { Contact } from "@prisma/client";
 import {
   parseChatbotFlowDefinition,
   parseChatbotVariableDefs,
+  resolveChatbotMediaUrl,
   substituteChatbotVariables,
   type ChatbotFlowDefinition,
   type ChatbotFlowNode,
@@ -239,19 +240,21 @@ export function runSimulatorTurn(options: {
         continue;
       }
       case "image": {
-        const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
-        if (url) outbound.push(`[Imagem] ${url}`);
+        const url = resolveChatbotMediaUrl(node.data, vars, contact);
+        const caption = substituteChatbotVariables(String(node.data?.caption ?? node.data?.content ?? ""), vars, contact);
+        if (url) outbound.push(caption ? `[Imagem] ${url}\n${caption}` : `[Imagem] ${url}`);
         currentId = nextEdgeTarget(flow, node.id);
         continue;
       }
       case "video": {
-        const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
-        if (url) outbound.push(`[Vídeo] ${url}`);
+        const url = resolveChatbotMediaUrl(node.data, vars, contact);
+        const caption = substituteChatbotVariables(String(node.data?.caption ?? node.data?.content ?? ""), vars, contact);
+        if (url) outbound.push(caption ? `[Vídeo] ${url}\n${caption}` : `[Vídeo] ${url}`);
         currentId = nextEdgeTarget(flow, node.id);
         continue;
       }
       case "audio": {
-        const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+        const url = resolveChatbotMediaUrl(node.data, vars, contact);
         if (url) outbound.push(`[Áudio] ${url}`);
         currentId = nextEdgeTarget(flow, node.id);
         continue;

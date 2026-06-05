@@ -1181,6 +1181,8 @@ model Settings {
 
   /// Transcrever mensagens de áudio recebidas (WhatsApp / caixas) para texto — requer chave OpenAI no servidor.
   audioTranscriptionEnabled Boolean @default(false) @map("audio_transcription_enabled")
+  /// Transcrever imagens recebidas (descrição + OCR) — requer chave OpenAI no servidor.
+  imageTranscriptionEnabled Boolean @default(false) @map("image_transcription_enabled")
 
   /// Chave OpenAI opcional da organização para «Gerar resposta» e IA & Insights (painel humano). Se null, usa a chave do servidor.
   assistantOpenaiApiKey      String? @map("assistant_openai_api_key") @db.Text

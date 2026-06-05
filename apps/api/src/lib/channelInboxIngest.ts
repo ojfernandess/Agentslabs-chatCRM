@@ -7,6 +7,7 @@ import { appendTimelineEvent } from "./timeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
+import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { ensureConversationForChannelInbox } from "./conversationRouting.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
@@ -140,6 +141,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   });
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
   const audioTranscriptionEnabled = channelSettings?.audioTranscriptionEnabled ?? false;
+  const imageTranscriptionEnabled = channelSettings?.imageTranscriptionEnabled ?? false;
   const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, inboxId);
   const useAgentBot = Boolean(agentCtx);
 
@@ -168,9 +170,14 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     },
   });
 
-  const inboundForPipeline = await maybeTranscribeInboundAudioMessage({
+  let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
     message: inbound,
     enabled: audioTranscriptionEnabled,
+    log,
+  });
+  inboundForPipeline = await maybeTranscribeInboundImageMessage({
+    message: inboundForPipeline,
+    enabled: imageTranscriptionEnabled,
     log,
   });
 

@@ -115,6 +115,25 @@ export function defaultChatbotFlowDefinition(): ChatbotFlowDefinition {
   };
 }
 
+/** Resolve URL de blocos image/video/audio (link directo, variável ou template {{var}}). */
+export function resolveChatbotMediaUrl(
+  data: Record<string, unknown> | undefined,
+  vars: Record<string, string>,
+  contact: { name: string; phone?: string; email?: string | null },
+): string {
+  if (!data) return "";
+  const mode = String(data.urlSource ?? "link").trim();
+  if (mode === "variable") {
+    const varName = String(data.urlVariable ?? "media_url").trim();
+    const fromVar = vars[varName]?.trim();
+    if (fromVar) return fromVar;
+    const fallback = String(data.url ?? data.mediaUrl ?? "").trim();
+    if (fallback) return substituteChatbotVariables(fallback, vars, contact).trim();
+    return "";
+  }
+  return substituteChatbotVariables(String(data.url ?? data.mediaUrl ?? "").trim(), vars, contact).trim();
+}
+
 export function substituteChatbotVariables(
   text: string,
   vars: Record<string, string>,

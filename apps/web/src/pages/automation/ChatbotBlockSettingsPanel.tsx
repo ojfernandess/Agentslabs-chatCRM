@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getBlockMeta } from "./chatbotBlockMeta";
+import { ChatbotMediaBlockFields } from "./ChatbotMediaBlockFields";
 import type { ChatbotFlowNode } from "./chatbotFlowTypes";
 
 interface TagOption {
@@ -186,15 +187,7 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
         )}
 
         {(node.type === "image" || node.type === "video" || node.type === "audio") && (
-          <label className="block text-xs">
-            <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">URL</span>
-            <input
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
-              placeholder="https://"
-              value={String(data.url ?? "")}
-              onChange={(e) => patch({ url: e.target.value })}
-            />
-          </label>
+          <ChatbotMediaBlockFields blockType={node.type} data={data} onPatch={patch} />
         )}
 
         {node.type === "webhook" && (

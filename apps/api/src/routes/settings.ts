@@ -132,6 +132,7 @@ const settingsSchema = z.object({
   resolveRequireLeadType: z.boolean().optional(),
   resolveOfferReminder: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
+  imageTranscriptionEnabled: z.boolean().optional(),
   silentTransferToAgentBot: z.boolean().optional(),
   assistantOpenaiApiKey: z.union([z.string().max(500), z.null()]).optional(),
   leadFinderSerpApiKey: z.union([z.string().max(500), z.null()]).optional(),

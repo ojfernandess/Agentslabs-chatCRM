@@ -13,6 +13,7 @@ import { getWhatsAppEmbeddedConfig } from "../lib/metaWhatsAppEmbedded.js";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { maybeTranscribeInboundAudioMessage } from "../lib/audioTranscription.js";
+import { maybeTranscribeInboundImageMessage } from "../lib/imageTranscription.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
@@ -600,9 +601,14 @@ async function handleWhatsAppPost(
         },
       });
 
-      const inboundForPipeline = await maybeTranscribeInboundAudioMessage({
+      let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
         message: inbound,
         enabled: channelSettings.audioTranscriptionEnabled,
+        log: app.log,
+      });
+      inboundForPipeline = await maybeTranscribeInboundImageMessage({
+        message: inboundForPipeline,
+        enabled: channelSettings.imageTranscriptionEnabled,
         log: app.log,
       });
       const inboundBodyForRules = inboundForPipeline.body?.trim() ?? "";

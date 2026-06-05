@@ -100,6 +100,11 @@ import {
   isLikelyDocumentCaption,
 } from "@/components/conversation/MessageAttachmentViews";
 import { ConversationDismissibleBanner } from "@/components/conversation/ConversationDismissibleBanner";
+import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
+import {
+  ImageTranscriptionBlock,
+  parseImageTranscriptionBody,
+} from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
 import {
   timelineChannelLabel,
@@ -275,6 +280,7 @@ export function ConversationDetailPage() {
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const [teamPickerId, setTeamPickerId] = useState("");
@@ -576,6 +582,15 @@ export function ConversationDetailPage() {
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
     };
   }, [voicePreviewUrl]);
+
+  useEffect(() => {
+    if (!recording) {
+      setRecordingSeconds(0);
+      return;
+    }
+    const timer = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [recording]);
 
   const loadConversation = useCallback(async () => {
     try {
@@ -2740,12 +2755,19 @@ export function ConversationDetailPage() {
                     </p>
                   ) : null}
                   {msg.type === "IMAGE" && msg.mediaUrl ? (
-                    <ChatImageThumbnail
-                      src={msg.mediaUrl}
-                      alt=""
-                      outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
-                      onOpen={() => setLightboxSrc(msg.mediaUrl!)}
-                    />
+                    <>
+                      <ChatImageThumbnail
+                        src={msg.mediaUrl}
+                        alt=""
+                        outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                        onOpen={() => setLightboxSrc(msg.mediaUrl!)}
+                      />
+                      {msg.body?.trim() && parseImageTranscriptionBody(msg.body) ? (
+                        <ImageTranscriptionBlock body={msg.body} />
+                      ) : msg.body?.trim() ? (
+                        <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.body}</p>
+                      ) : null}
+                    </>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl ? (
                     <DocumentAttachmentCard
@@ -2755,15 +2777,8 @@ export function ConversationDetailPage() {
                       inbound={inbound}
                     />
                   ) : null}
-                  {msg.body?.trim() && msg.type !== "DOCUMENT" ? (
-                    <p
-                      className={clsx(
-                        "whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
-                        msg.type === "IMAGE" && msg.mediaUrl && "mt-2",
-                      )}
-                    >
-                      {msg.body}
-                    </p>
+                  {msg.body?.trim() && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.body}</p>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
                     <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
@@ -2956,31 +2971,16 @@ export function ConversationDetailPage() {
                   </div>
                 ) : null}
 
-                {voicePreview && voicePreviewUrl ? (
-                  <div className="space-y-3 py-1">
-                    <p className="text-xs font-medium text-ink-600 dark:text-ink-300">{t("conversationDetail.voicePreviewHint")}</p>
-                    <audio key={voicePreviewUrl} controls src={voicePreviewUrl} className="h-10 w-full max-w-full" preload="metadata" />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={voiceBusy}
-                        onClick={() => setVoicePreview(null)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs font-medium text-ink-800 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100 dark:hover:bg-ink-800"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {t("conversationDetail.voicePreviewDiscard")}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={voiceBusy || (isOutsideWindow && !privateNote)}
-                        onClick={() => void sendVoiceFromPreview()}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                        {t("conversationDetail.voicePreviewSend")}
-                      </button>
-                    </div>
-                  </div>
+                {recording ? (
+                  <VoiceRecordingPanel seconds={recordingSeconds} onStop={() => void handleVoiceToggle()} />
+                ) : voicePreview && voicePreviewUrl ? (
+                  <VoicePreviewPanel
+                    previewUrl={voicePreviewUrl}
+                    busy={voiceBusy}
+                    sendDisabled={isOutsideWindow && !privateNote}
+                    onDiscard={() => setVoicePreview(null)}
+                    onSend={() => void sendVoiceFromPreview()}
+                  />
                 ) : (
                   <>
                     {isOutsideWindow && isWaba && !privateNote ? (
@@ -3175,9 +3175,9 @@ export function ConversationDetailPage() {
                     disabled={(isOutsideWindow && !privateNote) || voiceBusy || sending || attachBusy}
                     title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
                     className={clsx(
-                      "flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-40",
+                      "flex h-9 w-9 items-center justify-center rounded-lg transition-colors disabled:opacity-40",
                       recording
-                        ? "bg-red-500 text-white hover:bg-red-600"
+                        ? "bg-red-500 text-white shadow-md shadow-red-500/30 ring-2 ring-red-300/60 hover:bg-red-600 dark:ring-red-800/50"
                         : "text-ink-600 hover:bg-ink-200/80 dark:text-ink-300 dark:hover:bg-ink-800",
                     )}
                     whileTap={{ scale: 0.92 }}

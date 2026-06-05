@@ -107,6 +107,7 @@ interface AppSettings {
   autoOptInOnFirstMessage: boolean;
   lockSingleConversation: boolean;
   audioTranscriptionEnabled?: boolean;
+  imageTranscriptionEnabled?: boolean;
   silentTransferToAgentBot?: boolean;
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
@@ -262,6 +263,7 @@ export function SettingsPage() {
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
+  const [imageTranscriptionEnabled, setImageTranscriptionEnabled] = useState(false);
   const [silentTransferToAgentBot, setSilentTransferToAgentBot] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(true);
   const [notifyPending, setNotifyPending] = useState(true);
@@ -599,6 +601,7 @@ export function SettingsPage() {
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
         setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
+        setImageTranscriptionEnabled(data.imageTranscriptionEnabled ?? false);
         setSilentTransferToAgentBot(data.silentTransferToAgentBot ?? false);
         setNotifyOpen(data.notifyConversationOpen ?? true);
         setNotifyPending(data.notifyConversationPending ?? true);
@@ -1068,6 +1071,7 @@ export function SettingsPage() {
         autoOptInOnFirstMessage: autoOptIn,
         lockSingleConversation,
         audioTranscriptionEnabled,
+        imageTranscriptionEnabled,
         silentTransferToAgentBot,
       };
       if (provider) body.whatsappProvider = provider;
@@ -1138,6 +1142,7 @@ export function SettingsPage() {
       setAgentBotId(data.agentBotId ?? "");
       setLockSingleConversation(data.lockSingleConversation ?? false);
       setAudioTranscriptionEnabled(data.audioTranscriptionEnabled ?? false);
+      setImageTranscriptionEnabled(data.imageTranscriptionEnabled ?? false);
       setSilentTransferToAgentBot(data.silentTransferToAgentBot ?? false);
     } catch {
       // failed
@@ -1754,6 +1759,21 @@ export function SettingsPage() {
                           <option value="off">{t("settings.audioTranscriptionOff")}</option>
                         </select>
                         <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.audioTranscriptionHint")}</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                          {t("settings.imageTranscription")}
+                        </label>
+                        <select
+                          value={imageTranscriptionEnabled ? "on" : "off"}
+                          onChange={(e) => setImageTranscriptionEnabled(e.target.value === "on")}
+                          className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                          <option value="on">{t("settings.imageTranscriptionOn")}</option>
+                          <option value="off">{t("settings.imageTranscriptionOff")}</option>
+                        </select>
+                        <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.imageTranscriptionHint")}</p>
                       </div>
 
                       <div>

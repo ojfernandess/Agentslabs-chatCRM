@@ -34,6 +34,7 @@ import {
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
+import { IMAGE_TRANSCRIPTION_PREFIX } from "./imageTranscription.js";
 import {
   mergeInstructionFallbacksIntoSystemPrompt,
   parseInstructionFallbacks,
@@ -888,6 +889,14 @@ export async function generateNativeAgentReply(input: {
         "», trate o que segue como o conteúdo falado numa nota de voz do cliente."
       : "";
 
+  const imageInboundHint =
+    message.type === "IMAGE" || userMessage.includes(IMAGE_TRANSCRIPTION_PREFIX)
+      ? "\n\n[OpenConduit — entrada de imagem]\n" +
+        "Se o texto incluir «" +
+        IMAGE_TRANSCRIPTION_PREFIX +
+        "», trata-o como transcrição automática (descrição e textos extraídos) de uma imagem enviada pelo cliente."
+      : "";
+
   const automationCtx = await loadAutomationConversationContext(conversation.id);
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
@@ -908,6 +917,7 @@ export async function generateNativeAgentReply(input: {
     serverKbGuard +
     tagToolGuard +
     audioInboundHint +
+    imageInboundHint +
     followUpPrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;

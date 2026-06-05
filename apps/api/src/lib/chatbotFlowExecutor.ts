@@ -9,6 +9,7 @@ import { startAutomationExecution } from "./automationExecutionLog.js";
 import {
   parseChatbotFlowDefinition,
   parseChatbotVariableDefs,
+  resolveChatbotMediaUrl,
   substituteChatbotVariables,
   type ChatbotFlowDefinition,
   type ChatbotFlowNode,
@@ -123,6 +124,7 @@ async function sendBotMedia(
   type: "IMAGE" | "VIDEO" | "AUDIO",
   mediaUrl: string,
   log: FastifyBaseLogger,
+  body = "",
 ): Promise<void> {
   await deliverOutboundWhatsAppMessage({
     organizationId,
@@ -131,7 +133,7 @@ async function sendBotMedia(
       conversationId: conversation.id,
       type,
       mediaUrl,
-      body: "",
+      body: body.slice(0, 1024),
     },
     actor: { kind: "agent_bot", botId },
     log,
@@ -397,23 +399,33 @@ export async function dispatchVisualChatbotFlow(input: {
           continue;
         }
         case "image": {
-          const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+          const url = resolveChatbotMediaUrl(node.data, vars, contact);
+          const caption = substituteChatbotVariables(
+            String(node.data?.caption ?? node.data?.content ?? ""),
+            vars,
+            contact,
+          );
           if (url) {
-            await sendBotMedia(organizationId, bot.id, conversation, contact, "IMAGE", url, log);
+            await sendBotMedia(organizationId, bot.id, conversation, contact, "IMAGE", url, log, caption);
           }
           currentId = nextEdgeTarget(flow, node.id);
           continue;
         }
         case "video": {
-          const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+          const url = resolveChatbotMediaUrl(node.data, vars, contact);
+          const caption = substituteChatbotVariables(
+            String(node.data?.caption ?? node.data?.content ?? ""),
+            vars,
+            contact,
+          );
           if (url) {
-            await sendBotMedia(organizationId, bot.id, conversation, contact, "VIDEO", url, log);
+            await sendBotMedia(organizationId, bot.id, conversation, contact, "VIDEO", url, log, caption);
           }
           currentId = nextEdgeTarget(flow, node.id);
           continue;
         }
         case "audio": {
-          const url = String(node.data?.url ?? node.data?.mediaUrl ?? "").trim();
+          const url = resolveChatbotMediaUrl(node.data, vars, contact);
           if (url) {
             await sendBotMedia(organizationId, bot.id, conversation, contact, "AUDIO", url, log);
           }
