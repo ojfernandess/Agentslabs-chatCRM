@@ -36,9 +36,13 @@ type HealthPayload = {
   lastCheckedAt: string;
   webhook?: {
     url: string;
+    embeddedCallbackUrl: string | null;
+    useEmbeddedCallback: boolean;
     verifyTokenConfigured: boolean;
     appSecretConfigured: boolean;
     lastInboundWebhookAt: string | null;
+    lastWebhookAttemptAt: string | null;
+    lastWebhookAttemptError: string | null;
     receivingOk: boolean;
   };
   error?: string;
@@ -254,19 +258,49 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
         ) : null}
 
         {health?.webhook ? (
-          <div className="mt-4 rounded-xl border border-ink-100 bg-ink-50/60 px-3 py-3 text-xs dark:border-ink-800 dark:bg-ink-900/40">
-            <p className="font-semibold text-ink-700 dark:text-ink-200">
-              {t("inboxesPage.whatsappHealth.webhookUrl")}
-            </p>
-            <p className="mt-1 break-all font-mono text-[11px] text-ink-600 dark:text-ink-300">
-              {health.webhook.url}
-            </p>
-            <p className="mt-2 text-ink-500">
+          <div className="mt-4 space-y-3 rounded-xl border border-ink-100 bg-ink-50/60 px-3 py-3 text-xs dark:border-ink-800 dark:bg-ink-900/40">
+            <div>
+              <p className="font-semibold text-ink-700 dark:text-ink-200">
+                {t("inboxesPage.whatsappHealth.webhookUrl")}
+              </p>
+              <p className="mt-1 break-all font-mono text-[11px] text-ink-600 dark:text-ink-300">
+                {health.webhook.url}
+              </p>
+            </div>
+            {health.webhook.useEmbeddedCallback && health.webhook.embeddedCallbackUrl ? (
+              <div>
+                <p className="font-semibold text-ink-700 dark:text-ink-200">
+                  {t("inboxesPage.whatsappHealth.webhookEmbeddedUrl")}
+                </p>
+                <p className="mt-1 break-all font-mono text-[11px] text-ink-600 dark:text-ink-300">
+                  {health.webhook.embeddedCallbackUrl}
+                </p>
+                <p className="mt-1 text-ink-500">{t("inboxesPage.whatsappHealth.webhookEmbeddedHint")}</p>
+              </div>
+            ) : null}
+            <p className="text-ink-500">
               {t("inboxesPage.whatsappHealth.webhookLastInbound")}:{" "}
               {health.webhook.lastInboundWebhookAt
                 ? formatDateTime(health.webhook.lastInboundWebhookAt, locale)
                 : t("inboxesPage.whatsappHealth.webhookNever")}
             </p>
+            {health.webhook.lastWebhookAttemptAt ? (
+              <p className="text-ink-500">
+                {t("inboxesPage.whatsappHealth.webhookLastAttempt")}:{" "}
+                {formatDateTime(health.webhook.lastWebhookAttemptAt, locale)}
+              </p>
+            ) : null}
+            {health.webhook.lastWebhookAttemptError ? (
+              <p className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-2 py-1.5 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                {t("inboxesPage.whatsappHealth.webhookAttemptError")}:{" "}
+                {health.webhook.lastWebhookAttemptError === "invalid_signature" ||
+                health.webhook.lastWebhookAttemptError === "no_inbox_target"
+                  ? t(
+                      `inboxesPage.whatsappHealth.webhookErrors.${health.webhook.lastWebhookAttemptError}` as "inboxesPage.whatsappHealth.webhookErrors.invalid_signature",
+                    )
+                  : health.webhook.lastWebhookAttemptError}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -2698,8 +2698,17 @@ export const messages = {
           },
         },
         webhookUrl: "URL do webhook",
+        webhookEmbeddedUrl: "URL embedded (Meta App)",
+        webhookEmbeddedHint:
+          "Se usou Embedded Signup, configure esta URL no Meta Developer (não a URL por caixa).",
         webhookLastInbound: "Último evento recebido",
+        webhookLastAttempt: "Última tentativa de webhook",
+        webhookAttemptError: "Erro na última tentativa",
         webhookNever: "Nunca",
+        webhookErrors: {
+          no_inbox_target: "Webhook recebido mas a caixa não foi identificada (phone_number_id).",
+          invalid_signature: "Assinatura inválida — use o App Secret da Meta (não o verify token).",
+        },
       },
     },
     bots: {
@@ -6974,8 +6983,17 @@ export const messages = {
           },
         },
         webhookUrl: "Webhook URL",
+        webhookEmbeddedUrl: "Embedded URL (Meta App)",
+        webhookEmbeddedHint:
+          "If you used Embedded Signup, set this URL in Meta Developer (not the per-inbox URL).",
         webhookLastInbound: "Last event received",
+        webhookLastAttempt: "Last webhook attempt",
+        webhookAttemptError: "Last attempt error",
         webhookNever: "Never",
+        webhookErrors: {
+          no_inbox_target: "Webhook received but inbox could not be matched (phone_number_id).",
+          invalid_signature: "Invalid signature — use Meta App Secret (not the verify token).",
+        },
       },
     },
     bots: {

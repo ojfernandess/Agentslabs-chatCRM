@@ -8,6 +8,8 @@ import {
   whatsappWebhookMetaFromConfig,
 } from "./inboxWhatsappConfig.js";
 import { metaWebhookDiagnosticsFromConfig } from "./whatsappWebhookRouting.js";
+import { getWhatsAppEmbeddedConfig } from "./metaWhatsAppEmbedded.js";
+import { metaEmbeddedWebhookUrl } from "../config.js";
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
@@ -38,9 +40,13 @@ export type WhatsappAccountHealthPayload = {
   lastCheckedAt: string;
   webhook?: {
     url: string;
+    embeddedCallbackUrl: string | null;
+    useEmbeddedCallback: boolean;
     verifyTokenConfigured: boolean;
     appSecretConfigured: boolean;
     lastInboundWebhookAt: string | null;
+    lastWebhookAttemptAt: string | null;
+    lastWebhookAttemptError: string | null;
     receivingOk: boolean;
   };
   error?: string;
@@ -160,6 +166,8 @@ export async function fetchMetaWhatsappAccountHealth(input: {
 
   const webhookMeta = whatsappWebhookMetaFromConfig(cfg, input.organizationId, input.inbox.id);
   const webhookDiag = metaWebhookDiagnosticsFromConfig(cfg);
+  const embeddedCfg = await getWhatsAppEmbeddedConfig();
+  const embeddedCallbackUrl = embeddedCfg ? metaEmbeddedWebhookUrl() : null;
   const lastInboundMs = webhookDiag.lastInboundWebhookAt
     ? new Date(webhookDiag.lastInboundWebhookAt).getTime()
     : null;
@@ -167,9 +175,13 @@ export async function fetchMetaWhatsappAccountHealth(input: {
     lastInboundMs != null && !Number.isNaN(lastInboundMs) && Date.now() - lastInboundMs < 7 * 24 * 60 * 60 * 1000;
   const webhookBlock = {
     url: webhookMeta.webhookUrl,
+    embeddedCallbackUrl,
+    useEmbeddedCallback: Boolean(embeddedCallbackUrl),
     verifyTokenConfigured: webhookDiag.webhookVerifyTokenConfigured,
     appSecretConfigured: webhookDiag.webhookSecretConfigured,
     lastInboundWebhookAt: webhookDiag.lastInboundWebhookAt,
+    lastWebhookAttemptAt: webhookDiag.lastWebhookAttemptAt,
+    lastWebhookAttemptError: webhookDiag.lastWebhookAttemptError,
     receivingOk,
   };
 

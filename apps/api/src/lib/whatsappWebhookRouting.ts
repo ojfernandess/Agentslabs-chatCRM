@@ -44,9 +44,29 @@ export async function resolveWhatsappWebhookTarget(
         );
       }
       inboxId = byPhone.id;
+    } else if (options.inboxId) {
+      const urlInbox = await prisma.inbox.findFirst({
+        where: { id: options.inboxId, organizationId },
+        select: { id: true, channelConfig: true },
+      });
+      const urlCreds = urlInbox ? await resolveInboxWhatsappCredentials(organizationId, urlInbox) : null;
+      if (urlCreds && isMetaCloudWhatsappProvider(urlCreds.whatsappProvider)) {
+        log?.warn(
+          { organizationId, phoneNumberId: phoneId, inboxId: options.inboxId },
+          "Meta webhook routed via URL inbox — syncing phone_number_id from payload",
+        );
+        inboxId = options.inboxId;
+        void syncInboxPhoneNumberIdFromWebhook(options.inboxId, phoneId).catch(() => {});
+      } else {
+        log?.warn(
+          { organizationId, phoneNumberId: phoneId, urlInboxId: options.inboxId },
+          "Meta webhook: phone_number_id not linked to any inbox in this organization",
+        );
+        return null;
+      }
     } else {
       log?.warn(
-        { organizationId, phoneNumberId: phoneId, urlInboxId: options.inboxId },
+        { organizationId, phoneNumberId: phoneId },
         "Meta webhook: phone_number_id not linked to any inbox in this organization",
       );
       return null;
@@ -79,39 +99,93 @@ export async function resolveWhatsappWebhookTarget(
   return { inboxId: defaultInbox.id, whatsappProvider: creds.whatsappProvider };
 }
 
-export async function recordWhatsappInboundWebhook(inboxId: string): Promise<void> {
+export type WhatsappWebhookAttemptStatus = "received" | "processed" | "rejected";
+
+function inboxChannelConfigBase(cfg: unknown): Record<string, unknown> {
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? { ...(cfg as Record<string, unknown>) } : {};
+}
+
+/** Regista qualquer tentativa de POST (mesmo rejeitada) para diagnóstico na inbox. */
+export async function recordWhatsappWebhookAttempt(
+  inboxId: string,
+  status: WhatsappWebhookAttemptStatus,
+  error?: string,
+): Promise<void> {
   const inbox = await prisma.inbox.findUnique({
     where: { id: inboxId },
     select: { channelConfig: true },
   });
   if (!inbox) return;
-  const base =
-    inbox.channelConfig && typeof inbox.channelConfig === "object" && !Array.isArray(inbox.channelConfig)
-      ? { ...(inbox.channelConfig as Record<string, unknown>) }
-      : {};
-  base.whatsappLastInboundWebhookAt = new Date().toISOString();
+  const base = inboxChannelConfigBase(inbox.channelConfig);
+  const now = new Date().toISOString();
+  base.whatsappLastWebhookAttemptAt = now;
+  base.whatsappLastWebhookAttemptStatus = status;
+  if (error) {
+    base.whatsappLastWebhookAttemptError = error;
+  } else {
+    delete base.whatsappLastWebhookAttemptError;
+  }
+  if (status === "processed") {
+    base.whatsappLastInboundWebhookAt = now;
+  }
   await prisma.inbox.update({
     where: { id: inboxId },
     data: { channelConfig: base as Prisma.InputJsonValue },
   });
 }
 
+export async function recordWhatsappInboundWebhook(inboxId: string): Promise<void> {
+  await recordWhatsappWebhookAttempt(inboxId, "processed");
+}
+
+export async function syncInboxPhoneNumberIdFromWebhook(
+  inboxId: string,
+  phoneNumberId: string,
+): Promise<void> {
+  const needle = phoneNumberId.trim();
+  if (!needle) return;
+  const inbox = await prisma.inbox.findUnique({
+    where: { id: inboxId },
+    select: { channelConfig: true },
+  });
+  if (!inbox) return;
+  const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+  if (parsed.whatsappPhoneNumberId?.trim() === needle) return;
+  const base = inboxChannelConfigBase(inbox.channelConfig);
+  base.whatsappPhoneNumberId = needle;
+  await prisma.inbox.update({
+    where: { id: inboxId },
+    data: { channelConfig: base as Prisma.InputJsonValue },
+  });
+}
+
+function strFromCfg(cfg: unknown, key: string): string | null {
+  if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) return null;
+  const v = (cfg as Record<string, unknown>)[key];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 export function metaWebhookDiagnosticsFromConfig(cfg: unknown): {
   webhookSecretConfigured: boolean;
   webhookVerifyTokenConfigured: boolean;
   lastInboundWebhookAt: string | null;
+  lastWebhookAttemptAt: string | null;
+  lastWebhookAttemptStatus: WhatsappWebhookAttemptStatus | null;
+  lastWebhookAttemptError: string | null;
 } {
   const parsed = parseInboxWhatsappFromChannelConfig(cfg);
-  const lastInboundWebhookAt =
-    cfg && typeof cfg === "object" && !Array.isArray(cfg)
-      ? typeof (cfg as Record<string, unknown>).whatsappLastInboundWebhookAt === "string"
-        ? ((cfg as Record<string, unknown>).whatsappLastInboundWebhookAt as string)
-        : null
+  const statusRaw = strFromCfg(cfg, "whatsappLastWebhookAttemptStatus");
+  const attemptStatus =
+    statusRaw === "received" || statusRaw === "processed" || statusRaw === "rejected"
+      ? statusRaw
       : null;
   return {
     webhookSecretConfigured: Boolean(parsed.whatsappWebhookSecret?.trim()),
     webhookVerifyTokenConfigured: Boolean(parsed.whatsappWebhookVerifyToken?.trim()),
-    lastInboundWebhookAt,
+    lastInboundWebhookAt: strFromCfg(cfg, "whatsappLastInboundWebhookAt"),
+    lastWebhookAttemptAt: strFromCfg(cfg, "whatsappLastWebhookAttemptAt"),
+    lastWebhookAttemptStatus: attemptStatus,
+    lastWebhookAttemptError: strFromCfg(cfg, "whatsappLastWebhookAttemptError"),
   };
 }
 

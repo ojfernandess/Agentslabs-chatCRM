@@ -18,6 +18,7 @@ import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSet
 import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
+import { ensureMetaCloudWabaSubscribed } from "../lib/metaWebhookSetup.js";
 
 const testWhatsappConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
@@ -382,6 +383,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const connected = await provider.healthCheck();
+        let wabaSubscribed: boolean | undefined;
         if (connected) {
           const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
           if (isMetaCloudWhatsappProvider(parsed.whatsappProvider)) {
@@ -396,9 +398,14 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
                 data: { channelConfig: base as Prisma.InputJsonValue },
               });
             }
+            const sub = await ensureMetaCloudWabaSubscribed({
+              organizationId,
+              inbox: { channelConfig: draftConfig ?? inbox.channelConfig },
+            });
+            wabaSubscribed = sub.wabaSubscribed;
           }
         }
-        return { connected };
+        return { connected, wabaSubscribed };
       } catch {
         return { connected: false };
       }

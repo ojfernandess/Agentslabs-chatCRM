@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { getWhatsAppProviderForInbox, getWebhookSecretForInbox } from "../providers/factory.js";
 import {
   recordWhatsappInboundWebhook,
+  recordWhatsappWebhookAttempt,
   resolveWhatsappWebhookTarget,
 } from "../lib/whatsappWebhookRouting.js";
 import { extractMetaWebhookPhoneNumberId, isMetaCloudWebhookPayload } from "../lib/metaWebhookPayload.js";
@@ -126,6 +127,13 @@ async function handleWhatsAppPost(
     if (evoInbox) resolvedInboxId = evoInbox;
   }
 
+  const attemptInboxId = resolvedInboxId;
+  if (attemptInboxId) {
+    void recordWhatsappWebhookAttempt(attemptInboxId, "received").catch((err) =>
+      app.log.warn({ err, inboxId: attemptInboxId }, "Failed to record WhatsApp webhook attempt"),
+    );
+  }
+
   const target = await resolveWhatsappWebhookTarget(
     organizationId,
     {
@@ -136,6 +144,11 @@ async function handleWhatsAppPost(
   );
   if (!target) {
     app.log.warn({ organizationId }, "Webhook received but no WhatsApp inbox/provider resolved");
+    if (attemptInboxId) {
+      void recordWhatsappWebhookAttempt(attemptInboxId, "rejected", "no_inbox_target").catch((err) =>
+        app.log.warn({ err, inboxId: attemptInboxId }, "Failed to record WhatsApp webhook attempt"),
+      );
+    }
     return reply.status(200).send();
   }
 
@@ -189,11 +202,31 @@ async function handleWhatsAppPost(
       (request as WebhookRequest).rawBody ??
       (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
 
-    const valid = provider.validateWebhookSignature(
+    let valid = provider.validateWebhookSignature(
       request.headers as Record<string, string | undefined>,
       rawBody,
       secret,
     );
+
+    if (
+      !valid &&
+      (target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog")
+    ) {
+      const embeddedCfg = await getWhatsAppEmbeddedConfig();
+      if (embeddedCfg?.appSecret) {
+        valid = provider.validateWebhookSignature(
+          request.headers as Record<string, string | undefined>,
+          rawBody,
+          embeddedCfg.appSecret,
+        );
+        if (valid) {
+          app.log.info(
+            { organizationId, inboxId: target.inboxId },
+            "Webhook signature validated with platform embedded app secret",
+          );
+        }
+      }
+    }
 
     if (!valid) {
       app.log.warn(
@@ -205,6 +238,9 @@ async function handleWhatsAppPost(
         target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog"
           ? "Webhook signature validation failed — use Meta App Secret in whatsappWebhookSecret (not the verify token)"
           : "Webhook signature validation failed",
+      );
+      void recordWhatsappWebhookAttempt(target.inboxId, "rejected", "invalid_signature").catch((err) =>
+        app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook attempt"),
       );
       return reply.status(401).send({ error: "Invalid signature" });
     }
@@ -676,7 +712,7 @@ async function handleWhatsAppPost(
     }
   }
 
-  if (processedWebhookEvents > 0 || statusUpdates.length > 0 || messages.length > 0) {
+  if (processedWebhookEvents > 0 || statusUpdates.length > 0 || messages.length > 0 || isMetaCloudWebhookPayload(body)) {
     void recordWhatsappInboundWebhook(target.inboxId).catch((err) =>
       app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook activity"),
     );
@@ -731,6 +767,13 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     const hit = await findOrganizationByMetaPhoneNumberId(phoneId);
     if (!hit) {
       app.log.warn({ phoneId }, "meta/whatsapp: no organization for phone_number_id");
+      return reply.status(200).send();
+    }
+    if (!hit.inboxId) {
+      app.log.warn(
+        { phoneId, organizationId: hit.organizationId },
+        "meta/whatsapp: organization found but no WhatsApp inbox — create/configure a Meta inbox",
+      );
       return reply.status(200).send();
     }
     return handleWhatsAppPost(app, request, reply, hit.organizationId, {

@@ -184,7 +184,10 @@ export async function findOrganizationByMetaPhoneNumberId(
     where: { whatsappPhoneNumberId: needle },
     select: { organizationId: true },
   });
-  if (settings) return { organizationId: settings.organizationId };
+  if (settings) {
+    const inbox = await findWhatsappInboxByPhoneNumberId(settings.organizationId, needle);
+    return { organizationId: settings.organizationId, inboxId: inbox?.id };
+  }
   return null;
 }
 
@@ -219,10 +222,9 @@ export async function findWhatsappInboxByPhoneNumberId(
     if (!parsed.whatsappProvider) {
       return row;
     }
-    if (
-      isMetaCloudWhatsappProvider(parsed.whatsappProvider) &&
-      (!parsed.whatsappPhoneNumberId?.trim() || parsed.whatsappPhoneNumberId.trim() === needle)
-    ) {
+    if (isMetaCloudWhatsappProvider(parsed.whatsappProvider)) {
+      // Settings legado (embedded signup) pode ter o phone_number_id correto enquanto a caixa
+      // ainda tem um ID desatualizado — confiar no Settings e usar a caixa Meta da org.
       return row;
     }
   }
