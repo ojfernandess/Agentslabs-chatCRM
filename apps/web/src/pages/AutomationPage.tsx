@@ -106,7 +106,10 @@ function compactToolConfigPatch(patch: Record<string, unknown>): Record<string, 
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
-    if (typeof v === "string" && !v.trim()) continue;
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (!trimmed || trimmed === "***") continue;
+    }
     out[k] = v;
   }
   return out;
@@ -3783,16 +3786,30 @@ function ToolCredentialEditor({
 }) {
   const c = (tool.config ?? {}) as Record<string, unknown>;
   const provider = String(c.provider ?? "");
-  const [apiKey, setApiKey] = useState("");
-  const [accessToken, setAccessToken] = useState("");
-  const [voiceId, setVoiceId] = useState(String(c.voiceId ?? ""));
-  const [modelId, setModelId] = useState(String(c.modelId ?? "eleven_multilingual_v2"));
+  const [apiKey, setApiKey] = useState(() => String(c.apiKey ?? ""));
+  const [accessToken, setAccessToken] = useState(() => String(c.accessToken ?? ""));
+  const [voiceId, setVoiceId] = useState(() => String(c.voiceId ?? ""));
+  const [modelId, setModelId] = useState(() => String(c.modelId ?? "eleven_multilingual_v2"));
   const [fromEmail, setFromEmail] = useState(String(c.fromEmail ?? ""));
   const [domain, setDomain] = useState(String(c.domain ?? ""));
   const [host, setHost] = useState(String(c.host ?? ""));
   const [port, setPort] = useState(String(c.port ?? "587"));
   const [username, setUsername] = useState(String(c.username ?? ""));
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState(() => String(c.password ?? ""));
+
+  useEffect(() => {
+    const cfg = (tool.config ?? {}) as Record<string, unknown>;
+    setApiKey(String(cfg.apiKey ?? ""));
+    setAccessToken(String(cfg.accessToken ?? ""));
+    setVoiceId(String(cfg.voiceId ?? ""));
+    setModelId(String(cfg.modelId ?? "eleven_multilingual_v2"));
+    setFromEmail(String(cfg.fromEmail ?? ""));
+    setDomain(String(cfg.domain ?? ""));
+    setHost(String(cfg.host ?? ""));
+    setPort(String(cfg.port ?? "587"));
+    setUsername(String(cfg.username ?? ""));
+    setPassword(String(cfg.password ?? ""));
+  }, [tool.id, tool.config]);
 
   const fieldCls =
     "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
@@ -3821,6 +3838,11 @@ function ToolCredentialEditor({
           API key
           <input type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className={fieldCls} />
         </label>
+        {apiKey === "***" ? (
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+            Chave já configurada. Digite uma nova para substituir.
+          </p>
+        ) : null}
         <label className="block text-xs font-medium">
           Voice ID
           <input value={voiceId} onChange={(e) => setVoiceId(e.target.value)} className={fieldCls} />
@@ -3831,7 +3853,12 @@ function ToolCredentialEditor({
         </label>
         <button
           type="button"
-          onClick={() => onSave({ apiKey, voiceId, modelId })}
+          onClick={() => {
+            const patch: Record<string, unknown> = { voiceId, modelId };
+            const keyTrimmed = apiKey.trim();
+            if (keyTrimmed && keyTrimmed !== "***") patch.apiKey = keyTrimmed;
+            onSave(patch);
+          }}
           className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
         >
           {t("automationPage.toolSaveCredentials")}

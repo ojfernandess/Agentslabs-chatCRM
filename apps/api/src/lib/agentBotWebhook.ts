@@ -13,6 +13,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { deliverAgentReplyMessage } from "./agentVoiceReply.js";
 import { generateNativeAgentReply } from "./agentNativeLlm.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
@@ -333,30 +334,32 @@ async function dispatchAgentBotNativeFallback(input: {
       return;
     }
 
+    const profileForVoice = await prisma.automationAgentProfile.findUnique({
+      where: { botId: bot.id },
+      select: { behaviorConfig: true },
+    });
+
     try {
-      await deliverOutboundWhatsAppMessage({
+      const deliveryKind = await deliverAgentReplyMessage({
         organizationId,
-        data: {
-          contactId: contact.id,
-          conversationId: conversation.id,
-          type: "TEXT",
-          body: replyText,
-        },
-        actor: { kind: "agent_bot", botId: bot.id },
+        botId: bot.id,
+        conversation,
+        contact,
+        inboundMessage: message,
+        replyText,
+        behaviorConfig: profileForVoice?.behaviorConfig,
         log,
-        newConversation: { status: "PENDING", assignedToId: null },
       });
+      exLog.info(
+        { id: "outbound", name: "Entrega" },
+        deliveryKind === "audio" ? "Resposta em áudio enviada (ElevenLabs)" : "Mensagem outbound enviada",
+        { output: { chars: replyText.length, deliveryKind } },
+      );
     } catch (err) {
       log.warn({ err, botId: bot.id }, "Agent bot native fallback send failed");
       await exLog.completeError(err);
       return;
     }
-
-    exLog.info(
-      { id: "outbound", name: "Entrega" },
-      "Mensagem outbound enviada",
-      { output: { chars: replyText.length } },
-    );
 
     await prisma.automationInteraction
       .create({

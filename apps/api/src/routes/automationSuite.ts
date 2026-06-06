@@ -349,14 +349,31 @@ function redactToolRow<T extends { config: unknown }>(row: T): T {
   return { ...row, config: redactAutomationToolConfig(row.config) } as T;
 }
 
+const TOOL_CONFIG_SECRET_KEYS = new Set([
+  "apiKey",
+  "api_key",
+  "accessToken",
+  "refreshToken",
+  "password",
+  "smtpPassword",
+  "token",
+  "authToken",
+  "botToken",
+  "secretKey",
+  "bearerToken",
+  "basicPassword",
+  "customAuthValue",
+  "signingSecret",
+]);
+
 function mergeToolConfig(existing: unknown, incoming: unknown): Record<string, unknown> {
   const e = existing && typeof existing === "object" ? { ...(existing as Record<string, unknown>) } : {};
   const i = incoming && typeof incoming === "object" ? { ...(incoming as Record<string, unknown>) } : {};
-  const out: Record<string, unknown> = { ...e, ...i };
-  for (const k of Object.keys(out)) {
-    if (out[k] === "***") delete out[k];
+  for (const [k, v] of Object.entries(i)) {
+    if (v === "***") delete i[k];
+    if (typeof v === "string" && !v.trim() && TOOL_CONFIG_SECRET_KEYS.has(k)) delete i[k];
   }
-  return out;
+  return { ...e, ...i };
 }
 
 const interactionCreateSchema = z.object({

@@ -19,7 +19,7 @@
     "db:reset-password": "tsx prisma/reset-password.ts",
     "db:verify-password": "tsx prisma/verify-password.ts",
     "db:studio": "prisma studio",
-    "test": "node --import tsx --test src/lib/messagePayload.test.ts src/lib/agentConversationHistory.test.ts src/lib/knowledgeAppendix.test.ts src/lib/automationExecutionLog.test.ts src/lib/broadcastErrorClassifier.test.ts src/lib/broadcastAnalyticsQuery.test.ts src/lib/broadcastAnalytics.integration.test.ts src/lib/metaWebhookPayload.test.ts src/providers/meta.test.ts"
+    "test": "node --import tsx --test src/lib/messagePayload.test.ts src/lib/agentConversationHistory.test.ts src/lib/agentVoiceSettings.test.ts src/lib/knowledgeAppendix.test.ts src/lib/automationExecutionLog.test.ts src/lib/broadcastErrorClassifier.test.ts src/lib/broadcastAnalyticsQuery.test.ts src/lib/broadcastAnalytics.integration.test.ts src/lib/metaWebhookPayload.test.ts src/providers/meta.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",
