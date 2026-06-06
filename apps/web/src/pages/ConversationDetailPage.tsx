@@ -578,6 +578,10 @@ export function ConversationDetailPage() {
   }, []);
 
   useEffect(() => {
+    seenMessageIds.current.clear();
+  }, [id]);
+
+  useEffect(() => {
     return () => {
       if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
     };
@@ -595,6 +599,9 @@ export function ConversationDetailPage() {
   const loadConversation = useCallback(async () => {
     try {
       const data = await api.get<ConversationDetail>(`/conversations/${id}`);
+      for (const m of data.messages ?? []) {
+        seenMessageIds.current.add(m.id);
+      }
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setAgentBotTriageActive(data.agentBotTriageActive ?? false);
@@ -2808,11 +2815,6 @@ export function ConversationDetailPage() {
                   )}
                   <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
-                    {inbound && isNew ? (
-                      <span className="crm-bubble-unread-dot ml-0.5 inline-flex h-[18px] w-[18px] items-center justify-center">
-                        <span className="h-1.5 w-1.5 rounded-full" />
-                      </span>
-                    ) : null}
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
                         {msg.status === "FAILED" ? (

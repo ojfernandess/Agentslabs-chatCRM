@@ -1,25 +1,8 @@
 import { ScanLine } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody } from "@/lib/messagePreviewText";
 
-export const IMAGE_TRANSCRIPTION_PREFIX = "[Transcrição de imagem]";
-
-export type ImageTranscriptionPayload = {
-  description?: string;
-  extractedText?: string;
-};
-
-export function parseImageTranscriptionBody(body: string | null | undefined): ImageTranscriptionPayload | null {
-  if (!body?.startsWith(IMAGE_TRANSCRIPTION_PREFIX)) return null;
-  const raw = body.slice(IMAGE_TRANSCRIPTION_PREFIX.length).trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as ImageTranscriptionPayload;
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed;
-  } catch {
-    return { description: raw, extractedText: "" };
-  }
-}
+export { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody };
 
 type Props = {
   body: string;

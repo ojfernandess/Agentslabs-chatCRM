@@ -12,6 +12,7 @@ import {
   isPipelineClosureActiveForRollup,
   shouldDisplayClosureValueBadge,
 } from "@/lib/closureValueRollup";
+import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 
 interface Row {
   id: string;
@@ -26,7 +27,7 @@ interface Row {
   contact: { id: string; name: string; phone: string };
   team: { id: string; name: string } | null;
   leadType: { id: string; name: string; color: string; valueRollup?: string } | null;
-  messages: { body: string | null; createdAt: string }[];
+  messages: { body: string | null; createdAt: string; type?: string }[];
 }
 
 interface RecentCallRow {
@@ -310,7 +311,9 @@ export function MyAttendancePage() {
                               </p>
                             ) : null}
                             <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-ink-400">
-                              {r.closureReason || last?.body || "—"}
+                              {r.closureReason ||
+                                formatMessageBodyForPreview(last?.body, { messageType: last?.type }) ||
+                                "—"}
                             </p>
                             {r.team ? (
                               <p className="mt-1 text-xs text-gray-400 dark:text-ink-500">

@@ -9,6 +9,7 @@ import {
   readAudioAlertSoundPref,
 } from "@/lib/profilePrefs";
 import { playAudioAlert } from "@/lib/audioAlerts";
+import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 
 const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
@@ -24,6 +25,7 @@ interface LastMessage {
   id: string;
   direction: string;
   body: string | null;
+  type?: string;
   createdAt: string;
 }
 
@@ -49,9 +51,8 @@ export interface ConversationAlertPreview {
 }
 
 function messagePreview(m: LastMessage | undefined): string {
-  if (!m?.body) return "New activity";
-  const t = m.body.trim();
-  return t.length > 120 ? `${t.slice(0, 117)}…` : t;
+  const text = formatMessageBodyForPreview(m?.body, { messageType: m?.type });
+  return text || "New activity";
 }
 
 function qualifies(

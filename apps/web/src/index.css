@@ -230,8 +230,13 @@
   }
 
   .crm-bubble-meta .crm-bubble-unread-dot {
+    /* Container só para alinhar — cor no círculo interno, não no quadrado 18×18 */
+    background-color: transparent;
+  }
+
+  .crm-bubble-meta .crm-bubble-unread-dot > span {
     background-color: currentColor;
-    opacity: 0.75;
+    opacity: 0.85;
   }
 
   .crm-bubble-out .crm-bubble-meta .crm-bubble-read-status {

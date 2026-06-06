@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
-import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
+import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
@@ -145,14 +145,15 @@ type ContactListRow = {
 };
 
 function previewFromMessage(body: string | null, type: string): string {
-  if (body?.trim()) return body.trim().slice(0, 160);
+  const formatted = formatMessageBodyForPreview(body, { messageType: type });
+  if (formatted) return formatted;
   if (type === "TEXT") return "";
   const short: Record<string, string> = {
-    IMAGE: "📷",
-    AUDIO: "🎤",
-    VIDEO: "🎬",
-    DOCUMENT: "📎",
-    TEMPLATE: "📋",
+    IMAGE: "📷 Imagem",
+    AUDIO: "🎤 Áudio",
+    VIDEO: "🎬 Vídeo",
+    DOCUMENT: "📎 Documento",
+    TEMPLATE: "📋 Template",
   };
   return short[type] ?? "…";
 }

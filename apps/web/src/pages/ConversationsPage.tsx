@@ -23,6 +23,7 @@ import { ConversationListAvatar } from "@/components/ConversationListAvatar";
 import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
+import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
 interface Conversation {
   id: string;
@@ -48,7 +49,7 @@ interface Conversation {
   team: { id: string; name: string } | null;
   inbox?: { id: string; name: string; isDefault: boolean; channelType?: string } | null;
   leadType: { id: string; name: string; color: string } | null;
-  messages: { body: string | null; direction: string; createdAt: string }[];
+  messages: { body: string | null; direction: string; createdAt: string; type?: string }[];
   activeVoiceCall?: ActiveVoiceCall | null;
 }
 
@@ -440,7 +441,9 @@ export function ConversationsPage() {
       const name = c.contact.name.toLowerCase();
       const phone = c.contact.phone ?? "";
       const phoneDigits = digitsOnly(phone);
-      const last = (c.messages?.[0]?.body ?? "").toLowerCase();
+      const last = formatMessageBodyForPreview(c.messages?.[0]?.body, {
+        messageType: c.messages?.[0]?.type,
+      }).toLowerCase();
       if (name.includes(raw)) return true;
       if (dRaw && phoneDigits.includes(dRaw)) return true;
       if (phone.toLowerCase().includes(raw)) return true;
@@ -880,7 +883,9 @@ export function ConversationsPage() {
                                   : "text-ink-600 dark:text-ink-400",
                               )}
                             >
-                              {lastMessage?.body || t("conversations.noMessages")}
+                              {formatMessageBodyForPreview(lastMessage?.body, {
+                                messageType: lastMessage?.type,
+                              }) || t("conversations.noMessages")}
                             </p>
                           </div>
 
