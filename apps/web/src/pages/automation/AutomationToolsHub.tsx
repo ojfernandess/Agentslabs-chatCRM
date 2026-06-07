@@ -309,9 +309,19 @@ export function AutomationToolsHub({
     setTestRunning(true);
     setTestResult(null);
     try {
+      const httpBody = { ...body };
+      const pathParams = httpBody.pathParams;
+      const query = httpBody.query;
+      const headersPayload = httpBody.headers;
+      delete httpBody.pathParams;
+      delete httpBody.query;
+      delete httpBody.headers;
       const res = await api.post<Record<string, unknown>>(`/automation/custom-tools/${drawerTool.id}/test`, {
-        ...body,
+        body: httpBody,
         sampleContext,
+        ...(pathParams && typeof pathParams === "object" ? { pathParams } : {}),
+        ...(query && typeof query === "object" ? { query } : {}),
+        ...(headersPayload && typeof headersPayload === "object" ? { headers: headersPayload } : {}),
       });
       setTestResult(res);
       await onToolsUpdated();

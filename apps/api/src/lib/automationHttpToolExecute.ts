@@ -6,16 +6,40 @@ function asJson(v: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 }
 
+export const HTTP_TOOL_RESERVED_ARG_KEYS = new Set([
+  "pathParams",
+  "query",
+  "headers",
+  "body",
+  "sampleContext",
+]);
+
 export function flattenTemplateContext(obj: unknown, prefix = ""): Record<string, string> {
   const out: Record<string, string> = {};
-  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-      const p = prefix ? `${prefix}.${k}` : k;
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-        Object.assign(out, flattenTemplateContext(v, p));
-      } else if (v !== undefined && v !== null) {
-        out[p] = typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
+  if (obj == null || typeof obj !== "object") return out;
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item, index) => {
+      const p = prefix ? `${prefix}.${index}` : String(index);
+      if (item !== null && typeof item === "object") {
+        Object.assign(out, flattenTemplateContext(item, p));
+      } else if (item !== undefined && item !== null) {
+        out[p] =
+          typeof item === "string" || typeof item === "number" || typeof item === "boolean"
+            ? String(item)
+            : JSON.stringify(item);
       }
+    });
+    return out;
+  }
+
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const p = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === "object") {
+      Object.assign(out, flattenTemplateContext(v, p));
+    } else if (v !== undefined && v !== null) {
+      out[p] =
+        typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
     }
   }
   return out;
@@ -26,6 +50,142 @@ export function expandTemplateString(template: string, flat: Record<string, stri
     const key = rawKey.trim();
     return flat[key] ?? "";
   });
+}
+
+export function expandTemplateValue(value: unknown, flat: Record<string, string>): unknown {
+  if (typeof value === "string") return expandTemplateString(value, flat);
+  if (Array.isArray(value)) return value.map((item) => expandTemplateValue(item, flat));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = expandTemplateValue(v, flat);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function isNonEmptyBodyTemplate(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as object).length > 0;
+  return true;
+}
+
+export function extractInlineBodyFromArgs(args: Record<string, unknown>): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (HTTP_TOOL_RESERVED_ARG_KEYS.has(k)) continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+export function buildHttpToolFlatContext(
+  args: Record<string, unknown>,
+  extras?: Record<string, string>,
+): Record<string, string> {
+  const flat: Record<string, string> = {};
+  Object.assign(flat, flattenTemplateContext(args.sampleContext));
+  const inline = extractInlineBodyFromArgs(args);
+  if (inline) Object.assign(flat, flattenTemplateContext(inline));
+  if (args.body !== undefined && args.body !== null && typeof args.body === "object") {
+    Object.assign(flat, flattenTemplateContext(args.body));
+  } else if (typeof args.body === "string") {
+    flat.body = args.body;
+  }
+
+  for (const [k, v] of Object.entries(args)) {
+    if (HTTP_TOOL_RESERVED_ARG_KEYS.has(k)) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      flat[k] = String(v);
+    }
+  }
+
+  const pathParams = args.pathParams;
+  if (pathParams && typeof pathParams === "object" && !Array.isArray(pathParams)) {
+    for (const [k, v] of Object.entries(pathParams as Record<string, unknown>)) {
+      if (v !== undefined && v !== null) flat[k] = String(v);
+    }
+  }
+
+  const query = args.query;
+  if (query && typeof query === "object" && !Array.isArray(query)) {
+    for (const [k, v] of Object.entries(query as Record<string, unknown>)) {
+      if (v !== undefined && v !== null) flat[k] = String(v);
+    }
+  }
+
+  if (extras) Object.assign(flat, extras);
+  return flat;
+}
+
+export function resolveHttpRequestBody(options: {
+  cfg: Record<string, unknown>;
+  args: Record<string, unknown>;
+  flat: Record<string, string>;
+}): { bodyStr?: string; contentType?: string; source?: "explicit" | "template" | "inline" | "none" } {
+  const { cfg, args, flat } = options;
+  const bodyType = String(cfg.bodyType ?? "json").trim().toLowerCase();
+  const configuredTemplate = cfg.bodyTemplate ?? cfg.body;
+
+  let bodyPayload: unknown;
+  let source: "explicit" | "template" | "inline" | "none" = "none";
+
+  if (args.body !== undefined) {
+    bodyPayload = args.body;
+    source = "explicit";
+  } else if (isNonEmptyBodyTemplate(configuredTemplate)) {
+    bodyPayload = configuredTemplate;
+    source = "template";
+  } else {
+    bodyPayload = extractInlineBodyFromArgs(args);
+    if (bodyPayload) source = "inline";
+  }
+
+  if (bodyPayload === undefined || bodyPayload === null) {
+    return { bodyStr: undefined, source: "none" };
+  }
+
+  const expanded = expandTemplateValue(bodyPayload, flat);
+
+  if (bodyType === "text" || bodyType === "plain" || bodyType === "text/plain") {
+    const text = typeof expanded === "string" ? expanded : JSON.stringify(expanded);
+    return text.trim() ? { bodyStr: text, contentType: "text/plain", source } : { source: "none" };
+  }
+
+  if (
+    bodyType === "form" ||
+    bodyType === "form-urlencoded" ||
+    bodyType === "application/x-www-form-urlencoded"
+  ) {
+    const entries =
+      expanded && typeof expanded === "object" && !Array.isArray(expanded)
+        ? Object.entries(expanded as Record<string, unknown>)
+        : [];
+    const params = new URLSearchParams();
+    for (const [k, v] of entries) {
+      if (v === undefined || v === null) continue;
+      params.set(k, typeof v === "string" ? v : JSON.stringify(v));
+    }
+    const bodyStr = params.toString();
+    return bodyStr
+      ? { bodyStr, contentType: "application/x-www-form-urlencoded", source }
+      : { source: "none" };
+  }
+
+  if (typeof expanded === "string") {
+    const trimmed = expanded.trim();
+    if (!trimmed) return { source: "none" };
+    try {
+      return { bodyStr: JSON.stringify(JSON.parse(trimmed)), contentType: "application/json", source };
+    } catch {
+      return { bodyStr: expanded, contentType: "application/json", source };
+    }
+  }
+
+  return { bodyStr: JSON.stringify(expanded), contentType: "application/json", source };
 }
 
 function isScalar(v: unknown): v is string | number | boolean {
@@ -184,36 +344,15 @@ export async function runAutomationHttpLikeTool(input: {
 
   const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
 
-  const flat = flattenTemplateContext(llmArgs);
-  flat.organizationId = organizationId;
-  flat.botId = botId;
-  flat.conversationId = conversationId;
-
-  const mergeIntoFlat = (rec: Record<string, string | number | boolean> | undefined) => {
-    if (!rec) return;
-    for (const [k, v] of Object.entries(rec)) {
-      if (v === undefined || v === null) continue;
-      flat[k] = String(v);
-    }
-  };
+  const flat = buildHttpToolFlatContext(llmArgs, {
+    organizationId,
+    botId,
+    conversationId,
+  });
 
   const pathParamsObj = llmArgs.pathParams;
-  if (pathParamsObj && typeof pathParamsObj === "object" && !Array.isArray(pathParamsObj)) {
-    mergeIntoFlat(pathParamsObj as Record<string, string | number | boolean>);
-  } else {
-    const reserved = new Set(["pathParams", "query", "headers", "body"]);
-    for (const [k, v] of Object.entries(llmArgs)) {
-      if (reserved.has(k)) continue;
-      if (isScalar(v)) flat[k] = String(v);
-    }
-  }
-
   const queryObj = llmArgs.query;
-  if (queryObj && typeof queryObj === "object" && !Array.isArray(queryObj)) {
-    mergeIntoFlat(queryObj as Record<string, string | number | boolean>);
-  }
-
-  const reservedPathMergeKeys = new Set(["pathParams", "query", "headers", "body"]);
+  const reservedPathMergeKeys = new Set([...HTTP_TOOL_RESERVED_ARG_KEYS]);
 
   let method = String(cfg.httpMethod ?? "GET").toUpperCase();
   let pathPart = expandTemplateString(String(cfg.httpPath ?? "/"), flat);
@@ -313,22 +452,13 @@ export async function runAutomationHttpLikeTool(input: {
   }
 
   let bodyStr: string | undefined;
+  let bodySource: string | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    const bodyPayload = llmArgs.body !== undefined ? llmArgs.body : cfg.bodyTemplate;
-    if (bodyPayload !== undefined && bodyPayload !== null) {
-      const raw =
-        typeof bodyPayload === "string"
-          ? expandTemplateString(bodyPayload, flat)
-          : expandTemplateString(JSON.stringify(bodyPayload), flat);
-      try {
-        const parsedJson = JSON.parse(raw);
-        bodyStr = JSON.stringify(parsedJson);
-      } catch {
-        bodyStr = raw;
-      }
-      if (!headers.has("Content-Type") && typeof bodyStr === "string" && bodyStr.trim().startsWith("{")) {
-        headers.set("Content-Type", "application/json");
-      }
+    const resolvedBody = resolveHttpRequestBody({ cfg, args: llmArgs, flat });
+    bodyStr = resolvedBody.bodyStr;
+    bodySource = resolvedBody.source;
+    if (bodyStr && resolvedBody.contentType && !headers.has("Content-Type")) {
+      headers.set("Content-Type", resolvedBody.contentType);
     }
   }
 
@@ -342,6 +472,9 @@ export async function runAutomationHttpLikeTool(input: {
     method,
     url: url.toString(),
     headerKeys: [...headers.keys()],
+    bodySource,
+    bodyBytes: bodyStr?.length ?? 0,
+    bodyPreview: bodyStr ? truncateBody(bodyStr, 4000) : null,
   };
 
   try {

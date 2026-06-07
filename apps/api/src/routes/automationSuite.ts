@@ -9,6 +9,11 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
 import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
+import {
+  buildHttpToolFlatContext,
+  expandTemplateString,
+  resolveHttpRequestBody,
+} from "../lib/automationHttpToolExecute.js";
 import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
 import {
   callGeminiGenerateContent,
@@ -1691,28 +1696,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     return reply.status(204).send();
   });
 
-  function flattenTemplateContext(obj: unknown, prefix = ""): Record<string, string> {
-    const out: Record<string, string> = {};
-    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        const p = prefix ? `${prefix}.${k}` : k;
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-          Object.assign(out, flattenTemplateContext(v, p));
-        } else if (v !== undefined && v !== null) {
-          out[p] = typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
-        }
-      }
-    }
-    return out;
-  }
-
-  function expandTemplateString(template: string, flat: Record<string, string>): string {
-    return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, rawKey: string) => {
-      const key = rawKey.trim();
-      return flat[key] ?? "";
-    });
-  }
-
   const toolTestBodySchema = z
     .object({
       pathParams: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -1773,24 +1756,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       }
 
       const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
-      const flat = flattenTemplateContext(parsed.data.sampleContext ?? {});
-      /** Merge test payload query/pathParams so `{{arrival_date}}` in path or defaultQuery resolves (schema often sends args in `query`). */
-      const mergeIntoFlat = (rec: Record<string, string | number | boolean> | undefined) => {
-        if (!rec) return;
-        for (const [k, v] of Object.entries(rec)) {
-          if (v === undefined || v === null) continue;
-          flat[k] = String(v);
-        }
-      };
-      mergeIntoFlat(parsed.data.query);
-      mergeIntoFlat(parsed.data.pathParams);
-      const reserved = new Set(["pathParams", "query", "headers", "body", "sampleContext"]);
-      for (const [k, v] of Object.entries(parsed.data as Record<string, unknown>)) {
-        if (reserved.has(k)) continue;
-        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-          flat[k] = String(v);
-        }
-      }
+      const testArgs = parsed.data as Record<string, unknown>;
+      const flat = buildHttpToolFlatContext(testArgs);
 
       let method = String(cfg.httpMethod ?? "GET").toUpperCase();
       let pathPart = expandTemplateString(String(cfg.httpPath ?? "/"), flat);
@@ -1866,22 +1833,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       }
 
       let bodyStr: string | undefined;
+      let bodySource: string | undefined;
       if (method !== "GET" && method !== "HEAD") {
-        const bodyPayload = parsed.data.body !== undefined ? parsed.data.body : cfg.bodyTemplate;
-        if (bodyPayload !== undefined && bodyPayload !== null) {
-          const raw =
-            typeof bodyPayload === "string"
-              ? expandTemplateString(bodyPayload, flat)
-              : expandTemplateString(JSON.stringify(bodyPayload), flat);
-          try {
-            const parsedJson = JSON.parse(raw);
-            bodyStr = JSON.stringify(parsedJson);
-          } catch {
-            bodyStr = raw;
-          }
-          if (!headers.has("Content-Type") && typeof bodyStr === "string" && bodyStr.trim().startsWith("{")) {
-            headers.set("Content-Type", "application/json");
-          }
+        const resolvedBody = resolveHttpRequestBody({ cfg, args: testArgs, flat });
+        bodyStr = resolvedBody.bodyStr;
+        bodySource = resolvedBody.source;
+        if (bodyStr && resolvedBody.contentType && !headers.has("Content-Type")) {
+          headers.set("Content-Type", resolvedBody.contentType);
         }
       }
 
@@ -1895,6 +1853,9 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         method,
         url: url.toString(),
         headerKeys: [...headers.keys()],
+        bodySource,
+        bodyBytes: bodyStr?.length ?? 0,
+        bodyPreview: bodyStr ? truncateBody(bodyStr, 4000) : null,
       };
 
       try {
