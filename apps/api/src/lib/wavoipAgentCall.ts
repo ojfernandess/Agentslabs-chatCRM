@@ -6,6 +6,9 @@ import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { isWavoipCallLogActive } from "./wavoipCallTimeline.js";
 import { resolveWavoipCallContext } from "./wavoipCallContext.js";
 
+/** Alinhado com `loadActiveVoiceCallsByConversation` (badge «em ligação»). */
+const WAVOIP_CALL_LOOKUP_WINDOW_MINUTES = 120;
+
 export function placeholderWhatsappCallId(clientCallId: string): number {
   let h = 5381;
   for (let i = 0; i < clientCallId.length; i++) {
@@ -174,16 +177,28 @@ export async function claimWavoipCallAgent(input: {
 }): Promise<void> {
   if (!input.clientCallId?.trim() && !input.conversationId) return;
 
-  const log = await prisma.wavoipCallLog.findFirst({
-    where: {
-      organizationId: input.organizationId,
-      endedAt: null,
-      ...(input.clientCallId?.trim()
-        ? { clientCallId: input.clientCallId.trim() }
-        : { conversationId: input.conversationId!, createdAt: { gte: subMinutes(new Date(), 30) } }),
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+  const recent = subMinutes(new Date(), WAVOIP_CALL_LOOKUP_WINDOW_MINUTES);
+  const baseWhere = { organizationId: input.organizationId, endedAt: null } as const;
+
+  let log =
+    input.clientCallId?.trim() ?
+      await prisma.wavoipCallLog.findFirst({
+        where: { ...baseWhere, clientCallId: input.clientCallId.trim() },
+        orderBy: { updatedAt: "desc" },
+      })
+    : null;
+
+  if (!log && input.conversationId) {
+    log = await prisma.wavoipCallLog.findFirst({
+      where: {
+        ...baseWhere,
+        conversationId: input.conversationId,
+        updatedAt: { gte: recent },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
   if (!log || !isWavoipCallLogActive(log)) return;
 
   await prisma.wavoipCallLog.update({
@@ -212,12 +227,13 @@ async function findWavoipCallLogForCompletion(input: {
   }
 
   if (input.conversationId) {
+    const recent = subMinutes(new Date(), WAVOIP_CALL_LOOKUP_WINDOW_MINUTES);
     return prisma.wavoipCallLog.findFirst({
       where: {
         organizationId: input.organizationId,
         conversationId: input.conversationId,
         endedAt: null,
-        createdAt: { gte: subMinutes(new Date(), 30) },
+        updatedAt: { gte: recent },
       },
       include,
       orderBy: { updatedAt: "desc" },
@@ -312,13 +328,33 @@ export async function forceEndWavoipConversationCall(input: {
   userId: string;
   userName: string;
   conversationId: string;
-}): Promise<{ ok: true } | { ok: false; message: string }> {
+}): Promise<{ ok: true; alreadyEnded?: boolean } | { ok: false; message: string }> {
   const log = await findWavoipCallLogForCompletion({
     organizationId: input.organizationId,
     conversationId: input.conversationId,
   });
-  if (!log || !isWavoipCallLogActive(log)) {
+
+  if (!log) {
+    const recent = subMinutes(new Date(), WAVOIP_CALL_LOOKUP_WINDOW_MINUTES);
+    const last = await prisma.wavoipCallLog.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        updatedAt: { gte: recent },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true },
+    });
+    if (last) {
+      broadcastConversationUpdated(input.organizationId, input.conversationId);
+      return { ok: true, alreadyEnded: true };
+    }
     return { ok: false, message: "no_active_call" };
+  }
+
+  if (!isWavoipCallLogActive(log) && log.endedAt) {
+    broadcastConversationUpdated(input.organizationId, input.conversationId);
+    return { ok: true, alreadyEnded: true };
   }
 
   await completeAgentOutboundCall({

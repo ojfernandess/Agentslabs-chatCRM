@@ -8,7 +8,7 @@ import {
 } from "@wavoip/wavoip-api";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import {
   playIncomingCallQueuedPulse,
   playIncomingCallRing,
@@ -272,12 +272,18 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       callStatusRef.current = call.status;
 
       const onEnded = () => {
-        void finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
+        const convId = activeMetaRef.current?.conversationId ?? null;
+        const contactId = activeMetaRef.current?.contactId ?? null;
+        const terminalStatus = resolveTerminalCallStatus(callStatusRef.current);
         setActiveCall(null);
         setCallStatus(null);
         callStatusRef.current = null;
+        setActiveCallConversationId(null);
         setCallStartedAt(null);
         setCallElapsedSec(0);
+        void finalizeCall(terminalStatus).then(() => {
+          if (convId) dispatchCallLogged(convId, contactId);
+        });
       };
 
       if (call.direction === "OUTGOING") {
@@ -532,37 +538,49 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const endActiveCall = useCallback(async () => {
     if (!activeCall) return;
     const meta = activeMetaRef.current;
+    const convId = meta?.conversationId ?? null;
+    const contactId = meta?.contactId ?? null;
+    const terminalStatus = resolveTerminalCallStatus(callStatusRef.current);
+
     try {
+      // Wavoip SDK: call.end() encerra a chamada e emite `ended` (ver docs Chamada Ativa).
       await activeCall.end();
     } catch {
-      /* SDK pode já ter terminado quando o contacto desligou */
+      /* contacto já desligou ou transporte caiu */
     }
-    if (meta) {
-      const finalizeKey = meta.clientCallId;
-      if (!finalizedCallIdsRef.current.has(finalizeKey)) {
-        await finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
-      }
+
+    // Fallback se `ended` não disparar (ex.: falha WebSocket do device).
+    await new Promise((r) => setTimeout(r, 80));
+    const finalizeKeys = [meta?.clientCallId, meta?.offerClientCallId].filter(Boolean) as string[];
+    const alreadyFinalized = finalizeKeys.some((k) => finalizedCallIdsRef.current.has(k));
+    if (meta && !alreadyFinalized) {
+      await finalizeCall(terminalStatus);
     }
+
     setActiveCall(null);
     setCallStatus(null);
     callStatusRef.current = null;
     setActiveCallConversationId(null);
     setCallStartedAt(null);
     setCallElapsedSec(0);
+    if (convId) dispatchCallLogged(convId, contactId);
   }, [activeCall, finalizeCall]);
 
   const forceEndConversationCall = useCallback(async (conversationId: string) => {
-    const meta = activeMetaRef.current;
-    if (activeCall && meta?.conversationId === conversationId) {
+    if (activeCall) {
       await endActiveCall();
+      dispatchCallLogged(conversationId, null);
       return;
     }
     try {
       await api.post("/wavoip/calls/force-end", { conversationId });
-      dispatchCallLogged(conversationId, null);
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      // Chamada já encerrada pelo SDK/webhook — limpar badge na UI.
+      if (!(err instanceof ApiError && err.status === 404)) {
+        /* best-effort */
+      }
     }
+    dispatchCallLogged(conversationId, null);
   }, [activeCall, endActiveCall]);
 
   const startOutboundCall = useCallback(
