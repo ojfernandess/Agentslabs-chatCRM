@@ -144,7 +144,16 @@ async function handleCallEvent(
   let contactId: string | null = contactResult?.contactId ?? null;
 
   const isIncoming = direction === "INCOMING";
-  const isTerminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED", "DISCONNECTED"].includes(status);
+  const isTerminal = [
+    "ENDED",
+    "REJECTED",
+    "NOT_ANSWERED",
+    "FAILED",
+    "DISCONNECTED",
+    "HANDLED_REMOTELY",
+    "MISSED",
+    "BUSY",
+  ].includes(status);
   const conversationStatus = isIncoming ? "PENDING" : "OPEN";
 
   if (contactId) {

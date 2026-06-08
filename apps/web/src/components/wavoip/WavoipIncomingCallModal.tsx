@@ -113,6 +113,12 @@ export function WavoipIncomingCallModal() {
           <div className="overflow-y-auto p-6 text-center">
             <p className="text-[11px] font-medium text-slate-400">{t("wavoip.voice.incomingChannel")}</p>
             <p className="mt-1 text-xs text-slate-500">{t("wavoip.voice.incomingNonBlockingHint")}</p>
+            {incomingCallCount > 1 ? (
+              <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {t("wavoip.voice.incomingQueueCount").replace("{count}", String(incomingCallCount))} —{" "}
+                {t("wavoip.voice.queuedCallPulse")}
+              </p>
+            ) : null}
 
             <div className="relative mx-auto mt-6 flex h-24 w-24 items-center justify-center">
               <span

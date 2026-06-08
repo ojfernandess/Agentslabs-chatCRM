@@ -132,6 +132,23 @@ export function stopIncomingCallRing(): void {
  * Repeating phone-style ring for inbound Wavoip calls.
  * Uses the shared AudioContext (must be unlocked via user gesture in Layout).
  */
+/** Short alert when another call joins the queue while one is already ringing. */
+export async function playIncomingCallQueuedPulse(volume = 0.28): Promise<void> {
+  try {
+    await unlockAudioAlerts();
+    const c = getCtx();
+    if (c.state !== "running") await c.resume();
+    const t0 = c.currentTime;
+    const master = c.createGain();
+    master.gain.value = Math.max(0, Math.min(1, volume));
+    master.connect(c.destination);
+    scheduleTone(c, master, t0, 880, 0, 0.1, 0.9);
+    scheduleTone(c, master, t0, 660, 0.14, 0.12, 0.75);
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function playIncomingCallRing(): Promise<void> {
   try {
     await unlockAudioAlerts();

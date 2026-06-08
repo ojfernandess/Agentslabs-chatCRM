@@ -195,24 +195,67 @@ export async function claimWavoipCallAgent(input: {
   }
 }
 
+async function findWavoipCallLogForCompletion(input: {
+  organizationId: string;
+  clientCallId?: string | null;
+  conversationId?: string | null;
+}) {
+  const include = { wavoipDevice: { select: { linkedPhone: true } } } as const;
+  const clientCallId = input.clientCallId?.trim();
+  if (clientCallId) {
+    const byClient = await prisma.wavoipCallLog.findFirst({
+      where: { organizationId: input.organizationId, clientCallId },
+      include,
+      orderBy: { updatedAt: "desc" },
+    });
+    if (byClient) return byClient;
+  }
+
+  if (input.conversationId) {
+    return prisma.wavoipCallLog.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        endedAt: null,
+        createdAt: { gte: subMinutes(new Date(), 30) },
+      },
+      include,
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
+  return null;
+}
+
+const WAVOIP_COMPLETION_TERMINAL = new Set([
+  "ENDED",
+  "REJECTED",
+  "NOT_ANSWERED",
+  "FAILED",
+  "DISCONNECTED",
+  "HANDLED_REMOTELY",
+  "MISSED",
+  "BUSY",
+]);
+
 export async function completeAgentOutboundCall(input: {
   organizationId: string;
   userId: string;
   userName: string;
-  clientCallId: string;
+  clientCallId?: string | null;
+  conversationId?: string | null;
   status: string;
   durationSec?: number | null;
 }): Promise<void> {
-  const log = await prisma.wavoipCallLog.findFirst({
-    where: { organizationId: input.organizationId, clientCallId: input.clientCallId },
-    include: { wavoipDevice: { select: { linkedPhone: true } } },
+  const log = await findWavoipCallLogForCompletion({
+    organizationId: input.organizationId,
+    clientCallId: input.clientCallId,
+    conversationId: input.conversationId,
   });
   if (!log) return;
 
   const normalizedStatus = normalizeTerminalCallStatus(input.status);
-  const terminal = ["ENDED", "REJECTED", "NOT_ANSWERED", "FAILED", "DISCONNECTED"].includes(
-    normalizedStatus,
-  );
+  const terminal = WAVOIP_COMPLETION_TERMINAL.has(normalizedStatus);
   const now = new Date();
 
   await prisma.wavoipCallLog.update({
@@ -233,14 +276,14 @@ export async function completeAgentOutboundCall(input: {
       eventType: "wavoip_call",
       channel: "WAVOIP",
       actorUserId: log.initiatedByUserId ?? input.userId,
-      sourceId: `${input.clientCallId}:${normalizedStatus}`,
+      sourceId: `${log.clientCallId ?? input.clientCallId ?? log.id}:${normalizedStatus}`,
       payload: {
         title: `Chamada Wavoip — ${normalizedStatus}`,
         direction: log.direction,
         status: normalizedStatus,
         agentName: input.userName,
         durationSec: input.durationSec ?? log.durationSec,
-        clientCallId: input.clientCallId,
+        clientCallId: log.clientCallId ?? input.clientCallId,
       },
     });
   }
@@ -261,4 +304,31 @@ export async function completeAgentOutboundCall(input: {
     }
     broadcastConversationUpdated(input.organizationId, log.conversationId);
   }
+}
+
+/** Encerra manualmente uma chamada Wavoip ainda marcada como ativa na conversa (ex.: contacto desligou sem evento SDK). */
+export async function forceEndWavoipConversationCall(input: {
+  organizationId: string;
+  userId: string;
+  userName: string;
+  conversationId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const log = await findWavoipCallLogForCompletion({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+  });
+  if (!log || !isWavoipCallLogActive(log)) {
+    return { ok: false, message: "no_active_call" };
+  }
+
+  await completeAgentOutboundCall({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    userName: input.userName,
+    clientCallId: log.clientCallId,
+    conversationId: input.conversationId,
+    status: "ENDED",
+    durationSec: log.durationSec,
+  });
+  return { ok: true };
 }

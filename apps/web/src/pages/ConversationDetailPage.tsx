@@ -84,6 +84,7 @@ import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
 import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
 import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
+import { WavoipForceEndCallButton } from "@/components/wavoip/WavoipForceEndCallButton";
 import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
@@ -2417,6 +2418,12 @@ export function ConversationDetailPage() {
                       </span>
                       <ConversationPriorityBadge priority={conversation.priority} />
                       <WavoipConversationOnCallBadge conversationId={conversation.id} />
+                      {conversation.activeVoiceCall?.provider === "wavoip" ? (
+                        <WavoipForceEndCallButton
+                          conversationId={conversation.id}
+                          activeVoiceCall={conversation.activeVoiceCall}
+                        />
+                      ) : null}
                       {conversation.activeVoiceCall?.agent?.id !== user?.id ? (
                         <ConversationVoiceCallListBadge activeVoiceCall={conversation.activeVoiceCall} />
                       ) : null}

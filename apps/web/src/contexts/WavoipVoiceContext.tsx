@@ -9,7 +9,12 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
-import { playIncomingCallRing, stopIncomingCallRing, unlockAudioAlerts } from "@/lib/audioAlerts";
+import {
+  playIncomingCallQueuedPulse,
+  playIncomingCallRing,
+  stopIncomingCallRing,
+  unlockAudioAlerts,
+} from "@/lib/audioAlerts";
 import { resolveTerminalCallStatus } from "@/lib/callDuration";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -37,6 +42,8 @@ type IncomingCallEntry = {
 
 type ActiveCallMeta = {
   clientCallId: string;
+  /** ID do offer SDK (screen-pop) — fallback quando `call.id` difere após atender. */
+  offerClientCallId?: string | null;
   deviceId: string;
   conversationId: string | null;
   contactId: string | null;
@@ -66,6 +73,7 @@ type WavoipVoiceContextValue = {
   acceptIncoming: () => Promise<void>;
   rejectIncoming: () => Promise<void>;
   endActiveCall: () => Promise<void>;
+  forceEndConversationCall: (conversationId: string) => Promise<void>;
   startOutboundCall: (params: {
     phone: string;
     inboxId?: string | null;
@@ -81,19 +89,81 @@ async function reportCallComplete(meta: ActiveCallMeta, status: string, duration
   try {
     await api.post("/wavoip/calls/outbound/complete", {
       clientCallId: meta.clientCallId,
+      conversationId: meta.conversationId ?? undefined,
       status,
       durationSec,
     });
-    window.dispatchEvent(
-      new CustomEvent("openconduit:wavoip-call-logged", {
-        detail: {
+    dispatchCallLogged(meta.conversationId, meta.contactId);
+  } catch {
+    if (meta.offerClientCallId && meta.offerClientCallId !== meta.clientCallId) {
+      try {
+        await api.post("/wavoip/calls/outbound/complete", {
+          clientCallId: meta.offerClientCallId,
+          conversationId: meta.conversationId ?? undefined,
+          status,
+          durationSec,
+        });
+        dispatchCallLogged(meta.conversationId, meta.contactId);
+      } catch {
+        /* best-effort */
+      }
+    } else if (meta.conversationId) {
+      try {
+        await api.post("/wavoip/calls/outbound/complete", {
           conversationId: meta.conversationId,
-          contactId: meta.contactId,
-        },
+          status,
+          durationSec,
+        });
+        dispatchCallLogged(meta.conversationId, meta.contactId);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+}
+
+function dispatchCallLogged(conversationId: string | null, contactId: string | null) {
+  window.dispatchEvent(
+    new CustomEvent("openconduit:wavoip-call-logged", {
+      detail: { conversationId, contactId },
+    }),
+  );
+  if (conversationId) {
+    window.dispatchEvent(
+      new CustomEvent("openconduit:conversation-updated", {
+        detail: { conversationId },
       }),
     );
+  }
+}
+
+async function reportRemoteCallEnded(params: {
+  clientCallId: string;
+  conversationId: string | null;
+  contactId?: string | null;
+  status: string;
+}) {
+  try {
+    await api.post("/wavoip/calls/outbound/complete", {
+      clientCallId: params.clientCallId,
+      conversationId: params.conversationId ?? undefined,
+      status: params.status,
+      durationSec: null,
+    });
+    dispatchCallLogged(params.conversationId, params.contactId ?? null);
   } catch {
-    /* best-effort */
+    if (params.conversationId) {
+      try {
+        await api.post("/wavoip/calls/outbound/complete", {
+          conversationId: params.conversationId,
+          status: params.status,
+          durationSec: null,
+        });
+        dispatchCallLogged(params.conversationId, params.contactId ?? null);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 }
 
@@ -129,6 +199,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
   const callStatusRef = useRef<string | null>(null);
   const finalizedCallIdsRef = useRef<Set<string>>(new Set());
+  const incomingEntriesRef = useRef<Map<string, IncomingCallEntry>>(new Map());
   const [devices, setDevices] = useState<SessionDevice[]>([]);
   const [ready, setReady] = useState(false);
   const [incomingCalls, setIncomingCalls] = useState<IncomingCallEntry[]>([]);
@@ -145,6 +216,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const incomingScreenPopContactName = headIncoming?.contactName ?? null;
 
   const removeIncomingCall = useCallback((offerId: string) => {
+    incomingEntriesRef.current.delete(offerId);
     setIncomingCalls((prev) => {
       const next = prev.filter((e) => e.offer.id !== offerId);
       if (next.length === 0) {
@@ -164,8 +236,11 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const finalizeCall = useCallback(async (status: string) => {
     const meta = activeMetaRef.current;
     if (!meta) return;
-    if (finalizedCallIdsRef.current.has(meta.clientCallId)) return;
-    finalizedCallIdsRef.current.add(meta.clientCallId);
+    const finalizeKeys = [meta.clientCallId, meta.offerClientCallId].filter(Boolean) as string[];
+    if (finalizeKeys.length > 0 && finalizeKeys.every((k) => finalizedCallIdsRef.current.has(k))) {
+      return;
+    }
+    for (const k of finalizeKeys) finalizedCallIdsRef.current.add(k);
     const durationSec = Math.max(0, Math.round((Date.now() - meta.startedAt) / 1000));
     await reportCallComplete(meta, resolveTerminalCallStatus(status), durationSec > 0 ? durationSec : null);
     activeMetaRef.current = null;
@@ -286,14 +361,29 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
 
           setIncomingCalls((prev) => {
             if (prev.some((e) => e.offer.id === offer.id)) return prev;
-            return [...prev, baseEntry];
+            if (prev.length > 0) {
+              void playIncomingCallQueuedPulse();
+              setIncomingMinimized(false);
+            }
+            const next = [...prev, baseEntry];
+            incomingEntriesRef.current.set(offer.id, baseEntry);
+            return next;
           });
           void playIncomingCallRing();
 
-          const clearOffer = () => removeIncomingCall(offer.id);
-          offer.on("ended", clearOffer);
-          offer.on("acceptedElsewhere", clearOffer);
-          offer.on("rejectedElsewhere", clearOffer);
+          const onOfferCleared = (status: string) => {
+            const entry = incomingEntriesRef.current.get(offer.id);
+            removeIncomingCall(offer.id);
+            void reportRemoteCallEnded({
+              clientCallId: offer.id,
+              conversationId: entry?.conversationId ?? null,
+              contactId: entry?.contactId ?? null,
+              status,
+            });
+          };
+          offer.on("ended", () => onOfferCleared("NOT_ANSWERED"));
+          offer.on("acceptedElsewhere", () => onOfferCleared("HANDLED_REMOTELY"));
+          offer.on("rejectedElsewhere", () => onOfferCleared("REJECTED"));
 
           if (device && phone) {
             void api
@@ -311,19 +401,17 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
                 displayName: offer.peer.displayName ?? undefined,
               })
               .then((res) => {
+                const enriched: IncomingCallEntry = {
+                  ...baseEntry,
+                  conversationId: res.conversationId,
+                  contactId: res.contactId,
+                  contactName: res.contactName,
+                  caller: res.caller,
+                  whatsappCallId: res.whatsappCallId,
+                };
+                incomingEntriesRef.current.set(offer.id, enriched);
                 setIncomingCalls((prev) =>
-                  prev.map((e) =>
-                    e.offer.id === offer.id
-                      ? {
-                          ...e,
-                          conversationId: res.conversationId,
-                          contactId: res.contactId,
-                          contactName: res.contactName,
-                          caller: res.caller,
-                          whatsappCallId: res.whatsappCallId,
-                        }
-                      : e,
-                  ),
+                  prev.map((e) => (e.offer.id === offer.id ? enriched : e)),
                 );
                 dispatchInboundCrmEvents({
                   conversationId: res.conversationId,
@@ -408,6 +496,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
 
     const meta: ActiveCallMeta = {
       clientCallId: call.id,
+      offerClientCallId: offer.id,
       deviceId: devicesRef.current.find((d) => d.token === call.device_token)?.id ?? devicesRef.current[0]?.id ?? "",
       conversationId,
       contactId: entry.contactId,
@@ -419,8 +508,15 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const rejectIncoming = useCallback(async () => {
     const offer = headIncoming?.offer;
     if (!offer) return;
+    const entry = headIncoming;
     await offer.reject();
     removeIncomingCall(offer.id);
+    void reportRemoteCallEnded({
+      clientCallId: offer.id,
+      conversationId: entry?.conversationId ?? null,
+      contactId: entry?.contactId ?? null,
+      status: "REJECTED",
+    });
   }, [headIncoming, removeIncomingCall]);
 
   const dismissIncoming = useCallback(() => {
@@ -436,16 +532,38 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const endActiveCall = useCallback(async () => {
     if (!activeCall) return;
     const meta = activeMetaRef.current;
-    await activeCall.end();
-    if (meta && !finalizedCallIdsRef.current.has(meta.clientCallId)) {
-      await finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
+    try {
+      await activeCall.end();
+    } catch {
+      /* SDK pode já ter terminado quando o contacto desligou */
+    }
+    if (meta) {
+      const finalizeKey = meta.clientCallId;
+      if (!finalizedCallIdsRef.current.has(finalizeKey)) {
+        await finalizeCall(resolveTerminalCallStatus(callStatusRef.current));
+      }
     }
     setActiveCall(null);
     setCallStatus(null);
     callStatusRef.current = null;
+    setActiveCallConversationId(null);
     setCallStartedAt(null);
     setCallElapsedSec(0);
   }, [activeCall, finalizeCall]);
+
+  const forceEndConversationCall = useCallback(async (conversationId: string) => {
+    const meta = activeMetaRef.current;
+    if (activeCall && meta?.conversationId === conversationId) {
+      await endActiveCall();
+      return;
+    }
+    try {
+      await api.post("/wavoip/calls/force-end", { conversationId });
+      dispatchCallLogged(conversationId, null);
+    } catch {
+      /* best-effort */
+    }
+  }, [activeCall, endActiveCall]);
 
   const startOutboundCall = useCallback(
     async (params: {
@@ -556,6 +674,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       acceptIncoming,
       rejectIncoming,
       endActiveCall,
+      forceEndConversationCall,
       startOutboundCall,
       dismissIncoming,
     }),
@@ -581,6 +700,7 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       acceptIncoming,
       rejectIncoming,
       endActiveCall,
+      forceEndConversationCall,
       startOutboundCall,
       dismissIncoming,
     ],

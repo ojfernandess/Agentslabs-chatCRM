@@ -102,7 +102,8 @@ Respeita `wavoip_voice` por organização.
 
 - **Fila** (`incomingQueue`: all / assignee / team) define quem recebe **notificações** e offers de chamada entrante.
 - **Discagem** (ícones Ligar, discador, contatos) permanece disponível para agentes com acesso ao device (`assignedUserId` exclusivo), independentemente da fila.
-- Várias chamadas a tocar: fila no browser (ciclo entre chamadas); SDK Wavoip gere o device.
+- Várias chamadas a tocar: fila no browser (ciclo entre chamadas com botão «Próxima»); alerta sonoro extra por cada nova offer na fila; SDK Wavoip gere o device (tipicamente uma linha WhatsApp — chamadas adicionais entram na fila local).
+- Se o contacto desligar e a conversa continuar «em ligação», use **Encerrar ligação** no cabeçalho da conversa ou na barra de chamada ativa.
 - Ao **atender** com fila `team`, redireciona para `/teams?teamId=…`.
 
 ## UI

@@ -8,6 +8,7 @@ import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import {
   claimWavoipCallAgent,
   completeAgentOutboundCall,
+  forceEndWavoipConversationCall,
   startAgentOutboundCall,
 } from "../lib/wavoipAgentCall.js";
 import { resolveWavoipCallContext } from "../lib/wavoipCallContext.js";
@@ -312,11 +313,16 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const schema = z.object({
-      clientCallId: z.string().min(1).max(128),
-      status: z.string().min(1).max(64),
-      durationSec: z.number().int().min(0).nullable().optional(),
-    });
+    const schema = z
+      .object({
+        clientCallId: z.string().min(1).max(128).optional(),
+        conversationId: z.string().uuid().optional(),
+        status: z.string().min(1).max(64),
+        durationSec: z.number().int().min(0).nullable().optional(),
+      })
+      .refine((d) => Boolean(d.clientCallId?.trim() || d.conversationId), {
+        message: "clientCallId_or_conversationId_required",
+      });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -332,10 +338,41 @@ export async function wavoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       organizationId,
       userId: request.user.id,
       userName,
-      clientCallId: parsed.data.clientCallId,
+      clientCallId: parsed.data.clientCallId ?? null,
+      conversationId: parsed.data.conversationId ?? null,
       status: parsed.data.status,
       durationSec: parsed.data.durationSec ?? null,
     });
+    return { ok: true };
+  });
+
+  app.post("/calls/force-end", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({
+      conversationId: z.string().uuid(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const agent = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { name: true },
+    });
+    const userName = agent?.name?.trim() || request.user.email.split("@")[0] || "Agent";
+
+    const result = await forceEndWavoipConversationCall({
+      organizationId,
+      userId: request.user.id,
+      userName,
+      conversationId: parsed.data.conversationId,
+    });
+    if (!result.ok) {
+      return reply.status(404).send({ error: "Not Found", message: result.message, statusCode: 404 });
+    }
     return { ok: true };
   });
 
