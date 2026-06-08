@@ -85,6 +85,23 @@ type WavoipVoiceContextValue = {
 
 const WavoipVoiceContext = createContext<WavoipVoiceContextValue | null>(null);
 
+/** Desconecta WebSockets do device (docs: Wavoip.removeDevices). */
+function teardownWavoipInstance(wavoip: Wavoip | null, tokens: string[]) {
+  if (!wavoip || tokens.length === 0) return;
+  try {
+    wavoip.removeDevices(tokens);
+  } catch {
+    /* ignore cleanup errors */
+  }
+}
+
+function sameTokenSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((token, i) => token === sortedB[i]);
+}
+
 async function reportCallComplete(meta: ActiveCallMeta, status: string, durationSec: number | null) {
   try {
     await api.post("/wavoip/calls/outbound/complete", {
@@ -195,6 +212,8 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
   const { locale } = useI18n();
   const navigate = useNavigate();
   const wavoipRef = useRef<Wavoip | null>(null);
+  const sessionTokensRef = useRef<string[]>([]);
+  const pendingBootstrapRef = useRef(false);
   const devicesRef = useRef<SessionDevice[]>([]);
   const activeMetaRef = useRef<ActiveCallMeta | null>(null);
   const callStatusRef = useRef<string | null>(null);
@@ -283,6 +302,10 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         setCallElapsedSec(0);
         void finalizeCall(terminalStatus).then(() => {
           if (convId) dispatchCallLogged(convId, contactId);
+          if (pendingBootstrapRef.current) {
+            pendingBootstrapRef.current = false;
+            window.dispatchEvent(new CustomEvent("openconduit:wavoip-session-refresh"));
+          }
         });
       };
 
@@ -314,7 +337,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
       setDevices([]);
       devicesRef.current = [];
       setReady(false);
+      teardownWavoipInstance(wavoipRef.current, sessionTokensRef.current);
       wavoipRef.current = null;
+      sessionTokensRef.current = [];
       return;
     }
     if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
@@ -332,22 +357,39 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         const session = await api.get<{ devices: SessionDevice[] }>("/wavoip/session");
         if (cancelled) return;
         const list = session.devices ?? [];
+        const nextTokens = list.map((d) => d.token);
         setDevices(list);
         devicesRef.current = list;
 
         if (list.length === 0) {
+          teardownWavoipInstance(wavoipRef.current, sessionTokensRef.current);
           wavoipRef.current = null;
+          sessionTokensRef.current = [];
           setReady(true);
           return;
         }
 
+        if (activeMetaRef.current) {
+          pendingBootstrapRef.current = true;
+          setReady(true);
+          return;
+        }
+
+        if (wavoipRef.current && sameTokenSet(nextTokens, sessionTokensRef.current)) {
+          setReady(true);
+          return;
+        }
+
+        teardownWavoipInstance(wavoipRef.current, sessionTokensRef.current);
+
         const lang = locale.startsWith("pt") ? "pt-BR" : locale.startsWith("es") ? "es" : "en";
         const wavoip = new Wavoip({
-          tokens: list.map((d) => d.token),
+          tokens: nextTokens,
           platform: "openconduit",
           language: lang,
         });
         wavoipRef.current = wavoip;
+        sessionTokensRef.current = nextTokens;
 
         wavoip.on("offer", (offer) => {
           const phone = (offer.peer.phone ?? "").trim();
@@ -437,7 +479,9 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setDevices([]);
           devicesRef.current = [];
+          teardownWavoipInstance(wavoipRef.current, sessionTokensRef.current);
           wavoipRef.current = null;
+          sessionTokensRef.current = [];
           setReady(true);
         }
       }
@@ -448,14 +492,21 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     const onDeviceUpdated = () => {
       void bootstrapSession();
     };
+    const onSessionRefresh = () => {
+      void bootstrapSession();
+    };
     window.addEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
+    window.addEventListener("openconduit:wavoip-session-refresh", onSessionRefresh);
 
     return () => {
       cancelled = true;
       window.removeEventListener("openconduit:wavoip-device-updated", onDeviceUpdated);
+      window.removeEventListener("openconduit:wavoip-session-refresh", onSessionRefresh);
+      teardownWavoipInstance(wavoipRef.current, sessionTokensRef.current);
       wavoipRef.current = null;
+      sessionTokensRef.current = [];
     };
-  }, [user, locale, navigate]);
+  }, [user, locale]);
 
   const openIncomingConversation = useCallback(() => {
     const id = headIncoming?.conversationId;
@@ -564,6 +615,10 @@ export function WavoipVoiceProvider({ children }: { children: ReactNode }) {
     setCallStartedAt(null);
     setCallElapsedSec(0);
     if (convId) dispatchCallLogged(convId, contactId);
+    if (pendingBootstrapRef.current) {
+      pendingBootstrapRef.current = false;
+      window.dispatchEvent(new CustomEvent("openconduit:wavoip-session-refresh"));
+    }
   }, [activeCall, finalizeCall]);
 
   const forceEndConversationCall = useCallback(async (conversationId: string) => {
