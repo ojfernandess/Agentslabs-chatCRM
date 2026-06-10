@@ -1639,16 +1639,6 @@ export function ConversationDetailPage() {
               <span>{phone}</span>
               {hasPhone ? (
                 <>
-                  <a
-                    href={`https://wa.me/${phoneDigits}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-ink-200 bg-white/80 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
-                    aria-label="WhatsApp"
-                    title="WhatsApp"
-                  >
-                    <WhatsAppBrandIcon className="h-3.5 w-3.5" />
-                  </a>
                   <WavoipCallButton
                     phone={phone}
                     inboxId={conversation.inbox?.id}

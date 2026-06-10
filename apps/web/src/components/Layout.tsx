@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { NavLink, Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -64,6 +64,84 @@ function readSidebarCollapsed(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Menu de idioma no sidebar recolhido — evita dropdown nativo do `<select>` fora de posição. */
+function CollapsedLocalePicker({
+  locale,
+  setLocale,
+  t,
+}: {
+  locale: LocaleCode;
+  setLocale: (code: LocaleCode) => void;
+  t: (key: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const options: { value: LocaleCode; label: string }[] = [
+    { value: "pt-BR", label: t("common.ptBR") },
+    { value: "en", label: t("common.en") },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-ink-500 hover:bg-ink-100 dark:border-white/10 dark:bg-white/5 dark:text-ink-300 dark:hover:bg-ink-800"
+        aria-label={t("common.language")}
+        title={t("common.language")}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <Languages className="h-4 w-4" aria-hidden />
+      </button>
+      {open ? (
+        <div
+          className="absolute bottom-0 left-full z-[120] ml-2 min-w-[10.5rem] overflow-hidden rounded-lg border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800"
+          role="menu"
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={locale === opt.value}
+              onClick={() => {
+                setLocale(opt.value);
+                setOpen(false);
+              }}
+              className={clsx(
+                "flex w-full px-3 py-2 text-left text-xs font-medium transition-colors",
+                locale === opt.value
+                  ? "bg-brand-50 text-brand-800 dark:bg-brand-950/50 dark:text-brand-200"
+                  : "text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function Layout() {
@@ -603,25 +681,7 @@ export function Layout() {
           </button>
         ) : null}
         {collapsed ? (
-          <div className="relative">
-            <label htmlFor="locale-collapsed" className="sr-only">
-              {t("common.language")}
-            </label>
-            <select
-              id="locale-collapsed"
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as LocaleCode)}
-              title={t("common.language")}
-              className="flex h-9 w-9 cursor-pointer appearance-none items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-transparent dark:border-white/10 dark:bg-white/5"
-            >
-              <option value="pt-BR">{t("common.ptBR")}</option>
-              <option value="en">{t("common.en")}</option>
-            </select>
-            <Languages
-              className="pointer-events-none absolute inset-0 m-auto h-4 w-4 text-ink-500 dark:text-ink-300"
-              aria-hidden
-            />
-          </div>
+          <CollapsedLocalePicker locale={locale} setLocale={setLocale} t={t} />
         ) : (
           <div className="flex w-full items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-white/10 dark:bg-white/5">
             <Languages className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-300" />
