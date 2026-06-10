@@ -20,3 +20,39 @@ export function formatNvoipCalled(raw: string): string {
 export function formatNvoipCaller(raw: string): string {
   return raw.replace(/\D/g, "").slice(0, 32) || raw.trim().slice(0, 32);
 }
+
+export function nvoipSameNumbersip(a: string, b: string): boolean {
+  const da = a.replace(/\D/g, "");
+  const db = b.replace(/\D/g, "");
+  return Boolean(da && db && da === db);
+}
+
+/**
+ * POST /calls/ `caller` must be a SIP extension (ramal, typically 2–8 digits).
+ * Never the account NumberSIP (e.g. 143087001) or another user's numbersip id.
+ */
+export function isValidNvoipOutboundCaller(
+  caller: string,
+  accountNumbersip: string,
+  extraBlocked?: Iterable<string>,
+): boolean {
+  const c = formatNvoipCaller(caller);
+  if (!c || c.length < 2) return false;
+  if (nvoipSameNumbersip(c, accountNumbersip)) return false;
+  for (const blocked of extraBlocked ?? []) {
+    if (blocked && nvoipSameNumbersip(c, blocked)) return false;
+  }
+  // NumberSIP / phone-like ids are 9+ digits; SIP extensions are shorter.
+  if (c.length >= 9) return false;
+  return true;
+}
+
+export function sanitizeNvoipOutboundCaller(
+  caller: string | null | undefined,
+  accountNumbersip: string,
+  extraBlocked?: Iterable<string>,
+): string | null {
+  if (!caller?.trim()) return null;
+  const norm = formatNvoipCaller(caller);
+  return isValidNvoipOutboundCaller(norm, accountNumbersip, extraBlocked) ? norm : null;
+}

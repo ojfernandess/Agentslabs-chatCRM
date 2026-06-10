@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { mapNvoipCallErrorMessage } from "@/lib/mapNvoipCallError";
 import {
   X,
   Phone,
@@ -225,13 +226,7 @@ export function TelephonyDialModal({ open, onClose }: Props) {
           contactId: input.contactId ?? matchedContact?.id ?? null,
         });
         if (!res.ok) {
-          setError(
-            res.message === "nvoip_not_configured"
-              ? t("nvoip.voice.notConfigured")
-              : res.message === "nvoip_no_caller"
-                ? t("nvoip.voice.noCaller")
-                : res.message,
-          );
+          setError(mapNvoipCallErrorMessage(res.message, t));
           return;
         }
       }

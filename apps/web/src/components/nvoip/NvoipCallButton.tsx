@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { mapNvoipCallErrorMessage } from "@/lib/mapNvoipCallError";
 
 type Props = {
   phone: string | null | undefined;
@@ -47,13 +48,7 @@ export function NvoipCallButton({
         conversationId,
       });
       if (!res.ok) {
-        setError(
-          res.message === "nvoip_not_configured"
-            ? t("nvoip.voice.notConfigured")
-            : res.message === "nvoip_no_caller"
-              ? t("nvoip.voice.noCaller")
-              : res.message,
-        );
+        setError(mapNvoipCallErrorMessage(res.message, t));
       }
     } finally {
       setLoading(false);

@@ -2180,6 +2180,10 @@ export const messages = {
         step4:
           "Ao ligar a um contacto: atenda a chamada no painel/webphone Nvoip; quando ouvir tom de discagem, o sistema está a ligar ao cliente.",
         currentCaller: "Seu ramal de origem actual",
+        invalidCallerWarning:
+          "Este valor parece NumberSIP da conta, não um ramal SIP. Corrija em «Ramal de origem» ou «Ramais por agente».",
+        noDirectBrowser:
+          "A API Nvoip (click-to-call) não liga directamente no browser como o Wavoip. Alternativas: atender no webphone Nvoip, encaminhar o ramal para o telemóvel, ou integrar o nvoip-web-sdk.",
         openPanel: "Abrir painel Nvoip",
       },
       torpedoTitle: "Teste de torpedo de voz",
@@ -2253,6 +2257,8 @@ export const messages = {
         userToken: "User token (OAuth)",
         napikey: "NAPI Key (opcional)",
         defaultCaller: "Ramal de origem (caller)",
+        defaultCallerHint:
+          "Ramal SIP curto (ex.: 1049). Não use o NumberSIP da conta (ex.: 143087001) — a ligação falha ao atender o webphone.",
         inbox: "Caixa para novas conversas",
         inboxNone: "Caixa predefinida",
         tokenPlaceholder: "Deixe vazio para manter o token atual",
@@ -2262,6 +2268,8 @@ export const messages = {
       voice: {
         notConfigured: "Nvoip não configurada para esta organização.",
         noCaller: "Sem ramal de origem — configure na integração Nvoip.",
+        invalidCallerUseRamal:
+          "Ramal inválido: use o número do ramal SIP (ex.: 1049), não o NumberSIP da conta.",
         unknownCaller: "Desconhecido",
         incomingToast: "Chamada Nvoip de {caller}",
         activeCall: "Chamada Nvoip",
@@ -6562,6 +6570,10 @@ export const messages = {
         step4:
           "When calling a contact: answer on the Nvoip dashboard/webphone; when you hear dial tone, the system is calling the customer.",
         currentCaller: "Your current origin extension",
+        invalidCallerWarning:
+          "This looks like the account NumberSIP, not a SIP extension. Fix under «Source extension» or «Per-agent extensions».",
+        noDirectBrowser:
+          "The Nvoip API (click-to-call) does not place calls directly in the browser like Wavoip. Alternatives: answer on the Nvoip webphone, forward the extension to mobile, or integrate nvoip-web-sdk.",
         openPanel: "Open Nvoip dashboard",
       },
       torpedoTitle: "Voice torpedo test",
@@ -6635,6 +6647,8 @@ export const messages = {
         userToken: "User token (OAuth)",
         napikey: "NAPI Key (optional)",
         defaultCaller: "Source extension (caller)",
+        defaultCallerHint:
+          "Short SIP extension (e.g. 1049). Do not use the account NumberSIP (e.g. 143087001) — calls fail after answering the webphone.",
         inbox: "Inbox for new conversations",
         inboxNone: "Default inbox",
         tokenPlaceholder: "Leave blank to keep current token",
@@ -6644,6 +6658,8 @@ export const messages = {
       voice: {
         notConfigured: "Nvoip is not configured for this organization.",
         noCaller: "No source extension — configure in Nvoip integration settings.",
+        invalidCallerUseRamal:
+          "Invalid extension: use the SIP extension number (e.g. 1049), not the account NumberSIP.",
         unknownCaller: "Unknown",
         incomingToast: "Nvoip call from {caller}",
         activeCall: "Nvoip call",

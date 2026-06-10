@@ -1,18 +1,21 @@
 import { ExternalLink, Info } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { isLikelyNvoipNumbersipCaller } from "@/lib/mapNvoipCallError";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
 type Props = {
   linked: boolean;
   defaultCaller: string;
+  accountNumbersip?: string;
 };
 
-export function NvoipOutboundSetupGuide({ linked, defaultCaller }: Props) {
+export function NvoipOutboundSetupGuide({ linked, defaultCaller, accountNumbersip }: Props) {
   const { t } = useI18n();
   const voice = useNvoipVoiceOptional();
   const caller = voice?.caller?.trim() || defaultCaller.trim() || null;
+  const invalidCaller = caller ? isLikelyNvoipNumbersipCaller(caller, accountNumbersip) : false;
 
   const steps = [
     t("nvoip.setup.step1"),
@@ -35,6 +38,12 @@ export function NvoipOutboundSetupGuide({ linked, defaultCaller }: Props) {
           ) : linked ? (
             <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">{t("nvoip.voice.noCaller")}</p>
           ) : null}
+          {invalidCaller ? (
+            <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-200">
+              {t("nvoip.setup.invalidCallerWarning")}
+            </p>
+          ) : null}
+          <p className="mt-2 text-xs text-slate-600 dark:text-ink-400">{t("nvoip.setup.noDirectBrowser")}</p>
           <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs text-slate-700 dark:text-ink-300">
             {steps.map((step, i) => (
               <li key={i}>{step}</li>

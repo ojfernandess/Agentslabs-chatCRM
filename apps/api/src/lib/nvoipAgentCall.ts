@@ -14,7 +14,7 @@ import {
 } from "./nvoipCallTimeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { resolveCallerForUser, resolveNvoipCallContext } from "./nvoipCallContext.js";
-import { formatNvoipCalled, formatNvoipCaller } from "./nvoipCallFormat.js";
+import { formatNvoipCalled, formatNvoipCaller, isValidNvoipOutboundCaller } from "./nvoipCallFormat.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
 
 export async function startAgentOutboundCall(input: {
@@ -63,6 +63,22 @@ export async function startAgentOutboundCall(input: {
   const callerNorm = formatNvoipCaller(caller);
   if (!receiver || receiver.length < 10) {
     return { ok: false, message: "invalid_called_number" };
+  }
+
+  const sipUsers = await prisma.nvoipSipUser.findMany({
+    where: { nvoipAccountId: account.id },
+    select: { numbersip: true },
+  });
+  if (!isValidNvoipOutboundCaller(callerNorm, account.numbersip, sipUsers.map((s) => s.numbersip))) {
+    await writeNvoipIntegrationLog({
+      organizationId: input.organizationId,
+      nvoipAccountId: account.id,
+      level: "error",
+      eventType: "outbound_call_invalid_caller",
+      message: `Invalid caller=${callerNorm} (use SIP ramal, not NumberSIP ${account.numbersip})`,
+      payload: { caller: callerNorm, accountNumbersip: account.numbersip, called: receiver },
+    });
+    return { ok: false, message: "nvoip_invalid_caller_use_ramal" };
   }
 
   let externalCallId: string;

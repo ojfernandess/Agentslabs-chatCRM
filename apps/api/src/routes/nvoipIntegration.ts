@@ -34,6 +34,7 @@ import {
   ensureSingleDefaultTrunk,
   listNvoipTrunks,
   trunkToClient,
+  validateNvoipOutboundCallerForOrg,
 } from "../lib/nvoipTrunks.js";
 import { runNvoipHomologation } from "../lib/nvoipHomologation.js";
 import { writeNvoipIntegrationLog } from "../lib/nvoipIntegrationLog.js";
@@ -139,6 +140,20 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       return reply.status(400).send({
         error: "Bad Request",
         message: "user_token_required",
+        statusCode: 400,
+      });
+    }
+
+    const callerCheck = await validateNvoipOutboundCallerForOrg(
+      organizationId,
+      parsed.data.defaultCaller.trim(),
+      parsed.data.numbersip.trim(),
+      existing?.id,
+    );
+    if (!callerCheck.ok) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: callerCheck.message,
         statusCode: 400,
       });
     }
@@ -1327,6 +1342,18 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       return reply.status(400).send({ error: "Bad Request", message: "account_not_found", statusCode: 400 });
     }
 
+    const callerCheck = await validateNvoipOutboundCallerForOrg(
+      organizationId,
+      body.data.defaultCaller.trim(),
+    );
+    if (!callerCheck.ok) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: callerCheck.message,
+        statusCode: 400,
+      });
+    }
+
     const row = await prisma.nvoipTrunk.create({
       data: {
         organizationId,
@@ -1363,6 +1390,20 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     });
     if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "trunk_not_found", statusCode: 404 });
+    }
+
+    if (body.data.defaultCaller !== undefined) {
+      const callerCheck = await validateNvoipOutboundCallerForOrg(
+        organizationId,
+        body.data.defaultCaller.trim(),
+      );
+      if (!callerCheck.ok) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: callerCheck.message,
+          statusCode: 400,
+        });
+      }
     }
 
     const row = await prisma.nvoipTrunk.update({

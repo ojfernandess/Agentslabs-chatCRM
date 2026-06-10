@@ -10,6 +10,7 @@ import { NvoipSettingsExtras } from "@/components/nvoip/NvoipSettingsExtras";
 import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomologationPanel";
 import { NvoipOutboundSetupGuide } from "@/components/nvoip/NvoipOutboundSetupGuide";
 import { NvoipPabxPanel } from "@/components/nvoip/NvoipPabxPanel";
+import { isLikelyNvoipNumbersipCaller, mapNvoipCallErrorMessage } from "@/lib/mapNvoipCallError";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -240,7 +241,7 @@ export function NvoipIntegrationSettings() {
       setUserToken("");
       setNapikey("");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("nvoip.saveError"));
+      setError(e instanceof ApiError ? mapNvoipCallErrorMessage(e.message, t) : t("nvoip.saveError"));
     } finally {
       setSaving(false);
     }
@@ -300,13 +301,7 @@ export function NvoipIntegrationSettings() {
     try {
       const res = await nvoipVoice.startOutboundCall({ phone });
       if (!res.ok) {
-        setError(
-          res.message === "nvoip_no_caller"
-            ? t("nvoip.voice.noCaller")
-            : res.message === "nvoip_not_configured"
-              ? t("nvoip.voice.notConfigured")
-              : res.message,
-        );
+        setError(mapNvoipCallErrorMessage(res.message, t));
       } else {
         setOutboundTestOk(true);
       }
@@ -444,8 +439,15 @@ export function NvoipIntegrationSettings() {
               <input
                 value={defaultCaller}
                 onChange={(e) => setDefaultCaller(e.target.value)}
+                placeholder="1049"
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
               />
+              <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.field.defaultCallerHint")}</p>
+              {isLikelyNvoipNumbersipCaller(defaultCaller, numbersip) ? (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  {t("nvoip.setup.invalidCallerWarning")}
+                </p>
+              ) : null}
             </label>
             <label className="block text-sm">
               <span className="font-medium">{t("nvoip.field.inbox")}</span>
@@ -794,7 +796,11 @@ export function NvoipIntegrationSettings() {
           ) : null}
 
           {linked && voiceEnabled ? (
-            <NvoipOutboundSetupGuide linked={linked} defaultCaller={defaultCaller} />
+            <NvoipOutboundSetupGuide
+              linked={linked}
+              defaultCaller={defaultCaller}
+              accountNumbersip={account?.numbersip ?? numbersip}
+            />
           ) : null}
 
           {linked && voiceEnabled ? (
