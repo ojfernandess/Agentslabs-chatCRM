@@ -15,7 +15,9 @@ export function NvoipActiveCallBar() {
       ? t("nvoip.voice.hintCallingOrigin")
       : call.status === "CALLING_DESTINATION"
         ? t("nvoip.voice.hintCallingDestination")
-        : null;
+        : call.status === "ACTIVE"
+          ? t("nvoip.voice.hintActive")
+          : null;
   const mm = Math.floor(call.elapsedSec / 60);
   const ss = String(call.elapsedSec % 60).padStart(2, "0");
 

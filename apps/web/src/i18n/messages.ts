@@ -2312,6 +2312,7 @@ export const messages = {
         hintCallingOrigin:
           "A tocar no seu ramal — atenda no webphone Nvoip para a ligação seguir ao cliente.",
         hintCallingDestination: "Ramal atendido — a ligar ao cliente…",
+        hintActive: "Em conversa com o cliente pelo webphone Nvoip.",
         callStatus: {
           RINGING: "A tocar",
           DIALING: "A marcar",
@@ -2442,7 +2443,8 @@ export const messages = {
         storePassword: "Guardar senha SIP (opcional)",
         storePasswordPlaceholder: "Senha do trunk (painel Nvoip)",
         webhookUrl: "Webhook CRM (chamadas)",
-        webhookHint: "Configure no painel Nvoip se suportado, para eventos inbound em tempo real.",
+        webhookHint:
+          "Recomendado no modo Plataforma (webphone + CRM): configure no painel Nvoip para o CRM receber established/finished e manter o badge «em ligação» sincronizado após atender o ramal.",
         webphoneExtensions: "Ramais com webphone",
         platformStep1: "Crie ramais secundários com webphone activo (secção abaixo) ou use os existentes.",
         needConnected: "Clique em «Testar ligação» acima para activar sync inbound e credenciais completas.",
@@ -6776,6 +6778,7 @@ export const messages = {
         hintCallingOrigin:
           "Ringing your extension — answer on the Nvoip webphone for the call to proceed to the customer.",
         hintCallingDestination: "Extension answered — calling the customer…",
+        hintActive: "On a live call with the customer via the Nvoip webphone.",
         callStatus: {
           RINGING: "Ringing",
           DIALING: "Dialing",
@@ -6906,7 +6909,8 @@ export const messages = {
         storePassword: "Store SIP password (optional)",
         storePasswordPlaceholder: "Trunk password (Nvoip panel)",
         webhookUrl: "CRM webhook (calls)",
-        webhookHint: "Configure in Nvoip panel if supported, for real-time inbound events.",
+        webhookHint:
+          "Recommended in Platform mode (webphone + CRM): set in the Nvoip panel so the CRM receives established/finished and keeps the on-call badge in sync after you answer on the webphone.",
         webphoneExtensions: "Webphone extensions",
         platformStep1: "Create secondary extensions with webphone enabled (section below) or use existing ones.",
         needConnected: "Click «Test connection» above to enable inbound sync and full credentials.",

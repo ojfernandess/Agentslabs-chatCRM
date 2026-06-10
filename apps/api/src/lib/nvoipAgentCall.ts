@@ -2,7 +2,6 @@ import { subMinutes } from "date-fns";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import {
-  isNvoipLiveCallState,
   isNvoipTerminalState,
   isNvoipCrmStatusTerminal,
   mapNvoipStateToCrmStatus,
@@ -11,6 +10,10 @@ import {
   nvoipGetCallStatus,
   type NvoipCallStatusPayload,
 } from "./nvoipClient.js";
+import {
+  mapResolvedNvoipOutboundStatus,
+  resolveNvoipOutboundCallRemote,
+} from "./nvoipPlatformCallSync.js";
 import {
   isNvoipCallLogActive,
   normalizeNvoipTerminalStatus,
@@ -107,9 +110,12 @@ export async function startAgentOutboundCall(input: {
   }
 
   let externalCallId: string;
+  let initialCrmStatus = "CALLING_ORIGIN";
   try {
     const created = await nvoipCreateCall(account, callerNorm, receiver);
     externalCallId = created.callId;
+    initialCrmStatus =
+      mapNvoipStateToCrmStatus(created.state || "calling_origin") || "CALLING_ORIGIN";
     await writeNvoipIntegrationLog({
       organizationId: input.organizationId,
       nvoipAccountId: account.id,
@@ -152,7 +158,7 @@ export async function startAgentOutboundCall(input: {
       direction: "OUTGOING",
       caller: callerNorm,
       receiver,
-      status: "DIALING",
+      status: initialCrmStatus,
       contactId: ctx.contactId,
       conversationId: ctx.conversationId,
       initiatedByUserId: input.userId,
@@ -160,7 +166,7 @@ export async function startAgentOutboundCall(input: {
       startedAt: new Date(),
     },
     update: {
-      status: "DIALING",
+      status: initialCrmStatus,
       receiver,
       contactId: ctx.contactId,
       conversationId: ctx.conversationId,
@@ -180,7 +186,7 @@ export async function startAgentOutboundCall(input: {
       payload: {
         title: `Chamada para ${receiver}`,
         direction: "OUTGOING",
-        status: "DIALING",
+        status: initialCrmStatus,
         agentName: input.userName,
         clientCallId: input.clientCallId,
       },
@@ -193,7 +199,7 @@ export async function startAgentOutboundCall(input: {
       externalCallId,
       clientCallId: input.clientCallId,
       direction: "OUTGOING",
-      status: "DIALING",
+      status: initialCrmStatus,
       caller: callerNorm,
       receiver,
     });
@@ -204,6 +210,14 @@ export async function startAgentOutboundCall(input: {
       });
       broadcastConversationUpdated(input.organizationId, ctx.conversationId);
     }
+    broadcastToOrganization(input.organizationId, {
+      type: "nvoip.call.updated",
+      callId: externalCallId,
+      clientCallId: input.clientCallId,
+      userId: input.userId,
+      status: initialCrmStatus,
+      conversationId: ctx.conversationId,
+    });
   }
 
   return {
@@ -242,28 +256,37 @@ export async function syncNvoipCallFromApi(input: {
   const callAgeMs = row.startedAt ? Date.now() - row.startedAt.getTime() : 0;
 
   let remote: NvoipCallStatusPayload | null = null;
-  let liveFromApi = false;
-  try {
-    remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
-    if (remote?.state) liveFromApi = true;
-  } catch {
-    remote = null;
-  }
 
-  if (!remote?.state) {
-    const history = await nvoipFindCallInTodayHistory(
-      row.nvoipAccount,
-      input.externalCallId,
-      historyDirection,
-    );
-    if (history?.state) {
-      remote = {
-        state: history.state,
-        linkAudio: history.linkAudio,
-        talkingDurationSeconds: history.talkingDurationSeconds,
-        totalDurationSeconds: history.totalDurationSeconds,
-        caller: history.caller,
-      };
+  if (row.direction === "OUTGOING") {
+    const resolved = await resolveNvoipOutboundCallRemote({
+      account: row.nvoipAccount,
+      externalCallId: input.externalCallId,
+      currentCrmStatus: row.status,
+      startedAt: row.startedAt,
+    });
+    remote = resolved?.remote ?? null;
+  } else {
+    try {
+      remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
+      if (!remote?.state) remote = null;
+    } catch {
+      remote = null;
+    }
+    if (!remote?.state) {
+      const history = await nvoipFindCallInTodayHistory(
+        row.nvoipAccount,
+        input.externalCallId,
+        historyDirection,
+      );
+      if (history?.state) {
+        remote = {
+          state: history.state,
+          linkAudio: history.linkAudio,
+          talkingDurationSeconds: history.talkingDurationSeconds,
+          totalDurationSeconds: history.totalDurationSeconds,
+          caller: history.caller,
+        };
+      }
     }
   }
 
@@ -280,52 +303,11 @@ export async function syncNvoipCallFromApi(input: {
     remote = { state: "finished" };
   }
 
-  const liveState = String(remote.state ?? "").toLowerCase();
-  if (
-    liveFromApi &&
-    isNvoipLiveCallState(liveState) &&
-    (liveState === "calling_origin" || liveState === "calling_destination") &&
-    callAgeMs > 8_000
-  ) {
-    const history = await nvoipFindCallInTodayHistory(
-      row.nvoipAccount,
-      input.externalCallId,
-      historyDirection,
-    );
-    const histState = history?.state?.toLowerCase() ?? "";
-    if (history && histState === "established") {
-      remote = {
-        state: history.state,
-        linkAudio: history.linkAudio,
-        talkingDurationSeconds: history.talkingDurationSeconds,
-        totalDurationSeconds: history.totalDurationSeconds,
-        caller: history.caller,
-      };
-    }
-  } else if (
-    liveFromApi &&
-    isNvoipLiveCallState(liveState) &&
-    isNvoipTerminalState(liveState) === false &&
-    callAgeMs > 180_000
-  ) {
-    const history = await nvoipFindCallInTodayHistory(
-      row.nvoipAccount,
-      input.externalCallId,
-      historyDirection,
-    );
-    if (history && isNvoipTerminalState(history.state)) {
-      remote = {
-        state: history.state,
-        linkAudio: history.linkAudio,
-        talkingDurationSeconds: history.talkingDurationSeconds,
-        totalDurationSeconds: history.totalDurationSeconds,
-        caller: history.caller,
-      };
-    }
-  }
-
   const nvoipState = String(remote.state ?? "");
-  const crmStatus = mapNvoipStateToCrmStatus(nvoipState);
+  const crmStatus =
+    row.direction === "OUTGOING"
+      ? mapResolvedNvoipOutboundStatus(remote, row.status)
+      : mapNvoipStateToCrmStatus(nvoipState);
   const terminal =
     isNvoipTerminalState(nvoipState) ||
     isNvoipCrmStatusTerminal(crmStatus) ||
@@ -347,14 +329,26 @@ export async function syncNvoipCallFromApi(input: {
     },
   });
 
-  if (terminal && row.clientCallId) {
-    broadcastToOrganization(input.organizationId, {
-      type: "nvoip.call.ended",
-      callId: row.externalCallId,
-      clientCallId: row.clientCallId,
-      userId: row.initiatedByUserId,
-      status: crmStatus,
-    });
+  if (row.clientCallId) {
+    if (terminal) {
+      broadcastToOrganization(input.organizationId, {
+        type: "nvoip.call.ended",
+        callId: row.externalCallId,
+        clientCallId: row.clientCallId,
+        userId: row.initiatedByUserId,
+        status: crmStatus,
+        conversationId: row.conversationId,
+      });
+    } else if (crmStatus !== row.status) {
+      broadcastToOrganization(input.organizationId, {
+        type: "nvoip.call.updated",
+        callId: row.externalCallId,
+        clientCallId: row.clientCallId,
+        userId: row.initiatedByUserId,
+        status: crmStatus,
+        conversationId: row.conversationId,
+      });
+    }
   }
 
   if (row.conversationId) {

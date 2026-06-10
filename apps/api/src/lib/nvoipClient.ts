@@ -379,7 +379,11 @@ export async function nvoipFindCallInTodayHistory(
   for (const date of ["today", "yesterday"] as NvoipHistoryDate[]) {
     try {
       const items = await nvoipGetCallHistory(account, direction, date);
-      const found = items.find((item) => item.callId === callId);
+      const found = items.find(
+        (item) =>
+          item.callId === callId ||
+          item.callId.replace(/\D/g, "") === callId.replace(/\D/g, ""),
+      );
       if (found) return found;
     } catch {
       /* try next date */

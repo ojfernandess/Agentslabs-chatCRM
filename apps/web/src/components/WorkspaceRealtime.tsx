@@ -144,8 +144,24 @@ export function WorkspaceRealtime() {
         }
       } else if (data.type === "wavoip.device.updated") {
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));
+      } else if (data.type === "nvoip.call.updated") {
+        window.dispatchEvent(new CustomEvent("openconduit:nvoip-call-updated", { detail: data }));
+        if (typeof data.conversationId === "string" && data.conversationId) {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-updated", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+        }
       } else if (data.type === "nvoip.call.ended") {
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-call-ended", { detail: data }));
+        if (typeof data.conversationId === "string" && data.conversationId) {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-updated", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+        }
       }
     };
 

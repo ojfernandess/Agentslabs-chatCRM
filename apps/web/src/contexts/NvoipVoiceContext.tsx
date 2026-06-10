@@ -75,6 +75,13 @@ export function useNvoipVoiceOptional() {
 }
 
 const MAX_POLL_FAILURES = 24;
+const POLL_MS_ACTIVE = 2000;
+const POLL_MS_IDLE = 2500;
+
+function isNvoipCallPhaseActive(status: string): boolean {
+  const s = status.toUpperCase();
+  return ["CALLING_ORIGIN", "CALLING_DESTINATION", "ACTIVE", "DIALING", "RINGING"].includes(s);
+}
 
 export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -245,21 +252,60 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       setActiveCall((prev) => (prev ? { ...prev, elapsedSec: prev.elapsedSec + 1 } : prev));
     }, 1000);
 
+    const pollMs = isNvoipCallPhaseActive(activeCall.status) ? POLL_MS_ACTIVE : POLL_MS_IDLE;
     pollRef.current = setInterval(() => {
       const current = activeCallRef.current;
       if (current) void pollCall(current);
-    }, 2500);
+    }, pollMs);
 
     return () => {
       stopPolling();
       clearInterval(elapsedTimer);
     };
-  }, [activeCall?.callId, activeCall?.clientCallId, pollCall, stopPolling]);
+  }, [activeCall?.callId, activeCall?.clientCallId, activeCall?.status, pollCall, stopPolling]);
 
   useEffect(() => {
+    const onUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          callId?: string;
+          clientCallId?: string;
+          userId?: string;
+          status?: string;
+          conversationId?: string | null;
+        }>
+      ).detail;
+      if (detail?.userId && user?.id && detail.userId !== user.id) return;
+      setActiveCall((prev) => {
+        if (!prev) return null;
+        const matches =
+          (detail?.clientCallId && prev.clientCallId === detail.clientCallId) ||
+          (detail?.callId && prev.callId === detail.callId);
+        if (!matches) return prev;
+        return {
+          ...prev,
+          status: detail.status?.trim() || prev.status,
+          conversationId: detail.conversationId ?? prev.conversationId,
+        };
+      });
+      if (detail?.conversationId) {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", {
+            detail: { conversationId: detail.conversationId },
+          }),
+        );
+      }
+    };
+
     const onEnded = (event: Event) => {
-      const detail = (event as CustomEvent<{ callId?: string; clientCallId?: string; userId?: string }>)
-        .detail;
+      const detail = (
+        event as CustomEvent<{
+          callId?: string;
+          clientCallId?: string;
+          userId?: string;
+          conversationId?: string | null;
+        }>
+      ).detail;
       if (detail?.userId && user?.id && detail.userId !== user.id) return;
       setActiveCall((prev) => {
         if (!prev) return null;
@@ -268,9 +314,21 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return prev;
       });
       stopPolling();
+      if (detail?.conversationId) {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", {
+            detail: { conversationId: detail.conversationId },
+          }),
+        );
+      }
     };
+
+    window.addEventListener("openconduit:nvoip-call-updated", onUpdated);
     window.addEventListener("openconduit:nvoip-call-ended", onEnded);
-    return () => window.removeEventListener("openconduit:nvoip-call-ended", onEnded);
+    return () => {
+      window.removeEventListener("openconduit:nvoip-call-updated", onUpdated);
+      window.removeEventListener("openconduit:nvoip-call-ended", onEnded);
+    };
   }, [stopPolling, user?.id]);
 
   const startOutboundCall = useCallback(
