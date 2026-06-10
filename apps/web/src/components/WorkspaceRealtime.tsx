@@ -144,6 +144,8 @@ export function WorkspaceRealtime() {
         }
       } else if (data.type === "wavoip.device.updated") {
         window.dispatchEvent(new CustomEvent("openconduit:wavoip-device-updated", { detail: data }));
+      } else if (data.type === "nvoip.call.ended") {
+        window.dispatchEvent(new CustomEvent("openconduit:nvoip-call-ended", { detail: data }));
       }
     };
 

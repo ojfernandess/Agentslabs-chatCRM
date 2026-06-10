@@ -2259,6 +2259,8 @@ export const messages = {
         testWidget: "Testar widget OTP",
         contactHint: "Validação com o widget oficial Nvoip (SMS ou ligação com código).",
       },
+      otpVoiceSeparateHint:
+        "A flag OTP/2FA não altera as ligações de voz: continuam em modo click-to-call (toca o webphone/ramal Nvoip primeiro). O widget OTP serve só para validar telefone/código.",
       field: {
         numbersip: "NumberSIP (conta)",
         userToken: "User token (OAuth)",
@@ -6656,6 +6658,8 @@ export const messages = {
         testWidget: "Test OTP widget",
         contactHint: "Verification with the official Nvoip widget (SMS or voice call with code).",
       },
+      otpVoiceSeparateHint:
+        "The OTP/2FA flag does not change voice calls: they remain click-to-call (your Nvoip webphone/extension rings first). The OTP widget is only for phone/code verification.",
       field: {
         numbersip: "NumberSIP (account)",
         userToken: "User token (OAuth)",

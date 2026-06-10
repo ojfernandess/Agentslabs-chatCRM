@@ -62,6 +62,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       balance: account.lastBalance,
       accountId: account.id,
       trunks,
+      voiceMode: "click_to_call" as const,
     };
   });
 

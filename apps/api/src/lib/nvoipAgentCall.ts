@@ -3,8 +3,10 @@ import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import {
   isNvoipTerminalState,
+  isNvoipCrmStatusTerminal,
   mapNvoipStateToCrmStatus,
   nvoipCreateCall,
+  nvoipFindCallInTodayHistory,
   nvoipGetCallStatus,
 } from "./nvoipClient.js";
 import {
@@ -12,7 +14,7 @@ import {
   normalizeNvoipTerminalStatus,
   upsertNvoipTimelineMessage,
 } from "./nvoipCallTimeline.js";
-import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
 import { resolveCallerForUser, resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { formatNvoipCalled, formatNvoipCaller, isValidNvoipOutboundCaller } from "./nvoipCallFormat.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
@@ -206,8 +208,36 @@ export async function syncNvoipCallFromApi(input: {
     return { status: "UNKNOWN", nvoipState: "", terminal: true, recordUrl: null, durationSec: null };
   }
 
-  const remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
-  const crmStatus = mapNvoipStateToCrmStatus(String(remote.state ?? ""));
+  let remote: Awaited<ReturnType<typeof nvoipGetCallStatus>>;
+  try {
+    remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
+  } catch {
+    const history = await nvoipFindCallInTodayHistory(
+      row.nvoipAccount,
+      input.externalCallId,
+      row.direction === "INCOMING" ? "inbound" : "outbound",
+    );
+    if (history) {
+      remote = {
+        state: history.state,
+        linkAudio: history.linkAudio,
+        talkingDurationSeconds: history.talkingDurationSeconds,
+        totalDurationSeconds: history.totalDurationSeconds,
+        caller: history.caller,
+      };
+    } else if (row.startedAt && Date.now() - row.startedAt.getTime() > 45_000) {
+      remote = { state: "finished" };
+    } else {
+      throw new Error("call_status_unavailable");
+    }
+  }
+
+  const nvoipState = String(remote.state ?? "");
+  const crmStatus = mapNvoipStateToCrmStatus(nvoipState);
+  const terminal =
+    isNvoipTerminalState(nvoipState) ||
+    isNvoipCrmStatusTerminal(crmStatus) ||
+    (!nvoipState && row.startedAt != null && Date.now() - row.startedAt.getTime() > 120_000);
   const durationSec =
     remote.talkingDurationSeconds != null
       ? Number(remote.talkingDurationSeconds)
@@ -221,9 +251,19 @@ export async function syncNvoipCallFromApi(input: {
       durationSec: Number.isFinite(durationSec) ? durationSec : row.durationSec,
       recordUrl,
       rawPayload: remote as object,
-      endedAt: isNvoipTerminalState(String(remote.state ?? "")) ? new Date() : row.endedAt,
+      endedAt: terminal ? new Date() : row.endedAt,
     },
   });
+
+  if (terminal && row.clientCallId) {
+    broadcastToOrganization(input.organizationId, {
+      type: "nvoip.call.ended",
+      callId: row.externalCallId,
+      clientCallId: row.clientCallId,
+      userId: row.initiatedByUserId,
+      status: crmStatus,
+    });
+  }
 
   if (row.conversationId) {
     await upsertNvoipTimelineMessage({
@@ -242,8 +282,8 @@ export async function syncNvoipCallFromApi(input: {
 
   return {
     status: crmStatus,
-    nvoipState: String(remote.state ?? ""),
-    terminal: isNvoipTerminalState(String(remote.state ?? "")),
+    nvoipState,
+    terminal,
     recordUrl,
     durationSec: durationSec ?? null,
   };

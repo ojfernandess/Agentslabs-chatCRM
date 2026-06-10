@@ -56,7 +56,16 @@ export function isNvoipCallStatusActive(status: string, direction: string): bool
   const s = status.toUpperCase();
   if (TERMINAL_STATUSES.has(s)) return false;
   if (direction === "INCOMING" && INCOMING_ACTIVE_STATUSES.has(s)) return true;
-  if (direction === "OUTGOING" && (s === "DIALING" || s === "ACTIVE")) return true;
+  if (
+    direction === "OUTGOING" &&
+    (s === "DIALING" ||
+      s === "ACTIVE" ||
+      s === "CALLING_ORIGIN" ||
+      s === "CALLING_DESTINATION" ||
+      s === "RINGING")
+  ) {
+    return true;
+  }
   return false;
 }
 

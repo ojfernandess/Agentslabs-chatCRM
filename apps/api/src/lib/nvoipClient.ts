@@ -212,9 +212,76 @@ export async function nvoipGetCallStatus(
     `/calls?callId=${encodeURIComponent(callId)}`,
     { method: "GET" },
   );
-  const data = await parseJson<NvoipCallStatusPayload & { error?: string }>(res);
-  if (!res.ok) throw new Error(data.error ?? `call_status_failed_${res.status}`);
-  return data;
+  const data = await parseJson<unknown>(res);
+  if (!res.ok) {
+    const err = data as { error?: string };
+    throw new Error(err?.error ?? `call_status_failed_${res.status}`);
+  }
+  return normalizeNvoipCallStatusPayload(data);
+}
+
+/** Parse GET /calls?callId= payload (flat or nested). */
+export function normalizeNvoipCallStatusPayload(data: unknown): NvoipCallStatusPayload {
+  if (Array.isArray(data)) {
+    if (data.length === 0) return { state: "" };
+    return normalizeNvoipCallStatusPayload(data[0]);
+  }
+  if (!data || typeof data !== "object") return { state: "" };
+  const obj = data as Record<string, unknown>;
+
+  for (const key of ["call", "data", "result", "calls"]) {
+    const nested = obj[key];
+    if (Array.isArray(nested) && nested[0]) {
+      return normalizeNvoipCallStatusPayload(nested[0]);
+    }
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const inner = normalizeNvoipCallStatusPayload(nested);
+      if (inner.state) return inner;
+    }
+  }
+
+  const state = extractNvoipCallState(obj);
+  const linkAudio =
+    pickString(obj, ["linkAudio", "link_audio", "audio", "recordUrl"]) || undefined;
+  const talkingDurationSeconds = pickNumber(obj, [
+    "talkingDurationSeconds",
+    "talking_duration_seconds",
+    "duration",
+    "talkingDuration",
+  ]);
+  const totalRaw = pickNumber(obj, ["totalDurationSeconds", "total_duration_seconds"]);
+  const totalDurationSeconds = totalRaw ?? null;
+
+  return {
+    state,
+    linkAudio,
+    talkingDurationSeconds,
+    totalDurationSeconds,
+    caller: pickString(obj, ["caller", "origin", "from"]) || null,
+  };
+}
+
+export function extractNvoipCallState(obj: Record<string, unknown>): string {
+  const direct = pickString(obj, ["state", "status", "callState", "call_state"]);
+  if (direct) return direct;
+  return "";
+}
+
+export async function nvoipFindCallInTodayHistory(
+  account: NvoipAccount,
+  callId: string,
+  direction: NvoipHistoryType = "outbound",
+): Promise<NvoipHistoryCallItem | null> {
+  for (const date of ["today", "yesterday"] as NvoipHistoryDate[]) {
+    try {
+      const items = await nvoipGetCallHistory(account, direction, date);
+      const found = items.find((item) => item.callId === callId);
+      if (found) return found;
+    } catch {
+      /* try next date */
+    }
+  }
+  return null;
 }
 
 export type NvoipHistoryDate = "today" | "yesterday";
@@ -324,16 +391,36 @@ export function mapNvoipStateToCrmStatus(state: string): string {
   if (s === "established") return "ACTIVE";
   if (s === "calling_origin") return "CALLING_ORIGIN";
   if (s === "calling_destination") return "CALLING_DESTINATION";
-  if (s === "finished") return "ENDED";
-  if (s === "noanswer") return "NOT_ANSWERED";
+  if (s === "finished" || s === "ended" || s === "completed" || s === "success") return "ENDED";
+  if (s === "noanswer" || s === "no_answer") return "NOT_ANSWERED";
   if (s === "busy") return "BUSY";
   if (s === "failed") return "FAILED";
+  if (s === "canceled" || s === "cancelled" || s === "hangup" || s === "rejected") return "ENDED";
   return state.toUpperCase();
 }
 
 export function isNvoipTerminalState(state: string): boolean {
   const s = state.toLowerCase();
-  return ["finished", "noanswer", "busy", "failed"].includes(s);
+  return [
+    "finished",
+    "ended",
+    "completed",
+    "success",
+    "noanswer",
+    "no_answer",
+    "busy",
+    "failed",
+    "canceled",
+    "cancelled",
+    "hangup",
+    "rejected",
+    "terminated",
+  ].includes(s);
+}
+
+export function isNvoipCrmStatusTerminal(crmStatus: string): boolean {
+  const s = crmStatus.toUpperCase();
+  return ["ENDED", "NOT_ANSWERED", "BUSY", "FAILED", "MISSED", "ANSWERED"].includes(s);
 }
 
 export type NvoipTorpedoAudio = { text?: string; audio?: string; type?: string };

@@ -523,6 +523,9 @@ export function NvoipIntegrationSettings() {
                 </p>
                 <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
                 <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">{t("nvoip.outboundTestCallerHint")}</p>
+                {otpEnabled ? (
+                  <p className="mt-1 text-xs text-slate-600 dark:text-ink-400">{t("nvoip.otpVoiceSeparateHint")}</p>
+                ) : null}
                 {!linked ? (
                   <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
                     {t("nvoip.outboundTestNeedConnected")}

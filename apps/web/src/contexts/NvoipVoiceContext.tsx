@@ -20,6 +20,7 @@ type SessionPayload = {
   caller: string | null;
   balance: string | null;
   trunks?: TrunkRow[];
+  voiceMode?: "click_to_call";
 };
 
 function trunkStorageKey(organizationId: string) {
@@ -43,6 +44,7 @@ type NvoipVoiceContextValue = {
   ready: boolean;
   canPlaceCalls: boolean;
   caller: string | null;
+  voiceMode: "click_to_call";
   trunks: TrunkRow[];
   selectedTrunkId: string | null;
   setSelectedTrunkId: (id: string | null) => void;
@@ -62,6 +64,8 @@ export function useNvoipVoiceOptional() {
   return useContext(NvoipVoiceContext);
 }
 
+const MAX_POLL_FAILURES = 3;
+
 export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [ready, setReady] = useState(false);
@@ -71,6 +75,12 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeCallRef = useRef<ActiveCall | null>(null);
+  const pollFailuresRef = useRef(0);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
 
   const setSelectedTrunkId = useCallback(
     (id: string | null) => {
@@ -141,6 +151,27 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const finalizeCall = useCallback(
+    async (call: ActiveCall, status: string, durationSec: number | null) => {
+      stopPolling();
+      pollFailuresRef.current = 0;
+      try {
+        await api.post("/nvoip/calls/outbound/complete", {
+          clientCallId: call.clientCallId,
+          callId: call.callId,
+          status,
+          durationSec,
+        });
+      } catch {
+        /* best-effort */
+      }
+      setActiveCall((prev) =>
+        prev && prev.callId === call.callId && prev.clientCallId === call.clientCallId ? null : prev,
+      );
+    },
+    [stopPolling],
+  );
+
   const pollCall = useCallback(
     async (call: ActiveCall) => {
       try {
@@ -152,40 +183,66 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         }>(
           `/nvoip/calls/status?callId=${encodeURIComponent(call.callId)}&clientCallId=${encodeURIComponent(call.clientCallId)}`,
         );
+        pollFailuresRef.current = 0;
         setActiveCall((prev) =>
           prev && prev.callId === call.callId
             ? { ...prev, status: res.status, elapsedSec: prev.elapsedSec + 2 }
             : prev,
         );
         if (res.terminal) {
-          stopPolling();
-          await api.post("/nvoip/calls/outbound/complete", {
-            clientCallId: call.clientCallId,
-            callId: call.callId,
-            status: res.status,
-            durationSec: res.durationSec,
-          });
-          setActiveCall(null);
+          await finalizeCall(call, res.status, res.durationSec);
         }
       } catch {
-        /* ignore transient poll errors */
+        pollFailuresRef.current += 1;
+        if (pollFailuresRef.current >= MAX_POLL_FAILURES) {
+          await finalizeCall(call, "ENDED", call.elapsedSec);
+        }
       }
     },
-    [stopPolling],
+    [finalizeCall],
   );
 
   useEffect(() => {
     if (!activeCall) {
       stopPolling();
+      pollFailuresRef.current = 0;
       return;
     }
-    const tick = () => {
+
+    pollFailuresRef.current = 0;
+    void pollCall(activeCall);
+
+    const elapsedTimer = setInterval(() => {
       setActiveCall((prev) => (prev ? { ...prev, elapsedSec: prev.elapsedSec + 1 } : prev));
-      void pollCall(activeCall);
+    }, 1000);
+
+    pollRef.current = setInterval(() => {
+      const current = activeCallRef.current;
+      if (current) void pollCall(current);
+    }, 2500);
+
+    return () => {
+      stopPolling();
+      clearInterval(elapsedTimer);
     };
-    pollRef.current = setInterval(tick, 2500);
-    return () => stopPolling();
   }, [activeCall?.callId, activeCall?.clientCallId, pollCall, stopPolling]);
+
+  useEffect(() => {
+    const onEnded = (event: Event) => {
+      const detail = (event as CustomEvent<{ callId?: string; clientCallId?: string; userId?: string }>)
+        .detail;
+      if (detail?.userId && user?.id && detail.userId !== user.id) return;
+      setActiveCall((prev) => {
+        if (!prev) return null;
+        if (detail?.clientCallId && prev.clientCallId === detail.clientCallId) return null;
+        if (detail?.callId && prev.callId === detail.callId) return null;
+        return prev;
+      });
+      stopPolling();
+    };
+    window.addEventListener("openconduit:nvoip-call-ended", onEnded);
+    return () => window.removeEventListener("openconduit:nvoip-call-ended", onEnded);
+  }, [stopPolling, user?.id]);
 
   const startOutboundCall = useCallback(
     async (input: {
@@ -248,21 +305,17 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     try {
       await api.post("/nvoip/calls/end", { callId: call.callId });
     } catch {
-      await api.post("/nvoip/calls/outbound/complete", {
-        clientCallId: call.clientCallId,
-        callId: call.callId,
-        status: "ENDED",
-        durationSec: call.elapsedSec,
-      });
+      /* fall through to complete */
     }
-    setActiveCall(null);
-  }, [activeCall, stopPolling]);
+    await finalizeCall(call, "ENDED", call.elapsedSec);
+  }, [activeCall, finalizeCall, stopPolling]);
 
   const value = useMemo(
     () => ({
       ready,
       canPlaceCalls,
       caller,
+      voiceMode: "click_to_call" as const,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,
