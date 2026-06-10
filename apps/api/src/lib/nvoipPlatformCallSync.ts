@@ -119,11 +119,26 @@ export async function resolveNvoipOutboundCallRemote(input: {
   // Plataforma webphone: API muitas vezes fica muda após atender o ramal — avançar fase com histórico ou inferência conservadora
   if (platformMode && callAgeMs > 0) {
     const storedRank = crmStatusRank(input.currentCrmStatus);
+    const liveState = live?.state?.toLowerCase() ?? "";
+
+    if (
+      liveState === "calling_origin" &&
+      callAgeMs > 8_000 &&
+      storedRank <= liveStateRank("calling_origin") &&
+      bestRank <= liveStateRank("calling_origin")
+    ) {
+      best = {
+        state: "calling_destination",
+        caller: best?.caller ?? historyPayload?.caller ?? live?.caller ?? null,
+      };
+      bestRank = liveStateRank("calling_destination");
+      source = "inferred";
+    }
 
     if (
       !live?.state &&
       storedRank <= liveStateRank("calling_origin") &&
-      callAgeMs > 28_000 &&
+      callAgeMs > 12_000 &&
       bestRank < liveStateRank("calling_destination")
     ) {
       best = {
@@ -132,6 +147,18 @@ export async function resolveNvoipOutboundCallRemote(input: {
       };
       bestRank = liveStateRank("calling_destination");
       source = "inferred";
+    }
+
+    if (
+      historyPayload?.state &&
+      storedRank >= liveStateRank("calling_destination") &&
+      callAgeMs > 20_000 &&
+      bestRank < liveStateRank("established") &&
+      (historyPayload.talkingDurationSeconds ?? 0) > 0
+    ) {
+      best = historyPayload;
+      bestRank = liveStateRank(historyPayload.state);
+      source = "history";
     }
 
     if (

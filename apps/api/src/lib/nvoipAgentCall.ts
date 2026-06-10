@@ -4,6 +4,7 @@ import { appendTimelineEvent } from "./timeline.js";
 import {
   isNvoipTerminalState,
   isNvoipCrmStatusTerminal,
+  mapNvoipOutboundInitialStatus,
   mapNvoipStateToCrmStatus,
   nvoipCreateCall,
   nvoipFindCallInTodayHistory,
@@ -42,6 +43,7 @@ export async function startAgentOutboundCall(input: {
       caller: string;
       contactId: string | null;
       conversationId: string | null;
+      initialStatus: string;
     }
   | { ok: false; message: string }
 > {
@@ -114,8 +116,7 @@ export async function startAgentOutboundCall(input: {
   try {
     const created = await nvoipCreateCall(account, callerNorm, receiver);
     externalCallId = created.callId;
-    initialCrmStatus =
-      mapNvoipStateToCrmStatus(created.state || "calling_origin") || "CALLING_ORIGIN";
+    initialCrmStatus = mapNvoipOutboundInitialStatus(created.state);
     await writeNvoipIntegrationLog({
       organizationId: input.organizationId,
       nvoipAccountId: account.id,
@@ -220,6 +221,12 @@ export async function startAgentOutboundCall(input: {
     });
   }
 
+  void syncNvoipCallFromApi({
+    organizationId: input.organizationId,
+    externalCallId,
+    clientCallId: input.clientCallId,
+  }).catch(() => {});
+
   return {
     ok: true,
     callId: externalCallId,
@@ -227,6 +234,7 @@ export async function startAgentOutboundCall(input: {
     caller: callerNorm,
     contactId: ctx.contactId,
     conversationId: ctx.conversationId,
+    initialStatus: initialCrmStatus,
   };
 }
 
@@ -310,8 +318,7 @@ export async function syncNvoipCallFromApi(input: {
       : mapNvoipStateToCrmStatus(nvoipState);
   const terminal =
     isNvoipTerminalState(nvoipState) ||
-    isNvoipCrmStatusTerminal(crmStatus) ||
-    (!nvoipState && row.startedAt != null && Date.now() - row.startedAt.getTime() > 120_000);
+    isNvoipCrmStatusTerminal(crmStatus);
   const durationSec =
     remote.talkingDurationSeconds != null
       ? Number(remote.talkingDurationSeconds)
@@ -458,6 +465,7 @@ export async function completeAgentOutboundCall(input: {
       clientCallId: row.clientCallId,
       userId: row.initiatedByUserId,
       status: terminal,
+      conversationId: row.conversationId,
     });
   }
 

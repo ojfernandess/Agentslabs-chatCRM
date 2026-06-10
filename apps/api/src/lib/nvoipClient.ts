@@ -271,7 +271,14 @@ export async function nvoipCreateCall(
   if (!res.ok || !data.callId) {
     throw new Error(data.error ?? `create_call_failed_${res.status}`);
   }
-  return { callId: data.callId, state: data.state ?? "success" };
+  return { callId: data.callId, state: data.state ?? "calling_origin" };
+}
+
+/** Map POST /calls/ response state — `success`/`ok` mean request accepted, not call ended. */
+export function mapNvoipOutboundInitialStatus(state: string | null | undefined): string {
+  const raw = (state ?? "").trim().toLowerCase();
+  if (!raw || raw === "success" || raw === "ok") return "CALLING_ORIGIN";
+  return mapNvoipStateToCrmStatus(state!) || "CALLING_ORIGIN";
 }
 
 export async function nvoipGetCallStatus(
@@ -321,7 +328,7 @@ export async function nvoipGetCallStatus(
     }
   }
 
-  throw new Error(lastError);
+  return { state: "" };
 }
 
 /** Parse GET /calls?callId= payload (flat or nested). */
@@ -484,15 +491,23 @@ export async function nvoipGetCallHistory(
 }
 
 export async function nvoipEndCall(account: NvoipAccount, callId: string): Promise<void> {
-  const res = await nvoipAuthorizedFetch(
-    account,
-    `/endcall?callId=${encodeURIComponent(callId)}`,
-    { method: "GET" },
-  );
-  if (!res.ok) {
-    const data = await parseJson<{ error?: string }>(res);
-    throw new Error(data.error ?? `end_call_failed_${res.status}`);
+  const id = callId.trim();
+  const paths = [
+    `/endcall?callId=${encodeURIComponent(id)}`,
+    `/endcall/?callId=${encodeURIComponent(id)}`,
+  ];
+  let lastError = "end_call_failed";
+  for (const path of paths) {
+    try {
+      const res = await nvoipAuthorizedFetch(account, path, { method: "GET" });
+      if (res.ok) return;
+      const data = await parseJson<{ error?: string }>(res);
+      lastError = data.error ?? `end_call_failed_${res.status}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : lastError;
+    }
   }
+  throw new Error(lastError);
 }
 
 export function mapNvoipStateToCrmStatus(state: string): string {
@@ -500,7 +515,8 @@ export function mapNvoipStateToCrmStatus(state: string): string {
   if (s === "established") return "ACTIVE";
   if (s === "calling_origin") return "CALLING_ORIGIN";
   if (s === "calling_destination") return "CALLING_DESTINATION";
-  if (s === "finished" || s === "ended" || s === "completed" || s === "success") return "ENDED";
+  if (s === "success" || s === "ok") return "CALLING_ORIGIN";
+  if (s === "finished" || s === "ended" || s === "completed") return "ENDED";
   if (s === "noanswer" || s === "no_answer") return "NOT_ANSWERED";
   if (s === "busy") return "BUSY";
   if (s === "failed") return "FAILED";
@@ -519,7 +535,6 @@ export function isNvoipTerminalState(state: string): boolean {
     "finished",
     "ended",
     "completed",
-    "success",
     "noanswer",
     "no_answer",
     "busy",

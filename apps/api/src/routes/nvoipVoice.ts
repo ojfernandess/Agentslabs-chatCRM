@@ -119,6 +119,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       caller: result.caller,
       contactId: result.contactId,
       conversationId: result.conversationId,
+      initialStatus: result.initialStatus,
     };
   });
 

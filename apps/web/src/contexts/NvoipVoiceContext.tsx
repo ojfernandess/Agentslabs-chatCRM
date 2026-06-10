@@ -346,6 +346,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           caller?: string;
           contactId?: string | null;
           conversationId?: string | null;
+          initialStatus?: string;
           message?: string;
         }>("/nvoip/calls/outbound/start", {
           clientCallId,
@@ -357,10 +358,11 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         if (!res.ok || !res.callId) {
           return { ok: false, message: res.message ?? "call_failed" };
         }
+        const initialStatus = res.initialStatus?.trim() || "CALLING_ORIGIN";
         setActiveCall({
           clientCallId,
           callId: res.callId,
-          status: "CALLING_ORIGIN",
+          status: initialStatus,
           elapsedSec: 0,
           dialPhone: res.dialPhone ?? input.phone,
           caller: res.caller?.trim() || caller,
@@ -399,9 +401,11 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   }, [activeCall, finalizeCall, stopPolling]);
 
   const isOnCallForConversation = useCallback(
-    (conversationId: string) =>
-      activeCall?.conversationId === conversationId,
-    [activeCall?.conversationId],
+    (conversationId: string) => {
+      if (!activeCall || activeCall.conversationId !== conversationId) return false;
+      return isNvoipCallPhaseActive(activeCall.status);
+    },
+    [activeCall],
   );
 
   const value = useMemo(
