@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { parseNvoipPabxMode } from "./nvoipPabxConfig.js";
 import {
   findNvoipSipUserForCaller,
   formatNvoipCaller,
@@ -96,8 +97,11 @@ function shouldPreferWebphoneFallback(input: {
   sipUsers: NvoipSipUserRow[];
   webphoneSips: NvoipSipUserRow[];
   agentExplicitlyConfigured: boolean;
+  preferWebphone: boolean;
 }): boolean {
-  if (input.agentExplicitlyConfigured || input.webphoneSips.length === 0) return false;
+  if (!input.preferWebphone || input.agentExplicitlyConfigured || input.webphoneSips.length === 0) {
+    return false;
+  }
   const sip = findNvoipSipUserForCaller(input.candidateCaller, input.sipUsers);
   if (nvoipSipUserHasWebphone(sip)) return false;
   if (input.accountNumbersip && nvoipSameNumbersip(input.candidateCaller, input.accountNumbersip)) {
@@ -128,6 +132,7 @@ function resolveWithWebphoneAwareFallback(input: {
   sipUsers: NvoipSipUserRow[];
   webphoneSips: NvoipSipUserRow[];
   agentExplicitlyConfigured: boolean;
+  preferWebphone: boolean;
   pick: (raw: string | null | undefined) => string | null;
 }): NvoipCallerResolution | null {
   if (
@@ -137,6 +142,7 @@ function resolveWithWebphoneAwareFallback(input: {
       sipUsers: input.sipUsers,
       webphoneSips: input.webphoneSips,
       agentExplicitlyConfigured: input.agentExplicitlyConfigured,
+      preferWebphone: input.preferWebphone,
     })
   ) {
     return pickWebphoneFallback(input.webphoneSips, input.sipUsers, input.accountNumbersip, input.pick);
@@ -154,9 +160,17 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
 }): Promise<NvoipCallerResolution | null> {
   const account = await prisma.nvoipAccount.findUnique({
     where: { id: input.accountId },
-    select: { numbersip: true },
+    select: { numbersip: true, externalConfig: true },
   });
   const accountNumbersip = account?.numbersip ?? "";
+  const pabxMode = parseNvoipPabxMode(
+    account?.externalConfig != null &&
+      typeof account.externalConfig === "object" &&
+      !Array.isArray(account.externalConfig)
+      ? (account.externalConfig as Record<string, unknown>).pabxMode
+      : undefined,
+  );
+  const preferWebphone = pabxMode !== "external_pabx_trunk";
 
   const sipUsers = await prisma.nvoipSipUser.findMany({
     where: { nvoipAccountId: input.accountId, blocked: false },
@@ -190,6 +204,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
         sipUsers,
         webphoneSips,
         agentExplicitlyConfigured,
+        preferWebphone,
         pick,
       });
     }
@@ -219,6 +234,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
         sipUsers,
         webphoneSips,
         agentExplicitlyConfigured: false,
+        preferWebphone,
       })
     ) {
       const fallback = pickWebphoneFallback(webphoneSips, sipUsers, accountNumbersip, pick);
@@ -227,7 +243,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
     return buildResolution(fromExt, "agent_extension", sipUsers, accountNumbersip);
   }
 
-  if (!agentExplicitlyConfigured && webphoneSips.length > 0) {
+  if (preferWebphone && !agentExplicitlyConfigured && webphoneSips.length > 0) {
     const fallback = pickWebphoneFallback(webphoneSips, sipUsers, accountNumbersip, pick);
     if (fallback) return fallback;
   }
@@ -241,6 +257,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
       sipUsers,
       webphoneSips,
       agentExplicitlyConfigured,
+      preferWebphone,
       pick,
     });
   }
@@ -258,6 +275,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
       sipUsers,
       webphoneSips,
       agentExplicitlyConfigured,
+      preferWebphone,
       pick,
     });
   }

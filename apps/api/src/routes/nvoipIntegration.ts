@@ -49,6 +49,9 @@ import {
   sendNvoipWhatsappTemplate,
 } from "../lib/nvoipWhatsapp.js";
 import { buildNvoipOrgInsights } from "../lib/nvoipInsights.js";
+import { buildNvoipPabxTrunkInfo, maskNvoipTrunkPasswordForClient } from "../lib/nvoipPabxTrunkInfo.js";
+import { syncNvoipInboundHistoryForAccount } from "../lib/nvoipInboundSync.js";
+import type { NvoipPabxMode } from "../lib/nvoipPabxConfig.js";
 
 const upsertSchema = z.object({
   numbersip: z.string().min(1).max(64),
@@ -1434,6 +1437,122 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       return reply.status(404).send({ error: "Not Found", message: "trunk_not_found", statusCode: 404 });
     }
     return reply.status(204).send();
+  });
+
+  app.get("/pabx/trunk", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "nvoip_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const info = maskNvoipTrunkPasswordForClient(await buildNvoipPabxTrunkInfo(account));
+    return { trunk: info };
+  });
+
+  app.get("/pabx/trunk/credentials", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+    await requireAdmin(request, reply);
+    if (reply.sent) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "nvoip_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const info = await buildNvoipPabxTrunkInfo(account);
+    return {
+      sipUser: info.sipUser,
+      sipPassword: info.sipPassword,
+      sipServer: info.sipServer,
+      sipPort: info.sipPort,
+      sipPasswordConfigured: info.sipPasswordConfigured,
+    };
+  });
+
+  app.put("/pabx/config", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+    await requireAdmin(request, reply);
+    if (reply.sent) return;
+
+    const schema = z.object({
+      mode: z.enum(["platform_webphone", "external_pabx_trunk"]).optional(),
+      trunkSipPassword: z.string().min(4).max(64).optional(),
+      clearTrunkSipPassword: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account) {
+      return reply.status(404).send({ error: "Not Found", message: "account_not_found", statusCode: 404 });
+    }
+
+    const merged = mergeNvoipExternalConfig(account.externalConfig, {
+      ...(parsed.data.mode ? { pabxMode: parsed.data.mode as NvoipPabxMode } : {}),
+      ...(parsed.data.clearTrunkSipPassword ? { clearTrunkSipPassword: true } : {}),
+      ...(parsed.data.trunkSipPassword?.trim()
+        ? { trunkSipPasswordEnc: encryptNvoipSecret(parsed.data.trunkSipPassword.trim()) }
+        : {}),
+    });
+
+    await prisma.nvoipAccount.update({
+      where: { id: account.id },
+      data: { externalConfig: merged },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "nvoip.pabx.config_update",
+      resourceType: "nvoip_account",
+      resourceId: account.id,
+      ip: clientIp(request),
+      metadata: { mode: parsed.data.mode ?? null },
+    });
+
+    const info = maskNvoipTrunkPasswordForClient(
+      await buildNvoipPabxTrunkInfo({
+        ...account,
+        externalConfig: merged as Prisma.JsonValue,
+      }),
+    );
+    return { ok: true, trunk: info };
+  });
+
+  app.post("/pabx/sync-inbound", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "nvoip_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const stats = await syncNvoipInboundHistoryForAccount(account);
+    return { ok: true, ...stats };
   });
 
   app.post("/homologation/run", async (request, reply) => {

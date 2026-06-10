@@ -4,6 +4,7 @@ import {
   parseIncomingQueue,
   type NvoipIncomingQueueConfig,
 } from "./nvoipIncomingQueue.js";
+import { parseNvoipPabxMode, type NvoipPabxMode } from "./nvoipPabxConfig.js";
 
 export type NvoipHomologationStored = {
   ranAt: string;
@@ -31,6 +32,8 @@ export function readNvoipExternalConfig(externalConfig: unknown): {
   recordingRetentionDays: number | null;
   lastBalanceAlertEmailAt: string | null;
   homologationLast: NvoipHomologationStored | null;
+  pabxMode: NvoipPabxMode;
+  trunkSipPasswordConfigured: boolean;
 } {
   const c = asRecord(externalConfig);
   const emailsRaw = c.balanceAlertEmails;
@@ -55,6 +58,10 @@ export function readNvoipExternalConfig(externalConfig: unknown): {
     lastBalanceAlertEmailAt:
       typeof c.lastBalanceAlertEmailAt === "string" ? c.lastBalanceAlertEmailAt : null,
     homologationLast,
+    pabxMode: parseNvoipPabxMode(c.pabxMode),
+    trunkSipPasswordConfigured: Boolean(
+      typeof c.trunkSipPasswordEnc === "string" && c.trunkSipPasswordEnc.trim(),
+    ),
   };
 }
 
@@ -67,6 +74,9 @@ export function mergeNvoipExternalConfig(
     recordingRetentionDays?: number | null;
     homologationLast?: NvoipHomologationStored | null;
     lastBalanceAlertEmailAt?: string | null;
+    pabxMode?: NvoipPabxMode;
+    trunkSipPasswordEnc?: string | null;
+    clearTrunkSipPassword?: boolean;
   },
 ): Prisma.InputJsonValue {
   const base = mergeIncomingQueueIntoExternalConfig(current, input.incomingQueue) as Record<
@@ -92,6 +102,15 @@ export function mergeNvoipExternalConfig(
   if (input.lastBalanceAlertEmailAt !== undefined) {
     if (input.lastBalanceAlertEmailAt == null) delete base.lastBalanceAlertEmailAt;
     else base.lastBalanceAlertEmailAt = input.lastBalanceAlertEmailAt;
+  }
+  if (input.pabxMode !== undefined) {
+    base.pabxMode = input.pabxMode;
+  }
+  if (input.clearTrunkSipPassword) {
+    delete base.trunkSipPasswordEnc;
+  } else if (input.trunkSipPasswordEnc !== undefined) {
+    if (input.trunkSipPasswordEnc == null) delete base.trunkSipPasswordEnc;
+    else base.trunkSipPasswordEnc = input.trunkSipPasswordEnc;
   }
 
   return base as Prisma.InputJsonValue;

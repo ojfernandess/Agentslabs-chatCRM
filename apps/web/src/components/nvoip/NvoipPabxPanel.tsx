@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import { NvoipPabxTrunkPanel } from "./NvoipPabxTrunkPanel";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -35,6 +36,7 @@ type UraPayload = {
 };
 
 type Props = {
+  linked: boolean;
   accountNumbersip: string;
   sipUsers: SipUserRow[];
   directorySyncedAt: string | null;
@@ -45,6 +47,7 @@ type Props = {
 };
 
 export function NvoipPabxPanel({
+  linked,
   accountNumbersip,
   sipUsers,
   directorySyncedAt,
@@ -90,6 +93,8 @@ export function NvoipPabxPanel({
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
+
+      <NvoipPabxTrunkPanel linked={linked} onError={onError} />
 
       <div className="rounded-xl border border-slate-200 p-4 dark:border-ink-800">
         <div className="flex flex-wrap items-center justify-between gap-2">
