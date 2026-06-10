@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { NvoipInsightsPanel } from "@/components/nvoip/NvoipInsightsPanel";
 import { NvoipSettingsExtras } from "@/components/nvoip/NvoipSettingsExtras";
 import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomologationPanel";
@@ -61,6 +62,7 @@ type DidRow = {
 export function NvoipIntegrationSettings() {
   const { t } = useI18n();
   const { user } = useAuth();
+  const nvoipVoice = useNvoipVoiceOptional();
   const voiceEnabled = user?.organizationFeatures?.nvoip_voice ?? false;
   const smsEnabled = user?.organizationFeatures?.nvoip_sms ?? false;
   const otpEnabled = user?.organizationFeatures?.nvoip_otp ?? false;
@@ -88,6 +90,9 @@ export function NvoipIntegrationSettings() {
   const [torpedoMessage, setTorpedoMessage] = useState("");
   const [torpedoSending, setTorpedoSending] = useState(false);
   const [torpedoOk, setTorpedoOk] = useState(false);
+  const [outboundTestPhone, setOutboundTestPhone] = useState("");
+  const [outboundTestCalling, setOutboundTestCalling] = useState(false);
+  const [outboundTestOk, setOutboundTestOk] = useState(false);
   const [otpProvider, setOtpProvider] = useState<"DISABLED" | "NVOIP">("DISABLED");
   const [otpDefaultChannel, setOtpDefaultChannel] = useState<"sms" | "voice" | "email">("sms");
   const [smsTestPhone, setSmsTestPhone] = useState("");
@@ -237,9 +242,25 @@ export function NvoipIntegrationSettings() {
     }
   };
 
+  const refreshAccountQuiet = async () => {
+    try {
+      const accRes = await api.get<{ account: AccountRow | null }>("/settings/nvoip/account");
+      const acc = accRes.account;
+      setAccount(acc);
+      if (acc) {
+        setNumbersip(acc.numbersip);
+        setDefaultCaller(acc.defaultCaller);
+        setInboxId(acc.inboxId ?? "");
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const testConnection = async () => {
     setTesting(true);
     setError(null);
+    setOutboundTestOk(false);
     try {
       await save();
       const res = await api.post<{ ok: boolean; balance?: string; message?: string }>(
@@ -247,12 +268,39 @@ export function NvoipIntegrationSettings() {
       );
       if (!res.ok) {
         setError(res.message ?? t("nvoip.testError"));
+      } else {
+        await refreshAccountQuiet();
+        window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
+        void nvoipVoice?.refreshSession();
       }
-      await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("nvoip.testError"));
     } finally {
       setTesting(false);
+    }
+  };
+
+  const placeOutboundTestCall = async () => {
+    const phone = outboundTestPhone.trim();
+    if (!phone || !nvoipVoice?.canPlaceCalls) return;
+    setOutboundTestCalling(true);
+    setError(null);
+    setOutboundTestOk(false);
+    try {
+      const res = await nvoipVoice.startOutboundCall({ phone });
+      if (!res.ok) {
+        setError(
+          res.message === "nvoip_no_caller"
+            ? t("nvoip.voice.noCaller")
+            : res.message === "nvoip_not_configured"
+              ? t("nvoip.voice.notConfigured")
+              : res.message,
+        );
+      } else {
+        setOutboundTestOk(true);
+      }
+    } finally {
+      setOutboundTestCalling(false);
     }
   };
 
@@ -828,6 +876,43 @@ export function NvoipIntegrationSettings() {
           ) : null}
         </>
       )}
+
+      {account?.status === "CONNECTED" && voiceEnabled ? (
+        <div className="mt-8 max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-ink-200">
+            {t("nvoip.outboundTestTitle")}
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
+          {!nvoipVoice?.canPlaceCalls ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("nvoip.voice.noCaller")}</p>
+          ) : null}
+          <label className="mt-3 block text-sm">
+            <span className="font-medium">{t("nvoip.outboundTestPhone")}</span>
+            <input
+              value={outboundTestPhone}
+              onChange={(e) => setOutboundTestPhone(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-secondary mt-3 text-sm"
+            disabled={
+              outboundTestCalling || !outboundTestPhone.trim() || !nvoipVoice?.canPlaceCalls
+            }
+            onClick={() => void placeOutboundTestCall()}
+          >
+            {outboundTestCalling ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              t("nvoip.outboundTestCall")
+            )}
+          </button>
+          {outboundTestOk ? (
+            <p className="mt-2 text-xs text-emerald-600">{t("nvoip.outboundTestSuccess")}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {account?.status === "CONNECTED" && voiceEnabled ? (
         <div className="mt-8 max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">

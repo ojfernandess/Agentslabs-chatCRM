@@ -57,7 +57,14 @@ export async function resolveNvoipOutboundCaller(input: {
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
     select: { caller: true },
   });
-  const caller = (ext?.caller ?? input.accountDefaultCaller).trim();
+  let caller = (ext?.caller ?? input.accountDefaultCaller).trim();
+  if (!caller) {
+    const account = await prisma.nvoipAccount.findUnique({
+      where: { id: input.accountId },
+      select: { numbersip: true },
+    });
+    caller = account?.numbersip?.trim() ?? "";
+  }
   return caller.slice(0, 32);
 }
 

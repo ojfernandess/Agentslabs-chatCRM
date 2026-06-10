@@ -44,6 +44,7 @@ type NvoipVoiceContextValue = {
   selectedTrunkId: string | null;
   setSelectedTrunkId: (id: string | null) => void;
   activeCall: ActiveCall | null;
+  refreshSession: () => Promise<void>;
   startOutboundCall: (input: {
     phone: string;
     contactId?: string | null;
@@ -79,7 +80,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     [user?.actingOrganizationId, user?.organizationId],
   );
 
-  useEffect(() => {
+  const refreshSession = useCallback(async () => {
     if (!user) {
       setCanPlaceCalls(false);
       setReady(false);
@@ -92,35 +93,38 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await api.get<SessionPayload>("/nvoip/session");
-        if (!cancelled) {
-          setCanPlaceCalls(!!res.canPlaceCalls);
-          const list = res.trunks ?? [];
-          setTrunks(list);
-          const orgId = user?.actingOrganizationId ?? user?.organizationId;
-          if (orgId) {
-            const stored = localStorage.getItem(trunkStorageKey(orgId));
-            const valid =
-              stored && list.some((t) => t.id === stored)
-                ? stored
-                : list.find((t) => t.isDefault)?.id ?? null;
-            setSelectedTrunkIdState(valid);
-          }
-        }
-      } catch {
-        if (!cancelled) setCanPlaceCalls(false);
-      } finally {
-        if (!cancelled) setReady(true);
+    try {
+      const res = await api.get<SessionPayload>("/nvoip/session");
+      setCanPlaceCalls(!!res.canPlaceCalls);
+      const list = res.trunks ?? [];
+      setTrunks(list);
+      const orgId = user.actingOrganizationId ?? user.organizationId;
+      if (orgId) {
+        const stored = localStorage.getItem(trunkStorageKey(orgId));
+        const valid =
+          stored && list.some((t) => t.id === stored)
+            ? stored
+            : list.find((t) => t.isDefault)?.id ?? null;
+        setSelectedTrunkIdState(valid);
       }
-    })();
+    } catch {
+      setCanPlaceCalls(false);
+    } finally {
+      setReady(true);
+    }
+  }, [user]);
 
-    return () => {
-      cancelled = true;
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      void refreshSession();
     };
-  }, [user, user?.actingOrganizationId, user?.organizationId]);
+    window.addEventListener("openconduit:nvoip-session-refresh", onRefresh);
+    return () => window.removeEventListener("openconduit:nvoip-session-refresh", onRefresh);
+  }, [refreshSession]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -250,6 +254,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       selectedTrunkId,
       setSelectedTrunkId,
       activeCall,
+      refreshSession,
       startOutboundCall,
       endActiveCall,
     }),
@@ -260,6 +265,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       selectedTrunkId,
       setSelectedTrunkId,
       activeCall,
+      refreshSession,
       startOutboundCall,
       endActiveCall,
     ],

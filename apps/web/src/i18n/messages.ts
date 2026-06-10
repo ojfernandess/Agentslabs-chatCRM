@@ -2108,6 +2108,12 @@ export const messages = {
         },
       },
     },
+    telephony: {
+      dial: {
+        openTooltip: "Discar chamada (Wavoip ou Nvoip)",
+        noProviders: "Nenhuma telefonia disponível para discagem. Configure Wavoip ou Nvoip.",
+      },
+    },
     nvoip: {
       title: "Integração Nvoip",
       subtitle:
@@ -2150,6 +2156,12 @@ export const messages = {
       balanceRefresh: "Atualizar saldo",
       messagingNote:
         "A telefonia Nvoip é independente do WhatsApp; as chamadas são registadas na conversa/contacto vinculados.",
+      outboundTestTitle: "Teste de ligação de saída",
+      outboundTestHint:
+        "Dispara uma chamada PSTN real para validar caller e saldo. Permanece nesta página — o estado da chamada aparece na barra inferior.",
+      outboundTestPhone: "Telefone de destino",
+      outboundTestCall: "Ligar teste",
+      outboundTestSuccess: "Chamada iniciada. Acompanhe o estado na barra de chamada ativa.",
       torpedoTitle: "Teste de torpedo de voz",
       torpedoHint: "Envia uma mensagem TTS para um número (homologação).",
       torpedoPhone: "Telefone de destino",
@@ -6425,6 +6437,12 @@ export const messages = {
         },
       },
     },
+    telephony: {
+      dial: {
+        openTooltip: "Dial a call (Wavoip or Nvoip)",
+        noProviders: "No telephony provider available for dialing. Configure Wavoip or Nvoip.",
+      },
+    },
     nvoip: {
       title: "Nvoip integration",
       subtitle:
@@ -6467,6 +6485,12 @@ export const messages = {
       balanceRefresh: "Refresh balance",
       messagingNote:
         "Nvoip telephony is separate from WhatsApp; calls are logged on linked contacts/conversations.",
+      outboundTestTitle: "Outbound call test",
+      outboundTestHint:
+        "Place a real PSTN call to validate caller and balance. You stay on this page — call status appears in the bottom bar.",
+      outboundTestPhone: "Destination phone",
+      outboundTestCall: "Place test call",
+      outboundTestSuccess: "Call started. Track status in the active call bar.",
       torpedoTitle: "Voice torpedo test",
       torpedoHint: "Send a TTS message to one number (sandbox).",
       torpedoPhone: "Destination phone",

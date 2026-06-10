@@ -10,8 +10,9 @@ import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversatio
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
-import { WavoipDialModal } from "@/components/wavoip/WavoipDialModal";
-import { useWavoipCanPlaceCalls, useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
+import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
+import { TelephonyDialModal, useTelephonyCanDial } from "@/components/telephony/TelephonyDialModal";
+import { useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
@@ -77,10 +78,8 @@ function ScopeTabCount({ count, selected }: { count: number; selected: boolean }
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
-  const wavoipCanPlaceCalls = useWavoipCanPlaceCalls();
   const wavoipVoice = useWavoipVoiceOptional();
-  const showWavoipDial =
-    (user?.organizationFeatures?.wavoip_voice ?? false) && wavoipCanPlaceCalls;
+  const showTelephonyDial = useTelephonyCanDial();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -508,13 +507,13 @@ export function ConversationsPage() {
               >
                 <SquarePen className="h-5 w-5" />
               </button>
-              {showWavoipDial ? (
+              {showTelephonyDial ? (
                 <button
                   type="button"
                   onClick={() => setDialOpen(true)}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition hover:bg-emerald-600 hover:shadow-lg"
-                  title={t("wavoip.dial.openTooltip")}
-                  aria-label={t("wavoip.dial.openTooltip")}
+                  title={t("telephony.dial.openTooltip")}
+                  aria-label={t("telephony.dial.openTooltip")}
                 >
                   <Phone className="h-5 w-5" />
                 </button>
@@ -894,7 +893,7 @@ export function ConversationsPage() {
                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
                           </div>
                         </Link>
-                        <div className="flex shrink-0 flex-col items-center justify-center gap-2 pr-3">
+                        <div className="flex shrink-0 flex-col items-center justify-center gap-1 pr-3">
                           <WavoipCallButton
                             phone={conv.contact.phone}
                             inboxId={conv.inbox?.id}
@@ -917,6 +916,13 @@ export function ConversationsPage() {
                               return null;
                             })()}
                           />
+                          <NvoipCallButton
+                            phone={conv.contact.phone}
+                            conversationId={conv.id}
+                            contactId={conv.contact.id}
+                            iconOnly
+                            stopPropagation
+                          />
                         </div>
                         </div>
                       </div>
@@ -936,7 +942,7 @@ export function ConversationsPage() {
           setComposeOpen(false);
         }}
       />
-      <WavoipDialModal open={dialOpen && showWavoipDial} onClose={() => setDialOpen(false)} />
+      <TelephonyDialModal open={dialOpen && showTelephonyDial} onClose={() => setDialOpen(false)} />
       <ContactQuickMessageModal
         open={!!quickContact}
         contact={quickContact}
