@@ -11,8 +11,9 @@ type Props = {
 export function ConversationVoiceCallListBadge({ activeVoiceCall, className }: Props) {
   const { t } = useI18n();
   if (!activeVoiceCall) return null;
+  if (!activeVoiceCall.agent?.id) return null;
 
-  const agentName = activeVoiceCall.agent?.name?.trim();
+  const agentName = activeVoiceCall.agent.name.trim();
   const inCallLabel = t("conversations.voiceCallInProgress");
   const label = agentName ? `${agentName} · ${inCallLabel}` : inCallLabel;
 

@@ -11,7 +11,6 @@ import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { TelephonyDialModal, useTelephonyCanDial } from "@/components/telephony/TelephonyDialModal";
-import { useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
 import { useAuth } from "@/hooks/useAuth";
 import { ConversationsStartChatModal } from "@/components/ConversationsStartChatModal";
 import {
@@ -77,7 +76,6 @@ function ScopeTabCount({ count, selected }: { count: number; selected: boolean }
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
-  const wavoipVoice = useWavoipVoiceOptional();
   const showTelephonyDial = useTelephonyCanDial();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -903,17 +901,8 @@ export function ConversationsPage() {
                             stopPropagation
                             peerOnCall={(() => {
                               const call = conv.activeVoiceCall;
-                              if (!call) return null;
-                              if (call.agent?.id && call.agent.id !== user?.id) {
-                                return { agentName: call.agent.name };
-                              }
-                              if (
-                                !call.agent?.id &&
-                                !wavoipVoice?.isOnCallForConversation(conv.id)
-                              ) {
-                                return { agentName: "" };
-                              }
-                              return null;
+                              if (!call?.agent?.id || call.agent.id === user?.id) return null;
+                              return { agentName: call.agent.name };
                             })()}
                           />
                         </div>

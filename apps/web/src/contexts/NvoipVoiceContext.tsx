@@ -38,6 +38,7 @@ type ActiveCall = {
   elapsedSec: number;
   dialPhone: string;
   caller: string | null;
+  conversationId: string | null;
 };
 
 type OutboundResult =
@@ -57,6 +58,7 @@ type NvoipVoiceContextValue = {
   selectedTrunkId: string | null;
   setSelectedTrunkId: (id: string | null) => void;
   activeCall: ActiveCall | null;
+  isOnCallForConversation: (conversationId: string) => boolean;
   refreshSession: () => Promise<void>;
   startOutboundCall: (input: {
     phone: string;
@@ -204,13 +206,20 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           `/nvoip/calls/status?callId=${encodeURIComponent(call.callId)}&clientCallId=${encodeURIComponent(call.clientCallId)}`,
         );
         pollFailuresRef.current = 0;
-        setActiveCall((prev) =>
-          prev && prev.callId === call.callId
-            ? { ...prev, status: res.status, elapsedSec: prev.elapsedSec + 2 }
-            : prev,
-        );
+      setActiveCall((prev) =>
+        prev && prev.callId === call.callId
+          ? { ...prev, status: res.status }
+          : prev,
+      );
         if (res.terminal) {
           await finalizeCall(call, res.status, res.durationSec);
+          if (call.conversationId) {
+            window.dispatchEvent(
+              new CustomEvent("openconduit:conversation-updated", {
+                detail: { conversationId: call.conversationId },
+              }),
+            );
+          }
         }
       } catch {
         pollFailuresRef.current += 1;
@@ -297,6 +306,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           elapsedSec: 0,
           dialPhone: res.dialPhone ?? input.phone,
           caller: res.caller?.trim() || caller,
+          conversationId: res.conversationId ?? input.conversationId ?? null,
         });
         void api
           .post("/nvoip/calls/claim-agent", {
@@ -330,6 +340,12 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     await finalizeCall(call, "ENDED", call.elapsedSec);
   }, [activeCall, finalizeCall, stopPolling]);
 
+  const isOnCallForConversation = useCallback(
+    (conversationId: string) =>
+      activeCall?.conversationId === conversationId,
+    [activeCall?.conversationId],
+  );
+
   const value = useMemo(
     () => ({
       ready,
@@ -344,6 +360,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       selectedTrunkId,
       setSelectedTrunkId,
       activeCall,
+      isOnCallForConversation,
       refreshSession,
       startOutboundCall,
       endActiveCall,
@@ -360,6 +377,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       selectedTrunkId,
       setSelectedTrunkId,
       activeCall,
+      isOnCallForConversation,
       refreshSession,
       startOutboundCall,
       endActiveCall,

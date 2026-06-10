@@ -427,7 +427,8 @@ function parseHistoryCallItem(raw: unknown): NvoipHistoryCallItem | null {
   if (!callId) return null;
   const caller = pickString(obj, ["caller", "origin", "from"]);
   const called = pickString(obj, ["called", "destination", "to"]);
-  const state = pickString(obj, ["state", "status"]) || "finished";
+  const state = pickString(obj, ["state", "status"]);
+  if (!state) return null;
   const linkAudio = pickString(obj, ["linkAudio", "link_audio", "audio", "recordUrl"]) || null;
   return {
     callId,
@@ -501,6 +502,11 @@ export function mapNvoipStateToCrmStatus(state: string): string {
   if (s === "failed") return "FAILED";
   if (s === "canceled" || s === "cancelled" || s === "hangup" || s === "rejected") return "ENDED";
   return state.toUpperCase();
+}
+
+export function isNvoipLiveCallState(state: string): boolean {
+  const s = state.toLowerCase();
+  return ["calling_origin", "calling_destination", "established", "ringing", "dialing"].includes(s);
 }
 
 export function isNvoipTerminalState(state: string): boolean {

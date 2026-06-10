@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Phone, PhoneCall } from "lucide-react";
 import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -51,12 +52,40 @@ export function TelephonyCallButton({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState<TelephonyProviderId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const update = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos({
+        top: rect.bottom + 4,
+        left: Math.max(8, rect.right - 176),
+        width: 176,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (document.getElementById("telephony-call-menu")?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -64,19 +93,21 @@ export function TelephonyCallButton({
 
   if (!phone?.trim() || providers.length === 0) return null;
 
-  const onThisConversation =
+  const wavoipOnCall =
     !!conversationId && !!wavoipVoice?.isOnCallForConversation(conversationId);
-  const nvoipOnThisConversation =
-    !!conversationId &&
-    !!nvoipVoice?.activeCall &&
-    activeVoiceCall?.provider === "nvoip" &&
-    activeVoiceCall.conversationId === conversationId &&
-    activeVoiceCall.agent?.id === user?.id;
+  const nvoipOnCall =
+    !!conversationId && !!nvoipVoice?.isOnCallForConversation(conversationId);
+  const selfOnCall = wavoipOnCall || nvoipOnCall;
 
-  if (peerOnCall) {
+  const peerAgentOnCall =
+    !!activeVoiceCall?.agent?.id &&
+    activeVoiceCall.agent.id !== user?.id &&
+    activeVoiceCall.conversationId === conversationId;
+
+  if (peerOnCall || peerAgentOnCall) {
     const blockedTitle =
-      peerOnCall.agentName.trim().length > 0
-        ? `${peerOnCall.agentName} · ${t("conversations.voiceCallInProgress")}`
+      (peerOnCall?.agentName || activeVoiceCall?.agent?.name || "").trim().length > 0
+        ? `${peerOnCall?.agentName || activeVoiceCall?.agent?.name} · ${t("conversations.voiceCallInProgress")}`
         : t("conversations.voiceCallBlockedTooltip");
     return (
       <span
@@ -93,8 +124,10 @@ export function TelephonyCallButton({
     );
   }
 
-  if (onThisConversation || nvoipOnThisConversation) {
-    const elapsed = onThisConversation ? wavoipVoice!.callElapsedSec : nvoipVoice!.activeCall!.elapsedSec;
+  if (selfOnCall) {
+    const elapsed = wavoipOnCall
+      ? wavoipVoice!.callElapsedSec
+      : nvoipVoice!.activeCall!.elapsedSec;
     return (
       <span
         className={clsx(
@@ -186,9 +219,46 @@ export function TelephonyCallButton({
     setOpen((v) => !v);
   };
 
+  const menu =
+    open && providers.length > 1 && menuPos
+      ? createPortal(
+          <div
+            id="telephony-call-menu"
+            role="menu"
+            style={{
+              position: "fixed",
+              top: menuPos.top,
+              left: menuPos.left,
+              width: menuPos.width,
+              zIndex: 200,
+            }}
+            className="overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-xl dark:border-ink-700 dark:bg-ink-900"
+          >
+            <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
+              {t("telephony.call.chooseProvider")}
+            </p>
+            {providers.map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                role="menuitem"
+                disabled={!!loading || busy}
+                onClick={(e) => void dial(provider, e)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-800 hover:bg-ink-50 disabled:opacity-50 dark:text-ink-100 dark:hover:bg-ink-800"
+              >
+                <Phone className={clsx("h-4 w-4 shrink-0", PROVIDER_ACCENT[provider])} />
+                <span className={PROVIDER_ACCENT[provider]}>{t(PROVIDER_LABEL_KEYS[provider])}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div ref={rootRef} className={clsx("relative inline-flex flex-col items-end gap-0.5", className)}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={!!loading || busy}
         onClick={onMainClick}
@@ -210,31 +280,7 @@ export function TelephonyCallButton({
           <ChevronDown className={clsx("h-3.5 w-3.5 opacity-70 transition", open && "rotate-180")} />
         ) : null}
       </button>
-
-      {open && providers.length > 1 ? (
-        <div
-          className="absolute right-0 top-full z-50 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
-          role="menu"
-        >
-          <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
-            {t("telephony.call.chooseProvider")}
-          </p>
-          {providers.map((provider) => (
-            <button
-              key={provider}
-              type="button"
-              role="menuitem"
-              disabled={!!loading || busy}
-              onClick={(e) => void dial(provider, e)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-800 hover:bg-ink-50 disabled:opacity-50 dark:text-ink-100 dark:hover:bg-ink-800"
-            >
-              <Phone className={clsx("h-4 w-4 shrink-0", PROVIDER_ACCENT[provider])} />
-              <span className={PROVIDER_ACCENT[provider]}>{t(PROVIDER_LABEL_KEYS[provider])}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
+      {menu}
       {error ? (
         <span className="max-w-[10rem] truncate text-[10px] text-red-600 dark:text-red-400">{error}</span>
       ) : null}

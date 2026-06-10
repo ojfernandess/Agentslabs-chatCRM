@@ -2,6 +2,7 @@ import { subMinutes } from "date-fns";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import {
+  isNvoipLiveCallState,
   isNvoipTerminalState,
   isNvoipCrmStatusTerminal,
   mapNvoipStateToCrmStatus,
@@ -241,8 +242,10 @@ export async function syncNvoipCallFromApi(input: {
   const callAgeMs = row.startedAt ? Date.now() - row.startedAt.getTime() : 0;
 
   let remote: NvoipCallStatusPayload | null = null;
+  let liveFromApi = false;
   try {
     remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
+    if (remote?.state) liveFromApi = true;
   } catch {
     remote = null;
   }
@@ -279,36 +282,45 @@ export async function syncNvoipCallFromApi(input: {
 
   const liveState = String(remote.state ?? "").toLowerCase();
   if (
-    (liveState === "calling_origin" || liveState === "calling_destination" || liveState === "established") &&
-    callAgeMs > 20_000
+    liveFromApi &&
+    isNvoipLiveCallState(liveState) &&
+    (liveState === "calling_origin" || liveState === "calling_destination") &&
+    callAgeMs > 8_000
   ) {
     const history = await nvoipFindCallInTodayHistory(
       row.nvoipAccount,
       input.externalCallId,
       historyDirection,
     );
-    if (history?.state) {
-      const histState = history.state.toLowerCase();
-      if (isNvoipTerminalState(history.state)) {
-        remote = {
-          state: history.state,
-          linkAudio: history.linkAudio,
-          talkingDurationSeconds: history.talkingDurationSeconds,
-          totalDurationSeconds: history.totalDurationSeconds,
-          caller: history.caller,
-        };
-      } else if (
-        histState === "established" &&
-        (liveState === "calling_origin" || liveState === "calling_destination")
-      ) {
-        remote = {
-          state: history.state,
-          linkAudio: history.linkAudio,
-          talkingDurationSeconds: history.talkingDurationSeconds,
-          totalDurationSeconds: history.totalDurationSeconds,
-          caller: history.caller,
-        };
-      }
+    const histState = history?.state?.toLowerCase() ?? "";
+    if (history && histState === "established") {
+      remote = {
+        state: history.state,
+        linkAudio: history.linkAudio,
+        talkingDurationSeconds: history.talkingDurationSeconds,
+        totalDurationSeconds: history.totalDurationSeconds,
+        caller: history.caller,
+      };
+    }
+  } else if (
+    liveFromApi &&
+    isNvoipLiveCallState(liveState) &&
+    isNvoipTerminalState(liveState) === false &&
+    callAgeMs > 180_000
+  ) {
+    const history = await nvoipFindCallInTodayHistory(
+      row.nvoipAccount,
+      input.externalCallId,
+      historyDirection,
+    );
+    if (history && isNvoipTerminalState(history.state)) {
+      remote = {
+        state: history.state,
+        linkAudio: history.linkAudio,
+        talkingDurationSeconds: history.talkingDurationSeconds,
+        totalDurationSeconds: history.totalDurationSeconds,
+        caller: history.caller,
+      };
     }
   }
 
@@ -443,6 +455,16 @@ export async function completeAgentOutboundCall(input: {
       recordUrl: row.recordUrl,
     });
     broadcastConversationUpdated(input.organizationId, row.conversationId);
+  }
+
+  if (row.clientCallId) {
+    broadcastToOrganization(input.organizationId, {
+      type: "nvoip.call.ended",
+      callId: row.externalCallId,
+      clientCallId: row.clientCallId,
+      userId: row.initiatedByUserId,
+      status: terminal,
+    });
   }
 
   return { ok: true };

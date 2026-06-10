@@ -41,7 +41,16 @@ const INCOMING_ACTIVE_STATUSES = new Set(["RINGING", "ACTIVE", "DIALING"]);
 export function shouldCreateNvoipTimelineMessage(status: string, direction?: string): boolean {
   const s = status.toUpperCase();
   if (direction === "INCOMING" && INCOMING_ACTIVE_STATUSES.has(s)) return true;
-  if (direction === "OUTGOING" && (s === "DIALING" || s === "ACTIVE")) return true;
+  if (
+    direction === "OUTGOING" &&
+    (s === "DIALING" ||
+      s === "ACTIVE" ||
+      s === "CALLING_ORIGIN" ||
+      s === "CALLING_DESTINATION" ||
+      s === "RINGING")
+  ) {
+    return true;
+  }
   if (TERMINAL_STATUSES.has(s)) return true;
   return false;
 }

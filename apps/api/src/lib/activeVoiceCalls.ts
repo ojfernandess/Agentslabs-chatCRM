@@ -10,13 +10,22 @@ export type ActiveVoiceCallInfo = {
   agent: { id: string; name: string } | null;
 };
 
-function pickAgent(
-  initiatedBy: { id: string; name: string } | null,
-  assignedTo: { id: string; name: string } | null,
-): { id: string; name: string } | null {
+function pickAgent(initiatedBy: { id: string; name: string } | null): { id: string; name: string } | null {
   if (initiatedBy?.id) return initiatedBy;
-  if (assignedTo?.id) return assignedTo;
   return null;
+}
+
+function isStaleNvoipRinging(log: {
+  status: string;
+  direction: string;
+  startedAt: Date | null;
+  updatedAt: Date;
+}): boolean {
+  if (log.direction !== "OUTGOING") return false;
+  const s = log.status.toUpperCase();
+  if (!["DIALING", "CALLING_ORIGIN", "CALLING_DESTINATION", "RINGING"].includes(s)) return false;
+  const anchor = log.startedAt ?? log.updatedAt;
+  return Date.now() - anchor.getTime() > 45 * 60_000;
 }
 
 /** Active Wavoip/Nvoip calls keyed by conversation (most recent per conversation). */
@@ -70,18 +79,19 @@ export async function loadActiveVoiceCallsByConversation(
       provider: "wavoip",
       conversationId: log.conversationId,
       status: log.status,
-      agent: pickAgent(log.initiatedByUser, log.conversation?.assignedTo ?? null),
+      agent: pickAgent(log.initiatedByUser),
     });
   }
 
   for (const log of nvoipLogs) {
     if (!log.conversationId || !isNvoipCallLogActive(log)) continue;
+    if (isStaleNvoipRinging(log)) continue;
     if (map.has(log.conversationId)) continue;
     map.set(log.conversationId, {
       provider: "nvoip",
       conversationId: log.conversationId,
       status: log.status,
-      agent: pickAgent(log.initiatedByUser, log.conversation?.assignedTo ?? null),
+      agent: pickAgent(log.initiatedByUser),
     });
   }
 
