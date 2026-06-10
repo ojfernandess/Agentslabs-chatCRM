@@ -8,6 +8,7 @@ import {
   nvoipCreateCall,
   nvoipFindCallInTodayHistory,
   nvoipGetCallStatus,
+  type NvoipCallStatusPayload,
 } from "./nvoipClient.js";
 import {
   isNvoipCallLogActive,
@@ -236,17 +237,23 @@ export async function syncNvoipCallFromApi(input: {
     return { status: "UNKNOWN", nvoipState: "", terminal: true, recordUrl: null, durationSec: null };
   }
 
-  let remote: Awaited<ReturnType<typeof nvoipGetCallStatus>>;
   const historyDirection = row.direction === "INCOMING" ? ("inbound" as const) : ("outbound" as const);
+  const callAgeMs = row.startedAt ? Date.now() - row.startedAt.getTime() : 0;
+
+  let remote: NvoipCallStatusPayload | null = null;
   try {
     remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
   } catch {
+    remote = null;
+  }
+
+  if (!remote?.state) {
     const history = await nvoipFindCallInTodayHistory(
       row.nvoipAccount,
       input.externalCallId,
       historyDirection,
     );
-    if (history) {
+    if (history?.state) {
       remote = {
         state: history.state,
         linkAudio: history.linkAudio,
@@ -254,34 +261,54 @@ export async function syncNvoipCallFromApi(input: {
         totalDurationSeconds: history.totalDurationSeconds,
         caller: history.caller,
       };
-    } else if (row.startedAt && Date.now() - row.startedAt.getTime() > 45_000) {
-      remote = { state: "noanswer" };
-    } else {
-      throw new Error("call_status_unavailable");
     }
+  }
+
+  if (!remote?.state) {
+    if (callAgeMs < 600_000) {
+      return {
+        status: row.status,
+        nvoipState: "",
+        terminal: false,
+        recordUrl: row.recordUrl,
+        durationSec: row.durationSec,
+      };
+    }
+    remote = { state: "finished" };
   }
 
   const liveState = String(remote.state ?? "").toLowerCase();
   if (
-    (liveState === "calling_origin" || liveState === "calling_destination") &&
-    row.startedAt &&
-    Date.now() - row.startedAt.getTime() > 25_000
+    (liveState === "calling_origin" || liveState === "calling_destination" || liveState === "established") &&
+    callAgeMs > 20_000
   ) {
     const history = await nvoipFindCallInTodayHistory(
       row.nvoipAccount,
       input.externalCallId,
       historyDirection,
     );
-    if (history && isNvoipTerminalState(history.state)) {
-      remote = {
-        state: history.state,
-        linkAudio: history.linkAudio,
-        talkingDurationSeconds: history.talkingDurationSeconds,
-        totalDurationSeconds: history.totalDurationSeconds,
-        caller: history.caller,
-      };
-    } else if (liveState === "calling_origin" && Date.now() - row.startedAt.getTime() > 40_000) {
-      remote = { state: "noanswer" };
+    if (history?.state) {
+      const histState = history.state.toLowerCase();
+      if (isNvoipTerminalState(history.state)) {
+        remote = {
+          state: history.state,
+          linkAudio: history.linkAudio,
+          talkingDurationSeconds: history.talkingDurationSeconds,
+          totalDurationSeconds: history.totalDurationSeconds,
+          caller: history.caller,
+        };
+      } else if (
+        histState === "established" &&
+        (liveState === "calling_origin" || liveState === "calling_destination")
+      ) {
+        remote = {
+          state: history.state,
+          linkAudio: history.linkAudio,
+          talkingDurationSeconds: history.talkingDurationSeconds,
+          totalDurationSeconds: history.totalDurationSeconds,
+          caller: history.caller,
+        };
+      }
     }
   }
 

@@ -72,7 +72,7 @@ export function useNvoipVoiceOptional() {
   return useContext(NvoipVoiceContext);
 }
 
-const MAX_POLL_FAILURES = 3;
+const MAX_POLL_FAILURES = 24;
 
 export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -214,7 +214,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         pollFailuresRef.current += 1;
-        if (pollFailuresRef.current >= MAX_POLL_FAILURES) {
+        if (pollFailuresRef.current >= MAX_POLL_FAILURES && call.elapsedSec >= 600) {
           await finalizeCall(call, "ENDED", call.elapsedSec);
         }
       }

@@ -80,9 +80,7 @@ import {
   shouldDisplayClosureValueBadge,
 } from "@/lib/closureValueRollup";
 import { TemplateSendModal } from "@/components/TemplateSendModal";
-import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
-import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
-import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
+import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
 import { WavoipForceEndCallButton } from "@/components/wavoip/WavoipForceEndCallButton";
 import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
@@ -1638,30 +1636,15 @@ export function ConversationDetailPage() {
             <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
               <span>{phone}</span>
               {hasPhone ? (
-                <>
-                  <WavoipCallButton
-                    phone={phone}
-                    inboxId={conversation.inbox?.id}
-                    conversationId={conversation.id}
-                    contactId={conversation.contact.id}
-                    iconOnly
-                    compact
-                  />
-                  <ThreeCxCallButton
-                    phone={phone}
-                    conversationId={conversation.id}
-                    contactId={conversation.contact.id}
-                    iconOnly
-                    compact
-                  />
-                  <NvoipCallButton
-                    phone={phone}
-                    conversationId={conversation.id}
-                    contactId={conversation.contact.id}
-                    iconOnly
-                    compact
-                  />
-                </>
+                <TelephonyCallButton
+                  phone={phone}
+                  inboxId={conversation.inbox?.id}
+                  conversationId={conversation.id}
+                  contactId={conversation.contact.id}
+                  activeVoiceCall={conversation.activeVoiceCall}
+                  iconOnly
+                  compact
+                />
               ) : null}
             </div>
           );
@@ -2469,23 +2452,12 @@ export function ConversationDetailPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <WavoipCallButton
+                    <TelephonyCallButton
                       phone={conversation.contact.phone}
                       inboxId={conversation.inbox?.id}
                       conversationId={conversation.id}
                       contactId={conversation.contact.id}
-                      compact
-                    />
-                    <ThreeCxCallButton
-                      phone={conversation.contact.phone}
-                      conversationId={conversation.id}
-                      contactId={conversation.contact.id}
-                      compact
-                    />
-                    <NvoipCallButton
-                      phone={conversation.contact.phone}
-                      conversationId={conversation.id}
-                      contactId={conversation.contact.id}
+                      activeVoiceCall={conversation.activeVoiceCall}
                       compact
                     />
                     {copilotEnabled ? (

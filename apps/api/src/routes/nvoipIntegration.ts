@@ -574,11 +574,21 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
         where: { id: account.id },
         data: { lastBalance: balance, lastStatusAt: new Date() },
       });
-      return { balance, balanceLow: alert.low, balanceAlertThresholdBrl: alert.thresholdBrl };
+      return { balance, balanceLow: alert.low, balanceAlertThresholdBrl: alert.thresholdBrl, stale: false };
     } catch (err) {
+      const message = err instanceof Error ? err.message : "balance_failed";
+      if (message === "nvoip_balance_unavailable" && account.lastBalance) {
+        const alert = await maybeAlertNvoipLowBalance(account, account.lastBalance);
+        return {
+          balance: account.lastBalance,
+          balanceLow: alert.low,
+          balanceAlertThresholdBrl: alert.thresholdBrl,
+          stale: true,
+        };
+      }
       return reply.status(400).send({
         error: "Bad Request",
-        message: err instanceof Error ? err.message : "balance_failed",
+        message,
         statusCode: 400,
       });
     }

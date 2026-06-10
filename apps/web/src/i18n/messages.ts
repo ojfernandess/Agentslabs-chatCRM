@@ -2093,6 +2093,7 @@ export const messages = {
       },
       call: { tooltip: "Ligar via 3CX" },
       voice: {
+        notConfigured: "3CX não configurado para esta organização.",
         noRoutePoints: "Nenhum route point 3CX disponível.",
         unknownCaller: "Desconhecido",
         incomingToast: "Chamada 3CX de {caller}",
@@ -2112,6 +2113,13 @@ export const messages = {
       dial: {
         openTooltip: "Discar chamada (Wavoip ou Nvoip)",
         noProviders: "Nenhuma telefonia disponível para discagem. Configure Wavoip ou Nvoip.",
+      },
+      call: {
+        tooltip: "Ligar",
+        chooseProvider: "Escolher telefonia",
+        wavoip: "WhatsApp (Wavoip)",
+        nvoip: "Nvoip (PABX)",
+        threecx: "3CX",
       },
     },
     nvoip: {
@@ -2133,6 +2141,13 @@ export const messages = {
       test: "Testar ligação",
       status: "Estado",
       balance: "Saldo",
+      balanceStale: "Saldo em cache (API indisponível no momento)",
+      balanceRefresh: "Atualizar saldo",
+      sectionAccount: "Conta e credenciais",
+      sectionAccountHint: "NumberSIP, User Token e NAPI Key do painel Nvoip.",
+      sectionVoice: "Chamadas de voz",
+      sectionVoiceHint: "Ramal de saída, caixa de entrada e teste de ligação.",
+      sectionChannels: "Canais adicionais",
       extensionsTitle: "Ramais por agente",
       extensionsHint:
         "Selecione o ramal Nvoip, confirme o número SIP (caller) e clique em «Guardar ramal». Caso vazio, usa o ramal predefinido da conta.",
@@ -2159,7 +2174,6 @@ export const messages = {
       didsColDestination: "Destino",
       didsColLabel: "Etiqueta",
       didsPanelLink: "Abrir painel Nvoip",
-      balanceRefresh: "Atualizar saldo",
       messagingNote:
         "A telefonia Nvoip é independente do WhatsApp; as chamadas são registadas na conversa/contacto vinculados.",
       outboundTestTitle: "Teste de ligação de saída",
@@ -2307,6 +2321,8 @@ export const messages = {
           ENDED: "Terminada",
           ANSWERED: "Atendida",
           MISSED: "Perdida",
+          NOT_ANSWERED: "Não atendida",
+          BUSY: "Ocupado",
           FAILED: "Falhou",
         },
       },
@@ -6541,6 +6557,7 @@ export const messages = {
       },
       call: { tooltip: "Call via 3CX" },
       voice: {
+        notConfigured: "3CX is not configured for this organization.",
         noRoutePoints: "No 3CX route points available.",
         unknownCaller: "Unknown",
         incomingToast: "3CX call from {caller}",
@@ -6560,6 +6577,13 @@ export const messages = {
       dial: {
         openTooltip: "Dial a call (Wavoip or Nvoip)",
         noProviders: "No telephony provider available for dialing. Configure Wavoip or Nvoip.",
+      },
+      call: {
+        tooltip: "Call",
+        chooseProvider: "Choose telephony",
+        wavoip: "WhatsApp (Wavoip)",
+        nvoip: "Nvoip (PBX)",
+        threecx: "3CX",
       },
     },
     nvoip: {
@@ -6581,6 +6605,13 @@ export const messages = {
       test: "Test connection",
       status: "Status",
       balance: "Balance",
+      balanceStale: "Cached balance (API temporarily unavailable)",
+      balanceRefresh: "Refresh balance",
+      sectionAccount: "Account & credentials",
+      sectionAccountHint: "NumberSIP, User Token, and NAPI Key from the Nvoip dashboard.",
+      sectionVoice: "Voice calls",
+      sectionVoiceHint: "Outbound caller, inbox, and connection test.",
+      sectionChannels: "Additional channels",
       extensionsTitle: "Per-agent extensions",
       extensionsHint:
         "Pick the Nvoip extension, confirm the SIP caller id, and click «Save extension». If empty, the account default caller is used.",
@@ -6607,7 +6638,6 @@ export const messages = {
       didsColDestination: "Destination",
       didsColLabel: "Label",
       didsPanelLink: "Open Nvoip dashboard",
-      balanceRefresh: "Refresh balance",
       messagingNote:
         "Nvoip telephony is separate from WhatsApp; calls are logged on linked contacts/conversations.",
       outboundTestTitle: "Outbound call test",
@@ -6755,6 +6785,8 @@ export const messages = {
           ENDED: "Ended",
           ANSWERED: "Answered",
           MISSED: "Missed",
+          NOT_ANSWERED: "Not answered",
+          BUSY: "Busy",
           FAILED: "Failed",
         },
       },

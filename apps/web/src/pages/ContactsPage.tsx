@@ -37,9 +37,7 @@ import { format } from "date-fns";
 import { ContactProfileDrawer } from "@/components/ContactProfileDrawer";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
-import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
-import { ThreeCxCallButton } from "@/components/threecx/ThreeCxCallButton";
-import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
+import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { ContactNvoipSmsModal } from "@/components/nvoip/ContactNvoipSmsModal";
 import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTemplateModal";
 import { useAuth } from "@/hooks/useAuth";
@@ -1007,19 +1005,7 @@ export function ContactsPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex flex-nowrap items-center gap-0.5">
-                              <WavoipCallButton
-                                phone={contact.phone}
-                                contactId={contact.id}
-                                iconOnly
-                                stopPropagation
-                              />
-                              <ThreeCxCallButton
-                                phone={contact.phone}
-                                contactId={contact.id}
-                                iconOnly
-                                stopPropagation
-                              />
-                              <NvoipCallButton
+                              <TelephonyCallButton
                                 phone={contact.phone}
                                 contactId={contact.id}
                                 iconOnly

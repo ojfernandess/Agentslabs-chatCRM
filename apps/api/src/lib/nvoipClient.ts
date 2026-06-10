@@ -199,27 +199,41 @@ export async function nvoipAuthorizedFetch(
   return fetchWithRateLimitBackoff(apiUrl(path), { ...init, headers });
 }
 
+function parseBalanceResponse(text: string, res: Response): { balance: string } | null {
+  if (isLikelyHtmlBody(text)) return null;
+  let data: { balance?: string | number; saldo?: string | number; error?: string };
+  try {
+    data = text ? (JSON.parse(text) as typeof data) : {};
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const raw = data.balance ?? data.saldo;
+  if (raw == null || raw === "") return { balance: "0" };
+  return { balance: String(raw) };
+}
+
 async function nvoipFetchBalanceWithToken(
   accessToken: string,
   input?: { numbersip?: string; napikey?: string | null },
 ): Promise<{ balance: string }> {
   const authHeaders = nvoipRequestHeaders({ Authorization: `Bearer ${accessToken}` });
+  const numbersip = input?.numbersip?.trim();
+  const napikey = input?.napikey?.trim();
 
+  const bearerUrls: string[] = [];
   for (const path of ["/balance", "/balance/"]) {
-    const res = await fetchWithRateLimitBackoff(apiUrl(path), { method: "GET", headers: authHeaders });
-    const text = await res.text();
-    if (isLikelyHtmlBody(text)) continue;
-    let data: { balance?: string; error?: string };
-    try {
-      data = text ? (JSON.parse(text) as { balance?: string; error?: string }) : {};
-    } catch {
-      continue;
+    bearerUrls.push(apiUrl(path));
+    if (numbersip) {
+      bearerUrls.push(apiUrl(`${path}?numbersip=${encodeURIComponent(numbersip)}`));
     }
-    if (res.ok) return { balance: String(data.balance ?? "0") };
+  }
+  for (const url of bearerUrls) {
+    const res = await fetchWithRateLimitBackoff(url, { method: "GET", headers: authHeaders });
+    const parsed = parseBalanceResponse(await res.text(), res);
+    if (parsed) return parsed;
   }
 
-  const napikey = input?.napikey?.trim();
-  const numbersip = input?.numbersip?.trim();
   if (napikey && numbersip) {
     const qs = new URLSearchParams({ numbersip, napikey });
     for (const path of ["/balance", "/balance/"]) {
@@ -227,15 +241,8 @@ async function nvoipFetchBalanceWithToken(
         method: "GET",
         headers: nvoipRequestHeaders(),
       });
-      const text = await res.text();
-      if (isLikelyHtmlBody(text)) continue;
-      let data: { balance?: string; error?: string };
-      try {
-        data = text ? (JSON.parse(text) as { balance?: string; error?: string }) : {};
-      } catch {
-        continue;
-      }
-      if (res.ok) return { balance: String(data.balance ?? "0") };
+      const parsed = parseBalanceResponse(await res.text(), res);
+      if (parsed) return parsed;
     }
   }
 
@@ -271,17 +278,50 @@ export async function nvoipGetCallStatus(
   account: NvoipAccount,
   callId: string,
 ): Promise<NvoipCallStatusPayload> {
-  const res = await nvoipAuthorizedFetch(
-    account,
-    `/calls?callId=${encodeURIComponent(callId)}`,
-    { method: "GET" },
-  );
-  const data = await parseJson<unknown>(res);
-  if (!res.ok) {
-    const err = data as { error?: string };
-    throw new Error(err?.error ?? `call_status_failed_${res.status}`);
+  const id = callId.trim();
+  const paths = [
+    `/calls?callId=${encodeURIComponent(id)}`,
+    `/calls/?callId=${encodeURIComponent(id)}`,
+  ];
+  let lastError = "call_status_failed";
+
+  for (const path of paths) {
+    try {
+      const res = await nvoipAuthorizedFetch(account, path, { method: "GET" });
+      const data = await parseJson<unknown>(res);
+      if (res.ok) {
+        const payload = normalizeNvoipCallStatusPayload(data);
+        if (payload.state) return payload;
+      } else {
+        const err = data as { error?: string };
+        lastError = err?.error ?? `call_status_failed_${res.status}`;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : lastError;
+    }
   }
-  return normalizeNvoipCallStatusPayload(data);
+
+  for (const path of paths) {
+    try {
+      const res = await nvoipFetchWithNapikey(account, path, { method: "GET" });
+      const text = await res.text();
+      if (isLikelyHtmlBody(text)) continue;
+      let data: unknown;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        continue;
+      }
+      if (res.ok) {
+        const payload = normalizeNvoipCallStatusPayload(data);
+        if (payload.state) return payload;
+      }
+    } catch {
+      /* try next */
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 /** Parse GET /calls?callId= payload (flat or nested). */

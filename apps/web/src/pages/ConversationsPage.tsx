@@ -9,8 +9,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
-import { WavoipCallButton } from "@/components/wavoip/WavoipCallButton";
-import { NvoipCallButton } from "@/components/nvoip/NvoipCallButton";
+import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { TelephonyDialModal, useTelephonyCanDial } from "@/components/telephony/TelephonyDialModal";
 import { useWavoipVoiceOptional } from "@/contexts/WavoipVoiceContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -893,12 +892,13 @@ export function ConversationsPage() {
                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
                           </div>
                         </Link>
-                        <div className="flex shrink-0 flex-col items-center justify-center gap-1 pr-3">
-                          <WavoipCallButton
+                        <div className="flex shrink-0 items-center justify-center pr-3">
+                          <TelephonyCallButton
                             phone={conv.contact.phone}
                             inboxId={conv.inbox?.id}
                             conversationId={conv.id}
                             contactId={conv.contact.id}
+                            activeVoiceCall={conv.activeVoiceCall}
                             iconOnly
                             stopPropagation
                             peerOnCall={(() => {
@@ -915,13 +915,6 @@ export function ConversationsPage() {
                               }
                               return null;
                             })()}
-                          />
-                          <NvoipCallButton
-                            phone={conv.contact.phone}
-                            conversationId={conv.id}
-                            contactId={conv.contact.id}
-                            iconOnly
-                            stopPropagation
                           />
                         </div>
                         </div>

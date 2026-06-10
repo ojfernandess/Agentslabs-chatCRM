@@ -130,6 +130,7 @@ export function NvoipIntegrationSettings() {
   const [balanceAlertEmails, setBalanceAlertEmails] = useState("");
   const [recordingRetentionDays, setRecordingRetentionDays] = useState("");
   const [balanceLow, setBalanceLow] = useState(false);
+  const [balanceStale, setBalanceStale] = useState(false);
 
   const applyExtensionsPayload = (ext: {
     data?: ExtensionRow[];
@@ -356,11 +357,14 @@ export function NvoipIntegrationSettings() {
       const res = await api.get<{
         balance: string;
         balanceLow?: boolean;
+        stale?: boolean;
       }>("/settings/nvoip/balance");
       setBalanceLow(!!res.balanceLow);
+      setBalanceStale(!!res.stale);
       setAccount((prev) => (prev ? { ...prev, lastBalance: res.balance } : prev));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("nvoip.testError"));
+      setBalanceStale(false);
     } finally {
       setRefreshingBalance(false);
     }
@@ -410,166 +414,239 @@ export function NvoipIntegrationSettings() {
         <p className="mt-6 text-sm text-slate-500">{t("common.loading")}</p>
       ) : (
         <>
-          <div className="mt-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 p-4 dark:border-ink-800">
-            <label className="block text-sm">
-              <span className="font-medium">{t("nvoip.field.numbersip")}</span>
-              <input
-                value={numbersip}
-                onChange={(e) => setNumbersip(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">{t("nvoip.field.userToken")}</span>
-              <input
-                type="password"
-                value={userToken}
-                onChange={(e) => setUserToken(e.target.value)}
-                placeholder={account ? t("nvoip.field.tokenPlaceholder") : undefined}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">{t("nvoip.field.napikey")}</span>
-              <input
-                type="password"
-                value={napikey}
-                onChange={(e) => setNapikey(e.target.value)}
-                placeholder={t("nvoip.field.optional")}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">{t("nvoip.field.defaultCaller")}</span>
-              <input
-                value={defaultCaller}
-                onChange={(e) => setDefaultCaller(e.target.value)}
-                placeholder="1049"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-              />
-              <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.field.defaultCallerHint")}</p>
-              {isLikelyNvoipNumbersipCaller(defaultCaller, numbersip) ? (
-                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                  {t("nvoip.setup.invalidCallerWarning")}
-                </p>
-              ) : null}
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">{t("nvoip.field.inbox")}</span>
-              <select
-                value={inboxId}
-                onChange={(e) => setInboxId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-              >
-                <option value="">{t("nvoip.field.inboxNone")}</option>
-                {inboxes.map((ib) => (
-                  <option key={ib.id} value={ib.id}>
-                    {ib.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-primary text-sm" disabled={saving} onClick={() => void save()}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.save")}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary text-sm"
-                disabled={testing}
-                onClick={() => void testConnection()}
-              >
-                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.test")}
-              </button>
-              {linked ? (
-                <button
-                  type="button"
-                  className="btn-ghost text-sm"
-                  disabled={refreshingBalance}
-                  onClick={() => void refreshBalance()}
-                >
-                  {refreshingBalance ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    t("nvoip.balanceRefresh")
-                  )}
-                </button>
-              ) : null}
-              <button type="button" className="btn-ghost text-sm" onClick={() => void load()}>
-                <RefreshCw className="h-4 w-4" />
-              </button>
-            </div>
-            {account ? (
-              <p className="text-xs text-slate-500">
-                {t("nvoip.status")}:{" "}
+          {account ? (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-ink-800 dark:bg-ink-950/40">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span
                   className={clsx(
-                    "font-semibold",
-                    account.status === "CONNECTED" ? "text-emerald-600" : "text-amber-600",
+                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                    account.status === "CONNECTED"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200",
                   )}
                 >
                   {account.status}
                 </span>
-                {account.lastBalance ? ` · ${t("nvoip.balance")}: ${account.lastBalance}` : null}
+                {account.lastBalance ? (
+                  <span className="text-slate-600 dark:text-ink-300">
+                    {t("nvoip.balance")}: <strong>{account.lastBalance}</strong>
+                    {balanceStale ? (
+                      <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                        ({t("nvoip.balanceStale")})
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
                 {balanceLow ? (
-                  <span className="ml-1 text-amber-600"> · {t("nvoip.balanceLow")}</span>
+                  <span className="text-xs font-medium text-amber-600">{t("nvoip.balanceLow")}</span>
                 ) : null}
-                {account.lastError ? ` · ${account.lastError}` : null}
-              </p>
-            ) : null}
+                {account.lastError ? (
+                  <span className="text-xs text-red-600 dark:text-red-400">{account.lastError}</span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={testing}
+                  onClick={() => void testConnection()}
+                >
+                  {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.test")}
+                </button>
+                {linked ? (
+                  <button
+                    type="button"
+                    className="btn-ghost text-sm"
+                    disabled={refreshingBalance}
+                    onClick={() => void refreshBalance()}
+                  >
+                    {refreshingBalance ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t("nvoip.balanceRefresh")
+                    )}
+                  </button>
+                ) : null}
+                <button type="button" className="btn-ghost text-sm" onClick={() => void load()}>
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : null}
 
-            {voiceEnabled && (linked || showTestDialPanel) ? (
-              <div className="mt-4 rounded-lg border border-orange-200/80 bg-orange-50/50 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
-                <p className="text-xs font-medium text-slate-700 dark:text-ink-200">
-                  {t("nvoip.outboundTestTitle")}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
-                <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">{t("nvoip.outboundTestCallerHint")}</p>
-                {otpEnabled ? (
-                  <p className="mt-1 text-xs text-slate-600 dark:text-ink-400">{t("nvoip.otpVoiceSeparateHint")}</p>
-                ) : null}
-                {!linked ? (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                    {t("nvoip.outboundTestNeedConnected")}
-                  </p>
-                ) : !nvoipVoice?.canPlaceCalls ? (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("nvoip.voice.noCaller")}</p>
-                ) : null}
-                <label className="mt-3 block text-sm">
-                  <span className="font-medium">{t("nvoip.outboundTestPhone")}</span>
+          <div className="mt-6 max-w-2xl space-y-6">
+            <section className="rounded-xl border border-slate-200 p-5 dark:border-ink-800">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-ink-50">
+                {t("nvoip.sectionAccount")}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.sectionAccountHint")}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-medium">{t("nvoip.field.numbersip")}</span>
                   <input
-                    ref={outboundTestPhoneRef}
-                    value={outboundTestPhone}
-                    onChange={(e) => setOutboundTestPhone(e.target.value)}
-                    placeholder="11987654321"
+                    value={numbersip}
+                    onChange={(e) => setNumbersip(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
                   />
                 </label>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary text-sm"
-                    disabled={
-                      outboundTestCalling ||
-                      !outboundTestPhone.trim() ||
-                      !linked ||
-                      !nvoipVoice?.canPlaceCalls
-                    }
-                    onClick={() => void placeOutboundTestCall()}
-                  >
-                    {outboundTestCalling ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      t("nvoip.outboundTestCall")
-                    )}
-                  </button>
-                </div>
-                {outboundTestOk ? (
-                  <p className="mt-2 text-xs text-emerald-600">{t("nvoip.outboundTestSuccess")}</p>
-                ) : null}
+                <label className="block text-sm">
+                  <span className="font-medium">{t("nvoip.field.userToken")}</span>
+                  <input
+                    type="password"
+                    value={userToken}
+                    onChange={(e) => setUserToken(e.target.value)}
+                    placeholder={account ? t("nvoip.field.tokenPlaceholder") : undefined}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="font-medium">{t("nvoip.field.napikey")}</span>
+                  <input
+                    type="password"
+                    value={napikey}
+                    onChange={(e) => setNapikey(e.target.value)}
+                    placeholder={t("nvoip.field.optional")}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                  />
+                </label>
               </div>
-            ) : null}
+              <button
+                type="button"
+                className="btn-primary mt-4 text-sm"
+                disabled={saving}
+                onClick={() => void save()}
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.save")}
+              </button>
+            </section>
+
+            {voiceEnabled ? (
+              <section className="rounded-xl border border-slate-200 p-5 dark:border-ink-800">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-ink-50">
+                  {t("nvoip.sectionVoice")}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.sectionVoiceHint")}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="font-medium">{t("nvoip.field.defaultCaller")}</span>
+                    <input
+                      value={defaultCaller}
+                      onChange={(e) => setDefaultCaller(e.target.value)}
+                      placeholder="1049"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                    />
+                    {isLikelyNvoipNumbersipCaller(defaultCaller, numbersip) ? (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        {t("nvoip.setup.invalidCallerWarning")}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">
+                        {t("nvoip.field.defaultCallerHint")}
+                      </p>
+                    )}
+                  </label>
+                  <label className="block text-sm">
+                    <span className="font-medium">{t("nvoip.field.inbox")}</span>
+                    <select
+                      value={inboxId}
+                      onChange={(e) => setInboxId(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                    >
+                      <option value="">{t("nvoip.field.inboxNone")}</option>
+                      {inboxes.map((ib) => (
+                        <option key={ib.id} value={ib.id}>
+                          {ib.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {(linked || showTestDialPanel) ? (
+                  <div className="mt-4 rounded-lg border border-orange-200/80 bg-orange-50/40 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
+                    <p className="text-xs font-medium text-slate-700 dark:text-ink-200">
+                      {t("nvoip.outboundTestTitle")}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
+                    {!linked ? (
+                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                        {t("nvoip.outboundTestNeedConnected")}
+                      </p>
+                    ) : !nvoipVoice?.canPlaceCalls ? (
+                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("nvoip.voice.noCaller")}</p>
+                    ) : null}
+                    <label className="mt-3 block text-sm">
+                      <span className="font-medium">{t("nvoip.outboundTestPhone")}</span>
+                      <input
+                        ref={outboundTestPhoneRef}
+                        value={outboundTestPhone}
+                        onChange={(e) => setOutboundTestPhone(e.target.value)}
+                        placeholder="11987654321"
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-secondary mt-3 text-sm"
+                      disabled={
+                        outboundTestCalling ||
+                        !outboundTestPhone.trim() ||
+                        !linked ||
+                        !nvoipVoice?.canPlaceCalls
+                      }
+                      onClick={() => void placeOutboundTestCall()}
+                    >
+                      {outboundTestCalling ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t("nvoip.outboundTestCall")
+                      )}
+                    </button>
+                    {outboundTestOk ? (
+                      <p className="mt-2 text-xs text-emerald-600">{t("nvoip.outboundTestSuccess")}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : (
+              <section className="rounded-xl border border-slate-200 p-5 dark:border-ink-800">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="font-medium">{t("nvoip.field.defaultCaller")}</span>
+                    <input
+                      value={defaultCaller}
+                      onChange={(e) => setDefaultCaller(e.target.value)}
+                      placeholder="1049"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="font-medium">{t("nvoip.field.inbox")}</span>
+                    <select
+                      value={inboxId}
+                      onChange={(e) => setInboxId(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                    >
+                      <option value="">{t("nvoip.field.inboxNone")}</option>
+                      {inboxes.map((ib) => (
+                        <option key={ib.id} value={ib.id}>
+                          {ib.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </section>
+            )}
           </div>
+
+          {(linked && otpEnabled) || whatsappEnabled || (linked && smsEnabled) ? (
+            <div className="mt-8 max-w-2xl">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-ink-200">
+                {t("nvoip.sectionChannels")}
+              </h3>
+            </div>
+          ) : null}
 
           {linked && otpEnabled ? (
             <div className="mt-8 max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">
