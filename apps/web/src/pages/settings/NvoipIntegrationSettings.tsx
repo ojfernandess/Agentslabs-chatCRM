@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Loader2, Phone, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
@@ -93,6 +93,8 @@ export function NvoipIntegrationSettings() {
   const [outboundTestPhone, setOutboundTestPhone] = useState("");
   const [outboundTestCalling, setOutboundTestCalling] = useState(false);
   const [outboundTestOk, setOutboundTestOk] = useState(false);
+  const [showTestDialPanel, setShowTestDialPanel] = useState(false);
+  const outboundTestPhoneRef = useRef<HTMLInputElement>(null);
   const [otpProvider, setOtpProvider] = useState<"DISABLED" | "NVOIP">("DISABLED");
   const [otpDefaultChannel, setOtpDefaultChannel] = useState<"sms" | "voice" | "email">("sms");
   const [smsTestPhone, setSmsTestPhone] = useState("");
@@ -261,6 +263,7 @@ export function NvoipIntegrationSettings() {
     setTesting(true);
     setError(null);
     setOutboundTestOk(false);
+    setShowTestDialPanel(true);
     try {
       await save();
       const res = await api.post<{ ok: boolean; balance?: string; message?: string }>(
@@ -270,8 +273,14 @@ export function NvoipIntegrationSettings() {
         setError(res.message ?? t("nvoip.testError"));
       } else {
         await refreshAccountQuiet();
+        void api.post("/settings/nvoip/users/sync").catch(() => {});
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
-        void nvoipVoice?.refreshSession();
+        await nvoipVoice?.refreshSession();
+        if (outboundTestPhone.trim()) {
+          await placeOutboundTestCall();
+        } else {
+          window.setTimeout(() => outboundTestPhoneRef.current?.focus(), 50);
+        }
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("nvoip.testError"));
@@ -282,7 +291,7 @@ export function NvoipIntegrationSettings() {
 
   const placeOutboundTestCall = async () => {
     const phone = outboundTestPhone.trim();
-    if (!phone || !nvoipVoice?.canPlaceCalls) return;
+    if (!phone || !nvoipVoice) return;
     setOutboundTestCalling(true);
     setError(null);
     setOutboundTestOk(false);
@@ -491,6 +500,55 @@ export function NvoipIntegrationSettings() {
                 ) : null}
                 {account.lastError ? ` · ${account.lastError}` : null}
               </p>
+            ) : null}
+
+            {voiceEnabled && (linked || showTestDialPanel) ? (
+              <div className="mt-4 rounded-lg border border-orange-200/80 bg-orange-50/50 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
+                <p className="text-xs font-medium text-slate-700 dark:text-ink-200">
+                  {t("nvoip.outboundTestTitle")}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">{t("nvoip.outboundTestCallerHint")}</p>
+                {!linked ? (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    {t("nvoip.outboundTestNeedConnected")}
+                  </p>
+                ) : !nvoipVoice?.canPlaceCalls ? (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("nvoip.voice.noCaller")}</p>
+                ) : null}
+                <label className="mt-3 block text-sm">
+                  <span className="font-medium">{t("nvoip.outboundTestPhone")}</span>
+                  <input
+                    ref={outboundTestPhoneRef}
+                    value={outboundTestPhone}
+                    onChange={(e) => setOutboundTestPhone(e.target.value)}
+                    placeholder="11987654321"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                  />
+                </label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    disabled={
+                      outboundTestCalling ||
+                      !outboundTestPhone.trim() ||
+                      !linked ||
+                      !nvoipVoice?.canPlaceCalls
+                    }
+                    onClick={() => void placeOutboundTestCall()}
+                  >
+                    {outboundTestCalling ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t("nvoip.outboundTestCall")
+                    )}
+                  </button>
+                </div>
+                {outboundTestOk ? (
+                  <p className="mt-2 text-xs text-emerald-600">{t("nvoip.outboundTestSuccess")}</p>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
@@ -876,43 +934,6 @@ export function NvoipIntegrationSettings() {
           ) : null}
         </>
       )}
-
-      {account?.status === "CONNECTED" && voiceEnabled ? (
-        <div className="mt-8 max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-ink-200">
-            {t("nvoip.outboundTestTitle")}
-          </h3>
-          <p className="mt-1 text-xs text-slate-500">{t("nvoip.outboundTestHint")}</p>
-          {!nvoipVoice?.canPlaceCalls ? (
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("nvoip.voice.noCaller")}</p>
-          ) : null}
-          <label className="mt-3 block text-sm">
-            <span className="font-medium">{t("nvoip.outboundTestPhone")}</span>
-            <input
-              value={outboundTestPhone}
-              onChange={(e) => setOutboundTestPhone(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-            />
-          </label>
-          <button
-            type="button"
-            className="btn-secondary mt-3 text-sm"
-            disabled={
-              outboundTestCalling || !outboundTestPhone.trim() || !nvoipVoice?.canPlaceCalls
-            }
-            onClick={() => void placeOutboundTestCall()}
-          >
-            {outboundTestCalling ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              t("nvoip.outboundTestCall")
-            )}
-          </button>
-          {outboundTestOk ? (
-            <p className="mt-2 text-xs text-emerald-600">{t("nvoip.outboundTestSuccess")}</p>
-          ) : null}
-        </div>
-      ) : null}
 
       {account?.status === "CONNECTED" && voiceEnabled ? (
         <div className="mt-8 max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">

@@ -14,6 +14,8 @@ import {
 } from "./nvoipCallTimeline.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { resolveCallerForUser, resolveNvoipCallContext } from "./nvoipCallContext.js";
+import { formatNvoipCalled, formatNvoipCaller } from "./nvoipCallFormat.js";
+import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
 
 export async function startAgentOutboundCall(input: {
   organizationId: string;
@@ -56,15 +58,35 @@ export async function startAgentOutboundCall(input: {
     conversationId: input.conversationId ?? null,
   });
 
-  const receiver = ctx.dialPhone.replace(/\D/g, "").slice(0, 32);
-  const callerNorm = caller.replace(/\D/g, "").slice(0, 32) || caller;
+  const receiver = formatNvoipCalled(ctx.dialPhone);
+  const callerNorm = formatNvoipCaller(caller);
+  if (!receiver || receiver.length < 10) {
+    return { ok: false, message: "invalid_called_number" };
+  }
 
   let externalCallId: string;
   try {
     const created = await nvoipCreateCall(account, callerNorm, receiver);
     externalCallId = created.callId;
+    await writeNvoipIntegrationLog({
+      organizationId: input.organizationId,
+      nvoipAccountId: account.id,
+      level: "info",
+      eventType: "outbound_call_start",
+      message: `POST /calls/ caller=${callerNorm} called=${receiver} callId=${created.callId} state=${created.state}`,
+      payload: { caller: callerNorm, called: receiver, callId: created.callId, state: created.state },
+    });
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : "create_call_failed" };
+    const message = err instanceof Error ? err.message : "create_call_failed";
+    await writeNvoipIntegrationLog({
+      organizationId: input.organizationId,
+      nvoipAccountId: account.id,
+      level: "error",
+      eventType: "outbound_call_failed",
+      message,
+      payload: { caller: callerNorm, called: receiver },
+    });
+    return { ok: false, message };
   }
 
   await prisma.nvoipCallLog.upsert({

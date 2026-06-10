@@ -55,17 +55,38 @@ export async function resolveNvoipOutboundCaller(input: {
 
   const ext = await prisma.nvoipAgentExtension.findUnique({
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
+    select: { caller: true, nvoipNumbersip: true },
+  });
+
+  if (ext?.nvoipNumbersip?.trim()) {
+    const sip = await prisma.nvoipSipUser.findFirst({
+      where: {
+        nvoipAccountId: input.accountId,
+        numbersip: ext.nvoipNumbersip.trim(),
+        blocked: false,
+      },
+      select: { caller: true },
+    });
+    if (sip?.caller?.trim()) return sip.caller.trim().slice(0, 32);
+  }
+
+  if (ext?.caller?.trim()) return ext.caller.trim().slice(0, 32);
+
+  const accountCaller = input.accountDefaultCaller.trim();
+  if (accountCaller) return accountCaller.slice(0, 32);
+
+  const firstSip = await prisma.nvoipSipUser.findFirst({
+    where: {
+      nvoipAccountId: input.accountId,
+      blocked: false,
+      AND: [{ caller: { not: null } }, { caller: { not: "" } }],
+    },
+    orderBy: [{ name: "asc" }, { numbersip: "asc" }],
     select: { caller: true },
   });
-  let caller = (ext?.caller ?? input.accountDefaultCaller).trim();
-  if (!caller) {
-    const account = await prisma.nvoipAccount.findUnique({
-      where: { id: input.accountId },
-      select: { numbersip: true },
-    });
-    caller = account?.numbersip?.trim() ?? "";
-  }
-  return caller.slice(0, 32);
+  if (firstSip?.caller?.trim()) return firstSip.caller.trim().slice(0, 32);
+
+  return "";
 }
 
 export async function ensureSingleDefaultTrunk(

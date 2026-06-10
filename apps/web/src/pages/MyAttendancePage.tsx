@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import clsx from "clsx";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { ClipboardCheck, Clock, PhoneCall } from "lucide-react";
@@ -50,6 +51,7 @@ export function MyAttendancePage() {
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState({ wonValue: 0, pipelineValue: 0 });
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"attendance" | "calls">("attendance");
   const hasAnimated = useRef(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
@@ -152,14 +154,52 @@ export function MyAttendancePage() {
           </div>
         </div>
 
+        {!loading ? (
+          <div className="mb-6 flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-ink-700 dark:bg-ink-900/50">
+            {(
+              [
+                ["attendance", t("attendance.tabAttendances"), total],
+                ["calls", t("attendance.tabCalls"), callRows.length],
+              ] as const
+            ).map(([id, label, count]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={clsx(
+                  "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition",
+                  activeTab === id
+                    ? "bg-brand-500 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-50 dark:text-ink-300 dark:hover:bg-ink-800",
+                )}
+              >
+                {label}
+                <span
+                  className={clsx(
+                    "rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+                    activeTab === id
+                      ? "bg-white/20 text-white"
+                      : "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
-        ) : (
-          <div className="space-y-8">
-            {callRows.length > 0 ? (
-              <section>
+        ) : activeTab === "calls" ? (
+          callRows.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500 dark:border-ink-600 dark:bg-ink-900/40 dark:text-ink-400">
+              {t("attendance.emptyCalls")}
+            </p>
+          ) : (
+            <section>
                 <div className="mb-3 flex items-center gap-2">
                   <PhoneCall className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-ink-50">{t("attendance.recentCallsTitle")}</h2>
@@ -232,15 +272,14 @@ export function MyAttendancePage() {
                     );
                   })}
                 </motion.ul>
-              </section>
-            ) : null}
-
-            {rows.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500 dark:border-ink-600 dark:bg-ink-900/40 dark:text-ink-400">
-                {t("attendance.empty")}
-              </p>
-            ) : (
-              <section>
+            </section>
+          )
+        ) : rows.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500 dark:border-ink-600 dark:bg-ink-900/40 dark:text-ink-400">
+            {t("attendance.empty")}
+          </p>
+        ) : (
+          <section>
                 <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-ink-50">{t("attendance.closuresTitle")}</h2>
                 <motion.ul variants={staggerContainer} initial="hidden" animate="show" className="space-y-2">
                   {rows.map((r) => {
@@ -333,9 +372,7 @@ export function MyAttendancePage() {
                     );
                   })}
                 </motion.ul>
-              </section>
-            )}
-          </div>
+          </section>
         )}
       </div>
     </PageTransition>

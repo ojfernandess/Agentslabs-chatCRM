@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { FileSearch, Clock } from "lucide-react";
+import clsx from "clsx";
 import { format, formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -72,6 +73,7 @@ export function ConversationAuditPage() {
   const [resolvedFrom, setResolvedFrom] = useState("");
   const [resolvedTo, setResolvedTo] = useState("");
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<"attendance" | "calls">("attendance");
   const pageSize = 50;
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
@@ -133,19 +135,21 @@ export function ConversationAuditPage() {
     return <Navigate to="/" replace />;
   }
 
-  const pageRollupRows = rows
-    .filter(
-      (r) =>
-        r.recordType !== "wavoip_call" &&
-        r.recordType !== "threecx_call" &&
-        r.recordType !== "nvoip_call",
-    )
-    .map((r) => ({
-      conversationId: r.conversationId ?? "",
-      sessionIndex: r.sessionIndex ?? 0,
-      closureValue: r.closureValue ?? null,
-      leadType: r.leadType ?? null,
-    }));
+  const isCallRow = (r: AuditRow) =>
+    r.recordType === "wavoip_call" ||
+    r.recordType === "threecx_call" ||
+    r.recordType === "nvoip_call";
+
+  const closureRows = rows.filter((r) => !isCallRow(r));
+  const callRows = rows.filter((r) => isCallRow(r));
+  const visibleRows = activeTab === "calls" ? callRows : closureRows;
+
+  const pageRollupRows = closureRows.map((r) => ({
+    conversationId: r.conversationId ?? "",
+    sessionIndex: r.sessionIndex ?? 0,
+    closureValue: r.closureValue ?? null,
+    leadType: r.leadType ?? null,
+  }));
   const { wonValue: sumPageWon, pipelineValue: sumPagePipeline } =
     computeClosureRollupTotals(pageRollupRows);
 
@@ -238,10 +242,42 @@ export function ConversationAuditPage() {
           </div>
         </motion.form>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600 dark:text-ink-300">
-          <span>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-ink-700 dark:bg-ink-900/50">
+            {(
+              [
+                ["attendance", t("audit.tabAttendances"), closureRows.length],
+                ["calls", t("audit.tabCalls"), callRows.length],
+              ] as const
+            ).map(([id, label, count]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={clsx(
+                  "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition",
+                  activeTab === id
+                    ? "bg-brand-500 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-50 dark:text-ink-300 dark:hover:bg-ink-800",
+                )}
+              >
+                {label}
+                <span
+                  className={clsx(
+                    "rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+                    activeTab === id
+                      ? "bg-white/20 text-white"
+                      : "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+          <span className="text-sm text-gray-600 dark:text-ink-300">
             {t("audit.totalRows")}: {total}
-            {rows.length > 0 ? (
+            {activeTab === "attendance" && closureRows.length > 0 ? (
               <span className="ml-2 text-gray-500 dark:text-ink-400">
                 ({t("audit.sumPageWon")}: {fmtMoney(sumPageWon)} · {t("audit.sumPagePipeline")}:{" "}
                 {fmtMoney(sumPagePipeline)})
@@ -254,9 +290,9 @@ export function ConversationAuditPage() {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500 dark:border-ink-600 dark:bg-ink-900/40 dark:text-ink-400">
-            {t("audit.empty")}
+            {activeTab === "calls" ? t("audit.emptyCalls") : t("audit.empty")}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-900/40">
@@ -275,12 +311,9 @@ export function ConversationAuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-ink-800">
-                {rows.map((r) => {
+                {visibleRows.map((r) => {
                   const when = r.resolvedAt ?? r.occurredAt ?? r.updatedAt;
-                  const isCall =
-                    r.recordType === "wavoip_call" ||
-                    r.recordType === "threecx_call" ||
-                    r.recordType === "nvoip_call";
+                  const isCall = isCallRow(r);
                   return (
                   <tr key={`${r.recordType ?? "closure"}-${r.id}`} className="hover:bg-gray-50/80 dark:hover:bg-ink-800/50">
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-ink-300">
