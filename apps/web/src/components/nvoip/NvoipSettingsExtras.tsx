@@ -54,8 +54,6 @@ export function NvoipSettingsExtras({
     scheduledAt: "",
   });
   const [schedSending, setSchedSending] = useState(false);
-  const [sipForm, setSipForm] = useState({ name: "", caller: "" });
-  const [sipCreating, setSipCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadLogs = useCallback(async () => {
@@ -265,42 +263,6 @@ export function NvoipSettingsExtras({
             ) : (
               <p className="mt-2 text-xs text-slate-500">{t("nvoip.scheduled.empty")}</p>
             )}
-          </div>
-
-          <div className="max-w-xl rounded-xl border border-slate-200 p-4 dark:border-ink-800">
-            <h3 className="text-sm font-semibold">{t("nvoip.sipCreate.title")}</h3>
-            <p className="mt-1 text-xs text-slate-500">{t("nvoip.sipCreate.hint")}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <input
-                placeholder={t("nvoip.sipUsersColName")}
-                value={sipForm.name}
-                onChange={(e) => setSipForm((s) => ({ ...s, name: e.target.value }))}
-                className="min-w-[120px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-950"
-              />
-              <input
-                placeholder={t("nvoip.sipUsersColCaller")}
-                value={sipForm.caller}
-                onChange={(e) => setSipForm((s) => ({ ...s, caller: e.target.value }))}
-                className="min-w-[80px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-950"
-              />
-              <button
-                type="button"
-                className="btn-secondary text-sm"
-                disabled={sipCreating}
-                onClick={() => {
-                  setSipCreating(true);
-                  void api
-                    .post("/settings/nvoip/users", sipForm)
-                    .then(() => setSipForm({ name: "", caller: "" }))
-                    .catch((e) =>
-                      setError(e instanceof ApiError ? e.message : t("nvoip.sipCreate.error")),
-                    )
-                    .finally(() => setSipCreating(false));
-                }}
-              >
-                {sipCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.sipCreate.submit")}
-              </button>
-            </div>
           </div>
 
           {dids.length > 0 ? (

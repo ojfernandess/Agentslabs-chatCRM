@@ -9,6 +9,7 @@ import { NvoipInsightsPanel } from "@/components/nvoip/NvoipInsightsPanel";
 import { NvoipSettingsExtras } from "@/components/nvoip/NvoipSettingsExtras";
 import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomologationPanel";
 import { NvoipOutboundSetupGuide } from "@/components/nvoip/NvoipOutboundSetupGuide";
+import { NvoipPabxPanel } from "@/components/nvoip/NvoipPabxPanel";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -375,9 +376,16 @@ export function NvoipIntegrationSettings() {
         caller,
         nvoipNumbersip,
       });
-      await load();
+      const ext = await api.get<{
+        data: ExtensionRow[];
+        sipUsers?: SipUserRow[];
+        directorySyncedAt?: string | null;
+      }>("/settings/nvoip/extensions");
+      applyExtensionsPayload(ext);
+      void nvoipVoice?.refreshSession();
     } catch {
       setError(t("nvoip.extensionSaveError"));
+      throw new Error("extension_save_failed");
     }
   };
 
@@ -790,67 +798,18 @@ export function NvoipIntegrationSettings() {
           ) : null}
 
           {linked && voiceEnabled ? (
-            <div className="mt-8 max-w-3xl">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800 dark:text-ink-200">
-                    {t("nvoip.sipUsersTitle")}
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">{t("nvoip.sipUsersHint")}</p>
-                  {directorySyncedAt ? (
-                    <p className="mt-1 text-xs text-slate-400">
-                      {t("nvoip.sipUsersSyncedAt").replace(
-                        "{at}",
-                        new Date(directorySyncedAt).toLocaleString(),
-                      )}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="btn-secondary text-sm"
-                  disabled={syncingUsers}
-                  onClick={() => void syncSipUsers()}
-                >
-                  {syncingUsers ? (
-                    <>
-                      <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
-                      {t("nvoip.sipUsersSyncing")}
-                    </>
-                  ) : (
-                    t("nvoip.sipUsersSync")
-                  )}
-                </button>
-              </div>
-              {sipUsers.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">{t("nvoip.sipUsersEmpty")}</p>
-              ) : (
-                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-ink-800">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-ink-800 dark:bg-ink-900">
-                      <tr>
-                        <th className="px-3 py-2">{t("nvoip.sipUsersColNumbersip")}</th>
-                        <th className="px-3 py-2">{t("nvoip.sipUsersColName")}</th>
-                        <th className="px-3 py-2">{t("nvoip.sipUsersColCaller")}</th>
-                        <th className="px-3 py-2">{t("nvoip.sipUsersColBlocked")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sipUsers.map((su) => (
-                        <tr key={su.numbersip} className="border-t border-slate-100 dark:border-ink-800">
-                          <td className="px-3 py-2 font-mono text-xs">{su.numbersip}</td>
-                          <td className="px-3 py-2">{su.name ?? "—"}</td>
-                          <td className="px-3 py-2 font-mono">{su.caller ?? "—"}</td>
-                          <td className="px-3 py-2">
-                            {su.blocked ? t("nvoip.sipUsersBlocked") : t("nvoip.sipUsersActive")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <NvoipPabxPanel
+              sipUsers={sipUsers}
+              directorySyncedAt={directorySyncedAt}
+              syncingUsers={syncingUsers}
+              onSync={syncSipUsers}
+              onSipUsersChange={(users) => {
+                setSipUsers(users);
+                const latest = users[0]?.syncedAt;
+                if (latest) setDirectorySyncedAt(latest);
+              }}
+              onError={(message) => setError(message)}
+            />
           ) : null}
 
           {voiceEnabled && extensions.length > 0 ? (
@@ -868,6 +827,7 @@ export function NvoipIntegrationSettings() {
                     defaultCaller={defaultCaller}
                     pickLabel={t("nvoip.extensionPickRamal")}
                     manualLabel={t("nvoip.extensionPickManual")}
+                    saveLabel={t("nvoip.extensionSave")}
                     onSave={saveExtension}
                   />
                 ))}
@@ -1045,6 +1005,7 @@ function ExtensionAgentRow({
   defaultCaller,
   pickLabel,
   manualLabel,
+  saveLabel,
   onSave,
 }: {
   ext: ExtensionRow;
@@ -1052,30 +1013,43 @@ function ExtensionAgentRow({
   defaultCaller: string;
   pickLabel: string;
   manualLabel: string;
+  saveLabel: string;
   onSave: (userId: string, caller: string, nvoipNumbersip: string | null) => Promise<void>;
 }) {
   const [caller, setCaller] = useState(ext.caller ?? "");
   const [pick, setPick] = useState(ext.nvoipNumbersip ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setCaller(ext.caller ?? "");
     setPick(ext.nvoipNumbersip ?? "");
+    setSaved(false);
   }, [ext.caller, ext.nvoipNumbersip]);
 
-  const commitManual = () => {
-    const v = caller.trim();
-    if (!v || (v === (ext.caller ?? "") && !ext.nvoipNumbersip)) return;
-    void onSave(ext.userId, v, null);
-  };
+  const dirty =
+    caller.trim() !== (ext.caller ?? "").trim() ||
+    (pick || null) !== (ext.nvoipNumbersip || null);
 
   const onPickChange = (numbersip: string) => {
     setPick(numbersip);
+    setSaved(false);
     if (!numbersip) return;
     const su = sipUsers.find((s) => s.numbersip === numbersip);
-    const nextCaller = su?.caller?.trim();
-    if (!nextCaller) return;
-    setCaller(nextCaller);
-    void onSave(ext.userId, nextCaller, numbersip);
+    if (su?.caller?.trim()) setCaller(su.caller.trim());
+  };
+
+  const handleSave = async () => {
+    const v = caller.trim();
+    if (!v) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      await onSave(ext.userId, v, pick.trim() || null);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1102,12 +1076,25 @@ function ExtensionAgentRow({
       ) : null}
       <input
         value={caller}
-        onChange={(e) => setCaller(e.target.value)}
+        onChange={(e) => {
+          setCaller(e.target.value);
+          setSaved(false);
+        }}
         placeholder={defaultCaller || "1049"}
         title={manualLabel}
         className="w-24 rounded border border-slate-200 px-2 py-1 text-sm dark:border-ink-700 dark:bg-ink-950"
-        onBlur={() => commitManual()}
       />
+      <button
+        type="button"
+        className="btn-secondary px-2 py-1 text-xs"
+        disabled={saving || !caller.trim() || !dirty}
+        onClick={() => void handleSave()}
+      >
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveLabel}
+      </button>
+      {saved && !dirty ? (
+        <span className="text-xs text-emerald-600 dark:text-emerald-400">✓</span>
+      ) : null}
     </li>
   );
 }

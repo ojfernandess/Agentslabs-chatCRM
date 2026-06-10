@@ -598,6 +598,25 @@ export async function nvoipUpdateSipUser(
   return data;
 }
 
+export async function nvoipDeleteSipUser(
+  account: NvoipAccount,
+  numbersip: string,
+): Promise<Record<string, unknown>> {
+  const res = await nvoipAuthorizedFetch(account, "/delete/users", {
+    method: "DELETE",
+    body: JSON.stringify({ numbersip: numbersip.trim() }),
+  });
+  const data = await parseJson<Record<string, unknown>>(res);
+  if (!res.ok) {
+    throw new Error(
+      typeof data.error === "string"
+        ? data.error
+        : `delete_user_failed_${res.status}`,
+    );
+  }
+  return data;
+}
+
 export async function nvoipUpdateDid(
   account: NvoipAccount,
   input: { number: string; destination: string },

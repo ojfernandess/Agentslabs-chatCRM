@@ -23,6 +23,8 @@ import {
   nvoipScheduleVoiceTorpedo,
   nvoipUpdateDid,
   nvoipCreateSipUser,
+  nvoipUpdateSipUser,
+  nvoipDeleteSipUser,
 } from "../lib/nvoipClient.js";
 import { maybeAlertNvoipLowBalance } from "../lib/nvoipBalanceAlert.js";
 import { type NvoipIncomingQueueConfig } from "../lib/nvoipIncomingQueue.js";
@@ -68,7 +70,7 @@ const upsertSchema = z.object({
 });
 
 const extensionSchema = z.object({
-  caller: z.string().min(1).max(32),
+  caller: z.string().max(32).optional(),
   nvoipNumbersip: z.string().max(64).nullable().optional(),
 });
 
@@ -379,17 +381,33 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
         ? undefined
         : parsed.data.nvoipNumbersip?.trim() || null;
 
+    let caller = parsed.data.caller?.trim() ?? "";
+    if (!caller && numbersip) {
+      const sip = await prisma.nvoipSipUser.findFirst({
+        where: { nvoipAccountId: account.id, numbersip, blocked: false },
+        select: { caller: true },
+      });
+      caller = sip?.caller?.trim() ?? "";
+    }
+    if (!caller) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "caller_required",
+        statusCode: 400,
+      });
+    }
+
     await prisma.nvoipAgentExtension.upsert({
       where: { organizationId_userId: { organizationId, userId: user.id } },
       create: {
         organizationId,
         nvoipAccountId: account.id,
         userId: user.id,
-        caller: parsed.data.caller.trim(),
+        caller,
         ...(numbersip !== undefined ? { nvoipNumbersip: numbersip } : {}),
       },
       update: {
-        caller: parsed.data.caller.trim(),
+        caller,
         ...(numbersip !== undefined ? { nvoipNumbersip: numbersip } : {}),
       },
     });
@@ -786,11 +804,156 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     try {
       const raw = await nvoipCreateSipUser(account, body.data);
       await syncNvoipSipUsers(account);
-      return { ok: true, raw };
+      const sipUsers = await listCachedNvoipSipUsers(account.id);
+      return {
+        ok: true,
+        raw,
+        sipUsers: sipUsers.map((s) => ({
+          numbersip: s.numbersip,
+          name: s.name,
+          caller: s.caller,
+          blocked: s.blocked,
+          webphone: s.webphone,
+          syncedAt: s.syncedAt.toISOString(),
+        })),
+      };
     } catch (err) {
       return reply.status(400).send({
         error: "Bad Request",
         message: err instanceof Error ? err.message : "create_user_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.put<{ Params: { numbersip: string } }>("/users/:numbersip", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const body = z
+      .object({
+        name: z.string().min(1).max(128).optional(),
+        blocked: z.boolean().optional(),
+        webphone: z.boolean().optional(),
+        sipPassword: z.string().min(4).max(64).optional(),
+      })
+      .safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "Bad Request", message: body.error.message, statusCode: 400 });
+    }
+    if (
+      body.data.name === undefined &&
+      body.data.blocked === undefined &&
+      body.data.webphone === undefined &&
+      body.data.sipPassword === undefined
+    ) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "no_fields_to_update",
+        statusCode: 400,
+      });
+    }
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const raw = await nvoipUpdateSipUser(account, {
+        numbersip: decodeURIComponent(request.params.numbersip),
+        ...body.data,
+      });
+      await syncNvoipSipUsers(account);
+      const sipUsers = await listCachedNvoipSipUsers(account.id);
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: account.id,
+        level: "info",
+        eventType: "sip_user_updated",
+        message: `PUT /update/users numbersip=${request.params.numbersip}`,
+        payload: body.data as object,
+      });
+      return {
+        ok: true,
+        raw,
+        sipUsers: sipUsers.map((s) => ({
+          numbersip: s.numbersip,
+          name: s.name,
+          caller: s.caller,
+          blocked: s.blocked,
+          webphone: s.webphone,
+          syncedAt: s.syncedAt.toISOString(),
+        })),
+      };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "update_user_failed",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.delete<{ Params: { numbersip: string } }>("/users/:numbersip", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireNvoipVoice(organizationId, reply))) return;
+
+    const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
+    if (!account || account.status !== "CONNECTED") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "account_not_connected",
+        statusCode: 400,
+      });
+    }
+
+    const numbersip = decodeURIComponent(request.params.numbersip).trim();
+    if (!numbersip) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "numbersip_required",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const raw = await nvoipDeleteSipUser(account, numbersip);
+      await syncNvoipSipUsers(account);
+      await prisma.nvoipAgentExtension.updateMany({
+        where: { organizationId, nvoipNumbersip: numbersip },
+        data: { nvoipNumbersip: null },
+      });
+      const sipUsers = await listCachedNvoipSipUsers(account.id);
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: account.id,
+        level: "info",
+        eventType: "sip_user_deleted",
+        message: `DELETE /delete/users numbersip=${numbersip}`,
+      });
+      return {
+        ok: true,
+        raw,
+        sipUsers: sipUsers.map((s) => ({
+          numbersip: s.numbersip,
+          name: s.name,
+          caller: s.caller,
+          blocked: s.blocked,
+          webphone: s.webphone,
+          syncedAt: s.syncedAt.toISOString(),
+        })),
+      };
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "delete_user_failed",
         statusCode: 400,
       });
     }

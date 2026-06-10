@@ -30,6 +30,7 @@ export async function listNvoipTrunks(organizationId: string): Promise<NvoipTrun
   return rows.map(trunkToClient);
 }
 
+/** Caller for POST /calls/ — per-agent ramal first (Wavoip-like), then account default, then trunk fallback. */
 export async function resolveNvoipOutboundCaller(input: {
   organizationId: string;
   accountId: string;
@@ -37,20 +38,12 @@ export async function resolveNvoipOutboundCaller(input: {
   accountDefaultCaller: string;
   trunkId?: string | null;
 }): Promise<string> {
-  if (input.trunkId) {
+  if (input.trunkId?.trim()) {
     const trunk = await prisma.nvoipTrunk.findFirst({
-      where: { id: input.trunkId, organizationId: input.organizationId },
+      where: { id: input.trunkId.trim(), organizationId: input.organizationId },
       select: { defaultCaller: true },
     });
     if (trunk?.defaultCaller.trim()) return trunk.defaultCaller.trim().slice(0, 32);
-  }
-
-  const defaultTrunk = await prisma.nvoipTrunk.findFirst({
-    where: { organizationId: input.organizationId, isDefault: true },
-    select: { defaultCaller: true },
-  });
-  if (defaultTrunk?.defaultCaller.trim()) {
-    return defaultTrunk.defaultCaller.trim().slice(0, 32);
   }
 
   const ext = await prisma.nvoipAgentExtension.findUnique({
@@ -65,15 +58,24 @@ export async function resolveNvoipOutboundCaller(input: {
         numbersip: ext.nvoipNumbersip.trim(),
         blocked: false,
       },
-      select: { caller: true },
+      select: { caller: true, numbersip: true },
     });
     if (sip?.caller?.trim()) return sip.caller.trim().slice(0, 32);
+    return ext.nvoipNumbersip.trim().slice(0, 32);
   }
 
   if (ext?.caller?.trim()) return ext.caller.trim().slice(0, 32);
 
   const accountCaller = input.accountDefaultCaller.trim();
   if (accountCaller) return accountCaller.slice(0, 32);
+
+  const defaultTrunk = await prisma.nvoipTrunk.findFirst({
+    where: { organizationId: input.organizationId, isDefault: true },
+    select: { defaultCaller: true },
+  });
+  if (defaultTrunk?.defaultCaller.trim()) {
+    return defaultTrunk.defaultCaller.trim().slice(0, 32);
+  }
 
   const firstSip = await prisma.nvoipSipUser.findFirst({
     where: {

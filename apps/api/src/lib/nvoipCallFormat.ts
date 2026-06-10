@@ -1,13 +1,17 @@
 import { normalizeDialPhone } from "./nvoipCallContext.js";
 
-/** Nvoip POST /calls/ expects `called` as digits only (E.164 without +), e.g. 5511987654321. */
+/**
+ * Nvoip POST /calls/ `called` — digits only.
+ * Official SDK examples use DDD+number (e.g. 11999999999), not 55 prefix.
+ * @see https://github.com/Nvoip/nvoip-python/blob/main/examples/create_call.py
+ */
 export function formatNvoipCalled(raw: string): string {
   const normalized = normalizeDialPhone(raw) ?? raw.trim();
-  const digits = normalized.replace(/\D/g, "");
+  let digits = normalized.replace(/\D/g, "");
   if (!digits) return raw.replace(/\D/g, "").slice(0, 32);
 
-  if (digits.length >= 10 && digits.length <= 11 && !digits.startsWith("55")) {
-    return `55${digits}`.slice(0, 32);
+  if (digits.startsWith("55") && digits.length >= 12) {
+    digits = digits.slice(2);
   }
   return digits.slice(0, 32);
 }
