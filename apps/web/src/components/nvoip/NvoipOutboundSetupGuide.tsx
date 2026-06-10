@@ -16,6 +16,16 @@ export function NvoipOutboundSetupGuide({ linked, defaultCaller, accountNumbersi
   const voice = useNvoipVoiceOptional();
   const caller = voice?.caller?.trim() || defaultCaller.trim() || null;
   const invalidCaller = caller ? isLikelyNvoipNumbersipCaller(caller, accountNumbersip) : false;
+  const pabxWarning =
+    voice?.callerWarning === "pabx_trunk_not_webphone" ||
+    (caller &&
+      accountNumbersip &&
+      caller.replace(/\D/g, "") === accountNumbersip.replace(/\D/g, "") &&
+      !voice?.callerHasWebphone);
+  const noWebphone =
+    voice?.ready &&
+    linked &&
+    (voice.callerWarning === "no_webphone_users" || voice.webphoneUsers.length === 0);
 
   const steps = [
     t("nvoip.setup.step1"),
@@ -41,6 +51,25 @@ export function NvoipOutboundSetupGuide({ linked, defaultCaller, accountNumbersi
           {invalidCaller ? (
             <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-200">
               {t("nvoip.setup.invalidCallerWarning")}
+            </p>
+          ) : null}
+          {pabxWarning && linked ? (
+            <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-200">
+              {t("nvoip.setup.pabxTrunkWarning")}
+            </p>
+          ) : null}
+          {noWebphone && linked ? (
+            <p className="mt-2 text-xs font-medium text-red-800 dark:text-red-300">
+              {t("nvoip.setup.noWebphoneWarning")}
+            </p>
+          ) : null}
+          {voice?.webphoneUsers && voice.webphoneUsers.length > 0 ? (
+            <p className="mt-2 text-xs text-sky-700 dark:text-sky-300">
+              {t("nvoip.setup.webphoneAvailable")}:{" "}
+              {voice.webphoneUsers
+                .map((u) => u.caller?.trim() || u.numbersip)
+                .slice(0, 4)
+                .join(", ")}
             </p>
           ) : null}
           <p className="mt-2 text-xs text-slate-600 dark:text-ink-400">{t("nvoip.setup.noDirectBrowser")}</p>

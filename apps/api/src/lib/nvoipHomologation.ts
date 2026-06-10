@@ -81,12 +81,13 @@ export async function runNvoipHomologation(organizationId: string): Promise<Nvoi
   } else {
     try {
       const users = await nvoipListUsers(account);
+      const webphoneUsers = users.filter((u) => u.webphone === true);
       const extensionCallers = (
         await prisma.nvoipAgentExtension.findMany({
           where: { organizationId },
-          select: { caller: true, user: { select: { email: true } } },
+          select: { caller: true, nvoipNumbersip: true, user: { select: { email: true } } },
         })
-      ).map((e) => ({ caller: e.caller, email: e.user.email }));
+      ).map((e) => ({ caller: e.caller, numbersip: e.nvoipNumbersip, email: e.user.email }));
 
       const numbersipMatch = users.some(
         (u) => u.numbersip.replace(/\D/g, "") === account.numbersip.replace(/\D/g, ""),
@@ -106,9 +107,28 @@ export async function runNvoipHomologation(organizationId: string): Promise<Nvoi
             numbersip: u.numbersip,
             caller: u.caller,
             name: u.name,
+            webphone: u.webphone,
           })),
           agentExtensions: extensionCallers,
           numbersipListedAsUser: numbersipMatch,
+        },
+      });
+
+      checks.push({
+        id: "webphone_caller",
+        label: "Webphone para click-to-call",
+        status: webphoneUsers.length > 0 ? "pass" : "fail",
+        message:
+          webphoneUsers.length > 0
+            ? `${webphoneUsers.length} ramal(is) com webphone activo. O CRM prioriza estes ramais em vez do NumberSIP trunk (${account.numbersip}).`
+            : `Nenhum ramal com webphone na conta. Crie um ramal secundário com webphone no painel Nvoip ou registe o trunk SIP (${account.numbersip}) em app.nvoip.com.br — senão POST /calls/ falha em calling_origin.`,
+        details: {
+          webphoneUsers: webphoneUsers.slice(0, 8).map((u) => ({
+            numbersip: u.numbersip,
+            caller: u.caller,
+            name: u.name,
+          })),
+          accountNumbersip: account.numbersip,
         },
       });
     } catch (err) {

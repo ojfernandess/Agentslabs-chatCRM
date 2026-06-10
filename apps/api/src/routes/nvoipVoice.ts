@@ -4,8 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
-import { resolveCallerForUser } from "../lib/nvoipCallContext.js";
-import { listNvoipTrunks } from "../lib/nvoipTrunks.js";
+import { listNvoipTrunks, listNvoipWebphoneUsers, resolveNvoipOutboundCallerDetailed } from "../lib/nvoipTrunks.js";
 import {
   claimNvoipCallAgent,
   completeAgentOutboundCall,
@@ -41,18 +40,21 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
         status: true,
         defaultCaller: true,
         lastBalance: true,
+        numbersip: true,
       },
     });
     if (!account || account.status !== "CONNECTED") {
       return { ready: true, canPlaceCalls: false, caller: null, balance: null };
     }
 
-    const caller = await resolveCallerForUser(
+    const resolution = await resolveNvoipOutboundCallerDetailed({
       organizationId,
-      account.id,
-      request.user.id,
-      account.defaultCaller,
-    );
+      accountId: account.id,
+      userId: request.user.id,
+      accountDefaultCaller: account.defaultCaller,
+    });
+    const caller = resolution?.caller ?? "";
+    const webphoneUsers = await listNvoipWebphoneUsers(account.id);
     const trunks = await listNvoipTrunks(organizationId);
 
     return {
@@ -61,8 +63,17 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       caller: caller || null,
       balance: account.lastBalance,
       accountId: account.id,
+      accountNumbersip: account.numbersip,
       trunks,
       voiceMode: "click_to_call" as const,
+      callerSource: resolution?.source ?? null,
+      callerHasWebphone: resolution?.hasWebphone ?? false,
+      callerWarning: resolution?.warning ?? null,
+      webphoneUsers: webphoneUsers.map((u) => ({
+        numbersip: u.numbersip,
+        caller: u.caller,
+        name: u.name,
+      })),
     };
   });
 

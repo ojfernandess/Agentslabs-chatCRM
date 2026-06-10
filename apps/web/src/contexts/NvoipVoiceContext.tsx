@@ -21,6 +21,10 @@ type SessionPayload = {
   balance: string | null;
   trunks?: TrunkRow[];
   voiceMode?: "click_to_call";
+  callerHasWebphone?: boolean;
+  callerWarning?: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
+  webphoneUsers?: { numbersip: string; caller: string | null; name: string | null }[];
+  accountNumbersip?: string;
 };
 
 function trunkStorageKey(organizationId: string) {
@@ -44,6 +48,10 @@ type NvoipVoiceContextValue = {
   ready: boolean;
   canPlaceCalls: boolean;
   caller: string | null;
+  callerHasWebphone: boolean;
+  callerWarning: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
+  webphoneUsers: { numbersip: string; caller: string | null; name: string | null }[];
+  accountNumbersip: string | null;
   voiceMode: "click_to_call";
   trunks: TrunkRow[];
   selectedTrunkId: string | null;
@@ -71,6 +79,14 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [canPlaceCalls, setCanPlaceCalls] = useState(false);
   const [caller, setCaller] = useState<string | null>(null);
+  const [callerHasWebphone, setCallerHasWebphone] = useState(false);
+  const [callerWarning, setCallerWarning] = useState<
+    "pabx_trunk_not_webphone" | "no_webphone_users" | null
+  >(null);
+  const [webphoneUsers, setWebphoneUsers] = useState<
+    { numbersip: string; caller: string | null; name: string | null }[]
+  >([]);
+  const [accountNumbersip, setAccountNumbersip] = useState<string | null>(null);
   const [trunks, setTrunks] = useState<TrunkRow[]>([]);
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -113,6 +129,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       const res = await api.get<SessionPayload>("/nvoip/session");
       setCanPlaceCalls(!!res.canPlaceCalls);
       setCaller(res.caller?.trim() || null);
+      setCallerHasWebphone(!!res.callerHasWebphone);
+      setCallerWarning(res.callerWarning ?? null);
+      setWebphoneUsers(res.webphoneUsers ?? []);
+      setAccountNumbersip(res.accountNumbersip?.trim() || null);
       const list = res.trunks ?? [];
       setTrunks(list);
       const orgId = user.actingOrganizationId ?? user.organizationId;
@@ -315,6 +335,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       ready,
       canPlaceCalls,
       caller,
+      callerHasWebphone,
+      callerWarning,
+      webphoneUsers,
+      accountNumbersip,
       voiceMode: "click_to_call" as const,
       trunks,
       selectedTrunkId,
@@ -328,6 +352,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       ready,
       canPlaceCalls,
       caller,
+      callerHasWebphone,
+      callerWarning,
+      webphoneUsers,
+      accountNumbersip,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,

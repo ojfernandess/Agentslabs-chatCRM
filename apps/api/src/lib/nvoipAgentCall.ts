@@ -15,8 +15,9 @@ import {
   upsertNvoipTimelineMessage,
 } from "./nvoipCallTimeline.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
-import { resolveCallerForUser, resolveNvoipCallContext } from "./nvoipCallContext.js";
+import { resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { formatNvoipCalled, formatNvoipCaller, isValidNvoipOutboundCaller } from "./nvoipCallFormat.js";
+import { resolveNvoipOutboundCallerDetailed } from "./nvoipTrunks.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
 
 export async function startAgentOutboundCall(input: {
@@ -44,14 +45,34 @@ export async function startAgentOutboundCall(input: {
   });
   if (!account) return { ok: false, message: "nvoip_not_configured" };
 
-  const caller = await resolveCallerForUser(
-    input.organizationId,
-    account.id,
-    input.userId,
-    account.defaultCaller,
-    input.trunkId,
-  );
+  const callerResolution = await resolveNvoipOutboundCallerDetailed({
+    organizationId: input.organizationId,
+    accountId: account.id,
+    userId: input.userId,
+    accountDefaultCaller: account.defaultCaller,
+    trunkId: input.trunkId,
+  });
+  const caller = callerResolution?.caller ?? "";
   if (!caller) return { ok: false, message: "nvoip_no_caller" };
+
+  if (
+    callerResolution &&
+    !callerResolution.hasWebphone &&
+    callerResolution.warning === "pabx_trunk_not_webphone"
+  ) {
+    await writeNvoipIntegrationLog({
+      organizationId: input.organizationId,
+      nvoipAccountId: account.id,
+      level: "warn",
+      eventType: "outbound_call_pabx_caller",
+      message: `Caller=${caller} is PABX trunk NumberSIP without webphone — origin may not ring in browser. Sync ramais and map agent to webphone extension.`,
+      payload: {
+        caller,
+        source: callerResolution.source,
+        warning: callerResolution.warning,
+      },
+    });
+  }
 
   const ctx = await resolveNvoipCallContext({
     organizationId: input.organizationId,
@@ -69,7 +90,7 @@ export async function startAgentOutboundCall(input: {
 
   const sipUsers = await prisma.nvoipSipUser.findMany({
     where: { nvoipAccountId: account.id },
-    select: { numbersip: true, caller: true },
+    select: { numbersip: true, caller: true, webphone: true },
   });
   if (!isValidNvoipOutboundCaller(callerNorm, account.numbersip, sipUsers)) {
     await writeNvoipIntegrationLog({
@@ -93,7 +114,14 @@ export async function startAgentOutboundCall(input: {
       level: "info",
       eventType: "outbound_call_start",
       message: `POST /calls/ caller=${callerNorm} called=${receiver} callId=${created.callId} state=${created.state}`,
-      payload: { caller: callerNorm, called: receiver, callId: created.callId, state: created.state },
+      payload: {
+        caller: callerNorm,
+        called: receiver,
+        callId: created.callId,
+        state: created.state,
+        callerSource: callerResolution?.source,
+        callerHasWebphone: callerResolution?.hasWebphone,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "create_call_failed";
@@ -209,13 +237,14 @@ export async function syncNvoipCallFromApi(input: {
   }
 
   let remote: Awaited<ReturnType<typeof nvoipGetCallStatus>>;
+  const historyDirection = row.direction === "INCOMING" ? ("inbound" as const) : ("outbound" as const);
   try {
     remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
   } catch {
     const history = await nvoipFindCallInTodayHistory(
       row.nvoipAccount,
       input.externalCallId,
-      row.direction === "INCOMING" ? "inbound" : "outbound",
+      historyDirection,
     );
     if (history) {
       remote = {
@@ -226,9 +255,33 @@ export async function syncNvoipCallFromApi(input: {
         caller: history.caller,
       };
     } else if (row.startedAt && Date.now() - row.startedAt.getTime() > 45_000) {
-      remote = { state: "finished" };
+      remote = { state: "noanswer" };
     } else {
       throw new Error("call_status_unavailable");
+    }
+  }
+
+  const liveState = String(remote.state ?? "").toLowerCase();
+  if (
+    (liveState === "calling_origin" || liveState === "calling_destination") &&
+    row.startedAt &&
+    Date.now() - row.startedAt.getTime() > 25_000
+  ) {
+    const history = await nvoipFindCallInTodayHistory(
+      row.nvoipAccount,
+      input.externalCallId,
+      historyDirection,
+    );
+    if (history && isNvoipTerminalState(history.state)) {
+      remote = {
+        state: history.state,
+        linkAudio: history.linkAudio,
+        talkingDurationSeconds: history.talkingDurationSeconds,
+        totalDurationSeconds: history.totalDurationSeconds,
+        caller: history.caller,
+      };
+    } else if (liveState === "calling_origin" && Date.now() - row.startedAt.getTime() > 40_000) {
+      remote = { state: "noanswer" };
     }
   }
 

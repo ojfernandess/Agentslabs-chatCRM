@@ -30,7 +30,26 @@ export function nvoipSameNumbersip(a: string, b: string): boolean {
 export type NvoipSipDirectoryEntry = {
   numbersip: string;
   caller?: string | null;
+  webphone?: boolean | null;
 };
+
+/** Find synced SIP user matching POST /calls/ caller digits. */
+export function findNvoipSipUserForCaller(
+  caller: string,
+  sipUsers: Iterable<NvoipSipDirectoryEntry>,
+): NvoipSipDirectoryEntry | null {
+  const norm = formatNvoipCaller(caller);
+  if (!norm) return null;
+  for (const sip of sipUsers) {
+    if (nvoipSameNumbersip(norm, sip.numbersip)) return sip;
+    if (sip.caller?.trim() && nvoipSameNumbersip(norm, sip.caller)) return sip;
+  }
+  return null;
+}
+
+export function nvoipSipUserHasWebphone(sip: NvoipSipDirectoryEntry | null | undefined): boolean {
+  return sip?.webphone === true;
+}
 
 /** Best POST /calls/ caller for a synced SIP user (caller field or numbersip/ramal id). */
 export function resolveNvoipCallerForSipUser(entry: NvoipSipDirectoryEntry): string {

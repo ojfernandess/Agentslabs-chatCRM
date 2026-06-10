@@ -2182,6 +2182,11 @@ export const messages = {
         currentCaller: "Seu ramal de origem actual",
         invalidCallerWarning:
           "Este valor parece um telefone móvel, não um usuário SIP. No PABX trunk o NumberSIP (ex.: 143087001) é válido como ramal.",
+        pabxTrunkWarning:
+          "O ramal actual é o NumberSIP trunk (PABX externo) — não toca no webphone do browser. Crie um ramal secundário com webphone ou associe o agente a esse ramal.",
+        noWebphoneWarning:
+          "Nenhum ramal com webphone sincronizado. Sincronize ramais e active webphone no painel Nvoip, ou registe o trunk SIP em app.nvoip.com.br.",
+        webphoneAvailable: "Ramais com webphone disponíveis",
         noDirectBrowser:
           "Ligações CRM usam click-to-call (API REST): o ramal toca primeiro. O pacote nvoip-web-sdk integrado aqui é para OTP/2FA no browser, não voz WebRTC como o Wavoip.",
         openPanel: "Abrir painel Nvoip",
@@ -2279,6 +2284,8 @@ export const messages = {
         noCaller: "Sem ramal de origem — configure na integração Nvoip.",
         invalidCallerUseRamal:
           "Ramal inválido: use o usuário SIP registado na Nvoip (NumberSIP no PABX ou ramal secundário).",
+        pabxTrunkNoWebphone:
+          "Ramal trunk PABX sem webphone — a origem pode não tocar no browser. Configure um ramal com webphone.",
         unknownCaller: "Desconhecido",
         incomingToast: "Chamada Nvoip de {caller}",
         activeCall: "Chamada Nvoip",
@@ -6581,6 +6588,11 @@ export const messages = {
         currentCaller: "Your current origin extension",
         invalidCallerWarning:
           "This looks like a mobile number, not a SIP user. On PABX trunk setups the NumberSIP (e.g. 143087001) is valid as the extension.",
+        pabxTrunkWarning:
+          "Current origin is the trunk NumberSIP (external PABX) — it will not ring in the browser webphone. Create a secondary extension with webphone or map the agent to it.",
+        noWebphoneWarning:
+          "No webphone-enabled extension synced. Sync extensions and enable webphone in the Nvoip panel, or register the SIP trunk at app.nvoip.com.br.",
+        webphoneAvailable: "Webphone extensions available",
         noDirectBrowser:
           "CRM calls use click-to-call (REST API): your extension rings first. The integrated nvoip-web-sdk package is for browser OTP/2FA, not WebRTC voice like Wavoip.",
         openPanel: "Open Nvoip dashboard",
@@ -6678,6 +6690,8 @@ export const messages = {
         noCaller: "No source extension — configure in Nvoip integration settings.",
         invalidCallerUseRamal:
           "Invalid extension: use a registered Nvoip SIP user (NumberSIP on PABX trunk or secondary extension).",
+        pabxTrunkNoWebphone:
+          "PABX trunk extension without webphone — origin may not ring in the browser. Configure a webphone extension.",
         unknownCaller: "Unknown",
         incomingToast: "Nvoip call from {caller}",
         activeCall: "Nvoip call",
