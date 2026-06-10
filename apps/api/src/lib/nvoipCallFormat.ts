@@ -16,7 +16,7 @@ export function formatNvoipCalled(raw: string): string {
   return digits.slice(0, 32);
 }
 
-/** `caller` is the SIP extension (ramal), not numbersip — digits only, short. */
+/** POST /calls/ `caller` — SIP user / ramal, digits only. */
 export function formatNvoipCaller(raw: string): string {
   return raw.replace(/\D/g, "").slice(0, 32) || raw.trim().slice(0, 32);
 }
@@ -27,32 +27,52 @@ export function nvoipSameNumbersip(a: string, b: string): boolean {
   return Boolean(da && db && da === db);
 }
 
+export type NvoipSipDirectoryEntry = {
+  numbersip: string;
+  caller?: string | null;
+};
+
+/** Best POST /calls/ caller for a synced SIP user (caller field or numbersip/ramal id). */
+export function resolveNvoipCallerForSipUser(entry: NvoipSipDirectoryEntry): string {
+  const fromCaller = formatNvoipCaller(entry.caller ?? "");
+  if (fromCaller) return fromCaller;
+  return formatNvoipCaller(entry.numbersip);
+}
+
 /**
- * POST /calls/ `caller` must be a SIP extension (ramal, typically 2–8 digits).
- * Never the account NumberSIP (e.g. 143087001) or another user's numbersip id.
+ * POST /calls/ `caller` must be a registered SIP user / ramal.
+ * On PABX trunk setups the account NumberSIP equals the SIP user (e.g. 143087001).
+ * Secondary ramais may use shorter caller ids (e.g. 1049).
  */
 export function isValidNvoipOutboundCaller(
   caller: string,
   accountNumbersip: string,
-  extraBlocked?: Iterable<string>,
+  sipUsers?: Iterable<NvoipSipDirectoryEntry>,
 ): boolean {
   const c = formatNvoipCaller(caller);
   if (!c || c.length < 2) return false;
-  if (nvoipSameNumbersip(c, accountNumbersip)) return false;
-  for (const blocked of extraBlocked ?? []) {
-    if (blocked && nvoipSameNumbersip(c, blocked)) return false;
+
+  if (accountNumbersip && nvoipSameNumbersip(c, accountNumbersip)) {
+    return true;
   }
-  // NumberSIP / phone-like ids are 9+ digits; SIP extensions are shorter.
-  if (c.length >= 9) return false;
-  return true;
+
+  for (const sip of sipUsers ?? []) {
+    if (nvoipSameNumbersip(c, sip.numbersip)) return true;
+    if (sip.caller?.trim() && nvoipSameNumbersip(c, sip.caller)) return true;
+  }
+
+  // Typical secondary extensions (2–8 digits).
+  if (c.length <= 8) return true;
+
+  return false;
 }
 
 export function sanitizeNvoipOutboundCaller(
   caller: string | null | undefined,
   accountNumbersip: string,
-  extraBlocked?: Iterable<string>,
+  sipUsers?: Iterable<NvoipSipDirectoryEntry>,
 ): string | null {
   if (!caller?.trim()) return null;
   const norm = formatNvoipCaller(caller);
-  return isValidNvoipOutboundCaller(norm, accountNumbersip, extraBlocked) ? norm : null;
+  return isValidNvoipOutboundCaller(norm, accountNumbersip, sipUsers) ? norm : null;
 }

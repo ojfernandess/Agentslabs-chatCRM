@@ -11,11 +11,11 @@ export function mapNvoipCallErrorMessage(message: string, t: (key: string) => st
   }
 }
 
-/** Client-side hint: NumberSIP / phone-like ids are not valid SIP ramais. */
+/** Warn only for phone-like values unlikely to be a SIP user id. PABX NumberSIP (e.g. 143087001) is valid. */
 export function isLikelyNvoipNumbersipCaller(caller: string, accountNumbersip?: string): boolean {
   const c = caller.replace(/\D/g, "");
   if (!c || c.length < 2) return false;
-  if (c.length >= 9) return true;
   const ns = accountNumbersip?.replace(/\D/g, "");
-  return Boolean(ns && c === ns);
+  if (ns && c === ns) return false;
+  return c.length >= 11;
 }

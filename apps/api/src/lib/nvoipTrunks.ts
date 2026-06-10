@@ -1,5 +1,5 @@
 import { prisma } from "../db.js";
-import { sanitizeNvoipOutboundCaller } from "./nvoipCallFormat.js";
+import { resolveNvoipCallerForSipUser, sanitizeNvoipOutboundCaller } from "./nvoipCallFormat.js";
 
 export type NvoipTrunkRow = {
   id: string;
@@ -31,7 +31,7 @@ export async function listNvoipTrunks(organizationId: string): Promise<NvoipTrun
   return rows.map(trunkToClient);
 }
 
-/** Caller for POST /calls/ — SIP ramal only, never account NumberSIP. */
+/** Caller for POST /calls/ — synced SIP user / account NumberSIP (PABX trunk) or ramal. */
 export async function resolveNvoipOutboundCaller(input: {
   organizationId: string;
   accountId: string;
@@ -50,10 +50,9 @@ export async function resolveNvoipOutboundCaller(input: {
     select: { numbersip: true, caller: true },
     orderBy: [{ name: "asc" }, { numbersip: "asc" }],
   });
-  const blockedIds = sipUsers.map((s) => s.numbersip);
 
   const pick = (raw: string | null | undefined): string | null =>
-    sanitizeNvoipOutboundCaller(raw, accountNumbersip, blockedIds);
+    sanitizeNvoipOutboundCaller(raw, accountNumbersip, sipUsers);
 
   if (input.trunkId?.trim()) {
     const trunk = await prisma.nvoipTrunk.findFirst({
@@ -71,8 +70,10 @@ export async function resolveNvoipOutboundCaller(input: {
 
   if (ext?.nvoipNumbersip?.trim()) {
     const sip = sipUsers.find((s) => s.numbersip === ext.nvoipNumbersip!.trim());
-    const fromSip = pick(sip?.caller);
-    if (fromSip) return fromSip;
+    if (sip) {
+      const fromSip = pick(resolveNvoipCallerForSipUser(sip));
+      if (fromSip) return fromSip;
+    }
   }
 
   const fromExt = pick(ext?.caller);
@@ -89,7 +90,7 @@ export async function resolveNvoipOutboundCaller(input: {
   if (fromDefaultTrunk) return fromDefaultTrunk;
 
   for (const sip of sipUsers) {
-    const fromSip = pick(sip.caller);
+    const fromSip = pick(resolveNvoipCallerForSipUser(sip));
     if (fromSip) return fromSip;
   }
 
@@ -113,13 +114,13 @@ export async function validateNvoipOutboundCallerForOrg(
   const sipUsers = accountId
     ? await prisma.nvoipSipUser.findMany({
         where: { nvoipAccountId: accountId },
-        select: { numbersip: true },
+        select: { numbersip: true, caller: true },
       })
     : [];
   const valid = sanitizeNvoipOutboundCaller(
     caller,
     accountNumbersipOverride ?? account?.numbersip ?? "",
-    sipUsers.map((s) => s.numbersip),
+    sipUsers,
   );
   if (!valid) return { ok: false, message: "nvoip_invalid_caller_use_ramal" };
   return { ok: true };

@@ -67,15 +67,15 @@ export async function startAgentOutboundCall(input: {
 
   const sipUsers = await prisma.nvoipSipUser.findMany({
     where: { nvoipAccountId: account.id },
-    select: { numbersip: true },
+    select: { numbersip: true, caller: true },
   });
-  if (!isValidNvoipOutboundCaller(callerNorm, account.numbersip, sipUsers.map((s) => s.numbersip))) {
+  if (!isValidNvoipOutboundCaller(callerNorm, account.numbersip, sipUsers)) {
     await writeNvoipIntegrationLog({
       organizationId: input.organizationId,
       nvoipAccountId: account.id,
       level: "error",
       eventType: "outbound_call_invalid_caller",
-      message: `Invalid caller=${callerNorm} (use SIP ramal, not NumberSIP ${account.numbersip})`,
+      message: `Invalid caller=${callerNorm} (use a registered SIP user / ramal)`,
       payload: { caller: callerNorm, accountNumbersip: account.numbersip, called: receiver },
     });
     return { ok: false, message: "nvoip_invalid_caller_use_ramal" };

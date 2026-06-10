@@ -2174,14 +2174,14 @@ export const messages = {
         step1:
           "No painel Nvoip (painel.nvoip.com.br): crie ramais SIP por agente e active o webphone no ramal, ou encaminhe o ramal para o seu telemóvel/fixo.",
         step2:
-          "Aqui no CRM: «Sincronizar ramais» e, em «Ramais por agente», associe cada utilizador ao ramal SIP correcto (não use o NumberSIP da conta como caller).",
+          "Aqui no CRM: «Sincronizar ramais» e, em «Ramais por agente», associe cada utilizador ao ramal SIP correcto (no PABX trunk o NumberSIP da conta é o usuário SIP).",
         step3:
           "Defina «Ramal de origem (caller)» predefinido da conta apenas como fallback; o ideal é ramal por agente.",
         step4:
           "Ao ligar a um contacto: atenda a chamada no painel/webphone Nvoip; quando ouvir tom de discagem, o sistema está a ligar ao cliente.",
         currentCaller: "Seu ramal de origem actual",
         invalidCallerWarning:
-          "Este valor parece NumberSIP da conta, não um ramal SIP. Corrija em «Ramal de origem» ou «Ramais por agente».",
+          "Este valor parece um telefone móvel, não um usuário SIP. No PABX trunk o NumberSIP (ex.: 143087001) é válido como ramal.",
         noDirectBrowser:
           "Ligações CRM usam click-to-call (API REST): o ramal toca primeiro. O pacote nvoip-web-sdk integrado aqui é para OTP/2FA no browser, não voz WebRTC como o Wavoip.",
         openPanel: "Abrir painel Nvoip",
@@ -2265,7 +2265,7 @@ export const messages = {
         napikey: "NAPI Key (opcional)",
         defaultCaller: "Ramal de origem (caller)",
         defaultCallerHint:
-          "Ramal SIP curto (ex.: 1049). Não use o NumberSIP da conta (ex.: 143087001) — a ligação falha ao atender o webphone.",
+          "Usuário SIP / ramal para POST /calls/ (ex.: 143087001 no PABX trunk, ou 1049 em ramais secundários). Deve coincidir com um ramal registado na Nvoip.",
         inbox: "Caixa para novas conversas",
         inboxNone: "Caixa predefinida",
         tokenPlaceholder: "Deixe vazio para manter o token atual",
@@ -2276,7 +2276,7 @@ export const messages = {
         notConfigured: "Nvoip não configurada para esta organização.",
         noCaller: "Sem ramal de origem — configure na integração Nvoip.",
         invalidCallerUseRamal:
-          "Ramal inválido: use o número do ramal SIP (ex.: 1049), não o NumberSIP da conta.",
+          "Ramal inválido: use o usuário SIP registado na Nvoip (NumberSIP no PABX ou ramal secundário).",
         unknownCaller: "Desconhecido",
         incomingToast: "Chamada Nvoip de {caller}",
         activeCall: "Chamada Nvoip",
@@ -6571,14 +6571,14 @@ export const messages = {
         step1:
           "In the Nvoip dashboard (painel.nvoip.com.br): create SIP extensions per agent and enable webphone on the extension, or forward the extension to mobile/landline.",
         step2:
-          "In this CRM: «Sync extensions» and map each user in «Per-agent extensions» to the correct SIP extension (do not use the account NumberSIP as caller).",
+          "In this CRM: «Sync extensions» and map each user in «Per-agent extensions» to the correct SIP user (on PABX trunk the account NumberSIP is the SIP user).",
         step3:
           "Set the account «Default origin extension (caller)» only as fallback; per-agent extensions are preferred.",
         step4:
           "When calling a contact: answer on the Nvoip dashboard/webphone; when you hear dial tone, the system is calling the customer.",
         currentCaller: "Your current origin extension",
         invalidCallerWarning:
-          "This looks like the account NumberSIP, not a SIP extension. Fix under «Source extension» or «Per-agent extensions».",
+          "This looks like a mobile number, not a SIP user. On PABX trunk setups the NumberSIP (e.g. 143087001) is valid as the extension.",
         noDirectBrowser:
           "CRM calls use click-to-call (REST API): your extension rings first. The integrated nvoip-web-sdk package is for browser OTP/2FA, not WebRTC voice like Wavoip.",
         openPanel: "Open Nvoip dashboard",
@@ -6662,7 +6662,7 @@ export const messages = {
         napikey: "NAPI Key (optional)",
         defaultCaller: "Source extension (caller)",
         defaultCallerHint:
-          "Short SIP extension (e.g. 1049). Do not use the account NumberSIP (e.g. 143087001) — calls fail after answering the webphone.",
+          "SIP user / extension for POST /calls/ (e.g. 143087001 on PABX trunk, or 1049 for secondary extensions). Must match a registered Nvoip extension.",
         inbox: "Inbox for new conversations",
         inboxNone: "Default inbox",
         tokenPlaceholder: "Leave blank to keep current token",
@@ -6673,7 +6673,7 @@ export const messages = {
         notConfigured: "Nvoip is not configured for this organization.",
         noCaller: "No source extension — configure in Nvoip integration settings.",
         invalidCallerUseRamal:
-          "Invalid extension: use the SIP extension number (e.g. 1049), not the account NumberSIP.",
+          "Invalid extension: use a registered Nvoip SIP user (NumberSIP on PABX trunk or secondary extension).",
         unknownCaller: "Unknown",
         incomingToast: "Nvoip call from {caller}",
         activeCall: "Nvoip call",
