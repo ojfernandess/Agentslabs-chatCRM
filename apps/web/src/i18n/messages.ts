@@ -2123,6 +2123,8 @@ export const messages = {
       loadError: "Não foi possível carregar a integração Nvoip.",
       saveError: "Não foi possível guardar a conta Nvoip.",
       testError: "Falha ao testar ligação com a Nvoip.",
+      testErrorApiUnreachable:
+        "A API Nvoip respondeu com HTML (bloqueio/rede). Verifique NVOIP_API_BASE_URL=https://api.nvoip.com.br/v2 e tente novamente.",
       extensionSaveError: "Não foi possível guardar o ramal do agente.",
       extensionSave: "Guardar ramal",
       save: "Guardar",
@@ -2425,6 +2427,7 @@ export const messages = {
         webhookHint: "Configure no painel Nvoip se suportado, para eventos inbound em tempo real.",
         webphoneExtensions: "Ramais com webphone",
         platformStep1: "Crie ramais secundários com webphone activo (secção abaixo) ou use os existentes.",
+        needConnected: "Clique em «Testar ligação» acima para activar sync inbound e credenciais completas.",
         platformStep2: "Associe cada agente ao ramal em «Ramais por agente».",
         platformStep3: "Abra o webphone Nvoip ao ligar a contactos no CRM (click-to-call).",
         platformStep4: "Chamadas recebidas: sync automático + webhook; screen pop no CRM.",
@@ -6566,6 +6569,8 @@ export const messages = {
       loadError: "Could not load Nvoip integration.",
       saveError: "Could not save Nvoip account.",
       testError: "Nvoip connection test failed.",
+      testErrorApiUnreachable:
+        "Nvoip API returned HTML (network/block). Verify NVOIP_API_BASE_URL=https://api.nvoip.com.br/v2 and retry.",
       extensionSaveError: "Could not save agent extension.",
       extensionSave: "Save extension",
       save: "Save",
@@ -6868,6 +6873,7 @@ export const messages = {
         webhookHint: "Configure in Nvoip panel if supported, for real-time inbound events.",
         webphoneExtensions: "Webphone extensions",
         platformStep1: "Create secondary extensions with webphone enabled (section below) or use existing ones.",
+        needConnected: "Click «Test connection» above to enable inbound sync and full credentials.",
         platformStep2: "Map each agent to an extension in «Per-agent extensions».",
         platformStep3: "Open Nvoip webphone when placing CRM calls (click-to-call).",
         platformStep4: "Inbound: automatic sync + webhook; screen pop in CRM.",

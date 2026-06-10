@@ -35,6 +35,7 @@ type TrunkInfo = {
 
 type Props = {
   linked: boolean;
+  accountNumbersip: string;
   onError: (message: string) => void;
   onConfigSaved?: () => void;
 };
@@ -74,7 +75,7 @@ function CopyField({
   );
 }
 
-export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
+export function NvoipPabxTrunkPanel({ linked, accountNumbersip, onError, onConfigSaved }: Props) {
   const { t } = useI18n();
   const [trunk, setTrunk] = useState<TrunkInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,10 +89,9 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!linked) return;
     setLoading(true);
     try {
-      const res = await api.get<{ trunk: TrunkInfo }>("/settings/nvoip/pabx/trunk");
+      const res = await api.get<{ trunk: TrunkInfo; connected?: boolean }>("/settings/nvoip/pabx/trunk");
       setTrunk(res.trunk);
       setMode(res.trunk.mode);
     } catch (e) {
@@ -99,11 +99,11 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [linked, onError, t]);
+  }, [onError, t]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, accountNumbersip]);
 
   const copyText = async (key: string, text: string) => {
     try {
@@ -166,8 +166,10 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
     }
   };
 
-  if (!linked) return null;
+  if (!accountNumbersip.trim()) return null;
 
+  const sipUser = trunk?.sipUser ?? accountNumbersip;
+  const sipServer = trunk?.sipServer ?? "app.nvoip.com.br";
   const displayPassword =
     showPassword && revealedPassword
       ? revealedPassword
@@ -210,6 +212,12 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
         {trunk?.notes.webrtcLimit ?? t("nvoip.pabxTrunk.webrtcLimit")}
       </p>
 
+      {!linked ? (
+        <p className="mt-3 rounded-lg border border-sky-200/80 bg-sky-50/80 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+          {t("nvoip.pabxTrunk.needConnected")}
+        </p>
+      ) : null}
+
       <fieldset className="mt-4 space-y-2">
         <legend className="text-xs font-medium text-slate-700 dark:text-ink-300">
           {t("nvoip.pabxTrunk.modeLabel")}
@@ -246,45 +254,43 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
         </label>
       </fieldset>
 
-      {trunk ? (
-        <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-          <CopyField
-            label={t("nvoip.pabxTrunk.sipUser")}
-            value={trunk.sipUser}
-            fieldKey="sipUser"
-            copiedKey={copiedKey}
-            onCopy={copyText}
-          />
-          <CopyField
-            label={t("nvoip.pabxTrunk.sipServer")}
-            value={trunk.sipServer}
-            fieldKey="sipServer"
-            copiedKey={copiedKey}
-            onCopy={copyText}
-          />
-          <div className="min-w-0 sm:col-span-2">
-            <dt className="text-xs text-slate-500">{t("nvoip.pabxTrunk.sipPassword")}</dt>
-            <dd className="mt-0.5 flex flex-wrap items-center gap-2">
-              <code className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-ink-900">{displayPassword}</code>
-              {trunk.sipPasswordConfigured ? (
-                <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => void revealPassword()}>
-                  {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              ) : null}
-              {showPassword && revealedPassword ? (
-                <button
-                  type="button"
-                  className="btn-secondary px-2 py-1 text-xs"
-                  onClick={() => void copyText("sipPassword", revealedPassword)}
-                >
-                  {copiedKey === "sipPassword" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              ) : null}
-            </dd>
-            <p className="mt-1 text-[11px] text-slate-500">{t("nvoip.pabxTrunk.passwordHint")}</p>
-          </div>
-        </dl>
-      ) : null}
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+        <CopyField
+          label={t("nvoip.pabxTrunk.sipUser")}
+          value={sipUser}
+          fieldKey="sipUser"
+          copiedKey={copiedKey}
+          onCopy={copyText}
+        />
+        <CopyField
+          label={t("nvoip.pabxTrunk.sipServer")}
+          value={sipServer}
+          fieldKey="sipServer"
+          copiedKey={copiedKey}
+          onCopy={copyText}
+        />
+        <div className="min-w-0 sm:col-span-2">
+          <dt className="text-xs text-slate-500">{t("nvoip.pabxTrunk.sipPassword")}</dt>
+          <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+            <code className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-ink-900">{displayPassword}</code>
+            {trunk?.sipPasswordConfigured ? (
+              <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => void revealPassword()}>
+                {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            ) : null}
+            {showPassword && revealedPassword ? (
+              <button
+                type="button"
+                className="btn-secondary px-2 py-1 text-xs"
+                onClick={() => void copyText("sipPassword", revealedPassword)}
+              >
+                {copiedKey === "sipPassword" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            ) : null}
+          </dd>
+          <p className="mt-1 text-[11px] text-slate-500">{t("nvoip.pabxTrunk.passwordHint")}</p>
+        </div>
+      </dl>
 
       <label className="mt-3 block text-xs">
         <span className="font-medium text-slate-700 dark:text-ink-300">{t("nvoip.pabxTrunk.storePassword")}</span>
@@ -314,7 +320,7 @@ export function NvoipPabxTrunkPanel({ linked, onError, onConfigSaved }: Props) {
         <button type="button" className="btn-primary text-sm" disabled={saving} onClick={() => void saveConfig()}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.pabxTrunk.saveMode")}
         </button>
-        <button type="button" className="btn-secondary text-sm" disabled={syncing} onClick={() => void syncInbound()}>
+        <button type="button" className="btn-secondary text-sm" disabled={syncing || !linked} onClick={() => void syncInbound()}>
           {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.pabxTrunk.syncInbound")}
         </button>
         <a

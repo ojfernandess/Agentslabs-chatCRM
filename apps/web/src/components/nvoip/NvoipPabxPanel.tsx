@@ -94,7 +94,7 @@ export function NvoipPabxPanel({
         </a>
       </div>
 
-      <NvoipPabxTrunkPanel linked={linked} onError={onError} />
+      <NvoipPabxTrunkPanel linked={linked} accountNumbersip={accountNumbersip} onError={onError} />
 
       <div className="rounded-xl border border-slate-200 p-4 dark:border-ink-800">
         <div className="flex flex-wrap items-center justify-between gap-2">

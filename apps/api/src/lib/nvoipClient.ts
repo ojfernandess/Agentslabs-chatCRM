@@ -34,9 +34,24 @@ function apiUrl(path: string): string {
   return `${base}${p}`;
 }
 
+function nvoipRequestHeaders(extra?: RequestInit["headers"]): Headers {
+  const headers = new Headers(extra);
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (!headers.has("User-Agent")) headers.set("User-Agent", "OpenConduit-Nvoip/1.0");
+  return headers;
+}
+
+function isLikelyHtmlBody(text: string): boolean {
+  const t = text.trimStart().slice(0, 64).toLowerCase();
+  return t.startsWith("<!doctype") || t.startsWith("<html") || t.startsWith("<!--");
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;
+  if (isLikelyHtmlBody(text)) {
+    throw new Error(`nvoip_api_html_response_${res.status}`);
+  }
   try {
     return JSON.parse(text) as T;
   } catch {
@@ -68,12 +83,12 @@ export async function nvoipPasswordGrant(
     password: userToken.trim(),
     grant_type: "password",
   });
-  const res = await fetch(apiUrl("/oauth/token"), {
+  const res = await fetchWithRateLimitBackoff(apiUrl("/oauth/token"), {
     method: "POST",
-    headers: {
+    headers: nvoipRequestHeaders({
       Authorization: `Basic ${config.nvoipOAuthBasic}`,
       "Content-Type": "application/x-www-form-urlencoded",
-    },
+    }),
     body,
   });
   const data = await parseJson<NvoipTokenResponse & { error?: string; error_description?: string }>(res);
@@ -89,12 +104,12 @@ export async function nvoipRefreshGrant(refreshToken: string): Promise<NvoipToke
     grant_type: "refresh_token",
     refresh_token: refreshToken.trim(),
   });
-  const res = await fetch(apiUrl("/oauth/token"), {
+  const res = await fetchWithRateLimitBackoff(apiUrl("/oauth/token"), {
     method: "POST",
-    headers: {
+    headers: nvoipRequestHeaders({
       Authorization: `Basic ${config.nvoipOAuthBasic}`,
       "Content-Type": "application/x-www-form-urlencoded",
-    },
+    }),
     body,
   });
   const data = await parseJson<NvoipTokenResponse & { error?: string; error_description?: string }>(res);
@@ -172,7 +187,7 @@ export async function nvoipAuthorizedFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   const accessToken = await getNvoipAccessToken(account);
-  const headers = new Headers(init.headers);
+  const headers = nvoipRequestHeaders(init.headers);
   headers.set("Authorization", `Bearer ${accessToken}`);
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
@@ -180,11 +195,57 @@ export async function nvoipAuthorizedFetch(
   return fetchWithRateLimitBackoff(apiUrl(path), { ...init, headers });
 }
 
+async function nvoipFetchBalanceWithToken(
+  accessToken: string,
+  input?: { numbersip?: string; napikey?: string | null },
+): Promise<{ balance: string }> {
+  const authHeaders = nvoipRequestHeaders({ Authorization: `Bearer ${accessToken}` });
+
+  for (const path of ["/balance", "/balance/"]) {
+    const res = await fetchWithRateLimitBackoff(apiUrl(path), { method: "GET", headers: authHeaders });
+    const text = await res.text();
+    if (isLikelyHtmlBody(text)) continue;
+    let data: { balance?: string; error?: string };
+    try {
+      data = text ? (JSON.parse(text) as { balance?: string; error?: string }) : {};
+    } catch {
+      continue;
+    }
+    if (res.ok) return { balance: String(data.balance ?? "0") };
+    if (data.error) throw new Error(data.error);
+  }
+
+  const napikey = input?.napikey?.trim();
+  const numbersip = input?.numbersip?.trim();
+  if (napikey && numbersip) {
+    const qs = new URLSearchParams({ numbersip, napikey });
+    for (const path of ["/balance", "/balance/"]) {
+      const res = await fetchWithRateLimitBackoff(apiUrl(`${path}?${qs.toString()}`), {
+        method: "GET",
+        headers: nvoipRequestHeaders(),
+      });
+      const text = await res.text();
+      if (isLikelyHtmlBody(text)) continue;
+      let data: { balance?: string; error?: string };
+      try {
+        data = text ? (JSON.parse(text) as { balance?: string; error?: string }) : {};
+      } catch {
+        continue;
+      }
+      if (res.ok) return { balance: String(data.balance ?? "0") };
+    }
+  }
+
+  throw new Error("nvoip_balance_unavailable");
+}
+
 export async function nvoipGetBalance(account: NvoipAccount): Promise<{ balance: string }> {
-  const res = await nvoipAuthorizedFetch(account, "/balance", { method: "GET" });
-  const data = await parseJson<{ balance?: string; error?: string }>(res);
-  if (!res.ok) throw new Error(data.error ?? `balance_failed_${res.status}`);
-  return { balance: String(data.balance ?? "0") };
+  const accessToken = await getNvoipAccessToken(account);
+  const napikey = decryptNvoipSecret(account.napikeyEnc);
+  return nvoipFetchBalanceWithToken(accessToken, {
+    numbersip: account.numbersip,
+    napikey,
+  });
 }
 
 export async function nvoipCreateCall(
@@ -1159,17 +1220,24 @@ export async function nvoipListRates(account: NvoipAccount): Promise<NvoipRateIt
 export async function testNvoipConnection(input: {
   numbersip: string;
   userToken: string;
-}): Promise<{ ok: true; balance: string } | { ok: false; message: string }> {
+  napikey?: string | null;
+}): Promise<
+  | { ok: true; balance: string; tokens: NvoipTokenResponse }
+  | { ok: false; message: string }
+> {
   try {
     const tokens = await nvoipPasswordGrant(input.numbersip, input.userToken);
-    const res = await fetch(apiUrl("/balance"), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    const { balance } = await nvoipFetchBalanceWithToken(tokens.access_token, {
+      numbersip: input.numbersip,
+      napikey: input.napikey,
     });
-    const data = await parseJson<{ balance?: string }>(res);
-    if (!res.ok) return { ok: false, message: `balance_${res.status}` };
-    return { ok: true, balance: String(data.balance ?? "0") };
+    return { ok: true, balance, tokens };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : "connection_failed" };
+    const raw = err instanceof Error ? err.message : "connection_failed";
+    const message =
+      raw.startsWith("nvoip_api_html_response") || raw.startsWith("nvoip_invalid_json")
+        ? "nvoip_api_unreachable"
+        : raw;
+    return { ok: false, message };
   }
 }

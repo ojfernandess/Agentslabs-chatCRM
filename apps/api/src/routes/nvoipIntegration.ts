@@ -265,10 +265,15 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       return reply.status(400).send({ ok: false, message: "missing_user_token" });
     }
 
-    const test = await testNvoipConnection({ numbersip: row.numbersip, userToken });
+    const napikey = decryptNvoipSecret(row.napikeyEnc);
+    const test = await testNvoipConnection({
+      numbersip: row.numbersip,
+      userToken,
+      napikey,
+    });
     if (test.ok) {
       try {
-        const tokens = await nvoipPasswordGrant(row.numbersip, userToken);
+        const tokens = test.tokens;
         const expiresIn = Number(tokens.expires_in) || 86_400;
         await prisma.nvoipAccount.update({
           where: { id: row.id },
@@ -1445,16 +1450,16 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     if (!(await requireNvoipVoice(organizationId, reply))) return;
 
     const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
-    if (!account || account.status !== "CONNECTED") {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: "nvoip_not_connected",
-        statusCode: 400,
+    if (!account) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "account_not_found",
+        statusCode: 404,
       });
     }
 
     const info = maskNvoipTrunkPasswordForClient(await buildNvoipPabxTrunkInfo(account));
-    return { trunk: info };
+    return { trunk: info, connected: account.status === "CONNECTED" };
   });
 
   app.get("/pabx/trunk/credentials", async (request, reply) => {
@@ -1465,11 +1470,11 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     if (reply.sent) return;
 
     const account = await prisma.nvoipAccount.findUnique({ where: { organizationId } });
-    if (!account || account.status !== "CONNECTED") {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: "nvoip_not_connected",
-        statusCode: 400,
+    if (!account) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "account_not_found",
+        statusCode: 404,
       });
     }
 

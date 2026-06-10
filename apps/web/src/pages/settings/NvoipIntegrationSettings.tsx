@@ -11,6 +11,7 @@ import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomo
 import { NvoipOutboundSetupGuide } from "@/components/nvoip/NvoipOutboundSetupGuide";
 import { NvoipPabxPanel } from "@/components/nvoip/NvoipPabxPanel";
 import { isLikelyNvoipNumbersipCaller, mapNvoipCallErrorMessage } from "@/lib/mapNvoipCallError";
+import { mapNvoipTestErrorMessage } from "@/lib/mapNvoipTestError";
 import { useNvoipAuthWidget } from "@/hooks/useNvoipAuthWidget";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
@@ -276,7 +277,7 @@ export function NvoipIntegrationSettings() {
         "/settings/nvoip/account/test",
       );
       if (!res.ok) {
-        setError(res.message ?? t("nvoip.testError"));
+        setError(mapNvoipTestErrorMessage(res.message ?? t("nvoip.testError"), t));
       } else {
         await refreshAccountQuiet();
         void api.post("/settings/nvoip/users/sync").catch(() => {});
@@ -289,7 +290,8 @@ export function NvoipIntegrationSettings() {
         }
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("nvoip.testError"));
+      const msg = e instanceof ApiError ? e.message : t("nvoip.testError");
+      setError(mapNvoipTestErrorMessage(msg, t));
     } finally {
       setTesting(false);
     }
@@ -825,7 +827,7 @@ export function NvoipIntegrationSettings() {
             </div>
           ) : null}
 
-          {linked && voiceEnabled ? (
+          {voiceEnabled && account ? (
             <NvoipOutboundSetupGuide
               linked={linked}
               defaultCaller={defaultCaller}
@@ -833,7 +835,7 @@ export function NvoipIntegrationSettings() {
             />
           ) : null}
 
-          {linked && voiceEnabled ? (
+          {voiceEnabled && account ? (
             <NvoipPabxPanel
               linked={linked}
               accountNumbersip={account?.numbersip ?? numbersip}
