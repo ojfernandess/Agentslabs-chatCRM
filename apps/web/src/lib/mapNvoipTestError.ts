@@ -5,5 +5,8 @@ export function mapNvoipTestErrorMessage(message: string, t: (key: string) => st
   if (message === "nvoip_balance_unavailable") {
     return t("nvoip.testErrorApiUnreachable");
   }
+  if (message === "nvoip_oauth_forbidden" || message.toLowerCase() === "forbidden") {
+    return t("nvoip.testErrorForbidden");
+  }
   return message;
 }

@@ -2125,6 +2125,8 @@ export const messages = {
       testError: "Falha ao testar ligação com a Nvoip.",
       testErrorApiUnreachable:
         "A API Nvoip respondeu com HTML (bloqueio/rede). Verifique NVOIP_API_BASE_URL=https://api.nvoip.com.br/v2 e tente novamente.",
+      testErrorForbidden:
+        "Credenciais Nvoip recusadas (Forbidden). Confirme o NumberSIP, o User Token no painel Nvoip e, se tiver, a NAPI Key. No servidor, verifique NVOIP_OAUTH_BASIC.",
       extensionSaveError: "Não foi possível guardar o ramal do agente.",
       extensionSave: "Guardar ramal",
       save: "Guardar",
@@ -6571,6 +6573,8 @@ export const messages = {
       testError: "Nvoip connection test failed.",
       testErrorApiUnreachable:
         "Nvoip API returned HTML (network/block). Verify NVOIP_API_BASE_URL=https://api.nvoip.com.br/v2 and retry.",
+      testErrorForbidden:
+        "Nvoip credentials rejected (Forbidden). Confirm NumberSIP, User Token from the Nvoip dashboard, and NAPI Key if used. On the server, verify NVOIP_OAUTH_BASIC.",
       extensionSaveError: "Could not save agent extension.",
       extensionSave: "Save extension",
       save: "Save",

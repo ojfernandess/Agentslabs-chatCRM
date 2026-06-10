@@ -93,7 +93,11 @@ export async function nvoipPasswordGrant(
   });
   const data = await parseJson<NvoipTokenResponse & { error?: string; error_description?: string }>(res);
   if (!res.ok) {
-    throw new Error(data.error_description ?? data.error ?? `oauth_failed_${res.status}`);
+    const errMsg = data.error_description ?? data.error ?? `oauth_failed_${res.status}`;
+    if (res.status === 403 || errMsg.toLowerCase() === "forbidden") {
+      throw new Error("nvoip_oauth_forbidden");
+    }
+    throw new Error(errMsg);
   }
   if (!data.access_token) throw new Error("nvoip_missing_access_token");
   return data;
@@ -212,7 +216,6 @@ async function nvoipFetchBalanceWithToken(
       continue;
     }
     if (res.ok) return { balance: String(data.balance ?? "0") };
-    if (data.error) throw new Error(data.error);
   }
 
   const napikey = input?.napikey?.trim();
@@ -1227,10 +1230,19 @@ export async function testNvoipConnection(input: {
 > {
   try {
     const tokens = await nvoipPasswordGrant(input.numbersip, input.userToken);
-    const { balance } = await nvoipFetchBalanceWithToken(tokens.access_token, {
-      numbersip: input.numbersip,
-      napikey: input.napikey,
-    });
+    let balance = "—";
+    try {
+      const fetched = await nvoipFetchBalanceWithToken(tokens.access_token, {
+        numbersip: input.numbersip,
+        napikey: input.napikey,
+      });
+      balance = fetched.balance;
+    } catch (balanceErr) {
+      const balanceMsg = balanceErr instanceof Error ? balanceErr.message : "";
+      if (balanceMsg !== "nvoip_balance_unavailable") {
+        throw balanceErr;
+      }
+    }
     return { ok: true, balance, tokens };
   } catch (err) {
     const raw = err instanceof Error ? err.message : "connection_failed";
