@@ -490,23 +490,71 @@ export async function nvoipGetCallHistory(
   return normalizeHistoryList(data);
 }
 
+function isNvoipEndCallSuccess(res: Response, data: Record<string, unknown>): boolean {
+  if (!res.ok) return false;
+  const state = String(data.state ?? data.status ?? data.success ?? "").toLowerCase();
+  if (state === "false" || state === "error" || state === "failed") return false;
+  if (data.error != null && String(data.error).trim()) return false;
+  return true;
+}
+
 export async function nvoipEndCall(account: NvoipAccount, callId: string): Promise<void> {
   const id = callId.trim();
-  const paths = [
-    `/endcall?callId=${encodeURIComponent(id)}`,
-    `/endcall/?callId=${encodeURIComponent(id)}`,
+  const attempts: Array<{ method: string; path: string; body?: string }> = [
+    { method: "GET", path: `/endcall?callId=${encodeURIComponent(id)}` },
+    { method: "GET", path: `/endcall/?callId=${encodeURIComponent(id)}` },
+    {
+      method: "POST",
+      path: "/endcall",
+      body: JSON.stringify({ callId: id }),
+    },
+    {
+      method: "POST",
+      path: "/endcall/",
+      body: JSON.stringify({ callId: id }),
+    },
+    { method: "DELETE", path: `/calls?callId=${encodeURIComponent(id)}` },
+    { method: "DELETE", path: `/calls/?callId=${encodeURIComponent(id)}` },
   ];
   let lastError = "end_call_failed";
-  for (const path of paths) {
-    try {
-      const res = await nvoipAuthorizedFetch(account, path, { method: "GET" });
-      if (res.ok) return;
-      const data = await parseJson<{ error?: string }>(res);
-      lastError = data.error ?? `end_call_failed_${res.status}`;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : lastError;
+
+  const tryEnd = async (fetcher: (path: string, init: RequestInit) => Promise<Response>) => {
+    for (const attempt of attempts) {
+      try {
+        const res = await fetcher(attempt.path, {
+          method: attempt.method,
+          body: attempt.body,
+          headers: attempt.body ? { "Content-Type": "application/json" } : undefined,
+        });
+        let data: Record<string, unknown> = {};
+        try {
+          data = (await parseJson<Record<string, unknown>>(res)) ?? {};
+        } catch {
+          if (res.ok) return true;
+        }
+        if (isNvoipEndCallSuccess(res, data)) return true;
+        lastError =
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.message === "string" && data.message) ||
+          `end_call_failed_${res.status}`;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : lastError;
+      }
     }
+    return false;
+  };
+
+  if (await tryEnd((path, init) => nvoipAuthorizedFetch(account, path, init))) return;
+
+  if (
+    await tryEnd(async (path, init) => {
+      const res = await nvoipFetchWithNapikey(account, path, init);
+      return res;
+    })
+  ) {
+    return;
   }
+
   throw new Error(lastError);
 }
 

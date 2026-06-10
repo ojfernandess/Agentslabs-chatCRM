@@ -393,12 +393,27 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     if (!call) return;
     stopPolling();
     try {
-      await api.post("/nvoip/calls/end", { callId: call.callId });
+      const res = await api.post<{
+        ok?: boolean;
+        terminal?: boolean;
+        status?: string;
+        durationSec?: number | null;
+      }>("/nvoip/calls/end", { callId: call.callId });
+      const status = res.status?.trim() || "ENDED";
+      const duration =
+        res.durationSec != null && Number.isFinite(res.durationSec)
+          ? res.durationSec
+          : call.elapsedSec;
+      await finalizeCall(call, status, duration);
     } catch {
-      /* fall through to complete */
+      pollFailuresRef.current = 0;
+      const pollMs = isNvoipCallPhaseActive(call.status) ? POLL_MS_ACTIVE : POLL_MS_IDLE;
+      pollRef.current = setInterval(() => {
+        const current = activeCallRef.current;
+        if (current) void pollCall(current);
+      }, pollMs);
     }
-    await finalizeCall(call, "ENDED", call.elapsedSec);
-  }, [activeCall, finalizeCall, stopPolling]);
+  }, [activeCall, finalizeCall, pollCall, stopPolling]);
 
   const isOnCallForConversation = useCallback(
     (conversationId: string) => {

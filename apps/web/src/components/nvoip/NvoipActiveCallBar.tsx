@@ -8,14 +8,20 @@ export function NvoipActiveCallBar() {
   const call = voice?.activeCall;
   if (!call) return null;
 
-  const statusKey = `nvoip.voice.callStatus.${call.status}`;
-  const statusLabel = t(statusKey) === statusKey ? call.status : t(statusKey);
+  const effectiveStatus =
+    call.status === "CALLING_ORIGIN" && call.elapsedSec >= 5
+      ? "CALLING_DESTINATION"
+      : call.status === "CALLING_DESTINATION" && call.elapsedSec >= 18
+        ? "ACTIVE"
+        : call.status;
+  const statusKey = `nvoip.voice.callStatus.${effectiveStatus}`;
+  const statusLabel = t(statusKey) === statusKey ? effectiveStatus : t(statusKey);
   const statusHint =
-    call.status === "CALLING_ORIGIN"
+    effectiveStatus === "CALLING_ORIGIN"
       ? t("nvoip.voice.hintCallingOrigin")
-      : call.status === "CALLING_DESTINATION"
+      : effectiveStatus === "CALLING_DESTINATION"
         ? t("nvoip.voice.hintCallingDestination")
-        : call.status === "ACTIVE"
+        : effectiveStatus === "ACTIVE"
           ? t("nvoip.voice.hintActive")
           : null;
   const mm = Math.floor(call.elapsedSec / 60);

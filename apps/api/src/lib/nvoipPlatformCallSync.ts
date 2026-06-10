@@ -28,8 +28,16 @@ const LIVE_STATE_RANK: Record<string, number> = {
   active: 30,
 };
 
+/** API may return `success`/`ok` while the call is still live — treat as unknown phase. */
+function normalizeApiPhaseState(state: string | undefined | null): string {
+  const s = (state ?? "").trim().toLowerCase();
+  if (!s || s === "success" || s === "ok") return "";
+  return s;
+}
+
 function liveStateRank(state: string): number {
-  const s = state.toLowerCase();
+  const s = normalizeApiPhaseState(state);
+  if (!s) return 0;
   if (isNvoipTerminalState(s)) return 100;
   return LIVE_STATE_RANK[s] ?? 0;
 }
@@ -90,7 +98,14 @@ export async function resolveNvoipOutboundCallRemote(input: {
   const pabx = readNvoipPabxConfig(input.account.externalConfig);
   const platformMode = pabx.mode === "platform_webphone";
 
-  const live = await tryGetLiveCallStatus(input.account, input.externalCallId);
+  const liveRaw = await tryGetLiveCallStatus(input.account, input.externalCallId);
+  const livePhase = normalizeApiPhaseState(liveRaw?.state);
+  const live: NvoipCallStatusPayload | null = liveRaw
+    ? {
+        ...liveRaw,
+        state: livePhase || liveRaw.state,
+      }
+    : null;
   const history = await nvoipFindCallInTodayHistory(
     input.account,
     input.externalCallId,
@@ -98,9 +113,20 @@ export async function resolveNvoipOutboundCallRemote(input: {
   );
   const historyPayload = payloadFromHistory(history);
 
-  let best: NvoipCallStatusPayload | null = live;
-  let bestRank = live?.state ? liveStateRank(live.state) : 0;
+  let best: NvoipCallStatusPayload | null =
+    livePhase && live ? { ...live, state: livePhase } : liveRaw?.state ? liveRaw : null;
+  let bestRank = best?.state ? liveStateRank(String(best.state)) : 0;
   let source: ResolvedNvoipOutboundCall["source"] = "api";
+
+  if (
+    liveRaw &&
+    liveRaw.talkingDurationSeconds != null &&
+    Number(liveRaw.talkingDurationSeconds) > 0
+  ) {
+    best = { ...liveRaw, state: "established" };
+    bestRank = liveStateRank("established");
+    source = "api";
+  }
 
   if (historyPayload?.state) {
     const histRank = liveStateRank(historyPayload.state);
@@ -116,49 +142,56 @@ export async function resolveNvoipOutboundCallRemote(input: {
     }
   }
 
-  // Plataforma webphone: API muitas vezes fica muda após atender o ramal — avançar fase com histórico ou inferência conservadora
-  if (platformMode && callAgeMs > 0) {
+  // Click-to-call: API Nvoip frequentemente presa em calling_origin/success após atender ramal e cliente
+  if (callAgeMs > 0) {
     const storedRank = crmStatusRank(input.currentCrmStatus);
-    const liveState = live?.state?.toLowerCase() ?? "";
+    const liveState = normalizeApiPhaseState(liveRaw?.state ?? live?.state);
+    const originStuck =
+      !liveState ||
+      liveState === "calling_origin" ||
+      normalizeApiPhaseState(liveRaw?.state) === "";
 
     if (
-      liveState === "calling_origin" &&
-      callAgeMs > 8_000 &&
+      originStuck &&
       storedRank <= liveStateRank("calling_origin") &&
-      bestRank <= liveStateRank("calling_origin")
+      bestRank <= liveStateRank("calling_origin") &&
+      callAgeMs > (platformMode ? 4_000 : 8_000)
     ) {
       best = {
         state: "calling_destination",
-        caller: best?.caller ?? historyPayload?.caller ?? live?.caller ?? null,
+        caller: best?.caller ?? historyPayload?.caller ?? liveRaw?.caller ?? null,
       };
       bestRank = liveStateRank("calling_destination");
       source = "inferred";
     }
 
-    if (
-      !live?.state &&
-      storedRank <= liveStateRank("calling_origin") &&
-      callAgeMs > 12_000 &&
-      bestRank < liveStateRank("calling_destination")
-    ) {
-      best = {
-        state: "calling_destination",
-        caller: best?.caller ?? historyPayload?.caller ?? null,
-      };
-      bestRank = liveStateRank("calling_destination");
-      source = "inferred";
-    }
+    const destPhase =
+      storedRank >= liveStateRank("calling_destination") ||
+      bestRank >= liveStateRank("calling_destination") ||
+      liveState === "calling_destination";
+    const hasTalkTime =
+      (historyPayload?.talkingDurationSeconds ?? 0) > 0 ||
+      (liveRaw?.talkingDurationSeconds ?? 0) > 0;
 
     if (
-      historyPayload?.state &&
-      storedRank >= liveStateRank("calling_destination") &&
-      callAgeMs > 20_000 &&
+      destPhase &&
       bestRank < liveStateRank("established") &&
-      (historyPayload.talkingDurationSeconds ?? 0) > 0
+      !isNvoipTerminalState(liveState) &&
+      (liveState === "established" ||
+        hasTalkTime ||
+        (storedRank >= liveStateRank("calling_destination") &&
+          callAgeMs > (platformMode ? 18_000 : 30_000)))
     ) {
-      best = historyPayload;
-      bestRank = liveStateRank(historyPayload.state);
-      source = "history";
+      best = {
+        state: "established",
+        caller: best?.caller ?? historyPayload?.caller ?? liveRaw?.caller ?? null,
+        talkingDurationSeconds:
+          historyPayload?.talkingDurationSeconds ??
+          liveRaw?.talkingDurationSeconds ??
+          (hasTalkTime ? 1 : Math.max(1, Math.floor(callAgeMs / 1000) - 12)),
+      };
+      bestRank = liveStateRank("established");
+      source = hasTalkTime || liveState === "established" ? source : "inferred";
     }
 
     if (
@@ -172,12 +205,23 @@ export async function resolveNvoipOutboundCallRemote(input: {
     }
 
     if (
-      live?.state &&
-      isNvoipLiveCallState(live.state) &&
-      liveStateRank(live.state) <= liveStateRank("calling_origin") &&
-      callAgeMs > 15_000 &&
       historyPayload?.state &&
-      liveStateRank(historyPayload.state) > liveStateRank(live.state)
+      storedRank >= liveStateRank("calling_destination") &&
+      bestRank < liveStateRank("established") &&
+      (historyPayload.talkingDurationSeconds ?? 0) > 0
+    ) {
+      best = historyPayload;
+      bestRank = liveStateRank(historyPayload.state);
+      source = "history";
+    }
+
+    if (
+      liveState &&
+      isNvoipLiveCallState(liveState) &&
+      liveStateRank(liveState) <= liveStateRank("calling_origin") &&
+      callAgeMs > 10_000 &&
+      historyPayload?.state &&
+      liveStateRank(historyPayload.state) > liveStateRank(liveState)
     ) {
       best = historyPayload;
       bestRank = liveStateRank(historyPayload.state);

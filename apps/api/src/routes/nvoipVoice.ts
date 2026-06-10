@@ -13,6 +13,7 @@ import {
 } from "../lib/nvoipAgentCall.js";
 import { resolveNvoipCallContext } from "../lib/nvoipCallContext.js";
 import { nvoipEndCall } from "../lib/nvoipClient.js";
+import { writeNvoipIntegrationLog } from "../lib/nvoipIntegrationLog.js";
 
 export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -221,8 +222,21 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       await nvoipEndCall(row.nvoipAccount, parsed.data.callId);
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "end_call_failed";
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: row.nvoipAccount.id,
+        level: "error",
+        eventType: "outbound_call_end_failed",
+        message: `GET/POST /endcall callId=${parsed.data.callId}: ${message}`,
+        payload: { callId: parsed.data.callId, clientCallId: row.clientCallId },
+      });
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        message,
+        statusCode: 502,
+      });
     }
     const sync = await syncNvoipCallFromApi({
       organizationId,
