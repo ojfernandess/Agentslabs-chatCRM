@@ -8,6 +8,7 @@ import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { NvoipInsightsPanel } from "@/components/nvoip/NvoipInsightsPanel";
 import { NvoipSettingsExtras } from "@/components/nvoip/NvoipSettingsExtras";
 import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomologationPanel";
+import { NvoipOutboundSetupGuide } from "@/components/nvoip/NvoipOutboundSetupGuide";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -782,6 +783,10 @@ export function NvoipIntegrationSettings() {
                 {smsTestSending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.sms.testSend")}
               </button>
             </div>
+          ) : null}
+
+          {linked && voiceEnabled ? (
+            <NvoipOutboundSetupGuide linked={linked} defaultCaller={defaultCaller} />
           ) : null}
 
           {linked && voiceEnabled ? (

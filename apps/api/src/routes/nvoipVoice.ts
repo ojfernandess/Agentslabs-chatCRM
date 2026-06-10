@@ -104,6 +104,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       ok: true,
       callId: result.callId,
       dialPhone: result.dialPhone,
+      caller: result.caller,
       contactId: result.contactId,
       conversationId: result.conversationId,
     };

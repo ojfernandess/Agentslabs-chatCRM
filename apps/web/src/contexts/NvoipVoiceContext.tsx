@@ -31,15 +31,18 @@ type ActiveCall = {
   callId: string;
   status: string;
   elapsedSec: number;
+  dialPhone: string;
+  caller: string | null;
 };
 
 type OutboundResult =
-  | { ok: true; dialPhone: string; contactId: string | null; conversationId: string | null }
+  | { ok: true; dialPhone: string; caller: string | null; contactId: string | null; conversationId: string | null }
   | { ok: false; message: string };
 
 type NvoipVoiceContextValue = {
   ready: boolean;
   canPlaceCalls: boolean;
+  caller: string | null;
   trunks: TrunkRow[];
   selectedTrunkId: string | null;
   setSelectedTrunkId: (id: string | null) => void;
@@ -63,6 +66,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [ready, setReady] = useState(false);
   const [canPlaceCalls, setCanPlaceCalls] = useState(false);
+  const [caller, setCaller] = useState<string | null>(null);
   const [trunks, setTrunks] = useState<TrunkRow[]>([]);
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -83,12 +87,14 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const refreshSession = useCallback(async () => {
     if (!user) {
       setCanPlaceCalls(false);
+      setCaller(null);
       setReady(false);
       return;
     }
     if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
     if (!(user.organizationFeatures?.nvoip_voice ?? false)) {
       setCanPlaceCalls(false);
+      setCaller(null);
       setReady(true);
       return;
     }
@@ -96,6 +102,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.get<SessionPayload>("/nvoip/session");
       setCanPlaceCalls(!!res.canPlaceCalls);
+      setCaller(res.caller?.trim() || null);
       const list = res.trunks ?? [];
       setTrunks(list);
       const orgId = user.actingOrganizationId ?? user.organizationId;
@@ -109,6 +116,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       setCanPlaceCalls(false);
+      setCaller(null);
     } finally {
       setReady(true);
     }
@@ -191,6 +199,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           ok: boolean;
           callId?: string;
           dialPhone?: string;
+          caller?: string;
           contactId?: string | null;
           conversationId?: string | null;
           message?: string;
@@ -207,8 +216,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         setActiveCall({
           clientCallId,
           callId: res.callId,
-          status: "DIALING",
+          status: "CALLING_ORIGIN",
           elapsedSec: 0,
+          dialPhone: res.dialPhone ?? input.phone,
+          caller: res.caller?.trim() || caller,
         });
         void api
           .post("/nvoip/calls/claim-agent", {
@@ -219,6 +230,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return {
           ok: true,
           dialPhone: res.dialPhone ?? input.phone,
+          caller: res.caller?.trim() || caller,
           contactId: res.contactId ?? null,
           conversationId: res.conversationId ?? null,
         };
@@ -226,7 +238,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: e instanceof Error ? e.message : "call_failed" };
       }
     },
-    [selectedTrunkId],
+    [caller, selectedTrunkId],
   );
 
   const endActiveCall = useCallback(async () => {
@@ -250,6 +262,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       canPlaceCalls,
+      caller,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,
@@ -261,6 +274,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     [
       ready,
       canPlaceCalls,
+      caller,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,

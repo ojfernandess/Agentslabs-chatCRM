@@ -2165,6 +2165,21 @@ export const messages = {
       outboundTestPhone: "Telefone de destino",
       outboundTestCall: "Ligar teste",
       outboundTestSuccess: "Chamada iniciada. Atenda o ramal de origem; depois a ligação segue ao destino.",
+      setup: {
+        title: "Como funcionam as ligações de saída (click-to-call)",
+        subtitle:
+          "A Nvoip não disca o cliente directamente no browser. Primeiro toca o seu ramal (webphone ou softphone); só depois de atender é que o cliente é chamado.",
+        step1:
+          "No painel Nvoip (painel.nvoip.com.br): crie ramais SIP por agente e active o webphone no ramal, ou encaminhe o ramal para o seu telemóvel/fixo.",
+        step2:
+          "Aqui no CRM: «Sincronizar ramais» e, em «Ramais por agente», associe cada utilizador ao ramal SIP correcto (não use o NumberSIP da conta como caller).",
+        step3:
+          "Defina «Ramal de origem (caller)» predefinido da conta apenas como fallback; o ideal é ramal por agente.",
+        step4:
+          "Ao ligar a um contacto: atenda a chamada no painel/webphone Nvoip; quando ouvir tom de discagem, o sistema está a ligar ao cliente.",
+        currentCaller: "Seu ramal de origem actual",
+        openPanel: "Abrir painel Nvoip",
+      },
       torpedoTitle: "Teste de torpedo de voz",
       torpedoHint: "Envia uma mensagem TTS para um número (homologação).",
       torpedoPhone: "Telefone de destino",
@@ -2250,9 +2265,14 @@ export const messages = {
         activeCall: "Chamada Nvoip",
         endCall: "Terminar",
         hangUp: "Desligar",
+        hintCallingOrigin:
+          "A tocar no seu ramal — atenda no webphone Nvoip para a ligação seguir ao cliente.",
+        hintCallingDestination: "Ramal atendido — a ligar ao cliente…",
         callStatus: {
           RINGING: "A tocar",
           DIALING: "A marcar",
+          CALLING_ORIGIN: "Atenda o ramal",
+          CALLING_DESTINATION: "A ligar ao cliente",
           ACTIVE: "Em curso",
           ENDED: "Terminada",
           ANSWERED: "Atendida",
@@ -6503,6 +6523,21 @@ export const messages = {
       outboundTestPhone: "Destination phone",
       outboundTestCall: "Place test call",
       outboundTestSuccess: "Call started. Answer the origin extension; then the call proceeds to the destination.",
+      setup: {
+        title: "How outbound calls work (click-to-call)",
+        subtitle:
+          "Nvoip does not dial the customer directly in the browser. Your extension (webphone or softphone) rings first; only after you answer is the customer called.",
+        step1:
+          "In the Nvoip dashboard (painel.nvoip.com.br): create SIP extensions per agent and enable webphone on the extension, or forward the extension to mobile/landline.",
+        step2:
+          "In this CRM: «Sync extensions» and map each user in «Per-agent extensions» to the correct SIP extension (do not use the account NumberSIP as caller).",
+        step3:
+          "Set the account «Default origin extension (caller)» only as fallback; per-agent extensions are preferred.",
+        step4:
+          "When calling a contact: answer on the Nvoip dashboard/webphone; when you hear dial tone, the system is calling the customer.",
+        currentCaller: "Your current origin extension",
+        openPanel: "Open Nvoip dashboard",
+      },
       torpedoTitle: "Voice torpedo test",
       torpedoHint: "Send a TTS message to one number (sandbox).",
       torpedoPhone: "Destination phone",
@@ -6588,9 +6623,14 @@ export const messages = {
         activeCall: "Nvoip call",
         endCall: "End call",
         hangUp: "Hang up",
+        hintCallingOrigin:
+          "Ringing your extension — answer on the Nvoip webphone for the call to proceed to the customer.",
+        hintCallingDestination: "Extension answered — calling the customer…",
         callStatus: {
           RINGING: "Ringing",
           DIALING: "Dialing",
+          CALLING_ORIGIN: "Answer extension",
+          CALLING_DESTINATION: "Calling customer",
           ACTIVE: "Active",
           ENDED: "Ended",
           ANSWERED: "Answered",

@@ -31,6 +31,7 @@ export async function startAgentOutboundCall(input: {
       ok: true;
       callId: string;
       dialPhone: string;
+      caller: string;
       contactId: string | null;
       conversationId: string | null;
     }
@@ -161,6 +162,7 @@ export async function startAgentOutboundCall(input: {
     ok: true,
     callId: externalCallId,
     dialPhone: ctx.dialPhone,
+    caller: callerNorm,
     contactId: ctx.contactId,
     conversationId: ctx.conversationId,
   };
@@ -172,6 +174,7 @@ export async function syncNvoipCallFromApi(input: {
   clientCallId?: string | null;
 }): Promise<{
   status: string;
+  nvoipState: string;
   terminal: boolean;
   recordUrl: string | null;
   durationSec: number | null;
@@ -184,7 +187,7 @@ export async function syncNvoipCallFromApi(input: {
     include: { nvoipAccount: true },
   });
   if (!row?.nvoipAccount) {
-    return { status: "UNKNOWN", terminal: true, recordUrl: null, durationSec: null };
+    return { status: "UNKNOWN", nvoipState: "", terminal: true, recordUrl: null, durationSec: null };
   }
 
   const remote = await nvoipGetCallStatus(row.nvoipAccount, input.externalCallId);
@@ -223,6 +226,7 @@ export async function syncNvoipCallFromApi(input: {
 
   return {
     status: crmStatus,
+    nvoipState: String(remote.state ?? ""),
     terminal: isNvoipTerminalState(String(remote.state ?? "")),
     recordUrl,
     durationSec: durationSec ?? null,

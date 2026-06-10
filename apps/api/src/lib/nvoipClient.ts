@@ -307,7 +307,8 @@ export async function nvoipEndCall(account: NvoipAccount, callId: string): Promi
 export function mapNvoipStateToCrmStatus(state: string): string {
   const s = state.toLowerCase();
   if (s === "established") return "ACTIVE";
-  if (s === "calling_origin" || s === "calling_destination") return "DIALING";
+  if (s === "calling_origin") return "CALLING_ORIGIN";
+  if (s === "calling_destination") return "CALLING_DESTINATION";
   if (s === "finished") return "ENDED";
   if (s === "noanswer") return "NOT_ANSWERED";
   if (s === "busy") return "BUSY";
