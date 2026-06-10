@@ -33,6 +33,7 @@ export function initThemeFromStorage() {
 export function setThemePreference(pref: ThemePref) {
   localStorage.setItem(THEME_STORAGE_KEY, pref);
   applyDarkClass(pref);
+  window.dispatchEvent(new CustomEvent("openconduit:theme-changed", { detail: { pref } }));
 }
 
 export function getThemePreference(): ThemePref {

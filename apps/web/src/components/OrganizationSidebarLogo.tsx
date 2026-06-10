@@ -7,6 +7,8 @@ type OrganizationSidebarLogoProps = {
   brandingReady: boolean;
   alt: string;
   className?: string;
+  /** Logo maior e destacado (menu recolhido). */
+  emphasized?: boolean;
 };
 
 export function OrganizationSidebarLogo({
@@ -14,6 +16,7 @@ export function OrganizationSidebarLogo({
   brandingReady,
   alt,
   className,
+  emphasized = false,
 }: OrganizationSidebarLogoProps) {
   const systemLogo = brandAssetUrl("/logo.svg");
   const targetSrc = brandingReady ? (organizationLogoUrl ?? systemLogo) : null;
@@ -61,9 +64,15 @@ export function OrganizationSidebarLogo({
     };
   }, [targetSrc, systemLogo]);
 
+  const sizeClass = emphasized ? "h-11 w-11 max-w-[2.75rem]" : "h-9 w-auto max-w-[2.75rem]";
+
   return (
     <span
-      className={clsx("relative inline-flex h-9 w-[2.75rem] shrink-0 items-center justify-center", className)}
+      className={clsx(
+        "relative inline-flex shrink-0 items-center justify-center",
+        emphasized ? "h-11 w-11" : "h-9 w-[2.75rem]",
+        className,
+      )}
       aria-hidden={!displaySrc}
     >
       {displaySrc ? (
@@ -71,7 +80,8 @@ export function OrganizationSidebarLogo({
           src={displaySrc}
           alt={alt}
           className={clsx(
-            "h-9 w-auto max-w-[2.75rem] object-contain transition-opacity duration-300 ease-out",
+            sizeClass,
+            "object-contain transition-opacity duration-300 ease-out",
             visible ? "opacity-100" : "opacity-0",
           )}
           decoding="async"

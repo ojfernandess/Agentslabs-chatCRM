@@ -100,6 +100,8 @@ export const messages = {
       broadcast: "Campanhas",
       automation: "Automação",
       aiInsights: "IA & Insights",
+      collapseSidebar: "Recolher menu",
+      expandSidebar: "Expandir menu",
     },
     aiInsightsPage: {
       badge: "Inteligência assistida",
@@ -4425,6 +4427,8 @@ export const messages = {
       broadcast: "Campaigns",
       automation: "Automation",
       aiInsights: "AI & Insights",
+      collapseSidebar: "Collapse menu",
+      expandSidebar: "Expand menu",
     },
     aiInsightsPage: {
       badge: "Assisted intelligence",
