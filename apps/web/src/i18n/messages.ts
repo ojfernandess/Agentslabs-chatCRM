@@ -2183,7 +2183,7 @@ export const messages = {
         invalidCallerWarning:
           "Este valor parece NumberSIP da conta, não um ramal SIP. Corrija em «Ramal de origem» ou «Ramais por agente».",
         noDirectBrowser:
-          "A API Nvoip (click-to-call) não liga directamente no browser como o Wavoip. Alternativas: atender no webphone Nvoip, encaminhar o ramal para o telemóvel, ou integrar o nvoip-web-sdk.",
+          "Ligações CRM usam click-to-call (API REST): o ramal toca primeiro. O pacote nvoip-web-sdk integrado aqui é para OTP/2FA no browser, não voz WebRTC como o Wavoip.",
         openPanel: "Abrir painel Nvoip",
       },
       torpedoTitle: "Teste de torpedo de voz",
@@ -2251,6 +2251,13 @@ export const messages = {
         verifyError: "Falha na validação.",
         invalidCode: "Código inválido.",
         verified: "Telefone verificado.",
+      },
+      webSdk: {
+        settingsHint:
+          "Widget oficial nvoip-web-sdk (OTP/2FA por SMS, voz ou WhatsApp). Credenciais ficam no servidor — o browser só abre o modal.",
+        openWidget: "Abrir widget OTP",
+        testWidget: "Testar widget OTP",
+        contactHint: "Validação com o widget oficial Nvoip (SMS ou ligação com código).",
       },
       field: {
         numbersip: "NumberSIP (conta)",
@@ -6573,7 +6580,7 @@ export const messages = {
         invalidCallerWarning:
           "This looks like the account NumberSIP, not a SIP extension. Fix under «Source extension» or «Per-agent extensions».",
         noDirectBrowser:
-          "The Nvoip API (click-to-call) does not place calls directly in the browser like Wavoip. Alternatives: answer on the Nvoip webphone, forward the extension to mobile, or integrate nvoip-web-sdk.",
+          "CRM calls use click-to-call (REST API): your extension rings first. The integrated nvoip-web-sdk package is for browser OTP/2FA, not WebRTC voice like Wavoip.",
         openPanel: "Open Nvoip dashboard",
       },
       torpedoTitle: "Voice torpedo test",
@@ -6641,6 +6648,13 @@ export const messages = {
         verifyError: "Verification failed.",
         invalidCode: "Invalid code.",
         verified: "Phone verified.",
+      },
+      webSdk: {
+        settingsHint:
+          "Official nvoip-web-sdk widget (OTP/2FA via SMS, voice or WhatsApp). Credentials stay on the server — the browser only opens the modal.",
+        openWidget: "Open OTP widget",
+        testWidget: "Test OTP widget",
+        contactHint: "Verification with the official Nvoip widget (SMS or voice call with code).",
       },
       field: {
         numbersip: "NumberSIP (account)",

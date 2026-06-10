@@ -11,6 +11,7 @@ import { NvoipTrunksHomologationPanel } from "@/components/nvoip/NvoipTrunksHomo
 import { NvoipOutboundSetupGuide } from "@/components/nvoip/NvoipOutboundSetupGuide";
 import { NvoipPabxPanel } from "@/components/nvoip/NvoipPabxPanel";
 import { isLikelyNvoipNumbersipCaller, mapNvoipCallErrorMessage } from "@/lib/mapNvoipCallError";
+import { useNvoipAuthWidget } from "@/hooks/useNvoipAuthWidget";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
 
@@ -106,6 +107,8 @@ export function NvoipIntegrationSettings() {
   const [otpTestDest, setOtpTestDest] = useState("");
   const [otpTestSending, setOtpTestSending] = useState(false);
   const [otpTestChallengeId, setOtpTestChallengeId] = useState<string | null>(null);
+  const [otpWidgetLoading, setOtpWidgetLoading] = useState(false);
+  const { openWidget: openNvoipOtpWidget } = useNvoipAuthWidget();
   const [waInstance, setWaInstance] = useState("");
   const [waDefaultLanguage, setWaDefaultLanguage] = useState("pt_BR");
   const [waStatus, setWaStatus] = useState<{
@@ -569,6 +572,7 @@ export function NvoipIntegrationSettings() {
                 {t("nvoip.otp.settingsTitle")}
               </h3>
               <p className="mt-1 text-xs text-slate-500">{t("nvoip.otp.settingsHint")}</p>
+              <p className="mt-1 text-xs text-slate-500">{t("nvoip.webSdk.settingsHint")}</p>
               <label className="mt-3 block text-sm">
                 <span className="font-medium">{t("nvoip.otp.provider")}</span>
                 <select
@@ -628,6 +632,29 @@ export function NvoipIntegrationSettings() {
                   {t("nvoip.otp.testChallenge")}: {otpTestChallengeId}
                 </p>
               ) : null}
+              <button
+                type="button"
+                className="btn-secondary mt-3 text-sm"
+                disabled={otpWidgetLoading || !otpTestDest.trim() || otpProvider !== "NVOIP"}
+                onClick={() => {
+                  setOtpWidgetLoading(true);
+                  setError(null);
+                  void openNvoipOtpWidget({
+                    phone: otpTestDest.trim(),
+                    purpose: "admin_test",
+                    allowPhoneEdit: true,
+                    accountLabel: t("nvoip.otp.settingsTitle"),
+                  }).catch((e) =>
+                    setError(e instanceof Error ? e.message : t("nvoip.otp.sendError")),
+                  ).finally(() => setOtpWidgetLoading(false));
+                }}
+              >
+                {otpWidgetLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  t("nvoip.webSdk.testWidget")
+                )}
+              </button>
             </div>
           ) : null}
 
