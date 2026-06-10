@@ -44,6 +44,21 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
 }
 
+/** Compare Nvoip numbersip identifiers (digits only). */
+export function nvoipSameNumbersip(a: string, b: string): boolean {
+  const da = a.replace(/\D/g, "");
+  const db = b.replace(/\D/g, "");
+  return Boolean(da && db && da === db);
+}
+
+function nvoipExtractApiError(data: Record<string, unknown>, fallback: string): string {
+  for (const key of ["error_description", "message", "msg", "detail", "error"]) {
+    const v = data[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return fallback;
+}
+
 export async function nvoipPasswordGrant(
   numbersip: string,
   userToken: string,
@@ -572,49 +587,98 @@ export async function nvoipUpdateSipUser(
   input: {
     numbersip: string;
     name?: string;
+    caller?: string;
     blocked?: boolean;
     webphone?: boolean;
     sipPassword?: string;
   },
 ): Promise<Record<string, unknown>> {
-  const res = await nvoipAuthorizedFetch(account, "/update/users", {
-    method: "PUT",
-    body: JSON.stringify({
-      numbersip: input.numbersip.trim(),
-      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-      ...(input.blocked !== undefined ? { blocked: input.blocked } : {}),
-      ...(input.webphone !== undefined ? { webphone: input.webphone } : {}),
-      ...(input.sipPassword ? { sipPassword: input.sipPassword } : {}),
-    }),
-  });
-  const data = await parseJson<Record<string, unknown>>(res);
-  if (!res.ok) {
-    throw new Error(
-      typeof data.error === "string"
-        ? data.error
-        : `update_user_failed_${res.status}`,
-    );
+  const numbersip = input.numbersip.trim();
+  const buildBody = (opts: { numericFlags?: boolean; camelNumbersip?: boolean }): Record<string, unknown> => {
+    const body: Record<string, unknown> = { numbersip };
+    if (opts.camelNumbersip) body.numberSip = numbersip;
+    if (input.name !== undefined) body.name = input.name.trim();
+    if (input.caller?.trim()) body.caller = input.caller.trim();
+    if (input.sipPassword) body.sipPassword = input.sipPassword;
+    if (input.blocked !== undefined) {
+      body.blocked = opts.numericFlags ? (input.blocked ? 1 : 0) : input.blocked;
+    }
+    if (input.webphone !== undefined) {
+      body.webphone = opts.numericFlags ? (input.webphone ? 1 : 0) : input.webphone;
+    }
+    return body;
+  };
+
+  const variants = [
+    buildBody({}),
+    buildBody({ camelNumbersip: true }),
+    buildBody({ numericFlags: true }),
+    buildBody({ camelNumbersip: true, numericFlags: true }),
+  ];
+
+  let lastError = "update_user_failed";
+  let lastPayload: Record<string, unknown> = {};
+
+  for (const body of variants) {
+    const res = await nvoipAuthorizedFetch(account, "/update/users", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    const data = await parseJson<Record<string, unknown>>(res);
+    if (res.ok) return data;
+    lastPayload = data;
+    lastError = nvoipExtractApiError(data, `update_user_failed_${res.status}`);
+    if (lastError !== "Server error") break;
   }
-  return data;
+
+  const napikey = decryptNvoipSecret(account.napikeyEnc);
+  if (napikey && lastError === "Server error") {
+    const body = buildBody({});
+    const qs = `numbersip=${encodeURIComponent(account.numbersip)}&napikey=${encodeURIComponent(napikey)}`;
+    const res = await fetchWithRateLimitBackoff(apiUrl(`/update/users?${qs}`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await parseJson<Record<string, unknown>>(res);
+    if (res.ok) return data;
+    lastPayload = data;
+    lastError = nvoipExtractApiError(data, lastError);
+  }
+
+  const detail = JSON.stringify(lastPayload).slice(0, 400);
+  throw new Error(detail.length > 2 ? `${lastError} (${detail})` : lastError);
 }
 
 export async function nvoipDeleteSipUser(
   account: NvoipAccount,
   numbersip: string,
 ): Promise<Record<string, unknown>> {
-  const res = await nvoipAuthorizedFetch(account, "/delete/users", {
-    method: "DELETE",
-    body: JSON.stringify({ numbersip: numbersip.trim() }),
-  });
-  const data = await parseJson<Record<string, unknown>>(res);
-  if (!res.ok) {
-    throw new Error(
-      typeof data.error === "string"
-        ? data.error
-        : `delete_user_failed_${res.status}`,
-    );
+  const id = numbersip.trim();
+  const attempts: Array<{ method: string; path: string; body?: string }> = [
+    { method: "DELETE", path: "/delete/users", body: JSON.stringify({ numbersip: id }) },
+    { method: "DELETE", path: "/delete/users", body: JSON.stringify({ numberSip: id }) },
+    { method: "DELETE", path: `/delete/users?numbersip=${encodeURIComponent(id)}` },
+    { method: "GET", path: `/delete/users?numbersip=${encodeURIComponent(id)}` },
+  ];
+
+  let lastError = "delete_user_failed";
+  let lastPayload: Record<string, unknown> = {};
+
+  for (const attempt of attempts) {
+    const res = await nvoipAuthorizedFetch(account, attempt.path, {
+      method: attempt.method,
+      ...(attempt.body ? { body: attempt.body } : {}),
+    });
+    const data = await parseJson<Record<string, unknown>>(res);
+    if (res.ok) return data;
+    lastPayload = data;
+    lastError = nvoipExtractApiError(data, `delete_user_failed_${res.status}`);
+    if (lastError !== "Server error") break;
   }
-  return data;
+
+  const detail = JSON.stringify(lastPayload).slice(0, 400);
+  throw new Error(detail.length > 2 ? `${lastError} (${detail})` : lastError);
 }
 
 export async function nvoipUpdateDid(

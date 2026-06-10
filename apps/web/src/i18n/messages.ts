@@ -2366,6 +2366,11 @@ export const messages = {
         delete: "Remover ramal",
         deleteConfirm: "Remover o ramal «{name}» na Nvoip? Esta acção não pode ser desfeita.",
         deleteError: "Falha ao remover ramal na Nvoip.",
+        primaryBadge: "Conta principal",
+        primaryHint: "Edite no painel Nvoip",
+        primaryNotEditable:
+          "Este é o utilizador principal da conta (NumberSIP). Só ramais secundários podem ser editados pela API — use o painel Nvoip ou crie um ramal secundário.",
+        userNotFound: "Ramal não encontrado. Sincronize a lista e tente novamente.",
       },
       security2fa: {
         title: "Verificação 2FA (Nvoip)",
@@ -6743,6 +6748,11 @@ export const messages = {
         delete: "Remove extension",
         deleteConfirm: "Remove extension «{name}» on Nvoip? This cannot be undone.",
         deleteError: "Failed to remove extension on Nvoip.",
+        primaryBadge: "Primary account",
+        primaryHint: "Edit in Nvoip dashboard",
+        primaryNotEditable:
+          "This is the primary account user (NumberSIP). Only secondary extensions can be edited via API — use the Nvoip dashboard or create a secondary extension.",
+        userNotFound: "Extension not found. Sync the list and try again.",
       },
       security2fa: {
         title: "2FA verification (Nvoip)",

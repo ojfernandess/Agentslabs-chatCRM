@@ -799,6 +799,7 @@ export function NvoipIntegrationSettings() {
 
           {linked && voiceEnabled ? (
             <NvoipPabxPanel
+              accountNumbersip={account?.numbersip ?? numbersip}
               sipUsers={sipUsers}
               directorySyncedAt={directorySyncedAt}
               syncingUsers={syncingUsers}

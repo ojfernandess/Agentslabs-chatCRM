@@ -1,9 +1,21 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 
 const NVOIP_PANEL_URL = "https://painel.nvoip.com.br";
+
+function sameNumbersip(a: string, b: string): boolean {
+  const da = a.replace(/\D/g, "");
+  const db = b.replace(/\D/g, "");
+  return Boolean(da && db && da === db);
+}
+
+function mapNvoipUserError(message: string, t: (key: string) => string): string {
+  if (message === "nvoip_primary_user_not_editable") return t("nvoip.pabx.primaryNotEditable");
+  if (message === "sip_user_not_found") return t("nvoip.pabx.userNotFound");
+  return message;
+}
 
 export type SipUserRow = {
   numbersip: string;
@@ -23,6 +35,7 @@ type UraPayload = {
 };
 
 type Props = {
+  accountNumbersip: string;
   sipUsers: SipUserRow[];
   directorySyncedAt: string | null;
   syncingUsers: boolean;
@@ -32,6 +45,7 @@ type Props = {
 };
 
 export function NvoipPabxPanel({
+  accountNumbersip,
   sipUsers,
   directorySyncedAt,
   syncingUsers,
@@ -152,6 +166,7 @@ export function NvoipPabxPanel({
                   <SipUserEditRow
                     key={su.numbersip}
                     user={su}
+                    isPrimary={sameNumbersip(su.numbersip, accountNumbersip)}
                     onError={onError}
                     onUpdated={applySipResponse}
                   />
@@ -219,10 +234,12 @@ export function NvoipPabxPanel({
 
 function SipUserEditRow({
   user,
+  isPrimary,
   onError,
   onUpdated,
 }: {
   user: SipUserRow;
+  isPrimary: boolean;
   onError: (message: string) => void;
   onUpdated: (users?: SipUserRow[]) => void;
 }) {
@@ -233,31 +250,49 @@ function SipUserEditRow({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => {
+    setName(user.name ?? "");
+    setWebphone(user.webphone ?? false);
+    setBlocked(user.blocked);
+  }, [user.name, user.webphone, user.blocked, user.numbersip]);
+
   const dirty =
-    name.trim() !== (user.name ?? "").trim() ||
-    webphone !== (user.webphone ?? false) ||
-    blocked !== user.blocked;
+    !isPrimary &&
+    (name.trim() !== (user.name ?? "").trim() ||
+      webphone !== (user.webphone ?? false) ||
+      blocked !== user.blocked);
 
   const save = async () => {
+    if (isPrimary) {
+      onError(t("nvoip.pabx.primaryNotEditable"));
+      return;
+    }
+    const payload: Record<string, unknown> = {};
+    if (name.trim() !== (user.name ?? "").trim()) payload.name = name.trim();
+    if (webphone !== (user.webphone ?? false)) payload.webphone = webphone;
+    if (blocked !== user.blocked) payload.blocked = blocked;
+    if (Object.keys(payload).length === 0) return;
+
     setSaving(true);
     try {
       const res = await api.put<{ ok: boolean; sipUsers?: SipUserRow[] }>(
         `/settings/nvoip/users/${encodeURIComponent(user.numbersip)}`,
-        {
-          name: name.trim(),
-          webphone,
-          blocked,
-        },
+        payload,
       );
       onUpdated(res.sipUsers);
     } catch (e) {
-      onError(e instanceof ApiError ? e.message : t("nvoip.pabx.updateError"));
+      const raw = e instanceof ApiError ? e.message : t("nvoip.pabx.updateError");
+      onError(mapNvoipUserError(raw, t));
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async () => {
+    if (isPrimary) {
+      onError(t("nvoip.pabx.primaryNotEditable"));
+      return;
+    }
     if (!window.confirm(t("nvoip.pabx.deleteConfirm").replace("{name}", user.name || user.numbersip))) {
       return;
     }
@@ -268,7 +303,8 @@ function SipUserEditRow({
       );
       onUpdated(res.sipUsers);
     } catch (e) {
-      onError(e instanceof ApiError ? e.message : t("nvoip.pabx.deleteError"));
+      const raw = e instanceof ApiError ? e.message : t("nvoip.pabx.deleteError");
+      onError(mapNvoipUserError(raw, t));
     } finally {
       setDeleting(false);
     }
@@ -281,18 +317,39 @@ function SipUserEditRow({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full min-w-[6rem] rounded border border-slate-200 px-2 py-1 text-sm dark:border-ink-700 dark:bg-ink-950"
+          disabled={isPrimary}
+          className="w-full min-w-[6rem] rounded border border-slate-200 px-2 py-1 text-sm disabled:opacity-60 dark:border-ink-700 dark:bg-ink-950"
         />
       </td>
-      <td className="px-3 py-2 font-mono text-xs">{user.caller ?? "—"}</td>
-      <td className="px-3 py-2">
-        <input type="checkbox" checked={webphone} onChange={(e) => setWebphone(e.target.checked)} />
+      <td className="px-3 py-2 font-mono text-xs">
+        {user.caller ?? "—"}
+        {isPrimary ? (
+          <span className="ml-1 block text-[10px] font-normal text-amber-700 dark:text-amber-300">
+            {t("nvoip.pabx.primaryBadge")}
+          </span>
+        ) : null}
       </td>
       <td className="px-3 py-2">
-        <input type="checkbox" checked={blocked} onChange={(e) => setBlocked(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={webphone}
+          disabled={isPrimary}
+          onChange={(e) => setWebphone(e.target.checked)}
+        />
       </td>
       <td className="px-3 py-2">
-        <div className="flex items-center gap-1">
+        <input
+          type="checkbox"
+          checked={blocked}
+          disabled={isPrimary}
+          onChange={(e) => setBlocked(e.target.checked)}
+        />
+      </td>
+      <td className="px-3 py-2">
+        {isPrimary ? (
+          <span className="text-xs text-slate-500">{t("nvoip.pabx.primaryHint")}</span>
+        ) : (
+          <div className="flex items-center gap-1">
           <button
             type="button"
             className="btn-secondary px-2 py-1 text-xs"
@@ -311,6 +368,7 @@ function SipUserEditRow({
             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
           </button>
         </div>
+        )}
       </td>
     </tr>
   );

@@ -25,6 +25,7 @@ import {
   nvoipCreateSipUser,
   nvoipUpdateSipUser,
   nvoipDeleteSipUser,
+  nvoipSameNumbersip,
 } from "../lib/nvoipClient.js";
 import { maybeAlertNvoipLowBalance } from "../lib/nvoipBalanceAlert.js";
 import { type NvoipIncomingQueueConfig } from "../lib/nvoipIncomingQueue.js";
@@ -864,10 +865,43 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       });
     }
 
+    const targetNumbersip = decodeURIComponent(request.params.numbersip).trim();
+    if (!targetNumbersip) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "numbersip_required",
+        statusCode: 400,
+      });
+    }
+
+    if (nvoipSameNumbersip(targetNumbersip, account.numbersip)) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "nvoip_primary_user_not_editable",
+        statusCode: 400,
+      });
+    }
+
+    const cached = await prisma.nvoipSipUser.findFirst({
+      where: { nvoipAccountId: account.id, numbersip: targetNumbersip },
+      select: { caller: true, name: true },
+    });
+    if (!cached) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "sip_user_not_found",
+        statusCode: 404,
+      });
+    }
+
     try {
       const raw = await nvoipUpdateSipUser(account, {
-        numbersip: decodeURIComponent(request.params.numbersip),
-        ...body.data,
+        numbersip: targetNumbersip,
+        caller: cached.caller ?? undefined,
+        name: body.data.name ?? cached.name ?? undefined,
+        blocked: body.data.blocked,
+        webphone: body.data.webphone,
+        sipPassword: body.data.sipPassword,
       });
       await syncNvoipSipUsers(account);
       const sipUsers = await listCachedNvoipSipUsers(account.id);
@@ -892,6 +926,14 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
         })),
       };
     } catch (err) {
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: account.id,
+        level: "error",
+        eventType: "sip_user_update_failed",
+        message: err instanceof Error ? err.message : "update_user_failed",
+        payload: { numbersip: targetNumbersip, ...body.data },
+      });
       return reply.status(400).send({
         error: "Bad Request",
         message: err instanceof Error ? err.message : "update_user_failed",
@@ -919,6 +961,14 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       return reply.status(400).send({
         error: "Bad Request",
         message: "numbersip_required",
+        statusCode: 400,
+      });
+    }
+
+    if (nvoipSameNumbersip(numbersip, account.numbersip)) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "nvoip_primary_user_not_editable",
         statusCode: 400,
       });
     }
