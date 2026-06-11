@@ -24,6 +24,7 @@ import {
 } from "@/lib/profilePrefs";
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
 import { playAudioAlert, unlockAudioAlerts } from "@/lib/audioAlerts";
+import { NvoipSipCredentialsForm } from "@/components/nvoip/NvoipSipCredentialsForm";
 
 function initials(name: string): string {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -459,6 +460,8 @@ export function ProfilePage() {
         <div className="card-surface p-6 dark:border-ink-600 dark:bg-ink-900/80">
           <p className="text-sm text-ink-600 dark:text-ink-300">{t("profilePage.notificationsNote")}</p>
         </div>
+
+        <NvoipSipCredentialsForm />
 
         {canManageApiToken ? (
         <div className="card-surface space-y-4 p-6 dark:border-ink-600 dark:bg-ink-900/80">

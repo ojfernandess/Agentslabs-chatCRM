@@ -79,6 +79,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: false,
   },
   {
+    key: "nvoip_embedded_sip",
+    defaultEnabled: false,
+  },
+  {
     key: "nvoip_sms",
     defaultEnabled: false,
   },

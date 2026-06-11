@@ -171,4 +171,7 @@ export const config = {
     "NVOIP_OAUTH_BASIC",
     "TnZvaXBBcGlWMjpUblp2YVhCQmNHbFdNakl3TWpFPQ==",
   ).trim(),
+  /** Servidor SIP Nvoip para softphone embutido (WSS). */
+  nvoipSipServer: optionalEnv("NVOIP_SIP_SERVER", "app.nvoip.com.br").trim(),
+  nvoipSipWssPort: optionalEnv("NVOIP_SIP_WSS_PORT", "6443").trim(),
 } as const;

@@ -1,12 +1,15 @@
 import { PhoneOff } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { useNvoipSipPhoneOptional } from "@/contexts/NvoipSipPhoneContext";
 
 export function NvoipActiveCallBar() {
   const { t } = useI18n();
   const voice = useNvoipVoiceOptional();
+  const sip = useNvoipSipPhoneOptional();
   const call = voice?.activeCall;
   if (!call) return null;
+  const embedded = voice.voiceMode === "embedded_sip";
 
   const effectiveStatus =
     call.status === "CALLING_ORIGIN" && call.elapsedSec >= 5
@@ -17,13 +20,17 @@ export function NvoipActiveCallBar() {
   const statusKey = `nvoip.voice.callStatus.${effectiveStatus}`;
   const statusLabel = t(statusKey) === statusKey ? effectiveStatus : t(statusKey);
   const statusHint =
-    effectiveStatus === "CALLING_ORIGIN"
-      ? t("nvoip.voice.hintCallingOrigin")
-      : effectiveStatus === "CALLING_DESTINATION"
-        ? t("nvoip.voice.hintCallingDestination")
-        : effectiveStatus === "ACTIVE"
-          ? t("nvoip.voice.hintActive")
-          : null;
+    embedded && (sip?.status === "ringing" || effectiveStatus === "CALLING_ORIGIN")
+      ? t("nvoip.sip.hintRinging")
+      : embedded && (sip?.status === "in-call" || effectiveStatus === "ACTIVE")
+        ? t("nvoip.sip.hintActive")
+        : effectiveStatus === "CALLING_ORIGIN"
+          ? t("nvoip.voice.hintCallingOrigin")
+          : effectiveStatus === "CALLING_DESTINATION"
+            ? t("nvoip.voice.hintCallingDestination")
+            : effectiveStatus === "ACTIVE"
+              ? t("nvoip.voice.hintActive")
+              : null;
   const mm = Math.floor(call.elapsedSec / 60);
   const ss = String(call.elapsedSec % 60).padStart(2, "0");
 
@@ -38,7 +45,10 @@ export function NvoipActiveCallBar() {
           {call.dialPhone ? <span className="text-xs text-slate-300">→ {call.dialPhone}</span> : null}
           <button
             type="button"
-            onClick={() => void voice?.endActiveCall()}
+            onClick={() => {
+              sip?.hangup();
+              void voice?.endActiveCall();
+            }}
             className="inline-flex items-center gap-1 rounded-lg bg-red-600/90 px-2.5 py-1 text-xs font-semibold hover:bg-red-500"
           >
             <PhoneOff className="h-3.5 w-3.5" />

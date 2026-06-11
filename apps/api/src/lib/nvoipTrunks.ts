@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { parseNvoipPabxMode } from "./nvoipPabxConfig.js";
 import {
   findNvoipSipUserForCaller,
@@ -34,7 +35,8 @@ export type NvoipCallerResolution = {
     | "webphone_fallback"
     | "account_default"
     | "default_trunk"
-    | "sip_user";
+    | "sip_user"
+    | "embedded_sip";
   sipUser: NvoipSipUserRow | null;
   hasWebphone: boolean;
   warning: NvoipCallerWarning | null;
@@ -181,6 +183,34 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
 
   const pick = (raw: string | null | undefined): string | null =>
     sanitizeNvoipOutboundCaller(raw, accountNumbersip, sipUsers);
+
+  const embeddedSipEnabled = await isOrganizationFeatureEnabled(
+    input.organizationId,
+    "nvoip_embedded_sip",
+  );
+  if (embeddedSipEnabled) {
+    const embedded = await prisma.userSipCredentials.findUnique({
+      where: { userId: input.userId },
+      select: { sipUser: true },
+    });
+    const fromEmbedded = pick(embedded?.sipUser);
+    if (fromEmbedded) {
+      const matched = findNvoipSipUserForCaller(fromEmbedded, sipUsers);
+      return {
+        caller: fromEmbedded,
+        source: "embedded_sip",
+        sipUser: matched
+          ? {
+              numbersip: matched.numbersip,
+              caller: matched.caller ?? null,
+              webphone: matched.webphone ?? null,
+            }
+          : null,
+        hasWebphone: true,
+        warning: null,
+      };
+    }
+  }
 
   const ext = await prisma.nvoipAgentExtension.findUnique({
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },

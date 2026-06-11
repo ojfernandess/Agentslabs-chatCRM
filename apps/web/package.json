@@ -16,6 +16,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
+    "jssip": "^3.13.8",
     "lucide-react": "^0.468.0",
     "nvoip-web-sdk": "^0.2.3",
     "qrcode.react": "^4.2.0",

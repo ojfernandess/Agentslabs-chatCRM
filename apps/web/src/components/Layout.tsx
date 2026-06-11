@@ -39,6 +39,7 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { WavoipVoiceShell } from "@/components/wavoip/WavoipVoiceShell";
 import { ThreeCxVoiceShell } from "@/components/threecx/ThreeCxVoiceShell";
 import { NvoipVoiceShell } from "@/components/nvoip/NvoipVoiceShell";
+import { NvoipSipStatusBadge } from "@/components/nvoip/NvoipSipStatusBadge";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
@@ -654,6 +655,17 @@ export function Layout() {
           collapsed ? "flex flex-col items-center gap-2 p-2" : "space-y-2 p-3",
         )}
       >
+        {user?.organizationFeatures?.nvoip_voice &&
+        user?.organizationFeatures?.nvoip_embedded_sip ? (
+          <div
+            className={clsx(
+              "w-full",
+              collapsed ? "flex justify-center px-1" : "px-1 pb-1",
+            )}
+          >
+            <NvoipSipStatusBadge compact={collapsed} />
+          </div>
+        ) : null}
         <div className={clsx("flex w-full", collapsed ? "flex-col items-center gap-2" : "items-end gap-2")}>
           <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
           {user ? (

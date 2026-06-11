@@ -20,7 +20,9 @@ type SessionPayload = {
   caller: string | null;
   balance: string | null;
   trunks?: TrunkRow[];
-  voiceMode?: "click_to_call";
+  voiceMode?: "click_to_call" | "embedded_sip";
+  embeddedSipEnabled?: boolean;
+  hasUserSipCredentials?: boolean;
   callerHasWebphone?: boolean;
   callerWarning?: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
   webphoneUsers?: { numbersip: string; caller: string | null; name: string | null }[];
@@ -53,7 +55,8 @@ type NvoipVoiceContextValue = {
   callerWarning: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
   webphoneUsers: { numbersip: string; caller: string | null; name: string | null }[];
   accountNumbersip: string | null;
-  voiceMode: "click_to_call";
+  voiceMode: "click_to_call" | "embedded_sip";
+  embeddedSipEnabled: boolean;
   trunks: TrunkRow[];
   selectedTrunkId: string | null;
   setSelectedTrunkId: (id: string | null) => void;
@@ -98,6 +101,8 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const [accountNumbersip, setAccountNumbersip] = useState<string | null>(null);
   const [trunks, setTrunks] = useState<TrunkRow[]>([]);
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<"click_to_call" | "embedded_sip">("click_to_call");
+  const [embeddedSipEnabled, setEmbeddedSipEnabled] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeCallRef = useRef<ActiveCall | null>(null);
@@ -137,6 +142,8 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.get<SessionPayload>("/nvoip/session");
       setCanPlaceCalls(!!res.canPlaceCalls);
+      setVoiceMode(res.voiceMode === "embedded_sip" ? "embedded_sip" : "click_to_call");
+      setEmbeddedSipEnabled(!!res.embeddedSipEnabled);
       setCaller(res.caller?.trim() || null);
       setCallerHasWebphone(!!res.callerHasWebphone);
       setCallerWarning(res.callerWarning ?? null);
@@ -391,6 +398,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const endActiveCall = useCallback(async () => {
     const call = activeCall;
     if (!call) return;
+    window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-hangup-request"));
     stopPolling();
     try {
       const res = await api.post<{
@@ -432,7 +440,8 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       callerWarning,
       webphoneUsers,
       accountNumbersip,
-      voiceMode: "click_to_call" as const,
+      voiceMode,
+      embeddedSipEnabled,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,
@@ -450,6 +459,8 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       callerWarning,
       webphoneUsers,
       accountNumbersip,
+      voiceMode,
+      embeddedSipEnabled,
       trunks,
       selectedTrunkId,
       setSelectedTrunkId,

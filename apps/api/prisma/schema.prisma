@@ -518,9 +518,24 @@ model User {
   nvoipAgentExtensions         NvoipAgentExtension[]
   nvoipCallsInitiated          NvoipCallLog[]                @relation("NvoipCallInitiator")
   nvoipOtpChallenges           NvoipOtpChallenge[]
+  sipCredentials               UserSipCredentials?
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Credenciais SIP por utilizador (softphone JsSIP embutido no CRM — Nvoip).
+model UserSipCredentials {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sipUser        String   @map("sip_user") @db.VarChar(64)
+  sipPasswordEnc String   @map("sip_password_enc") @db.Text
+  displayName    String?  @map("display_name") @db.VarChar(200)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("user_sip_credentials")
 }
 
 /// Token de recuperação de senha (hash SHA-256 do segredo enviado por email).

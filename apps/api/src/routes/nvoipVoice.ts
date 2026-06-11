@@ -14,6 +14,7 @@ import {
 import { resolveNvoipCallContext } from "../lib/nvoipCallContext.js";
 import { nvoipEndCall } from "../lib/nvoipClient.js";
 import { writeNvoipIntegrationLog } from "../lib/nvoipIntegrationLog.js";
+import { getUserSipCredentialsForClient } from "../lib/userSipCredentials.js";
 
 export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -57,6 +58,17 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const caller = resolution?.caller ?? "";
     const webphoneUsers = await listNvoipWebphoneUsers(account.id);
     const trunks = await listNvoipTrunks(organizationId);
+    const embeddedSipEnabled = await isOrganizationFeatureEnabled(
+      organizationId,
+      "nvoip_embedded_sip",
+    );
+    const userSipCreds = embeddedSipEnabled
+      ? await getUserSipCredentialsForClient(request.user.id)
+      : null;
+    const voiceMode =
+      embeddedSipEnabled && userSipCreds && resolution?.source === "embedded_sip"
+        ? ("embedded_sip" as const)
+        : ("click_to_call" as const);
 
     return {
       ready: true,
@@ -66,7 +78,9 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       accountId: account.id,
       accountNumbersip: account.numbersip,
       trunks,
-      voiceMode: "click_to_call" as const,
+      voiceMode,
+      embeddedSipEnabled,
+      hasUserSipCredentials: Boolean(userSipCreds),
       callerSource: resolution?.source ?? null,
       callerHasWebphone: resolution?.hasWebphone ?? false,
       callerWarning: resolution?.warning ?? null,
