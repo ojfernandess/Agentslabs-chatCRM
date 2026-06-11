@@ -220,10 +220,20 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "call_not_found", statusCode: 404 });
     }
 
-    try {
-      await nvoipEndCall(row.nvoipAccount, parsed.data.callId, { caller: row.caller });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "end_call_failed";
+    const endResult = await nvoipEndCall(row.nvoipAccount, parsed.data.callId, {
+      caller: row.caller,
+    });
+
+    if (!endResult.ok) {
+      const syncAfterFail = await syncNvoipCallFromApi({
+        organizationId,
+        externalCallId: parsed.data.callId,
+        clientCallId: row.clientCallId,
+      });
+      if (syncAfterFail.terminal) {
+        return { ok: true, recovered: true, ...syncAfterFail };
+      }
+      const message = endResult.error ?? "end_call_failed";
       await writeNvoipIntegrationLog({
         organizationId,
         nvoipAccountId: row.nvoipAccount.id,
@@ -238,12 +248,40 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 502,
       });
     }
-    const sync = await syncNvoipCallFromApi({
+
+    if (!endResult.verified) {
+      await writeNvoipIntegrationLog({
+        organizationId,
+        nvoipAccountId: row.nvoipAccount.id,
+        level: "warn",
+        eventType: "outbound_call_end_unverified",
+        message: `endcall acknowledged but GET /calls still live callId=${parsed.data.callId}`,
+        payload: { callId: parsed.data.callId, clientCallId: row.clientCallId },
+      });
+    }
+
+    let sync = await syncNvoipCallFromApi({
       organizationId,
       externalCallId: parsed.data.callId,
       clientCallId: row.clientCallId,
     });
-    return { ok: true, ...sync };
+
+    if (!sync.terminal && row.clientCallId) {
+      await completeAgentOutboundCall({
+        organizationId,
+        clientCallId: row.clientCallId,
+        externalCallId: parsed.data.callId,
+        status: "ENDED",
+        durationSec: sync.durationSec ?? row.durationSec,
+      });
+      sync = {
+        ...sync,
+        status: "ENDED",
+        terminal: true,
+      };
+    }
+
+    return { ok: true, hungUp: endResult.verified, ...sync };
   });
 
   app.get("/calls/resolve-context", async (request, reply) => {

@@ -490,10 +490,11 @@ export async function nvoipGetCallHistory(
   return normalizeHistoryList(data);
 }
 
-/** POST /calls/ uses success/ok for acceptance — same must not count as hangup on /endcall. */
+/** POST /calls/ uses success/ok for acceptance — reject live phases; accept hangup ack shapes. */
 export function isNvoipEndCallAcknowledged(res: Response, data: Record<string, unknown>): boolean {
   if (!res.ok) return false;
-  if (data.error != null && String(data.error).trim()) return false;
+  const err = data.error ?? data.error_description;
+  if (err != null && String(err).trim()) return false;
 
   const state = String(data.state ?? data.status ?? "").toLowerCase().trim();
   const success = String(data.success ?? "").toLowerCase().trim();
@@ -502,14 +503,26 @@ export function isNvoipEndCallAcknowledged(res: Response, data: Record<string, u
     return false;
   }
   if (state && isNvoipLiveCallState(state)) return false;
-  if (state && isNvoipTerminalState(state)) return true;
-  if (["success", "ok", "true", "hangup", "ended", "finished"].includes(state)) return true;
+  if (state && (isNvoipTerminalState(state) || ["success", "ok", "true", "hangup", "ended", "finished"].includes(state))) {
+    return true;
+  }
   if (["true", "ok", "success"].includes(success)) return true;
   if (data.hangup === true || data.ended === true) return true;
 
-  // Empty 204/200 — confirm via GET /calls in nvoipEndCall.
-  return Object.keys(data).length === 0;
+  // Nvoip /endcall may return only callId or message without state.
+  if (!state && !success) {
+    if (data.callId != null || data.message != null || data.msg != null) return true;
+    return Object.keys(data).length === 0;
+  }
+
+  return false;
 }
+
+export type NvoipEndCallResult = {
+  ok: boolean;
+  verified: boolean;
+  error?: string;
+};
 
 async function nvoipVerifyCallEnded(
   account: NvoipAccount,
@@ -535,19 +548,25 @@ export async function nvoipEndCall(
   account: NvoipAccount,
   callId: string,
   opts?: { caller?: string | null },
-): Promise<void> {
+): Promise<NvoipEndCallResult> {
   const id = callId.trim();
   const numbersip = account.numbersip.trim();
   const caller = opts?.caller?.trim() ?? "";
   const endcallQuery = new URLSearchParams({ callId: id });
   if (numbersip) endcallQuery.set("numbersip", numbersip);
+  if (caller) endcallQuery.set("caller", caller);
   const endcallBody: Record<string, string> = { callId: id };
   if (numbersip) endcallBody.numbersip = numbersip;
   if (caller) endcallBody.caller = caller;
 
-  const attempts: Array<{ method: string; path: string; body?: string }> = [
-    { method: "GET", path: `/endcall?${endcallQuery.toString()}` },
-    { method: "GET", path: `/endcall/?${endcallQuery.toString()}` },
+  const attempts: Array<{ method: string; path: string; body?: string; endcallGet?: boolean }> = [
+    { method: "GET", path: `/endcall?${endcallQuery.toString()}`, endcallGet: true },
+    { method: "GET", path: `/endcall/?${endcallQuery.toString()}`, endcallGet: true },
+    {
+      method: "GET",
+      path: `/endcall?callId=${encodeURIComponent(id)}`,
+      endcallGet: true,
+    },
     { method: "POST", path: "/endcall", body: JSON.stringify(endcallBody) },
     { method: "POST", path: "/endcall/", body: JSON.stringify(endcallBody) },
     { method: "DELETE", path: `/calls/${encodeURIComponent(id)}` },
@@ -556,7 +575,9 @@ export async function nvoipEndCall(
   ];
   let lastError = "end_call_failed";
 
-  const tryEnd = async (fetcher: (path: string, init: RequestInit) => Promise<Response>) => {
+  const tryEnd = async (
+    fetcher: (path: string, init: RequestInit) => Promise<Response>,
+  ): Promise<NvoipEndCallResult | null> => {
     for (const attempt of attempts) {
       try {
         const res = await fetcher(attempt.path, {
@@ -568,39 +589,41 @@ export async function nvoipEndCall(
         try {
           data = (await parseJson<Record<string, unknown>>(res)) ?? {};
         } catch {
-          if (res.ok && (await nvoipVerifyCallEnded(account, id))) return true;
+          if (res.ok) {
+            const verified = await nvoipVerifyCallEnded(account, id, 4);
+            return { ok: true, verified };
+          }
           continue;
         }
         if (!isNvoipEndCallAcknowledged(res, data)) {
+          // Nvoip webphone: GET /endcall pode ecoar estado live mesmo após aceitar o hangup.
+          if (attempt.endcallGet && res.ok && !data.error && !data.error_description) {
+            const verified = await nvoipVerifyCallEnded(account, id, 3);
+            return { ok: true, verified };
+          }
           lastError =
             (typeof data.error === "string" && data.error) ||
             (typeof data.message === "string" && data.message) ||
             (data.state ? `end_call_still_${String(data.state)}` : `end_call_failed_${res.status}`);
           continue;
         }
-        if (await nvoipVerifyCallEnded(account, id)) return true;
-        lastError =
-          (typeof data.error === "string" && data.error) ||
-          (data.state ? `end_call_still_${String(data.state)}` : "end_call_not_terminated");
+        // GET /calls often lags on webphone — do not fail hangup if /endcall acknowledged.
+        const verified = await nvoipVerifyCallEnded(account, id, 4);
+        return { ok: true, verified };
       } catch (err) {
         lastError = err instanceof Error ? err.message : lastError;
       }
     }
-    return false;
+    return null;
   };
 
-  if (await tryEnd((path, init) => nvoipAuthorizedFetch(account, path, init))) return;
+  const oauth = await tryEnd((path, init) => nvoipAuthorizedFetch(account, path, init));
+  if (oauth?.ok) return oauth;
 
-  if (
-    await tryEnd(async (path, init) => {
-      const res = await nvoipFetchWithNapikey(account, path, init);
-      return res;
-    })
-  ) {
-    return;
-  }
+  const napi = await tryEnd(async (path, init) => nvoipFetchWithNapikey(account, path, init));
+  if (napi?.ok) return napi;
 
-  throw new Error(lastError);
+  return { ok: false, verified: false, error: lastError };
 }
 
 export function mapNvoipStateToCrmStatus(state: string): string {

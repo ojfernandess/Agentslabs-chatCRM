@@ -400,15 +400,6 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         durationSec?: number | null;
       }>("/nvoip/calls/end", { callId: call.callId });
       const status = res.status?.trim() || "ENDED";
-      if (!res.terminal && isNvoipCallPhaseActive(status)) {
-        pollFailuresRef.current = 0;
-        const pollMs = isNvoipCallPhaseActive(call.status) ? POLL_MS_ACTIVE : POLL_MS_IDLE;
-        pollRef.current = setInterval(() => {
-          const current = activeCallRef.current;
-          if (current) void pollCall(current);
-        }, pollMs);
-        return;
-      }
       const duration =
         res.durationSec != null && Number.isFinite(res.durationSec)
           ? res.durationSec
