@@ -37,6 +37,7 @@ import {
 } from "@/pages/automation/instructionFallbacks";
 import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
 import { AutomationChatbotHub } from "@/pages/automation/AutomationChatbotHub";
+import { AutomationConfigTransferPanel } from "@/pages/automation/AutomationConfigTransferPanel";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -1256,6 +1257,9 @@ export function AutomationPage() {
                 <ExternalLink className="h-3.5 w-3.5" /> Reminders
               </Link>
             </div>
+            {tenantAdmin ? (
+              <AutomationConfigTransferPanel onImported={() => void loadDashboard()} />
+            ) : null}
             <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
               <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Recent</h3>
               <ul className="mt-2 space-y-2 text-sm">

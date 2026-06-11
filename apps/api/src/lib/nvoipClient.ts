@@ -490,29 +490,67 @@ export async function nvoipGetCallHistory(
   return normalizeHistoryList(data);
 }
 
-function isNvoipEndCallSuccess(res: Response, data: Record<string, unknown>): boolean {
+/** POST /calls/ uses success/ok for acceptance — same must not count as hangup on /endcall. */
+export function isNvoipEndCallAcknowledged(res: Response, data: Record<string, unknown>): boolean {
   if (!res.ok) return false;
-  const state = String(data.state ?? data.status ?? data.success ?? "").toLowerCase();
-  if (state === "false" || state === "error" || state === "failed") return false;
   if (data.error != null && String(data.error).trim()) return false;
-  return true;
+
+  const state = String(data.state ?? data.status ?? "").toLowerCase().trim();
+  const success = String(data.success ?? "").toLowerCase().trim();
+
+  if (["false", "error", "failed"].includes(state) || ["false", "error", "failed"].includes(success)) {
+    return false;
+  }
+  if (state && isNvoipLiveCallState(state)) return false;
+  if (state && isNvoipTerminalState(state)) return true;
+  if (["success", "ok", "true", "hangup", "ended", "finished"].includes(state)) return true;
+  if (["true", "ok", "success"].includes(success)) return true;
+  if (data.hangup === true || data.ended === true) return true;
+
+  // Empty 204/200 — confirm via GET /calls in nvoipEndCall.
+  return Object.keys(data).length === 0;
 }
 
-export async function nvoipEndCall(account: NvoipAccount, callId: string): Promise<void> {
+async function nvoipVerifyCallEnded(
+  account: NvoipAccount,
+  callId: string,
+  maxAttempts = 6,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const payload = await nvoipGetCallStatus(account, callId);
+      const state = String(payload.state ?? "").toLowerCase().trim();
+      if (!state || isNvoipTerminalState(state)) return true;
+    } catch {
+      /* retry */
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, 350));
+    }
+  }
+  return false;
+}
+
+export async function nvoipEndCall(
+  account: NvoipAccount,
+  callId: string,
+  opts?: { caller?: string | null },
+): Promise<void> {
   const id = callId.trim();
+  const numbersip = account.numbersip.trim();
+  const caller = opts?.caller?.trim() ?? "";
+  const endcallQuery = new URLSearchParams({ callId: id });
+  if (numbersip) endcallQuery.set("numbersip", numbersip);
+  const endcallBody: Record<string, string> = { callId: id };
+  if (numbersip) endcallBody.numbersip = numbersip;
+  if (caller) endcallBody.caller = caller;
+
   const attempts: Array<{ method: string; path: string; body?: string }> = [
-    { method: "GET", path: `/endcall?callId=${encodeURIComponent(id)}` },
-    { method: "GET", path: `/endcall/?callId=${encodeURIComponent(id)}` },
-    {
-      method: "POST",
-      path: "/endcall",
-      body: JSON.stringify({ callId: id }),
-    },
-    {
-      method: "POST",
-      path: "/endcall/",
-      body: JSON.stringify({ callId: id }),
-    },
+    { method: "GET", path: `/endcall?${endcallQuery.toString()}` },
+    { method: "GET", path: `/endcall/?${endcallQuery.toString()}` },
+    { method: "POST", path: "/endcall", body: JSON.stringify(endcallBody) },
+    { method: "POST", path: "/endcall/", body: JSON.stringify(endcallBody) },
+    { method: "DELETE", path: `/calls/${encodeURIComponent(id)}` },
     { method: "DELETE", path: `/calls?callId=${encodeURIComponent(id)}` },
     { method: "DELETE", path: `/calls/?callId=${encodeURIComponent(id)}` },
   ];
@@ -530,13 +568,20 @@ export async function nvoipEndCall(account: NvoipAccount, callId: string): Promi
         try {
           data = (await parseJson<Record<string, unknown>>(res)) ?? {};
         } catch {
-          if (res.ok) return true;
+          if (res.ok && (await nvoipVerifyCallEnded(account, id))) return true;
+          continue;
         }
-        if (isNvoipEndCallSuccess(res, data)) return true;
+        if (!isNvoipEndCallAcknowledged(res, data)) {
+          lastError =
+            (typeof data.error === "string" && data.error) ||
+            (typeof data.message === "string" && data.message) ||
+            (data.state ? `end_call_still_${String(data.state)}` : `end_call_failed_${res.status}`);
+          continue;
+        }
+        if (await nvoipVerifyCallEnded(account, id)) return true;
         lastError =
           (typeof data.error === "string" && data.error) ||
-          (typeof data.message === "string" && data.message) ||
-          `end_call_failed_${res.status}`;
+          (data.state ? `end_call_still_${String(data.state)}` : "end_call_not_terminated");
       } catch (err) {
         lastError = err instanceof Error ? err.message : lastError;
       }

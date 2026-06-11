@@ -46,6 +46,11 @@ import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../
 import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
+import {
+  AUTOMATION_CONFIG_EXPORT_VERSION,
+  exportAutomationConfig,
+  importAutomationConfig,
+} from "../lib/automationConfigImportExport.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
   return user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
@@ -2835,6 +2840,73 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return { ok: true, createdContextRow: true };
     },
   );
+
+  app.get("/config/export", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const bundle = await exportAutomationConfig(organizationId);
+    return bundle;
+  });
+
+  app.post("/config/import", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+
+    const bodySchema = z.object({
+      version: z.number().optional(),
+      exportedAt: z.string().optional(),
+      config: z.record(z.unknown()).optional(),
+      mode: z.enum(["merge", "replace"]).optional().default("merge"),
+    });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    if (
+      parsed.data.version != null &&
+      parsed.data.version > AUTOMATION_CONFIG_EXPORT_VERSION
+    ) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: `Unsupported export version ${parsed.data.version}`,
+        statusCode: 400,
+      });
+    }
+    if (!parsed.data.config) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Missing config in bundle",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const result = await importAutomationConfig(
+        organizationId,
+        request.body,
+        parsed.data.mode,
+      );
+      await recordAuditLog({
+        actorUserId: request.user.id,
+        organizationId,
+        action: "automation.config.import",
+        resourceType: "automation_config",
+        resourceId: organizationId,
+        metadata: { mode: parsed.data.mode, created: result.created, updated: result.updated },
+        ip: clientIp(request),
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "import_failed";
+      return reply.status(400).send({ error: "Bad Request", message, statusCode: 400 });
+    }
+  });
 
   await registerAutomationExecutionLogRoutes(app);
   await registerChatbotFlowRoutes(app);

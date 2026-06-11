@@ -221,7 +221,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      await nvoipEndCall(row.nvoipAccount, parsed.data.callId);
+      await nvoipEndCall(row.nvoipAccount, parsed.data.callId, { caller: row.caller });
     } catch (err) {
       const message = err instanceof Error ? err.message : "end_call_failed";
       await writeNvoipIntegrationLog({
