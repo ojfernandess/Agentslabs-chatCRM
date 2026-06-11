@@ -61,6 +61,8 @@ type InboxRow = {
   whatsappConfigured?: boolean;
   agentBotId?: string | null;
   agentBot?: InboxBotSummary | null;
+  autoAssignEnabled?: boolean;
+  autoAssignLimit?: number | null;
   members?: InboxMemberRow[];
   createdAt?: string;
   _count: { members: number; conversations: number };
@@ -135,6 +137,9 @@ export function InboxesPage() {
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<InboxStatusFilter>("ALL");
   const [viewMode, setViewMode] = useState<InboxViewMode>("list");
+  const [assignEnabled, setAssignEnabled] = useState<Record<string, boolean>>({});
+  const [assignLimit, setAssignLimit] = useState<Record<string, string>>({});
+  const [assignSavingId, setAssignSavingId] = useState<string | null>(null);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -187,6 +192,14 @@ export function InboxesPage() {
     try {
       const res = await api.get<{ data: InboxRow[] }>("/inboxes");
       setRows(res.data);
+      setAssignEnabled(
+        Object.fromEntries(res.data.map((r) => [r.id, r.autoAssignEnabled ?? false])),
+      );
+      setAssignLimit(
+        Object.fromEntries(
+          res.data.map((r) => [r.id, r.autoAssignLimit != null ? String(r.autoAssignLimit) : ""]),
+        ),
+      );
       await refreshChannelSettings();
     } catch {
       setRows([]);
@@ -255,6 +268,25 @@ export function InboxesPage() {
       await load();
     } catch {
       /* ignore */
+    }
+  };
+
+  const saveAutoAssignment = async (inboxId: string) => {
+    if (!isAdmin) return;
+    setAssignSavingId(inboxId);
+    try {
+      const enabled = assignEnabled[inboxId] ?? false;
+      const limitRaw = assignLimit[inboxId]?.trim();
+      const limit = limitRaw ? Number.parseInt(limitRaw, 10) : null;
+      await api.patch(`/inboxes/${inboxId}/auto-assignment`, {
+        autoAssignEnabled: enabled,
+        autoAssignLimit: enabled && limit != null && !Number.isNaN(limit) ? limit : null,
+      });
+      await load();
+    } catch {
+      window.alert(t("inboxesPage.autoAssignSaveFailed"));
+    } finally {
+      setAssignSavingId(null);
     }
   };
 
@@ -735,6 +767,69 @@ export function InboxesPage() {
                           {t("inboxesPage.outboundWebhookDoc")}
                         </p>
                       </div>
+                      {isAdmin ? (
+                        <div className="mb-4 grid gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-ink-600 dark:bg-ink-900/40 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                          <div>
+                            <h3 className="text-sm font-semibold text-brand-600 dark:text-brand-400">
+                              {t("inboxesPage.autoAssignTitle")}
+                            </h3>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-ink-500">
+                              {t("inboxesPage.autoAssignSubtitle")}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="flex cursor-pointer items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={assignEnabled[row.id] ?? false}
+                                onChange={(e) =>
+                                  setAssignEnabled((p) => ({ ...p, [row.id]: e.target.checked }))
+                                }
+                                className="mt-0.5 rounded border-gray-300"
+                              />
+                              <span>
+                                <span className="text-sm font-medium text-ink-900 dark:text-ink-100">
+                                  {t("inboxesPage.autoAssignEnable")}
+                                </span>
+                                <p className="text-xs text-gray-500 dark:text-ink-500">
+                                  {t("inboxesPage.autoAssignEnableHint")}
+                                </p>
+                              </span>
+                            </label>
+                            {assignEnabled[row.id] ? (
+                              <div className="mt-3">
+                                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
+                                  {t("inboxesPage.autoAssignLimit")}
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={9999}
+                                  value={assignLimit[row.id] ?? ""}
+                                  onChange={(e) =>
+                                    setAssignLimit((p) => ({ ...p, [row.id]: e.target.value }))
+                                  }
+                                  className="w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                                  placeholder={t("inboxesPage.autoAssignLimitPlaceholder")}
+                                />
+                                <p className="mt-1 text-[11px] text-gray-500 dark:text-ink-500">
+                                  {t("inboxesPage.autoAssignLimitHint")}
+                                </p>
+                              </div>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={assignSavingId === row.id}
+                              onClick={() => void saveAutoAssignment(row.id)}
+                              className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 dark:bg-brand-600"
+                            >
+                              {assignSavingId === row.id
+                                ? t("inboxesPage.saving")
+                                : t("inboxesPage.autoAssignUpdate")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-ink-500">
                         {t("inboxesPage.members")}
                       </h3>

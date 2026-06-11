@@ -45,6 +45,7 @@ import {
 import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
 import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
+import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 import {
   AUTOMATION_CONFIG_EXPORT_VERSION,
@@ -2910,4 +2911,5 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
   await registerAutomationExecutionLogRoutes(app);
   await registerChatbotFlowRoutes(app);
+  await registerCrmFlowRoutes(app);
 }

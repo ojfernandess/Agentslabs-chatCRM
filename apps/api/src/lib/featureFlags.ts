@@ -43,6 +43,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: true,
   },
   {
+    key: "crm_flows",
+    defaultEnabled: true,
+  },
+  {
     key: "teams_collaboration_hub",
     defaultEnabled: false,
   },

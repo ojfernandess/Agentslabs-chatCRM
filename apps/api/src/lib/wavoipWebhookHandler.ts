@@ -8,6 +8,7 @@ import {
 } from "./wavoipInboundScreenPop.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { fireBroadcastEventTriggers } from "./broadcastEventHooks.js";
+import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { decryptWavoipSecret, mapWavoipWebhookDeviceStatus, parseWebhookEventsJson } from "./wavoipDeviceConfig.js";
@@ -346,6 +347,28 @@ async function handleCallEvent(
         agentName,
       },
     });
+  }
+
+  const telephonyPayload = {
+    callLogId: callLog.id,
+    contactId,
+    conversationId,
+    provider: "wavoip",
+    status,
+    direction,
+    phone: peerPhone,
+  };
+  if (isIncoming && isIncomingRing) {
+    fireCrmFlowTriggers(device.organizationId, "call_inbound", telephonyPayload, app.log);
+  }
+  if (direction === "OUTGOING" && payload.action === "CREATE") {
+    fireCrmFlowTriggers(device.organizationId, "call_outbound", telephonyPayload, app.log);
+  }
+  if (isTerminal) {
+    fireCrmFlowTriggers(device.organizationId, "call_ended", telephonyPayload, app.log);
+    if (["MISSED", "NOT_ANSWERED", "REJECTED", "BUSY", "FAILED"].includes(status)) {
+      fireCrmFlowTriggers(device.organizationId, "call_missed", telephonyPayload, app.log);
+    }
   }
 
   await logWavoipIntegration({

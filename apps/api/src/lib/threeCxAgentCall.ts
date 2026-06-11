@@ -8,6 +8,7 @@ import {
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { resolveThreeCxCallContext } from "./threeCxCallContext.js";
 import { makeThreeCxOutboundCall } from "./threeCxCallControl.js";
+import { fireTelephonyCrmTriggers } from "./crmFlowTelephonyHooks.js";
 
 export function placeholderExternalCallId(clientCallId: string): string {
   return `pending:${clientCallId}`;
@@ -47,7 +48,7 @@ export async function startAgentOutboundCall(input: {
   const receiver = ctx.dialPhone.slice(0, 32);
   const caller = (routePoint.sourceExtensionDn ?? routePoint.routePointDn).slice(0, 32);
 
-  await prisma.threeCxCallLog.upsert({
+  const callLog = await prisma.threeCxCallLog.upsert({
     where: {
       threeCxRoutePointId_externalCallId: {
         threeCxRoutePointId: routePoint.id,
@@ -92,8 +93,31 @@ export async function startAgentOutboundCall(input: {
       },
       data: { status: "FAILED", endedAt: new Date() },
     });
+    fireTelephonyCrmTriggers({
+      organizationId: input.organizationId,
+      provider: "3cx",
+      callLogId: callLog.id,
+      contactId: ctx.contactId,
+      conversationId: ctx.conversationId,
+      status: "FAILED",
+      direction: "OUTGOING",
+      phone: receiver,
+      isTerminal: true,
+    });
     return { ok: false, message: pbxResult.message };
   }
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "3cx",
+    callLogId: callLog.id,
+    contactId: ctx.contactId,
+    conversationId: ctx.conversationId,
+    status: "DIALING",
+    direction: "OUTGOING",
+    phone: receiver,
+    isOutboundStart: true,
+  });
 
   if (ctx.contactId) {
     await appendTimelineEvent({
@@ -182,6 +206,18 @@ export async function completeAgentOutboundCall(input: {
     });
     broadcastConversationUpdated(input.organizationId, row.conversationId);
   }
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "3cx",
+    callLogId: row.id,
+    contactId: row.contactId,
+    conversationId: row.conversationId,
+    status: terminal,
+    direction: row.direction as "INCOMING" | "OUTGOING",
+    phone: row.direction === "INCOMING" ? row.caller : row.receiver,
+    isTerminal: true,
+  });
 
   return { ok: true };
 }

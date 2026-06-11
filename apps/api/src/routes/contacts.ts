@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
+import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 import {
   resolveContactProfilePictureBuffer,
   syncContactProfilePicture,
@@ -765,6 +766,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           contactId: contact.id,
           pipelineStageId: contact.pipelineStageId,
         });
+      } else if (Object.keys(data).length > 0) {
+        fireCrmFlowTriggers(
+          organizationId,
+          "lead_updated",
+          { contactId: contact.id, pipelineStageId: contact.pipelineStageId },
+          app.log,
+        );
       }
 
       return contact;

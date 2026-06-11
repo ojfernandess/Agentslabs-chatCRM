@@ -38,6 +38,7 @@ import {
 import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
 import { AutomationChatbotHub } from "@/pages/automation/AutomationChatbotHub";
 import { AutomationConfigTransferPanel } from "@/pages/automation/AutomationConfigTransferPanel";
+import { AutomationCrmFlowHub } from "@/pages/automation/AutomationCrmFlowHub";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -50,7 +51,8 @@ type Tab =
   | "prompts"
   | "interactions"
   | "executions"
-  | "context";
+  | "context"
+  | "crm_flows";
 
 interface BotRow {
   id: string;
@@ -748,6 +750,7 @@ export function AutomationPage() {
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const chatbotBuilderEnabled = user?.organizationFeatures?.chatbot_flow_builder ?? true;
+  const crmFlowsEnabled = user?.organizationFeatures?.crm_flows ?? true;
   const [pilotAccessEnabled, setPilotAccessEnabled] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(false);
@@ -1179,6 +1182,7 @@ export function AutomationPage() {
         { id: "interactions", label: t("automationPage.tabInteractions") },
         { id: "executions", label: t("automationPage.tabExecutions") },
         { id: "context", label: t("automationPage.tabContext") },
+        ...(crmFlowsEnabled ? [{ id: "crm_flows" as const, label: t("automationPage.tabCrmFlows") }] : []),
       ];
 
   return (
@@ -1353,6 +1357,8 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "chatbots" && chatbotBuilderEnabled ? <AutomationChatbotHub /> : null}
+
+        {tab === "crm_flows" && crmFlowsEnabled ? <AutomationCrmFlowHub /> : null}
 
         {tab === "executions" ? (
           <AutomationExecutionsTab

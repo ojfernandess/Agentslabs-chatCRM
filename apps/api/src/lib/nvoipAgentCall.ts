@@ -21,6 +21,7 @@ import {
   upsertNvoipTimelineMessage,
 } from "./nvoipCallTimeline.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
+import { fireTelephonyCrmTriggers } from "./crmFlowTelephonyHooks.js";
 import { resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { formatNvoipCalled, formatNvoipCaller, isValidNvoipOutboundCaller } from "./nvoipCallFormat.js";
 import { resolveNvoipOutboundCallerDetailed } from "./nvoipTrunks.js";
@@ -145,7 +146,7 @@ export async function startAgentOutboundCall(input: {
     return { ok: false, message };
   }
 
-  await prisma.nvoipCallLog.upsert({
+  const callLog = await prisma.nvoipCallLog.upsert({
     where: {
       nvoipAccountId_externalCallId: {
         nvoipAccountId: account.id,
@@ -173,6 +174,18 @@ export async function startAgentOutboundCall(input: {
       conversationId: ctx.conversationId,
       clientCallId: input.clientCallId,
     },
+  });
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "nvoip",
+    callLogId: callLog.id,
+    contactId: ctx.contactId,
+    conversationId: ctx.conversationId,
+    status: initialCrmStatus,
+    direction: "OUTGOING",
+    phone: receiver,
+    isOutboundStart: true,
   });
 
   if (ctx.contactId) {
@@ -373,6 +386,20 @@ export async function syncNvoipCallFromApi(input: {
     broadcastConversationUpdated(input.organizationId, row.conversationId);
   }
 
+  if (terminal) {
+    fireTelephonyCrmTriggers({
+      organizationId: input.organizationId,
+      provider: "nvoip",
+      callLogId: row.id,
+      contactId: row.contactId,
+      conversationId: row.conversationId,
+      status: crmStatus,
+      direction: row.direction as "INCOMING" | "OUTGOING",
+      phone: row.direction === "INCOMING" ? row.caller : row.receiver,
+      isTerminal: true,
+    });
+  }
+
   return {
     status: crmStatus,
     nvoipState,
@@ -468,6 +495,18 @@ export async function completeAgentOutboundCall(input: {
       conversationId: row.conversationId,
     });
   }
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "nvoip",
+    callLogId: row.id,
+    contactId: row.contactId,
+    conversationId: row.conversationId,
+    status: terminal,
+    direction: row.direction as "INCOMING" | "OUTGOING",
+    phone: row.direction === "INCOMING" ? row.caller : row.receiver,
+    isTerminal: true,
+  });
 
   return { ok: true };
 }

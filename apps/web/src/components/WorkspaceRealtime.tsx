@@ -162,6 +162,10 @@ export function WorkspaceRealtime() {
             }),
           );
         }
+      } else if (data.type === "crm_flow.execution.updated") {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:crm-flow-execution-updated", { detail: data }),
+        );
       }
     };
 

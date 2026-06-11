@@ -46,6 +46,14 @@ const patchInboxSchema = z.object({
   channelConfig: z.any().nullable().optional(),
   /** `null` remove o vínculo e volta ao bot default da organização. */
   agentBotId: agentBotIdField,
+  autoAssignEnabled: z.boolean().optional(),
+  /** `null` remove o limite numérico (sem teto por agente). */
+  autoAssignLimit: z.number().int().min(1).max(9999).nullable().optional(),
+});
+
+const patchAutoAssignmentSchema = z.object({
+  autoAssignEnabled: z.boolean(),
+  autoAssignLimit: z.number().int().min(1).max(9999).nullable().optional(),
 });
 
 const inboxAgentBotSelect = {
@@ -125,6 +133,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           createdAt: true,
           updatedAt: true,
           agentBotId: true,
+          autoAssignEnabled: true,
+          autoAssignLimit: true,
           agentBot: { select: inboxAgentBotSelect },
           _count: { select: { members: true, conversations: true } },
         },
@@ -148,6 +158,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           ingestToken: true,
           channelConfig: true,
           agentBotId: true,
+          autoAssignEnabled: true,
+          autoAssignLimit: true,
           agentBot: { select: inboxAgentBotSelect },
           members: {
             include: { user: { select: { id: true, name: true, email: true, role: true } } },
@@ -570,6 +582,8 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         data.agentBot = { connect: { id: p.agentBotId } };
       }
     }
+    if (p.autoAssignEnabled !== undefined) data.autoAssignEnabled = p.autoAssignEnabled;
+    if (p.autoAssignLimit !== undefined) data.autoAssignLimit = p.autoAssignLimit;
     if (p.isDefault === true) {
       const updated = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
@@ -614,6 +628,46 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
     return enrichWhatsappInboxResponse(organizationId, updated);
   });
+
+  app.patch<{ Params: { id: string } }>(
+    "/:id/auto-assignment",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = patchAutoAssignmentSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+
+      const updated = await prisma.inbox.update({
+        where: { id: inbox.id },
+        data: {
+          autoAssignEnabled: parsed.data.autoAssignEnabled,
+          autoAssignLimit:
+            parsed.data.autoAssignEnabled && parsed.data.autoAssignLimit !== undefined
+              ? parsed.data.autoAssignLimit
+              : parsed.data.autoAssignEnabled
+                ? inbox.autoAssignLimit
+                : null,
+        },
+        select: {
+          id: true,
+          autoAssignEnabled: true,
+          autoAssignLimit: true,
+        },
+      });
+      return { data: updated };
+    },
+  );
 
   app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);

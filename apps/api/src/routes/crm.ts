@@ -9,6 +9,7 @@ import { dealStatusFromLeadValueRollup } from "../lib/dealStageSync.js";
 import { DealStatus, Prisma } from "@prisma/client";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
+import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 
 async function requireCrmDeals(organizationId: string, reply: FastifyReply): Promise<boolean> {
   const enabled = await isOrganizationFeatureEnabled(organizationId, "crm_deals");
@@ -410,6 +411,17 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    fireCrmFlowTriggers(
+      organizationId,
+      "deal_created",
+      {
+        dealId: deal.id,
+        contactId: deal.primaryContactId,
+        pipelineStageId: deal.stageId,
+      },
+      request.log,
+    );
+
     return reply.status(201).send(deal);
   });
 
@@ -563,6 +575,31 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
           pipelineStageId: updated.stage?.id ?? nextStageId,
         });
       }
+    }
+
+    if (parsed.data.status === DealStatus.LOST) {
+      fireCrmFlowTriggers(
+        organizationId,
+        "deal_lost",
+        {
+          dealId: updated.id,
+          contactId: updated.primaryContact?.id ?? null,
+          pipelineStageId: updated.stage?.id,
+        },
+        request.log,
+      );
+    }
+    if (parsed.data.status !== undefined || parsed.data.name !== undefined) {
+      fireCrmFlowTriggers(
+        organizationId,
+        "deal_updated",
+        {
+          dealId: updated.id,
+          contactId: updated.primaryContact?.id ?? null,
+          pipelineStageId: updated.stage?.id,
+        },
+        request.log,
+      );
     }
 
     return updated;

@@ -5,6 +5,7 @@ import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { callOpenAiCompatibleChat } from "../lib/promptModulePreviewLlm.js";
 import { getAssistOpenAiCredentialsForOrganization, assistOpenAiModel } from "../lib/agentAssistLlm.js";
+import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 
 const reminderSchema = z.object({
   contactId: z.string().uuid(),
@@ -191,6 +192,18 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
       include: { contact: { select: { id: true, name: true, phone: true } } },
     });
 
+    fireCrmFlowTriggers(
+      organizationId,
+      "event_created",
+      {
+        reminderId: reminder.id,
+        contactId: reminder.contactId,
+        userId: reminder.userId,
+        dueAt: reminder.dueAt.toISOString(),
+      },
+      request.log,
+    );
+
     return reply.status(201).send(reminder);
   });
 
@@ -330,6 +343,14 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
       data,
       include: { contact: { select: { id: true, name: true, phone: true } } },
     });
+    if (reminder.completed || reminder.status === "DONE") {
+      fireCrmFlowTriggers(
+        organizationId,
+        "event_completed",
+        { reminderId: reminder.id, contactId: reminder.contactId, userId: reminder.userId },
+        request.log,
+      );
+    }
     return reminder;
   });
 
@@ -337,12 +358,19 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const res = await prisma.reminder.deleteMany({
+    const existing = await prisma.reminder.findFirst({
       where: { id: request.params.id, userId: request.user.id, organizationId },
     });
-    if (res.count === 0) {
+    if (!existing) {
       return reply.status(404).send({ error: "Not Found", message: "Reminder not found", statusCode: 404 });
     }
+    await prisma.reminder.delete({ where: { id: existing.id } });
+    fireCrmFlowTriggers(
+      organizationId,
+      "event_cancelled",
+      { reminderId: existing.id, contactId: existing.contactId, userId: existing.userId },
+      request.log,
+    );
     return reply.status(204).send();
   });
 }

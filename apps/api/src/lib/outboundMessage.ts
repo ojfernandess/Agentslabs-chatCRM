@@ -119,6 +119,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
    * Mantém status RESOLVED e preserva `csatSurveyToken` (não chama `reopenResolvedConversationData`).
    */
   pinnedConversationId?: string;
+  /** Evita loop quando o envio veio de um fluxo CRM. */
+  skipCrmFlowTrigger?: boolean;
 }): Promise<{ message: Message; conversation: Conversation }> {
   const {
     organizationId,
@@ -128,6 +130,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     newConversation,
     pinnedConversationId,
     postSendConversationPolicy = "default",
+    skipCrmFlowTrigger = false,
   } = options;
   const {
     contactId,
@@ -558,6 +561,22 @@ export async function deliverOutboundWhatsAppMessage(options: {
   });
 
   broadcastConversationUpdated(organizationId, conversation.id);
+
+  if (!skipCrmFlowTrigger && !isPrivate && outboundStatus === "SENT") {
+    const { fireCrmFlowTriggers } = await import("./crmFlowHooks.js");
+    fireCrmFlowTriggers(
+      organizationId,
+      "message_sent",
+      {
+        messageId: message.id,
+        conversationId: updatedConversation.id,
+        contactId,
+        body: message.body ?? "",
+        channel: inboxChannelType,
+      },
+      log,
+    );
+  }
 
   return { message, conversation: updatedConversation };
 }

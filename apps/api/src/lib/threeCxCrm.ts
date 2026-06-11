@@ -14,6 +14,7 @@ import { broadcastConversationUpdated, broadcastToOrganization } from "./workspa
 import { resolveIncomingCallTargetUserIds } from "./wavoipIncomingQueue.js";
 import { writeThreeCxIntegrationLog } from "./threeCxIntegrationLog.js";
 import { findProvisionalThreeCxCallLog } from "./threeCxAgentCall.js";
+import { fireTelephonyCrmTriggers } from "./crmFlowTelephonyHooks.js";
 
 function crmAuthHeader(request: { headers: Record<string, unknown> }): string | null {
   const raw =
@@ -135,7 +136,7 @@ async function registerInboundRinging(input: {
   );
   if (existing && existing.status === "RINGING") return;
 
-  await prisma.threeCxCallLog.create({
+  const callLog = await prisma.threeCxCallLog.create({
     data: {
       organizationId: input.organizationId,
       threeCxRoutePointId: routePoint.id,
@@ -148,6 +149,18 @@ async function registerInboundRinging(input: {
       conversationId: ctx.conversationId,
       startedAt: new Date(),
     },
+  });
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "3cx",
+    callLogId: callLog.id,
+    contactId: ctx.contactId,
+    conversationId: ctx.conversationId,
+    status: "RINGING",
+    direction: "INCOMING",
+    phone: caller,
+    isIncomingRing: true,
   });
 
   const targetUserIds = await resolveIncomingCallTargetUserIds(
@@ -312,6 +325,18 @@ export async function journalThreeCxCall(input: {
     eventType: "crm_call_journal",
     message: `Call journal ${direction} ${status}`,
     payload: input.body,
+  });
+
+  fireTelephonyCrmTriggers({
+    organizationId: input.organizationId,
+    provider: "3cx",
+    callLogId: row.id,
+    contactId: ctx.contactId ?? row.contactId,
+    conversationId: ctx.conversationId ?? row.conversationId,
+    status,
+    direction,
+    phone: direction === "INCOMING" ? caller : receiver,
+    isTerminal: true,
   });
 
   return { ok: true };

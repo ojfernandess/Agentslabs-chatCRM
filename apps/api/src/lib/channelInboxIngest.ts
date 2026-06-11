@@ -10,6 +10,8 @@ import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { ensureConversationForChannelInbox } from "./conversationRouting.js";
+import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
+import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
 
 export function newIngestToken(): string {
@@ -74,10 +76,12 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     (channelType === "EMAIL" && email ? email : null) ||
     participantId;
 
+  let contactJustCreated = false;
   let contact = await prisma.contact.findFirst({
     where: { organizationId, phone },
   });
   if (!contact) {
+    contactJustCreated = true;
     contact = await prisma.contact.create({
       data: {
         organizationId,
@@ -145,7 +149,8 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, inboxId);
   const useAgentBot = Boolean(agentCtx);
 
-  const conversation = await ensureConversationForChannelInbox({
+  const conversationCreatedAtBefore = Date.now();
+  let conversation = await ensureConversationForChannelInbox({
     organizationId,
     contactId: contact.id,
     inboxId,
@@ -156,6 +161,19 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       assignedToId: null,
     },
   });
+
+  if (!useAgentBot && conversation.status === "OPEN" && conversation.assignedToId == null) {
+    const assigned = await tryAutoAssignInboxConversation({
+      conversationId: conversation.id,
+      inboxId,
+      organizationId,
+      log,
+    });
+    if (assigned) {
+      const refreshed = await prisma.conversation.findUnique({ where: { id: conversation.id } });
+      if (refreshed) conversation = refreshed;
+    }
+  }
 
   const inbound = await prisma.message.create({
     data: {
@@ -243,6 +261,44 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   }
 
   broadcastConversationUpdated(organizationId, conversation.id);
+
+  const conversationJustCreated =
+    conversation.createdAt.getTime() >= conversationCreatedAtBefore - 2000;
+
+  if (contactJustCreated) {
+    fireCrmFlowTriggers(
+      organizationId,
+      "lead_created",
+      { contactId: contact.id, inboxId, source: channelType },
+      log,
+    );
+  }
+  if (conversationJustCreated) {
+    fireCrmFlowTriggers(
+      organizationId,
+      "conversation_started",
+      {
+        conversationId: conversation.id,
+        contactId: contact.id,
+        inboxId,
+        channel: channelType,
+      },
+      log,
+    );
+  }
+  fireCrmFlowTriggers(
+    organizationId,
+    "message_received",
+    {
+      messageId: inbound.id,
+      conversationId: conversation.id,
+      contactId: contact.id,
+      body: inboundForPipeline.body ?? "",
+      inboxId,
+      channel: channelType,
+    },
+    log,
+  );
 
   return {
     conversationId: conversation.id,

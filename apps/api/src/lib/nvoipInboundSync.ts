@@ -12,6 +12,7 @@ import { resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { upsertNvoipTimelineMessage } from "./nvoipCallTimeline.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
 import { resolveNvoipIncomingTargetUserIds } from "./nvoipIncomingQueue.js";
+import { fireTelephonyCrmTriggers } from "./crmFlowTelephonyHooks.js";
 
 export { resolveNvoipIncomingTargetUserIds };
 
@@ -184,6 +185,31 @@ export async function ingestNvoipInboundHistoryItem(
       contactId: ctx.contactId,
       conversationId: ctx.conversationId,
       accountExternalConfig: account.externalConfig,
+    });
+    fireTelephonyCrmTriggers({
+      organizationId: account.organizationId,
+      provider: "nvoip",
+      callLogId: row.id,
+      contactId: ctx.contactId,
+      conversationId: ctx.conversationId,
+      status: crmStatus,
+      direction: "INCOMING",
+      phone: caller,
+      isIncomingRing: true,
+    });
+  }
+
+  if (terminal) {
+    fireTelephonyCrmTriggers({
+      organizationId: account.organizationId,
+      provider: "nvoip",
+      callLogId: row.id,
+      contactId: ctx.contactId,
+      conversationId: ctx.conversationId,
+      status: crmStatus,
+      direction: "INCOMING",
+      phone: caller,
+      isTerminal: true,
     });
   }
 

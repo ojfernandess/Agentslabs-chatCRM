@@ -60,9 +60,12 @@ import {
   registerAutomationExecutionLogWorker,
 } from "./lib/automationExecutionLog.js";
 import { initBroadcastQueue, closeBroadcastQueue } from "./lib/broadcastQueue.js";
+import { initCrmFlowQueue, closeCrmFlowQueue } from "./lib/crmFlowQueue.js";
+import { runCrmFlowNoReplyScannerTick } from "./lib/crmFlowNoReplyScanner.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
+import { runCrmFlowSchedulerTick } from "./lib/crmFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
 import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
@@ -219,6 +222,7 @@ const shutdown = async () => {
   app.log.info("Shutting down...");
   await flushAutomationLogBuffer().catch(() => {});
   await closeBroadcastQueue().catch(() => {});
+  await closeCrmFlowQueue().catch(() => {});
   await app.close();
   await disconnectDb();
   process.exit(0);
@@ -233,6 +237,7 @@ try {
   app.log.info(`Server running at http://${config.host}:${config.port}`);
   registerAutomationExecutionLogWorker(app.log);
   await initBroadcastQueue(app);
+  await initCrmFlowQueue(app);
   const autoResolveMs = 120_000;
   setInterval(() => {
     void runAutoResolveInactiveConversationsTick({ log: app.log });
@@ -252,6 +257,15 @@ try {
     void runChatbotFlowSchedulerTick(app);
   }, chatbotSchedulerMs);
   void runChatbotFlowSchedulerTick(app);
+  setInterval(() => {
+    void runCrmFlowSchedulerTick(app);
+  }, chatbotSchedulerMs);
+  void runCrmFlowSchedulerTick(app);
+  const crmNoReplyMs = 5 * 60 * 1000;
+  setInterval(() => {
+    void runCrmFlowNoReplyScannerTick(app);
+  }, crmNoReplyMs);
+  void runCrmFlowNoReplyScannerTick(app);
   const mediaRetentionMs = 60 * 60 * 1000;
   setInterval(() => {
     void runConversationMediaRetentionTick({ log: app.log });

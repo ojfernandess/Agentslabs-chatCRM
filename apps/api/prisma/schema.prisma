@@ -206,6 +206,7 @@ model Organization {
   automationExecutions           AutomationExecution[]
   automationExecutionLogSettings AutomationExecutionLogSettings?
   chatbotFlows                   ChatbotFlow[]
+  crmFlows                       CrmFlow[]
   leadFinderSegments             LeadFinderSegment[]
   leadFinderSchedules            LeadFinderSchedule[]
   wavoipDevices                  WavoipDevice[]
@@ -254,6 +255,10 @@ model Inbox {
   /// Bot de triagem (primeira linha) só para esta caixa; se vazio, usa `Settings.agentBotId` da organização.
   agentBotId    String?          @map("agent_bot_id") @db.Uuid
   agentBot      Bot?             @relation("InboxAgentBot", fields: [agentBotId], references: [id], onDelete: SetNull)
+  /// Atribuição automática de novas conversas OPEN aos membros da caixa.
+  autoAssignEnabled Boolean      @default(false) @map("auto_assign_enabled")
+  /// Máximo de conversas ativas (OPEN/PENDING) por agente; null = sem limite numérico.
+  autoAssignLimit   Int?         @map("auto_assign_limit")
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
@@ -1688,6 +1693,129 @@ model ChatbotFlowSession {
   @@index([organizationId])
   @@index([chatbotFlowId])
   @@map("chatbot_flow_sessions")
+}
+
+enum CrmFlowStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum CrmFlowType {
+  CRM
+  WHATSAPP
+  TELEPHONY
+  AGENDA
+  SYSTEM
+}
+
+enum CrmFlowExecutionStatus {
+  RUNNING
+  WAITING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+/// Fluxos visuais de automação CRM (trigger → condições → ações).
+model CrmFlow {
+  id               String         @id @default(uuid()) @db.Uuid
+  organizationId   String         @map("organization_id") @db.Uuid
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String         @db.VarChar(200)
+  description      String?        @db.Text
+  flowType         CrmFlowType    @default(CRM) @map("flow_type")
+  status           CrmFlowStatus  @default(DRAFT)
+  isPublished      Boolean        @default(false) @map("is_published")
+  flowDefinition   Json           @map("flow_definition")
+  triggerConfig    Json           @default("{}") @map("trigger_config")
+  variables        Json           @default("[]")
+  createdByUserId  String?        @map("created_by_user_id") @db.Uuid
+  lastExecutedAt   DateTime?      @map("last_executed_at")
+  executionCount   Int            @default(0) @map("execution_count")
+  version          Int            @default(1)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  executions CrmFlowExecution[]
+  waitJobs   CrmFlowWaitJob[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("crm_flows")
+}
+
+model CrmFlowWaitJob {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  crmFlowId      String           @map("crm_flow_id") @db.Uuid
+  crmFlow        CrmFlow          @relation(fields: [crmFlowId], references: [id], onDelete: Cascade)
+  executionId    String           @unique @map("execution_id") @db.Uuid
+  execution      CrmFlowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  nextNodeId     String           @map("next_node_id") @db.VarChar(64)
+  context        Json
+  resumeAt       DateTime         @map("resume_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@index([organizationId])
+  @@index([resumeAt])
+  @@map("crm_flow_wait_jobs")
+}
+
+model CrmFlowExecution {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  crmFlowId      String                 @map("crm_flow_id") @db.Uuid
+  crmFlow        CrmFlow                @relation(fields: [crmFlowId], references: [id], onDelete: Cascade)
+  status         CrmFlowExecutionStatus @default(RUNNING)
+  triggerType    String?                @map("trigger_type") @db.VarChar(64)
+  triggerPayload Json?                  @map("trigger_payload")
+  startedAt      DateTime               @default(now()) @map("started_at")
+  finishedAt     DateTime?              @map("finished_at")
+  durationMs     Int?                   @map("duration_ms")
+  errorMessage   String?                @map("error_message") @db.Text
+
+  logEntries CrmFlowLogEntry[]
+  waitJob    CrmFlowWaitJob?
+
+  @@index([organizationId])
+  @@index([crmFlowId])
+  @@index([organizationId, startedAt])
+  @@map("crm_flow_executions")
+}
+
+model CrmFlowLogEntry {
+  id             String           @id @default(uuid()) @db.Uuid
+  executionId    String           @map("execution_id") @db.Uuid
+  execution      CrmFlowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  sequence       Int
+  nodeId         String?          @map("node_id") @db.VarChar(64)
+  nodeType       String?          @map("node_type") @db.VarChar(64)
+  level          String           @default("info") @db.VarChar(16)
+  message        String           @db.Text
+  inputContext   Json?            @map("input_context")
+  outputContext  Json?            @map("output_context")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@index([executionId])
+  @@map("crm_flow_log_entries")
+}
+
+model CrmFlowTemplate {
+  id          String      @id @default(uuid()) @db.Uuid
+  key         String      @unique @db.VarChar(80)
+  name        String      @db.VarChar(200)
+  description String?     @db.Text
+  flowType    CrmFlowType @default(CRM) @map("flow_type")
+  category    String      @db.VarChar(64)
+  flowDefinition Json     @map("flow_definition")
+  triggerConfig  Json     @default("{}") @map("trigger_config")
+  variables      Json     @default("[]")
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@map("crm_flow_templates")
 }
 
 model LeadFinderSegment {
