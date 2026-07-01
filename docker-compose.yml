@@ -103,6 +103,10 @@ services:
       MINIO_REGION: ${MINIO_REGION:-us-east-1}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
       MINIO_PUBLIC_BASE_URL: ${MINIO_PUBLIC_BASE_URL:-}
+      NVOIP_SIP_DOMAIN: ${NVOIP_SIP_DOMAIN:-sip.nvoip.com.br}
+      NVOIP_SIP_WSS_URL: ${NVOIP_SIP_WSS_URL:-}
+      NVOIP_SIP_WSS_PORT: ${NVOIP_SIP_WSS_PORT:-6443}
+      NVOIP_SIP_SERVER: ${NVOIP_SIP_SERVER:-}
       NODE_ENV: production
       # true apenas no primeiro arranque (ou ambientes controlados); depois definir false
       RUN_DB_SEED: ${RUN_DB_SEED:-false}

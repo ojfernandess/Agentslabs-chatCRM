@@ -9,6 +9,7 @@ import {
   resolveNvoipCallerForSipUser,
   sanitizeNvoipOutboundCaller,
 } from "./nvoipCallFormat.js";
+import { resolveEmbeddedSipOutboundCaller } from "./userSipCredentials.js";
 
 export type NvoipTrunkRow = {
   id: string;
@@ -193,7 +194,9 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
       where: { userId: input.userId },
       select: { sipUser: true },
     });
-    const fromEmbedded = pick(embedded?.sipUser);
+    const fromEmbedded = embedded?.sipUser
+      ? resolveEmbeddedSipOutboundCaller(embedded.sipUser)
+      : null;
     if (fromEmbedded) {
       const matched = findNvoipSipUserForCaller(fromEmbedded, sipUsers);
       return {

@@ -1,18 +1,17 @@
 import { prisma } from "../db.js";
-import { config } from "../config.js";
 import { encrypt, decrypt } from "./encryption.js";
+import { formatNvoipCaller, findNvoipSipUserForCaller } from "./nvoipCallFormat.js";
+import { nvoipUpdateSipUser } from "./nvoipClient.js";
+import { syncNvoipSipUsers } from "./nvoipDirectorySync.js";
+import {
+  nvoipEmbeddedSipDomain,
+  nvoipEmbeddedSipWssUrl,
+  type NvoipEmbeddedSipClientConfig,
+} from "./nvoipEmbeddedSipConfig.js";
 
-export type UserSipCredentialsClient = {
-  sipUser: string;
-  sipPassword: string;
-  displayName: string | null;
-  sipServer: string;
-  wssPort: string;
-};
+export type UserSipCredentialsClient = NvoipEmbeddedSipClientConfig;
 
-export function nvoipSipWssUrl(): string {
-  return `wss://${config.nvoipSipServer}:${config.nvoipSipWssPort}`;
-}
+export { nvoipEmbeddedSipWssUrl as nvoipSipWssUrl };
 
 export async function getUserSipCredentialsForClient(
   userId: string,
@@ -28,13 +27,46 @@ export async function getUserSipCredentialsForClient(
     sipUser: row.sipUser.trim(),
     sipPassword,
     displayName: row.displayName?.trim() || null,
-    sipServer: config.nvoipSipServer,
-    wssPort: config.nvoipSipWssPort,
+    sipDomain: nvoipEmbeddedSipDomain(),
+    wssUrl: nvoipEmbeddedSipWssUrl(),
   };
+}
+
+/** Desactiva webphone no painel Nvoip para o ramal — evita tocar no webphone externo em paralelo. */
+async function disableNvoipPanelWebphoneForEmbeddedSip(
+  organizationId: string,
+  sipUser: string,
+  sipPassword: string,
+): Promise<void> {
+  const account = await prisma.nvoipAccount.findFirst({
+    where: { organizationId, status: "CONNECTED" },
+  });
+  if (!account) return;
+
+  const sipUsers = await prisma.nvoipSipUser.findMany({
+    where: { nvoipAccountId: account.id, blocked: false },
+    select: { numbersip: true, caller: true, webphone: true },
+  });
+  const matched = findNvoipSipUserForCaller(sipUser, sipUsers);
+  if (!matched?.numbersip) return;
+  if (matched.webphone === false) return;
+
+  try {
+    await nvoipUpdateSipUser(account, {
+      numbersip: matched.numbersip,
+      caller: matched.caller ?? undefined,
+      sipPassword,
+      webphone: false,
+    });
+    await syncNvoipSipUsers(account);
+  } catch {
+    /* best-effort — CRM softphone still works if Nvoip API sync fails */
+  }
 }
 
 export async function upsertUserSipCredentials(input: {
   userId: string;
+  organizationId?: string;
   sipUser: string;
   sipPassword: string;
   displayName?: string | null;
@@ -58,4 +90,14 @@ export async function upsertUserSipCredentials(input: {
       displayName: input.displayName?.trim() || null,
     },
   });
+
+  if (input.organizationId) {
+    await disableNvoipPanelWebphoneForEmbeddedSip(input.organizationId, sipUser, sipPassword);
+  }
+}
+
+/** Caller POST /calls/ a partir das credenciais SIP embutidas (sem fallback para webphone do painel). */
+export function resolveEmbeddedSipOutboundCaller(sipUser: string): string | null {
+  const caller = formatNvoipCaller(sipUser);
+  return caller.length >= 2 ? caller : null;
 }

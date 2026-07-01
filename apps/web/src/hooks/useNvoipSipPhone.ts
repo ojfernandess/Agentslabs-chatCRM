@@ -20,9 +20,15 @@ type SipCredentials = {
   sipUser: string;
   sipPassword: string;
   displayName?: string | null;
-  sipServer: string;
-  wssPort: string;
+  sipDomain: string;
+  wssUrl: string;
 };
+
+function emitSipStatus(status: NvoipSipCallStatus, error: string | null): void {
+  window.dispatchEvent(
+    new CustomEvent("openconduit:nvoip-sip-status", { detail: { status, error } }),
+  );
+}
 
 export function useNvoipSipPhone(enabled: boolean) {
   const uaRef = useRef<InstanceType<typeof JsSIP.UA> | null>(null);
@@ -31,6 +37,12 @@ export function useNvoipSipPhone(enabled: boolean) {
 
   const [status, setStatus] = useState<NvoipSipCallStatus>("unregistered");
   const [error, setError] = useState<string | null>(null);
+
+  const setStatusSafe = useCallback((next: NvoipSipCallStatus, err: string | null = null) => {
+    setStatus(next);
+    setError(err);
+    emitSipStatus(next, err);
+  }, []);
 
   const attachRemoteAudio = useCallback((peerconnection: RTCPeerConnection) => {
     const playStream = (stream: MediaStream) => {
@@ -55,12 +67,10 @@ export function useNvoipSipPhone(enabled: boolean) {
       creds = await api.get<SipCredentials>("/sip/credentials");
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        setStatus("unregistered");
-        setError("sip_credentials_not_configured");
+        setStatusSafe("unregistered", "sip_credentials_not_configured");
         return;
       }
-      setStatus("error");
-      setError(e instanceof Error ? e.message : "sip_register_failed");
+      setStatusSafe("error", e instanceof Error ? e.message : "sip_register_failed");
       return;
     }
 
@@ -69,42 +79,56 @@ export function useNvoipSipPhone(enabled: boolean) {
       uaRef.current = null;
     }
 
-    const socket = new JsSIP.WebSocketInterface(
-      `wss://${creds.sipServer}:${creds.wssPort}`,
-    );
+    const wssUrl = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:6443`;
+    const sipDomain = creds.sipDomain?.trim() || "sip.nvoip.com.br";
+    const sipUser = creds.sipUser.trim();
+
+    const socket = new JsSIP.WebSocketInterface(wssUrl);
+    socket.via_transport = "WSS";
 
     const ua = new JsSIP.UA({
       sockets: [socket],
-      uri: `sip:${creds.sipUser}@${creds.sipServer}`,
+      uri: `sip:${sipUser}@${sipDomain}`,
+      authorization_user: sipUser,
       password: creds.sipPassword,
-      display_name: creds.displayName?.trim() || creds.sipUser,
+      display_name: creds.displayName?.trim() || sipUser,
+      registrar_server: `sip:${sipDomain}`,
       register: true,
+      register_expires: 600,
+      session_timers: false,
+      use_preloaded_route: true,
     });
 
-    ua.on("registered", () => setStatus("registered"));
-    ua.on("unregistered", () => setStatus("unregistered"));
+    ua.on("connected", () => {
+      setStatusSafe("unregistered", null);
+    });
+    ua.on("disconnected", () => setStatusSafe("unregistered", null));
+    ua.on("registered", () => setStatusSafe("registered", null));
+    ua.on("unregistered", () => setStatusSafe("unregistered", null));
     ua.on("registrationFailed", (e) => {
-      setStatus("error");
-      setError(`sip_registration_failed:${String((e as { cause?: string }).cause ?? "unknown")}`);
+      setStatusSafe(
+        "error",
+        `sip_registration_failed:${String((e as { cause?: string }).cause ?? "unknown")}`,
+      );
     });
 
     ua.on("newRTCSession", (data: unknown) => {
       const session = (data as { session: SipRtcSession }).session;
       sessionRef.current = session;
-      setStatus("ringing");
+      setStatusSafe("ringing", null);
 
       session.on("ended", () => {
         sessionRef.current = null;
-        setStatus(ua.isRegistered() ? "registered" : "unregistered");
+        setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", null);
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
       });
       session.on("failed", () => {
         sessionRef.current = null;
-        setStatus(ua.isRegistered() ? "registered" : "unregistered");
+        setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", null);
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
       });
       session.on("confirmed", () => {
-        setStatus("in-call");
+        setStatusSafe("in-call", null);
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
       });
 
@@ -120,21 +144,20 @@ export function useNvoipSipPhone(enabled: boolean) {
 
     ua.start();
     uaRef.current = ua;
-  }, [attachRemoteAudio, enabled]);
+  }, [attachRemoteAudio, enabled, setStatusSafe]);
 
   const hangup = useCallback(() => {
     sessionRef.current?.terminate();
     sessionRef.current = null;
-    setStatus(uaRef.current?.isRegistered() ? "registered" : "unregistered");
-  }, []);
+    setStatusSafe(uaRef.current?.isRegistered() ? "registered" : "unregistered", null);
+  }, [setStatusSafe]);
 
   useEffect(() => {
     if (!enabled) {
       uaRef.current?.stop();
       uaRef.current = null;
       sessionRef.current = null;
-      setStatus("unregistered");
-      setError(null);
+      setStatusSafe("unregistered", null);
       return;
     }
     void register();
@@ -151,7 +174,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         audioRef.current = null;
       }
     };
-  }, [enabled, register]);
+  }, [enabled, register, setStatusSafe]);
 
   return { status, error, register, hangup, isInCall: status === "in-call" || status === "ringing" };
 }

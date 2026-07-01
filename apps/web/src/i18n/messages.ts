@@ -2355,6 +2355,7 @@ export const messages = {
         loadError: "Não foi possível carregar as credenciais SIP.",
         saveError: "Não foi possível salvar as credenciais SIP.",
         errorHint: "Verifique as credenciais em Perfil → Ramal SIP.",
+        notRegistered: "Ramal SIP offline. Aguarde o registo ou verifique usuário/senha em Perfil → Ramal SIP.",
         hintRinging: "Conectando áudio no CRM — atenda automaticamente pelo headset.",
         hintActive: "Em conversa com o cliente pelo áudio do navegador.",
         status: {
@@ -6989,6 +6990,7 @@ export const messages = {
         loadError: "Could not load SIP credentials.",
         saveError: "Could not save SIP credentials.",
         errorHint: "Check credentials under Profile → SIP extension.",
+        notRegistered: "SIP extension offline. Wait for registration or check username/password under Profile → SIP extension.",
         hintRinging: "Connecting audio in the CRM — answer automatically with your headset.",
         hintActive: "On a live call with the customer via browser audio.",
         status: {

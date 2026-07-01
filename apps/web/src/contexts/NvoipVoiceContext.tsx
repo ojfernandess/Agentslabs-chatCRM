@@ -103,6 +103,9 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<"click_to_call" | "embedded_sip">("click_to_call");
   const [embeddedSipEnabled, setEmbeddedSipEnabled] = useState(false);
+  const sipStatusRef = useRef<"registered" | "unregistered" | "error" | "ringing" | "in-call">(
+    "unregistered",
+  );
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeCallRef = useRef<ActiveCall | null>(null);
@@ -167,6 +170,18 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       setReady(true);
     }
   }, [user]);
+
+  useEffect(() => {
+    const onSipStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string }>).detail;
+      const s = detail?.status ?? "unregistered";
+      if (s === "registered" || s === "unregistered" || s === "error" || s === "ringing" || s === "in-call") {
+        sipStatusRef.current = s;
+      }
+    };
+    window.addEventListener("openconduit:nvoip-sip-status", onSipStatus);
+    return () => window.removeEventListener("openconduit:nvoip-sip-status", onSipStatus);
+  }, []);
 
   useEffect(() => {
     void refreshSession();
@@ -344,6 +359,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       contactId?: string | null;
       conversationId?: string | null;
     }): Promise<OutboundResult> => {
+      if (voiceMode === "embedded_sip" && sipStatusRef.current !== "registered") {
+        return { ok: false, message: "sip_not_registered" };
+      }
+
       const clientCallId = crypto.randomUUID();
       try {
         const res = await api.post<{
@@ -392,7 +411,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: e instanceof Error ? e.message : "call_failed" };
       }
     },
-    [caller, selectedTrunkId],
+    [caller, selectedTrunkId, voiceMode],
   );
 
   const endActiveCall = useCallback(async () => {

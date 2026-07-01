@@ -172,6 +172,11 @@ export const config = {
     "TnZvaXBBcGlWMjpUblp2YVhCQmNHbFdNakl3TWpFPQ==",
   ).trim(),
   /** Servidor SIP Nvoip para softphone embutido (WSS). */
-  nvoipSipServer: optionalEnv("NVOIP_SIP_SERVER", "app.nvoip.com.br").trim(),
+  /** Domínio SIP (URI/registrar) — padrão oficial Nvoip para ramais. */
+  nvoipSipDomain: optionalEnv("NVOIP_SIP_DOMAIN", optionalEnv("NVOIP_SIP_SERVER", "sip.nvoip.com.br")).trim(),
+  /** URL WSS completa (ex.: wss://sip.nvoip.com.br:6443). Se vazio, monta a partir do domínio + porta. */
+  nvoipSipWssUrl: optionalEnv("NVOIP_SIP_WSS_URL", "").trim(),
   nvoipSipWssPort: optionalEnv("NVOIP_SIP_WSS_PORT", "6443").trim(),
+  /** @deprecated use NVOIP_SIP_DOMAIN — mantido por compatibilidade. */
+  nvoipSipServer: optionalEnv("NVOIP_SIP_SERVER", optionalEnv("NVOIP_SIP_DOMAIN", "sip.nvoip.com.br")).trim(),
 } as const;

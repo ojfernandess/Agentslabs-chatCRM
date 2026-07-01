@@ -75,6 +75,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     try {
       await upsertUserSipCredentials({
         userId: request.user.id,
+        organizationId,
         sipUser: parsed.data.sipUser,
         sipPassword: parsed.data.sipPassword,
         displayName: parsed.data.displayName ?? null,
