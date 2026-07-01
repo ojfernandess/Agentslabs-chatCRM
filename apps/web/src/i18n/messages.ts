@@ -2347,7 +2347,11 @@ export const messages = {
       sip: {
         settingsTitle: "Ramal SIP (Nvoip)",
         settingsHint:
-          "Usuário e senha SIP do seu ramal no painel Nvoip (Configurações → Ramais). Necessário para áudio no CRM quando o softphone embutido está activo.",
+          "Usuário e senha do ramal secundário Nvoip (Configurações → Ramais), não o NumberSIP trunk da conta. O trunk (ex.: 143087001) usa MicroSIP/UDP; o softphone no CRM usa WebRTC/WSS apenas com ramal secundário.",
+        trunkHint:
+          "Com MicroSIP ou PABX externo registado, ligue pelo CRM em modo click-to-call — o status do trunk no MicroSIP é independente do badge SIP do CRM.",
+        trunkUseClickToCall:
+          "Não use o NumberSIP trunk (usuário principal da conta) aqui. Com MicroSIP/PABX externo, deixe este campo vazio e ligue pelo CRM — o áudio toca no MicroSIP.",
         fieldUser: "Usuário SIP",
         fieldPassword: "Senha SIP",
         fieldDisplayName: "Nome exibido (opcional)",
@@ -6982,7 +6986,11 @@ export const messages = {
       sip: {
         settingsTitle: "SIP extension (Nvoip)",
         settingsHint:
-          "SIP username and password from the Nvoip panel (Settings → Extensions). Required for in-browser audio when embedded softphone is enabled.",
+          "Secondary Nvoip extension username and password (Settings → Extensions), not the account NumberSIP trunk. The trunk (e.g. 143087001) uses MicroSIP/UDP; in-CRM softphone uses WebRTC/WSS with a secondary extension only.",
+        trunkHint:
+          "With MicroSIP or external PABX registered, place calls from the CRM in click-to-call mode — MicroSIP trunk status is separate from the CRM SIP badge.",
+        trunkUseClickToCall:
+          "Do not use the account NumberSIP trunk here. With MicroSIP/external PABX, leave this empty and call from the CRM — audio rings on MicroSIP.",
         fieldUser: "SIP username",
         fieldPassword: "SIP password",
         fieldDisplayName: "Display name (optional)",

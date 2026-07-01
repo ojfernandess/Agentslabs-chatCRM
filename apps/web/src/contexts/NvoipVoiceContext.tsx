@@ -27,6 +27,7 @@ type SessionPayload = {
   callerWarning?: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
   webphoneUsers?: { numbersip: string; caller: string | null; name: string | null }[];
   accountNumbersip?: string;
+  pabxMode?: "platform_webphone" | "external_pabx_trunk";
 };
 
 function trunkStorageKey(organizationId: string) {
@@ -56,6 +57,7 @@ type NvoipVoiceContextValue = {
   webphoneUsers: { numbersip: string; caller: string | null; name: string | null }[];
   accountNumbersip: string | null;
   voiceMode: "click_to_call" | "embedded_sip";
+  pabxMode: "platform_webphone" | "external_pabx_trunk";
   embeddedSipEnabled: boolean;
   trunks: TrunkRow[];
   selectedTrunkId: string | null;
@@ -102,6 +104,9 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const [trunks, setTrunks] = useState<TrunkRow[]>([]);
   const [selectedTrunkId, setSelectedTrunkIdState] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<"click_to_call" | "embedded_sip">("click_to_call");
+  const [pabxMode, setPabxMode] = useState<"platform_webphone" | "external_pabx_trunk">(
+    "platform_webphone",
+  );
   const [embeddedSipEnabled, setEmbeddedSipEnabled] = useState(false);
   const sipStatusRef = useRef<"registered" | "unregistered" | "error" | "ringing" | "in-call">(
     "unregistered",
@@ -146,6 +151,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       const res = await api.get<SessionPayload>("/nvoip/session");
       setCanPlaceCalls(!!res.canPlaceCalls);
       setVoiceMode(res.voiceMode === "embedded_sip" ? "embedded_sip" : "click_to_call");
+      setPabxMode(res.pabxMode === "external_pabx_trunk" ? "external_pabx_trunk" : "platform_webphone");
       setEmbeddedSipEnabled(!!res.embeddedSipEnabled);
       setCaller(res.caller?.trim() || null);
       setCallerHasWebphone(!!res.callerHasWebphone);
@@ -464,6 +470,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       webphoneUsers,
       accountNumbersip,
       voiceMode,
+      pabxMode,
       embeddedSipEnabled,
       trunks,
       selectedTrunkId,
@@ -483,6 +490,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       webphoneUsers,
       accountNumbersip,
       voiceMode,
+      pabxMode,
       embeddedSipEnabled,
       trunks,
       selectedTrunkId,

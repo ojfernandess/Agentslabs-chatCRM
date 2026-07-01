@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
 import { encrypt, decrypt } from "./encryption.js";
-import { formatNvoipCaller, findNvoipSipUserForCaller } from "./nvoipCallFormat.js";
+import { formatNvoipCaller, findNvoipSipUserForCaller, nvoipSameNumbersip } from "./nvoipCallFormat.js";
 import { nvoipUpdateSipUser } from "./nvoipClient.js";
 import { syncNvoipSipUsers } from "./nvoipDirectorySync.js";
 import { parseNvoipPabxMode } from "./nvoipPabxConfig.js";
@@ -88,6 +88,17 @@ export async function upsertUserSipCredentials(input: {
   if (!sipUser || !sipPassword) {
     throw new Error("sip_credentials_invalid");
   }
+
+  if (input.organizationId) {
+    const account = await prisma.nvoipAccount.findFirst({
+      where: { organizationId: input.organizationId, status: "CONNECTED" },
+      select: { numbersip: true },
+    });
+    if (account?.numbersip && nvoipSameNumbersip(sipUser, account.numbersip)) {
+      throw new Error("sip_trunk_use_click_to_call");
+    }
+  }
+
   await prisma.userSipCredentials.upsert({
     where: { userId: input.userId },
     create: {

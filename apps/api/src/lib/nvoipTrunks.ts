@@ -197,7 +197,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
     const fromEmbedded = embedded?.sipUser
       ? resolveEmbeddedSipOutboundCaller(embedded.sipUser)
       : null;
-    if (fromEmbedded) {
+    if (fromEmbedded && !nvoipSameNumbersip(fromEmbedded, accountNumbersip)) {
       const matched = findNvoipSipUserForCaller(fromEmbedded, sipUsers);
       return {
         caller: fromEmbedded,

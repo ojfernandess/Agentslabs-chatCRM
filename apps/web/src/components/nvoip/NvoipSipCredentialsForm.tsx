@@ -62,8 +62,12 @@ export function NvoipSipCredentialsForm() {
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-refresh"));
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError(t("nvoip.sip.saveError"));
+    } catch (e) {
+      if (e instanceof ApiError && e.message === "sip_trunk_use_click_to_call") {
+        setError(t("nvoip.sip.trunkUseClickToCall"));
+      } else {
+        setError(t("nvoip.sip.saveError"));
+      }
     } finally {
       setSaving(false);
     }

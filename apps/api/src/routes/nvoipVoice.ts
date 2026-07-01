@@ -91,6 +91,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       accountNumbersip: account.numbersip,
       trunks,
       voiceMode,
+      pabxMode,
       embeddedSipEnabled,
       hasUserSipCredentials: Boolean(userSipCreds),
       callerSource: resolution?.source ?? null,

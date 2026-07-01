@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
+import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { useNvoipSipPhone, type NvoipSipCallStatus } from "@/hooks/useNvoipSipPhone";
 
 type NvoipSipPhoneContextValue = {
@@ -25,9 +26,11 @@ export function useNvoipSipPhoneOptional() {
 
 export function NvoipSipPhoneProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const voice = useNvoipVoiceOptional();
   const embeddedEnabled =
     (user?.organizationFeatures?.nvoip_voice ?? false) &&
     (user?.organizationFeatures?.nvoip_embedded_sip ?? false) &&
+    voice?.voiceMode === "embedded_sip" &&
     !(isSuperAdminRole(user?.role ?? "") && !user?.actingOrganizationId);
 
   const { status, error, hangup, isInCall } = useNvoipSipPhone(embeddedEnabled);

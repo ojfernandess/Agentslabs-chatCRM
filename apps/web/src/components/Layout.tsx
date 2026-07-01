@@ -40,6 +40,7 @@ import { WavoipVoiceShell } from "@/components/wavoip/WavoipVoiceShell";
 import { ThreeCxVoiceShell } from "@/components/threecx/ThreeCxVoiceShell";
 import { NvoipVoiceShell } from "@/components/nvoip/NvoipVoiceShell";
 import { NvoipSipStatusBadge } from "@/components/nvoip/NvoipSipStatusBadge";
+import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
@@ -147,6 +148,7 @@ function CollapsedLocalePicker({
 
 export function Layout() {
   const { user, logout, exitUserImpersonation, refreshUser } = useAuth();
+  const nvoipVoice = useNvoipVoiceOptional();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -656,7 +658,8 @@ export function Layout() {
         )}
       >
         {user?.organizationFeatures?.nvoip_voice &&
-        user?.organizationFeatures?.nvoip_embedded_sip ? (
+        user?.organizationFeatures?.nvoip_embedded_sip &&
+        nvoipVoice?.voiceMode === "embedded_sip" ? (
           <div
             className={clsx(
               "w-full",
