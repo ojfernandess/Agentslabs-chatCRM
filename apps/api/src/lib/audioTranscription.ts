@@ -3,6 +3,8 @@ import type { Message } from "@prisma/client";
 import { config, getPublicOrigin } from "../config.js";
 import { prisma } from "../db.js";
 import { readMessageMediaFile } from "./mediaStorage.js";
+import { assertHttpUrlAllowed } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -52,7 +54,8 @@ async function loadAudioBytesForTranscription(
     }
 
     if (u.protocol === "https:" || u.protocol === "http:") {
-      const res = await fetch(trimmed, { signal: AbortSignal.timeout(90_000) });
+      assertHttpUrlAllowed(trimmed);
+      const res = await secureHttpFetch(trimmed, { signal: AbortSignal.timeout(90_000) });
       if (!res.ok) return null;
       const ab = await res.arrayBuffer();
       const buffer = Buffer.from(ab);

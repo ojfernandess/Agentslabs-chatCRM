@@ -6,6 +6,10 @@ import { normalizeDialPhone } from "./nvoipCallContext.js";
 import { readNvoipExternalConfig, mergeNvoipExternalConfig, type NvoipHomologationStored } from "./nvoipExternalConfig.js";
 import { nvoipListUsers } from "./nvoipClient.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
+import {
+  buildNvoipCallWebhookUrl,
+  ensureNvoipCallWebhookSecretForAccount,
+} from "./nvoipWebhookSecret.js";
 
 export type NvoipHomologationStatus = "pass" | "fail" | "warn" | "manual";
 
@@ -41,9 +45,16 @@ export async function runNvoipHomologation(organizationId: string): Promise<Nvoi
   const ext = readNvoipExternalConfig(account?.externalConfig);
 
   const publicUrl = config.publicUrl?.replace(/\/+$/, "") ?? "";
-  const callWebhook = publicUrl
-    ? `${publicUrl}/webhooks/nvoip/${organizationId}`
-    : null;
+  let callWebhook: string | null = null;
+  if (publicUrl && account) {
+    const ensured = await ensureNvoipCallWebhookSecretForAccount({
+      accountId: account.id,
+      externalConfig: account.externalConfig,
+    });
+    callWebhook = buildNvoipCallWebhookUrl(organizationId, ensured.secret);
+  } else if (publicUrl) {
+    callWebhook = `${publicUrl}/webhooks/nvoip/${organizationId}?token=…`;
+  }
   const dtmfWebhook = publicUrl
     ? `${publicUrl}/webhooks/nvoip/${organizationId}/dtmf/{dispatchId}?token=…`
     : null;

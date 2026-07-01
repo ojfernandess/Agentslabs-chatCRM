@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { assertHttpUrlAllowed, truncateBody } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 import { extractHtmlTitle, htmlToPlainText } from "./knowledgeWebExtract.js";
 import { reindexKnowledgeArticle } from "./knowledgeReindex.js";
 
@@ -115,9 +116,8 @@ export async function syncKnowledgeSource(params: {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
-    const res = await fetch(fetchUrl.toString(), {
+    const res = await secureHttpFetch(fetchUrl.toString(), {
       method: "GET",
-      redirect: "follow",
       signal: ctrl.signal,
       headers: {
         "User-Agent": "OpenConduit-KnowledgeSource/1.0",

@@ -9,6 +9,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
 import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
+import { secureHttpFetch } from "../lib/secureHttpFetch.js";
 import {
   buildHttpToolFlatContext,
   expandTemplateString,
@@ -1867,7 +1868,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       try {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 25_000);
-        const res = await fetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
+        const res = await secureHttpFetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
         clearTimeout(t);
         statusCode = res.status;
         ok = res.ok;

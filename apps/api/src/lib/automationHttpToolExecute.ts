@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { assertHttpUrlAllowed, truncateBody } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 
 function asJson(v: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
@@ -480,7 +481,7 @@ export async function runAutomationHttpLikeTool(input: {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 25_000);
-    const res = await fetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
+    const res = await secureHttpFetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
     clearTimeout(t);
     statusCode = res.status;
     ok = res.ok;

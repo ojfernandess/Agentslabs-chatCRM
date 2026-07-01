@@ -77,6 +77,8 @@ export function mergeNvoipExternalConfig(
     pabxMode?: NvoipPabxMode;
     trunkSipPasswordEnc?: string | null;
     clearTrunkSipPassword?: boolean;
+    callWebhookSecretEnc?: string | null;
+    clearCallWebhookSecret?: boolean;
   },
 ): Prisma.InputJsonValue {
   const base = mergeIncomingQueueIntoExternalConfig(current, input.incomingQueue) as Record<
@@ -111,6 +113,12 @@ export function mergeNvoipExternalConfig(
   } else if (input.trunkSipPasswordEnc !== undefined) {
     if (input.trunkSipPasswordEnc == null) delete base.trunkSipPasswordEnc;
     else base.trunkSipPasswordEnc = input.trunkSipPasswordEnc;
+  }
+  if (input.clearCallWebhookSecret) {
+    delete base.callWebhookSecretEnc;
+  } else if (input.callWebhookSecretEnc !== undefined) {
+    if (input.callWebhookSecretEnc == null) delete base.callWebhookSecretEnc;
+    else base.callWebhookSecretEnc = input.callWebhookSecretEnc;
   }
 
   return base as Prisma.InputJsonValue;

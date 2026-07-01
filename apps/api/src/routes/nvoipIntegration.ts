@@ -50,6 +50,7 @@ import {
 } from "../lib/nvoipWhatsapp.js";
 import { buildNvoipOrgInsights } from "../lib/nvoipInsights.js";
 import { buildNvoipPabxTrunkInfo, maskNvoipTrunkPasswordForClient } from "../lib/nvoipPabxTrunkInfo.js";
+import { ensureNvoipCallWebhookSecretForAccount } from "../lib/nvoipWebhookSecret.js";
 import { syncNvoipInboundHistoryForAccount } from "../lib/nvoipInboundSync.js";
 import type { NvoipPabxMode } from "../lib/nvoipPabxConfig.js";
 
@@ -288,6 +289,10 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
               : null,
             tokenExpiresAt: new Date(Date.now() + Math.max(60, expiresIn - 120) * 1000),
           },
+        });
+        await ensureNvoipCallWebhookSecretForAccount({
+          accountId: row.id,
+          externalConfig: row.externalConfig,
         });
         await writeNvoipIntegrationLog({
           organizationId,

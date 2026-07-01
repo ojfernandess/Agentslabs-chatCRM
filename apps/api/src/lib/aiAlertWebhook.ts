@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { prisma } from "../db.js";
 import { decrypt } from "./encryption.js";
 import type { ConversationInsightPayload } from "./agentAssistLlm.js";
+import { assertHttpUrlAllowed } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 
 /**
  * Dispatches a webhook notification when AI detects alerts or negative sentiment in a conversation.
@@ -48,8 +50,8 @@ export async function dispatchAiAlertWebhook(
   }
 
   try {
-    // We use a non-blocking call (void) in the caller, but here we still use a timeout
-    const res = await fetch(settings.aiAlertWebhookUrl, {
+    assertHttpUrlAllowed(settings.aiAlertWebhookUrl);
+    const res = await secureHttpFetch(settings.aiAlertWebhookUrl, {
       method: "POST",
       headers,
       body,

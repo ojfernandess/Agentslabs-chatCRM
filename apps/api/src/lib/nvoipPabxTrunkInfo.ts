@@ -1,5 +1,4 @@
 import type { NvoipAccount } from "@prisma/client";
-import { config } from "../config.js";
 import { decryptNvoipSecret, MASKED_NVOIP_SECRET } from "./nvoipConfig.js";
 import {
   NVOIP_PANEL_URL,
@@ -9,6 +8,10 @@ import {
   type NvoipPabxMode,
 } from "./nvoipPabxConfig.js";
 import { listNvoipWebphoneUsers } from "./nvoipTrunks.js";
+import {
+  buildNvoipCallWebhookUrl,
+  ensureNvoipCallWebhookSecretForAccount,
+} from "./nvoipWebhookSecret.js";
 
 export type NvoipPabxTrunkClientInfo = {
   mode: NvoipPabxMode;
@@ -39,8 +42,11 @@ export type NvoipPabxTrunkClientInfo = {
 
 export async function buildNvoipPabxTrunkInfo(account: NvoipAccount): Promise<NvoipPabxTrunkClientInfo> {
   const pabx = readNvoipPabxConfig(account.externalConfig);
-  const publicUrl = config.publicUrl?.replace(/\/+$/, "") ?? "";
-  const webhookUrl = publicUrl ? `${publicUrl}/webhooks/nvoip/${account.organizationId}` : null;
+  const ensured = await ensureNvoipCallWebhookSecretForAccount({
+    accountId: account.id,
+    externalConfig: account.externalConfig,
+  });
+  const webhookUrl = buildNvoipCallWebhookUrl(account.organizationId, ensured.secret);
   const storedPassword = pabx.trunkSipPasswordEnc
     ? decryptNvoipSecret(pabx.trunkSipPasswordEnc)
     : null;

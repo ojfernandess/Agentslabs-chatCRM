@@ -22,6 +22,8 @@ import {
   pickAbTestVariant,
 } from "./chatbotFlowLogic.js";
 import { runChatbotOpenAiBlock } from "./chatbotOpenAiBlock.js";
+import { assertHttpUrlAllowed } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 import {
   formatInvalidReplyMessage,
   matchChatbotCommand,
@@ -675,7 +677,8 @@ export async function dispatchVisualChatbotFlow(input: {
           const responseVar = String(node.data?.responseVariable ?? "webhook_response");
           if (url) {
             try {
-              const res = await fetch(url, {
+              assertHttpUrlAllowed(url);
+              const res = await secureHttpFetch(url, {
                 method,
                 headers: { "Content-Type": "application/json" },
                 body: method !== "GET" ? JSON.stringify({ variables: vars, contact, conversationId: conversation.id }) : undefined,

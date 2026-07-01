@@ -509,7 +509,7 @@ export function verifyWavoipWebhookSecret(
   headerSecret: string | undefined,
 ): boolean {
   const expected = decryptWavoipSecret(device.webhookSecretEnc);
-  if (!expected) return true;
+  if (!expected) return false;
   if (!headerSecret?.trim()) return false;
   return headerSecret.trim() === expected;
 }

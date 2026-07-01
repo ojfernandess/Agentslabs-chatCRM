@@ -35,6 +35,7 @@ import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWeb
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
 import { handleNvoipCallWebhook } from "../lib/nvoipCallWebhook.js";
+import { verifyNvoipCallWebhookSecret } from "../lib/nvoipWebhookSecret.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -198,23 +199,41 @@ async function handleWhatsAppPost(
   }
 
   const secret = await getWebhookSecretForInbox(organizationId, target.inboxId);
-  if (secret && !options?.skipWebhookSignature) {
+  if (!options?.skipWebhookSignature) {
     const rawBody =
       (request as WebhookRequest).rawBody ??
       (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
+    const providerNeedsSignature =
+      target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog";
+    const embeddedCfg = providerNeedsSignature ? await getWhatsAppEmbeddedConfig() : null;
+    const hasAnySecret = Boolean(secret?.trim() || embeddedCfg?.appSecret?.trim());
 
-    let valid = provider.validateWebhookSignature(
-      request.headers as Record<string, string | undefined>,
-      rawBody,
-      secret,
-    );
+    if (providerNeedsSignature && !hasAnySecret) {
+      app.log.warn(
+        { organizationId, inboxId: target.inboxId, provider: target.whatsappProvider },
+        "Webhook rejected: Meta/360dialog webhook secret not configured",
+      );
+      void recordWhatsappWebhookAttempt(target.inboxId, "rejected", "secret_not_configured").catch((err) =>
+        app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook attempt"),
+      );
+      return reply.status(503).send({ error: "Webhook secret not configured" });
+    }
 
-    if (
-      !valid &&
-      (target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog")
-    ) {
-      const embeddedCfg = await getWhatsAppEmbeddedConfig();
-      if (embeddedCfg?.appSecret) {
+    if (secret || providerNeedsSignature) {
+      let valid = false;
+      if (secret) {
+        valid = provider.validateWebhookSignature(
+          request.headers as Record<string, string | undefined>,
+          rawBody,
+          secret,
+        );
+      }
+
+      if (
+        !valid &&
+        (target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog") &&
+        embeddedCfg?.appSecret
+      ) {
         valid = provider.validateWebhookSignature(
           request.headers as Record<string, string | undefined>,
           rawBody,
@@ -227,23 +246,23 @@ async function handleWhatsAppPost(
           );
         }
       }
-    }
 
-    if (!valid) {
-      app.log.warn(
-        {
-          organizationId,
-          inboxId: target.inboxId,
-          provider: target.whatsappProvider,
-        },
-        target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog"
-          ? "Webhook signature validation failed — use Meta App Secret in whatsappWebhookSecret (not the verify token)"
-          : "Webhook signature validation failed",
-      );
-      void recordWhatsappWebhookAttempt(target.inboxId, "rejected", "invalid_signature").catch((err) =>
-        app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook attempt"),
-      );
-      return reply.status(401).send({ error: "Invalid signature" });
+      if (!valid) {
+        app.log.warn(
+          {
+            organizationId,
+            inboxId: target.inboxId,
+            provider: target.whatsappProvider,
+          },
+          target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog"
+            ? "Webhook signature validation failed — use Meta App Secret in whatsappWebhookSecret (not the verify token)"
+            : "Webhook signature validation failed",
+        );
+        void recordWhatsappWebhookAttempt(target.inboxId, "rejected", "invalid_signature").catch((err) =>
+          app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook attempt"),
+        );
+        return reply.status(401).send({ error: "Invalid signature" });
+      }
     }
   }
 
@@ -922,6 +941,37 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { organizationId: string } }>(
     "/nvoip/:organizationId",
     async (request, reply) => {
+      const account = await prisma.nvoipAccount.findFirst({
+        where: { organizationId: request.params.organizationId, status: "CONNECTED" },
+        select: { externalConfig: true },
+      });
+      if (!account) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "nvoip_account_not_found",
+          statusCode: 404,
+        });
+      }
+
+      const queryToken =
+        typeof request.query === "object" &&
+        request.query !== null &&
+        "token" in request.query
+          ? String((request.query as { token?: string }).token ?? "")
+          : "";
+      const headerSecret =
+        (request.headers["x-nvoip-webhook-secret"] as string | undefined) ??
+        (request.headers["x-openconduit-token"] as string | undefined);
+      const providedSecret = queryToken || headerSecret;
+
+      if (!verifyNvoipCallWebhookSecret(account.externalConfig, providedSecret)) {
+        return reply.status(401).send({
+          error: "Unauthorized",
+          message: "Invalid webhook secret",
+          statusCode: 401,
+        });
+      }
+
       const body =
         request.body && typeof request.body === "object"
           ? (request.body as Record<string, unknown>)

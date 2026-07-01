@@ -19,7 +19,7 @@ import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(1).max(128),
 });
 
 const patchMeSchema = z.object({
@@ -207,7 +207,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.post("/login", async (request, reply) => {
+  app.post(
+    "/login",
+    {
+      config: {
+        rateLimit: {
+          max: 15,
+          timeWindow: "15 minutes",
+          keyGenerator: (request) => `login:${request.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -262,7 +273,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         organizationId: user.organizationId,
       },
     };
-  });
+  },
+  );
 
   app.post("/logout", { preHandler: [authenticate] }, async () => {
     return { message: "Logged out" };

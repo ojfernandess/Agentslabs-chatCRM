@@ -18,6 +18,8 @@ import { generateNativeAgentReply } from "./agentNativeLlm.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
 import { botVisualChatbotFlowId } from "./chatbotFlowTypes.js";
+import { assertHttpUrlAllowed } from "./httpToolTest.js";
+import { secureHttpFetch } from "./secureHttpFetch.js";
 import { dispatchVisualChatbotFlow } from "./chatbotFlowExecutor.js";
 import {
   buildWebhookConversationContext,
@@ -420,9 +422,10 @@ export async function deliverAgentBotTestWebhook(input: {
 
   const t0 = Date.now();
   try {
+    assertHttpUrlAllowed(url);
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 28_000);
-    const res = await fetch(url, {
+    const res = await secureHttpFetch(url, {
       method: "POST",
       headers,
       body: rawBody,
@@ -600,9 +603,10 @@ export async function dispatchAgentBotWebhook(input: {
   }
 
   try {
+    assertHttpUrlAllowed(webhookUrl);
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 28_000);
-    const res = await fetch(webhookUrl, {
+    const res = await secureHttpFetch(webhookUrl, {
       method: "POST",
       headers,
       body: rawBody,
