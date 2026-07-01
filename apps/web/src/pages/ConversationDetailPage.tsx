@@ -83,6 +83,7 @@ import { TemplateSendModal } from "@/components/TemplateSendModal";
 import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
 import { WavoipForceEndCallButton } from "@/components/wavoip/WavoipForceEndCallButton";
+import { NvoipForceEndCallButton } from "@/components/nvoip/NvoipForceEndCallButton";
 import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
@@ -2393,6 +2394,12 @@ export function ConversationDetailPage() {
                       <WavoipConversationOnCallBadge conversationId={conversation.id} />
                       {conversation.activeVoiceCall?.provider === "wavoip" ? (
                         <WavoipForceEndCallButton
+                          conversationId={conversation.id}
+                          activeVoiceCall={conversation.activeVoiceCall}
+                        />
+                      ) : null}
+                      {conversation.activeVoiceCall?.provider === "nvoip" ? (
+                        <NvoipForceEndCallButton
                           conversationId={conversation.id}
                           activeVoiceCall={conversation.activeVoiceCall}
                         />

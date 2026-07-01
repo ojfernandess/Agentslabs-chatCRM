@@ -189,7 +189,11 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
     input.organizationId,
     "nvoip_embedded_sip",
   );
-  if (embeddedSipEnabled && pabxMode !== "external_pabx_trunk") {
+  if (
+    embeddedSipEnabled &&
+    pabxMode !== "external_pabx_trunk" &&
+    pabxMode !== "platform_webphone"
+  ) {
     const embedded = await prisma.userSipCredentials.findUnique({
       where: { userId: input.userId },
       select: { sipUser: true },

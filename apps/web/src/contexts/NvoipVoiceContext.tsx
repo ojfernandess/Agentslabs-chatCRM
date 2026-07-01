@@ -71,6 +71,7 @@ type NvoipVoiceContextValue = {
     conversationId?: string | null;
   }) => Promise<OutboundResult>;
   endActiveCall: () => Promise<void>;
+  forceEndConversationCall: (conversationId: string) => Promise<void>;
 };
 
 const NvoipVoiceContext = createContext<NvoipVoiceContextValue | null>(null);
@@ -452,6 +453,18 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [activeCall, finalizeCall, pollCall, stopPolling]);
 
+  const forceEndConversationCall = useCallback(
+    async (conversationId: string) => {
+      await api.post("/nvoip/calls/force-end-conversation", { conversationId });
+      setActiveCall((prev) => (prev?.conversationId === conversationId ? null : prev));
+      stopPolling();
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId } }),
+      );
+    },
+    [stopPolling],
+  );
+
   const isOnCallForConversation = useCallback(
     (conversationId: string) => {
       if (!activeCall || activeCall.conversationId !== conversationId) return false;
@@ -480,6 +493,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       refreshSession,
       startOutboundCall,
       endActiveCall,
+      forceEndConversationCall,
     }),
     [
       ready,
@@ -500,6 +514,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       refreshSession,
       startOutboundCall,
       endActiveCall,
+      forceEndConversationCall,
     ],
   );
 

@@ -20,6 +20,7 @@ import {
   normalizeNvoipTerminalStatus,
   upsertNvoipTimelineMessage,
 } from "./nvoipCallTimeline.js";
+import { isStaleNvoipActiveCall } from "./activeVoiceCalls.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
 import { fireTelephonyCrmTriggers } from "./crmFlowTelephonyHooks.js";
 import { resolveNvoipCallContext } from "./nvoipCallContext.js";
@@ -508,5 +509,45 @@ export async function completeAgentOutboundCall(input: {
     isTerminal: true,
   });
 
+  return { ok: true };
+}
+
+/** Encerra manualmente chamada Nvoip ainda marcada como activa na conversa. */
+export async function forceEndNvoipConversationCall(input: {
+  organizationId: string;
+  conversationId: string;
+}): Promise<{ ok: true; alreadyEnded?: boolean } | { ok: false; message: string }> {
+  const log = await prisma.nvoipCallLog.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      endedAt: null,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!log) {
+    broadcastConversationUpdated(input.organizationId, input.conversationId);
+    return { ok: true, alreadyEnded: true };
+  }
+
+  if (!isNvoipCallLogActive(log) || isStaleNvoipActiveCall(log)) {
+    await prisma.nvoipCallLog.update({
+      where: { id: log.id },
+      data: { endedAt: new Date(), status: normalizeNvoipTerminalStatus(log.status) },
+    });
+    if (log.conversationId) {
+      broadcastConversationUpdated(input.organizationId, log.conversationId);
+    }
+    return { ok: true, alreadyEnded: true };
+  }
+
+  await completeAgentOutboundCall({
+    organizationId: input.organizationId,
+    clientCallId: log.clientCallId ?? log.externalCallId,
+    externalCallId: log.externalCallId,
+    status: "ENDED",
+    durationSec: log.durationSec,
+  });
   return { ok: true };
 }

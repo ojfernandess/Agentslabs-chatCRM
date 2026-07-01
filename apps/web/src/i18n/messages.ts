@@ -2326,6 +2326,8 @@ export const messages = {
         activeCall: "Chamada Nvoip",
         endCall: "Terminar",
         hangUp: "Desligar",
+        forceEndCall: "Encerrar ligação",
+        forceEndCallHelp: "O contacto pode ter desligado — use para limpar o estado «em ligação».",
         hintCallingOrigin:
           "A tocar no seu ramal — atenda no webphone Nvoip para a ligação seguir ao cliente.",
         hintCallingDestination: "Ramal atendido — a ligar ao cliente…",
@@ -2495,6 +2497,8 @@ export const messages = {
         platformStep2: "Associe cada agente ao ramal em «Ramais por agente».",
         platformStep3: "Abra o webphone Nvoip ao ligar a contactos no CRM (click-to-call).",
         platformStep4: "Chamadas recebidas: sync automático + webhook; screen pop no CRM.",
+        platformEmbeddedNote:
+          "No modo Plataforma o áudio fica no webphone Nvoip (não no browser). Desactive a flag «softphone SIP no CRM» no Super Admin se vir erros WebSocket (WSS).",
         externalStep1: "No PABX (FreePBX/Asterisk): crie trunk SIP com usuário, senha e servidor abaixo.",
         externalStep2: "Registe o trunk em app.nvoip.com.br (porta 5060 UDP, conforme manual Nvoip).",
         externalStep3: "Encaminhe DIDs no painel Nvoip para o PABX ou ramais internos.",
@@ -6965,6 +6969,8 @@ export const messages = {
         activeCall: "Nvoip call",
         endCall: "End call",
         hangUp: "Hang up",
+        forceEndCall: "End call",
+        forceEndCallHelp: "The contact may have hung up — use this to clear the in-call state.",
         hintCallingOrigin:
           "Ringing your extension — answer on the Nvoip webphone for the call to proceed to the customer.",
         hintCallingDestination: "Extension answered — calling the customer…",
@@ -7134,6 +7140,8 @@ export const messages = {
         platformStep2: "Map each agent to an extension in «Per-agent extensions».",
         platformStep3: "Open Nvoip webphone when placing CRM calls (click-to-call).",
         platformStep4: "Inbound: automatic sync + webhook; screen pop in CRM.",
+        platformEmbeddedNote:
+          "In Platform mode audio stays on the Nvoip webphone (not in the browser). Disable the «embedded SIP softphone» Super Admin flag if you see WebSocket (WSS) errors.",
         externalStep1: "On PABX (FreePBX/Asterisk): create SIP trunk with user, password and server below.",
         externalStep2: "Register trunk to app.nvoip.com.br (port 5060 UDP, per Nvoip manual).",
         externalStep3: "Route DIDs in Nvoip panel to PABX or internal extensions.",

@@ -343,6 +343,11 @@ export function NvoipPabxTrunkPanel({ linked, accountNumbersip, onError, onConfi
           <li key={i}>{step}</li>
         ))}
       </ol>
+      {mode === "platform_webphone" ? (
+        <p className="mt-3 rounded-lg border border-sky-200/80 bg-sky-50/80 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+          {t("nvoip.pabxTrunk.platformEmbeddedNote")}
+        </p>
+      ) : null}
 
       {trunk && trunk.webphoneExtensions.length > 0 ? (
         <p className="mt-3 text-xs text-violet-800 dark:text-violet-200">

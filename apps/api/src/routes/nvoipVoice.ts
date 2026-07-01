@@ -9,6 +9,7 @@ import { parseNvoipPabxMode } from "../lib/nvoipPabxConfig.js";
 import {
   claimNvoipCallAgent,
   completeAgentOutboundCall,
+  forceEndNvoipConversationCall,
   startAgentOutboundCall,
   syncNvoipCallFromApi,
 } from "../lib/nvoipAgentCall.js";
@@ -77,6 +78,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const voiceMode =
       embeddedSipEnabled &&
       pabxMode !== "external_pabx_trunk" &&
+      pabxMode !== "platform_webphone" &&
       userSipCreds &&
       resolution?.source === "embedded_sip"
         ? ("embedded_sip" as const)
@@ -309,6 +311,26 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return { ok: true, hungUp: endResult.verified, ...sync };
+  });
+
+  app.post("/calls/force-end-conversation", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const schema = z.object({ conversationId: z.string().uuid() });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const result = await forceEndNvoipConversationCall({
+      organizationId,
+      conversationId: parsed.data.conversationId,
+    });
+    if (!result.ok) {
+      return reply.status(404).send({ error: "Not Found", message: result.message, statusCode: 404 });
+    }
+    return { ok: true };
   });
 
   app.get("/calls/resolve-context", async (request, reply) => {
