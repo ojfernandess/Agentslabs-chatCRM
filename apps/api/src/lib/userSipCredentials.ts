@@ -3,9 +3,11 @@ import { encrypt, decrypt } from "./encryption.js";
 import { formatNvoipCaller, findNvoipSipUserForCaller } from "./nvoipCallFormat.js";
 import { nvoipUpdateSipUser } from "./nvoipClient.js";
 import { syncNvoipSipUsers } from "./nvoipDirectorySync.js";
+import { parseNvoipPabxMode } from "./nvoipPabxConfig.js";
 import {
   nvoipEmbeddedSipDomain,
   nvoipEmbeddedSipWssUrl,
+  nvoipEmbeddedSipWssAlternates,
   type NvoipEmbeddedSipClientConfig,
 } from "./nvoipEmbeddedSipConfig.js";
 
@@ -29,6 +31,7 @@ export async function getUserSipCredentialsForClient(
     displayName: row.displayName?.trim() || null,
     sipDomain: nvoipEmbeddedSipDomain(),
     wssUrl: nvoipEmbeddedSipWssUrl(),
+    wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
   };
 }
 
@@ -42,6 +45,15 @@ async function disableNvoipPanelWebphoneForEmbeddedSip(
     where: { organizationId, status: "CONNECTED" },
   });
   if (!account) return;
+
+  const pabxMode = parseNvoipPabxMode(
+    account.externalConfig != null &&
+      typeof account.externalConfig === "object" &&
+      !Array.isArray(account.externalConfig)
+      ? (account.externalConfig as Record<string, unknown>).pabxMode
+      : undefined,
+  );
+  if (pabxMode === "external_pabx_trunk") return;
 
   const sipUsers = await prisma.nvoipSipUser.findMany({
     where: { nvoipAccountId: account.id, blocked: false },

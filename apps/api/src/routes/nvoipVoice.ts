@@ -5,6 +5,7 @@ import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { listNvoipTrunks, listNvoipWebphoneUsers, resolveNvoipOutboundCallerDetailed } from "../lib/nvoipTrunks.js";
+import { parseNvoipPabxMode } from "../lib/nvoipPabxConfig.js";
 import {
   claimNvoipCallAgent,
   completeAgentOutboundCall,
@@ -43,6 +44,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
         defaultCaller: true,
         lastBalance: true,
         numbersip: true,
+        externalConfig: true,
       },
     });
     if (!account || account.status !== "CONNECTED") {
@@ -65,8 +67,18 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const userSipCreds = embeddedSipEnabled
       ? await getUserSipCredentialsForClient(request.user.id)
       : null;
+    const pabxMode = parseNvoipPabxMode(
+      account.externalConfig != null &&
+        typeof account.externalConfig === "object" &&
+        !Array.isArray(account.externalConfig)
+        ? (account.externalConfig as Record<string, unknown>).pabxMode
+        : undefined,
+    );
     const voiceMode =
-      embeddedSipEnabled && userSipCreds && resolution?.source === "embedded_sip"
+      embeddedSipEnabled &&
+      pabxMode !== "external_pabx_trunk" &&
+      userSipCreds &&
+      resolution?.source === "embedded_sip"
         ? ("embedded_sip" as const)
         : ("click_to_call" as const);
 

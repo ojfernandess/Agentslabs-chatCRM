@@ -363,6 +363,10 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "sip_not_registered" };
       }
 
+      if (voiceMode === "embedded_sip") {
+        window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-prepare-media"));
+      }
+
       const clientCallId = crypto.randomUUID();
       try {
         const res = await api.post<{

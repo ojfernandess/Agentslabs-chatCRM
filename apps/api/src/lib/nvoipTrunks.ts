@@ -189,7 +189,7 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
     input.organizationId,
     "nvoip_embedded_sip",
   );
-  if (embeddedSipEnabled) {
+  if (embeddedSipEnabled && pabxMode !== "external_pabx_trunk") {
     const embedded = await prisma.userSipCredentials.findUnique({
       where: { userId: input.userId },
       select: { sipUser: true },
@@ -212,6 +212,14 @@ export async function resolveNvoipOutboundCallerDetailed(input: {
         hasWebphone: true,
         warning: null,
       };
+    }
+  }
+
+  /** PABX externo (MicroSIP/Asterisk): caller deve ser o NumberSIP trunk registado no softphone. */
+  if (pabxMode === "external_pabx_trunk" && accountNumbersip) {
+    const fromTrunk = pick(accountNumbersip);
+    if (fromTrunk) {
+      return buildResolution(fromTrunk, "account_default", sipUsers, accountNumbersip, null);
     }
   }
 

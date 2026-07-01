@@ -131,10 +131,14 @@ export async function resolveNvoipOutboundCallRemote(input: {
   if (historyPayload?.state) {
     const histRank = liveStateRank(historyPayload.state);
     const histTerminal = isNvoipTerminalState(historyPayload.state);
+    const storedRank = crmStatusRank(input.currentCrmStatus);
+    const acceptTerminalHistory =
+      histTerminal &&
+      (callAgeMs >= 20_000 || storedRank >= liveStateRank("established") || bestRank >= liveStateRank("established"));
     if (
       histRank > bestRank ||
-      (histTerminal && bestRank < 100) ||
-      (histRank === bestRank && histTerminal)
+      (acceptTerminalHistory && bestRank < 100) ||
+      (histRank === bestRank && histTerminal && acceptTerminalHistory)
     ) {
       best = historyPayload;
       bestRank = histRank;
