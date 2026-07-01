@@ -8,9 +8,6 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
-import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
-import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
-import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
@@ -42,6 +39,13 @@ import {
   pickLatestClosureRecord,
   shouldCarryForwardClosureValue,
 } from "../lib/closureValueRollup.js";
+import {
+  applyContactStageForLeadType,
+  loadLeadTypePlaybook,
+  maybeCreateDealOnConversationClosure,
+  maybeCreateReminderOnConversationClosure,
+} from "../lib/conversationClosureCommerce.js";
+import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
   analyzeConversationForInsights,
@@ -89,6 +93,15 @@ const updateSchema = z.object({
   closureReason: z.union([z.string().max(4000), z.null()]).optional(),
   leadTypeId: z.union([z.string().uuid(), z.null()]).optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
+  resolveReminder: z
+    .object({
+      note: z.string().min(1).max(2000),
+      dueAt: z
+        .string()
+        .min(1)
+        .refine((s) => !Number.isNaN(new Date(s).getTime()), { message: "Invalid dueAt" }),
+    })
+    .optional(),
   awaitingHumanHandoff: z.literal(false).optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).nullable().optional(),
 });
@@ -1482,7 +1495,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const prevAssignedToId = existing.assignedToId;
 
     try {
-      const { conversation, timelineDeal } = await prisma.$transaction(async (tx) => {
+      const { conversation, timelineDeal, timelineReminder, closureRecordId } =
+        await prisma.$transaction(async (tx) => {
         const conv = await tx.conversation.update({
           where: { id: request.params.id },
           data,
@@ -1513,6 +1527,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         });
 
         let dealMeta: { id: string; name: string; primaryContactId: string | null } | null = null;
+        let reminderMeta: { id: string; dueAt: Date } | null = null;
+        let createdClosureRecordId: string | null = null;
 
         if (parsed.data.status === "OPEN" && existing.status === "RESOLVED") {
           await markConversationClosureReopened(tx, {
@@ -1524,52 +1540,22 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
           const ltid = data.leadTypeId;
           let stageForDeal: { id: string; probabilityPct: number } | null = null;
+          let ltPlaybook: Awaited<ReturnType<typeof loadLeadTypePlaybook>> = null;
+
           if (ltid) {
-            const stage = await ensurePipelineStageForLeadType(tx, organizationId, ltid);
-            stageForDeal = { id: stage.id, probabilityPct: stage.probabilityPct };
-            await tx.contact.update({
-              where: { id: existing.contactId },
-              data: { pipelineStageId: stage.id },
-            });
-            await syncDealsForContactPipelineStage(tx, organizationId, existing.contactId, stage.id);
-          }
-          const val = data.closureValue;
-          if (val != null && val > 0 && ltid && stageForDeal) {
-            const pipeline = await getOrCreateDefaultPipeline(tx, organizationId);
-            const contactRow = await tx.contact.findFirst({
-              where: { id: existing.contactId, organizationId },
-              select: { name: true },
-            });
-            const ltRow = await tx.leadType.findFirst({
-              where: { id: ltid, organizationId },
-              select: { valueRollup: true },
-            });
-            const dealStatus = dealStatusFromLeadValueRollup(ltRow?.valueRollup);
-            const deal = await tx.deal.create({
-              data: {
-                organizationId,
-                name: `Negócio — ${contactRow?.name ?? "Contacto"}`,
-                pipelineId: pipeline.id,
-                stageId: stageForDeal.id,
-                primaryContactId: existing.contactId,
-                ownerId: request.user.id,
-                amountCents: Math.round(val * 100),
-                currency: "BRL",
-                status: dealStatus,
-                probabilityPct: stageForDeal.probabilityPct,
-              },
-            });
-            dealMeta = {
-              id: deal.id,
-              name: deal.name,
-              primaryContactId: deal.primaryContactId,
-            };
+            ltPlaybook = await loadLeadTypePlaybook(tx, ltid, organizationId);
+            stageForDeal = await applyContactStageForLeadType(
+              tx,
+              organizationId,
+              existing.contactId,
+              ltid,
+            );
           }
 
           if (existing.status === "OPEN" || existing.status === "PENDING") {
             const effectiveAssignee =
               data.assignedToId !== undefined ? data.assignedToId : conv.assignedToId;
-            await createConversationClosureRecord(tx, {
+            const closureRow = await createConversationClosureRecord(tx, {
               organizationId,
               conversationId: existing.id,
               resolvedById: request.user.id,
@@ -1579,10 +1565,43 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               closureReason: data.closureReason ?? null,
               closureValue: data.closureValue ?? null,
             });
+            createdClosureRecordId = closureRow.id;
+
+            if (ltid && stageForDeal && ltPlaybook && createdClosureRecordId) {
+              dealMeta = await maybeCreateDealOnConversationClosure(tx, {
+                organizationId,
+                conversationId: existing.id,
+                closureRecordId: createdClosureRecordId,
+                contactId: existing.contactId,
+                ownerUserId: request.user.id,
+                leadTypeId: ltid,
+                closureValue: data.closureValue,
+                stage: stageForDeal,
+                valueRollup: ltPlaybook.valueRollup,
+                playbook: ltPlaybook.playbook,
+              });
+            }
+
+            if (parsed.data.resolveReminder && createdClosureRecordId) {
+              reminderMeta = await maybeCreateReminderOnConversationClosure(tx, {
+                organizationId,
+                conversationId: existing.id,
+                closureRecordId: createdClosureRecordId,
+                contactId: existing.contactId,
+                userId: request.user.id,
+                note: parsed.data.resolveReminder.note,
+                dueAt: new Date(parsed.data.resolveReminder.dueAt),
+              });
+            }
           }
         }
 
-        return { conversation: conv, timelineDeal: dealMeta };
+        return {
+          conversation: conv,
+          timelineDeal: dealMeta,
+          timelineReminder: reminderMeta,
+          closureRecordId: createdClosureRecordId,
+        };
       });
 
       if (
@@ -1622,6 +1641,74 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             payload: { dealId: timelineDeal.id, name: timelineDeal.name },
             actorUserId: request.user.id,
           });
+        }
+        fireCrmFlowTriggers(
+          organizationId,
+          "deal_created",
+          {
+            dealId: timelineDeal.id,
+            contactId: timelineDeal.primaryContactId,
+            conversationId: conversation.id,
+          },
+          app.log,
+        );
+      }
+
+      if (
+        nextStatus === "RESOLVED" &&
+        existing.status !== "RESOLVED" &&
+        (existing.status === "OPEN" || existing.status === "PENDING")
+      ) {
+        await appendTimelineEvent({
+          organizationId,
+          subjectType: "CONTACT",
+          subjectId: existing.contactId,
+          eventType: "conversation.resolved",
+          channel: "conversation",
+          payload: {
+            conversationId: conversation.id,
+            leadTypeId: conversation.leadTypeId,
+            leadTypeName: conversation.leadType?.name ?? null,
+            closureReason: conversation.closureReason,
+            closureValue: conversation.closureValue,
+            closureRecordId,
+            dealId: timelineDeal?.id ?? null,
+            reminderId: timelineReminder?.id ?? null,
+          } as Prisma.InputJsonValue,
+          actorUserId: request.user.id,
+          sourceId: conversation.id,
+        });
+
+        fireCrmFlowTriggers(
+          organizationId,
+          "conversation_closed",
+          {
+            conversationId: conversation.id,
+            contactId: existing.contactId,
+            inboxId: conversation.inboxId,
+            leadTypeId: conversation.leadTypeId,
+            closureReason: conversation.closureReason,
+            closureValue: conversation.closureValue,
+            assignedToId: conversation.assignedToId,
+            dealId: timelineDeal?.id ?? null,
+            reminderId: timelineReminder?.id ?? null,
+          },
+          app.log,
+        );
+
+        if (timelineReminder) {
+          fireCrmFlowTriggers(
+            organizationId,
+            "event_created",
+            {
+              reminderId: timelineReminder.id,
+              contactId: existing.contactId,
+              userId: request.user.id,
+              conversationId: conversation.id,
+              dueAt: timelineReminder.dueAt.toISOString(),
+            },
+            app.log,
+          );
         }
       }
 

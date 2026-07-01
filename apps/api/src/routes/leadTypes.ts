@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { LeadValueRollup } from "@prisma/client";
+import { LeadValueRollup, Prisma } from "@prisma/client";
+import { parseLeadTypeClosurePlaybook } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { authenticateSessionOrUserApiTokenForApplicationApis, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -10,11 +11,22 @@ import {
 } from "../lib/pipelineLeadTypeSync.js";
 import { getOrCreateDefaultPipeline } from "../lib/defaultPipeline.js";
 
+const closurePlaybookSchema = z
+  .object({
+    suggestReminder: z.boolean().optional(),
+    reminderDueDays: z.number().int().min(0).max(365).optional(),
+    reminderNoteTemplate: z.string().max(500).optional(),
+    createDealWithoutValue: z.boolean().optional(),
+  })
+  .optional()
+  .nullable();
+
 const bodySchema = z.object({
   name: z.string().min(1).max(120),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   order: z.number().int().min(0).optional(),
   valueRollup: z.nativeEnum(LeadValueRollup).optional(),
+  closurePlaybook: closurePlaybookSchema,
 });
 
 async function enforceSingleWonType(organizationId: string, keepId: string): Promise<void> {
@@ -48,6 +60,12 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
     });
     const order = parsed.data.order ?? (maxOrder._max.order ?? -1) + 1;
     const valueRollup = parsed.data.valueRollup ?? "PIPELINE";
+    const closurePlaybook =
+      parsed.data.closurePlaybook === null
+        ? Prisma.JsonNull
+        : parsed.data.closurePlaybook
+          ? (parseLeadTypeClosurePlaybook(parsed.data.closurePlaybook) as Prisma.InputJsonValue)
+          : undefined;
     const row = await prisma.leadType.create({
       data: {
         organizationId,
@@ -55,6 +73,7 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
         color: parsed.data.color,
         order,
         valueRollup,
+        ...(closurePlaybook !== undefined ? { closurePlaybook } : {}),
       },
     });
     if (valueRollup === "WON") {
@@ -80,6 +99,12 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
     }
     const order = parsed.data.order ?? existing.order;
     const valueRollup = parsed.data.valueRollup ?? existing.valueRollup;
+    const closurePlaybookPatch =
+      parsed.data.closurePlaybook === undefined
+        ? undefined
+        : parsed.data.closurePlaybook === null
+          ? Prisma.JsonNull
+          : (parseLeadTypeClosurePlaybook(parsed.data.closurePlaybook) as Prisma.InputJsonValue);
     const row = await prisma.leadType.update({
       where: { id: request.params.id },
       data: {
@@ -87,6 +112,7 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
         color: parsed.data.color,
         order,
         valueRollup,
+        ...(closurePlaybookPatch !== undefined ? { closurePlaybook: closurePlaybookPatch } : {}),
       },
     });
     if (valueRollup === "WON") {

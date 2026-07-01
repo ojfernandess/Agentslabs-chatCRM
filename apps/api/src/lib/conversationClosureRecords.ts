@@ -43,7 +43,7 @@ function computeIsNewAttendance(
 export async function createConversationClosureRecord(
   tx: Tx,
   input: CreateClosureRecordInput,
-): Promise<void> {
+): Promise<{ id: string; sessionIndex: number }> {
   const sessionIndex = await nextSessionIndex(tx, input.conversationId);
   const last = await tx.conversationClosureRecord.findFirst({
     where: { conversationId: input.conversationId },
@@ -53,7 +53,7 @@ export async function createConversationClosureRecord(
 
   const isNewAttendance = computeIsNewAttendance(sessionIndex, input.resolvedById, last ?? null);
 
-  await tx.conversationClosureRecord.create({
+  const row = await tx.conversationClosureRecord.create({
     data: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
@@ -67,7 +67,9 @@ export async function createConversationClosureRecord(
       closureValue: input.closureValue ?? null,
       isNewAttendance,
     },
+    select: { id: true, sessionIndex: true },
   });
+  return row;
 }
 
 export async function markConversationClosureReopened(

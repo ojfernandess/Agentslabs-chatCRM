@@ -38,6 +38,7 @@ import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPan
 import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { resolveLeadTypeClosurePlaybook, type LeadValueRollupKind } from "@openconduit/shared";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
@@ -169,6 +170,7 @@ interface LeadTypeRow {
   color: string;
   order: number;
   valueRollup: "PIPELINE" | "WON" | "LOST" | "NONE";
+  closurePlaybook?: unknown;
 }
 
 const LEAD_ROLLUP_LABEL_KEY: Record<LeadTypeRow["valueRollup"], string> = {
@@ -281,6 +283,10 @@ export function SettingsPage() {
   const [editLtName, setEditLtName] = useState("");
   const [editLtColor, setEditLtColor] = useState("#6366f1");
   const [editLtRollup, setEditLtRollup] = useState<LeadTypeRow["valueRollup"]>("PIPELINE");
+  const [editPbSuggestReminder, setEditPbSuggestReminder] = useState(true);
+  const [editPbDueDays, setEditPbDueDays] = useState(1);
+  const [editPbNoteTemplate, setEditPbNoteTemplate] = useState("");
+  const [editPbCreateDealWithoutValue, setEditPbCreateDealWithoutValue] = useState(false);
   const [editLtSubmitting, setEditLtSubmitting] = useState(false);
   const [pipelineOrphans, setPipelineOrphans] = useState<CrmPipelineStageRow[]>([]);
   const [orphanBusyId, setOrphanBusyId] = useState<string | null>(null);
@@ -745,6 +751,14 @@ export function SettingsPage() {
     setEditLtName(lt.name);
     setEditLtColor(lt.color);
     setEditLtRollup(lt.valueRollup ?? "PIPELINE");
+    const pb = resolveLeadTypeClosurePlaybook(
+      lt.closurePlaybook,
+      (lt.valueRollup ?? "PIPELINE") as LeadValueRollupKind,
+    );
+    setEditPbSuggestReminder(pb.suggestReminder !== false);
+    setEditPbDueDays(pb.reminderDueDays ?? 1);
+    setEditPbNoteTemplate(pb.reminderNoteTemplate ?? "");
+    setEditPbCreateDealWithoutValue(pb.createDealWithoutValue === true);
     setLtError("");
   };
 
@@ -765,6 +779,12 @@ export function SettingsPage() {
         color: editLtColor,
         order: row.order,
         valueRollup: editLtRollup,
+        closurePlaybook: {
+          suggestReminder: editPbSuggestReminder,
+          reminderDueDays: editPbDueDays,
+          reminderNoteTemplate: editPbNoteTemplate.trim() || undefined,
+          createDealWithoutValue: editPbCreateDealWithoutValue,
+        },
       });
       setEditingLtId(null);
       await refreshLeadTypesAndPipelineOrphans();
@@ -2836,6 +2856,65 @@ export function SettingsPage() {
                                   <option value="NONE">{t("settings.leadTypeRollupNone")}</option>
                                 </select>
                                 <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.leadTypeRollupWonHint")}</p>
+                              </div>
+                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
+                                <p className="text-xs font-semibold text-ink-800 dark:text-ink-100">
+                                  {t("settings.leadTypePlaybookTitle")}
+                                </p>
+                                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                                  {t("settings.leadTypePlaybookHint")}
+                                </p>
+                                <label className="mt-3 flex cursor-pointer items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={editPbSuggestReminder}
+                                    onChange={(e) => setEditPbSuggestReminder(e.target.checked)}
+                                    className="h-4 w-4 rounded border-ink-300 text-brand-500"
+                                  />
+                                  <span className="text-xs text-ink-700 dark:text-ink-200">
+                                    {t("settings.leadTypePlaybookSuggestReminder")}
+                                  </span>
+                                </label>
+                                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
+                                      {t("settings.leadTypePlaybookDueDays")}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={365}
+                                      value={editPbDueDays}
+                                      onChange={(e) =>
+                                        setEditPbDueDays(Math.max(0, Number(e.target.value) || 0))
+                                      }
+                                      className="mt-1 w-full input-field"
+                                    />
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
+                                      {t("settings.leadTypePlaybookNoteTemplate")}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={editPbNoteTemplate}
+                                      onChange={(e) => setEditPbNoteTemplate(e.target.value)}
+                                      className="mt-1 w-full input-field"
+                                      placeholder="Follow-up — {{closureReason}}"
+                                    />
+                                  </div>
+                                </div>
+                                <label className="mt-3 flex cursor-pointer items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={editPbCreateDealWithoutValue}
+                                    onChange={(e) => setEditPbCreateDealWithoutValue(e.target.checked)}
+                                    className="h-4 w-4 rounded border-ink-300 text-brand-500"
+                                  />
+                                  <span className="text-xs text-ink-700 dark:text-ink-200">
+                                    {t("settings.leadTypePlaybookCreateDealWithoutValue")}
+                                  </span>
+                                </label>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <button

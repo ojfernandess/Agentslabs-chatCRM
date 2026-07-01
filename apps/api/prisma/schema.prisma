@@ -777,11 +777,15 @@ model Deal {
   ownerId String? @map("owner_id") @db.Uuid
   owner   User?   @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
+  sourceConversationId  String? @map("source_conversation_id") @db.Uuid
+  sourceClosureRecordId String? @map("source_closure_record_id") @db.Uuid
+
   lineItems DealLineItem[]
 
   @@index([organizationId])
   @@index([pipelineId])
   @@index([stageId])
+  @@index([sourceConversationId])
   @@map("deals")
 }
 
@@ -830,6 +834,8 @@ model LeadType {
   order          Int             @default(0) @map("sort_order")
   /// Soma em auditoria / Meu atendimento e estado do negócio quando a etapa do funil corresponde a este tipo.
   valueRollup    LeadValueRollup @default(PIPELINE) @map("value_roll_up")
+  /// Próximo passo sugerido ao finalizar conversa com este tipo (JSON).
+  closurePlaybook Json?          @map("closure_playbook")
   organizationId String          @map("organization_id") @db.Uuid
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -894,6 +900,7 @@ model Conversation {
   wavoipCallLogs         WavoipCallLog[]
   threeCxCallLogs        ThreeCxCallLog[]
   nvoipCallLogs          NvoipCallLog[]
+  reminders              Reminder[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -934,6 +941,7 @@ model ConversationClosureRecord {
   assignedTo   User?        @relation("ClosureRecordAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
   leadType     LeadType?    @relation(fields: [leadTypeId], references: [id], onDelete: SetNull)
+  reminders    Reminder[]
 
   @@unique([conversationId, sessionIndex])
   @@index([organizationId, resolvedAt])
@@ -993,9 +1001,16 @@ model Reminder {
   userId String @map("user_id") @db.Uuid
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  conversationId String? @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  closureRecordId String? @map("closure_record_id") @db.Uuid
+  closureRecord   ConversationClosureRecord? @relation(fields: [closureRecordId], references: [id], onDelete: SetNull)
+
   @@index([organizationId])
   @@index([userId])
   @@index([dueAt])
+  @@index([conversationId])
   @@map("reminders")
 }
 

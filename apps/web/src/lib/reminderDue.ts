@@ -8,6 +8,16 @@ export function tomorrowLocalYmd(): string {
   return `${yy}-${mm}-${dd}`;
 }
 
+/** ISO → partes locais para inputs date/time. */
+export function isoToLocalDateParts(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
 /** Data (YYYY-MM-DD) + hora do input time → ISO UTC. */
 export function localDueToIso(dueDate: string, dueTime: string): string {
   const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate.trim());

@@ -71,7 +71,14 @@ import {
 import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAuth } from "@/hooks/useAuth";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
-import { localDueToIso, tomorrowLocalYmd } from "@/lib/reminderDue";
+import { localDueToIso, tomorrowLocalYmd, isoToLocalDateParts } from "@/lib/reminderDue";
+import {
+  formatClosurePlaybookReminderNote,
+  resolveLeadTypeClosurePlaybook,
+  suggestReminderDueDateIso,
+  shouldCreateDealOnConversationClosure,
+  type LeadValueRollupKind,
+} from "@openconduit/shared";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
@@ -131,7 +138,8 @@ interface LeadTypeRow {
   id: string;
   name: string;
   color: string;
-  valueRollup?: string;
+  valueRollup?: LeadValueRollupKind;
+  closurePlaybook?: unknown;
 }
 
 type CopilotInsights = {
@@ -378,6 +386,51 @@ export function ConversationDetailPage() {
       setClosureReason("");
     }
   }, [resolveOpen, conversation]);
+
+  const selectedLeadType = useMemo(
+    () => leadTypes.find((lt) => lt.id === leadTypeId) ?? null,
+    [leadTypes, leadTypeId],
+  );
+
+  const activePlaybook = useMemo(() => {
+    if (!selectedLeadType) return null;
+    const rollup = (selectedLeadType.valueRollup ?? "PIPELINE") as LeadValueRollupKind;
+    return resolveLeadTypeClosurePlaybook(selectedLeadType.closurePlaybook, rollup);
+  }, [selectedLeadType]);
+
+  const willCreateDealOnResolve = useMemo(() => {
+    if (!activePlaybook || !selectedLeadType) return false;
+    const rawAmount = closureAmount.trim();
+    let closureValue: number | null = null;
+    if (rawAmount !== "") {
+      const n = parseFloat(rawAmount.replace(",", "."));
+      if (Number.isFinite(n) && n >= 0) closureValue = n;
+    }
+    return shouldCreateDealOnConversationClosure({
+      closureValue,
+      valueRollup: (selectedLeadType.valueRollup ?? "PIPELINE") as LeadValueRollupKind,
+      playbook: activePlaybook,
+    });
+  }, [activePlaybook, selectedLeadType, closureAmount]);
+
+  useEffect(() => {
+    if (!resolveOpen || !leadTypeId || !activePlaybook) return;
+    if (showRemindersFeature && resolveOfferReminder) {
+      setCreateReminderOnResolve(activePlaybook.suggestReminder !== false);
+    }
+    const dueIso = suggestReminderDueDateIso(activePlaybook.reminderDueDays);
+    const parts = isoToLocalDateParts(dueIso);
+    setReminderDueDate(parts.date);
+    setReminderDueTime(parts.time);
+    setReminderNote((prev) => {
+      if (prev.trim()) return prev;
+      return formatClosurePlaybookReminderNote(
+        activePlaybook.reminderNoteTemplate,
+        closureReason,
+      );
+    });
+  }, [leadTypeId, resolveOpen, activePlaybook, showRemindersFeature, resolveOfferReminder]);
+
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
@@ -1111,6 +1164,7 @@ export function ConversationDetailPage() {
       leadTypeId?: string | null;
       closureValue?: number | null;
       assignedToId?: string | null;
+      resolveReminder?: { note: string; dueAt: string };
     },
   ) => {
     if (!conversation || !id) return;
@@ -1131,6 +1185,9 @@ export function ConversationDetailPage() {
       if (extra && "assignedToId" in extra) {
         body.assignedToId = extra.assignedToId;
       }
+      if (extra?.resolveReminder) {
+        body.resolveReminder = extra.resolveReminder;
+      }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
       setConversation(data);
       setResolveOpen(false);
@@ -1141,6 +1198,9 @@ export function ConversationDetailPage() {
       setReminderNote("");
       setReminderDueDate("");
       setReminderDueTime("09:00");
+      if (extra?.resolveReminder) {
+        dispatchRemindersUpdated();
+      }
       if (status === "RESOLVED" && resolveNextIdRef.current) {
         const nextId = resolveNextIdRef.current;
         resolveNextIdRef.current = null;
@@ -1428,32 +1488,22 @@ export function ConversationDetailPage() {
       extra.leadTypeId = leadTypeId || null;
     }
 
-    let reminderPayload: { contactId: string; note: string; dueDate: string; dueTime: string } | null =
-      null;
+    let reminderPayload: { note: string; dueAt: string } | undefined;
     if (wantReminder && conversation) {
+      if (!reminderNote.trim() || !reminderDueDate) {
+        setResolveError(t("conversationDetail.resolveReminderFieldsRequired"));
+        return;
+      }
       reminderPayload = {
-        contactId: conversation.contact.id,
         note: reminderNote.trim(),
-        dueDate: reminderDueDate,
-        dueTime: reminderDueTime,
+        dueAt: localDueToIso(reminderDueDate, reminderDueTime),
       };
     }
 
-    await applyStatus("RESOLVED", extra);
-
-    if (reminderPayload) {
-      try {
-        const dueAt = localDueToIso(reminderPayload.dueDate, reminderPayload.dueTime);
-        await api.post("/reminders", {
-          contactId: reminderPayload.contactId,
-          note: reminderPayload.note,
-          dueAt,
-        });
-        dispatchRemindersUpdated();
-      } catch {
-        setFlowError(t("conversationDetail.resolveReminderCreateFailed"));
-      }
-    }
+    await applyStatus("RESOLVED", {
+      ...extra,
+      ...(reminderPayload ? { resolveReminder: reminderPayload } : {}),
+    });
   };
 
   const statusLabel = (s: string) => {
@@ -3536,6 +3586,21 @@ export function ConversationDetailPage() {
                       </option>
                     ))}
                   </select>
+                  {activePlaybook && selectedLeadType ? (
+                    <div className="mt-2 rounded-lg border border-brand-200/60 bg-brand-50/50 px-3 py-2 text-xs text-brand-950 dark:border-brand-900/40 dark:bg-brand-950/20 dark:text-brand-100">
+                      <p className="font-semibold">{t("conversationDetail.playbookNextStepTitle")}</p>
+                      {willCreateDealOnResolve ? (
+                        <p className="mt-1">{t("conversationDetail.playbookDealHint")}</p>
+                      ) : (
+                        <p className="mt-1">{t("conversationDetail.playbookNoDealHint")}</p>
+                      )}
+                      {showRemindersFeature &&
+                      resolveOfferReminder &&
+                      activePlaybook.suggestReminder !== false ? (
+                        <p className="mt-1">{t("conversationDetail.playbookReminderHint")}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
@@ -3565,6 +3630,11 @@ export function ConversationDetailPage() {
                     className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                   />
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.closureValueHint")}</p>
+                  {willCreateDealOnResolve ? (
+                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                      {t("conversationDetail.closureValueDealAuto")}
+                    </p>
+                  ) : null}
                 </div>
                 {showRemindersFeature && resolveOfferReminder ? (
                   <div className="rounded-xl border border-ink-200 bg-ink-50/80 p-4 dark:border-ink-700 dark:bg-ink-800/40">
