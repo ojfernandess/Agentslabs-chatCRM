@@ -16,6 +16,7 @@ import clsx from "clsx";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
+import { resolveUserAvatarUrl } from "@/lib/userAvatar";
 import { AnimatePresence, motion } from "@/components/Motion";
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
 
@@ -169,6 +170,8 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
         ? "bg-amber-400"
         : "bg-ink-400";
 
+  const avatarSrc = resolveUserAvatarUrl(user.avatarUrl);
+
   return (
     <div ref={rootRef} className={clsx("relative min-w-0", className)}>
       <button
@@ -183,15 +186,23 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
         )}
       >
         <span className="relative shrink-0">
-          <span
-            className={clsx(
-              "flex items-center justify-center rounded-full text-xs font-semibold text-white",
-              compact ? "h-9 w-9" : "h-9 w-9",
-              "bg-brand-500",
-            )}
-          >
-            {initialsFromName(user.name ?? user.email ?? "")}
-          </span>
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt=""
+              className={clsx("rounded-full object-cover ring-1 ring-ink-200/80 dark:ring-ink-700", compact ? "h-9 w-9" : "h-9 w-9")}
+            />
+          ) : (
+            <span
+              className={clsx(
+                "flex items-center justify-center rounded-full text-xs font-semibold text-white",
+                compact ? "h-9 w-9" : "h-9 w-9",
+                "bg-brand-500",
+              )}
+            >
+              {initialsFromName(user.name ?? user.email ?? "")}
+            </span>
+          )}
           <span
             className={clsx(
               "absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-900",

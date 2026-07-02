@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { User, Building2, Volume2 } from "lucide-react";
+import { User, Building2, Volume2, Camera, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +25,7 @@ import {
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
 import { playAudioAlert, unlockAudioAlerts } from "@/lib/audioAlerts";
 import { NvoipSipCredentialsForm } from "@/components/nvoip/NvoipSipCredentialsForm";
+import { resolveUserAvatarUrl } from "@/lib/userAvatar";
 
 function initials(name: string): string {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -50,6 +51,9 @@ export function ProfilePage() {
 
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [curPwd, setCurPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -166,8 +170,41 @@ export function ProfilePage() {
     }
   };
 
+  const onUploadAvatar = async (file: File | null) => {
+    if (!file) return;
+    setAvatarMsg("");
+    setAvatarBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.postMultipart<{ avatarUrl: string | null }>("/auth/me/avatar", form);
+      await refreshUser();
+      setAvatarMsg(t("profilePage.avatarSaved"));
+    } catch (err) {
+      setAvatarMsg(err instanceof ApiError ? err.message : t("profilePage.avatarUploadError"));
+    } finally {
+      setAvatarBusy(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
+
+  const onRemoveAvatar = async () => {
+    setAvatarMsg("");
+    setAvatarBusy(true);
+    try {
+      await api.delete("/auth/me/avatar");
+      await refreshUser();
+      setAvatarMsg(t("profilePage.avatarRemoved"));
+    } catch (err) {
+      setAvatarMsg(err instanceof ApiError ? err.message : t("profilePage.avatarUploadError"));
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   if (!user) return null;
   const canManageApiToken = user.role === "ADMIN" || (user.role === "SUPER_ADMIN" && !!user.actingOrganizationId);
+  const avatarSrc = resolveUserAvatarUrl(user.avatarUrl);
 
   return (
     <PageTransition>
@@ -183,14 +220,56 @@ export function ProfilePage() {
         </header>
 
         <form onSubmit={onSaveProfile} className="card-surface space-y-6 p-6 dark:border-ink-600 dark:bg-ink-900/80">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-            <div
-              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-white shadow-md"
-              aria-hidden
-            >
-              {initials(name || user.email)}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="relative shrink-0">
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt={t("profilePage.avatarAlt")}
+                  className="h-24 w-24 rounded-xl object-cover shadow-md ring-1 ring-ink-200/80 dark:ring-ink-700"
+                />
+              ) : (
+                <div
+                  className="flex h-24 w-24 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-white shadow-md"
+                  aria-hidden
+                >
+                  {initials(name || user.email)}
+                </div>
+              )}
             </div>
-            <p className="text-xs text-ink-500 dark:text-ink-400 sm:pt-2">{t("profilePage.avatarHint")}</p>
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="text-xs text-ink-500 dark:text-ink-400">{t("profilePage.avatarHint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => void onUploadAvatar(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  disabled={avatarBusy}
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs font-medium text-ink-700 transition hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+                >
+                  <Camera className="h-4 w-4" />
+                  {avatarBusy ? "…" : t("profilePage.avatarUpload")}
+                </button>
+                {avatarSrc ? (
+                  <button
+                    type="button"
+                    disabled={avatarBusy}
+                    onClick={() => void onRemoveAvatar()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/40 dark:bg-ink-900 dark:text-red-300 dark:hover:bg-red-950/40"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t("profilePage.avatarRemove")}
+                  </button>
+                ) : null}
+              </div>
+              {avatarMsg ? <p className="text-xs text-ink-600 dark:text-ink-300">{avatarMsg}</p> : null}
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

@@ -472,6 +472,8 @@ model User {
   id                       String    @id @default(uuid()) @db.Uuid
   name                     String
   displayName              String?   @map("display_name") @db.VarChar(200)
+  /// URL da foto de perfil do utilizador (upload em Configurações do perfil).
+  avatarUrl                String?   @map("avatar_url") @db.VarChar(2048)
   email                    String    @unique
   passwordHash             String    @map("password_hash")
   messageSignature         String?   @map("message_signature") @db.Text

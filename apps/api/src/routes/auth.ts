@@ -16,6 +16,7 @@ import {
 } from "../middleware/userApiTokenAuth.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
+import { persistUserAvatarUpload } from "../lib/profileImageUpload.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -27,6 +28,7 @@ const patchMeSchema = z.object({
   displayName: z.string().max(200).nullable().optional(),
   messageSignature: z.string().max(8000).nullable().optional(),
   showAgentNameInChat: z.boolean().optional(),
+  avatarUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -287,6 +289,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         id: true,
         name: true,
         displayName: true,
+        avatarUrl: true,
         email: true,
         role: true,
         organizationId: true,
@@ -429,6 +432,36 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  app.post("/me/avatar", { preHandler: [authenticate] }, async (request, reply) => {
+    const file = await request.file({ limits: { fileSize: 2 * 1024 * 1024 } });
+    if (!file) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "multipart file field required",
+        statusCode: 400,
+      });
+    }
+
+    const mediaUrl = await persistUserAvatarUpload(file, request.user.id, reply);
+    if (!mediaUrl) return;
+
+    const updated = await prisma.user.update({
+      where: { id: request.user.id },
+      data: { avatarUrl: mediaUrl },
+      select: { avatarUrl: true },
+    });
+
+    return { avatarUrl: updated.avatarUrl };
+  });
+
+  app.delete("/me/avatar", { preHandler: [authenticate] }, async (request) => {
+    await prisma.user.update({
+      where: { id: request.user.id },
+      data: { avatarUrl: null },
+    });
+    return { avatarUrl: null };
+  });
+
   app.patch("/me", { preHandler: [authenticate] }, async (request, reply) => {
     const parsed = patchMeSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -439,11 +472,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       displayName?: string | null;
       messageSignature?: string | null;
       showAgentNameInChat?: boolean;
+      avatarUrl?: string | null;
     } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
     if (parsed.data.messageSignature !== undefined) data.messageSignature = parsed.data.messageSignature;
     if (parsed.data.showAgentNameInChat !== undefined) data.showAgentNameInChat = parsed.data.showAgentNameInChat;
+    if (parsed.data.avatarUrl !== undefined) {
+      data.avatarUrl = parsed.data.avatarUrl === "" ? null : parsed.data.avatarUrl;
+    }
 
     if (Object.keys(data).length === 0) {
       return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
