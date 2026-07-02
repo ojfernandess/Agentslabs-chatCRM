@@ -110,6 +110,7 @@ export function ConversationsPage() {
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
   const [orgAttendanceTabAutoOpen, setOrgAttendanceTabAutoOpen] = useState(true);
   const [orgListShowContactTags, setOrgListShowContactTags] = useState(false);
+  const [orgQuickContactAddEnabled, setOrgQuickContactAddEnabled] = useState(false);
   const [channelSettingsLoaded, setChannelSettingsLoaded] = useState(false);
   const [scopeCountsLoaded, setScopeCountsLoaded] = useState(false);
   const [scopeCounts, setScopeCounts] = useState({
@@ -241,16 +242,19 @@ export function ConversationsPage() {
           conversationsAttendanceTabEnabled?: boolean;
           conversationsAttendanceTabAutoOpen?: boolean;
           conversationsListShowContactTags?: boolean;
+          conversationsQuickContactAddEnabled?: boolean;
         }>("/settings/channel");
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
         setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
         setOrgAttendanceTabAutoOpen(res.conversationsAttendanceTabAutoOpen !== false);
         setOrgListShowContactTags(res.conversationsListShowContactTags === true);
+        setOrgQuickContactAddEnabled(res.conversationsQuickContactAddEnabled === true);
       } catch {
         setOrgAgentBotTriageActive(false);
         setOrgAttendanceTabEnabled(false);
         setOrgAttendanceTabAutoOpen(false);
         setOrgListShowContactTags(false);
+        setOrgQuickContactAddEnabled(false);
       } finally {
         setChannelSettingsLoaded(true);
       }
@@ -919,6 +923,7 @@ export function ConversationsPage() {
       <ConversationsStartChatModal
         open={composeOpen}
         onClose={() => setComposeOpen(false)}
+        quickContactAddEnabled={orgQuickContactAddEnabled}
         onPickContact={(c) => {
           setQuickContact(c);
           setComposeOpen(false);

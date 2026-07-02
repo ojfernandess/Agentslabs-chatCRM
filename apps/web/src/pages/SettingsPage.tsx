@@ -131,6 +131,7 @@ interface AppSettings {
   conversationsAttendanceTabEnabled?: boolean;
   conversationsAttendanceTabAutoOpen?: boolean;
   conversationsListShowContactTags?: boolean;
+  conversationsQuickContactAddEnabled?: boolean;
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
@@ -308,6 +309,7 @@ export function SettingsPage() {
   const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
   const [wfAttendanceTabAutoOpen, setWfAttendanceTabAutoOpen] = useState(true);
   const [wfListShowContactTags, setWfListShowContactTags] = useState(false);
+  const [wfQuickContactAddEnabled, setWfQuickContactAddEnabled] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -629,6 +631,7 @@ export function SettingsPage() {
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
+        setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -814,6 +817,7 @@ export function SettingsPage() {
         conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
         conversationsAttendanceTabAutoOpen: wfAttendanceTabAutoOpen,
         conversationsListShowContactTags: wfListShowContactTags,
+        conversationsQuickContactAddEnabled: wfQuickContactAddEnabled,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -830,6 +834,7 @@ export function SettingsPage() {
       setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
       setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
+      setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
@@ -2430,6 +2435,30 @@ export function SettingsPage() {
                         className={clsx(
                           "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
                           wfListShowContactTags ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowQuickContactAdd")}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowQuickContactAddHint")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={wfQuickContactAddEnabled}
+                      onClick={() => setWfQuickContactAddEnabled((v) => !v)}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        wfQuickContactAddEnabled ? "bg-brand-500" : "bg-gray-200",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          wfQuickContactAddEnabled ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>

@@ -144,6 +144,7 @@ const settingsSchema = z.object({
   conversationsAttendanceTabEnabled: z.boolean().optional(),
   conversationsAttendanceTabAutoOpen: z.boolean().optional(),
   conversationsListShowContactTags: z.boolean().optional(),
+  conversationsQuickContactAddEnabled: z.boolean().optional(),
   conversationBubbleClientColor: hexColorField,
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
@@ -395,6 +396,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationsAttendanceTabEnabled: true,
         conversationsAttendanceTabAutoOpen: true,
         conversationsListShowContactTags: true,
+        conversationsQuickContactAddEnabled: true,
       },
     });
     return {
@@ -411,6 +413,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationsAttendanceTabEnabled: orgSettings?.conversationsAttendanceTabEnabled ?? false,
       conversationsAttendanceTabAutoOpen: orgSettings?.conversationsAttendanceTabAutoOpen ?? true,
       conversationsListShowContactTags: orgSettings?.conversationsListShowContactTags ?? false,
+      conversationsQuickContactAddEnabled: orgSettings?.conversationsQuickContactAddEnabled ?? false,
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
       evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
       /** Evolution Go gerida pela plataforma: tenants usam credenciais globais e guardam apenas instanceId. */

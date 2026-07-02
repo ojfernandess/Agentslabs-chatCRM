@@ -1240,6 +1240,8 @@ model Settings {
   conversationsAttendanceTabAutoOpen Boolean @default(true) @map("conversations_attendance_tab_auto_open")
   /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
+  /// Modo «Telefone rápido» em Nova mensagem (Conversas) para adicionar/seleccionar contacto por número.
+  conversationsQuickContactAddEnabled Boolean @default(false) @map("conversations_quick_contact_add_enabled")
 
   /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
   aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)
