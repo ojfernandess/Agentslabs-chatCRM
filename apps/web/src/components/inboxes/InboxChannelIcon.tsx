@@ -19,11 +19,15 @@ const SIZE = {
   lg: { box: "h-14 w-14", icon: "h-7 w-7" },
 };
 
+/** Ícones de marca com fill próprio no SVG — forçar branco sobre o tile colorido. */
+const BRAND_GLYPH_CHANNELS = new Set<InboxChannelId>(["WHATSAPP", "INSTAGRAM", "TELEGRAM"]);
+
 export function InboxChannelIcon({ channelType, size = "md", className }: Props) {
   const id = isInboxChannelId(channelType) ? channelType : null;
   const styles = id ? INBOX_CHANNEL_STYLES[id] : null;
   const Icon = id ? INBOX_CHANNEL_ICONS[id as InboxChannelId] : MessageSquare;
   const s = SIZE[size];
+  const brandGlyphOnSolid = id != null && BRAND_GLYPH_CHANNELS.has(id);
 
   return (
     <div
@@ -35,7 +39,15 @@ export function InboxChannelIcon({ channelType, size = "md", className }: Props)
         className,
       )}
     >
-      <Icon className={clsx(s.icon, channelType === "WHATSAPP" ? "" : "text-white")} />
+      <Icon
+        className={clsx(
+          s.icon,
+          "relative z-[1]",
+          brandGlyphOnSolid
+            ? "[&_path]:!fill-white [&_circle]:!fill-white"
+            : "text-white",
+        )}
+      />
     </div>
   );
 }
