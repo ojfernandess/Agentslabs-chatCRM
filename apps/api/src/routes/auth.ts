@@ -442,7 +442,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const mediaUrl = await persistUserAvatarUpload(file, request.user.id, reply);
+    const mediaUrl = await persistUserAvatarUpload(file, reply);
     if (!mediaUrl) return;
 
     const updated = await prisma.user.update({

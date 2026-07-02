@@ -31,7 +31,6 @@ function extensionForMime(mime: string, originalFilename?: string): string {
 
 export async function persistUserAvatarUpload(
   file: MultipartFile,
-  userId: string,
   reply: FastifyReply,
 ): Promise<string | null> {
   const rawMime = file.mimetype ?? "";
@@ -54,7 +53,7 @@ export async function persistUserAvatarUpload(
     return null;
   }
   const ext = extensionForMime(rawMime, file.filename ?? undefined);
-  const filename = `user-avatar-${userId}-${randomBytes(12).toString("hex")}.${ext}`;
+  const filename = `${randomBytes(16).toString("hex")}.${ext}`;
   const stored = await putMessageMediaFile({
     filename,
     buffer: buf,
