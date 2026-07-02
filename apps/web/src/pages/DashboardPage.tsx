@@ -4,9 +4,10 @@ import { api } from "@/lib/api";
 import { MessageSquare, Users, Bell, BarChart3, TrendingUp, PieChart, ArrowRight, PauseCircle } from "lucide-react";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
   AreaChart, Area, PieChart as RePieChart, Pie, Cell, Legend
 } from "recharts";
+import { MeasuredResponsiveContainer } from "@/components/charts/MeasuredResponsiveContainer";
 import { formatDistanceToNow } from "date-fns";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -163,8 +164,7 @@ export function DashboardPage() {
                 {t("dashboard.last7Days")}
               </span>
             </div>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <MeasuredResponsiveContainer className="h-72 w-full min-w-0" minHeight={288}>
                 <AreaChart data={data?.messageVolume}>
                   <defs>
                     <linearGradient id="colorInbound" x1="0" y1="0" x2="0" y2="1">
@@ -211,8 +211,7 @@ export function DashboardPage() {
                     name={t("dashboard.outbound")}
                   />
                 </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            </MeasuredResponsiveContainer>
           </motion.div>
 
           {/* Recent Activity Feed */}
@@ -284,8 +283,7 @@ export function DashboardPage() {
                 <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.pipelineFunnel")}</h3>
               </div>
             </div>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <MeasuredResponsiveContainer className="h-72 w-full min-w-0" minHeight={288}>
                 <BarChart data={data?.pipeline} layout="vertical" margin={{ left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={inkSubtle} />
                   <XAxis type="number" hide />
@@ -302,8 +300,7 @@ export function DashboardPage() {
                   />
                   <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={32} name="Contacts" />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+            </MeasuredResponsiveContainer>
           </motion.div>
 
           {/* Tag Distribution Pie Chart */}
@@ -319,8 +316,7 @@ export function DashboardPage() {
                 <h3 className="font-semibold text-ink-900 dark:text-ink-50">{t("dashboard.topTags")}</h3>
               </div>
             </div>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <MeasuredResponsiveContainer className="h-72 w-full min-w-0" minHeight={288}>
                 <RePieChart>
                   <Pie
                     data={data?.tags}
@@ -340,8 +336,7 @@ export function DashboardPage() {
                   />
                   <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: axisTickStrong }} />
                 </RePieChart>
-              </ResponsiveContainer>
-            </div>
+            </MeasuredResponsiveContainer>
           </motion.div>
         </div>
       </div>

@@ -31,6 +31,8 @@ export function WorkspaceRealtime() {
   const { t, locale } = useI18n();
   const [toasts, setToasts] = useState<{ id: string; text: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
 
   const pushToast = useCallback((text: string) => {
     const id = crypto.randomUUID();
@@ -71,8 +73,8 @@ export function WorkspaceRealtime() {
     }) => {
       if (data.type === "conversation.transferred") {
         const contact = data.contact?.name ?? "—";
-        const team = (data.teamName ?? "").trim() || translate(locale, "workspace.transferUnknownTeam");
-        const msg = translate(locale, "workspace.transferToast")
+        const team = (data.teamName ?? "").trim() || translate(localeRef.current, "workspace.transferUnknownTeam");
+        const msg = translate(localeRef.current, "workspace.transferToast")
           .replace("{contact}", contact)
           .replace("{team}", team);
         pushToast(msg);
@@ -104,7 +106,7 @@ export function WorkspaceRealtime() {
         const caller =
           (data.caller ?? "").trim() ||
           translate(
-            locale,
+            localeRef.current,
             isThreeCx
               ? "threecx.voice.unknownCaller"
               : isNvoip
@@ -112,7 +114,7 @@ export function WorkspaceRealtime() {
                 : "wavoip.voice.unknownCaller",
           );
         const msg = translate(
-          locale,
+          localeRef.current,
           isThreeCx
             ? "threecx.voice.incomingToast"
             : isNvoip
@@ -202,10 +204,19 @@ export function WorkspaceRealtime() {
     return () => {
       cancelled = true;
       if (reconnectTimer != null) clearTimeout(reconnectTimer);
-      wsRef.current?.close();
+      const ws = wsRef.current;
       wsRef.current = null;
+      if (!ws) return;
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.addEventListener("open", () => ws.close(1000, "client disconnect"), { once: true });
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, "client disconnect");
+      }
     };
-  }, [user, pushToast, locale]);
+  }, [user, pushToast]);
 
   return (
     <div

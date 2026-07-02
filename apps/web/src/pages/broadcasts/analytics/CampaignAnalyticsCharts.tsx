@@ -5,11 +5,11 @@ import {
   Legend,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { MeasuredResponsiveContainer } from "@/components/charts/MeasuredResponsiveContainer";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { BroadcastCampaignAnalytics } from "./types";
 
@@ -38,7 +38,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
               {t("broadcastPage.analyticsEmpty")}
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <MeasuredResponsiveContainer className="h-64 w-full min-w-0" minHeight={256}>
               <BarChart data={sendByDay}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
@@ -48,7 +48,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
                 <Bar dataKey="sent" name={t("broadcastPage.analyticsSent")} fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="failed" name={t("broadcastPage.analyticsFailed")} fill="#ef4444" radius={[4, 4, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </MeasuredResponsiveContainer>
           )}
         </div>
       </div>
@@ -62,7 +62,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
               {t("broadcastPage.analyticsEmpty")}
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <MeasuredResponsiveContainer className="h-64 w-full min-w-0" minHeight={256}>
               <LineChart data={ratesByDay}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
@@ -91,7 +91,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
                   dot={false}
                 />
               </LineChart>
-            </ResponsiveContainer>
+            </MeasuredResponsiveContainer>
           )}
         </div>
       </div>

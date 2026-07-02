@@ -6,11 +6,11 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { MeasuredResponsiveContainer } from "@/components/charts/MeasuredResponsiveContainer";
 import {
   BarChart3,
   Bot,
@@ -556,8 +556,7 @@ export function ReportsPage() {
                       <Kpi icon={Inbox} label={t("reportsPage.kpiPendingBotQueue")} value={data.summary.pendingBotQueue ?? 0} />
                     </div>
                     <p className="mt-4 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.botFootnote")}</p>
-                    <div className="mt-6 h-72 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                    <MeasuredResponsiveContainer className="mt-6 h-72 w-full min-w-0" minHeight={288}>
                         <BarChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                           <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -579,8 +578,7 @@ export function ReportsPage() {
                             radius={[4, 4, 0, 0]}
                           />
                         </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    </MeasuredResponsiveContainer>
                     <p className="mt-2 text-center text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.chartBotVsHumanTitle")}</p>
                   </section>
                 ) : null}
@@ -607,8 +605,7 @@ export function ReportsPage() {
                       }
                     />
                   </div>
-                  <div className="mt-6 h-56 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <MeasuredResponsiveContainer className="mt-6 h-56 w-full min-w-0" minHeight={224}>
                       <BarChart data={chartDataCsat}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -616,8 +613,7 @@ export function ReportsPage() {
                         <Tooltip />
                         <Bar dataKey="count" name={t("reportsPage.csatDistribution")} fill="#f59e0b" radius={[4, 4, 0, 0]} />
                       </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  </MeasuredResponsiveContainer>
                 </section>
 
                 <section className="rounded-xl border border-ink-200 bg-white p-6 shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
@@ -653,8 +649,7 @@ export function ReportsPage() {
             {tab === "conversations" && (
               <div className="space-y-8">
                 <ChartCard title={t("reportsPage.chartConversationsTitle")}>
-                  <div className="h-80 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <MeasuredResponsiveContainer className="h-80 w-full min-w-0" minHeight={320}>
                       <BarChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -664,12 +659,10 @@ export function ReportsPage() {
                         <Bar dataKey="conversationsCreated" name={t("reportsPage.seriesCreated")} fill="#3b82f6" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="conversationsResolved" name={t("reportsPage.seriesResolved")} fill="#10b981" radius={[4, 4, 0, 0]} />
                       </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  </MeasuredResponsiveContainer>
                 </ChartCard>
                 <ChartCard title={t("reportsPage.chartMessagesTitle")}>
-                  <div className="h-80 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <MeasuredResponsiveContainer className="h-80 w-full min-w-0" minHeight={320}>
                       <BarChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                         <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -679,13 +672,11 @@ export function ReportsPage() {
                         <Bar dataKey="messagesInbound" name={t("reportsPage.seriesInbound")} fill="#6366f1" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="messagesOutbound" name={t("reportsPage.seriesOutbound")} fill="#6734ff" radius={[4, 4, 0, 0]} />
                       </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  </MeasuredResponsiveContainer>
                 </ChartCard>
                 {data.meta.agentBot?.enabled ? (
                   <ChartCard title={t("reportsPage.chartBotVsHumanTitle")}>
-                    <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
+                    <MeasuredResponsiveContainer className="h-80 w-full min-w-0" minHeight={320}>
                         <BarChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                           <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -707,8 +698,7 @@ export function ReportsPage() {
                             radius={[4, 4, 0, 0]}
                           />
                         </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    </MeasuredResponsiveContainer>
                     <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.botFootnote")}</p>
                   </ChartCard>
                 ) : null}
@@ -844,8 +834,7 @@ export function ReportsPage() {
 
                       <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-2">
                         <ChartCard title={t("reportsPage.chartTelephonyVolumeTitle")}>
-                          <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
+                          <MeasuredResponsiveContainer className="h-72 w-full min-w-0" minHeight={288}>
                               <BarChart data={chartTelephonyData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                 <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -855,12 +844,10 @@ export function ReportsPage() {
                                 <Bar dataKey="inboundCalls" name={t("reportsPage.seriesTelephonyInbound")} fill="#6366f1" radius={[4, 4, 0, 0]} />
                                 <Bar dataKey="outboundCalls" name={t("reportsPage.seriesTelephonyOutbound")} fill="#0ea5e9" radius={[4, 4, 0, 0]} />
                               </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          </MeasuredResponsiveContainer>
                         </ChartCard>
                         <ChartCard title={t("reportsPage.chartTelephonyOutcomeTitle")}>
-                          <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
+                          <MeasuredResponsiveContainer className="h-72 w-full min-w-0" minHeight={288}>
                               <BarChart data={chartTelephonyData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                 <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -870,8 +857,7 @@ export function ReportsPage() {
                                 <Bar dataKey="answeredCalls" name={t("reportsPage.seriesTelephonyAnswered")} fill="#10b981" radius={[4, 4, 0, 0]} />
                                 <Bar dataKey="missedCalls" name={t("reportsPage.seriesTelephonyMissed")} fill="#ef4444" radius={[4, 4, 0, 0]} />
                               </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          </MeasuredResponsiveContainer>
                         </ChartCard>
                       </div>
                     </>
