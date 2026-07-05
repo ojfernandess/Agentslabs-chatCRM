@@ -89,6 +89,10 @@ export function ConversationsPage() {
   const [inboxFilter, setInboxFilter] = useState<string>(() => searchParams.get("inboxId") ?? "");
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string }[]>([]);
   const [inboxOptions, setInboxOptions] = useState<{ id: string; name: string }[]>([]);
+  const [tagFilter, setTagFilter] = useState("");
+  const [leadTypeFilter, setLeadTypeFilter] = useState("");
+  const [tagOptions, setTagOptions] = useState<{ id: string; name: string }[]>([]);
+  const [leadTypeOptions, setLeadTypeOptions] = useState<{ id: string; name: string }[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     target: ConversationContextTarget;
     position: { x: number; y: number };
@@ -232,6 +236,23 @@ export function ConversationsPage() {
       }
     }
     void loadInboxes();
+  }, []);
+
+  useEffect(() => {
+    async function loadListFilterOptions() {
+      try {
+        const [tags, leadTypes] = await Promise.all([
+          api.get<{ id: string; name: string }[]>("/tags").catch(() => []),
+          api.get<{ id: string; name: string }[]>("/lead-types").catch(() => []),
+        ]);
+        setTagOptions(Array.isArray(tags) ? tags.map((x) => ({ id: x.id, name: x.name })) : []);
+        setLeadTypeOptions(Array.isArray(leadTypes) ? leadTypes.map((x) => ({ id: x.id, name: x.name })) : []);
+      } catch {
+        setTagOptions([]);
+        setLeadTypeOptions([]);
+      }
+    }
+    void loadListFilterOptions();
   }, []);
 
   useEffect(() => {
@@ -433,11 +454,19 @@ export function ConversationsPage() {
   });
 
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
+  const listFiltersActive = Boolean(listSearch.trim() || tagFilter || leadTypeFilter);
   const filteredConversations = useMemo(() => {
+    let rows = conversations;
+    if (tagFilter) {
+      rows = rows.filter((c) => c.contact.tags?.some((x) => x.tag.id === tagFilter));
+    }
+    if (leadTypeFilter) {
+      rows = rows.filter((c) => c.leadType?.id === leadTypeFilter);
+    }
     const raw = listSearch.trim().toLowerCase();
-    if (!raw) return conversations;
+    if (!raw) return rows;
     const dRaw = digitsOnly(raw);
-    return conversations.filter((c) => {
+    return rows.filter((c) => {
       const name = c.contact.name.toLowerCase();
       const phone = c.contact.phone ?? "";
       const phoneDigits = digitsOnly(phone);
@@ -450,7 +479,7 @@ export function ConversationsPage() {
       if (last.includes(raw)) return true;
       return false;
     });
-  }, [conversations, listSearch]);
+  }, [conversations, listSearch, tagFilter, leadTypeFilter]);
 
   const statusLabel = (s: string) => {
     if (s === "OPEN") return t("conversationDetail.statusOpen");
@@ -487,38 +516,74 @@ export function ConversationsPage() {
               <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("conversations.title")}</h1>
               <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("conversations.subtitle")}</p>
             </div>
-            <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-md sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
-                <input
-                  type="search"
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                  placeholder={t("conversations.searchListPlaceholder")}
-                  className="input-field h-11 pl-10"
-                  aria-label={t("conversations.searchListPlaceholder")}
-                />
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-4xl">
+              <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
+                  <input
+                    type="search"
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    placeholder={t("conversations.searchListPlaceholder")}
+                    className="input-field h-11 pl-10"
+                    aria-label={t("conversations.searchListPlaceholder")}
+                  />
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <label htmlFor="conv-tag-filter" className="sr-only">
+                    {t("conversations.filterTag")}
+                  </label>
+                  <select
+                    id="conv-tag-filter"
+                    value={tagFilter}
+                    onChange={(e) => setTagFilter(e.target.value)}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100"
+                  >
+                    <option value="">{t("conversations.allTags")}</option>
+                    {tagOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="conv-lead-type-filter" className="sr-only">
+                    {t("conversations.filterLeadType")}
+                  </label>
+                  <select
+                    id="conv-lead-type-filter"
+                    value={leadTypeFilter}
+                    onChange={(e) => setLeadTypeFilter(e.target.value)}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100"
+                  >
+                    <option value="">{t("conversations.allLeadTypes")}</option>
+                    {leadTypeOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setComposeOpen(true)}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-ink-900"
+                    title={t("conversations.newMessageTooltip")}
+                    aria-label={t("conversations.newMessageTooltip")}
+                  >
+                    <SquarePen className="h-5 w-5" />
+                  </button>
+                  {showTelephonyDial ? (
+                    <button
+                      type="button"
+                      onClick={() => setDialOpen(true)}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition hover:bg-emerald-600 hover:shadow-lg"
+                      title={t("telephony.dial.openTooltip")}
+                      aria-label={t("telephony.dial.openTooltip")}
+                    >
+                      <Phone className="h-5 w-5" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setComposeOpen(true)}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-ink-900"
-                title={t("conversations.newMessageTooltip")}
-                aria-label={t("conversations.newMessageTooltip")}
-              >
-                <SquarePen className="h-5 w-5" />
-              </button>
-              {showTelephonyDial ? (
-                <button
-                  type="button"
-                  onClick={() => setDialOpen(true)}
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md transition hover:bg-emerald-600 hover:shadow-lg"
-                  title={t("telephony.dial.openTooltip")}
-                  aria-label={t("telephony.dial.openTooltip")}
-                >
-                  <Phone className="h-5 w-5" />
-                </button>
-              ) : null}
             </div>
           </header>
 
@@ -712,7 +777,7 @@ export function ConversationsPage() {
                 >
                   <MessageSquare className="mb-3 h-12 w-12 text-ink-300 dark:text-ink-600" />
                   <p className="text-sm text-ink-600 dark:text-ink-400">
-                    {listSearch.trim() && conversations.length > 0
+                    {listFiltersActive && conversations.length > 0
                       ? t("conversations.emptySearchTitle")
                       : botAttendanceActive
                         ? t("conversations.emptyBotTitle")
@@ -725,7 +790,7 @@ export function ConversationsPage() {
                               : t("conversations.emptyTitle")}
                   </p>
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
-                    {listSearch.trim() && conversations.length > 0
+                    {listFiltersActive && conversations.length > 0
                       ? t("conversations.emptySearchHint")
                       : botAttendanceActive
                         ? t("conversations.emptyBotHint")
