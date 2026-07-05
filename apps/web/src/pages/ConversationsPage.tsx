@@ -565,7 +565,7 @@ export function ConversationsPage() {
                   <button
                     type="button"
                     onClick={() => setComposeOpen(true)}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800 dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:border-brand-500/40 dark:hover:bg-ink-900"
+                    className="btn-primary inline-flex h-11 w-11 shrink-0 rounded-xl p-0 shadow-md shadow-brand-500/20"
                     title={t("conversations.newMessageTooltip")}
                     aria-label={t("conversations.newMessageTooltip")}
                   >
