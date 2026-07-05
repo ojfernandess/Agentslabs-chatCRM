@@ -217,7 +217,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (query.leadTypeId) {
-      where.leadTypeId = query.leadTypeId;
+      where.AND = [
+        {
+          OR: [
+            { leadTypeId: query.leadTypeId },
+            { contact: { pipelineStage: { leadTypeId: query.leadTypeId } } },
+          ],
+        },
+      ];
     }
 
     if (query.inboxId) {
@@ -350,6 +357,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       createdAt: true,
       assignedTo: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true } },
+      pipelineStage: {
+        select: { id: true, name: true, color: true, leadTypeId: true },
+      },
       tags: {
         select: {
           tag: { select: { id: true, name: true, color: true } },

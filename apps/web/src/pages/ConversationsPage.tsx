@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, SquarePen, Phone } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
@@ -24,6 +24,10 @@ import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
+function conversationLeadTypeId(conv: Conversation): string | null {
+  return conv.leadType?.id ?? conv.contact.pipelineStage?.leadTypeId ?? null;
+}
+
 interface Conversation {
   id: string;
   status: string;
@@ -42,6 +46,7 @@ interface Conversation {
     thumbnail?: string | null;
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
+    pipelineStage?: { id: string; name: string; color: string; leadTypeId: string | null } | null;
     tags?: { tag: { id: string; name: string; color: string } }[];
   };
   assignedTo: { id: string; name: string } | null;
@@ -379,6 +384,7 @@ export function ConversationsPage() {
       }
       if (teamFilter) params.set("teamId", teamFilter);
       if (inboxFilter) params.set("inboxId", inboxFilter);
+      if (leadTypeFilter) params.set("leadTypeId", leadTypeFilter);
       const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
       setConversations(res.data);
       const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
@@ -398,7 +404,7 @@ export function ConversationsPage() {
       hasAnimated.current = true;
       setLoading(false);
     }
-  }, [statusFilter, teamFilter, inboxFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
+  }, [statusFilter, teamFilter, inboxFilter, leadTypeFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
 
   const loadScopeCounts = useCallback(async () => {
     if (!channelSettingsLoaded) return;
@@ -461,7 +467,7 @@ export function ConversationsPage() {
       rows = rows.filter((c) => c.contact.tags?.some((x) => x.tag.id === tagFilter));
     }
     if (leadTypeFilter) {
-      rows = rows.filter((c) => c.leadType?.id === leadTypeFilter);
+      rows = rows.filter((c) => conversationLeadTypeId(c) === leadTypeFilter);
     }
     const raw = listSearch.trim().toLowerCase();
     if (!raw) return rows;
@@ -569,7 +575,7 @@ export function ConversationsPage() {
                     title={t("conversations.newMessageTooltip")}
                     aria-label={t("conversations.newMessageTooltip")}
                   >
-                    <SquarePen className="h-5 w-5" />
+                    <MessageSquarePlus className="h-5 w-5" />
                   </button>
                   {showTelephonyDial ? (
                     <button
