@@ -9,6 +9,7 @@ import type { LocaleCode } from "@/i18n/messages";
 import { PageTransition } from "@/components/Motion";
 import {
   type FontSizePref,
+  applyFontSizeClass,
   readFontSizePref,
   setFontSizePref,
   readSendShortcutPref,
@@ -70,7 +71,9 @@ export function ProfilePage() {
     setDisplayName(user.displayName ?? "");
     setSignature(user.messageSignature ?? "");
     setShowAgentNameInChat(!!user.showAgentNameInChat);
-    setFontSize(readFontSizePref());
+    const savedFontSize = readFontSizePref();
+    setFontSize(savedFontSize);
+    applyFontSizeClass(savedFontSize);
     setTheme(getThemePreference());
     setSendShortcut(readSendShortcutPref());
     setAudioSound(readAudioAlertSoundPref());

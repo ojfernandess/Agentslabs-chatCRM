@@ -60,11 +60,11 @@
     }
   }
 
-  html.font-size-comfortable body {
+  html.font-size-comfortable {
     font-size: 106.25%;
   }
 
-  html.font-size-large body {
+  html.font-size-large {
     font-size: 112.5%;
   }
 
@@ -159,7 +159,7 @@
     color: var(--crm-bubble-text);
     box-shadow: var(--crm-bubble-shadow);
     border-radius: 16px;
-    font-size: 15px;
+    font-size: 0.9375rem;
     line-height: 1.5;
     min-width: 0;
     overflow-wrap: anywhere;
@@ -225,7 +225,7 @@
 
   .crm-bubble-meta {
     color: var(--crm-bubble-meta);
-    font-size: 12px;
+    font-size: 0.75rem;
     line-height: 1.2;
   }
 
@@ -263,7 +263,7 @@
 
   .crm-bubble-agent-name {
     color: var(--org-bubble-agent-name, var(--brand-primary));
-    font-size: 13px;
+    font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.3;
     margin-bottom: 6px;
