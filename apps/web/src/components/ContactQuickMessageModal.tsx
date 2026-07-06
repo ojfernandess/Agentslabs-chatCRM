@@ -7,6 +7,9 @@ import clsx from "clsx";
 import { isWhatsAppCloudApiProvider } from "@/lib/inboxWhatsappConfig";
 import { parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
 import { TemplateSendModal, type TemplateSendModalTemplate } from "@/components/TemplateSendModal";
+import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
+import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
+import type { EmojiCategoryId } from "@/lib/emojiPickerData";
 
 type InboxOption = {
   id: string;
@@ -38,8 +41,6 @@ function insertLinePrefix(el: HTMLTextAreaElement, prefix: string) {
   el.focus();
   el.setSelectionRange(start + prefix.length, start + prefix.length);
 }
-
-const EMOJI_PICK = ["👋", "😊", "🙏", "✅", "📌", "💼", "🎯", "📞", "⭐", "🚀", "💬", "📎"];
 
 export function ContactQuickMessageModal({
   open,
@@ -342,32 +343,14 @@ export function ContactQuickMessageModal({
                   >
                     <Smile className="h-4 w-4" />
                   </button>
-                  {showEmoji ? (
-                    <div className="absolute bottom-full left-0 z-10 mb-1 flex max-w-[220px] flex-wrap gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-ink-700 dark:bg-ink-900">
-                      {EMOJI_PICK.map((em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          className="rounded p-1.5 text-lg hover:bg-gray-100 dark:hover:bg-ink-800"
-                          onClick={() => {
-                            const el = taRef.current;
-                            if (el) {
-                              const start = el.selectionStart;
-                              const val = el.value;
-                              const next = val.slice(0, start) + em + val.slice(start);
-                              el.value = next;
-                              el.focus();
-                              el.setSelectionRange(start + em.length, start + em.length);
-                              setBody(next);
-                            }
-                            setShowEmoji(false);
-                          }}
-                        >
-                          {em}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  <EmojiPickerPopover
+                    open={showEmoji}
+                    onSelect={(em) => {
+                      insertTextAtSelection(taRef.current, body, em, setBody);
+                      setShowEmoji(false);
+                    }}
+                    categoryLabel={(id: EmojiCategoryId) => t(`common.emojiCategory.${id}`)}
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   <button
