@@ -300,3 +300,29 @@
     scrollbar-gutter: stable;
   }
 }
+
+@layer utilities {
+  @keyframes bot-head-nod {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    25% {
+      transform: rotate(-14deg);
+    }
+    75% {
+      transform: rotate(14deg);
+    }
+  }
+
+  .animate-bot-head-nod {
+    transform-origin: 50% 85%;
+    animation: bot-head-nod 1.6s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-bot-head-nod {
+      animation: none;
+    }
+  }
+}

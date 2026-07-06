@@ -700,7 +700,7 @@ export function ConversationsPage() {
                         : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
                     )}
                   >
-                    <Bot className="h-3.5 w-3.5" />
+                    <Bot className={clsx("h-3.5 w-3.5", botAttendanceActive && "animate-bot-head-nod")} />
                     {t("conversations.scopeBotAttendance")}
                     <ScopeTabCount count={scopeCounts.bot} selected={botAttendanceActive} />
                   </button>
