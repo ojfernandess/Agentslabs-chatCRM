@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import {
@@ -16,6 +16,8 @@ import {
   Mail,
   Building2,
   MessageCircle,
+  Download,
+  ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
@@ -35,6 +37,10 @@ import { ContactNvoipSmsModal } from "@/components/nvoip/ContactNvoipSmsModal";
 import { ContactNvoipOtpPanel } from "@/components/nvoip/ContactNvoipOtpPanel";
 import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTemplateModal";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  downloadContactConversationHistory,
+  hasExportableContactHistory,
+} from "@/lib/exportContactConversationHistory";
 
 interface TagItem {
   id: string;
@@ -148,6 +154,19 @@ export function ContactDetailPage() {
   const nvoipOtpEnabled = user?.organizationFeatures?.nvoip_otp ?? false;
   const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
   const [nvoipWaOpen, setNvoipWaOpen] = useState(false);
+  const [showHistoryExportMenu, setShowHistoryExportMenu] = useState(false);
+  const historyExportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showHistoryExportMenu) return;
+    const onDoc = (e: MouseEvent) => {
+      if (historyExportRef.current && !historyExportRef.current.contains(e.target as Node)) {
+        setShowHistoryExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showHistoryExportMenu]);
 
   useEffect(() => {
     if (editing) setDetailTab("overview");
@@ -270,6 +289,31 @@ export function ContactDetailPage() {
     }
   };
 
+  const historyExportLabels = {
+    title: t("contactDetail.exportHistoryTitle"),
+    contact: t("contactDetail.exportHistoryContact"),
+    phone: t("contactDetail.exportHistoryPhone"),
+    exportedAt: t("contactDetail.exportHistoryExportedAt"),
+    inbound: t("contactDetail.exportHistoryInbound"),
+    outbound: t("contactDetail.exportHistoryOutbound"),
+    attachment: (type: string) => t("contactDetail.exportHistoryAttachment").replace("{type}", type),
+  };
+
+  const exportConversationHistory = (format: "txt" | "json") => {
+    if (!contact || !hasExportableContactHistory(threadMessages)) {
+      window.alert(t("contactDetail.exportHistoryEmpty"));
+      return;
+    }
+    setShowHistoryExportMenu(false);
+    try {
+      downloadContactConversationHistory(format, contact, threadMessages, historyExportLabels, dateLocale);
+    } catch {
+      window.alert(t("contactDetail.exportHistoryFailed"));
+    }
+  };
+
+  const canExportHistory = hasExportableContactHistory(threadMessages);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -354,6 +398,37 @@ export function ContactDetailPage() {
               {t("nvoip.whatsapp.send")}
             </button>
           ) : null}
+          <div className="relative" ref={historyExportRef}>
+            <button
+              type="button"
+              disabled={!canExportHistory}
+              onClick={() => setShowHistoryExportMenu((v) => !v)}
+              title={canExportHistory ? undefined : t("contactDetail.exportHistoryEmpty")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+            >
+              <Download className="h-4 w-4" />
+              {t("contactDetail.exportHistory")}
+              <ChevronDownIcon className="h-3.5 w-3.5 opacity-70" />
+            </button>
+            {showHistoryExportMenu && canExportHistory ? (
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[11rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900">
+                <button
+                  type="button"
+                  onClick={() => exportConversationHistory("txt")}
+                  className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-ink-200 dark:hover:bg-ink-800"
+                >
+                  {t("contactDetail.exportHistoryTxt")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportConversationHistory("json")}
+                  className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-ink-200 dark:hover:bg-ink-800"
+                >
+                  {t("contactDetail.exportHistoryJson")}
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             onClick={() => setEditing(!editing)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
@@ -433,7 +508,19 @@ export function ContactDetailPage() {
                 )}
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-ink-800 dark:bg-ink-900/40">
-                <h2 className="mb-3 font-semibold text-gray-900 dark:text-ink-50">{t("contactDrawer.threadTitle")}</h2>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold text-gray-900 dark:text-ink-50">{t("contactDrawer.threadTitle")}</h2>
+                  {canExportHistory ? (
+                    <button
+                      type="button"
+                      onClick={() => exportConversationHistory("txt")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {t("contactDetail.exportHistory")}
+                    </button>
+                  ) : null}
+                </div>
                 {threadMessages.filter((m) => !m.isPrivate).length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-ink-400">{t("contactDrawer.noMessagesThread")}</p>
                 ) : (
