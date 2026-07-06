@@ -444,13 +444,21 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
         return { toggled: "removed" as const, emoji };
       }
 
-      await prisma.teamChannelMessageReaction.create({
-        data: {
-          messageId: message.id,
-          userId: request.user.id,
-          emoji,
-        },
-      });
+      await prisma.$transaction([
+        prisma.teamChannelMessageReaction.deleteMany({
+          where: {
+            messageId: message.id,
+            userId: request.user.id,
+          },
+        }),
+        prisma.teamChannelMessageReaction.create({
+          data: {
+            messageId: message.id,
+            userId: request.user.id,
+            emoji,
+          },
+        }),
+      ]);
       return { toggled: "added" as const, emoji };
     },
   );
