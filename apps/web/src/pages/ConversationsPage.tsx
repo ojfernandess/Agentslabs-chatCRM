@@ -128,6 +128,11 @@ export function ConversationsPage() {
     attendanceQueue: 0,
     mine: 0,
   });
+  const [statusCounts, setStatusCounts] = useState({
+    open: 0,
+    pending: 0,
+    resolved: 0,
+  });
 
   type ConversationListScope = "org" | "mine" | "bot" | "attendance";
 
@@ -446,6 +451,51 @@ export function ConversationsPage() {
     }
   }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled, channelSettingsLoaded]);
 
+  const statusTabsVisible =
+    !botAttendanceActive && (!attendanceScopeActive || mineActive);
+
+  const loadStatusCounts = useCallback(async () => {
+    if (!statusTabsVisible) return;
+    try {
+      const base = new URLSearchParams({ page: "1", pageSize: "1" });
+      if (teamFilter) base.set("teamId", teamFilter);
+      if (inboxFilter) base.set("inboxId", inboxFilter);
+      if (leadTypeFilter) base.set("leadTypeId", leadTypeFilter);
+      if (attendanceScopeActive && mineActive) {
+        base.set("mine", "1");
+      } else if (mineActive) {
+        base.set("mine", "1");
+      }
+
+      const fetchTotal = (status: "OPEN" | "PENDING" | "RESOLVED") => {
+        const params = new URLSearchParams(base);
+        params.set("status", status);
+        return api.get<{ total: number }>(`/conversations?${params}`);
+      };
+
+      const [openRes, pendingRes, resolvedRes] = await Promise.all([
+        fetchTotal("OPEN"),
+        fetchTotal("PENDING"),
+        fetchTotal("RESOLVED"),
+      ]);
+
+      setStatusCounts({
+        open: openRes.total ?? 0,
+        pending: pendingRes.total ?? 0,
+        resolved: resolvedRes.total ?? 0,
+      });
+    } catch {
+      /* ignore count errors */
+    }
+  }, [
+    statusTabsVisible,
+    teamFilter,
+    inboxFilter,
+    leadTypeFilter,
+    mineActive,
+    attendanceScopeActive,
+  ]);
+
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
@@ -454,9 +504,14 @@ export function ConversationsPage() {
     void loadScopeCounts();
   }, [loadScopeCounts]);
 
+  useEffect(() => {
+    void loadStatusCounts();
+  }, [loadStatusCounts]);
+
   useDebouncedConversationUpdated(() => {
     void loadConversations();
     void loadScopeCounts();
+    void loadStatusCounts();
   });
 
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
@@ -493,17 +548,6 @@ export function ConversationsPage() {
     if (s === "RESOLVED") return t("conversationDetail.statusResolved");
     return s;
   };
-
-  const counts = useMemo(() => {
-    const c = { all: 0, open: 0, pending: 0, resolved: 0 };
-    c.all = conversations.length;
-    for (const row of conversations) {
-      if (row.status === "OPEN") c.open += 1;
-      else if (row.status === "PENDING") c.pending += 1;
-      else if (row.status === "RESOLVED") c.resolved += 1;
-    }
-    return c;
-  }, [conversations]);
 
   const filters: { key: string; label: string }[] = [
     { key: "", label: t("common.all") },
@@ -681,15 +725,15 @@ export function ConversationsPage() {
                       {f.label}
                       {f.key === "OPEN" ? (
                         <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-200">
-                          {counts.open}
+                          {statusCounts.open}
                         </span>
                       ) : f.key === "PENDING" ? (
                         <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
-                          {counts.pending}
+                          {statusCounts.pending}
                         </span>
                       ) : f.key === "RESOLVED" ? (
                         <span className="ml-2 rounded-full bg-ink-300/30 px-1.5 py-0.5 text-[10px] font-bold text-ink-700 dark:bg-ink-700/50 dark:text-ink-200">
-                          {counts.resolved}
+                          {statusCounts.resolved}
                         </span>
                       ) : null}
                     </button>
