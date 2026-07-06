@@ -116,6 +116,7 @@ enum TeamWorkspaceItemType {
   WIKI
   SNIPPET
   FILE_LINK
+  YOUTUBE
 }
 
 enum TeamChannelMessageType {

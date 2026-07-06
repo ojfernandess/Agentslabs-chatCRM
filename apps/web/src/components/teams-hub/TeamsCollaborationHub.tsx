@@ -1,22 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
   BookOpen,
   Command,
-  FileText,
   Hash,
   LayoutDashboard,
   MessageSquare,
   Pencil,
   Plus,
   Sparkles,
-  StickyNote,
   Trash2,
   UsersRound,
-  Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,9 +23,9 @@ import { TeamCommandPalette, type CommandAction } from "./TeamCommandPalette";
 import { TeamOperationalAdmin } from "./TeamOperationalAdmin";
 import { ChannelManageModal, type ChannelFormState } from "./ChannelManageModal";
 import { TeamChannelChat } from "./TeamChannelChat";
+import { TeamWorkspacePanel } from "./TeamWorkspacePanel";
 
 type HubTab = "overview" | "channels" | "workspace" | "admin";
-type WorkspaceFilter = "NOTE" | "WIKI" | "SNIPPET" | "FILE_LINK";
 
 interface TeamRow {
   id: string;
@@ -73,17 +69,6 @@ interface ChannelRow {
   lastMessage: { createdAt: string; body: string } | null;
 }
 
-interface WorkspaceItem {
-  id: string;
-  itemType: WorkspaceFilter;
-  title: string;
-  content: string | null;
-  fileUrl: string | null;
-  pinned: boolean;
-  updatedAt: string;
-  createdBy: { id: string; name: string };
-}
-
 export function TeamsCollaborationHub() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
@@ -110,11 +95,6 @@ export function TeamsCollaborationHub() {
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-  const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("NOTE");
-  const [workspaceItems, setWorkspaceItems] = useState<WorkspaceItem[]>([]);
-  const [wsTitle, setWsTitle] = useState("");
-  const [wsContent, setWsContent] = useState("");
-  const [wsFileUrl, setWsFileUrl] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -170,21 +150,6 @@ export function TeamsCollaborationHub() {
     }
   }, [channelsOn]);
 
-  const loadWorkspace = useCallback(
-    async (teamId: string, type: WorkspaceFilter) => {
-      if (!workspaceOn) return;
-      try {
-        const res = await api.get<{ data: WorkspaceItem[] }>(
-          `/teams/${teamId}/workspace?type=${type}`,
-        );
-        setWorkspaceItems(res.data);
-      } catch {
-        setWorkspaceItems([]);
-      }
-    },
-    [workspaceOn],
-  );
-
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -204,26 +169,15 @@ export function TeamsCollaborationHub() {
     if (!selected?.id) return;
     void loadOverview(selected.id);
     void loadChannels(selected.id);
-    if (workspaceOn) void loadWorkspace(selected.id, workspaceFilter);
-  }, [selected?.id, loadOverview, loadChannels, loadWorkspace, workspaceFilter, workspaceOn]);
+  }, [selected?.id, loadOverview, loadChannels]);
 
   const refreshTeamContext = useCallback(() => {
     void loadTeams();
     if (selected?.id) {
       void loadOverview(selected.id);
       if (channelsOn) void loadChannels(selected.id);
-      if (workspaceOn) void loadWorkspace(selected.id, workspaceFilter);
     }
-  }, [
-    loadTeams,
-    loadOverview,
-    loadChannels,
-    loadWorkspace,
-    selected?.id,
-    channelsOn,
-    workspaceOn,
-    workspaceFilter,
-  ]);
+  }, [loadTeams, loadOverview, loadChannels, selected?.id, channelsOn]);
 
   useEffect(() => {
     if (!realtimeOn || !selected?.id) return;
@@ -257,22 +211,6 @@ export function TeamsCollaborationHub() {
     } finally {
       setCreating(false);
     }
-  };
-
-  const addWorkspaceItem = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!selected?.id || !wsTitle.trim()) return;
-    await api.post(`/teams/${selected.id}/workspace`, {
-      itemType: workspaceFilter,
-      title: wsTitle.trim(),
-      content: wsContent.trim() || undefined,
-      fileUrl: workspaceFilter === "FILE_LINK" && wsFileUrl.trim() ? wsFileUrl.trim() : undefined,
-    });
-    setWsTitle("");
-    setWsContent("");
-    setWsFileUrl("");
-    await loadWorkspace(selected.id, workspaceFilter);
-    await loadOverview(selected.id);
   };
 
   const runAi = async () => {
@@ -648,88 +586,7 @@ export function TeamsCollaborationHub() {
                   ) : null}
 
                   {tab === "workspace" && workspaceOn && selected ? (
-                    <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
-                      <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-2 dark:border-ink-800 dark:bg-ink-950/60">
-                        {(
-                          [
-                            { id: "NOTE" as const, icon: StickyNote },
-                            { id: "WIKI" as const, icon: BookOpen },
-                            { id: "SNIPPET" as const, icon: Zap },
-                            { id: "FILE_LINK" as const, icon: FileText },
-                          ] as const
-                        ).map((w) => (
-                          <button
-                            key={w.id}
-                            type="button"
-                            onClick={() => setWorkspaceFilter(w.id)}
-                            className={clsx(
-                              "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition",
-                              workspaceFilter === w.id
-                                ? "bg-brand-500/15 text-brand-900 dark:text-brand-100"
-                                : "text-ink-600 hover:bg-ink-100 dark:text-ink-300",
-                            )}
-                          >
-                            <w.icon className="h-4 w-4" />
-                            {t(`teamsHub.workspace.${w.id}`)}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="space-y-4">
-                        <form
-                          onSubmit={addWorkspaceItem}
-                          className="rounded-2xl border border-dashed border-ink-200 bg-white/80 p-4 dark:border-ink-700 dark:bg-ink-950/40"
-                        >
-                          <input
-                            value={wsTitle}
-                            onChange={(e) => setWsTitle(e.target.value)}
-                            placeholder={t("teamsHub.workspaceTitle")}
-                            className="input-field mb-2 w-full"
-                          />
-                          {workspaceFilter === "FILE_LINK" ? (
-                            <input
-                              value={wsFileUrl}
-                              onChange={(e) => setWsFileUrl(e.target.value)}
-                              placeholder={t("teamsHub.fileUrl")}
-                              className="input-field mb-2 w-full"
-                            />
-                          ) : (
-                            <textarea
-                              value={wsContent}
-                              onChange={(e) => setWsContent(e.target.value)}
-                              rows={3}
-                              placeholder={t("teamsHub.workspaceBody")}
-                              className="input-field mb-2 w-full resize-y"
-                            />
-                          )}
-                          <button type="submit" className="btn-primary text-sm">
-                            {t("common.add")}
-                          </button>
-                        </form>
-                        <ul className="grid gap-3 sm:grid-cols-2">
-                          {workspaceItems.map((item) => (
-                            <li
-                              key={item.id}
-                              className="rounded-2xl border border-ink-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-ink-800 dark:bg-ink-950/60"
-                            >
-                              <p className="font-semibold text-ink-900 dark:text-ink-50">{item.title}</p>
-                              {item.fileUrl ? (
-                                <a href={item.fileUrl} target="_blank" rel="noreferrer" className="mt-2 text-sm text-brand-600 underline">
-                                  {item.fileUrl}
-                                </a>
-                              ) : (
-                                <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-ink-600 dark:text-ink-300">
-                                  {item.content}
-                                </p>
-                              )}
-                              <p className="mt-2 text-[10px] text-ink-400">
-                                {item.createdBy.name} ·{" "}
-                                {formatDistanceToNow(new Date(item.updatedAt), { addSuffix: true, locale: dateLocale })}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
+                    <TeamWorkspacePanel teamId={selected.id} onMutated={refreshTeamContext} />
                   ) : null}
 
                   {tab === "admin" && isAdmin && selected ? (

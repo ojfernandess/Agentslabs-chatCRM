@@ -540,6 +540,66 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(item);
   });
 
+  const updateWorkspaceSchema = z.object({
+    title: z.string().min(1).max(200).optional(),
+    content: z.string().max(50000).optional().nullable(),
+    fileUrl: z.string().url().max(2048).optional().nullable(),
+    pinned: z.boolean().optional(),
+  });
+
+  app.patch<{ Params: { id: string; itemId: string } }>("/:id/workspace/:itemId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireTeamHubFeature(organizationId, "teams_workspace", reply))) return;
+    const team = await memberGuard(organizationId, request.params.id, request.user, reply);
+    if (!team) return;
+
+    const parsed = updateWorkspaceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.teamWorkspaceItem.findFirst({
+      where: { id: request.params.itemId, teamId: team.id },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Item not found", statusCode: 404 });
+    }
+
+    const data: {
+      title?: string;
+      content?: string | null;
+      fileUrl?: string | null;
+      pinned?: boolean;
+    } = {};
+    if (parsed.data.title !== undefined) data.title = parsed.data.title.trim();
+    if (parsed.data.content !== undefined) data.content = parsed.data.content?.trim() || null;
+    if (parsed.data.fileUrl !== undefined) data.fileUrl = parsed.data.fileUrl;
+    if (parsed.data.pinned !== undefined) data.pinned = parsed.data.pinned;
+
+    const item = await prisma.teamWorkspaceItem.update({
+      where: { id: existing.id },
+      data,
+      include: {
+        createdBy: { select: { id: true, name: true, displayName: true } },
+      },
+    });
+
+    return {
+      id: item.id,
+      itemType: item.itemType,
+      title: item.title,
+      content: item.content,
+      fileUrl: item.fileUrl,
+      pinned: item.pinned,
+      updatedAt: item.updatedAt,
+      createdBy: {
+        id: item.createdBy.id,
+        name: item.createdBy.displayName?.trim() || item.createdBy.name,
+      },
+    };
+  });
+
   app.delete<{ Params: { id: string; itemId: string } }>("/:id/workspace/:itemId", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
