@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.svg" alt="OpenConduit" width="120" />
+  <img src="logo.svg" alt="OpenNexo CRM" width="120" />
 </p>
 
 <h1 align="center">OpenNexo CRM</h1>
@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/ojfernandess/Agentslabs-chatCRM/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" /></a>
-  <a href="https://openconduit.dev"><img src="https://img.shields.io/badge/website-openconduit.dev-brand" alt="Website" /></a>
+  <a href="https://github.com/ojfernandess/Agentslabs-chatCRM"><img src="https://img.shields.io/badge/GitHub-repository-181717" alt="GitHub" /></a>
   <img src="https://img.shields.io/badge/status-pre--release-orange" alt="Status" />
   <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node" />
   <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker" />
@@ -20,11 +20,11 @@
 ---
 
 > [!NOTE]
-> OpenConduit is under active development and not yet production-ready. APIs, database schemas, and features may change. Star or watch the repo to follow progress.
+> OpenNexo CRM is under active development and not yet production-ready. APIs, database schemas, and features may change. Star or watch the repo to follow progress.
 
 ---
 
-OpenConduit is a WhatsApp CRM you can run on your own server. It connects to the WhatsApp Business API through providers like Meta Cloud API, 360dialog, or Twilio, and gives you a clean interface to manage conversations, contacts, and leads.
+OpenNexo CRM is a WhatsApp CRM you can run on your own server. It connects to the WhatsApp Business API through providers like Meta Cloud API, 360dialog, or Twilio, and gives you a clean interface to manage conversations, contacts, and leads.
 
 Built for freelancers, agencies, and local businesses who already use WhatsApp as their primary channel. No per-seat pricing, no data leaving your infrastructure, no vendor lock-in.
 
@@ -59,13 +59,15 @@ cd Agentslabs-chatCRM
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
+Edit `.env` with your configuration (see `.env.example` for all variables):
 
 ```env
-DATABASE_URL=postgresql://openconduit:your-db-password@db:5432/openconduit
+DATABASE_URL=postgresql://<user>:<password>@db:5432/<database>
 JWT_SECRET=generate-a-random-64-character-string-here
 PUBLIC_URL=https://crm.yourdomain.com
 ```
+
+Use the same database user, password, and database name as in your `docker-compose.yml` / `.env.example`.
 
 Start the stack:
 
@@ -85,8 +87,7 @@ Open `https://crm.yourdomain.com` in your browser.
 
 | | |
 |---|---|
-| **Email** | `admin@openconduit.dev` |
-| **Password** | `admin123` |
+| **Credentials** | Admin user created by the database seed (default password `admin123`) |
 
 **Change the default password immediately after your first login.**
 
