@@ -34,7 +34,7 @@ export function AiInsightsPage() {
   const [tagFilter, setTagFilter] = useState("");
   const [periodFilter, setPeriodFilter] = useState("7");
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
-  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
+  const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([]);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -75,13 +75,13 @@ export function AiInsightsPage() {
     void Promise.all([
       api.get<{ data: AiInsightsConversationRow[] }>("/conversations?pageSize=50"),
       api.get<{ id: string; name: string }[]>("/users").catch(() => []),
-      api.get<{ id: string; name: string }[]>("/tags").catch(() => []),
+      api.get<{ id: string; name: string; color: string }[]>("/tags").catch(() => []),
     ])
       .then(([convRes, users, tagRows]) => {
         if (cancelled) return;
         setRows(convRes.data ?? []);
         setAgents(users.map((u) => ({ id: u.id, name: u.name })));
-        setTags(tagRows.map((tag) => ({ id: tag.id, name: tag.name })));
+        setTags(tagRows.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color })));
       })
       .catch(() => {
         if (!cancelled) setRows([]);
@@ -289,6 +289,28 @@ export function AiInsightsPage() {
     }
   };
 
+  const applyContactTag = useCallback(
+    async (tagId: string) => {
+      if (!selectedConversation) return;
+      const contactId = selectedConversation.contact.id;
+      try {
+        const updated = await api.post<{ tags: { tag: { id: string; name: string; color: string } }[] }>(
+          `/contacts/${contactId}/tags`,
+          { tagIds: [tagId] },
+        );
+        setRows((prev) =>
+          prev.map((r) =>
+            r.contact.id === contactId ? { ...r, contact: { ...r.contact, tags: updated.tags } } : r,
+          ),
+        );
+        setError("");
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
+      }
+    },
+    [selectedConversation, t],
+  );
+
   return (
     <PageTransition>
       <div className="mx-auto max-w-[1400px] space-y-8 px-4 py-8 lg:px-6">
@@ -394,6 +416,10 @@ export function AiInsightsPage() {
               <div className="mt-5 border-t border-ink-100 pt-5 dark:border-ink-800">
                 <SuggestedActions
                   conversationId={selectedId}
+                  contactId={selectedConversation?.contact.id}
+                  contactTags={selectedConversation?.contact.tags}
+                  tags={tags}
+                  onApplyTag={applyContactTag}
                   onGenerateReply={() => void runGenerateReply()}
                   generating={generating}
                   disabled={!assistantAiEnabled}

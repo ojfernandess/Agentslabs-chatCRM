@@ -10,54 +10,172 @@ import {
   Tag,
   UserRound,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n/I18nProvider";
 
+type TagItem = { id: string; name: string; color: string };
+
 type Props = {
   conversationId: string;
+  contactId?: string;
+  contactTags?: { tag: TagItem }[];
+  tags?: TagItem[];
+  onApplyTag?: (tagId: string) => void | Promise<void>;
   onGenerateReply: () => void;
   generating: boolean;
   disabled: boolean;
 };
 
-const actions = [
-  { id: "reply", icon: Sparkles, labelKey: "aiInsightsPage.actions.generateReply", primary: true },
+const linkActions = [
   { id: "followup", icon: CalendarPlus, labelKey: "aiInsightsPage.actions.followUp", href: "reminders" },
   { id: "funnel", icon: Kanban, labelKey: "aiInsightsPage.actions.moveFunnel", href: "crm" },
-  { id: "tag", icon: Tag, labelKey: "aiInsightsPage.actions.applyTag", href: "contacts" },
   { id: "transfer", icon: UserRound, labelKey: "aiInsightsPage.actions.transfer", href: "conversation" },
 ] as const;
 
-export function SuggestedActions({ conversationId, onGenerateReply, generating, disabled }: Props) {
+function ApplyTagAction({
+  contactId,
+  contactTags,
+  tags,
+  onApplyTag,
+  disabled,
+  conversationId,
+}: {
+  contactId?: string;
+  contactTags?: { tag: TagItem }[];
+  tags?: TagItem[];
+  onApplyTag?: (tagId: string) => void | Promise<void>;
+  disabled: boolean;
+  conversationId: string;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const assignedIds = useMemo(
+    () => new Set(contactTags?.map((ct) => ct.tag.id) ?? []),
+    [contactTags],
+  );
+  const availableTags = useMemo(
+    () => (tags ?? []).filter((tag) => !assignedIds.has(tag.id)),
+    [tags, assignedIds],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [contactId, conversationId]);
+
+  const handleSelect = useCallback(
+    async (tagId: string) => {
+      if (!onApplyTag) return;
+      setApplying(true);
+      try {
+        await onApplyTag(tagId);
+        setOpen(false);
+      } finally {
+        setApplying(false);
+      }
+    },
+    [onApplyTag],
+  );
+
+  const actionDisabled = disabled || !conversationId || !contactId;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        disabled={actionDisabled}
+        onClick={() => setOpen((v) => !v)}
+        className={clsx(
+          "inline-flex items-center gap-2 rounded-xl border border-ink-200 bg-white px-3.5 py-2 text-sm font-medium text-ink-800 shadow-sm transition hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900/50 dark:text-ink-100 dark:hover:bg-ink-800/60",
+          actionDisabled && "opacity-40",
+        )}
+      >
+        {applying ? <Loader2 className="h-4 w-4 animate-spin text-brand-500" /> : <Tag className="h-4 w-4 text-brand-500" />}
+        {t("aiInsightsPage.actions.applyTag")}
+      </button>
+      {open && !actionDisabled ? (
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900">
+          <p className="px-3 py-1.5 text-xs font-medium text-ink-500 dark:text-ink-400">
+            {t("contacts.addTag")}
+          </p>
+          {availableTags.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-ink-500 dark:text-ink-400">
+              {tags?.length ? t("conversationDetail.tagNoneAvailable") : t("contacts.noTags")}
+            </p>
+          ) : (
+            availableTags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                disabled={applying}
+                onClick={() => void handleSelect(tag.id)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 transition hover:bg-ink-50 disabled:opacity-50 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                {tag.name}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function SuggestedActions({
+  conversationId,
+  contactId,
+  contactTags,
+  tags,
+  onApplyTag,
+  onGenerateReply,
+  generating,
+  disabled,
+}: Props) {
   const { t } = useI18n();
 
   return (
     <div className="flex flex-wrap gap-2">
-      {actions.map((action) => {
-        const Icon = action.icon;
-        if (action.id === "reply") {
-          return (
-            <button
-              key={action.id}
-              type="button"
-              disabled={disabled || generating || !conversationId}
-              onClick={onGenerateReply}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/25 transition hover:brightness-110 disabled:opacity-50"
-            >
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
-              {t(action.labelKey)}
-            </button>
-          );
-        }
+      <button
+        type="button"
+        disabled={disabled || generating || !conversationId}
+        onClick={onGenerateReply}
+        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/25 transition hover:brightness-110 disabled:opacity-50"
+      >
+        {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        {t("aiInsightsPage.actions.generateReply")}
+      </button>
 
+      <ApplyTagAction
+        contactId={contactId}
+        contactTags={contactTags}
+        tags={tags}
+        onApplyTag={onApplyTag}
+        disabled={disabled}
+        conversationId={conversationId}
+      />
+
+      {linkActions.map((action) => {
+        const Icon = action.icon;
         const href =
           action.href === "conversation"
             ? `/conversations/${conversationId}`
             : action.href === "crm"
               ? "/crm"
-              : action.href === "reminders"
-                ? "/reminders"
-                : "/contacts";
+              : "/reminders";
 
         return (
           <Link
