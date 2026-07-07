@@ -78,6 +78,23 @@ function ScopeTabCount({ count, selected }: { count: number; selected: boolean }
   );
 }
 
+function applySyncedContactAvatars(rows: Conversation[], syncedIds: string[]): Conversation[] {
+  if (syncedIds.length === 0) return rows;
+  const synced = new Set(syncedIds);
+  return rows.map((row) =>
+    synced.has(row.contact.id)
+      ? {
+          ...row,
+          contact: {
+            ...row.contact,
+            hasAvatar: true,
+            thumbnail: `/api/v1/contacts/${row.contact.id}/profile-picture`,
+          },
+        }
+      : row,
+  );
+}
+
 export function ConversationsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
@@ -394,7 +411,14 @@ export function ConversationsPage() {
       setConversations(res.data);
       const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
       if (contactIds.length > 0) {
-        void api.post("/contacts/sync-avatars", { contactIds }).catch(() => {});
+        void api
+          .post<{ synced: string[]; failed: string[] }>("/contacts/sync-avatars", { contactIds })
+          .then((syncRes) => {
+            if (syncRes.synced?.length) {
+              setConversations((prev) => applySyncedContactAvatars(prev, syncRes.synced));
+            }
+          })
+          .catch(() => {});
       }
       try {
         localStorage.setItem(
