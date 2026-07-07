@@ -3436,7 +3436,7 @@ export const messages = {
       botInAttendance: "Bot em atendimento",
       botTriageListHuman: "Com agente humano",
       botTriageBanner:
-        "Esta conversa está pendente e ainda não foi atribuída a um atendente. O assistente virtual responde automaticamente às mensagens do cliente até alguém da equipa assumir o caso.",
+        "Esta conversa está pendente e ainda não foi atribuída a nenhum atendente. O assistente virtual responde automaticamente às mensagens do cliente até alguém da equipe assumir o atendimento.",
       awaitingHumanBadge: "Aguardando atendimento",
       awaitingHumanBanner:
         "O bot transferiu esta conversa para atendimento humano. As respostas automáticas estão em pausa até a conversa voltar à pendência (fila do bot) ou ser tratada pela equipa.",
