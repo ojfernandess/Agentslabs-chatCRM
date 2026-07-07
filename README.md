@@ -2,7 +2,7 @@
   <img src="logo.svg" alt="OpenConduit" width="120" />
 </p>
 
-<h1 align="center">OpenConduit</h1>
+<h1 align="center">OpenNexo CRM</h1>
 
 <p align="center">
   <strong>The open-source, self-hostable WhatsApp CRM.</strong>
