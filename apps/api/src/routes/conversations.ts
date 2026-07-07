@@ -1360,6 +1360,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     const nextStatus = parsed.data.status ?? existing.status;
 
+    const resolveInbox = await prisma.inbox.findFirst({
+      where: { id: existing.inboxId, organizationId },
+      select: { channelType: true },
+    });
+    const agentCtxOnResolve = await getAgentBotDispatchContextForInbox(organizationId, existing.inboxId);
+    const botTriageActiveOnResolve = computeAgentBotTriageActive(
+      agentCtxOnResolve,
+      resolveInbox?.channelType ?? "WHATSAPP",
+    );
+
     const tenantSettings = await prisma.settings.findUnique({
       where: { organizationId },
       select: {
@@ -1453,7 +1463,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       nextStatus === "RESOLVED" &&
       existing.status !== "RESOLVED" &&
       existing.assignedToId == null &&
-      parsed.data.assignedToId === undefined
+      parsed.data.assignedToId === undefined &&
+      !botTriageActiveOnResolve
     ) {
       data.assignedToId = request.user.id;
     }
@@ -1490,6 +1501,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         if (tenantSettings?.csatEnabled) {
           data.csatSurveyToken = newCsatSurveyToken();
         }
+      }
+      /** Equivalente a «Transferir para o bot»: fila do bot na próxima mensagem. */
+      data.awaitingHumanHandoff = false;
+      if (botTriageActiveOnResolve && parsed.data.assignedToId === undefined) {
+        data.assignedToId = null;
       }
     }
 

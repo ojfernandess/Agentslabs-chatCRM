@@ -35,6 +35,7 @@ export function reopenResolvedConversationData(activeConversationStatus: "OPEN" 
     status: activeConversationStatus,
     updatedAt: new Date(),
     assignedToId: null,
+    awaitingHumanHandoff: false,
     closureReason: null,
     closureValue: null,
     leadTypeId: null,
