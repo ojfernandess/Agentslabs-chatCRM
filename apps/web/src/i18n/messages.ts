@@ -3151,6 +3151,7 @@ export const messages = {
       inviteDone: "Conta criada. A redirecionar para o login…",
       inviteTokenInvalid: "Link de convite inválido ou expirado.",
       inviteAcceptError: "Não foi possível concluir o cadastro.",
+      turnstileRequired: "Conclua a verificação de segurança antes de continuar.",
     },
     dashboard: {
       title: "Painel",
@@ -4678,6 +4679,20 @@ export const messages = {
       mediaStorageEnvHint:
         "Sem configuração da plataforma: usa MEDIA_STORAGE_DRIVER e MINIO_* do .env da API.",
       resendEmailTitle: "E-mail transacional (Resend)",
+      turnstileTitle: "Cloudflare Turnstile",
+      turnstileSubtitle:
+        "Proteção anti-bot no login, recuperação de senha e cadastro por convite. Obtenha as chaves no painel Cloudflare Turnstile.",
+      turnstileEnabled: "Activar Turnstile",
+      turnstileSiteKey: "Chave do site (Site Key)",
+      turnstileSecretKey: "Chave secreta (Secret Key)",
+      turnstileSecretKeyHint: "Deixe em branco ao guardar para manter a chave já gravada.",
+      turnstileSave: "Guardar Turnstile",
+      turnstileConfigured: "Turnstile activo — login, recuperação de senha e convites exigem verificação.",
+      turnstileIncomplete: "Turnstile activado mas incompleto — preencha site key e secret key.",
+      turnstileSaveError: "Não foi possível guardar as definições Turnstile.",
+      turnstileDocLink: "Documentação Cloudflare Turnstile",
+      turnstileScopeHint:
+        "Protege: login, recuperação de senha, redefinição de senha e criação de conta por convite.",
       resendEmailSubtitle:
         "Chave da API Resend e identidade do remetente para recuperação de senha e outros emails da plataforma. Verifique o domínio em resend.com.",
       resendFromEmail: "E-mail remetente (From)",
@@ -7854,6 +7869,7 @@ export const messages = {
       inviteDone: "Account created. Redirecting to sign in…",
       inviteTokenInvalid: "Invalid or expired invitation link.",
       inviteAcceptError: "Could not complete registration.",
+      turnstileRequired: "Complete the security verification before continuing.",
     },
     dashboard: {
       title: "Dashboard",
@@ -9377,6 +9393,20 @@ export const messages = {
       mediaStorageEnvHint:
         "No platform override: uses MEDIA_STORAGE_DRIVER and MINIO_* from the API .env.",
       resendEmailTitle: "Transactional email (Resend)",
+      turnstileTitle: "Cloudflare Turnstile",
+      turnstileSubtitle:
+        "Anti-bot protection on login, password recovery, and invite signup. Get keys from the Cloudflare Turnstile dashboard.",
+      turnstileEnabled: "Enable Turnstile",
+      turnstileSiteKey: "Site key",
+      turnstileSecretKey: "Secret key",
+      turnstileSecretKeyHint: "Leave blank when saving to keep the existing key.",
+      turnstileSave: "Save Turnstile",
+      turnstileConfigured: "Turnstile is active — login, password recovery, and invites require verification.",
+      turnstileIncomplete: "Turnstile is enabled but incomplete — enter site key and secret key.",
+      turnstileSaveError: "Could not save Turnstile settings.",
+      turnstileDocLink: "Cloudflare Turnstile documentation",
+      turnstileScopeHint:
+        "Protects: login, password recovery, password reset, and invite account creation.",
       resendEmailSubtitle:
         "Resend API key and sender identity for password recovery and other platform emails. Verify your domain at resend.com.",
       resendFromEmail: "From email",

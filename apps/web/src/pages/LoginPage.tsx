@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
 const REMEMBER_EMAIL_KEY = "opennexo_login_email";
 
@@ -22,6 +23,9 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const { isBlocked: turnstileBlocksSubmit } = useAuthTurnstileGate();
 
   useEffect(() => {
     try {
@@ -69,9 +73,11 @@ export function LoginPage() {
           /* ignore */
         }
       }
-      const u = await login(trimmedEmail, trimmedPassword);
+      const u = await login(trimmedEmail, trimmedPassword, turnstileToken ?? undefined);
       navigate(isSuperAdminRole(u.role) && !u.actingOrganizationId ? "/super" : "/");
     } catch (err) {
+      setTurnstileReset((n) => n + 1);
+      setTurnstileToken(null);
       if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -88,9 +94,14 @@ export function LoginPage() {
     setForgotSent(false);
     setLoading(true);
     try {
-      await api.post("/auth/forgot-password", { email: email.trim().toLowerCase() });
+      await api.post("/auth/forgot-password", {
+        email: email.trim().toLowerCase(),
+        turnstileToken: turnstileToken ?? undefined,
+      });
       setForgotSent(true);
     } catch {
+      setTurnstileReset((n) => n + 1);
+      setTurnstileToken(null);
       setError(t("login.errorGeneric"));
     } finally {
       setLoading(false);
@@ -213,9 +224,11 @@ export function LoginPage() {
                 </button>
               </div>
 
+              <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
+
               <motion.button
                 type="submit"
-                disabled={loading}
+                disabled={loading || turnstileBlocksSubmit(turnstileToken)}
                 className="btn-primary w-full rounded-lg bg-indigo-600 py-2.5 text-white hover:bg-indigo-700 focus-visible:ring-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
                 whileTap={{ scale: 0.99 }}
               >
@@ -261,9 +274,10 @@ export function LoginPage() {
                   placeholder={t("login.emailPlaceholder")}
                 />
               </div>
+              <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
               <motion.button
                 type="submit"
-                disabled={loading}
+                disabled={loading || turnstileBlocksSubmit(turnstileToken)}
                 className="btn-primary w-full rounded-lg bg-indigo-600 py-2.5 text-white hover:bg-indigo-700 dark:bg-indigo-500"
                 whileTap={{ scale: 0.99 }}
               >

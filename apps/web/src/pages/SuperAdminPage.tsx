@@ -27,6 +27,7 @@ import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSetting
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
+import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 
 interface OrgRow {
   id: string;
@@ -267,6 +268,13 @@ interface SuperResendPayload {
   userInviteHtmlTemplate: string;
 }
 
+interface SuperTurnstilePayload {
+  enabled: boolean;
+  siteKey: string;
+  secretKeyMasked: string;
+  configured: boolean;
+}
+
 interface SuperMediaStoragePayload {
   configured: boolean;
   enabled: boolean;
@@ -411,6 +419,18 @@ export function SuperAdminPage() {
   const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
   const [resendUserInviteSubject, setResendUserInviteSubject] = useState("");
   const [resendUserInviteHtml, setResendUserInviteHtml] = useState("");
+
+  const [turnstileLoad, setTurnstileLoad] = useState(false);
+  const [turnstileSaving, setTurnstileSaving] = useState(false);
+  const [turnstileSnapshot, setTurnstileSnapshot] = useState<SuperTurnstilePayload>({
+    enabled: false,
+    siteKey: "",
+    secretKeyMasked: "",
+    configured: false,
+  });
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileSecretKey, setTurnstileSecretKey] = useState("");
 
   const [mediaStorageLoad, setMediaStorageLoad] = useState(false);
   const [mediaStorageSaving, setMediaStorageSaving] = useState(false);
@@ -688,6 +708,34 @@ export function SuperAdminPage() {
       })
       .finally(() => {
         if (!cancelled) setResendLoad(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "globalSettings") return;
+    let cancelled = false;
+    setTurnstileLoad(true);
+    void api
+      .get<SuperTurnstilePayload>("/super/turnstile")
+      .then((d) => {
+        if (cancelled) return;
+        setTurnstileSnapshot(d);
+        setTurnstileEnabled(d.enabled);
+        setTurnstileSiteKey(d.siteKey);
+        setTurnstileSecretKey("");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTurnstileSnapshot({ enabled: false, siteKey: "", secretKeyMasked: "", configured: false });
+          setTurnstileEnabled(false);
+          setTurnstileSiteKey("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTurnstileLoad(false);
       });
     return () => {
       cancelled = true;
@@ -1087,6 +1135,29 @@ export function SuperAdminPage() {
       setError(t("superAdmin.mediaStorageSaveError"));
     } finally {
       setMediaStorageSaving(false);
+    }
+  };
+
+  const saveTurnstile = async (e: FormEvent) => {
+    e.preventDefault();
+    setTurnstileSaving(true);
+    setError("");
+    try {
+      const body: { enabled: boolean; siteKey?: string; secretKey?: string } = {
+        enabled: turnstileEnabled,
+        siteKey: turnstileSiteKey.trim(),
+      };
+      if (turnstileSecretKey.trim()) body.secretKey = turnstileSecretKey.trim();
+      const d = await api.put<SuperTurnstilePayload>("/super/turnstile", body);
+      setTurnstileSnapshot(d);
+      setTurnstileEnabled(d.enabled);
+      setTurnstileSiteKey(d.siteKey);
+      setTurnstileSecretKey("");
+      invalidateTurnstileConfigCache();
+    } catch {
+      setError(t("superAdmin.turnstileSaveError"));
+    } finally {
+      setTurnstileSaving(false);
     }
   };
 
@@ -1845,6 +1916,72 @@ export function SuperAdminPage() {
                     ) : null}
                     <button type="submit" className="btn-primary" disabled={mediaStorageSaving}>
                       {mediaStorageSaving ? t("common.saving") : t("superAdmin.mediaStorageSave")}
+                    </button>
+                  </form>
+                )}
+              </section>
+              <section className="card-surface p-6">
+                <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.turnstileTitle")}</h2>
+                <p className="mb-2 text-sm text-ink-600">{t("superAdmin.turnstileSubtitle")}</p>
+                <a
+                  href="https://developers.cloudflare.com/turnstile/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-4 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {t("superAdmin.turnstileDocLink")} →
+                </a>
+                {turnstileLoad ? (
+                  <p className="text-sm text-ink-500">{t("common.loading")}</p>
+                ) : (
+                  <form onSubmit={(e) => void saveTurnstile(e)} className="space-y-4">
+                    {turnstileSnapshot.configured && turnstileSnapshot.enabled ? (
+                      <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900/40 dark:bg-green-950/30 dark:text-green-100">
+                        {t("superAdmin.turnstileConfigured")}
+                      </p>
+                    ) : turnstileSnapshot.enabled ? (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                        {t("superAdmin.turnstileIncomplete")}
+                      </p>
+                    ) : null}
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-ink-700 dark:text-ink-200">
+                      <input
+                        type="checkbox"
+                        checked={turnstileEnabled}
+                        onChange={(e) => setTurnstileEnabled(e.target.checked)}
+                        className="rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      {t("superAdmin.turnstileEnabled")}
+                    </label>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.turnstileSiteKey")}</label>
+                      <input
+                        value={turnstileSiteKey}
+                        onChange={(e) => setTurnstileSiteKey(e.target.value)}
+                        className="input-field mt-1 font-mono text-sm"
+                        autoComplete="off"
+                        placeholder="0x4AAAAAAA..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink-600">{t("superAdmin.turnstileSecretKey")}</label>
+                      <p className="mt-0.5 text-xs text-ink-500">{t("superAdmin.turnstileSecretKeyHint")}</p>
+                      <input
+                        type="password"
+                        value={turnstileSecretKey}
+                        onChange={(e) => setTurnstileSecretKey(e.target.value)}
+                        className="input-field mt-1 font-mono text-sm"
+                        autoComplete="new-password"
+                        placeholder={
+                          turnstileSnapshot.secretKeyMasked
+                            ? `•••••••• (${turnstileSnapshot.secretKeyMasked})`
+                            : "0x4AAAAAAA..."
+                        }
+                      />
+                    </div>
+                    <p className="text-xs text-ink-500 dark:text-ink-400">{t("superAdmin.turnstileScopeHint")}</p>
+                    <button type="submit" className="btn-primary" disabled={turnstileSaving}>
+                      {turnstileSaving ? t("common.saving") : t("superAdmin.turnstileSave")}
                     </button>
                   </form>
                 )}

@@ -55,6 +55,7 @@ import { automationRoutes } from "./routes/automations.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
 import { publicChatbotFlowRoutes } from "./routes/publicChatbotFlowRoutes.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
+import { publicTurnstileRoutes } from "./routes/publicTurnstile.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 import {
   flushAutomationLogBuffer,
@@ -145,7 +146,8 @@ await app.register(rateLimit, {
       path.startsWith("/api/v1/public/widget/") ||
       path.startsWith("/api/v1/public/chatbot/") ||
       path.startsWith("/api/v1/public/system-documentation") ||
-      path.startsWith("/api/v1/public/knowledge-source-push/")
+      path.startsWith("/api/v1/public/knowledge-source-push/") ||
+      path === "/api/v1/public/turnstile-config"
     );
   },
 });
@@ -169,6 +171,7 @@ await app.register(publicCsatRoutes, { prefix: "/api/v1/public/csat" });
 await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" });
 await app.register(channelNativePublicRoutes, { prefix: "/api/v1/public/channels" });
 await app.register(publicKnowledgeSourcePushRoutes, { prefix: "/api/v1/public" });
+await app.register(publicTurnstileRoutes, { prefix: "/api/v1/public" });
 
 // Register routes
 await app.register(authRoutes, { prefix: "/api/v1/auth" });

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
 export function ResetPasswordPage() {
   const { user } = useAuth();
@@ -21,6 +22,9 @@ export function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const { isBlocked: turnstileBlocksSubmit } = useAuthTurnstileGate();
 
   if (user) {
     if (user.superAdminActorId) {
@@ -47,10 +51,16 @@ export function ResetPasswordPage() {
     }
     setLoading(true);
     try {
-      await api.post("/auth/reset-password", { token, newPassword: password });
+      await api.post("/auth/reset-password", {
+        token,
+        newPassword: password,
+        turnstileToken: turnstileToken ?? undefined,
+      });
       setDone(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
     } catch (err) {
+      setTurnstileReset((n) => n + 1);
+      setTurnstileToken(null);
       if (err instanceof ApiError) {
         setError(err.message || t("login.resetTokenInvalid"));
       } else {
@@ -144,9 +154,10 @@ export function ResetPasswordPage() {
                   className="input-field mt-1.5 rounded-lg border-ink-200 dark:border-ink-600"
                 />
               </div>
+              <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
               <motion.button
                 type="submit"
-                disabled={loading}
+                disabled={loading || turnstileBlocksSubmit(turnstileToken)}
                 className="btn-primary w-full rounded-lg bg-indigo-600 py-2.5 text-white hover:bg-indigo-700 dark:bg-indigo-500"
                 whileTap={{ scale: 0.99 }}
               >

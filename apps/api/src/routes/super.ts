@@ -38,6 +38,10 @@ import {
   MEDIA_STORAGE_PLATFORM_KEY,
   parseMediaStoragePlatformValue,
 } from "../lib/mediaStorageSettings.js";
+import {
+  TURNSTILE_PLATFORM_KEY,
+  readTurnstileSettings,
+} from "../lib/turnstileSettings.js";
 import { buildNvoipPlatformMetrics } from "../lib/nvoipInsights.js";
 import { invalidateMediaStorageCache } from "../lib/mediaStorage.js";
 import {
@@ -142,6 +146,12 @@ const resendEmailPutSchema = z.object({
   passwordResetHtmlTemplate: z.string().max(100_000).optional(),
   userInviteSubject: z.string().max(200).optional(),
   userInviteHtmlTemplate: z.string().max(100_000).optional(),
+});
+
+const turnstilePutSchema = z.object({
+  enabled: z.boolean(),
+  siteKey: z.string().max(256).optional(),
+  secretKey: z.string().max(512).optional(),
 });
 
 const mediaStoragePutSchema = z.object({
@@ -1376,6 +1386,66 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       passwordResetHtmlTemplate: tpl.html,
       userInviteSubject: inviteTpl.subject,
       userInviteHtmlTemplate: inviteTpl.html,
+    };
+  });
+
+  app.get("/turnstile", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: TURNSTILE_PLATFORM_KEY },
+    });
+    const settings = readTurnstileSettings(row?.value);
+    return {
+      enabled: settings.enabled,
+      siteKey: settings.siteKey,
+      secretKeyMasked: settings.secretKey ? "••••••••" : "",
+      configured: !!(settings.siteKey && settings.secretKey),
+    };
+  });
+
+  app.put("/turnstile", async (request, reply) => {
+    const parsed = turnstilePutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const existing = await prisma.platformSetting.findUnique({
+      where: { key: TURNSTILE_PLATFORM_KEY },
+    });
+    const existingSettings = readTurnstileSettings(existing?.value);
+    const siteKey = parsed.data.siteKey?.trim() ?? existingSettings.siteKey;
+    let secretKey = parsed.data.secretKey?.trim() ?? "";
+    if (!secretKey && existingSettings.secretKey) {
+      secretKey = existingSettings.secretKey;
+    }
+    if (parsed.data.enabled && (!siteKey || !secretKey)) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "siteKey and secretKey are required when Turnstile is enabled",
+        statusCode: 400,
+      });
+    }
+    const value = {
+      enabled: parsed.data.enabled,
+      siteKey,
+      secretKey,
+    };
+    await prisma.platformSetting.upsert({
+      where: { key: TURNSTILE_PLATFORM_KEY },
+      create: { key: TURNSTILE_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.turnstile.upsert",
+      resourceType: "platform_setting",
+      resourceId: TURNSTILE_PLATFORM_KEY,
+      metadata: { enabled: value.enabled, siteKey: value.siteKey ? "set" : "empty" },
+      ip: clientIp(request),
+    });
+    return {
+      enabled: value.enabled,
+      siteKey: value.siteKey,
+      secretKeyMasked: value.secretKey ? "••••••••" : "",
+      configured: !!(value.siteKey && value.secretKey),
     };
   });
 

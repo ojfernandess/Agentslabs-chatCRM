@@ -7,6 +7,7 @@ import { motion } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
 export function AcceptInvitePage() {
   const { user } = useAuth();
@@ -27,6 +28,9 @@ export function AcceptInvitePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReset, setTurnstileReset] = useState(0);
+  const { isBlocked: turnstileBlocksSubmit } = useAuthTurnstileGate();
 
   useEffect(() => {
     if (!token) return;
@@ -74,10 +78,17 @@ export function AcceptInvitePage() {
     }
     setLoading(true);
     try {
-      await api.post("/auth/accept-invite", { token, name: name.trim(), password });
+      await api.post("/auth/accept-invite", {
+        token,
+        name: name.trim(),
+        password,
+        turnstileToken: turnstileToken ?? undefined,
+      });
       setDone(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
     } catch (err) {
+      setTurnstileReset((n) => n + 1);
+      setTurnstileToken(null);
       if (err instanceof ApiError) {
         setError(err.message || t("login.inviteAcceptError"));
       } else {
@@ -168,7 +179,8 @@ export function AcceptInvitePage() {
                   className="mt-1 block w-full input-field"
                 />
               </div>
-              <button type="submit" className="btn-primary w-full" disabled={loading}>
+              <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
+              <button type="submit" className="btn-primary w-full" disabled={loading || turnstileBlocksSubmit(turnstileToken)}>
                 {loading ? t("common.saving") : t("login.inviteSubmit")}
               </button>
             </form>

@@ -34,7 +34,7 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string, turnstileToken?: string) => Promise<AuthUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   applySessionToken: (token: string) => Promise<AuthUser>;
@@ -102,8 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [logout]);
 
-  const login = async (email: string, password: string): Promise<AuthUser> => {
-    const response = await api.post<LoginResponse>("/auth/login", { email, password });
+  const login = async (email: string, password: string, turnstileToken?: string): Promise<AuthUser> => {
+    const body: { email: string; password: string; turnstileToken?: string } = { email, password };
+    if (turnstileToken) body.turnstileToken = turnstileToken;
+    const response = await api.post<LoginResponse>("/auth/login", body);
     return applySessionToken(response.token);
   };
 

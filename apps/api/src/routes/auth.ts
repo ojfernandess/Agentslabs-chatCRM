@@ -9,6 +9,7 @@ import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { config, getWebAppPublicOrigin } from "../config.js";
 import { getResendEmailConfigFromDb } from "../lib/resendEmailSettings.js";
+import { enforceTurnstileIfEnabled } from "../lib/turnstileSettings.js";
 import { sendPasswordResetEmail } from "../lib/sendPasswordResetEmail.js";
 import {
   generateUserApiAccessTokenParts,
@@ -18,9 +19,12 @@ import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
 import { persistUserAvatarUpload } from "../lib/profileImageUpload.js";
 
+const turnstileTokenField = z.string().min(1).max(2048).optional();
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(128),
+  turnstileToken: turnstileTokenField,
 });
 
 const patchMeSchema = z.object({
@@ -38,17 +42,20 @@ const changePasswordSchema = z.object({
 
 const forgotPasswordSchema = z.object({
   email: z.string().email(),
+  turnstileToken: turnstileTokenField,
 });
 
 const resetPasswordSchema = z.object({
   token: z.string().min(16).max(512),
   newPassword: z.string().min(8).max(128),
+  turnstileToken: turnstileTokenField,
 });
 
 const acceptInviteSchema = z.object({
   token: z.string().min(16).max(512),
   name: z.string().min(1).max(255),
   password: z.string().min(8).max(128),
+  turnstileToken: turnstileTokenField,
 });
 
 function canManageProfileApiToken(user: {
@@ -68,6 +75,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
+    if (!(await enforceTurnstileIfEnabled(request, reply, parsed.data.turnstileToken))) return;
     const email = parsed.data.email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
@@ -104,6 +112,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
+    if (!(await enforceTurnstileIfEnabled(request, reply, parsed.data.turnstileToken))) return;
     const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
     const row = await prisma.passwordResetToken.findUnique({
       where: { tokenHash },
@@ -161,6 +170,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
+    if (!(await enforceTurnstileIfEnabled(request, reply, parsed.data.turnstileToken))) return;
     const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
     const row = await prisma.userInvitation.findUnique({
       where: { tokenHash },
@@ -229,6 +239,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
+    if (!(await enforceTurnstileIfEnabled(request, reply, parsed.data.turnstileToken))) return;
 
     const { email, password } = parsed.data;
 
