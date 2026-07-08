@@ -80,10 +80,10 @@ export const INBOX_CHANNEL_STYLES: Record<
     badge: "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200",
   },
   EMAIL: {
-    ring: "ring-amber-200 dark:ring-amber-900/50",
-    bg: "bg-amber-500",
-    text: "text-amber-800 dark:text-amber-200",
-    badge: "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+    ring: "ring-violet-200 dark:ring-violet-900/50",
+    bg: "bg-brand-500",
+    text: "text-brand-700 dark:text-brand-300",
+    badge: "bg-brand-100 text-brand-800 dark:bg-brand-950/50 dark:text-brand-200",
   },
   API: {
     ring: "ring-slate-200 dark:ring-slate-700",

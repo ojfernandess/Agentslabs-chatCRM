@@ -262,7 +262,7 @@ export function EmailInboxConfigFields({
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
-            className="mt-0.5 rounded border-ink-300 text-[#1a73e8] focus:ring-[#1a73e8]"
+            className="mt-0.5 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
             checked={form.emailHideFromConversations}
             onChange={(e) => onChange({ emailHideFromConversations: e.target.checked })}
           />

@@ -24,6 +24,12 @@ import {
 } from "@/lib/inboxEmailConfig";
 import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
 import { contactEmailDisplay, emailThreadSubject } from "@/lib/contactEmailDisplay";
+import {
+  getCachedConversation,
+  getInflightConversation,
+  setCachedConversation,
+  setInflightConversation,
+} from "@/lib/conversationDetailCache";
 
 type EmailInboxRow = {
   id: string;
@@ -121,6 +127,15 @@ export function EmailInboxLayout() {
       if (!opts?.silent) setListLoading(false);
     }
   }, [inboxId]);
+
+  const prefetchConversation = useCallback((conversationId: string) => {
+    if (getCachedConversation(conversationId) || getInflightConversation(conversationId)) return;
+    const promise = api.get(`/conversations/${conversationId}`).then((data) => {
+      setCachedConversation(conversationId, data);
+      return data;
+    });
+    setInflightConversation(conversationId, promise);
+  }, []);
 
   useEffect(() => {
     if (!inboxId) return;
@@ -258,7 +273,7 @@ export function EmailInboxLayout() {
                     className={clsx(
                       "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition",
                       tab === "messages"
-                        ? "bg-[#1a73e8] text-white"
+                        ? "bg-brand-600 text-white"
                         : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800",
                     )}
                   >
@@ -271,7 +286,7 @@ export function EmailInboxLayout() {
                     className={clsx(
                       "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition",
                       tab === "settings"
-                        ? "bg-[#1a73e8] text-white"
+                        ? "bg-brand-600 text-white"
                         : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800",
                     )}
                   >
@@ -334,7 +349,7 @@ export function EmailInboxLayout() {
               <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5 dark:border-ink-800">
                 <button
                   type="button"
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#1a73e8] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1765cc] disabled:opacity-50"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
                   disabled={!ready}
                   onClick={() => setComposeOpen(true)}
                 >
@@ -373,11 +388,13 @@ export function EmailInboxLayout() {
                           <NavLink
                             to={`/inboxes/${inboxId}/email/c/${conv.id}`}
                             preventScrollReset
+                            onMouseEnter={() => prefetchConversation(conv.id)}
+                            onFocus={() => prefetchConversation(conv.id)}
                             className={({ isActive }) =>
                               clsx(
                                 "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
                                 isActive
-                                  ? "border-l-[3px] border-l-[#1a73e8] bg-[#e8f0fe] dark:bg-sky-950/30"
+                                  ? "border-l-[3px] border-l-brand-500 bg-brand-50 dark:bg-brand-950/30"
                                   : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
                               )
                             }
@@ -430,7 +447,7 @@ export function EmailInboxThreadPlaceholder() {
   const { t } = useI18n();
   return (
     <div className="flex flex-1 flex-col items-center justify-center bg-[#f6f8fc] p-8 text-center dark:bg-[#0E1624]">
-      <Mail className="mb-3 h-12 w-12 text-[#1a73e8]/70" />
+      <Mail className="mb-3 h-12 w-12 text-brand-500/70" />
       <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
         {t("inboxesPage.emailWorkspace.selectThread")}
       </p>

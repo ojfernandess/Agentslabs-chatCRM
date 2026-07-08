@@ -6,3 +6,4 @@ export * from "./passwordResetEmailTemplate.js";
 export * from "./transactionalEmailPlaceholders.js";
 export * from "./userInviteEmailTemplate.js";
 export * from "./leadTypeClosurePlaybook.js";
+export * from "./emailBodySanitize.js";

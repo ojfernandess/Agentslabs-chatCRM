@@ -114,6 +114,12 @@ import {
 } from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
 import { contactEmailDisplay, emailMessageContent } from "@/lib/contactEmailDisplay";
+import {
+  getCachedConversation,
+  getInflightConversation,
+  setCachedConversation,
+  setInflightConversation,
+} from "@/lib/conversationDetailCache";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
   timelineChannelLabel,
@@ -279,7 +285,6 @@ export function ConversationDetailPage() {
   const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [threadLoading, setThreadLoading] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [closureReason, setClosureReason] = useState("");
   const [closureAmount, setClosureAmount] = useState("");
@@ -464,8 +469,13 @@ export function ConversationDetailPage() {
   /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
   const stickToBottomRef = useRef(true);
   const seenMessageIds = useRef(new Set<string>());
+  const activeConversationIdRef = useRef(id);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = id;
+  }, [id]);
 
   useEffect(() => {
     stickToBottomRef.current = true;
@@ -674,26 +684,31 @@ export function ConversationDetailPage() {
 
   const loadConversation = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
+    const requestId = id;
     try {
-      const data = await api.get<ConversationDetail>(`/conversations/${id}`);
+      let pending = getInflightConversation<ConversationDetail>(requestId);
+      if (!pending) {
+        pending = api.get<ConversationDetail>(`/conversations/${requestId}`);
+        setInflightConversation(requestId, pending);
+      }
+      const data = await pending;
+      if (requestId !== activeConversationIdRef.current) return;
       for (const m of data.messages ?? []) {
         seenMessageIds.current.add(m.id);
       }
+      setCachedConversation(requestId, data);
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setAgentBotTriageActive(data.agentBotTriageActive ?? false);
       if (!opts?.silent) {
-        void api.post(`/conversations/${id}/read`).then(() => {
+        void api.post(`/conversations/${requestId}/read`).then(() => {
           window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
         });
       }
     } catch {
-      if (!opts?.silent) setConversation(null);
+      if (!opts?.silent && requestId === activeConversationIdRef.current) setConversation(null);
     } finally {
-      if (!opts?.silent) {
-        setLoading(false);
-        setThreadLoading(false);
-      }
+      if (!opts?.silent && requestId === activeConversationIdRef.current) setLoading(false);
     }
   }, [id]);
 
@@ -894,11 +909,16 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    if (isEmailLayout) {
-      setThreadLoading(true);
-    } else {
-      setLoading(true);
+    const cached = getCachedConversation<ConversationDetail>(id);
+    if (cached) {
+      setConversation(cached);
+      setLoading(false);
+      void loadConversation({ silent: true });
+      return;
     }
+    setConversation((prev) => (prev?.id === id ? prev : null));
+    if (!isEmailLayout) setLoading(true);
+    else setLoading(false);
     void loadConversation();
   }, [id, isEmailLayout, loadConversation]);
 
@@ -1599,10 +1619,26 @@ export function ConversationDetailPage() {
     );
   }
 
-  if (loading && isEmailLayout && !conversation) {
+  const threadReady = Boolean(conversation && conversation.id === id);
+
+  if (!threadReady) {
+    if (isEmailLayout) {
+      return (
+        <div className="flex h-full items-center justify-center bg-ink-50 dark:bg-[#0E1624]">
+          <div className="h-7 w-7 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+        </div>
+      );
+    }
+    if (loading) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+        </div>
+      );
+    }
     return (
-      <div className="flex h-full items-center justify-center bg-ink-50 dark:bg-[#0E1624]">
-        <div className="h-7 w-7 animate-spin rounded-full border-4 border-[#1a73e8] border-t-transparent" />
+      <div className="flex h-full items-center justify-center">
+        <p className="text-ink-500 dark:text-ink-400">{t("conversationDetail.notFound")}</p>
       </div>
     );
   }
@@ -2874,12 +2910,7 @@ export function ConversationDetailPage() {
           ) : (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
-          {threadLoading ? (
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center pt-2">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1a73e8] border-t-transparent" />
-            </div>
-          ) : null}
-          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3", threadLoading && "opacity-60")}>
+          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -2890,6 +2921,13 @@ export function ConversationDetailPage() {
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
               const displayBody =
                 isEmailInbox && msg.type === "TEXT" ? emailMessageContent(msg.body) : msg.body?.trim() || "";
+              const hasRenderableBody =
+                Boolean(displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE") ||
+                msg.type === "IMAGE" ||
+                msg.type === "DOCUMENT" ||
+                msg.type === "VIDEO" ||
+                msg.type === "AUDIO";
+              if (isEmailInbox && msg.type === "TEXT" && !hasRenderableBody) return null;
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -2902,6 +2940,7 @@ export function ConversationDetailPage() {
                         hasAvatar={conversation.contact.hasAvatar}
                         thumbnail={conversation.contact.thumbnail}
                         variant="message"
+                        useBrandGradient={isEmailInbox}
                       />
                     ) : (
                       <div
@@ -2969,7 +3008,7 @@ export function ConversationDetailPage() {
                       inbound={inbound}
                     />
                   ) : null}
-                  {msg.body?.trim() && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
+                  {displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
                     <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayBody}</p>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
@@ -3422,7 +3461,7 @@ export function ConversationDetailPage() {
                   className={clsx(
                     "inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50",
                     emailWorkspaceMode
-                      ? "bg-[#1a73e8] hover:bg-[#1765cc] dark:bg-[#1a73e8] dark:hover:bg-[#1765cc]"
+                      ? "bg-brand-500 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
                       : "bg-brand-500 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500",
                   )}
                   whileTap={{ scale: 0.98 }}

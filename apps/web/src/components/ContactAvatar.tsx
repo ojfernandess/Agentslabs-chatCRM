@@ -43,6 +43,8 @@ type Props = {
   variant?: ContactAvatarVariant;
   className?: string;
   imgClassName?: string;
+  /** Força gradiente da marca (ex.: contatos de e-mail). */
+  useBrandGradient?: boolean;
 };
 
 /**
@@ -58,6 +60,7 @@ export function ContactAvatar({
   variant = "default",
   className,
   imgClassName,
+  useBrandGradient = false,
 }: Props) {
   const [proxyFailed, setProxyFailed] = useState(false);
   const [directFailed, setDirectFailed] = useState(false);
@@ -74,7 +77,10 @@ export function ContactAvatar({
   const showDirect = Boolean(directSrc && !directFailed && !showCached);
   const showPhoto = showCached || showDirect;
   const initials = useMemo(() => initialsFromName(name), [name]);
-  const gradient = useMemo(() => gradientForName(name), [name]);
+  const gradient = useMemo(
+    () => (useBrandGradient ? "from-brand-500 to-brand-600" : gradientForName(name)),
+    [name, useBrandGradient],
+  );
 
   const sizeClass =
     variant === "list"

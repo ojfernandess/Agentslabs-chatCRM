@@ -1,6 +1,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
 import type { FastifyBaseLogger } from "fastify";
+import { stripEmailQuotedContent } from "@openconduit/shared";
 import { processChannelInboxInbound } from "./channelInboxIngest.js";
 import {
   readEmailImapLastUid,
@@ -67,8 +68,8 @@ function extractTextBody(parsed: ParsedMail): string {
 
 function composeInboundBody(subject: string | undefined, text: string | undefined): string {
   const subj = subject?.trim() || "(Sem assunto)";
-  const body = text?.trim() || "";
-  return body ? `${subj}\n\n${body}` : subj;
+  const cleaned = stripEmailQuotedContent(text?.trim() || "");
+  return cleaned ? `${subj}\n\n${cleaned}` : subj;
 }
 
 function buildImapClient(creds: InboxEmailImapCredentials): ImapFlow {
