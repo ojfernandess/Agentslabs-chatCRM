@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Mail, MessageSquare, PenSquare, Settings2 } from "lucide-react";
+import { ArrowLeft, Mail, MessageSquare, PenSquare, RefreshCw, Settings2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "@/lib/api";
@@ -78,6 +78,8 @@ export function EmailInboxLayout() {
   const [testSentTo, setTestSentTo] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -135,6 +137,36 @@ export function EmailInboxLayout() {
       }
     })();
   }, [inboxId, loadInbox, loadConversations]);
+
+  const syncInbox = useCallback(async () => {
+    if (!inboxId || !ready) return;
+    setSyncBusy(true);
+    setSyncNotice(null);
+    try {
+      const res = await api.post<{ processed: number; skipped: number; error?: string }>(
+        `/inboxes/${inboxId}/sync-email`,
+      );
+      if (res.error) {
+        setSyncNotice(t("inboxesPage.emailWorkspace.syncFailed"));
+      } else if (res.processed > 0) {
+        setSyncNotice(t("inboxesPage.emailWorkspace.syncImported").replace("{count}", String(res.processed)));
+      }
+      await loadConversations();
+    } catch {
+      setSyncNotice(t("inboxesPage.emailWorkspace.syncFailed"));
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [inboxId, ready, loadConversations, t]);
+
+  useEffect(() => {
+    if (tab !== "messages" || !ready || !inboxId) return;
+    void syncInbox();
+    const timer = window.setInterval(() => {
+      void syncInbox();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [tab, ready, inboxId, syncInbox]);
 
   const setTab = (next: "messages" | "settings") => {
     if (next === "settings") setSearchParams({ tab: "settings" });
@@ -317,13 +349,19 @@ export function EmailInboxLayout() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
-                  title={t("common.refresh")}
-                  onClick={() => void loadConversations()}
+                  className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 disabled:opacity-50 dark:hover:bg-ink-800"
+                  title={syncBusy ? t("inboxesPage.emailWorkspace.syncBusy") : t("inboxesPage.emailWorkspace.syncInbox")}
+                  disabled={!ready || syncBusy}
+                  onClick={() => void syncInbox()}
                 >
-                  <Mail className="h-4 w-4" />
+                  <RefreshCw className={clsx("h-4 w-4", syncBusy && "animate-spin")} />
                 </button>
               </div>
+              {syncNotice ? (
+                <p className="border-b border-ink-100 px-3 py-2 text-[11px] text-ink-600 dark:border-ink-800 dark:text-ink-300">
+                  {syncNotice}
+                </p>
+              ) : null}
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {listLoading ? (
                   <p className="p-4 text-xs text-ink-500">{t("common.loading")}</p>

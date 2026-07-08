@@ -153,7 +153,7 @@ export function inboxIsChannelReady(
     return whatsappConfigured ?? isInboxWhatsappConfigured(wa);
   }
   if (channelType === "EMAIL") {
-    return isInboxEmailConfigured(parseInboxEmailFromChannelConfig(channelConfig)) && Boolean(ingestToken);
+    return isInboxEmailConfigured(parseInboxEmailFromChannelConfig(channelConfig));
   }
   return Boolean(ingestToken);
 }

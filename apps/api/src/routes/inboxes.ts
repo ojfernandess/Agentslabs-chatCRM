@@ -24,6 +24,7 @@ import {
   resolveInboxEmailSmtpCredentials,
 } from "../lib/inboxEmailConfig.js";
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
+import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 
 const testWhatsappConnectionSchema = z.object({
@@ -575,6 +576,42 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.post<{ Params: { id: string } }>("/:id/sync-email", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, channelType: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== InboxChannelType.EMAIL) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not an email channel",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const result = await syncInboxEmailNow({
+        organizationId,
+        inboxId: inbox.id,
+        log: app.log,
+      });
+      return reply.send(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to sync email";
+      return reply.status(422).send({
+        error: "Unprocessable Entity",
+        message: msg,
+        statusCode: 422,
+      });
+    }
+  });
+
   function str(v: unknown): string | undefined {
     return typeof v === "string" && v.trim() ? v.trim() : undefined;
   }
@@ -720,6 +757,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         } else {
           data.channelConfig = (normalized ?? p.channelConfig) as Prisma.InputJsonValue;
         }
+      } else if (effectiveChannelType === InboxChannelType.EMAIL) {
+        data.channelConfig = normalizeEmailInboxChannelConfig(
+          inbox.channelConfig,
+          p.channelConfig,
+        ) as Prisma.InputJsonValue;
       } else {
         data.channelConfig = p.channelConfig as Prisma.InputJsonValue;
       }

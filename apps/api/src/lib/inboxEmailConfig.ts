@@ -1,5 +1,6 @@
-import type { InboxChannelType } from "@prisma/client";
+import { InboxChannelType } from "@prisma/client";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
+import { prisma } from "../db.js";
 
 export const MASKED_EMAIL_SECRET = "••••••••";
 
@@ -11,6 +12,7 @@ export type InboxEmailConfigFields = {
   emailSmtpPassword?: string;
   emailImapHost?: string;
   emailImapPort?: number;
+  emailHideFromConversations?: boolean;
 };
 
 export type InboxEmailSmtpCredentials = {
@@ -20,6 +22,44 @@ export type InboxEmailSmtpCredentials = {
   smtpUser: string;
   smtpPassword: string;
 };
+
+export type InboxEmailImapCredentials = {
+  fromAddress: string;
+  imapHost: string;
+  imapPort: number;
+  imapUser: string;
+  imapPassword: string;
+};
+
+function inferImapHostFromSmtp(smtpHost: string): { host: string; port: number } | null {
+  const h = smtpHost.toLowerCase();
+  if (h.includes("gmail")) return { host: "imap.gmail.com", port: 993 };
+  if (h.includes("office365") || h.includes("outlook") || h.includes("hotmail")) {
+    return { host: "outlook.office365.com", port: 993 };
+  }
+  if (h.includes("yahoo")) return { host: "imap.mail.yahoo.com", port: 993 };
+  if (h.includes("zoho")) return { host: "imap.zoho.com", port: 993 };
+  return null;
+}
+
+export function readEmailHideFromConversations(cfg: unknown): boolean {
+  const c = asRecord(cfg);
+  const v = c?.emailHideFromConversations;
+  if (typeof v === "boolean") return v;
+  if (v === "true" || v === 1) return true;
+  return false;
+}
+
+export function readEmailImapLastUid(cfg: unknown): number {
+  const c = asRecord(cfg);
+  const v = c?.emailImapLastUid;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) return Math.trunc(v);
+  if (typeof v === "string" && v.trim()) {
+    const n = Number.parseInt(v.trim(), 10);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return 0;
+}
 
 function asRecord(cfg: unknown): Record<string, unknown> | null {
   return cfg !== null && typeof cfg === "object" && !Array.isArray(cfg) ? (cfg as Record<string, unknown>) : null;
@@ -53,6 +93,7 @@ export function parseInboxEmailFromChannelConfig(cfg: unknown): InboxEmailConfig
     emailSmtpPassword: str(c.emailSmtpPassword),
     emailImapHost: str(c.emailImapHost),
     emailImapPort: port(c.emailImapPort),
+    emailHideFromConversations: readEmailHideFromConversations(cfg),
   };
 }
 
@@ -96,6 +137,10 @@ export function normalizeEmailInboxChannelConfig(existing: unknown, incoming: un
   if (imapPort != null) base.emailImapPort = imapPort;
   else delete base.emailImapPort;
 
+  if (typeof patch.emailHideFromConversations === "boolean") {
+    base.emailHideFromConversations = patch.emailHideFromConversations;
+  }
+
   return base;
 }
 
@@ -115,6 +160,47 @@ export function resolveInboxEmailSmtpCredentials(cfg: unknown): InboxEmailSmtpCr
     smtpUser,
     smtpPassword,
   };
+}
+
+export function resolveInboxEmailImapCredentials(cfg: unknown): InboxEmailImapCredentials | null {
+  const parsed = parseInboxEmailFromChannelConfig(cfg);
+  const fromAddress = parsed.emailFromAddress?.trim();
+  const smtpUser = parsed.emailSmtpUser?.trim();
+  const smtpPassword = parsed.emailSmtpPassword?.trim();
+  if (!fromAddress || !smtpUser || !smtpPassword || isMaskedSecret(smtpPassword)) {
+    return null;
+  }
+
+  let imapHost = parsed.emailImapHost?.trim();
+  let imapPort = parsed.emailImapPort ?? 993;
+  if (!imapHost) {
+    const smtpHost = parsed.emailSmtpHost?.trim();
+    if (!smtpHost) return null;
+    const inferred = inferImapHostFromSmtp(smtpHost);
+    if (!inferred) return null;
+    imapHost = inferred.host;
+    imapPort = inferred.port;
+  }
+
+  return {
+    fromAddress,
+    imapHost,
+    imapPort,
+    imapUser: smtpUser,
+    imapPassword: smtpPassword,
+  };
+}
+
+export function isInboxEmailReceiveConfiguredFromChannelConfig(cfg: unknown): boolean {
+  return resolveInboxEmailImapCredentials(cfg) !== null;
+}
+
+export async function listEmailInboxIdsHiddenFromConversations(organizationId: string): Promise<string[]> {
+  const inboxes = await prisma.inbox.findMany({
+    where: { organizationId, channelType: InboxChannelType.EMAIL },
+    select: { id: true, channelConfig: true },
+  });
+  return inboxes.filter((inbox) => readEmailHideFromConversations(inbox.channelConfig)).map((inbox) => inbox.id);
 }
 
 export function maskEmailChannelConfigForClient(cfg: unknown): unknown {

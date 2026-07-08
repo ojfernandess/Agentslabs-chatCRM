@@ -369,8 +369,19 @@ export function ConversationDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (isEmailLayout) setCrmDesktopOpen(false);
+    if (isEmailLayout) {
+      setCrmDesktopOpen(false);
+      setCrmMobileOpen(false);
+    }
   }, [isEmailLayout]);
+
+  const toggleEmailCrmPanel = useCallback(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
+      setCrmDesktopOpen((open) => !open);
+    } else {
+      setCrmMobileOpen((open) => !open);
+    }
+  }, []);
 
   useEffect(() => {
     if (!resolveOpen) {
@@ -1597,6 +1608,7 @@ export function ConversationDetailPage() {
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
+  const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
   const contactEmail = contactEmailDisplay(conversation.contact);
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
@@ -2437,7 +2449,18 @@ export function ConversationDetailPage() {
         {emailWorkspaceMode ? (
           <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 items-start gap-2">
+                <Link
+                  to={emailInboxId ? `/inboxes/${emailInboxId}/email` : "/inboxes"}
+                  className="mt-0.5 shrink-0 rounded-lg p-2 text-ink-500 transition hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800 dark:hover:text-ink-100"
+                  title={t("inboxesPage.emailWorkspace.backToInbox")}
+                  onClick={() => {
+                    void emailOutlet?.refreshThreads?.();
+                  }}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Link>
+                <div className="min-w-0 flex-1">
                 <h2 className="truncate text-lg font-semibold text-ink-900 dark:text-ink-50">
                   {emailSubject.trim() || conversation.contact.name}
                 </h2>
@@ -2457,15 +2480,16 @@ export function ConversationDetailPage() {
                     {contactEmail ?? conversation.contact.name}
                   </p>
                 </div>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
-                  onClick={() => setCrmDesktopOpen((o) => !o)}
+                  onClick={toggleEmailCrmPanel}
                 >
                   <User className="h-3.5 w-3.5" />
-                  {crmDesktopOpen
+                  {emailCrmPanelOpen
                     ? t("inboxesPage.emailWorkspace.hideContactPanel")
                     : t("inboxesPage.emailWorkspace.showContactPanel")}
                 </button>
@@ -3472,10 +3496,12 @@ export function ConversationDetailPage() {
 
       <aside
         className={clsx(
-          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
+          "min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
           emailWorkspaceMode
-            ? crmDesktopOpen && "flex w-[min(100%,320px)]"
-            : clsx("xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
+            ? crmDesktopOpen
+              ? "hidden xl:flex w-[min(100%,320px)]"
+              : "hidden"
+            : clsx("hidden xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
         )}
       >
         <div

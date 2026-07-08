@@ -10,6 +10,7 @@ export type InboxEmailConfigFields = {
   emailSmtpPassword?: string;
   emailImapHost?: string;
   emailImapPort?: number;
+  emailHideFromConversations?: boolean;
 };
 
 const PROVIDER_PRESETS: Record<
@@ -47,6 +48,18 @@ function port(v: unknown): number | undefined {
   return undefined;
 }
 
+function bool(v: unknown): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (v === "true" || v === 1) return true;
+  if (v === "false" || v === 0) return false;
+  return undefined;
+}
+
+export function readEmailHideFromConversations(cfg: unknown): boolean {
+  const c = asRecord(cfg);
+  return bool(c?.emailHideFromConversations) ?? false;
+}
+
 export function parseInboxEmailFromChannelConfig(cfg: unknown): InboxEmailConfigFields {
   const c = asRecord(cfg);
   if (!c) return {};
@@ -58,6 +71,7 @@ export function parseInboxEmailFromChannelConfig(cfg: unknown): InboxEmailConfig
     emailSmtpPassword: str(c.emailSmtpPassword),
     emailImapHost: str(c.emailImapHost),
     emailImapPort: port(c.emailImapPort),
+    emailHideFromConversations: readEmailHideFromConversations(cfg),
   };
 }
 
@@ -120,6 +134,10 @@ export function buildInboxEmailChannelConfig(
 
   if (patch.emailImapPort != null && patch.emailImapPort > 0) base.emailImapPort = patch.emailImapPort;
   else delete base.emailImapPort;
+
+  if (typeof patch.emailHideFromConversations === "boolean") {
+    base.emailHideFromConversations = patch.emailHideFromConversations;
+  }
 
   return base;
 }

@@ -54,6 +54,7 @@ import {
   suggestAgentReplyText,
 } from "../lib/agentAssistLlm.js";
 import { loadActiveVoiceCallsByConversation } from "../lib/activeVoiceCalls.js";
+import { listEmailInboxIdsHiddenFromConversations } from "../lib/inboxEmailConfig.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -284,6 +285,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       where.status = { in: ["OPEN", "PENDING"] };
       where.assignedToId = null;
       where.awaitingHumanHandoff = false;
+    }
+
+    if (!query.inboxId) {
+      const hiddenEmailInboxIds = await listEmailInboxIdsHiddenFromConversations(organizationId);
+      if (hiddenEmailInboxIds.length > 0) {
+        const existingAnd = where.AND
+          ? Array.isArray(where.AND)
+            ? where.AND
+            : [where.AND]
+          : [];
+        where.AND = [...existingAnd, { NOT: { inboxId: { in: hiddenEmailInboxIds } } }];
+      }
     }
 
     if (request.user.role === "AGENT") {

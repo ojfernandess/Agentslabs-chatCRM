@@ -71,6 +71,7 @@ import { runCrmFlowSchedulerTick } from "./lib/crmFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
 import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
+import { runInboxEmailSyncTick } from "./lib/inboxEmailSyncJob.js";
 import { runNvoipTokenRefreshTick } from "./lib/nvoipTokenRefreshJob.js";
 import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
 
@@ -286,6 +287,11 @@ try {
     void runNvoipHistorySyncTick(app.log);
   }, nvoipHistorySyncMs);
   void runNvoipHistorySyncTick(app.log);
+  const emailImapSyncMs = 60_000;
+  setInterval(() => {
+    void runInboxEmailSyncTick(app.log);
+  }, emailImapSyncMs);
+  void runInboxEmailSyncTick(app.log);
   const nvoipTokenRefreshMs = 10 * 60 * 1000;
   setInterval(() => {
     void runNvoipTokenRefreshTick(app.log);

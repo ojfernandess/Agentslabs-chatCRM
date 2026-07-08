@@ -16,6 +16,7 @@ export type EmailInboxFormState = {
   emailSmtpPassword: string;
   emailImapHost: string;
   emailImapPort: string;
+  emailHideFromConversations: boolean;
 };
 
 export function emptyEmailInboxForm(): EmailInboxFormState {
@@ -28,6 +29,7 @@ export function emptyEmailInboxForm(): EmailInboxFormState {
     emailSmtpPassword: "",
     emailImapHost: "",
     emailImapPort: "993",
+    emailHideFromConversations: false,
   };
 }
 
@@ -44,6 +46,7 @@ export function emailInboxFormFromChannelConfig(cfg: unknown): EmailInboxFormSta
       parsed.emailSmtpPassword === MASKED_EMAIL_SECRET ? "" : (parsed.emailSmtpPassword ?? ""),
     emailImapHost: parsed.emailImapHost ?? "",
     emailImapPort: parsed.emailImapPort != null ? String(parsed.emailImapPort) : "993",
+    emailHideFromConversations: parsed.emailHideFromConversations ?? false,
   };
 }
 
@@ -67,6 +70,14 @@ function parseEmailFormFields(cfg: unknown): InboxEmailConfigFields {
     emailSmtpPassword: str(c.emailSmtpPassword),
     emailImapHost: str(c.emailImapHost),
     emailImapPort: port(c.emailImapPort),
+    emailHideFromConversations:
+      typeof c.emailHideFromConversations === "boolean"
+        ? c.emailHideFromConversations
+        : c.emailHideFromConversations === "true" || c.emailHideFromConversations === 1
+          ? true
+          : c.emailHideFromConversations === "false" || c.emailHideFromConversations === 0
+            ? false
+            : undefined,
   };
 }
 
@@ -81,6 +92,7 @@ export function emailInboxFormToPatch(form: EmailInboxFormState): InboxEmailConf
     emailSmtpPassword: form.emailSmtpPassword.trim() || undefined,
     emailImapHost: form.emailImapHost.trim() || undefined,
     emailImapPort: Number.isFinite(imapPort) && imapPort > 0 ? imapPort : undefined,
+    emailHideFromConversations: form.emailHideFromConversations,
   };
 }
 
@@ -241,6 +253,28 @@ export function EmailInboxConfigFields({
             />
           </label>
         </div>
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-ink-200 bg-white/70 p-4 dark:border-ink-600 dark:bg-ink-950/20">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+          {t("inboxesPage.emailWorkspace.tabSettings")}
+        </p>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 rounded border-ink-300 text-[#1a73e8] focus:ring-[#1a73e8]"
+            checked={form.emailHideFromConversations}
+            onChange={(e) => onChange({ emailHideFromConversations: e.target.checked })}
+          />
+          <span>
+            <span className="block text-sm font-medium text-ink-800 dark:text-ink-100">
+              {t("inboxesPage.emailWorkspace.hideFromConversationsLabel")}
+            </span>
+            <span className="mt-1 block text-[11px] leading-relaxed text-ink-500">
+              {t("inboxesPage.emailWorkspace.hideFromConversationsHint")}
+            </span>
+          </span>
+        </label>
       </div>
 
       {onTestConnection ? (
