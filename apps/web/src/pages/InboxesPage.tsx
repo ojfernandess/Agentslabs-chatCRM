@@ -148,6 +148,9 @@ export function InboxesPage() {
   const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
   const [waTestBusy, setWaTestBusy] = useState(false);
   const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
+  const [emailTestBusy, setEmailTestBusy] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<boolean | null>(null);
+  const [emailTestError, setEmailTestError] = useState<string | null>(null);
   const [editEmailForm, setEditEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
@@ -338,6 +341,9 @@ export function InboxesPage() {
     setEditWabaId(wa.whatsappBusinessAccountId ?? "");
     setWaTestBusy(false);
     setWaTestResult(null);
+    setEmailTestBusy(false);
+    setEmailTestResult(null);
+    setEmailTestError(null);
     setEditWebsiteWidget(
       row.channelType === "WEBSITE"
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
@@ -353,6 +359,8 @@ export function InboxesPage() {
     setEditWebsiteWidget(null);
     setEditEmailForm(emptyEmailInboxForm());
     setWaTestResult(null);
+    setEmailTestResult(null);
+    setEmailTestError(null);
   };
 
   const runWhatsappTestForEdit = async (inboxId: string) => {
@@ -379,6 +387,28 @@ export function InboxesPage() {
       setWaTestResult(false);
     } finally {
       setWaTestBusy(false);
+    }
+  };
+
+  const runEmailTestForEdit = async (inboxId: string) => {
+    setEmailTestBusy(true);
+    setEmailTestResult(null);
+    setEmailTestError(null);
+    try {
+      const channelConfig = buildInboxEmailChannelConfig(
+        rows.find((r) => r.id === inboxId)?.channelConfig,
+        emailInboxFormToPatch(editEmailForm),
+      );
+      const res = await api.post<{ connected: boolean; error?: string | null }>(
+        `/inboxes/${inboxId}/test-email-connection`,
+        { channelConfig },
+      );
+      setEmailTestResult(res.connected);
+      setEmailTestError(res.error ?? null);
+    } catch {
+      setEmailTestResult(false);
+    } finally {
+      setEmailTestBusy(false);
     }
   };
 
@@ -631,6 +661,10 @@ export function InboxesPage() {
                                   parseInboxEmailFromChannelConfig(row.channelConfig).emailSmtpPassword ===
                                   MASKED_EMAIL_SECRET
                                 }
+                                onTestConnection={() => void runEmailTestForEdit(row.id)}
+                                testConnectionBusy={emailTestBusy}
+                                testConnectionResult={emailTestResult}
+                                testConnectionError={emailTestError}
                               />
                             </div>
                           ) : null}
