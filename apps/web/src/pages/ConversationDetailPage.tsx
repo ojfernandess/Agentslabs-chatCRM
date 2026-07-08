@@ -113,6 +113,8 @@ import {
   parseImageTranscriptionBody,
 } from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
+import { contactEmailDisplay } from "@/lib/contactEmailDisplay";
+import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
   timelineChannelLabel,
   timelineEventSummary,
@@ -365,6 +367,10 @@ export function ConversationDetailPage() {
     resolveFormInitializedRef.current = false;
     setResolveOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (isEmailLayout) setCrmDesktopOpen(false);
+  }, [isEmailLayout]);
 
   useEffect(() => {
     if (!resolveOpen) {
@@ -1590,6 +1596,11 @@ export function ConversationDetailPage() {
     hasHumanAssignee;
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
+  const emailWorkspaceMode = isEmailInbox && isEmailLayout;
+  const contactEmail = contactEmailDisplay(conversation.contact);
+  const inboxFromAddress = parseInboxEmailFromChannelConfig(
+    (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
+  ).emailFromAddress;
   const canStartAttendance =
     Boolean(user?.id) && hasNoHumanAssignee && (conversation.status === "OPEN" || conversation.status === "PENDING");
   const transferUnchanged =
@@ -2413,12 +2424,67 @@ export function ConversationDetailPage() {
   return (
     <div
       className={clsx(
-        "relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624]",
-        isEmailLayout ? "flex-1" : "lg:flex-row",
+        "relative flex h-full min-h-0",
+        emailWorkspaceMode
+          ? "min-w-0 flex-1 flex-col bg-white dark:bg-[#0E1624] xl:flex-row"
+          : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
+      {!emailWorkspaceMode ? (
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
+      ) : null}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {emailWorkspaceMode ? (
+          <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-lg font-semibold text-ink-900 dark:text-ink-50">
+                  {emailSubject.trim() || conversation.contact.name}
+                </h2>
+                <div className="mt-2 space-y-1 text-xs text-ink-600 dark:text-ink-300">
+                  {inboxFromAddress ? (
+                    <p>
+                      <span className="font-semibold text-ink-700 dark:text-ink-200">
+                        {t("inboxesPage.emailWorkspace.fromLabel")}:
+                      </span>{" "}
+                      {inboxFromAddress}
+                    </p>
+                  ) : null}
+                  <p>
+                    <span className="font-semibold text-ink-700 dark:text-ink-200">
+                      {t("inboxesPage.emailWorkspace.toLabel")}:
+                    </span>{" "}
+                    {contactEmail ?? conversation.contact.name}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+                  onClick={() => setCrmDesktopOpen((o) => !o)}
+                >
+                  <User className="h-3.5 w-3.5" />
+                  {crmDesktopOpen
+                    ? t("inboxesPage.emailWorkspace.hideContactPanel")
+                    : t("inboxesPage.emailWorkspace.showContactPanel")}
+                </button>
+                {canResolve ? (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => openResolveModal(null)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    {t("conversationDetail.finalize")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {!emailWorkspaceMode ? (
         <motion.div
           className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55 lg:px-5"
           initial={{ opacity: 0, y: -8 }}
@@ -2609,7 +2675,7 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.botInAttendance")}
               </span>
             ) : null}
-            {isEmailInbox ? (
+            {isEmailInbox && !emailWorkspaceMode ? (
               <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 {t("conversationDetail.emailComposerBanner")}
@@ -2713,6 +2779,7 @@ export function ConversationDetailPage() {
             </Link>
           </div>
         </motion.div>
+        ) : null}
 
         {flowError && (
           <div className="border-b border-red-200/80 bg-red-50/95 px-5 py-2.5 text-center text-sm text-red-700 backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-300">
@@ -2748,10 +2815,15 @@ export function ConversationDetailPage() {
         <div
           ref={messagesViewportRef}
           onScroll={onMessagesViewportScroll}
-          className="relative min-h-0 flex-1 overflow-auto px-3 py-4 sm:px-5"
+          className={clsx(
+            "relative min-h-0 flex-1 overflow-auto",
+            emailWorkspaceMode ? "bg-white dark:bg-[#0E1624]" : "px-3 py-4 sm:px-5",
+          )}
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
-          <div className="relative flex w-full min-w-0 flex-col gap-3">
+          {!emailWorkspaceMode ? (
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
+          ) : null}
+          <div className={clsx("relative flex w-full min-w-0 flex-col", emailWorkspaceMode ? "" : "gap-3")}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -2759,8 +2831,46 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              /* 12px entre balões (gap-3); bloco extra ao mudar de remetente. */
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
+
+              if (emailWorkspaceMode) {
+                const senderName = inbound
+                  ? conversation.contact.name
+                  : msg.actorUser?.displayName?.trim() || msg.actorUser?.name || user?.name || t("inboxesPage.emailWorkspace.youLabel");
+                const senderEmail = inbound ? contactEmail : inboxFromAddress;
+                return (
+                  <article
+                    key={msg.id}
+                    className={clsx(
+                      "border-b border-ink-100 px-5 py-4 dark:border-ink-800",
+                      isNew && "bg-sky-50/40 dark:bg-sky-950/10",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{senderName}</p>
+                        {senderEmail ? (
+                          <p className="truncate text-xs text-ink-500 dark:text-ink-400">{senderEmail}</p>
+                        ) : null}
+                      </div>
+                      <time className="shrink-0 text-xs text-ink-500 dark:text-ink-400">
+                        {format(new Date(msg.sentAt), "dd/MM/yyyy HH:mm")}
+                      </time>
+                    </div>
+                    {msg.isPrivate ? (
+                      <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                        <Lock className="h-3 w-3" />
+                        {t("conversationDetail.internalNoteLabel")}
+                      </p>
+                    ) : null}
+                    {msg.body?.trim() ? (
+                      <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-800 dark:text-ink-100">
+                        {msg.body}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              }
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -2937,13 +3047,25 @@ export function ConversationDetailPage() {
         </div>
 
         <motion.div
-          className="w-full min-w-0 shrink-0 border-t border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/65 sm:px-5"
+          className={clsx(
+            "w-full min-w-0 shrink-0 border-t",
+            emailWorkspaceMode
+              ? "border-ink-200 bg-[#f8fafc] px-4 py-4 dark:border-ink-800 dark:bg-[#0B1220]"
+              : "border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/65 sm:px-5",
+          )}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
           <form onSubmit={handleSend} className="w-full min-w-0">
-            <div className="w-full min-w-0 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#111C2B]/70">
+            <div
+              className={clsx(
+                "w-full min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-[#111C2B]/70",
+                emailWorkspaceMode
+                  ? "border-ink-200 dark:border-ink-700"
+                  : "border-ink-200 dark:border-white/10",
+              )}
+            >
               <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-white/10">
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                   <button
@@ -3218,7 +3340,7 @@ export function ConversationDetailPage() {
                       categoryLabel={(id: EmojiCategoryId) => t(`common.emojiCategory.${id}`)}
                     />
                   </div>
-                  {evolutionRichChat ? (
+                  {evolutionRichChat && !emailWorkspaceMode ? (
                     <>
                       <motion.button
                         type="button"
@@ -3242,6 +3364,7 @@ export function ConversationDetailPage() {
                       </motion.button>
                     </>
                   ) : null}
+                  {!emailWorkspaceMode ? (
                   <motion.button
                     type="button"
                     onClick={() => void handleVoiceToggle()}
@@ -3258,6 +3381,7 @@ export function ConversationDetailPage() {
                   >
                     {recording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-4 w-4" />}
                   </motion.button>
+                  ) : null}
                   <Link
                     to="/profile"
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 dark:text-ink-300 dark:hover:bg-ink-800"
@@ -3276,7 +3400,12 @@ export function ConversationDetailPage() {
                     !!voicePreview ||
                     recording
                   }
-                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  className={clsx(
+                    "inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50",
+                    emailWorkspaceMode
+                      ? "bg-[#1a73e8] hover:bg-[#1765cc] dark:bg-[#1a73e8] dark:hover:bg-[#1765cc]"
+                      : "bg-brand-500 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500",
+                  )}
                   whileTap={{ scale: 0.98 }}
                 >
                   <Send className="h-4 w-4" />
@@ -3297,7 +3426,7 @@ export function ConversationDetailPage() {
           </form>
         </motion.div>
 
-        <div className="pointer-events-auto absolute right-3 top-28 z-30 hidden xl:block">
+        <div className={clsx("pointer-events-auto absolute right-3 top-28 z-30 hidden xl:block", emailWorkspaceMode && "!hidden")}>
           <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-white/10 dark:bg-[#0F1B2B]/70 dark:shadow-black/30">
             <button
               type="button"
@@ -3343,8 +3472,10 @@ export function ConversationDetailPage() {
 
       <aside
         className={clsx(
-          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex",
-          crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden",
+          "hidden min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
+          emailWorkspaceMode
+            ? crmDesktopOpen && "flex w-[min(100%,320px)]"
+            : clsx("xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
         )}
       >
         <div

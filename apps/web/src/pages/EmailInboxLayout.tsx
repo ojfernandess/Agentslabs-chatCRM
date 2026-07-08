@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Mail, MessageSquare, PenSquare, Settings2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -24,8 +24,7 @@ import {
   parseInboxEmailFromChannelConfig,
 } from "@/lib/inboxEmailConfig";
 import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
-import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
-import { ConversationListAvatar } from "@/components/ConversationListAvatar";
+import { contactEmailDisplay, emailThreadSubject } from "@/lib/contactEmailDisplay";
 
 type EmailInboxRow = {
   id: string;
@@ -53,18 +52,13 @@ type EmailConversation = {
 };
 
 function contactEmailLabel(contact: EmailConversation["contact"]): string | null {
-  const direct = contact.email?.trim();
-  if (direct && direct.includes("@")) return direct;
-  const prefix = "oc|EMAIL|";
-  if (contact.phone.startsWith(prefix)) {
-    const participant = contact.phone.slice(prefix.length).trim();
-    if (participant.includes("@")) return participant;
-  }
-  return null;
+  return contactEmailDisplay(contact);
 }
 
 export function EmailInboxLayout() {
   const { inboxId } = useParams<{ inboxId: string }>();
+  const activeConversationMatch = useMatch("/inboxes/:inboxId/email/c/:id");
+  const activeConversationId = activeConversationMatch?.params.id;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, dateLocale } = useI18n();
@@ -198,23 +192,20 @@ export function EmailInboxLayout() {
 
   return (
     <PageTransition>
-      <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-amber-50/40 to-ink-50 dark:from-amber-950/10 dark:to-[#0E1624]">
-        <header className="shrink-0 border-b border-amber-200/60 bg-white/90 px-4 py-4 backdrop-blur-md dark:border-amber-900/30 dark:bg-[#0F1B2B]/80 sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
+      <div className="flex h-full min-h-0 flex-col bg-[#f6f8fc] dark:bg-[#0E1624]">
+        <header className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B] sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Link
                 to="/inboxes"
-                className="mt-1 rounded-xl p-2 text-ink-500 transition hover:bg-amber-100/80 hover:text-ink-800 dark:hover:bg-amber-950/40"
+                className="rounded-lg p-2 text-ink-500 transition hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Link>
-              <InboxChannelIcon channelType="EMAIL" size="lg" />
+              <InboxChannelIcon channelType="EMAIL" size="md" />
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                  {t("inboxesPage.emailWorkspace.kicker")}
-                </p>
-                <h1 className="truncate text-xl font-semibold text-ink-900 dark:text-ink-50">{inbox.name}</h1>
-                <p className="mt-0.5 text-sm text-ink-600 dark:text-ink-400">
+                <h1 className="truncate text-lg font-semibold text-ink-900 dark:text-ink-50">{inbox.name}</h1>
+                <p className="truncate text-xs text-ink-500 dark:text-ink-400">
                   {emailFrom ?? t("inboxesPage.wizard.emailInbox.inboxStatusNotConfigured")}
                 </p>
               </div>
@@ -222,7 +213,7 @@ export function EmailInboxLayout() {
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={clsx(
-                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
                   ready
                     ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-200"
                     : "bg-amber-50 text-amber-800 ring-1 ring-amber-500/25 dark:bg-amber-950/40 dark:text-amber-200",
@@ -233,36 +224,36 @@ export function EmailInboxLayout() {
                   ? t("inboxesPage.wizard.emailInbox.inboxStatusConfigured")
                   : t("inboxesPage.wizard.emailInbox.inboxStatusNotConfigured")}
               </span>
-              <nav className="flex rounded-xl border border-ink-200 bg-white p-1 dark:border-ink-700 dark:bg-ink-900">
-                <button
-                  type="button"
-                  onClick={() => setTab("messages")}
-                  className={clsx(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                    tab === "messages"
-                      ? "bg-amber-500 text-white shadow-sm"
-                      : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800",
-                  )}
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {t("inboxesPage.emailWorkspace.tabMessages")}
-                </button>
-                {isAdmin ? (
+              {isAdmin ? (
+                <nav className="flex rounded-lg border border-ink-200 bg-white p-0.5 dark:border-ink-700 dark:bg-ink-900">
+                  <button
+                    type="button"
+                    onClick={() => setTab("messages")}
+                    className={clsx(
+                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition",
+                      tab === "messages"
+                        ? "bg-[#1a73e8] text-white"
+                        : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800",
+                    )}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {t("inboxesPage.emailWorkspace.tabMessages")}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setTab("settings")}
                     className={clsx(
-                      "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition",
                       tab === "settings"
-                        ? "bg-amber-500 text-white shadow-sm"
+                        ? "bg-[#1a73e8] text-white"
                         : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-800",
                     )}
                   >
                     <Settings2 className="h-3.5 w-3.5" />
                     {t("inboxesPage.emailWorkspace.tabSettings")}
                   </button>
-                ) : null}
-              </nav>
+                </nav>
+              ) : null}
             </div>
           </div>
         </header>
@@ -312,31 +303,26 @@ export function EmailInboxLayout() {
             </div>
           </div>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col border-b border-ink-200 bg-white/70 dark:border-ink-800 dark:bg-[#0F1B2B]/50 lg:border-b-0 lg:border-r">
-              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
-                <div className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-100">
-                  <Mail className="h-4 w-4 text-amber-600" />
-                  {t("inboxesPage.emailWorkspace.threadListTitle")}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
-                    disabled={!ready}
-                    onClick={() => setComposeOpen(true)}
-                  >
-                    <PenSquare className="h-3.5 w-3.5" />
-                    {t("inboxesPage.emailWorkspace.composeButton")}
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    onClick={() => void loadConversations()}
-                  >
-                    {t("common.refresh")}
-                  </button>
-                </div>
+          <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r">
+              <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5 dark:border-ink-800">
+                <button
+                  type="button"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[#1a73e8] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1765cc] disabled:opacity-50"
+                  disabled={!ready}
+                  onClick={() => setComposeOpen(true)}
+                >
+                  <PenSquare className="h-3.5 w-3.5" />
+                  {t("inboxesPage.emailWorkspace.composeButton")}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg p-2 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+                  title={t("common.refresh")}
+                  onClick={() => void loadConversations()}
+                >
+                  <Mail className="h-4 w-4" />
+                </button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {listLoading ? (
@@ -344,40 +330,39 @@ export function EmailInboxLayout() {
                 ) : conversations.length === 0 ? (
                   <p className="p-4 text-xs text-ink-500">{t("inboxesPage.emailWorkspace.emptyThreads")}</p>
                 ) : (
-                  <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                  <ul>
                     {conversations.map((conv) => {
                       const last = conv.messages[0];
-                      const preview = last?.body ? formatMessageBodyForPreview(last.body) : "—";
+                      const preview = last?.body?.trim() || "—";
+                      const subject = emailThreadSubject(last?.body, t("inboxesPage.emailWorkspace.noSubject"));
                       const email = contactEmailLabel(conv.contact);
+                      const active = activeConversationId === conv.id;
                       return (
                         <li key={conv.id}>
                           <Link
                             to={`/inboxes/${inboxId}/email/c/${conv.id}`}
-                            className="flex gap-3 px-4 py-3 transition hover:bg-amber-50/70 dark:hover:bg-amber-950/20"
+                            className={clsx(
+                              "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
+                              active
+                                ? "border-l-[3px] border-l-[#1a73e8] bg-[#e8f0fe] dark:bg-sky-950/30"
+                                : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
+                            )}
                           >
-                            <ConversationListAvatar
-                              contactId={conv.contact.id}
-                              contactName={conv.contact.name}
-                              profilePictureUrl={conv.contact.profilePictureUrl}
-                              hasAvatar={conv.contact.hasAvatar}
-                              thumbnail={conv.contact.thumbnail}
-                              channelType="EMAIL"
-                              size="list"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="truncate text-sm font-medium text-ink-900 dark:text-ink-50">
-                                  {conv.contact.name}
-                                </p>
-                                <span className="shrink-0 text-[10px] text-ink-400">
-                                  {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
-                                </span>
-                              </div>
-                              {email ? (
-                                <p className="truncate text-[11px] text-amber-800/90 dark:text-amber-200/80">{email}</p>
-                              ) : null}
-                              <p className="mt-0.5 truncate text-xs text-ink-500">{preview}</p>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={clsx("truncate text-sm text-ink-900 dark:text-ink-50", active && "font-semibold")}>
+                                {conv.contact.name}
+                              </p>
+                              <span className="shrink-0 text-[10px] text-ink-400">
+                                {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
+                              </span>
                             </div>
+                            <p className={clsx("mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200", active && "font-medium")}>
+                              {subject}
+                            </p>
+                            {email ? (
+                              <p className="truncate text-[11px] text-ink-500 dark:text-ink-400">{email}</p>
+                            ) : null}
+                            <p className="mt-1 truncate text-xs text-ink-500 dark:text-ink-400">{preview}</p>
                           </Link>
                         </li>
                       );
@@ -386,7 +371,7 @@ export function EmailInboxLayout() {
                 )}
               </div>
             </aside>
-            <main className="min-h-0 flex flex-col bg-white/40 dark:bg-[#0E1624]/40">
+            <main className="min-h-0 flex min-w-0 flex-col bg-white dark:bg-[#0E1624]">
               <Outlet context={{ inboxId, refreshThreads: loadConversations }} />
             </main>
           </div>
@@ -415,8 +400,8 @@ export type EmailInboxOutletContext = {
 export function EmailInboxThreadPlaceholder() {
   const { t } = useI18n();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-      <Mail className="mb-3 h-10 w-10 text-amber-500/80" />
+    <div className="flex flex-1 flex-col items-center justify-center bg-[#f6f8fc] p-8 text-center dark:bg-[#0E1624]">
+      <Mail className="mb-3 h-12 w-12 text-[#1a73e8]/70" />
       <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
         {t("inboxesPage.emailWorkspace.selectThread")}
       </p>
