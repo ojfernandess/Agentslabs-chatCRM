@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Mail, MessageSquare, Settings2 } from "lucide-react";
+import { ArrowLeft, Mail, MessageSquare, PenSquare, Settings2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "@/lib/api";
@@ -17,6 +17,7 @@ import {
   type EmailInboxFormState,
 } from "@/components/inboxes/EmailInboxConfigFields";
 import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
+import { EmailComposeModal } from "@/components/inboxes/EmailComposeModal";
 import {
   buildInboxEmailChannelConfig,
   MASKED_EMAIL_SECRET,
@@ -80,7 +81,9 @@ export function EmailInboxLayout() {
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState<boolean | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testSentTo, setTestSentTo] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -164,14 +167,16 @@ export function EmailInboxLayout() {
     setTestBusy(true);
     setTestResult(null);
     setTestError(null);
+    setTestSentTo(null);
     try {
       const channelConfig = buildInboxEmailChannelConfig(inbox?.channelConfig, emailInboxFormToPatch(editForm));
-      const res = await api.post<{ connected: boolean; error?: string | null }>(
+      const res = await api.post<{ connected: boolean; error?: string | null; sentTo?: string | null }>(
         `/inboxes/${inboxId}/test-email-connection`,
         { channelConfig },
       );
       setTestResult(res.connected);
       setTestError(res.error ?? null);
+      setTestSentTo(res.sentTo ?? null);
     } catch {
       setTestResult(false);
     } finally {
@@ -280,6 +285,7 @@ export function EmailInboxLayout() {
                   testConnectionBusy={testBusy}
                   testConnectionResult={testResult}
                   testConnectionError={testError}
+                  testConnectionSentTo={testSentTo}
                 />
                 {saveError ? (
                   <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
@@ -313,13 +319,24 @@ export function EmailInboxLayout() {
                   <Mail className="h-4 w-4 text-amber-600" />
                   {t("inboxesPage.emailWorkspace.threadListTitle")}
                 </div>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  onClick={() => void loadConversations()}
-                >
-                  {t("common.refresh")}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-50"
+                    disabled={!ready}
+                    onClick={() => setComposeOpen(true)}
+                  >
+                    <PenSquare className="h-3.5 w-3.5" />
+                    {t("inboxesPage.emailWorkspace.composeButton")}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    onClick={() => void loadConversations()}
+                  >
+                    {t("common.refresh")}
+                  </button>
+                </div>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {listLoading ? (
@@ -375,6 +392,17 @@ export function EmailInboxLayout() {
           </div>
         )}
       </div>
+      <EmailComposeModal
+        open={composeOpen}
+        inboxId={inboxId}
+        fromAddress={emailFrom}
+        smtpReady={ready}
+        onClose={() => setComposeOpen(false)}
+        onSent={(conversationId) => {
+          void loadConversations();
+          navigate(`/inboxes/${inboxId}/email/c/${conversationId}`);
+        }}
+      />
     </PageTransition>
   );
 }

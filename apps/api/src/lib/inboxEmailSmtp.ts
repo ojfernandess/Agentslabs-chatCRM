@@ -20,11 +20,24 @@ function transportOptions(creds: InboxEmailSmtpCredentials) {
 
 export async function testInboxSmtpConnection(
   creds: InboxEmailSmtpCredentials,
-): Promise<{ connected: boolean; error?: string }> {
+): Promise<{ connected: boolean; error?: string; sentTo?: string }> {
   const transporter = nodemailer.createTransport(transportOptions(creds));
   try {
     await transporter.verify();
-    return { connected: true };
+    const sentTo = creds.fromAddress.trim();
+    await transporter.sendMail({
+      from: creds.fromAddress,
+      to: sentTo,
+      subject: "OpenNexo CRM — Teste SMTP",
+      text: [
+        "Este e-mail confirma que o SMTP da sua caixa está configurado corretamente.",
+        "",
+        `Remetente: ${creds.fromAddress}`,
+        `Servidor: ${creds.smtpHost}:${creds.smtpPort || 587}`,
+        `Enviado em: ${new Date().toISOString()}`,
+      ].join("\n"),
+    });
+    return { connected: true, sentTo };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { connected: false, error: message.slice(0, 240) };

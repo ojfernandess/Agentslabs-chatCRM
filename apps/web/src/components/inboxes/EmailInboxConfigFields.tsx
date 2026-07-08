@@ -92,6 +92,7 @@ export interface EmailInboxConfigFieldsProps {
   testConnectionBusy?: boolean;
   testConnectionResult?: boolean | null;
   testConnectionError?: string | null;
+  testConnectionSentTo?: string | null;
 }
 
 export function EmailInboxConfigFields({
@@ -102,6 +103,7 @@ export function EmailInboxConfigFields({
   testConnectionBusy = false,
   testConnectionResult = null,
   testConnectionError = null,
+  testConnectionSentTo = null,
 }: EmailInboxConfigFieldsProps) {
   const { t } = useI18n();
 
@@ -258,7 +260,9 @@ export function EmailInboxConfigFields({
           </button>
           {testConnectionResult === true ? (
             <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              {t("inboxesPage.wizard.emailInbox.testConnectionOk")}
+              {testConnectionSentTo
+                ? t("inboxesPage.wizard.emailInbox.testConnectionOkSent").replace("{email}", testConnectionSentTo)
+                : t("inboxesPage.wizard.emailInbox.testConnectionOk")}
             </p>
           ) : null}
           {testConnectionResult === false ? (

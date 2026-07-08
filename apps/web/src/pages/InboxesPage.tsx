@@ -151,6 +151,7 @@ export function InboxesPage() {
   const [emailTestBusy, setEmailTestBusy] = useState(false);
   const [emailTestResult, setEmailTestResult] = useState<boolean | null>(null);
   const [emailTestError, setEmailTestError] = useState<string | null>(null);
+  const [emailTestSentTo, setEmailTestSentTo] = useState<string | null>(null);
   const [editEmailForm, setEditEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
@@ -344,6 +345,7 @@ export function InboxesPage() {
     setEmailTestBusy(false);
     setEmailTestResult(null);
     setEmailTestError(null);
+    setEmailTestSentTo(null);
     setEditWebsiteWidget(
       row.channelType === "WEBSITE"
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
@@ -361,6 +363,7 @@ export function InboxesPage() {
     setWaTestResult(null);
     setEmailTestResult(null);
     setEmailTestError(null);
+    setEmailTestSentTo(null);
   };
 
   const runWhatsappTestForEdit = async (inboxId: string) => {
@@ -394,17 +397,19 @@ export function InboxesPage() {
     setEmailTestBusy(true);
     setEmailTestResult(null);
     setEmailTestError(null);
+    setEmailTestSentTo(null);
     try {
       const channelConfig = buildInboxEmailChannelConfig(
         rows.find((r) => r.id === inboxId)?.channelConfig,
         emailInboxFormToPatch(editEmailForm),
       );
-      const res = await api.post<{ connected: boolean; error?: string | null }>(
+      const res = await api.post<{ connected: boolean; error?: string | null; sentTo?: string | null }>(
         `/inboxes/${inboxId}/test-email-connection`,
         { channelConfig },
       );
       setEmailTestResult(res.connected);
       setEmailTestError(res.error ?? null);
+      setEmailTestSentTo(res.sentTo ?? null);
     } catch {
       setEmailTestResult(false);
     } finally {
@@ -665,6 +670,7 @@ export function InboxesPage() {
                                 testConnectionBusy={emailTestBusy}
                                 testConnectionResult={emailTestResult}
                                 testConnectionError={emailTestError}
+                                testConnectionSentTo={emailTestSentTo}
                               />
                             </div>
                           ) : null}

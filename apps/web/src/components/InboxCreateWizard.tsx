@@ -152,6 +152,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [emailTestBusy, setEmailTestBusy] = useState(false);
   const [emailTestResult, setEmailTestResult] = useState<boolean | null>(null);
   const [emailTestError, setEmailTestError] = useState<string | null>(null);
+  const [emailTestSentTo, setEmailTestSentTo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -256,13 +257,18 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setEmailTestBusy(true);
     setEmailTestResult(null);
     setEmailTestError(null);
+    setEmailTestSentTo(null);
     try {
       const channelConfig = buildInboxEmailChannelConfig(null, emailInboxFormToPatch(emailForm));
-      const res = await api.post<{ connected: boolean; error?: string | null }>("/settings/test-email-draft", {
-        channelConfig,
-      });
+      const res = await api.post<{ connected: boolean; error?: string | null; sentTo?: string | null }>(
+        "/settings/test-email-draft",
+        {
+          channelConfig,
+        },
+      );
       setEmailTestResult(res.connected);
       setEmailTestError(res.error ?? null);
+      setEmailTestSentTo(res.sentTo ?? null);
     } catch {
       setEmailTestResult(false);
     } finally {
@@ -796,6 +802,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       testConnectionBusy={emailTestBusy}
                       testConnectionResult={emailTestResult}
                       testConnectionError={emailTestError}
+                      testConnectionSentTo={emailTestSentTo}
                     />
                   </div>
                 ) : (

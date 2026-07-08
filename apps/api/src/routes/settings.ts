@@ -811,7 +811,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const result = await testInboxSmtpConnection(creds);
-      return { connected: result.connected, error: result.error ?? null };
+      return { connected: result.connected, error: result.error ?? null, sentTo: result.sentTo ?? null };
     });
 
     admin.post("/test-connection", async (request, reply) => {

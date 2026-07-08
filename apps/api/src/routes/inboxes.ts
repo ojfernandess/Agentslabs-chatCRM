@@ -4,7 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { InboxChannelType, Prisma } from "@prisma/client";
-import { newIngestToken } from "../lib/channelInboxIngest.js";
+import { newIngestToken, participantPhoneKey } from "../lib/channelInboxIngest.js";
 import {
   assertUniqueWhatsappProviderInOrg,
   isInboxWhatsappConfiguredFromChannelConfig,
@@ -24,6 +24,7 @@ import {
   resolveInboxEmailSmtpCredentials,
 } from "../lib/inboxEmailConfig.js";
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
+import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 
 const testWhatsappConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
@@ -31,6 +32,13 @@ const testWhatsappConnectionSchema = z.object({
 
 const testEmailConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
+});
+
+const composeEmailSchema = z.object({
+  toEmail: z.string().email().max(320),
+  toName: z.string().max(200).optional(),
+  subject: z.string().min(1).max(998),
+  body: z.string().min(1).max(4096),
 });
 
 const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
@@ -472,9 +480,100 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const result = await testInboxSmtpConnection(creds);
-      return { connected: result.connected, error: result.error ?? null };
+      return { connected: result.connected, error: result.error ?? null, sentTo: result.sentTo ?? null };
     },
   );
+
+  app.post<{ Params: { id: string } }>("/:id/compose-email", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, channelType: true, channelConfig: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== InboxChannelType.EMAIL) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not an email channel",
+        statusCode: 400,
+      });
+    }
+
+    const parsed = composeEmailSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: first?.message ?? parsed.error.message,
+        statusCode: 400,
+      });
+    }
+
+    if (!resolveInboxEmailSmtpCredentials(inbox.channelConfig)) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Email SMTP is not configured on this inbox",
+        statusCode: 400,
+      });
+    }
+
+    const toEmail = parsed.data.toEmail.trim();
+    const phone = participantPhoneKey("EMAIL", toEmail);
+    let contact = await prisma.contact.findFirst({
+      where: {
+        organizationId,
+        OR: [{ phone }, { email: { equals: toEmail, mode: "insensitive" } }],
+      },
+    });
+    if (!contact) {
+      contact = await prisma.contact.create({
+        data: {
+          organizationId,
+          phone,
+          name: parsed.data.toName?.trim() || toEmail,
+          email: toEmail,
+        },
+      });
+    } else if (!contact.email) {
+      contact = await prisma.contact.update({
+        where: { id: contact.id },
+        data: { email: toEmail },
+      });
+    }
+
+    try {
+      const { message, conversation } = await deliverOutboundWhatsAppMessage({
+        organizationId,
+        data: {
+          contactId: contact.id,
+          inboxId: inbox.id,
+          type: "TEXT",
+          body: parsed.data.body,
+          emailSubject: parsed.data.subject.trim(),
+        },
+        actor: { kind: "user", userId: request.user.id },
+        log: app.log,
+        newConversation: { status: "OPEN", assignedToId: request.user.id },
+      });
+      return reply.status(201).send({
+        conversationId: conversation.id,
+        messageId: message.id,
+        contactId: contact.id,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send email";
+      app.log.error(err, "compose-email failed");
+      return reply.status(422).send({
+        error: "Unprocessable Entity",
+        message: msg,
+        statusCode: 422,
+      });
+    }
+  });
 
   function str(v: unknown): string | undefined {
     return typeof v === "string" && v.trim() ? v.trim() : undefined;
