@@ -480,8 +480,13 @@ export function ConversationDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    stickToBottomRef.current = true;
-  }, [id]);
+    // No workspace de e-mail o utilizador lê de cima para baixo — não forçar o fundo.
+    stickToBottomRef.current = !isEmailLayout;
+    if (isEmailLayout) {
+      const el = messagesViewportRef.current;
+      if (el) el.scrollTop = 0;
+    }
+  }, [id, isEmailLayout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -965,9 +970,10 @@ export function ConversationDetailPage() {
   }, [id, loadConversation]);
 
   useEffect(() => {
+    if (isEmailLayout) return;
     if (!stickToBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-  }, [conversation?.messages]);
+  }, [conversation?.messages, isEmailLayout]);
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
 
@@ -1093,7 +1099,7 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
       });
       setVoicePreview(null);
-      stickToBottomRef.current = true;
+      if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
     } catch {
       setFlowError(t("conversationDetail.voiceSendFailed"));
@@ -1178,7 +1184,7 @@ export function ConversationDetailPage() {
           : {}),
       });
       setNewMessage("");
-      stickToBottomRef.current = true;
+      if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
       void emailOutlet?.refreshThreads?.();
     } catch {
@@ -1222,7 +1228,7 @@ export function ConversationDetailPage() {
           : {}),
       });
       setNewMessage("");
-      stickToBottomRef.current = true;
+      if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
       void emailOutlet?.refreshThreads();
     } catch (err) {
@@ -3000,7 +3006,9 @@ export function ConversationDetailPage() {
                   className={clsx(
                     "crm-bubble relative min-w-0 p-4",
                     emailWorkspaceMode
-                      ? "max-w-[min(calc(100%-2.5rem),42rem)]"
+                      ? isEmailInbox && msg.type === "TEXT"
+                        ? "w-full min-w-0 flex-1 max-w-none"
+                        : "max-w-[min(calc(100%-2.5rem),48rem)]"
                       : "max-w-[min(calc(100%-2.5rem),28rem)]",
                     isNew && "crm-bubble-unread",
                     msg.isPrivate
@@ -3105,7 +3113,12 @@ export function ConversationDetailPage() {
               return (
                 <motion.div
                   key={msg.id}
-                  className={clsx("flex w-full gap-3", inbound ? "justify-start" : "justify-end", blockSpacing)}
+                  className={clsx(
+                    "flex w-full min-w-0 gap-3",
+                    emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
+                    inbound ? "justify-start" : "justify-end",
+                    blockSpacing,
+                  )}
                   initial={isNew ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
@@ -3116,13 +3129,13 @@ export function ConversationDetailPage() {
                 >
                   {inbound ? (
                     <>
-                      {avatarCol}
+                      {!emailWorkspaceMode ? avatarCol : null}
                       {bubble}
                     </>
                   ) : (
                     <>
                       {bubble}
-                      {avatarCol}
+                      {!emailWorkspaceMode ? avatarCol : null}
                     </>
                   )}
                 </motion.div>
@@ -4273,7 +4286,7 @@ export function ConversationDetailPage() {
         inboxId={conversation?.inbox?.id}
         onClose={() => setTemplateModalTemplate(null)}
         onSent={async () => {
-          stickToBottomRef.current = true;
+          if (!isEmailLayout) stickToBottomRef.current = true;
           await loadConversation();
         }}
       />

@@ -67,7 +67,13 @@ function buildEmailDocument(html: string, origin: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <base href="${origin}/" target="_blank" />
 <style>
-  html, body { margin: 0; padding: 0; background: transparent; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    overflow-x: hidden;
+    width: 100%;
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 14px;
@@ -75,9 +81,12 @@ function buildEmailDocument(html: string, origin: string): string {
     color: #1f2937;
     word-break: break-word;
     overflow-wrap: anywhere;
+    box-sizing: border-box;
   }
+  *, *::before, *::after { box-sizing: border-box; }
   img { max-width: 100% !important; height: auto !important; }
-  table { max-width: 100% !important; }
+  table { max-width: 100% !important; width: auto !important; }
+  td, th { word-break: break-word; }
   a { color: #1d4ed8; }
 </style>
 </head>
@@ -113,13 +122,19 @@ export function EmailMessageBody({
     doc.write(buildEmailDocument(html, window.location.origin));
     doc.close();
 
+    let cancelled = false;
     const resize = () => {
+      if (cancelled) return;
       const h = Math.max(
         doc.body?.scrollHeight ?? 0,
         doc.documentElement?.scrollHeight ?? 0,
         80,
       );
-      setFrameHeight(Math.min(h + 8, 4000));
+      // Evita micro-ajustes que disparam scroll no contentor pai.
+      setFrameHeight((prev) => {
+        const next = Math.min(h + 12, 8000);
+        return Math.abs(prev - next) < 4 ? prev : next;
+      });
     };
 
     resize();
@@ -127,9 +142,10 @@ export function EmailMessageBody({
     for (const img of imgs) {
       if (!img.complete) img.addEventListener("load", resize, { once: true });
     }
-    const timer = window.setTimeout(resize, 120);
-    const timer2 = window.setTimeout(resize, 600);
+    const timer = window.setTimeout(resize, 150);
+    const timer2 = window.setTimeout(resize, 800);
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       window.clearTimeout(timer2);
     };
@@ -139,13 +155,14 @@ export function EmailMessageBody({
 
   if (html) {
     return (
-      <div className={clsx("email-html-frame w-full overflow-hidden", className)}>
+      <div className={clsx("email-html-frame w-full min-w-0 overflow-hidden rounded-md", className)}>
         <iframe
           ref={iframeRef}
           title="Email"
           sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
           referrerPolicy="no-referrer"
-          className="w-full border-0 bg-transparent"
+          scrolling="no"
+          className="block w-full max-w-full border-0 bg-white"
           style={{ height: frameHeight, minHeight: 80 }}
         />
       </div>
