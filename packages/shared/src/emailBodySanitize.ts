@@ -8,6 +8,9 @@ const QUOTE_HEADER_PATTERNS = [
   /^from:\s+.+/i,
 ];
 
+/** Marcador no corpo armazenado: assunto\\n\\n<!--oc-email-html-->\\n<html…> */
+export const EMAIL_HTML_BODY_MARKER = "<!--oc-email-html-->";
+
 /** Corta citação inline ("… Em … escreveu:" / "… On … wrote:" na mesma linha). */
 function truncateAtInlineQuoteHeader(line: string): { text: string; stop: boolean } {
   const match = line.match(/^(.+?)\s+(?:em .+ escreveu:?|on .+ wrote:?)\s*$/i);
@@ -52,16 +55,222 @@ export function stripEmailQuotedContent(text: string): string {
   return result;
 }
 
-/** Extrai corpo exibível a partir do formato armazenado "assunto\\n\\ncorpo". */
-export function emailMessageDisplayBody(body: string | null | undefined): string {
+/** Extrai corpo (após assunto) do formato armazenado "assunto\\n\\ncorpo". */
+export function emailStoredContent(body: string | null | undefined): string {
   const raw = body?.trim();
   if (!raw) return "";
 
-  let content = raw;
   const subjectSplit = raw.split(/\n\n/);
   if (subjectSplit.length >= 2 && subjectSplit[0]?.trim()) {
-    content = subjectSplit.slice(1).join("\n\n").trim();
+    return subjectSplit.slice(1).join("\n\n").trim();
   }
+  return raw;
+}
+
+export function isEmailHtmlStoredContent(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith(EMAIL_HTML_BODY_MARKER)) return true;
+  return /<(?:html|body|div|table|p|a|img|span|br)\b/i.test(trimmed);
+}
+
+export function emailHtmlFromStoredContent(content: string): string | null {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith(EMAIL_HTML_BODY_MARKER)) {
+    return trimmed.slice(EMAIL_HTML_BODY_MARKER.length).trim() || null;
+  }
+  if (isEmailHtmlStoredContent(trimmed)) return trimmed;
+  return null;
+}
+
+/** Extrai corpo exibível a partir do formato armazenado "assunto\\n\\ncorpo". */
+export function emailMessageDisplayBody(body: string | null | undefined): string {
+  const content = emailStoredContent(body);
+  if (!content) return "";
+
+  const html = emailHtmlFromStoredContent(content);
+  if (html) return html;
 
   return stripEmailQuotedContent(content);
+}
+
+export function htmlToPlainTextForEmail(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+const ALLOWED_TAGS = new Set([
+  "a",
+  "abbr",
+  "b",
+  "blockquote",
+  "br",
+  "caption",
+  "center",
+  "code",
+  "col",
+  "colgroup",
+  "div",
+  "em",
+  "figcaption",
+  "figure",
+  "font",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "i",
+  "img",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "u",
+  "ul",
+]);
+
+const GLOBAL_ATTRS = new Set(["align", "class", "dir", "id", "lang", "style", "title"]);
+const TAG_ATTRS: Record<string, Set<string>> = {
+  a: new Set(["href", "name", "rel", "target"]),
+  img: new Set(["alt", "height", "src", "width", "border"]),
+  td: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height"]),
+  th: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height"]),
+  table: new Set(["border", "cellpadding", "cellspacing", "width", "bgcolor", "role"]),
+  col: new Set(["span", "width"]),
+  colgroup: new Set(["span", "width"]),
+  font: new Set(["color", "face", "size"]),
+  hr: new Set(["size", "width", "noshade"]),
+};
+
+function isSafeUrl(value: string, allowDataImage = false): boolean {
+  const v = value.trim().replace(/[\u0000-\u001f\u007f]/g, "");
+  if (!v) return false;
+  if (v.startsWith("#")) return true;
+  if (v.startsWith("mailto:") || v.startsWith("tel:")) return true;
+  if (/^https?:\/\//i.test(v)) return true;
+  if (allowDataImage && /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v)) return true;
+  // CID resolvido para URL local da API
+  if (v.startsWith("/api/v1/messages/media/")) return true;
+  return false;
+}
+
+function sanitizeStyle(value: string): string {
+  return value
+    .replace(/expression\s*\(/gi, "")
+    .replace(/url\s*\(\s*['"]?\s*javascript:/gi, "url(")
+    .replace(/-moz-binding/gi, "")
+    .replace(/behavior\s*:/gi, "")
+    .slice(0, 2000);
+}
+
+function sanitizeAttributes(tag: string, rawAttrs: string): string {
+  const allowed = new Set([...(TAG_ATTRS[tag] ?? []), ...GLOBAL_ATTRS]);
+  const out: string[] = [];
+  const attrRe = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(rawAttrs))) {
+    const name = match[1].toLowerCase();
+    if (name.startsWith("on") || name === "srcset" || name === "xlink:href") continue;
+    if (!allowed.has(name)) continue;
+    const value = (match[2] ?? match[3] ?? match[4] ?? "").trim();
+    if (name === "href" || name === "src") {
+      if (!isSafeUrl(value, name === "src")) continue;
+      out.push(`${name}="${value.replace(/"/g, "&quot;")}"`);
+      continue;
+    }
+    if (name === "style") {
+      out.push(`style="${sanitizeStyle(value).replace(/"/g, "&quot;")}"`);
+      continue;
+    }
+    if (name === "target") {
+      out.push(`target="_blank"`);
+      continue;
+    }
+    if (name === "rel") {
+      out.push(`rel="noopener noreferrer"`);
+      continue;
+    }
+    out.push(`${name}="${value.replace(/"/g, "&quot;")}"`);
+  }
+  if (tag === "a") {
+    if (!out.some((a) => a.startsWith("rel="))) out.push(`rel="noopener noreferrer"`);
+    if (!out.some((a) => a.startsWith("target="))) out.push(`target="_blank"`);
+  }
+  return out.length ? ` ${out.join(" ")}` : "";
+}
+
+/**
+ * Sanitiza HTML de e-mail para armazenamento/exibição segura.
+ * Remove scripts, iframes e handlers; mantém links, imagens e layout básico.
+ */
+export function sanitizeEmailHtml(html: string): string {
+  let input = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--(?!oc-email-html)[\s\S]*?-->/g, "")
+    .replace(/<\/?(?:html|head|body|meta|link|base|iframe|object|embed|form|input|button|textarea|select|option|svg|math)[^>]*>/gi, "");
+
+  input = input.replace(/<\/?([a-zA-Z0-9]+)(\s[^>]*)?>/g, (full, rawTag: string, rawAttrs = "") => {
+    const tag = rawTag.toLowerCase();
+    const closing = full.startsWith("</");
+    const selfClosing = /\/>\s*$/.test(full) || tag === "br" || tag === "hr" || tag === "img" || tag === "col";
+    if (!ALLOWED_TAGS.has(tag)) return "";
+    if (closing) return `</${tag}>`;
+    const attrs = sanitizeAttributes(tag, rawAttrs || "");
+    return selfClosing ? `<${tag}${attrs} />` : `<${tag}${attrs}>`;
+  });
+
+  return input.trim();
+}
+
+/** Monta corpo inbound: assunto + texto ou HTML marcado. */
+export function composeEmailInboundBody(
+  subject: string | undefined,
+  content: string | undefined,
+  options?: { html?: boolean },
+): string {
+  const subj = subject?.trim() || "(Sem assunto)";
+  const raw = content?.trim() || "";
+  if (!raw) return subj;
+  if (options?.html) {
+    const sanitized = sanitizeEmailHtml(raw);
+    if (!sanitized) return subj;
+    return `${subj}\n\n${EMAIL_HTML_BODY_MARKER}\n${sanitized}`;
+  }
+  const cleaned = stripEmailQuotedContent(raw);
+  return cleaned ? `${subj}\n\n${cleaned}` : subj;
 }

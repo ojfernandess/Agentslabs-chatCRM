@@ -115,6 +115,7 @@ import {
 } from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
 import { contactEmailDisplay, emailMessageContent } from "@/lib/contactEmailDisplay";
+import { EmailMessageBody } from "@/components/inboxes/EmailMessageBody";
 import {
   getCachedConversation,
   getInflightConversation,
@@ -3012,7 +3013,10 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative min-w-0 max-w-[min(calc(100%-2.5rem),28rem)] p-4",
+                    "crm-bubble relative min-w-0 p-4",
+                    emailWorkspaceMode
+                      ? "max-w-[min(calc(100%-2.5rem),42rem)]"
+                      : "max-w-[min(calc(100%-2.5rem),28rem)]",
                     isNew && "crm-bubble-unread",
                     msg.isPrivate
                       ? "crm-bubble-private border border-amber-300/45 dark:border-amber-500/35"
@@ -3062,7 +3066,11 @@ export function ConversationDetailPage() {
                     />
                   ) : null}
                   {displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
-                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayBody}</p>
+                    isEmailInbox && msg.type === "TEXT" ? (
+                      <EmailMessageBody body={msg.body} />
+                    ) : (
+                      <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayBody}</p>
+                    )
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
                     <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">

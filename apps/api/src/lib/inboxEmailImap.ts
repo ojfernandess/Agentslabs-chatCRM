@@ -3,7 +3,11 @@ import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
 import { randomBytes } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { MessageType } from "@prisma/client";
-import { stripEmailQuotedContent } from "@openconduit/shared";
+import {
+  composeEmailInboundBody,
+  htmlToPlainTextForEmail,
+  stripEmailQuotedContent,
+} from "@openconduit/shared";
 import { processChannelInboxInbound } from "./channelInboxIngest.js";
 import { collectEmailThreadMessageIds } from "./emailThreadRouting.js";
 import { putMessageMediaFile } from "./mediaStorage.js";
@@ -43,37 +47,18 @@ function isOwnMessage(fromEmail: string | null, creds: InboxEmailImapCredentials
   return own.has(fromEmail);
 }
 
-function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
-
 function extractTextBody(parsed: ParsedMail): string {
   const text = parsed.text?.trim();
   if (text) return text;
   if (typeof parsed.html === "string" && parsed.html.trim()) {
-    return htmlToPlainText(parsed.html);
+    return htmlToPlainTextForEmail(parsed.html);
   }
   return "";
 }
 
-function composeInboundBody(subject: string | undefined, text: string | undefined): string {
-  const subj = subject?.trim() || "(Sem assunto)";
-  const cleaned = stripEmailQuotedContent(text?.trim() || "");
-  return cleaned ? `${subj}\n\n${cleaned}` : subj;
+function extractHtmlBody(parsed: ParsedMail): string | null {
+  if (typeof parsed.html === "string" && parsed.html.trim()) return parsed.html.trim();
+  return null;
 }
 
 function extensionForAttachment(mimetype: string | undefined, originalFilename?: string | null): string {
@@ -102,6 +87,12 @@ function messageTypeForAttachment(mimetype: string | undefined): MessageType {
   return "DOCUMENT";
 }
 
+function normalizeCid(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const cleaned = value.trim().replace(/^<|>$/g, "").toLowerCase();
+  return cleaned || null;
+}
+
 async function persistInboundAttachment(att: Attachment): Promise<{ mediaUrl: string; mediaType: string } | null> {
   const content = att.content;
   if (!content || (Buffer.isBuffer(content) && content.length < 1)) return null;
@@ -116,6 +107,38 @@ async function persistInboundAttachment(att: Attachment): Promise<{ mediaUrl: st
     contentType: mediaType || "application/octet-stream",
   });
   return { mediaUrl: stored.mediaUrl, mediaType: mediaType || "application/octet-stream" };
+}
+
+async function resolveCidImagesInHtml(
+  html: string,
+  attachments: Attachment[],
+): Promise<{ html: string; usedCids: Set<string> }> {
+  const usedCids = new Set<string>();
+  const cidToUrl = new Map<string, string>();
+
+  for (const att of attachments) {
+    const cid = normalizeCid(att.cid);
+    if (!cid) continue;
+    if (!String(att.contentType ?? "").toLowerCase().startsWith("image/")) continue;
+    const stored = await persistInboundAttachment(att);
+    if (!stored) continue;
+    cidToUrl.set(cid, stored.mediaUrl);
+  }
+
+  const rewritten = html.replace(
+    /\b(src|background)\s*=\s*(?:"(cid:[^"]+)"|'(cid:[^']+)'|(cid:[^\s>]+))/gi,
+    (_full, attr: string, d1?: string, d2?: string, d3?: string) => {
+      const raw = (d1 || d2 || d3 || "").trim();
+      const cid = normalizeCid(raw.replace(/^cid:/i, ""));
+      if (!cid) return `${attr}=""`;
+      const url = cidToUrl.get(cid);
+      if (!url) return `${attr}=""`;
+      usedCids.add(cid);
+      return `${attr}="${url}"`;
+    },
+  );
+
+  return { html: rewritten, usedCids };
 }
 
 function buildImapClient(creds: InboxEmailImapCredentials): ImapFlow {
@@ -222,6 +245,7 @@ export async function syncInboxEmailViaImap(options: {
             : fromEmail;
 
         const textBody = extractTextBody(parsed);
+        let htmlBody = extractHtmlBody(parsed);
         const emailThreadMessageIds = collectEmailThreadMessageIds(parsed.inReplyTo, parsed.references);
         const inboundAttachments = (parsed.attachments ?? []).filter(
           (att) => att.content && (!Buffer.isBuffer(att.content) || att.content.length > 0),
@@ -238,13 +262,22 @@ export async function syncInboxEmailViaImap(options: {
           log: options.log,
         };
 
-        const cleanedBody = stripEmailQuotedContent(textBody.trim());
+        let usedInlineCids = new Set<string>();
+        if (htmlBody) {
+          const resolved = await resolveCidImagesInHtml(htmlBody, inboundAttachments);
+          htmlBody = resolved.html;
+          usedInlineCids = resolved.usedCids;
+        }
+
+        const cleanedText = stripEmailQuotedContent(textBody.trim());
         let imported = false;
 
-        if (cleanedBody || inboundAttachments.length === 0) {
+        if (htmlBody || cleanedText || inboundAttachments.length === 0) {
           await processChannelInboxInbound({
             ...baseInbound,
-            body: composeInboundBody(parsed.subject, textBody),
+            body: htmlBody
+              ? composeEmailInboundBody(parsed.subject, htmlBody, { html: true })
+              : composeEmailInboundBody(parsed.subject, textBody),
             type: "TEXT",
             externalMessageId: messageId,
           });
@@ -253,6 +286,12 @@ export async function syncInboxEmailViaImap(options: {
 
         for (let i = 0; i < inboundAttachments.length; i += 1) {
           const att = inboundAttachments[i]!;
+          const cid = normalizeCid(att.cid);
+          // Imagens inline (CID) já embutidas no HTML — não duplicar como anexo separado.
+          if (cid && usedInlineCids.has(cid)) continue;
+          // related/inline sem CID usado no HTML: ainda assim evita spam de logos se related
+          if (att.related && cid && htmlBody) continue;
+
           const stored = await persistInboundAttachment(att);
           if (!stored) {
             skipped += 1;
@@ -261,7 +300,7 @@ export async function syncInboxEmailViaImap(options: {
           const attName = att.filename?.trim() || undefined;
           await processChannelInboxInbound({
             ...baseInbound,
-            body: attName ?? composeInboundBody(parsed.subject, textBody),
+            body: attName ?? composeEmailInboundBody(parsed.subject, textBody),
             type: messageTypeForAttachment(att.contentType),
             mediaUrl: stored.mediaUrl,
             mediaType: stored.mediaType,

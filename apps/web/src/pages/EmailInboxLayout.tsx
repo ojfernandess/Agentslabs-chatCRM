@@ -23,7 +23,7 @@ import {
   parseInboxEmailFromChannelConfig,
 } from "@/lib/inboxEmailConfig";
 import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
-import { contactEmailDisplay, emailThreadSubject } from "@/lib/contactEmailDisplay";
+import { contactEmailDisplay, emailMessagePreviewText, emailThreadSubject } from "@/lib/contactEmailDisplay";
 import {
   ConversationContextMenu,
   type ConversationContextMenuUpdate,
@@ -458,7 +458,7 @@ export function EmailInboxLayout() {
                   <ul>
                     {conversations.map((conv) => {
                       const last = conv.messages[0];
-                      const preview = last?.body?.trim() || "—";
+                      const preview = emailMessagePreviewText(last?.body) || "—";
                       const subject = emailThreadSubject(last?.body, t("inboxesPage.emailWorkspace.noSubject"));
                       const email = contactEmailLabel(conv.contact);
                       return (
