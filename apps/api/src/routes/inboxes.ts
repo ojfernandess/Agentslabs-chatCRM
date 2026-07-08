@@ -19,8 +19,17 @@ import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.j
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
 import { ensureMetaCloudWabaSubscribed } from "../lib/metaWebhookSetup.js";
+import {
+  normalizeEmailInboxChannelConfig,
+  resolveInboxEmailSmtpCredentials,
+} from "../lib/inboxEmailConfig.js";
+import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 
 const testWhatsappConnectionSchema = z.object({
+  channelConfig: z.record(z.unknown()).optional(),
+});
+
+const testEmailConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
 });
 
@@ -421,6 +430,49 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       } catch {
         return { connected: false };
       }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/:id/test-email-connection",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const inbox = await prisma.inbox.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: { id: true, channelType: true, channelConfig: true },
+      });
+      if (!inbox) {
+        return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      }
+      if (inbox.channelType !== InboxChannelType.EMAIL) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Inbox is not an email channel",
+          statusCode: 400,
+        });
+      }
+
+      const parsed = testEmailConnectionSchema.safeParse(request.body ?? {});
+      const draftConfig =
+        parsed.success && parsed.data.channelConfig
+          ? normalizeEmailInboxChannelConfig(inbox.channelConfig, parsed.data.channelConfig)
+          : inbox.channelConfig;
+
+      const creds = resolveInboxEmailSmtpCredentials(draftConfig);
+      if (!creds) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Email SMTP credentials incomplete",
+          statusCode: 400,
+          connected: false,
+        });
+      }
+
+      const result = await testInboxSmtpConnection(creds);
+      return { connected: result.connected, error: result.error ?? null };
     },
   );
 

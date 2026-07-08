@@ -22,6 +22,12 @@ import { sendTelegramNativeMessage } from "./telegramNativeSend.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
 import {
+  contactEmailForInboxChannel,
+  defaultEmailSubject,
+  resolveInboxEmailSmtpCredentials,
+} from "./inboxEmailConfig.js";
+import { sendInboxSmtpEmail } from "./inboxEmailSmtp.js";
+import {
   agentNameOnlyPrefixForExternalChannel,
   agentNameOnlyPrefixForced,
   botNameOnlyPrefix,
@@ -142,6 +148,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     isPrivate,
     conversationId: dataConversationId,
     inboxId: dataInboxId,
+    emailSubject,
   } = data;
 
   if (actor.kind === "agent_bot" && isPrivate) {
@@ -450,6 +457,41 @@ export async function deliverOutboundWhatsAppMessage(options: {
         }
       }
     }
+  } else if (!isPrivate && inboxChannelType === "EMAIL" && type === "TEXT") {
+    const creds = resolveInboxEmailSmtpCredentials(inboxChannelConfig);
+    const to = contactEmailForInboxChannel(contact, "EMAIL");
+    if (!creds) {
+      throw new Error("Email inbox SMTP is not configured");
+    }
+    if (!to) {
+      throw new Error("Contact has no email address for this channel");
+    }
+    const text = bodyForExternal.trim();
+    if (text) {
+      const inboxRow = await prisma.inbox.findUnique({
+        where: { id: conversation.inboxId },
+        select: { name: true },
+      });
+      const priorOutbound = await prisma.message.count({
+        where: { conversationId: conversation.id, direction: "OUTBOUND", isPrivate: false },
+      });
+      const subject =
+        emailSubject?.trim() ||
+        defaultEmailSubject(inboxRow?.name ?? "OpenNexo CRM", contact.name, priorOutbound > 0);
+      try {
+        const sent = await sendInboxSmtpEmail({
+          creds,
+          to,
+          subject,
+          text,
+          replyTo: creds.fromAddress,
+        });
+        providerMsgId = sent.messageId ?? undefined;
+      } catch (err) {
+        log.error(err, "Failed to send message via inbox SMTP");
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+    }
   }
 
   const outboundStatus = isPrivate
@@ -462,7 +504,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
         ? providerMsgId
           ? "SENT"
           : "FAILED"
-        : "SENT";
+        : inboxChannelType === "EMAIL" && type === "TEXT"
+          ? providerMsgId
+            ? "SENT"
+            : "FAILED"
+          : "SENT";
 
   const message = await prisma.message.create({
     data: {

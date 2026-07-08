@@ -18,6 +18,8 @@ export const sendMessageSchema = z
     isPrivate: z.boolean().optional(),
     /** Valores para {{1}}, {{2}}, … no modelo WhatsApp Cloud API. */
     templateBodyParameters: z.array(z.string().max(4096)).max(20).optional(),
+    /** Assunto do e-mail (canal EMAIL). Se omitido, o servidor gera um padrão. */
+    emailSubject: z.string().max(998).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "TEMPLATE") {

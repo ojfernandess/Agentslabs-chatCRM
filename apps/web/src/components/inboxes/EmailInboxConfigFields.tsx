@@ -88,9 +88,21 @@ export interface EmailInboxConfigFieldsProps {
   form: EmailInboxFormState;
   onChange: (patch: Partial<EmailInboxFormState>) => void;
   passwordStored?: boolean;
+  onTestConnection?: () => void | Promise<void>;
+  testConnectionBusy?: boolean;
+  testConnectionResult?: boolean | null;
+  testConnectionError?: string | null;
 }
 
-export function EmailInboxConfigFields({ form, onChange, passwordStored = false }: EmailInboxConfigFieldsProps) {
+export function EmailInboxConfigFields({
+  form,
+  onChange,
+  passwordStored = false,
+  onTestConnection,
+  testConnectionBusy = false,
+  testConnectionResult = null,
+  testConnectionError = null,
+}: EmailInboxConfigFieldsProps) {
   const { t } = useI18n();
 
   const applyPreset = (preset: EmailProviderPreset) => {
@@ -228,6 +240,36 @@ export function EmailInboxConfigFields({ form, onChange, passwordStored = false 
           </label>
         </div>
       </div>
+
+      {onTestConnection ? (
+        <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <p className="mb-2 text-xs font-medium text-ink-700 dark:text-ink-200">
+            {t("inboxesPage.wizard.emailInbox.testConnectionIntro")}
+          </p>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            disabled={testConnectionBusy}
+            onClick={() => void onTestConnection()}
+          >
+            {testConnectionBusy
+              ? t("inboxesPage.wizard.emailInbox.testConnectionTesting")
+              : t("inboxesPage.wizard.emailInbox.testConnection")}
+          </button>
+          {testConnectionResult === true ? (
+            <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+              {t("inboxesPage.wizard.emailInbox.testConnectionOk")}
+            </p>
+          ) : null}
+          {testConnectionResult === false ? (
+            <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-300">
+              {testConnectionError
+                ? t("inboxesPage.wizard.emailInbox.testConnectionFailDetail").replace("{error}", testConnectionError)
+                : t("inboxesPage.wizard.emailInbox.testConnectionFail")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

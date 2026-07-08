@@ -14,6 +14,11 @@ import {
   getWhatsappProviderKindForInbox,
 } from "../providers/factory.js";
 import { prepareWhatsappChannelConfigForSave } from "../lib/inboxWhatsappConfig.js";
+import {
+  normalizeEmailInboxChannelConfig,
+  resolveInboxEmailSmtpCredentials,
+} from "../lib/inboxEmailConfig.js";
+import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
 import {
   syncWhatsappCredentialsToInbox,
@@ -758,6 +763,55 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       } catch {
         return { connected: false };
       }
+    });
+
+    admin.post("/test-email-draft", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = z
+        .object({
+          channelConfig: z.record(z.unknown()),
+          inboxId: z.string().uuid().optional(),
+        })
+        .safeParse(request.body ?? {});
+      if (!parsed.success || !parsed.data.channelConfig) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "channelConfig required",
+          statusCode: 400,
+        });
+      }
+
+      let existingConfig: unknown = null;
+      if (parsed.data.inboxId) {
+        const inbox = await prisma.inbox.findFirst({
+          where: { id: parsed.data.inboxId, organizationId, channelType: InboxChannelType.EMAIL },
+          select: { channelConfig: true },
+        });
+        if (!inbox) {
+          return reply.status(404).send({
+            error: "Not Found",
+            message: "Email inbox not found",
+            statusCode: 404,
+          });
+        }
+        existingConfig = inbox.channelConfig;
+      }
+
+      const prepared = normalizeEmailInboxChannelConfig(existingConfig, parsed.data.channelConfig);
+      const creds = resolveInboxEmailSmtpCredentials(prepared);
+      if (!creds) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Email SMTP credentials incomplete",
+          statusCode: 400,
+          connected: false,
+        });
+      }
+
+      const result = await testInboxSmtpConnection(creds);
+      return { connected: result.connected, error: result.error ?? null };
     });
 
     admin.post("/test-connection", async (request, reply) => {

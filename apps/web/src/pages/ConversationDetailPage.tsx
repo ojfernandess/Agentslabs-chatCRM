@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useMatch, useOutletContext } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
 import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
@@ -262,6 +262,10 @@ function messageGroupedWithPrevious(messages: Message[], index: number): boolean
 
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const emailLayoutMatch = useMatch("/inboxes/:inboxId/email/c/:id");
+  const emailInboxId = emailLayoutMatch?.params.inboxId;
+  const isEmailLayout = Boolean(emailLayoutMatch);
+  const emailOutlet = useOutletContext<import("@/pages/EmailInboxLayout").EmailInboxOutletContext | undefined>();
   const navigate = useNavigate();
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
@@ -270,6 +274,7 @@ export function ConversationDetailPage() {
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -933,6 +938,8 @@ export function ConversationDetailPage() {
     whatsappProvider == null;
 
   const isOutsideWindow =
+    !isEmailLayout &&
+    conversation?.inbox?.channelType !== "EMAIL" &&
     applies24hSessionPolicy &&
     (lastInbound ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24 : true);
 
@@ -1115,6 +1122,7 @@ export function ConversationDetailPage() {
     if (!newMessage.trim() || !conversation) return;
 
     setSending(true);
+    setFlowError("");
     try {
       await api.post("/messages", {
         contactId: conversation.contact.id,
@@ -1122,12 +1130,22 @@ export function ConversationDetailPage() {
         type: "TEXT",
         body: outboundBodyWithSignature(newMessage, privateNote),
         isPrivate: privateNote || undefined,
+        ...(!privateNote && emailSubject.trim() && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
+          ? { emailSubject: emailSubject.trim() }
+          : {}),
       });
       setNewMessage("");
       stickToBottomRef.current = true;
       await loadConversation();
-    } catch {
-      /* send failed */
+      void emailOutlet?.refreshThreads();
+    } catch (err) {
+      setFlowError(
+        err instanceof ApiError
+          ? err.message
+          : conversation.inbox?.channelType === "EMAIL" || isEmailLayout
+            ? t("conversationDetail.emailSendFailed")
+            : t("conversationDetail.sendFailed"),
+      );
     } finally {
       setSending(false);
     }
@@ -1571,6 +1589,7 @@ export function ConversationDetailPage() {
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
     hasHumanAssignee;
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
+  const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const canStartAttendance =
     Boolean(user?.id) && hasNoHumanAssignee && (conversation.status === "OPEN" || conversation.status === "PENDING");
   const transferUnchanged =
@@ -2392,7 +2411,12 @@ export function ConversationDetailPage() {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row">
+    <div
+      className={clsx(
+        "relative flex h-full min-h-0 flex-col bg-ink-50 dark:bg-[#0E1624]",
+        isEmailLayout ? "flex-1" : "lg:flex-row",
+      )}
+    >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <motion.div
@@ -2403,7 +2427,7 @@ export function ConversationDetailPage() {
         >
           <div className="flex items-start gap-3">
             <Link
-              to="/conversations"
+              to={emailInboxId ? `/inboxes/${emailInboxId}/email` : "/conversations"}
               className="mt-1 rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -2414,7 +2438,7 @@ export function ConversationDetailPage() {
               profilePictureUrl={conversation.contact.profilePictureUrl}
               hasAvatar={conversation.contact.hasAvatar}
               thumbnail={conversation.contact.thumbnail}
-              channelType={isWhatsappInbox ? "WHATSAPP" : undefined}
+              channelType={isWhatsappInbox ? "WHATSAPP" : isEmailInbox ? "EMAIL" : undefined}
               priority={conversation.priority}
               size="detail"
               presenceOnline={presenceRecent}
@@ -2584,6 +2608,12 @@ export function ConversationDetailPage() {
                 <Bot className="h-3.5 w-3.5" />
                 {t("conversationDetail.botInAttendance")}
               </span>
+            ) : null}
+            {isEmailInbox ? (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                {t("conversationDetail.emailComposerBanner")}
+              </div>
             ) : null}
             {isOutsideWindow ? (
               <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
@@ -2926,7 +2956,7 @@ export function ConversationDetailPage() {
                         : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-white/5 dark:hover:text-ink-50",
                     )}
                   >
-                    {t("conversationDetail.composerReplyTab")}
+                    {isEmailInbox ? t("conversationDetail.composerEmailTab") : t("conversationDetail.composerReplyTab")}
                   </button>
                   <button
                     type="button"
@@ -3016,6 +3046,19 @@ export function ConversationDetailPage() {
                         {t("conversationDetail.outsideWindowTemplateHint")}
                       </p>
                     ) : null}
+                    {isEmailInbox && !privateNote ? (
+                      <label className="mb-2 block">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-500">
+                          {t("conversationDetail.emailSubjectLabel")}
+                        </span>
+                        <input
+                          value={emailSubject}
+                          onChange={(e) => setEmailSubject(e.target.value)}
+                          className="input-field text-sm"
+                          placeholder={t("conversationDetail.emailSubjectPlaceholder")}
+                        />
+                      </label>
+                    ) : null}
                     <textarea
                       ref={composerTextareaRef}
                       value={newMessage}
@@ -3025,9 +3068,11 @@ export function ConversationDetailPage() {
                       placeholder={
                         privateNote
                           ? t("conversationDetail.privateNotePlaceholder")
-                          : isOutsideWindow
-                            ? t("conversationDetail.placeholderTemplate")
-                            : t("conversationDetail.placeholderNormal")
+                          : isEmailInbox
+                            ? t("conversationDetail.emailBodyPlaceholder")
+                            : isOutsideWindow
+                              ? t("conversationDetail.placeholderTemplate")
+                              : t("conversationDetail.placeholderNormal")
                       }
                       disabled={(isOutsideWindow && !privateNote) || recording}
                       className={clsx(

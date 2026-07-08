@@ -27,6 +27,7 @@ import { CsatPage } from "@/pages/CsatPage";
 import { ChatbotEmbedPage } from "@/pages/ChatbotEmbedPage";
 import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { InboxesPage } from "@/pages/InboxesPage";
+import { EmailInboxLayout, EmailInboxThreadPlaceholder } from "@/pages/EmailInboxLayout";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
@@ -186,6 +187,10 @@ export function App() {
           }
         />
         <Route path="teams" element={<TeamsPage />} />
+        <Route path="inboxes/:inboxId/email" element={<EmailInboxLayout />}>
+          <Route index element={<EmailInboxThreadPlaceholder />} />
+          <Route path="c/:id" element={<ConversationDetailPage />} />
+        </Route>
         <Route path="inboxes" element={<InboxesPage />} />
         <Route
           path="bots"

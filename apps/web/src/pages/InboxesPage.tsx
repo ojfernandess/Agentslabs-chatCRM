@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -118,6 +119,7 @@ export function InboxesPage() {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const navigate = useNavigate();
 
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -1023,6 +1025,9 @@ export function InboxesPage() {
                   onDelete={() => void handleDeleteInbox(row)}
                   onSetDefault={() => void handleSetDefault(row.id)}
                   onCopyId={() => void copyInboxId(row.id)}
+                  onOpenEmail={
+                    row.channelType === "EMAIL" ? () => navigate(`/inboxes/${row.id}/email`) : undefined
+                  }
                   expandedContent={open && isAdmin ? renderExpandedPanel(row) : undefined}
                 />
               );

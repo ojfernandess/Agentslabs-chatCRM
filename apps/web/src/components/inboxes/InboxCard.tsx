@@ -20,6 +20,7 @@ import {
   memberInitials,
   relativeActivityBars,
 } from "@/lib/inboxChannelUi";
+import { isInboxEmailConfigured, parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import { isInboxWhatsappConfigured, parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
 import { whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 
@@ -54,6 +55,7 @@ type Props = {
   onDelete: () => void;
   onSetDefault: () => void;
   onCopyId: () => void;
+  onOpenEmail?: () => void;
   expandedContent?: ReactNode;
 };
 
@@ -73,6 +75,7 @@ export function InboxCard({
   onDelete,
   onSetDefault,
   onCopyId,
+  onOpenEmail,
   expandedContent,
 }: Props) {
   const { t } = useI18n();
@@ -145,7 +148,13 @@ export function InboxCard({
       >
         <button
           type="button"
-          onClick={onToggle}
+          onClick={() => {
+            if (row.channelType === "EMAIL" && onOpenEmail) {
+              onOpenEmail();
+              return;
+            }
+            onToggle();
+          }}
           className={clsx(
             "flex min-w-0 flex-1 gap-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-xl",
             viewMode === "grid" ? "flex-col sm:flex-row" : "",
@@ -205,6 +214,23 @@ export function InboxCard({
                     {waOk
                       ? `${t("inboxesPage.wizard.whatsappMeta.inboxStatusConfigured")} · ${whatsappProviderLabel(wa.whatsappProvider)}`
                       : t("inboxesPage.wizard.whatsappMeta.inboxStatusNotConfigured")}
+                  </p>
+                );
+              })() : null}
+
+              {row.channelType === "EMAIL" ? (() => {
+                const emailCfg = parseInboxEmailFromChannelConfig(row.channelConfig);
+                const emailOk = isInboxEmailConfigured(emailCfg);
+                return (
+                  <p
+                    className={clsx(
+                      "mt-0.5 text-[11px] font-medium",
+                      emailOk ? "text-emerald-700 dark:text-emerald-300" : "text-amber-800 dark:text-amber-200",
+                    )}
+                  >
+                    {emailOk
+                      ? `${t("inboxesPage.wizard.emailInbox.inboxStatusConfigured")}${emailCfg.emailFromAddress ? ` · ${emailCfg.emailFromAddress}` : ""}`
+                      : t("inboxesPage.wizard.emailInbox.inboxStatusNotConfigured")}
                   </p>
                 );
               })() : null}

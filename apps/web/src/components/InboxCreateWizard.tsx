@@ -149,6 +149,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [waTestBusy, setWaTestBusy] = useState(false);
   const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
   const [emailForm, setEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
+  const [emailTestBusy, setEmailTestBusy] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<boolean | null>(null);
+  const [emailTestError, setEmailTestError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -179,6 +182,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setWaTestBusy(false);
     setWaTestResult(null);
     setEmailForm(emptyEmailInboxForm());
+    setEmailTestBusy(false);
+    setEmailTestResult(null);
+    setEmailTestError(null);
     void (async () => {
       try {
         const [cfg, inboxesRes] = await Promise.all([
@@ -246,6 +252,24 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     }
   };
 
+  const runEmailTestConnection = async () => {
+    setEmailTestBusy(true);
+    setEmailTestResult(null);
+    setEmailTestError(null);
+    try {
+      const channelConfig = buildInboxEmailChannelConfig(null, emailInboxFormToPatch(emailForm));
+      const res = await api.post<{ connected: boolean; error?: string | null }>("/settings/test-email-draft", {
+        channelConfig,
+      });
+      setEmailTestResult(res.connected);
+      setEmailTestError(res.error ?? null);
+    } catch {
+      setEmailTestResult(false);
+    } finally {
+      setEmailTestBusy(false);
+    }
+  };
+
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -268,6 +292,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setName(t(`inboxesPage.wizard.channels.${ch}.title`));
     setNativeCfg(emptyNativeCfg());
     setEmailForm(emptyEmailInboxForm());
+    setEmailTestBusy(false);
+    setEmailTestResult(null);
+    setEmailTestError(null);
     setStep(2);
   };
 
@@ -765,6 +792,10 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                     <EmailInboxConfigFields
                       form={emailForm}
                       onChange={(patch) => setEmailForm((f) => ({ ...f, ...patch }))}
+                      onTestConnection={runEmailTestConnection}
+                      testConnectionBusy={emailTestBusy}
+                      testConnectionResult={emailTestResult}
+                      testConnectionError={emailTestError}
                     />
                   </div>
                 ) : (

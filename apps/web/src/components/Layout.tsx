@@ -45,7 +45,7 @@ import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
 type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
-type SidebarInbox = { id: string; name: string };
+type SidebarInbox = { id: string; name: string; channelType?: string };
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
@@ -346,9 +346,9 @@ export function Layout() {
     }
     let cancelled = false;
     void api
-      .get<{ data: { id: string; name: string }[] }>("/inboxes")
+      .get<{ data: { id: string; name: string; channelType?: string }[] }>("/inboxes")
       .then((res) => {
-        if (!cancelled) setSidebarInboxes(res.data.map((x) => ({ id: x.id, name: x.name })));
+        if (!cancelled) setSidebarInboxes(res.data.map((x) => ({ id: x.id, name: x.name, channelType: x.channelType })));
       })
       .catch(() => {
         if (!cancelled) setSidebarInboxes([]);
@@ -560,8 +560,17 @@ export function Layout() {
                     {sidebarInboxes.map((inbox) => (
                       <Link
                         key={inbox.id}
-                        to={`/conversations?inboxId=${encodeURIComponent(inbox.id)}`}
-                        className={teamNavItemClass(conversationInboxId === inbox.id && !conversationTeamId, collapsed)}
+                        to={
+                          inbox.channelType === "EMAIL"
+                            ? `/inboxes/${encodeURIComponent(inbox.id)}/email`
+                            : `/conversations?inboxId=${encodeURIComponent(inbox.id)}`
+                        }
+                        className={teamNavItemClass(
+                          inbox.channelType === "EMAIL"
+                            ? location.pathname.startsWith(`/inboxes/${inbox.id}/email`)
+                            : conversationInboxId === inbox.id && !conversationTeamId,
+                          collapsed,
+                        )}
                         title={inbox.name}
                       >
                         <Inbox className={clsx("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4 opacity-70")} />
