@@ -52,6 +52,8 @@ export async function sendInboxSmtpEmail(options: {
   subject: string;
   text: string;
   replyTo?: string | null;
+  inReplyTo?: string | null;
+  references?: string | null;
 }): Promise<{ messageId: string | null }> {
   const transporter = nodemailer.createTransport(transportOptions(options.creds));
   try {
@@ -61,6 +63,8 @@ export async function sendInboxSmtpEmail(options: {
       subject: options.subject,
       text: options.text,
       replyTo: options.replyTo?.trim() || options.creds.fromAddress,
+      ...(options.inReplyTo?.trim() ? { inReplyTo: options.inReplyTo.trim() } : {}),
+      ...(options.references?.trim() ? { references: options.references.trim() } : {}),
     });
     return { messageId: typeof info.messageId === "string" ? info.messageId : null };
   } finally {

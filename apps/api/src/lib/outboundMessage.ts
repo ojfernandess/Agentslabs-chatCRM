@@ -27,6 +27,7 @@ import {
   resolveInboxEmailSmtpCredentials,
 } from "./inboxEmailConfig.js";
 import { sendInboxSmtpEmail } from "./inboxEmailSmtp.js";
+import { buildEmailOutboundThreadHeaders } from "./emailThreadRouting.js";
 import {
   agentNameOnlyPrefixForExternalChannel,
   agentNameOnlyPrefixForced,
@@ -478,6 +479,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       const subject =
         emailSubject?.trim() ||
         defaultEmailSubject(inboxRow?.name ?? "OpenNexo CRM", contact.name, priorOutbound > 0);
+      const threadHeaders = await buildEmailOutboundThreadHeaders(conversation.id);
       try {
         const sent = await sendInboxSmtpEmail({
           creds,
@@ -485,6 +487,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
           subject,
           text,
           replyTo: creds.fromAddress,
+          inReplyTo: threadHeaders.inReplyTo,
+          references: threadHeaders.references,
         });
         providerMsgId = sent.messageId ?? undefined;
       } catch (err) {

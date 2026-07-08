@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, NavLink, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Mail, MessageSquare, PenSquare, RefreshCw, Settings2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -30,6 +30,11 @@ import {
   setCachedConversation,
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
+import {
+  ConversationContextMenu,
+  type ConversationContextTarget,
+} from "@/components/ConversationContextMenu";
+import type { ConversationPriority } from "@/lib/conversationPriority";
 
 type EmailInboxRow = {
   id: string;
@@ -43,6 +48,7 @@ type EmailInboxRow = {
 type EmailConversation = {
   id: string;
   status: string;
+  priority?: ConversationPriority | null;
   updatedAt: string;
   contact: {
     id: string;
@@ -83,6 +89,13 @@ export function EmailInboxLayout() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    target: ConversationContextTarget;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  const activeThreadMatch = useMatch("/inboxes/:inboxId/email/c/:id");
+  const activeThreadId = activeThreadMatch?.params.id;
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -136,6 +149,13 @@ export function EmailInboxLayout() {
     });
     setInflightConversation(conversationId, promise);
   }, []);
+
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    for (const conv of conversations.slice(0, 40)) {
+      prefetchConversation(conv.id);
+    }
+  }, [conversations, prefetchConversation]);
 
   useEffect(() => {
     if (!inboxId) return;
@@ -384,16 +404,31 @@ export function EmailInboxLayout() {
                       const subject = emailThreadSubject(last?.body, t("inboxesPage.emailWorkspace.noSubject"));
                       const email = contactEmailLabel(conv.contact);
                       return (
-                        <li key={conv.id}>
+                        <li
+                          key={conv.id}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              target: {
+                                id: conv.id,
+                                status: conv.status,
+                                priority: conv.priority ?? null,
+                                contact: { id: conv.contact.id, name: conv.contact.name },
+                              },
+                              position: { x: e.clientX, y: e.clientY },
+                            });
+                          }}
+                        >
                           <NavLink
                             to={`/inboxes/${inboxId}/email/c/${conv.id}`}
                             preventScrollReset
+                            onMouseDown={() => prefetchConversation(conv.id)}
                             onMouseEnter={() => prefetchConversation(conv.id)}
                             onFocus={() => prefetchConversation(conv.id)}
                             className={({ isActive }) =>
                               clsx(
                                 "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
-                                isActive
+                                isActive || activeThreadId === conv.id
                                   ? "border-l-[3px] border-l-brand-500 bg-brand-50 dark:bg-brand-950/30"
                                   : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
                               )
@@ -432,6 +467,22 @@ export function EmailInboxLayout() {
         onSent={(conversationId) => {
           void loadConversations();
           navigate(`/inboxes/${inboxId}/email/c/${conversationId}`);
+        }}
+      />
+      <ConversationContextMenu
+        target={contextMenu?.target ?? null}
+        position={contextMenu?.position ?? null}
+        onClose={() => setContextMenu(null)}
+        conversationPath={(conversationId) =>
+          `/inboxes/${inboxId}/email/c/${conversationId}`
+        }
+        onUpdated={() => void loadConversations({ silent: true })}
+        onDeleted={(conversationId) => {
+          setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+          setContextMenu(null);
+          if (activeThreadId === conversationId) {
+            navigate(`/inboxes/${inboxId}/email`, { replace: true });
+          }
         }}
       />
     </div>

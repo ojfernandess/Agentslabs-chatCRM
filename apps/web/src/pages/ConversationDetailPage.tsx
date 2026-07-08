@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useCallback,
@@ -907,16 +908,24 @@ export function ConversationDetailPage() {
     }
   }, [transferMembers, transferAssigneeId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!id) return;
     const cached = getCachedConversation<ConversationDetail>(id);
     if (cached) {
       setConversation(cached);
       setLoading(false);
+    } else {
+      setConversation((prev) => (prev?.id === id ? prev : null));
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const cached = getCachedConversation<ConversationDetail>(id);
+    if (cached) {
       void loadConversation({ silent: true });
       return;
     }
-    setConversation((prev) => (prev?.id === id ? prev : null));
     if (!isEmailLayout) setLoading(true);
     else setLoading(false);
     void loadConversation();
@@ -1619,13 +1628,32 @@ export function ConversationDetailPage() {
     );
   }
 
-  const threadReady = Boolean(conversation && conversation.id === id);
+  const cachedThread = id ? getCachedConversation<ConversationDetail>(id) : null;
+  const threadReady = Boolean(
+    (conversation && conversation.id === id ? conversation : null) ?? cachedThread,
+  );
 
   if (!threadReady) {
     if (isEmailLayout) {
       return (
-        <div className="flex h-full items-center justify-center bg-ink-50 dark:bg-[#0E1624]">
-          <div className="h-7 w-7 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+        <div className="flex h-full min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624]">
+          <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
+            <div className="flex animate-pulse items-start gap-3">
+              <div className="h-9 w-9 shrink-0 rounded-lg bg-ink-200 dark:bg-ink-700" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-5 w-2/3 max-w-xs rounded bg-ink-200 dark:bg-ink-700" />
+                <div className="h-3 w-1/2 max-w-[200px] rounded bg-ink-100 dark:bg-ink-800" />
+              </div>
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 p-5">
+            <div className="flex justify-start">
+              <div className="h-14 w-[min(70%,18rem)] animate-pulse rounded-2xl bg-ink-200/80 dark:bg-ink-800/80" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-14 w-[min(65%,16rem)] animate-pulse rounded-2xl bg-brand-200/50 dark:bg-brand-900/40" />
+            </div>
+          </div>
         </div>
       );
     }

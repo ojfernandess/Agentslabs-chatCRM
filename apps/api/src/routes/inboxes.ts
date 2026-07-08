@@ -522,7 +522,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const toEmail = parsed.data.toEmail.trim();
+    const toEmail = parsed.data.toEmail.trim().toLowerCase();
     const phone = participantPhoneKey("EMAIL", toEmail);
     let contact = await prisma.contact.findFirst({
       where: {

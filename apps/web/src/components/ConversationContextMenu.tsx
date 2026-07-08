@@ -33,6 +33,8 @@ interface ConversationContextMenuProps {
   onClose: () => void;
   onUpdated: () => void;
   onDeleted: (conversationId: string) => void;
+  /** Caminho da conversa (ex.: workspace de e-mail). Por omissão `/conversations/:id`. */
+  conversationPath?: (conversationId: string) => string;
 }
 
 type SubmenuKey = "priority" | "tags" | "agents" | "teams";
@@ -52,6 +54,7 @@ export function ConversationContextMenu({
   onClose,
   onUpdated,
   onDeleted,
+  conversationPath,
 }: ConversationContextMenuProps) {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -167,9 +170,15 @@ export function ConversationContextMenu({
     }
   };
 
+  const pathFor = useCallback(
+    (conversationId: string) =>
+      conversationPath ? conversationPath(conversationId) : `/conversations/${conversationId}`,
+    [conversationPath],
+  );
+
   const copyLink = async () => {
     if (!target) return;
-    const url = `${window.location.origin}/conversations/${target.id}`;
+    const url = `${window.location.origin}${pathFor(target.id)}`;
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -180,7 +189,7 @@ export function ConversationContextMenu({
 
   const openNewTab = () => {
     if (!target) return;
-    window.open(`/conversations/${target.id}`, "_blank", "noopener,noreferrer");
+    window.open(pathFor(target.id), "_blank", "noopener,noreferrer");
     onClose();
   };
 

@@ -9,7 +9,8 @@ import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
-import { ensureConversationForChannelInbox } from "./conversationRouting.js";
+import { findConversationByEmailThreadHeaders } from "./emailThreadRouting.js";
+import { ensureConversationForChannelInbox, reopenResolvedConversationData } from "./conversationRouting.js";
 import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
 import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
@@ -18,9 +19,16 @@ export function newIngestToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+/** Normaliza identificador do participante (e-mail sempre em minúsculas). */
+export function normalizeChannelParticipantId(channelType: InboxChannelType, participantId: string): string {
+  const trimmed = participantId.replace(/\|/g, "_").replace(/\s+/g, " ").trim().slice(0, 400);
+  if (channelType === "EMAIL") return trimmed.toLowerCase();
+  return trimmed;
+}
+
 /** Chave única por participante + canal (evita colidir com telefones E.164). */
 export function participantPhoneKey(channelType: InboxChannelType, participantId: string): string {
-  const safeId = participantId.replace(/\|/g, "_").replace(/\s+/g, " ").trim().slice(0, 400);
+  const safeId = normalizeChannelParticipantId(channelType, participantId);
   return `oc|${channelType}|${safeId}`;
 }
 
@@ -38,6 +46,8 @@ export type ChannelInboundInput = {
   mediaUrl?: string | null;
   mediaType?: string | null;
   externalMessageId?: string | null;
+  /** IDs RFC5322 (In-Reply-To / References) para encadear respostas de e-mail. */
+  emailThreadMessageIds?: string[];
   log: FastifyBaseLogger;
 };
 
@@ -60,10 +70,12 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     mediaUrl,
     mediaType,
     externalMessageId,
+    emailThreadMessageIds,
     log,
   } = input;
 
-  const phone = participantPhoneKey(channelType, participantId);
+  const normalizedParticipantId = normalizeChannelParticipantId(channelType, participantId);
+  const phone = participantPhoneKey(channelType, normalizedParticipantId);
   const preChatUpdates = applyPreChatFormToContact({
     participantName,
     email,
@@ -80,6 +92,20 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   let contact = await prisma.contact.findFirst({
     where: { organizationId, phone },
   });
+  if (!contact && channelType === "EMAIL") {
+    contact = await prisma.contact.findFirst({
+      where: {
+        organizationId,
+        email: { equals: normalizedParticipantId, mode: "insensitive" },
+      },
+    });
+    if (contact && contact.phone !== phone) {
+      contact = await prisma.contact.update({
+        where: { id: contact.id },
+        data: { phone },
+      });
+    }
+  }
   if (!contact) {
     contactJustCreated = true;
     contact = await prisma.contact.create({
@@ -90,7 +116,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
         email:
           preChatUpdates.email?.trim() ||
           email?.trim() ||
-          (channelType === "EMAIL" ? participantId.trim() : undefined) ||
+          (channelType === "EMAIL" ? normalizedParticipantId : undefined) ||
           undefined,
         notes: preChatUpdates.notes,
       },
@@ -150,17 +176,38 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   const useAgentBot = Boolean(agentCtx);
 
   const conversationCreatedAtBefore = Date.now();
-  let conversation = await ensureConversationForChannelInbox({
-    organizationId,
-    contactId: contact.id,
-    inboxId,
-    lockSingleConversation,
-    activeConversationStatus: useAgentBot ? "PENDING" : "OPEN",
-    createDefaults: {
-      status: useAgentBot ? "PENDING" : "OPEN",
-      assignedToId: null,
-    },
-  });
+  const activeStatus = useAgentBot ? "PENDING" : "OPEN";
+  let conversation =
+    channelType === "EMAIL" && emailThreadMessageIds && emailThreadMessageIds.length > 0
+      ? await findConversationByEmailThreadHeaders({
+          organizationId,
+          inboxId,
+          messageIds: emailThreadMessageIds,
+        })
+      : null;
+
+  if (conversation?.status === "RESOLVED") {
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: reopenResolvedConversationData(activeStatus),
+    });
+  } else if (conversation) {
+    conversation = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+  }
+
+  if (!conversation) {
+    conversation = await ensureConversationForChannelInbox({
+      organizationId,
+      contactId: contact.id,
+      inboxId,
+      lockSingleConversation,
+      activeConversationStatus: activeStatus,
+      createDefaults: {
+        status: activeStatus,
+        assignedToId: null,
+      },
+    });
+  }
 
   if (!useAgentBot && conversation.status === "OPEN" && conversation.assignedToId == null) {
     const assigned = await tryAutoAssignInboxConversation({

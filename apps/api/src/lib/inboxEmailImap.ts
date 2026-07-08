@@ -3,6 +3,7 @@ import { simpleParser, type ParsedMail } from "mailparser";
 import type { FastifyBaseLogger } from "fastify";
 import { stripEmailQuotedContent } from "@openconduit/shared";
 import { processChannelInboxInbound } from "./channelInboxIngest.js";
+import { collectEmailThreadMessageIds } from "./emailThreadRouting.js";
 import {
   readEmailImapLastUid,
   resolveInboxEmailImapCredentials,
@@ -176,6 +177,7 @@ export async function syncInboxEmailViaImap(options: {
             : fromEmail;
 
         const textBody = extractTextBody(parsed);
+        const emailThreadMessageIds = collectEmailThreadMessageIds(parsed.inReplyTo, parsed.references);
 
         await processChannelInboxInbound({
           organizationId: options.organizationId,
@@ -187,6 +189,7 @@ export async function syncInboxEmailViaImap(options: {
           body: composeInboundBody(parsed.subject, textBody),
           type: "TEXT",
           externalMessageId: messageId,
+          emailThreadMessageIds,
           log: options.log,
         });
         processed += 1;
