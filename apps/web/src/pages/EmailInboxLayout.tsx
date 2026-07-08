@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Mail, MessageSquare, PenSquare, RefreshCw, Settings2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -7,7 +7,6 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
-import { PageTransition } from "@/components/Motion";
 import { InboxChannelIcon } from "@/components/inboxes/InboxChannelIcon";
 import {
   EmailInboxConfigFields,
@@ -57,8 +56,6 @@ function contactEmailLabel(contact: EmailConversation["contact"]): string | null
 
 export function EmailInboxLayout() {
   const { inboxId } = useParams<{ inboxId: string }>();
-  const activeConversationMatch = useMatch("/inboxes/:inboxId/email/c/:id");
-  const activeConversationId = activeConversationMatch?.params.id;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { t, dateLocale } = useI18n();
@@ -110,18 +107,18 @@ export function EmailInboxLayout() {
     }
   }, [inboxId, isAdmin, navigate]);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!inboxId) return;
-    setListLoading(true);
+    if (!opts?.silent) setListLoading(true);
     try {
       const res = await api.get<{ data: EmailConversation[] }>(
-        `/conversations?inboxId=${encodeURIComponent(inboxId)}&limit=80`,
+        `/conversations?inboxId=${encodeURIComponent(inboxId)}&pageSize=80`,
       );
       setConversations(res.data);
     } catch {
-      setConversations([]);
+      if (!opts?.silent) setConversations([]);
     } finally {
-      setListLoading(false);
+      if (!opts?.silent) setListLoading(false);
     }
   }, [inboxId]);
 
@@ -151,7 +148,7 @@ export function EmailInboxLayout() {
       } else if (res.processed > 0) {
         setSyncNotice(t("inboxesPage.emailWorkspace.syncImported").replace("{count}", String(res.processed)));
       }
-      await loadConversations();
+      await loadConversations({ silent: true });
     } catch {
       setSyncNotice(t("inboxesPage.emailWorkspace.syncFailed"));
     } finally {
@@ -214,17 +211,14 @@ export function EmailInboxLayout() {
 
   if (loading || !inbox) {
     return (
-      <PageTransition>
-        <div className="flex h-full items-center justify-center p-8 text-sm text-ink-500">
-          {t("common.loading")}
-        </div>
-      </PageTransition>
+      <div className="flex h-full items-center justify-center p-8 text-sm text-ink-500">
+        {t("common.loading")}
+      </div>
     );
   }
 
   return (
-    <PageTransition>
-      <div className="flex h-full min-h-0 flex-col bg-[#f6f8fc] dark:bg-[#0E1624]">
+    <div className="flex h-full min-h-0 flex-col bg-[#f6f8fc] dark:bg-[#0E1624]">
         <header className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B] sm:px-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -374,34 +368,32 @@ export function EmailInboxLayout() {
                       const preview = last?.body?.trim() || "—";
                       const subject = emailThreadSubject(last?.body, t("inboxesPage.emailWorkspace.noSubject"));
                       const email = contactEmailLabel(conv.contact);
-                      const active = activeConversationId === conv.id;
                       return (
                         <li key={conv.id}>
-                          <Link
+                          <NavLink
                             to={`/inboxes/${inboxId}/email/c/${conv.id}`}
-                            className={clsx(
-                              "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
-                              active
-                                ? "border-l-[3px] border-l-[#1a73e8] bg-[#e8f0fe] dark:bg-sky-950/30"
-                                : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
-                            )}
+                            preventScrollReset
+                            className={({ isActive }) =>
+                              clsx(
+                                "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
+                                isActive
+                                  ? "border-l-[3px] border-l-[#1a73e8] bg-[#e8f0fe] dark:bg-sky-950/30"
+                                  : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
+                              )
+                            }
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <p className={clsx("truncate text-sm text-ink-900 dark:text-ink-50", active && "font-semibold")}>
-                                {conv.contact.name}
-                              </p>
+                              <p className="truncate text-sm text-ink-900 dark:text-ink-50">{conv.contact.name}</p>
                               <span className="shrink-0 text-[10px] text-ink-400">
                                 {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
                               </span>
                             </div>
-                            <p className={clsx("mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200", active && "font-medium")}>
-                              {subject}
-                            </p>
+                            <p className="mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200">{subject}</p>
                             {email ? (
                               <p className="truncate text-[11px] text-ink-500 dark:text-ink-400">{email}</p>
                             ) : null}
                             <p className="mt-1 truncate text-xs text-ink-500 dark:text-ink-400">{preview}</p>
-                          </Link>
+                          </NavLink>
                         </li>
                       );
                     })}
@@ -414,7 +406,6 @@ export function EmailInboxLayout() {
             </main>
           </div>
         )}
-      </div>
       <EmailComposeModal
         open={composeOpen}
         inboxId={inboxId}
@@ -426,7 +417,7 @@ export function EmailInboxLayout() {
           navigate(`/inboxes/${inboxId}/email/c/${conversationId}`);
         }}
       />
-    </PageTransition>
+    </div>
   );
 }
 

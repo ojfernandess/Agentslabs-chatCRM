@@ -32,13 +32,20 @@ export type InboxEmailImapCredentials = {
 };
 
 function inferImapHostFromSmtp(smtpHost: string): { host: string; port: number } | null {
-  const h = smtpHost.toLowerCase();
+  const h = smtpHost.toLowerCase().trim();
   if (h.includes("gmail")) return { host: "imap.gmail.com", port: 993 };
-  if (h.includes("office365") || h.includes("outlook") || h.includes("hotmail")) {
+  if (h.includes("office365") || h.includes("outlook") || h.includes("hotmail") || h.includes("live.com")) {
     return { host: "outlook.office365.com", port: 993 };
   }
   if (h.includes("yahoo")) return { host: "imap.mail.yahoo.com", port: 993 };
   if (h.includes("zoho")) return { host: "imap.zoho.com", port: 993 };
+  if (h.includes("hostinger")) return { host: "imap.hostinger.com", port: 993 };
+  if (h.startsWith("smtp.")) {
+    return { host: smtpHost.replace(/^smtp\./i, "imap."), port: 993 };
+  }
+  if (h.startsWith("mail.")) {
+    return { host: smtpHost, port: 993 };
+  }
   return null;
 }
 

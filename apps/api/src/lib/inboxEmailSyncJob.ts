@@ -38,7 +38,7 @@ export async function runInboxEmailSyncTick(log: FastifyBaseLogger): Promise<voi
       });
 
       const prevUid = readEmailImapLastUid(inbox.channelConfig);
-      if (result.lastUid > prevUid || result.processed > 0 || result.error) {
+      if (result.lastUid > prevUid || result.processed > 0 || result.error || result.skipped > 0) {
         const base =
           inbox.channelConfig && typeof inbox.channelConfig === "object" && !Array.isArray(inbox.channelConfig)
             ? { ...(inbox.channelConfig as Record<string, unknown>) }
@@ -103,7 +103,7 @@ export async function syncInboxEmailNow(options: {
   });
 
   const prevUid = readEmailImapLastUid(inbox.channelConfig);
-  if (result.lastUid > prevUid || result.processed > 0 || result.error) {
+  if (result.lastUid > prevUid || result.processed > 0 || result.error || result.skipped > 0) {
     const base =
       inbox.channelConfig && typeof inbox.channelConfig === "object" && !Array.isArray(inbox.channelConfig)
         ? { ...(inbox.channelConfig as Record<string, unknown>) }

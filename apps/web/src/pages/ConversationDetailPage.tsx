@@ -113,7 +113,7 @@ import {
   parseImageTranscriptionBody,
 } from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
-import { contactEmailDisplay } from "@/lib/contactEmailDisplay";
+import { contactEmailDisplay, emailMessageContent } from "@/lib/contactEmailDisplay";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
   timelineChannelLabel,
@@ -279,6 +279,7 @@ export function ConversationDetailPage() {
   const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [threadLoading, setThreadLoading] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [closureReason, setClosureReason] = useState("");
   const [closureAmount, setClosureAmount] = useState("");
@@ -671,7 +672,8 @@ export function ConversationDetailPage() {
     return () => clearInterval(timer);
   }, [recording]);
 
-  const loadConversation = useCallback(async () => {
+  const loadConversation = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!id) return;
     try {
       const data = await api.get<ConversationDetail>(`/conversations/${id}`);
       for (const m of data.messages ?? []) {
@@ -680,13 +682,18 @@ export function ConversationDetailPage() {
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setAgentBotTriageActive(data.agentBotTriageActive ?? false);
-      void api.post(`/conversations/${id}/read`).then(() => {
-        window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
-      });
+      if (!opts?.silent) {
+        void api.post(`/conversations/${id}/read`).then(() => {
+          window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+        });
+      }
     } catch {
-      /* failed */
+      if (!opts?.silent) setConversation(null);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+        setThreadLoading(false);
+      }
     }
   }, [id]);
 
@@ -886,13 +893,23 @@ export function ConversationDetailPage() {
   }, [transferMembers, transferAssigneeId]);
 
   useEffect(() => {
+    if (!id) return;
+    if (isEmailLayout) {
+      setThreadLoading(true);
+    } else {
+      setLoading(true);
+    }
     void loadConversation();
-    const interval = setInterval(() => void loadConversation(), 5000);
+  }, [id, isEmailLayout, loadConversation]);
+
+  useEffect(() => {
+    if (!id) return;
+    const interval = setInterval(() => void loadConversation({ silent: true }), 5000);
     return () => clearInterval(interval);
-  }, [loadConversation]);
+  }, [id, loadConversation]);
 
   useDebouncedConversationUpdated(() => {
-    void loadConversation();
+    void loadConversation({ silent: true });
   }, { conversationId: id });
 
   useEffect(() => {
@@ -1574,10 +1591,18 @@ export function ConversationDetailPage() {
     return merged.slice(-18);
   }, [conversation, t]);
 
-  if (loading) {
+  if (loading && !isEmailLayout) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (loading && isEmailLayout && !conversation) {
+    return (
+      <div className="flex h-full items-center justify-center bg-ink-50 dark:bg-[#0E1624]">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-[#1a73e8] border-t-transparent" />
       </div>
     );
   }
@@ -2438,7 +2463,7 @@ export function ConversationDetailPage() {
       className={clsx(
         "relative flex h-full min-h-0",
         emailWorkspaceMode
-          ? "min-w-0 flex-1 flex-col bg-white dark:bg-[#0E1624] xl:flex-row"
+          ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
           : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
@@ -2841,13 +2866,20 @@ export function ConversationDetailPage() {
           onScroll={onMessagesViewportScroll}
           className={clsx(
             "relative min-h-0 flex-1 overflow-auto",
-            emailWorkspaceMode ? "bg-white dark:bg-[#0E1624]" : "px-3 py-4 sm:px-5",
+            emailWorkspaceMode ? "bg-ink-50 px-3 py-4 dark:bg-[#0E1624] sm:px-5" : "px-3 py-4 sm:px-5",
           )}
         >
           {!emailWorkspaceMode ? (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
+          ) : (
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
+          )}
+          {threadLoading ? (
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center pt-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1a73e8] border-t-transparent" />
+            </div>
           ) : null}
-          <div className={clsx("relative flex w-full min-w-0 flex-col", emailWorkspaceMode ? "" : "gap-3")}>
+          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3", threadLoading && "opacity-60")}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -2856,45 +2888,8 @@ export function ConversationDetailPage() {
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
-
-              if (emailWorkspaceMode) {
-                const senderName = inbound
-                  ? conversation.contact.name
-                  : msg.actorUser?.displayName?.trim() || msg.actorUser?.name || user?.name || t("inboxesPage.emailWorkspace.youLabel");
-                const senderEmail = inbound ? contactEmail : inboxFromAddress;
-                return (
-                  <article
-                    key={msg.id}
-                    className={clsx(
-                      "border-b border-ink-100 px-5 py-4 dark:border-ink-800",
-                      isNew && "bg-sky-50/40 dark:bg-sky-950/10",
-                    )}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{senderName}</p>
-                        {senderEmail ? (
-                          <p className="truncate text-xs text-ink-500 dark:text-ink-400">{senderEmail}</p>
-                        ) : null}
-                      </div>
-                      <time className="shrink-0 text-xs text-ink-500 dark:text-ink-400">
-                        {format(new Date(msg.sentAt), "dd/MM/yyyy HH:mm")}
-                      </time>
-                    </div>
-                    {msg.isPrivate ? (
-                      <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                        <Lock className="h-3 w-3" />
-                        {t("conversationDetail.internalNoteLabel")}
-                      </p>
-                    ) : null}
-                    {msg.body?.trim() ? (
-                      <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-800 dark:text-ink-100">
-                        {msg.body}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              }
+              const displayBody =
+                isEmailInbox && msg.type === "TEXT" ? emailMessageContent(msg.body) : msg.body?.trim() || "";
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -2975,7 +2970,7 @@ export function ConversationDetailPage() {
                     />
                   ) : null}
                   {msg.body?.trim() && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
-                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.body}</p>
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayBody}</p>
                   ) : null}
                   {msg.type === "DOCUMENT" && msg.mediaUrl && msg.body?.trim() && isLikelyDocumentCaption(msg.body) ? (
                     <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
