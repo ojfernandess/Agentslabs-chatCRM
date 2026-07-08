@@ -28,6 +28,7 @@ import {
 } from "./inboxEmailConfig.js";
 import { sendInboxSmtpEmail } from "./inboxEmailSmtp.js";
 import { buildEmailOutboundThreadHeaders } from "./emailThreadRouting.js";
+import { loadEmailOutboundAttachment } from "./emailMediaAttachment.js";
 import {
   agentNameOnlyPrefixForExternalChannel,
   agentNameOnlyPrefixForced,
@@ -458,7 +459,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
         }
       }
     }
-  } else if (!isPrivate && inboxChannelType === "EMAIL" && type === "TEXT") {
+  } else if (
+    !isPrivate &&
+    inboxChannelType === "EMAIL" &&
+    (type === "TEXT" || type === "IMAGE" || type === "DOCUMENT")
+  ) {
     const creds = resolveInboxEmailSmtpCredentials(inboxChannelConfig);
     const to = contactEmailForInboxChannel(contact, "EMAIL");
     if (!creds) {
@@ -467,8 +472,22 @@ export async function deliverOutboundWhatsAppMessage(options: {
     if (!to) {
       throw new Error("Contact has no email address for this channel");
     }
+
+    const emailAttachments = [];
+    if ((type === "IMAGE" || type === "DOCUMENT") && mediaUrl?.trim()) {
+      const loaded = await loadEmailOutboundAttachment({
+        mediaUrl,
+        mediaType,
+        filenameHint: messageBody,
+      });
+      if (!loaded) {
+        throw new Error("Attachment file not found or unreadable");
+      }
+      emailAttachments.push(loaded);
+    }
+
     const text = bodyForExternal.trim();
-    if (text) {
+    if (text || emailAttachments.length > 0) {
       const inboxRow = await prisma.inbox.findUnique({
         where: { id: conversation.inboxId },
         select: { name: true },
@@ -480,15 +499,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
         emailSubject?.trim() ||
         defaultEmailSubject(inboxRow?.name ?? "OpenNexo CRM", contact.name, priorOutbound > 0);
       const threadHeaders = await buildEmailOutboundThreadHeaders(conversation.id);
+      const emailText =
+        text ||
+        (emailAttachments[0]?.filename ? `Anexo: ${emailAttachments[0].filename}` : "(anexo)");
       try {
         const sent = await sendInboxSmtpEmail({
           creds,
           to,
           subject,
-          text,
+          text: emailText,
           replyTo: creds.fromAddress,
           inReplyTo: threadHeaders.inReplyTo,
           references: threadHeaders.references,
+          attachments: emailAttachments,
         });
         providerMsgId = sent.messageId ?? undefined;
       } catch (err) {
@@ -508,7 +531,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
         ? providerMsgId
           ? "SENT"
           : "FAILED"
-        : inboxChannelType === "EMAIL" && type === "TEXT"
+        : inboxChannelType === "EMAIL" &&
+            (type === "TEXT" || type === "IMAGE" || type === "DOCUMENT")
           ? providerMsgId
             ? "SENT"
             : "FAILED"

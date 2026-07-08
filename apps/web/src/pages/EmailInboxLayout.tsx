@@ -25,16 +25,23 @@ import {
 import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
 import { contactEmailDisplay, emailThreadSubject } from "@/lib/contactEmailDisplay";
 import {
+  ConversationContextMenu,
+  type ConversationContextMenuUpdate,
+  type ConversationContextTarget,
+} from "@/components/ConversationContextMenu";
+import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
+import {
+  isConversationPriority,
+  priorityListCardClass,
+  type ConversationPriority,
+} from "@/lib/conversationPriority";
+import {
   getCachedConversation,
   getInflightConversation,
+  invalidateCachedConversation,
   setCachedConversation,
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
-import {
-  ConversationContextMenu,
-  type ConversationContextTarget,
-} from "@/components/ConversationContextMenu";
-import type { ConversationPriority } from "@/lib/conversationPriority";
 
 type EmailInboxRow = {
   id: string;
@@ -49,6 +56,7 @@ type EmailConversation = {
   id: string;
   status: string;
   priority?: ConversationPriority | null;
+  isUnread?: boolean;
   updatedAt: string;
   contact: {
     id: string;
@@ -60,6 +68,12 @@ type EmailConversation = {
     thumbnail?: string | null;
   };
   messages: { body: string | null; direction: string; createdAt: string }[];
+};
+
+const statusColors: Record<string, string> = {
+  OPEN: "bg-green-100 text-green-700 dark:bg-emerald-950/55 dark:text-emerald-200",
+  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-950/45 dark:text-amber-200",
+  RESOLVED: "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
 };
 
 function contactEmailLabel(contact: EmailConversation["contact"]): string | null {
@@ -150,6 +164,38 @@ export function EmailInboxLayout() {
     setInflightConversation(conversationId, promise);
   }, []);
 
+  const handleContextMenuUpdated = useCallback(
+    (update?: ConversationContextMenuUpdate) => {
+      if (update?.id) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === update.id
+              ? {
+                  ...c,
+                  ...(update.status !== undefined ? { status: update.status } : {}),
+                  ...(update.priority !== undefined ? { priority: update.priority } : {}),
+                  ...(update.isUnread !== undefined ? { isUnread: update.isUnread } : {}),
+                }
+              : c,
+          ),
+        );
+        invalidateCachedConversation(update.id);
+      }
+      void loadConversations({ silent: true });
+    },
+    [loadConversations],
+  );
+
+  const statusLabel = useCallback(
+    (status: string) => {
+      if (status === "OPEN") return t("conversationDetail.statusOpen");
+      if (status === "PENDING") return t("conversationDetail.statusPending");
+      if (status === "RESOLVED") return t("conversationDetail.statusResolved");
+      return status;
+    },
+    [t],
+  );
+
   useEffect(() => {
     if (conversations.length === 0) return;
     for (const conv of conversations.slice(0, 40)) {
@@ -169,6 +215,18 @@ export function EmailInboxLayout() {
       }
     })();
   }, [inboxId, loadInbox, loadConversations]);
+
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const conversationId = (e as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (!conversationId) return;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, isUnread: false } : c)),
+      );
+    };
+    window.addEventListener("openconduit:conversation-read", onRead);
+    return () => window.removeEventListener("openconduit:conversation-read", onRead);
+  }, []);
 
   const syncInbox = useCallback(async () => {
     if (!inboxId || !ready) return;
@@ -413,6 +471,7 @@ export function EmailInboxLayout() {
                                 id: conv.id,
                                 status: conv.status,
                                 priority: conv.priority ?? null,
+                                isUnread: conv.isUnread,
                                 contact: { id: conv.contact.id, name: conv.contact.name },
                               },
                               position: { x: e.clientX, y: e.clientY },
@@ -428,6 +487,9 @@ export function EmailInboxLayout() {
                             className={({ isActive }) =>
                               clsx(
                                 "block border-b border-ink-100 px-4 py-3 transition dark:border-ink-800",
+                                priorityListCardClass(conv.priority),
+                                conv.isUnread &&
+                                  "bg-brand-50/50 dark:bg-brand-950/20",
                                 isActive || activeThreadId === conv.id
                                   ? "border-l-[3px] border-l-brand-500 bg-brand-50 dark:bg-brand-950/30"
                                   : "border-l-[3px] border-l-transparent hover:bg-ink-50 dark:hover:bg-ink-900/40",
@@ -435,7 +497,34 @@ export function EmailInboxLayout() {
                             }
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <p className="truncate text-sm text-ink-900 dark:text-ink-50">{conv.contact.name}</p>
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                {conv.isUnread ? (
+                                  <span
+                                    className="h-2 w-2 shrink-0 rounded-full bg-brand-500 ring-2 ring-brand-200 dark:ring-brand-900/50"
+                                    title={t("conversations.unreadBadge")}
+                                    aria-hidden
+                                  />
+                                ) : null}
+                                <p
+                                  className={clsx(
+                                    "truncate text-sm text-ink-900 dark:text-ink-50",
+                                    conv.isUnread ? "font-bold" : "font-medium",
+                                  )}
+                                >
+                                  {conv.contact.name}
+                                </p>
+                                {isConversationPriority(conv.priority) ? (
+                                  <ConversationPriorityBadge priority={conv.priority} variant="compact" />
+                                ) : null}
+                                <span
+                                  className={clsx(
+                                    "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                                    statusColors[conv.status] ?? statusColors.OPEN,
+                                  )}
+                                >
+                                  {statusLabel(conv.status)}
+                                </span>
+                              </div>
                               <span className="shrink-0 text-[10px] text-ink-400">
                                 {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
                               </span>
@@ -476,7 +565,7 @@ export function EmailInboxLayout() {
         conversationPath={(conversationId) =>
           `/inboxes/${inboxId}/email/c/${conversationId}`
         }
-        onUpdated={() => void loadConversations({ silent: true })}
+        onUpdated={handleContextMenuUpdated}
         onDeleted={(conversationId) => {
           setConversations((prev) => prev.filter((c) => c.id !== conversationId));
           setContextMenu(null);

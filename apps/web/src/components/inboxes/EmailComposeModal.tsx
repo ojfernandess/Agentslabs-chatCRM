@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Mail, Send, X } from "lucide-react";
+import { ImagePlus, Mail, Paperclip, Send, X } from "lucide-react";
 import { AnimatePresence, motion, backdropVariants, modalVariants } from "@/components/Motion";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -29,8 +29,11 @@ export function EmailComposeModal({
   const [toName, setToName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -38,6 +41,7 @@ export function EmailComposeModal({
       setToName("");
       setSubject("");
       setBody("");
+      setPendingFiles([]);
       setError(null);
       setSending(false);
     }
@@ -47,20 +51,49 @@ export function EmailComposeModal({
     smtpReady &&
     isValidEmail(toEmail) &&
     subject.trim().length > 0 &&
-    body.trim().length > 0 &&
+    (body.trim().length > 0 || pendingFiles.length > 0) &&
     !sending;
+
+  const addFiles = (files: FileList | null) => {
+    if (!files?.length) return;
+    setPendingFiles((prev) => [...prev, ...Array.from(files)]);
+  };
+
+  const removeFile = (index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSend = async () => {
     if (!canSend) return;
     setSending(true);
     setError(null);
     try {
-      const res = await api.post<{ conversationId: string }>(`/inboxes/${inboxId}/compose-email`, {
-        toEmail: toEmail.trim(),
-        toName: toName.trim() || undefined,
-        subject: subject.trim(),
-        body: body.trim(),
-      });
+      const trimmedSubject = subject.trim();
+      const trimmedBody = body.trim();
+      const res = await api.post<{ conversationId: string; contactId: string }>(
+        `/inboxes/${inboxId}/compose-email`,
+        {
+          toEmail: toEmail.trim(),
+          toName: toName.trim() || undefined,
+          subject: trimmedSubject,
+          body: trimmedBody || "(anexo)",
+        },
+      );
+
+      for (const file of pendingFiles) {
+        const kind: "IMAGE" | "DOCUMENT" = file.type.startsWith("image/") ? "IMAGE" : "DOCUMENT";
+        const { mediaUrl, mimeType } = await api.uploadMessageMedia(file);
+        await api.post("/messages", {
+          contactId: res.contactId,
+          conversationId: res.conversationId,
+          inboxId,
+          type: kind,
+          mediaUrl,
+          mediaType: mimeType,
+          emailSubject: trimmedSubject,
+        });
+      }
+
       onSent(res.conversationId);
       onClose();
     } catch (e) {
@@ -174,6 +207,69 @@ export function EmailComposeModal({
                   placeholder={t("inboxesPage.emailWorkspace.composeBodyPlaceholder")}
                 />
               </label>
+
+              {pendingFiles.length > 0 ? (
+                <ul className="flex flex-wrap gap-2">
+                  {pendingFiles.map((file, index) => (
+                    <li
+                      key={`${file.name}-${file.size}-${index}`}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 px-2 py-1 text-xs text-ink-700 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+                    >
+                      <span className="truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="rounded p-0.5 text-ink-500 hover:bg-ink-200/80 dark:hover:bg-ink-800"
+                        aria-label={t("inboxesPage.emailWorkspace.composeRemoveAttachment")}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={() => imageInputRef.current?.click()}
+                  title={t("inboxesPage.emailWorkspace.composeAttachImage")}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-100 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                >
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={() => fileInputRef.current?.click()}
+                  title={t("inboxesPage.emailWorkspace.composeAttachFile")}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-100 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              </div>
+
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm"
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
 
               {error ? (
                 <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">

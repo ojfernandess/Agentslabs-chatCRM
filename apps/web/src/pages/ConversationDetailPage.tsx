@@ -701,11 +701,6 @@ export function ConversationDetailPage() {
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setAgentBotTriageActive(data.agentBotTriageActive ?? false);
-      if (!opts?.silent) {
-        void api.post(`/conversations/${requestId}/read`).then(() => {
-          window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
-        });
-      }
     } catch {
       if (!opts?.silent && requestId === activeConversationIdRef.current) setConversation(null);
     } finally {
@@ -933,6 +928,26 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
+    void api
+      .post(`/conversations/${id}/read`)
+      .then(() => {
+        if (cancelled) return;
+        window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-read", { detail: { conversationId: id } }),
+        );
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
     const interval = setInterval(() => void loadConversation({ silent: true }), 5000);
     return () => clearInterval(interval);
   }, [id, loadConversation]);
@@ -1157,12 +1172,22 @@ export function ConversationDetailPage() {
         mediaType: mimeType,
         ...(caption ? { body: caption } : {}),
         isPrivate: privateNote || undefined,
+        ...(!privateNote &&
+        emailSubject.trim() &&
+        (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
+          ? { emailSubject: emailSubject.trim() }
+          : {}),
       });
       setNewMessage("");
       stickToBottomRef.current = true;
       await loadConversation();
+      void emailOutlet?.refreshThreads?.();
     } catch {
-      setFlowError(t("conversationDetail.attachFailed"));
+      setFlowError(
+        conversation.inbox?.channelType === "EMAIL" || isEmailLayout
+          ? t("conversationDetail.emailSendFailed")
+          : t("conversationDetail.attachFailed"),
+      );
     } finally {
       setAttachBusy(false);
     }
@@ -3307,7 +3332,11 @@ export function ConversationDetailPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept={
+                  isEmailInbox
+                    ? "image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm"
+                    : ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                }
                 className="hidden"
                 onChange={onFileInputChange}
               />
@@ -3426,12 +3455,17 @@ export function ConversationDetailPage() {
                       categoryLabel={(id: EmojiCategoryId) => t(`common.emojiCategory.${id}`)}
                     />
                   </div>
-                  {evolutionRichChat && !emailWorkspaceMode ? (
+                  {(evolutionRichChat || isEmailInbox) ? (
                     <>
                       <motion.button
                         type="button"
                         onClick={() => imageInputRef.current?.click()}
-                        disabled={attachBusy || (!privateNote && isOutsideWindow) || recording || !!voicePreview}
+                        disabled={
+                          attachBusy ||
+                          (!privateNote && isOutsideWindow && !isEmailInbox) ||
+                          recording ||
+                          !!voicePreview
+                        }
                         title={t("conversationDetail.attachImage")}
                         className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
                         whileTap={{ scale: 0.92 }}
@@ -3441,7 +3475,12 @@ export function ConversationDetailPage() {
                       <motion.button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={attachBusy || (!privateNote && isOutsideWindow) || recording || !!voicePreview}
+                        disabled={
+                          attachBusy ||
+                          (!privateNote && isOutsideWindow && !isEmailInbox) ||
+                          recording ||
+                          !!voicePreview
+                        }
                         title={t("conversationDetail.attachFile")}
                         className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-200/80 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
                         whileTap={{ scale: 0.92 }}

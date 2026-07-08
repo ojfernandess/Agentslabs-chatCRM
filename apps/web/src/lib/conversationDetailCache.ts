@@ -39,3 +39,8 @@ export function setInflightConversation<T>(id: string, promise: Promise<T>): Pro
   });
   return promise;
 }
+
+export function invalidateCachedConversation(id: string): void {
+  cache.delete(id);
+  inflight.delete(id);
+}

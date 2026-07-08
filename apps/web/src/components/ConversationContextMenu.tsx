@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import {
   Mail,
+  MailOpen,
   RotateCcw,
   Clock,
   AlertTriangle,
@@ -24,14 +25,22 @@ export interface ConversationContextTarget {
   id: string;
   status: string;
   priority?: ConversationPriority | null;
+  isUnread?: boolean;
   contact: { id: string; name: string };
 }
+
+export type ConversationContextMenuUpdate = {
+  id: string;
+  status?: string;
+  priority?: ConversationPriority | null;
+  isUnread?: boolean;
+};
 
 interface ConversationContextMenuProps {
   target: ConversationContextTarget | null;
   position: { x: number; y: number } | null;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated: (update?: ConversationContextMenuUpdate) => void;
   onDeleted: (conversationId: string) => void;
   /** Caminho da conversa (ex.: workspace de e-mail). Por omissão `/conversations/:id`. */
   conversationPath?: (conversationId: string) => string;
@@ -77,10 +86,10 @@ export function ConversationContextMenu({
       if (el && !el.contains(e.target as Node)) onClose();
     };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onPointer);
+    window.addEventListener("click", onPointer);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onPointer);
+      window.removeEventListener("click", onPointer);
     };
   }, [target, position, onClose]);
 
@@ -114,7 +123,12 @@ export function ConversationContextMenu({
       window.dispatchEvent(
         new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
       );
-      onUpdated();
+      const update: ConversationContextMenuUpdate = { id: target.id };
+      if (typeof body.status === "string") update.status = body.status;
+      if (body.priority !== undefined) {
+        update.priority = (body.priority as ConversationPriority | null) ?? null;
+      }
+      onUpdated(update);
       onClose();
     } catch {
       /* ignore */
@@ -132,7 +146,25 @@ export function ConversationContextMenu({
       window.dispatchEvent(
         new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
       );
-      onUpdated();
+      onUpdated({ id: target.id, isUnread: true });
+      onClose();
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markRead = async () => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      await api.post(`/conversations/${target.id}/read`);
+      window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-read", { detail: { conversationId: target.id } }),
+      );
+      onUpdated({ id: target.id, isUnread: false });
       onClose();
     } catch {
       /* ignore */
@@ -146,7 +178,7 @@ export function ConversationContextMenu({
     setBusy(true);
     try {
       await api.post(`/contacts/${target.contact.id}/tags`, { tagIds: [tagId] });
-      onUpdated();
+      onUpdated({ id: target.id });
       onClose();
     } catch {
       /* ignore */
@@ -211,12 +243,21 @@ export function ConversationContextMenu({
       role="menu"
       onContextMenu={(e) => e.preventDefault()}
     >
-      <MenuItem
-        icon={Mail}
-        label={t("conversations.contextMenu.markUnread")}
-        disabled={busy}
-        onClick={() => void markUnread()}
-      />
+      {target.isUnread ? (
+        <MenuItem
+          icon={MailOpen}
+          label={t("conversations.contextMenu.markRead")}
+          disabled={busy}
+          onClick={() => void markRead()}
+        />
+      ) : (
+        <MenuItem
+          icon={Mail}
+          label={t("conversations.contextMenu.markUnread")}
+          disabled={busy}
+          onClick={() => void markUnread()}
+        />
+      )}
       {target.status === "RESOLVED" ? (
         <MenuItem
           icon={RotateCcw}
@@ -458,7 +499,15 @@ function SubmenuRow({
         <span className="flex-1">{label}</span>
         <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />
       </button>
-      {open ? <div className="absolute left-full top-0 z-10 ml-0.5 pl-1">{children}</div> : null}
+      {open ? (
+        <div
+          className="absolute left-full top-0 z-10 -ml-1 pl-1"
+          onMouseEnter={onEnter}
+          onMouseLeave={onLeave}
+        >
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }

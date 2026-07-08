@@ -538,6 +538,18 @@ export function ConversationsPage() {
     void loadStatusCounts();
   });
 
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const conversationId = (e as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (!conversationId) return;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? { ...c, isUnread: false } : c)),
+      );
+    };
+    window.addEventListener("openconduit:conversation-read", onRead);
+    return () => window.removeEventListener("openconduit:conversation-read", onRead);
+  }, []);
+
   const digitsOnly = (s: string) => s.replace(/\D/g, "");
   const listFiltersActive = Boolean(listSearch.trim() || tagFilter || leadTypeFilter);
   const filteredConversations = useMemo(() => {
@@ -891,6 +903,7 @@ export function ConversationsPage() {
                               id: conv.id,
                               status: conv.status,
                               priority: conv.priority ?? null,
+                              isUnread: conv.isUnread,
                               contact: { id: conv.contact.id, name: conv.contact.name },
                             },
                             position: { x: e.clientX, y: e.clientY },
@@ -1081,7 +1094,23 @@ export function ConversationsPage() {
         target={contextMenu?.target ?? null}
         position={contextMenu?.position ?? null}
         onClose={() => setContextMenu(null)}
-        onUpdated={() => void loadConversations()}
+        onUpdated={(update) => {
+          if (update?.id) {
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === update.id
+                  ? {
+                      ...c,
+                      ...(update.status !== undefined ? { status: update.status } : {}),
+                      ...(update.priority !== undefined ? { priority: update.priority } : {}),
+                      ...(update.isUnread !== undefined ? { isUnread: update.isUnread } : {}),
+                    }
+                  : c,
+              ),
+            );
+          }
+          void loadConversations();
+        }}
         onDeleted={(conversationId) => {
           setConversations((prev) => prev.filter((c) => c.id !== conversationId));
           setContextMenu(null);

@@ -1,9 +1,12 @@
 import { ImapFlow } from "imapflow";
-import { simpleParser, type ParsedMail } from "mailparser";
+import { simpleParser, type ParsedMail, type Attachment } from "mailparser";
+import { randomBytes } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
+import type { MessageType } from "@prisma/client";
 import { stripEmailQuotedContent } from "@openconduit/shared";
 import { processChannelInboxInbound } from "./channelInboxIngest.js";
 import { collectEmailThreadMessageIds } from "./emailThreadRouting.js";
+import { putMessageMediaFile } from "./mediaStorage.js";
 import {
   readEmailImapLastUid,
   resolveInboxEmailImapCredentials,
@@ -71,6 +74,48 @@ function composeInboundBody(subject: string | undefined, text: string | undefine
   const subj = subject?.trim() || "(Sem assunto)";
   const cleaned = stripEmailQuotedContent(text?.trim() || "");
   return cleaned ? `${subj}\n\n${cleaned}` : subj;
+}
+
+function extensionForAttachment(mimetype: string | undefined, originalFilename?: string | null): string {
+  const m = (mimetype ?? "").split(";")[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+  };
+  if (map[m]) return map[m];
+  const ext = originalFilename?.split(".").pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, "");
+  if (ext && ext.length <= 8) return ext;
+  return "bin";
+}
+
+function messageTypeForAttachment(mimetype: string | undefined): MessageType {
+  const m = (mimetype ?? "").split(";")[0].trim().toLowerCase();
+  if (m.startsWith("image/")) return "IMAGE";
+  return "DOCUMENT";
+}
+
+async function persistInboundAttachment(att: Attachment): Promise<{ mediaUrl: string; mediaType: string } | null> {
+  const content = att.content;
+  if (!content || (Buffer.isBuffer(content) && content.length < 1)) return null;
+  const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
+  const mediaType = (att.contentType ?? "application/octet-stream").split(";")[0].trim().toLowerCase();
+  const ext = extensionForAttachment(mediaType, att.filename);
+  const token = randomBytes(16).toString("hex");
+  const filename = `${token}.${ext}`;
+  const stored = await putMessageMediaFile({
+    filename,
+    buffer,
+    contentType: mediaType || "application/octet-stream",
+  });
+  return { mediaUrl: stored.mediaUrl, mediaType: mediaType || "application/octet-stream" };
 }
 
 function buildImapClient(creds: InboxEmailImapCredentials): ImapFlow {
@@ -178,21 +223,55 @@ export async function syncInboxEmailViaImap(options: {
 
         const textBody = extractTextBody(parsed);
         const emailThreadMessageIds = collectEmailThreadMessageIds(parsed.inReplyTo, parsed.references);
+        const inboundAttachments = (parsed.attachments ?? []).filter(
+          (att) => att.content && (!Buffer.isBuffer(att.content) || att.content.length > 0),
+        );
 
-        await processChannelInboxInbound({
+        const baseInbound = {
           organizationId: options.organizationId,
           inboxId: options.inboxId,
-          channelType: "EMAIL",
+          channelType: "EMAIL" as const,
           participantId: fromEmail,
           participantName,
           email: fromEmail,
-          body: composeInboundBody(parsed.subject, textBody),
-          type: "TEXT",
-          externalMessageId: messageId,
           emailThreadMessageIds,
           log: options.log,
-        });
-        processed += 1;
+        };
+
+        const cleanedBody = stripEmailQuotedContent(textBody.trim());
+        let imported = false;
+
+        if (cleanedBody || inboundAttachments.length === 0) {
+          await processChannelInboxInbound({
+            ...baseInbound,
+            body: composeInboundBody(parsed.subject, textBody),
+            type: "TEXT",
+            externalMessageId: messageId,
+          });
+          imported = true;
+        }
+
+        for (let i = 0; i < inboundAttachments.length; i += 1) {
+          const att = inboundAttachments[i]!;
+          const stored = await persistInboundAttachment(att);
+          if (!stored) {
+            skipped += 1;
+            continue;
+          }
+          const attName = att.filename?.trim() || undefined;
+          await processChannelInboxInbound({
+            ...baseInbound,
+            body: attName ?? composeInboundBody(parsed.subject, textBody),
+            type: messageTypeForAttachment(att.contentType),
+            mediaUrl: stored.mediaUrl,
+            mediaType: stored.mediaType,
+            externalMessageId: `${messageId}#att-${i}`,
+          });
+          imported = true;
+        }
+
+        if (imported) processed += 1;
+        else skipped += 1;
       }
     } finally {
       lock.release();

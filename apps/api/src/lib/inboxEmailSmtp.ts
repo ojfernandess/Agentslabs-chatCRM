@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { InboxEmailSmtpCredentials } from "./inboxEmailConfig.js";
+import type { EmailSmtpAttachment } from "./emailMediaAttachment.js";
 
 function transportOptions(creds: InboxEmailSmtpCredentials) {
   const port = creds.smtpPort || 587;
@@ -54,6 +55,7 @@ export async function sendInboxSmtpEmail(options: {
   replyTo?: string | null;
   inReplyTo?: string | null;
   references?: string | null;
+  attachments?: EmailSmtpAttachment[];
 }): Promise<{ messageId: string | null }> {
   const transporter = nodemailer.createTransport(transportOptions(options.creds));
   try {
@@ -65,6 +67,15 @@ export async function sendInboxSmtpEmail(options: {
       replyTo: options.replyTo?.trim() || options.creds.fromAddress,
       ...(options.inReplyTo?.trim() ? { inReplyTo: options.inReplyTo.trim() } : {}),
       ...(options.references?.trim() ? { references: options.references.trim() } : {}),
+      ...(options.attachments && options.attachments.length > 0
+        ? {
+            attachments: options.attachments.map((att) => ({
+              filename: att.filename,
+              content: att.content,
+              contentType: att.contentType,
+            })),
+          }
+        : {}),
     });
     return { messageId: typeof info.messageId === "string" ? info.messageId : null };
   } finally {
