@@ -3,6 +3,7 @@ import { InboxChannelType } from "@prisma/client";
 import { encrypt } from "./encryption.js";
 import { generateWhatsappWebhookVerifyToken } from "./whatsappWebhookVerify.js";
 import { webhookUrlForInbox } from "../config.js";
+import { maskEmailChannelConfigForClient } from "./inboxEmailConfig.js";
 
 export const MASKED_WHATSAPP_SECRET = "••••••••";
 
@@ -115,7 +116,8 @@ export function maskWhatsappChannelConfigForClient(cfg: unknown): unknown {
 
 export function maskInboxRowChannelConfig<T extends { channelConfig?: unknown }>(row: T): T {
   if (row.channelConfig == null) return row;
-  return { ...row, channelConfig: maskWhatsappChannelConfigForClient(row.channelConfig) };
+  const maskedWhatsapp = maskWhatsappChannelConfigForClient(row.channelConfig);
+  return { ...row, channelConfig: maskEmailChannelConfigForClient(maskedWhatsapp) };
 }
 
 /** Credenciais da caixa; se a caixa não tiver provider, usa Settings (legado). */

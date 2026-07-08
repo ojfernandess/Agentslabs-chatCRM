@@ -31,6 +31,19 @@ import {
 import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import { WhatsAppMetaAccountHealthPanel } from "@/components/inboxes/WhatsAppMetaAccountHealthPanel";
+import {
+  EmailInboxConfigFields,
+  emailInboxFormFromChannelConfig,
+  emailInboxFormToPatch,
+  emptyEmailInboxForm,
+  type EmailInboxFormState,
+} from "@/components/inboxes/EmailInboxConfigFields";
+import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
+import {
+  buildInboxEmailChannelConfig,
+  MASKED_EMAIL_SECRET,
+  parseInboxEmailFromChannelConfig,
+} from "@/lib/inboxEmailConfig";
 
 function outboundWebhookFromConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "";
@@ -133,6 +146,7 @@ export function InboxesPage() {
   const [editWebsiteWidget, setEditWebsiteWidget] = useState<WebsiteWidgetForm | null>(null);
   const [waTestBusy, setWaTestBusy] = useState(false);
   const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
+  const [editEmailForm, setEditEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<InboxStatusFilter>("ALL");
@@ -327,11 +341,15 @@ export function InboxesPage() {
         ? websiteWidgetFromChannelConfig(row.channelConfig, row.name)
         : null,
     );
+    setEditEmailForm(
+      row.channelType === "EMAIL" ? emailInboxFormFromChannelConfig(row.channelConfig) : emptyEmailInboxForm(),
+    );
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditWebsiteWidget(null);
+    setEditEmailForm(emptyEmailInboxForm());
     setWaTestResult(null);
   };
 
@@ -397,6 +415,10 @@ export function InboxesPage() {
         });
         Object.assign(prev, merged);
       }
+      if (editChannel === "EMAIL") {
+        const merged = buildInboxEmailChannelConfig(prev, emailInboxFormToPatch(editEmailForm));
+        Object.assign(prev, merged);
+      }
       const channelConfigPayload = Object.keys(prev).length > 0 ? prev : null;
 
       await api.patch(`/inboxes/${inboxId}`, {
@@ -408,6 +430,7 @@ export function InboxesPage() {
       });
       setEditingId(null);
       setEditWebsiteWidget(null);
+      setEditEmailForm(emptyEmailInboxForm());
       await load();
     } catch {
       window.alert(t("inboxesPage.editSaveFailed"));
@@ -591,6 +614,24 @@ export function InboxesPage() {
                               />
                             </div>
                           ) : null}
+                          {editChannel === "EMAIL" ? (
+                            <div className="mb-3 max-w-2xl rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                {t("inboxesPage.wizard.emailInbox.editSectionTitle")}
+                              </p>
+                              <p className="mb-3 text-[11px] text-gray-600 dark:text-ink-400">
+                                {t("inboxesPage.wizard.emailInbox.editSectionHint")}
+                              </p>
+                              <EmailInboxConfigFields
+                                form={editEmailForm}
+                                onChange={(patch) => setEditEmailForm((f) => ({ ...f, ...patch }))}
+                                passwordStored={
+                                  parseInboxEmailFromChannelConfig(row.channelConfig).emailSmtpPassword ===
+                                  MASKED_EMAIL_SECRET
+                                }
+                              />
+                            </div>
+                          ) : null}
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
                             {t("inboxesPage.agentBotField")}
                           </label>
@@ -664,42 +705,48 @@ export function InboxesPage() {
                             </p>
                           )
                         ) : null}
-                        {row.ingestToken && row.channelType !== "WHATSAPP" && basePublicNative ? (
+                        {row.channelType === "EMAIL" && row.ingestToken && basePublicInbox ? (
+                          <>
+                            <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
+                              {t("inboxesPage.wizard.emailInbox.inboundSectionTitle")}
+                            </h4>
+                            <EmailInboundSetupPanel
+                              inboundUrl={`${basePublicInbox}/${row.ingestToken}/inbound`}
+                              fromAddress={parseInboxEmailFromChannelConfig(row.channelConfig).emailFromAddress}
+                              onCopy={copyUrl}
+                            />
+                          </>
+                        ) : null}
+                        {row.ingestToken && row.channelType !== "WHATSAPP" && row.channelType !== "EMAIL" && basePublicNative ? (
                           <>
                             <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
                               {t("inboxesPage.ingestNativeSection")}
                             </h4>
-                            {row.channelType === "EMAIL" ? (
-                              <p className="mb-2 text-xs text-gray-600 dark:text-ink-400">
-                                {t("inboxesPage.wizard.ingestEmailHint")}
-                              </p>
-                            ) : (
-                              <ul className="mb-3 space-y-2 text-xs">
-                                {nativeUrlsForChannel(row.channelType, row.ingestToken, basePublicNative).map((item) => (
-                                  <li
-                                    key={item.key}
-                                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
-                                  >
-                                    <span className="font-medium text-gray-700 dark:text-ink-200">{t(item.labelKey)}</span>
-                                    <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
-                                      <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
-                                        {item.url}
-                                      </code>
-                                      <button
-                                        type="button"
-                                        className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
-                                        onClick={() => void copyUrl(item.url)}
-                                      >
-                                        {t("inboxesPage.wizard.ingestCopy")}
-                                      </button>
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                            <ul className="mb-3 space-y-2 text-xs">
+                              {nativeUrlsForChannel(row.channelType, row.ingestToken, basePublicNative).map((item) => (
+                                <li
+                                  key={item.key}
+                                  className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <span className="font-medium text-gray-700 dark:text-ink-200">{t(item.labelKey)}</span>
+                                  <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                    <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                      {item.url}
+                                    </code>
+                                    <button
+                                      type="button"
+                                      className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                      onClick={() => void copyUrl(item.url)}
+                                    >
+                                      {t("inboxesPage.wizard.ingestCopy")}
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
                           </>
                         ) : null}
-                        {row.ingestToken && basePublicInbox ? (
+                        {row.ingestToken && basePublicInbox && row.channelType !== "EMAIL" ? (
                           <>
                             <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
                               {t("inboxesPage.ingestLegacySection")}

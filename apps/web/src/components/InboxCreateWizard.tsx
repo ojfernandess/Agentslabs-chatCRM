@@ -12,6 +12,16 @@ import {
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import {
+  EmailInboxConfigFields,
+  emailInboxFormToPatch,
+  emptyEmailInboxForm,
+  type EmailInboxFormState,
+} from "@/components/inboxes/EmailInboxConfigFields";
+import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
+import {
+  buildInboxEmailChannelConfig,
+} from "@/lib/inboxEmailConfig";
+import {
   buildInboxWhatsappChannelConfig,
   isWhatsAppCloudApiProvider,
   summarizeWhatsappInboxes,
@@ -52,8 +62,6 @@ type NativeCfgForm = {
   twilioAccountSid: string;
   twilioAuthToken: string;
   twilioFromNumber: string;
-  emailFromAddress: string;
-  emailSmtpHost: string;
 };
 
 const emptyNativeCfg = (): NativeCfgForm => ({
@@ -68,8 +76,6 @@ const emptyNativeCfg = (): NativeCfgForm => ({
   twilioAccountSid: "",
   twilioAuthToken: "",
   twilioFromNumber: "",
-  emailFromAddress: "",
-  emailSmtpHost: "",
 });
 
 function buildChannelConfigPayload(
@@ -103,10 +109,6 @@ function buildChannelConfigPayload(
       if (t(cfg.twilioAccountSid)) o.twilioAccountSid = t(cfg.twilioAccountSid);
       if (t(cfg.twilioAuthToken)) o.twilioAuthToken = t(cfg.twilioAuthToken);
       if (t(cfg.twilioFromNumber)) o.twilioFromNumber = t(cfg.twilioFromNumber);
-      break;
-    case "EMAIL":
-      if (t(cfg.emailFromAddress)) o.emailFromAddress = t(cfg.emailFromAddress);
-      if (t(cfg.emailSmtpHost)) o.emailSmtpHost = t(cfg.emailSmtpHost);
       break;
     default:
       break;
@@ -146,6 +148,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
   const [existingWhatsappInboxes, setExistingWhatsappInboxes] = useState<WhatsappInboxSummary[]>([]);
   const [waTestBusy, setWaTestBusy] = useState(false);
   const [waTestResult, setWaTestResult] = useState<boolean | null>(null);
+  const [emailForm, setEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
 
   useEffect(() => {
     if (!open) return;
@@ -175,6 +178,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setExistingWhatsappInboxes([]);
     setWaTestBusy(false);
     setWaTestResult(null);
+    setEmailForm(emptyEmailInboxForm());
     void (async () => {
       try {
         const [cfg, inboxesRes] = await Promise.all([
@@ -263,6 +267,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setChannel(ch);
     setName(t(`inboxesPage.wizard.channels.${ch}.title`));
     setNativeCfg(emptyNativeCfg());
+    setEmailForm(emptyEmailInboxForm());
     setStep(2);
   };
 
@@ -309,6 +314,29 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
         return;
       }
     }
+    if (channel === "EMAIL") {
+      const from = emailForm.emailFromAddress.trim();
+      if (!from) {
+        setError(t("inboxesPage.wizard.emailInbox.validationFromRequired"));
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) {
+        setError(t("inboxesPage.wizard.emailInbox.validationFromInvalid"));
+        return;
+      }
+      if (!emailForm.emailSmtpHost.trim()) {
+        setError(t("inboxesPage.wizard.emailInbox.validationSmtpHost"));
+        return;
+      }
+      if (!emailForm.emailSmtpUser.trim()) {
+        setError(t("inboxesPage.wizard.emailInbox.validationSmtpUser"));
+        return;
+      }
+      if (!emailForm.emailSmtpPassword.trim()) {
+        setError(t("inboxesPage.wizard.emailInbox.validationSmtpPassword"));
+        return;
+      }
+    }
     setError(null);
     setStep(3);
   };
@@ -337,6 +365,9 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
           whatsappDisplayPhone: waDisplayPhone,
           whatsappBusinessAccountId: waWabaId,
         });
+      }
+      if (channel === "EMAIL") {
+        channelConfig = buildInboxEmailChannelConfig(channelConfig, emailInboxFormToPatch(emailForm));
       }
       const inbox = await api.post<{
         id: string;
@@ -510,28 +541,6 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
           </label>
         </>
       )}
-      {channel === "EMAIL" && (
-        <>
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-500">{t("inboxesPage.wizard.fieldEmailFrom")}</span>
-            <input
-              value={nativeCfg.emailFromAddress}
-              onChange={(e) => updateCfg({ emailFromAddress: e.target.value })}
-              className="input-field"
-              type="email"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-500">{t("inboxesPage.wizard.fieldEmailSmtpHost")}</span>
-            <input
-              value={nativeCfg.emailSmtpHost}
-              onChange={(e) => updateCfg({ emailSmtpHost: e.target.value })}
-              className="input-field"
-              placeholder="smtp.gmail.com"
-            />
-          </label>
-        </>
-      )}
     </div>
   ) : null;
 
@@ -630,29 +639,42 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
             )}
 
             {step === 2 && channel && (
-              <form onSubmit={submitDetails} className={channel === "WEBSITE" ? "max-w-5xl" : "max-w-lg"}>
+              <form
+                onSubmit={submitDetails}
+                className={
+                  channel === "WEBSITE" ? "max-w-5xl" : channel === "EMAIL" ? "max-w-2xl" : "max-w-lg"
+                }
+              >
                 <h3 className="mb-1 text-xl font-semibold text-ink-900 dark:text-ink-50">
                   {channel === "WEBSITE"
                     ? t("inboxesPage.wizard.websiteChannelTitle")
-                    : t("inboxesPage.wizard.step2Title")}
+                    : channel === "EMAIL"
+                      ? t("inboxesPage.wizard.emailInbox.step2Title")
+                      : t("inboxesPage.wizard.step2Title")}
                 </h3>
                 <p className="mb-2 text-sm text-ink-600 dark:text-ink-400">
                   {channel === "WEBSITE"
                     ? t("inboxesPage.wizard.websiteChannelSubtitle")
                     : channel === "WHATSAPP"
                       ? t("inboxesPage.wizard.whatsappMeta.step2Subtitle")
-                      : t("inboxesPage.wizard.step2Subtitle")}
+                      : channel === "EMAIL"
+                        ? t("inboxesPage.wizard.emailInbox.step2Subtitle")
+                        : t("inboxesPage.wizard.step2Subtitle")}
                 </p>
                 <div
                   className={`mb-4 rounded-lg px-3 py-2 text-xs ${
                     channel === "WHATSAPP"
                       ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
-                      : "border border-brand-500/20 bg-brand-500/5 text-ink-800 dark:text-ink-200"
+                      : channel === "EMAIL"
+                        ? "border border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+                        : "border border-brand-500/20 bg-brand-500/5 text-ink-800 dark:text-ink-200"
                   }`}
                 >
                   {channel === "WHATSAPP"
                     ? t("inboxesPage.wizard.channelNoteWhatsApp")
-                    : t("inboxesPage.wizard.channelNoteNative")}
+                    : channel === "EMAIL"
+                      ? t("inboxesPage.wizard.emailInbox.channelNoteEmail")
+                      : t("inboxesPage.wizard.channelNoteNative")}
                 </div>
                 <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-400">
                   {t("inboxesPage.name")}
@@ -738,9 +760,21 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       testConnectionResult={waTestResult}
                     />
                   </div>
+                ) : channel === "EMAIL" ? (
+                  <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                    <EmailInboxConfigFields
+                      form={emailForm}
+                      onChange={(patch) => setEmailForm((f) => ({ ...f, ...patch }))}
+                    />
+                  </div>
                 ) : (
                   channelConfigFields
                 )}
+                {error ? (
+                  <p className="mb-3 text-sm text-red-600 dark:text-red-400" role="alert">
+                    {error}
+                  </p>
+                ) : null}
                 <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-ink-700 dark:text-ink-300">
                   <input
                     type="checkbox"
@@ -819,8 +853,22 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                     ? t("inboxesPage.wizard.step4WebsiteSubtitle")
                     : createdInbox.channelType === "WHATSAPP" && waSetupVerifyToken
                       ? t("inboxesPage.wizard.whatsappMeta.step4WhatsAppSubtitle")
-                      : t("inboxesPage.wizard.step4Subtitle")}
+                      : createdInbox.channelType === "EMAIL"
+                        ? t("inboxesPage.wizard.emailInbox.step4Subtitle")
+                        : t("inboxesPage.wizard.step4Subtitle")}
                 </p>
+                {createdInbox.channelType === "EMAIL" && createdInbox.ingestToken ? (
+                  <div className="card-surface mb-6 border p-4 dark:border-ink-600">
+                    <h4 className="mb-3 text-sm font-semibold text-ink-900 dark:text-ink-50">
+                      {t("inboxesPage.wizard.emailInbox.step4Title")}
+                    </h4>
+                    <EmailInboundSetupPanel
+                      inboundUrl={`${legacyInboxBase}/${createdInbox.ingestToken}/inbound`}
+                      fromAddress={emailForm.emailFromAddress}
+                      onCopy={copyText}
+                    />
+                  </div>
+                ) : null}
                 {createdInbox.channelType === "WEBSITE" && createdInbox.ingestToken ? (
                   <div className="card-surface mb-6 border p-4 dark:border-ink-600">
                     <p className="mb-2 text-xs font-semibold uppercase text-ink-500">
@@ -864,7 +912,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                   </p>
                 ) : null}
 
-                {createdInbox.ingestToken && createdInbox.channelType !== "WHATSAPP" ? (
+                {createdInbox.ingestToken && createdInbox.channelType !== "WHATSAPP" && createdInbox.channelType !== "EMAIL" ? (
                   <div className="card-surface mb-6 space-y-4 border p-4 text-sm dark:border-ink-600">
                     <p className="text-xs text-ink-600 dark:text-ink-400">{t("inboxesPage.wizard.ingestNativeIntro")}</p>
                     {(createdInbox.channelType === "WEBSITE" || createdInbox.channelType === "API") && (
@@ -993,11 +1041,6 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                           </button>
                         </div>
                       </div>
-                    )}
-                    {createdInbox.channelType === "EMAIL" && (
-                      <p className="text-sm text-ink-600 dark:text-ink-400">
-                        {t("inboxesPage.wizard.ingestEmailHint")}
-                      </p>
                     )}
                     <div className="border-t border-ink-200 pt-3 dark:border-ink-700">
                       <p className="mb-1 text-xs font-medium text-ink-500">{t("inboxesPage.wizard.ingestLegacyTitle")}</p>

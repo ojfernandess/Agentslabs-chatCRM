@@ -2836,8 +2836,8 @@ export const messages = {
         fieldTwilioAccountSid: "Twilio Account SID",
         fieldTwilioAuthToken: "Twilio Auth Token",
         fieldTwilioFromNumber: "Número Twilio (origem)",
-        fieldEmailFrom: "Endereço de envio",
-        fieldEmailSmtpHost: "Servidor SMTP (referência)",
+        fieldEmailFrom: "E-mail de envio (De:)",
+        fieldEmailSmtpHost: "Servidor SMTP",
         channelNoteWhatsApp:
           "Cada provedor WhatsApp (Meta Cloud API, Evolution API, etc.) usa uma caixa de entrada própria, com credenciais e webhook dedicados.",
         channelNoteNative:
@@ -2899,6 +2899,47 @@ export const messages = {
           inboxOrgProviderLabel: "Provedor",
           inboxOrgPhoneIdLabel: "ID do número",
         },
+        emailInbox: {
+          step2Title: "Configurar caixa de e-mail",
+          step2Subtitle: "Informe o endereço de envio e as credenciais SMTP da sua caixa.",
+          channelNoteEmail:
+            "Use uma senha de app quando o provedor exigir (Gmail, Outlook). A recepção de mensagens é feita via webhook abaixo — configure o encaminhamento ou integração no passo final.",
+          fieldProviderPreset: "Provedor de e-mail",
+          presetCustom: "Outro / personalizado",
+          presetGmail: "Gmail / Google Workspace",
+          presetOutlook: "Outlook / Microsoft 365",
+          sectionIdentity: "Identidade",
+          sectionOutbound: "Envio (SMTP)",
+          sectionInbound: "Recepção (IMAP — opcional)",
+          fieldSmtpPort: "Porta SMTP",
+          fieldSmtpUser: "Usuário SMTP",
+          fieldSmtpPassword: "Senha SMTP",
+          passwordUpdateHint: "Deixe em branco para manter a senha já salva.",
+          fieldImapHost: "Servidor IMAP",
+          fieldImapPort: "Porta IMAP",
+          imapOptionalHint:
+            "IMAP será usado quando a sincronização automática estiver disponível. Hoje, receba e-mails pelo webhook de entrada.",
+          validationFromRequired: "Informe o e-mail de envio.",
+          validationFromInvalid: "Informe um endereço de e-mail válido.",
+          validationSmtpHost: "Informe o servidor SMTP.",
+          validationSmtpUser: "Informe o usuário SMTP.",
+          validationSmtpPassword: "Informe a senha SMTP (ou senha de app).",
+          step4Title: "Receber e-mails nesta caixa",
+          step4Subtitle: "Configure o encaminhamento ou integração para enviar mensagens recebidas ao webhook abaixo.",
+          inboundSectionTitle: "Recepção de e-mails",
+          inboundIntro:
+            "Mensagens recebidas entram na caixa quando chegam neste endpoint. Use um serviço de encaminhamento, parser ou script que faça POST JSON.",
+          inboundStep1: "Copie a URL de entrada abaixo.",
+          inboundStep2:
+            "No seu provedor ou ferramenta (Mailgun Inbound, Zapier, script próprio), aponte novos e-mails para essa URL.",
+          inboundStep3: "Envie um e-mail de teste e confira se a conversa aparece em Atendimento.",
+          inboundUrlLabel: "URL de entrada (POST JSON)",
+          inboundJsonExampleLabel: "Exemplo de corpo JSON",
+          editSectionTitle: "Configuração de e-mail",
+          editSectionHint: "Credenciais SMTP ficam salvas nesta caixa. A senha não é exibida após salvar.",
+          inboxStatusNotConfigured: "Configure SMTP na edição da caixa para marcar como pronta.",
+          inboxStatusConfigured: "E-mail configurado nesta caixa",
+        },
         doneHint: "Filtre conversas por esta caixa no menu lateral ou na lista de conversas.",
         ingestNativeIntro:
           "Configure a plataforma para apontar para estes URLs (substitua PUBLIC_URL pela base pública da API, se for diferente deste painel).",
@@ -2915,7 +2956,7 @@ export const messages = {
         ingestLegacyBody:
           "URL antigo de ingestão genérica; mantido para compatibilidade. Prefira as rotas nativas acima.",
         ingestEmailHint:
-          "O canal e-mail guarda credenciais na caixa; receção por HTTP/IMAP será alinhada ao produto numa versão seguinte. Pode usar temporariamente a rota legada, se necessário.",
+          "Configure SMTP na caixa e use a URL de entrada para receber mensagens via POST JSON (encaminhamento ou integração).",
         ingestCopy: "Copiar",
         ingestNoteWhatsApp:
           "O tráfego WhatsApp em produção continua a usar o webhook da organização nas Configurações. O URL abaixo é opcional (ingest por API).",
@@ -2941,7 +2982,7 @@ export const messages = {
           },
           EMAIL: {
             title: "E-mail",
-            description: "Gmail, Outlook ou outros fornecedores",
+            description: "Gmail, Outlook ou SMTP personalizado",
           },
           API: {
             title: "API",
@@ -7559,7 +7600,7 @@ export const messages = {
         fieldTwilioAuthToken: "Twilio Auth Token",
         fieldTwilioFromNumber: "Twilio from number",
         fieldEmailFrom: "From address",
-        fieldEmailSmtpHost: "SMTP host (reference)",
+        fieldEmailSmtpHost: "SMTP server",
         channelNoteWhatsApp:
           "Each WhatsApp provider (Meta Cloud API, Evolution API, etc.) uses its own inbox with dedicated credentials and webhook URL.",
         channelNoteNative:
@@ -7618,6 +7659,47 @@ export const messages = {
           inboxOrgProviderLabel: "Provider",
           inboxOrgPhoneIdLabel: "Phone number ID",
         },
+        emailInbox: {
+          step2Title: "Set up email inbox",
+          step2Subtitle: "Enter the from address and SMTP credentials for this mailbox.",
+          channelNoteEmail:
+            "Use an app password when your provider requires it (Gmail, Outlook). Inbound mail uses the webhook below — set up forwarding or an integration on the final step.",
+          fieldProviderPreset: "Email provider",
+          presetCustom: "Other / custom",
+          presetGmail: "Gmail / Google Workspace",
+          presetOutlook: "Outlook / Microsoft 365",
+          sectionIdentity: "Identity",
+          sectionOutbound: "Outbound (SMTP)",
+          sectionInbound: "Inbound (IMAP — optional)",
+          fieldSmtpPort: "SMTP port",
+          fieldSmtpUser: "SMTP username",
+          fieldSmtpPassword: "SMTP password",
+          passwordUpdateHint: "Leave blank to keep the stored password.",
+          fieldImapHost: "IMAP server",
+          fieldImapPort: "IMAP port",
+          imapOptionalHint:
+            "IMAP will be used when automatic sync is available. For now, receive mail via the inbound webhook.",
+          validationFromRequired: "Enter the from address.",
+          validationFromInvalid: "Enter a valid email address.",
+          validationSmtpHost: "Enter the SMTP server.",
+          validationSmtpUser: "Enter the SMTP username.",
+          validationSmtpPassword: "Enter the SMTP password (or app password).",
+          step4Title: "Receive email in this inbox",
+          step4Subtitle: "Set up forwarding or an integration to POST received messages to the URL below.",
+          inboundSectionTitle: "Email intake",
+          inboundIntro:
+            "Inbound messages appear in the inbox when they hit this endpoint. Use forwarding, a parser, or a script that POSTs JSON.",
+          inboundStep1: "Copy the inbound URL below.",
+          inboundStep2:
+            "In your provider or tool (Mailgun Inbound, Zapier, custom script), point new mail at that URL.",
+          inboundStep3: "Send a test email and confirm the conversation appears in Inbox.",
+          inboundUrlLabel: "Inbound URL (POST JSON)",
+          inboundJsonExampleLabel: "Sample JSON body",
+          editSectionTitle: "Email configuration",
+          editSectionHint: "SMTP credentials are stored on this inbox. The password is not shown after saving.",
+          inboxStatusNotConfigured: "Configure SMTP in inbox edit to mark as ready.",
+          inboxStatusConfigured: "Email configured on this inbox",
+        },
         doneHint: "Filter conversations by this inbox from the sidebar or conversation list.",
         ingestNativeIntro:
           "Point the platform at these URLs (replace PUBLIC_URL with your API base if it differs from this app).",
@@ -7633,7 +7715,7 @@ export const messages = {
         ingestLegacyTitle: "Legacy",
         ingestLegacyBody: "Older generic ingest path; kept for compatibility. Prefer the native routes above.",
         ingestEmailHint:
-          "Email stores credentials on the inbox; HTTP/IMAP intake will follow in a later release. You may use the legacy route temporarily if needed.",
+          "Configure SMTP on the inbox and use the inbound URL to receive messages via POST JSON (forwarding or integration).",
         ingestCopy: "Copy",
         ingestNoteWhatsApp:
           "Production WhatsApp traffic still uses your organization webhook in Settings. The URL below is optional (API ingest).",
@@ -7659,7 +7741,7 @@ export const messages = {
           },
           EMAIL: {
             title: "Email",
-            description: "Gmail, Outlook, or other providers",
+            description: "Gmail, Outlook, or custom SMTP",
           },
           API: {
             title: "API",

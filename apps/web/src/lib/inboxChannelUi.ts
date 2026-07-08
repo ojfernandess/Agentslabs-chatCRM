@@ -30,6 +30,10 @@ export const INBOX_CHANNEL_ORDER = [
 
 export type InboxChannelId = (typeof INBOX_CHANNEL_ORDER)[number];
 import {
+  isInboxEmailConfigured,
+  parseInboxEmailFromChannelConfig,
+} from "@/lib/inboxEmailConfig";
+import {
   isInboxWhatsappConfigured,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
@@ -147,6 +151,9 @@ export function inboxIsChannelReady(
   if (channelType === "WHATSAPP") {
     const wa = parseInboxWhatsappFromChannelConfig(channelConfig);
     return whatsappConfigured ?? isInboxWhatsappConfigured(wa);
+  }
+  if (channelType === "EMAIL") {
+    return isInboxEmailConfigured(parseInboxEmailFromChannelConfig(channelConfig)) && Boolean(ingestToken);
   }
   return Boolean(ingestToken);
 }
