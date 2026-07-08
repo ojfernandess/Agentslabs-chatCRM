@@ -154,9 +154,28 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
         providerMsgId: externalMessageId,
         conversation: { organizationId, inboxId },
       },
-      select: { id: true, conversationId: true, conversation: { select: { contactId: true } } },
+      select: {
+        id: true,
+        body: true,
+        conversationId: true,
+        conversation: { select: { contactId: true } },
+      },
     });
     if (existing) {
+      // Upgrade plain-text bodies to HTML when re-syncing the same IMAP message.
+      if (
+        channelType === "EMAIL" &&
+        type === "TEXT" &&
+        body &&
+        body.includes("<!--oc-email-html-->") &&
+        existing.body &&
+        !existing.body.includes("<!--oc-email-html-->")
+      ) {
+        await prisma.message.update({
+          where: { id: existing.id },
+          data: { body },
+        });
+      }
       return {
         conversationId: existing.conversationId,
         messageId: existing.id,
@@ -190,6 +209,11 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     conversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: reopenResolvedConversationData(activeStatus),
+    });
+  } else if (conversation?.deletedAt) {
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { deletedAt: null },
     });
   } else if (conversation) {
     conversation = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });

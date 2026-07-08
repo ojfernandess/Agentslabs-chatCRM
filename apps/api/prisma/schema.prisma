@@ -858,6 +858,8 @@ model Conversation {
   priority  ConversationPriority? @map("priority")
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
+  /// Soft-delete (lixeira de e-mail / conversas). Null = ativo.
+  deletedAt DateTime?          @map("deleted_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -912,6 +914,7 @@ model Conversation {
   @@index([leadTypeId])
   @@index([teamId])
   @@index([inboxId])
+  @@index([deletedAt])
   @@map("conversations")
 }
 

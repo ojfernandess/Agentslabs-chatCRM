@@ -83,6 +83,8 @@ export async function syncInboxEmailNow(options: {
   organizationId: string;
   inboxId: string;
   log: FastifyBaseLogger;
+  /** Reprocessa recentes para upgrade HTML / anexos. */
+  reprocessRecent?: boolean;
 }): Promise<{ processed: number; skipped: number; error?: string }> {
   const inbox = await prisma.inbox.findFirst({
     where: { id: options.inboxId, organizationId: options.organizationId, channelType: InboxChannelType.EMAIL },
@@ -100,6 +102,7 @@ export async function syncInboxEmailNow(options: {
     inboxId: inbox.id,
     channelConfig: inbox.channelConfig,
     log: options.log,
+    reprocessRecent: options.reprocessRecent,
   });
 
   const prevUid = readEmailImapLastUid(inbox.channelConfig);

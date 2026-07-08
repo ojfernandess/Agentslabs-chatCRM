@@ -174,6 +174,8 @@ export async function syncInboxEmailViaImap(options: {
   inboxId: string;
   channelConfig: unknown;
   log: FastifyBaseLogger;
+  /** Reprocessa e-mails recentes (ex.: upgrade de corpo texto → HTML). */
+  reprocessRecent?: boolean;
 }): Promise<InboxEmailImapSyncResult> {
   const creds = resolveInboxEmailImapCredentials(options.channelConfig);
   if (!creds) {
@@ -192,9 +194,9 @@ export async function syncInboxEmailViaImap(options: {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const searchQuery =
-        lastUid > 0
-          ? { uid: `${lastUid + 1}:*` }
-          : { since: new Date(Date.now() - INITIAL_SYNC_DAYS * 24 * 60 * 60 * 1000) };
+        options.reprocessRecent || lastUid <= 0
+          ? { since: new Date(Date.now() - INITIAL_SYNC_DAYS * 24 * 60 * 60 * 1000) }
+          : { uid: `${lastUid + 1}:*` };
 
       let uids = await client.search(searchQuery, { uid: true });
       if (!uids) {
@@ -208,7 +210,10 @@ export async function syncInboxEmailViaImap(options: {
         .filter((uid) => Number.isFinite(uid) && uid > 0)
         .sort((a, b) => a - b);
 
-      const batch = sortedUids.slice(0, MAX_MESSAGES_PER_SYNC);
+      // Em reprocessamento, prioriza os mais recentes.
+      const batch = options.reprocessRecent
+        ? sortedUids.slice(-Math.min(MAX_MESSAGES_PER_SYNC * 2, 80))
+        : sortedUids.slice(0, MAX_MESSAGES_PER_SYNC);
 
       for await (const msg of client.fetch(batch, { uid: true, source: true, envelope: true }, { uid: true })) {
         if (!msg.uid) continue;

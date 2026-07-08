@@ -166,10 +166,14 @@ const ALLOWED_TAGS = new Set([
 const GLOBAL_ATTRS = new Set(["align", "class", "dir", "id", "lang", "style", "title"]);
 const TAG_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "name", "rel", "target"]),
-  img: new Set(["alt", "height", "src", "width", "border"]),
-  td: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height"]),
-  th: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height"]),
-  table: new Set(["border", "cellpadding", "cellspacing", "width", "bgcolor", "role"]),
+  img: new Set(["alt", "height", "src", "width", "border", "align", "hspace", "vspace"]),
+  td: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height", "background", "align"]),
+  th: new Set(["colspan", "rowspan", "valign", "width", "bgcolor", "height", "background", "align"]),
+  table: new Set(["border", "cellpadding", "cellspacing", "width", "bgcolor", "role", "align", "background"]),
+  tr: new Set(["align", "valign", "bgcolor", "height"]),
+  div: new Set(["align", "bgcolor"]),
+  p: new Set(["align"]),
+  span: new Set(["align"]),
   col: new Set(["span", "width"]),
   colgroup: new Set(["span", "width"]),
   font: new Set(["color", "face", "size"]),
@@ -194,7 +198,7 @@ function sanitizeStyle(value: string): string {
     .replace(/url\s*\(\s*['"]?\s*javascript:/gi, "url(")
     .replace(/-moz-binding/gi, "")
     .replace(/behavior\s*:/gi, "")
-    .slice(0, 2000);
+    .slice(0, 8000);
 }
 
 function sanitizeAttributes(tag: string, rawAttrs: string): string {
@@ -207,7 +211,7 @@ function sanitizeAttributes(tag: string, rawAttrs: string): string {
     if (name.startsWith("on") || name === "srcset" || name === "xlink:href") continue;
     if (!allowed.has(name)) continue;
     const value = (match[2] ?? match[3] ?? match[4] ?? "").trim();
-    if (name === "href" || name === "src") {
+    if (name === "href" || name === "src" || name === "background") {
       if (!isSafeUrl(value, name === "src")) continue;
       out.push(`${name}="${value.replace(/"/g, "&quot;")}"`);
       continue;
@@ -235,13 +239,26 @@ function sanitizeAttributes(tag: string, rawAttrs: string): string {
 
 /**
  * Sanitiza HTML de e-mail para armazenamento/exibição segura.
- * Remove scripts, iframes e handlers; mantém links, imagens e layout básico.
+ * Mantém <style> (necessário para layouts tipo Instagram) e remove scripts/handlers.
  */
 export function sanitizeEmailHtml(html: string): string {
-  let input = html
+  const styleBlocks: string[] = [];
+  let input = html.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_full, css: string) => {
+    const cleaned = css
+      .replace(/@import\b[^;]*;?/gi, "")
+      .replace(/expression\s*\(/gi, "")
+      .replace(/behavior\s*:/gi, "")
+      .replace(/-moz-binding/gi, "")
+      .replace(/javascript\s*:/gi, "")
+      .slice(0, 80_000);
+    const idx = styleBlocks.length;
+    styleBlocks.push(cleaned);
+    return `<!--oc-style-${idx}-->`;
+  });
+
+  input = input
     .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<!--(?!oc-email-html)[\s\S]*?-->/g, "")
+    .replace(/<!--(?!oc-(?:email-html|style-\d+))[\s\S]*?-->/g, "")
     .replace(/<\/?(?:html|head|body|meta|link|base|iframe|object|embed|form|input|button|textarea|select|option|svg|math)[^>]*>/gi, "");
 
   input = input.replace(/<\/?([a-zA-Z0-9]+)(\s[^>]*)?>/g, (full, rawTag: string, rawAttrs = "") => {
@@ -252,6 +269,11 @@ export function sanitizeEmailHtml(html: string): string {
     if (closing) return `</${tag}>`;
     const attrs = sanitizeAttributes(tag, rawAttrs || "");
     return selfClosing ? `<${tag}${attrs} />` : `<${tag}${attrs}>`;
+  });
+
+  input = input.replace(/<!--oc-style-(\d+)-->/g, (_full, idx: string) => {
+    const css = styleBlocks[Number(idx)];
+    return css ? `<style type="text/css">${css}</style>` : "";
   });
 
   return input.trim();

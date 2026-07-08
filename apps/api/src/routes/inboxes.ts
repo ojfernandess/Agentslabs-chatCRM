@@ -596,10 +596,14 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      const reprocess =
+        (request.query as { reprocess?: string } | undefined)?.reprocess === "1" ||
+        (request.body as { reprocessRecent?: boolean } | null | undefined)?.reprocessRecent === true;
       const result = await syncInboxEmailNow({
         organizationId,
         inboxId: inbox.id,
         log: app.log,
+        reprocessRecent: reprocess,
       });
       return reply.send(result);
     } catch (err) {

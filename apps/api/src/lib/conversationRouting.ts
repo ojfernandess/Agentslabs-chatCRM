@@ -43,6 +43,7 @@ export function reopenResolvedConversationData(activeConversationStatus: "OPEN" 
     csatComment: null,
     csatRecordedAt: null,
     csatSurveyToken: null,
+    deletedAt: null,
   } as const;
 }
 
@@ -143,6 +144,7 @@ async function findResolvedConversationWithRecentTemplate(
       contactId: params.contactId,
       inboxId: params.inboxId,
       status: "RESOLVED",
+      deletedAt: null,
       messages: {
         some: {
           direction: "OUTBOUND",
@@ -191,9 +193,24 @@ async function ensureConversationForChannelInboxWithDb(
 
   if (lockSingleConversation) {
     let conv = await db.conversation.findFirst({
-      where: { organizationId, contactId, inboxId },
+      where: { organizationId, contactId, inboxId, deletedAt: null },
       orderBy: { updatedAt: "desc" },
     });
+    if (!conv) {
+      const trashed = await db.conversation.findFirst({
+        where: { organizationId, contactId, inboxId, deletedAt: { not: null } },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (trashed) {
+        return db.conversation.update({
+          where: { id: trashed.id },
+          data:
+            trashed.status === "RESOLVED"
+              ? reopenResolvedConversationData(activeConversationStatus)
+              : { deletedAt: null, updatedAt: new Date() },
+        });
+      }
+    }
     if (conv) {
       if (conv.status === "RESOLVED") {
         return db.conversation.update({
@@ -221,10 +238,23 @@ async function ensureConversationForChannelInboxWithDb(
   }
 
   let conv = await db.conversation.findFirst({
-    where: { organizationId, contactId, inboxId, status: { not: "RESOLVED" } },
+    where: { organizationId, contactId, inboxId, status: { not: "RESOLVED" }, deletedAt: null },
     orderBy: { updatedAt: "desc" },
   });
   if (!conv) {
+    const trashed = await db.conversation.findFirst({
+      where: { organizationId, contactId, inboxId, deletedAt: { not: null } },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (trashed) {
+      return db.conversation.update({
+        where: { id: trashed.id },
+        data:
+          trashed.status === "RESOLVED"
+            ? reopenResolvedConversationData(activeConversationStatus)
+            : { deletedAt: null, updatedAt: new Date() },
+      });
+    }
     const templateThread = await findResolvedConversationWithRecentTemplate(
       {
         organizationId,

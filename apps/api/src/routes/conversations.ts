@@ -68,6 +68,10 @@ const querySchema = z.object({
   mine: z.enum(["1", "true", "0", "false"]).optional(),
   botAttendance: z.enum(["1", "true", "0", "false"]).optional(),
   waitingAttendance: z.enum(["1", "true", "0", "false"]).optional(),
+  /** `1` = só conversas na lixeira (deletedAt != null). Por omissão exclui lixeira. */
+  trash: z.enum(["1", "true", "0", "false"]).optional(),
+  /** Pesquisa por nome, e-mail, telefone ou corpo da última mensagem. */
+  q: z.string().max(200).optional(),
 });
 
 const auditQuerySchema = z.object({
@@ -205,6 +209,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const botAttendance = isMineFlag(query.botAttendance);
     const waitingAttendance = isMineFlag(query.waitingAttendance);
     const mineRequested = isMineFlag(query.mine);
+    const trashOnly = isMineFlag(query.trash);
+
+    where.deletedAt = trashOnly ? { not: null } : null;
 
     if (!botAttendance && !(waitingAttendance && !mineRequested) && query.status) {
       where.status = query.status;
@@ -362,10 +369,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const searchQ = query.q?.trim();
+    if (searchQ) {
+      const existingAnd = where.AND
+        ? Array.isArray(where.AND)
+          ? where.AND
+          : [where.AND]
+        : [];
+      where.AND = [
+        ...existingAnd,
+        {
+          OR: [
+            { contact: { name: { contains: searchQ, mode: "insensitive" } } },
+            { contact: { email: { contains: searchQ, mode: "insensitive" } } },
+            { contact: { phone: { contains: searchQ, mode: "insensitive" } } },
+            { messages: { some: { body: { contains: searchQ, mode: "insensitive" } } } },
+          ],
+        },
+      ];
+    }
+
     const contactListSelect = {
       id: true,
       name: true,
       phone: true,
+      email: true,
       profilePictureUrl: true,
       createdAt: true,
       assignedTo: { select: { id: true, name: true } },
@@ -878,8 +906,68 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(204).send();
   });
 
+  app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId, deletedAt: null },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    await prisma.conversation.update({
+      where: { id: existing.id },
+      data: { deletedAt: new Date() },
+    });
+    broadcastToOrganization(organizationId, {
+      type: "conversation.updated",
+      conversationId: existing.id,
+    });
+    return reply.status(204).send();
+  });
+
+  /** Restaura conversa da lixeira. */
+  app.post<{ Params: { id: string } }>("/:id/restore", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId, deletedAt: { not: null } },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found in trash", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    await prisma.conversation.update({
+      where: { id: existing.id },
+      data: { deletedAt: null },
+    });
+    broadcastToOrganization(organizationId, {
+      type: "conversation.updated",
+      conversationId: existing.id,
+    });
+    return reply.status(204).send();
+  });
+
+  /** Eliminação permanente (apenas SUPER_ADMIN). */
   app.delete<{ Params: { id: string } }>(
-    "/:id",
+    "/:id/permanent",
     { preHandler: [requireSuperAdmin] },
     async (request, reply) => {
       const organizationId = await resolveTenantOrganizationId(request, reply);

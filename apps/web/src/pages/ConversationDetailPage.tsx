@@ -910,9 +910,8 @@ export function ConversationDetailPage() {
     if (cached) {
       setConversation(cached);
       setLoading(false);
-    } else {
-      setConversation((prev) => (prev?.id === id ? prev : null));
     }
+    // Sem cache: mantém o thread anterior até o fetch; o render usa skeleton se id ≠ conversation.id
   }, [id]);
 
   useEffect(() => {
@@ -923,8 +922,7 @@ export function ConversationDetailPage() {
       return;
     }
     if (!isEmailLayout) setLoading(true);
-    else setLoading(false);
-    void loadConversation();
+    void loadConversation({ silent: isEmailLayout });
   }, [id, isEmailLayout, loadConversation]);
 
   useEffect(() => {
@@ -1654,12 +1652,7 @@ export function ConversationDetailPage() {
     );
   }
 
-  const cachedThread = id ? getCachedConversation<ConversationDetail>(id) : null;
-  const threadReady = Boolean(
-    (conversation && conversation.id === id ? conversation : null) ?? cachedThread,
-  );
-
-  if (!threadReady) {
+  if (!conversation || conversation.id !== id) {
     if (isEmailLayout) {
       return (
         <div className="flex h-full min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624]">
@@ -1690,14 +1683,6 @@ export function ConversationDetailPage() {
         </div>
       );
     }
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-ink-500 dark:text-ink-400">{t("conversationDetail.notFound")}</p>
-      </div>
-    );
-  }
-
-  if (!conversation) {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-ink-500 dark:text-ink-400">{t("conversationDetail.notFound")}</p>

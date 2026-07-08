@@ -14,6 +14,7 @@ import {
   Trash2,
   ChevronRight,
   Check,
+  ArchiveRestore,
 } from "lucide-react";
 import { priorityIcon, type ConversationPriority } from "@/lib/conversationPriority";
 import clsx from "clsx";
@@ -26,6 +27,7 @@ export interface ConversationContextTarget {
   status: string;
   priority?: ConversationPriority | null;
   isUnread?: boolean;
+  deletedAt?: string | null;
   contact: { id: string; name: string };
 }
 
@@ -189,11 +191,41 @@ export function ConversationContextMenu({
 
   const deleteConversation = async () => {
     if (!target) return;
-    if (!window.confirm(t("conversations.contextMenu.deleteConfirm"))) return;
+    const inTrash = Boolean(target.deletedAt);
+    if (
+      !window.confirm(
+        inTrash
+          ? t("conversations.contextMenu.deletePermanentConfirm")
+          : t("conversations.contextMenu.deleteConfirm"),
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
-      await api.delete(`/conversations/${target.id}`);
+      if (inTrash) {
+        await api.delete(`/conversations/${target.id}/permanent`);
+      } else {
+        await api.delete(`/conversations/${target.id}`);
+      }
       onDeleted(target.id);
+      onClose();
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreConversation = async () => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      await api.post(`/conversations/${target.id}/restore`);
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
+      );
+      onUpdated({ id: target.id });
       onClose();
     } catch {
       /* ignore */
@@ -424,17 +456,33 @@ export function ConversationContextMenu({
       />
       <MenuItem icon={Copy} label={t("conversations.contextMenu.copyLink")} disabled={busy} onClick={() => void copyLink()} />
 
-      {isSuperAdmin ? (
-        <>
-          <MenuSeparator />
-          <MenuItem
-            icon={Trash2}
-            label={t("conversations.contextMenu.delete")}
-            disabled={busy}
-            onClick={() => void deleteConversation()}
-            destructive
-          />
-        </>
+      <MenuSeparator />
+
+      {target.deletedAt ? (
+        <MenuItem
+          icon={ArchiveRestore}
+          label={t("conversations.contextMenu.restore")}
+          disabled={busy}
+          onClick={() => void restoreConversation()}
+        />
+      ) : (
+        <MenuItem
+          icon={Trash2}
+          label={t("conversations.contextMenu.delete")}
+          disabled={busy}
+          onClick={() => void deleteConversation()}
+          destructive
+        />
+      )}
+
+      {isSuperAdmin && target.deletedAt ? (
+        <MenuItem
+          icon={Trash2}
+          label={t("conversations.contextMenu.deletePermanent")}
+          disabled={busy}
+          onClick={() => void deleteConversation()}
+          destructive
+        />
       ) : null}
     </div>,
     document.body,
