@@ -2741,7 +2741,7 @@ export const messages = {
         chatwootHint:
           "Siga os passos para conectar cada canal à sua organização.",
         step1Title: "Escolha o Canal",
-        step1Subtitle: "Escolha o provedor que deseja integrar com o OpenConduit.",
+        step1Subtitle: "Escolha o provedor que deseja integrar com o OpenNexo CRM.",
         step2Title: "Criar caixa de entrada",
         step2Subtitle: "Defina o nome e detalhes da caixa.",
         step3Title: "Adicionar agentes",
@@ -7504,7 +7504,7 @@ export const messages = {
         chatwootHint:
           "Channel model inspired by Chatwoot (add inbox). Docs: chatwoot.com/docs/user-guide/add-inbox-settings.",
         step1Title: "Choose a channel",
-        step1Subtitle: "Pick the provider you want to connect to OpenConduit.",
+        step1Subtitle: "Pick the provider you want to connect to OpenNexo CRM.",
         step2Title: "Create inbox",
         step2Subtitle: "Set the inbox name and details.",
         step3Title: "Add agents",
