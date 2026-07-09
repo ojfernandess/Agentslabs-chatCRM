@@ -23,7 +23,7 @@ import {
   parseInboxEmailFromChannelConfig,
 } from "@/lib/inboxEmailConfig";
 import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
-import { contactEmailDisplay, emailMessagePreviewText, emailThreadSubject } from "@/lib/contactEmailDisplay";
+import { contactEmailDisplay, emailConversationSubject, emailMessagePreviewText } from "@/lib/contactEmailDisplay";
 import {
   ConversationContextMenu,
   type ConversationContextMenuUpdate,
@@ -622,8 +622,12 @@ export function EmailInboxLayout() {
                   {conversations.map((conv) => {
                     const last = conv.messages[0];
                     const preview = emailMessagePreviewText(last?.body) || "—";
-                    const subject = emailThreadSubject(last?.body, t("inboxesPage.emailWorkspace.noSubject"));
+                    const subject = emailConversationSubject(
+                      conv.messages,
+                      t("inboxesPage.emailWorkspace.noSubject"),
+                    );
                     const email = contactEmailLabel(conv.contact);
+                    const lastDirection = last?.direction === "OUTBOUND" ? "OUTBOUND" : last?.direction === "INBOUND" ? "INBOUND" : null;
                     return (
                       <li
                         key={conv.id}
@@ -692,11 +696,34 @@ export function EmailInboxLayout() {
                               {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
                             </span>
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200">{subject}</p>
+                          <p
+                            className={clsx(
+                              "mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200",
+                              conv.isUnread && "font-semibold",
+                            )}
+                          >
+                            {subject}
+                          </p>
                           {email ? (
                             <p className="truncate text-[11px] text-ink-500 dark:text-ink-400">{email}</p>
                           ) : null}
-                          <p className="mt-1 truncate text-xs text-ink-500 dark:text-ink-400">{preview}</p>
+                          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                            {lastDirection ? (
+                              <span
+                                className={clsx(
+                                  "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                  lastDirection === "OUTBOUND"
+                                    ? "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
+                                    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200",
+                                )}
+                              >
+                                {lastDirection === "OUTBOUND"
+                                  ? t("inboxesPage.emailWorkspace.directionSent")
+                                  : t("inboxesPage.emailWorkspace.directionReceived")}
+                              </span>
+                            ) : null}
+                            <p className="min-w-0 truncate text-xs text-ink-500 dark:text-ink-400">{preview}</p>
+                          </div>
                         </NavLink>
                       </li>
                     );

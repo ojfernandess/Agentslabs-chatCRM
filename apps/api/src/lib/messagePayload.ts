@@ -20,6 +20,12 @@ export const sendMessageSchema = z
     templateBodyParameters: z.array(z.string().max(4096)).max(20).optional(),
     /** Assunto do e-mail (canal EMAIL). Se omitido, o servidor gera um padrão. */
     emailSubject: z.string().max(998).optional(),
+    /** Destinatários To (vírgula/ponto-e-vírgula). Se omitido, usa o e-mail do contato. */
+    emailTo: z.string().max(4000).optional(),
+    /** Cópia (Cc). */
+    emailCc: z.string().max(4000).optional(),
+    /** Cópia oculta (Cco / Bcc). */
+    emailBcc: z.string().max(4000).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "TEMPLATE") {

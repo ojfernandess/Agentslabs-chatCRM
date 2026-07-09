@@ -114,8 +114,18 @@ import {
   parseImageTranscriptionBody,
 } from "@/components/conversation/ImageTranscriptionBlock";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
-import { contactEmailDisplay, emailMessageContent } from "@/lib/contactEmailDisplay";
+import {
+  contactEmailDisplay,
+  emailConversationSubject,
+  emailMessageContent,
+  emailSubjectFromBody,
+} from "@/lib/contactEmailDisplay";
 import { EmailMessageBody } from "@/components/inboxes/EmailMessageBody";
+import {
+  EmailRecipientFields,
+  emailRecipientsPayload,
+  type EmailRecipientFieldsValue,
+} from "@/components/inboxes/EmailRecipientFields";
 import {
   getCachedConversation,
   getInflightConversation,
@@ -285,6 +295,11 @@ export function ConversationDetailPage() {
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
+  const [emailRecipients, setEmailRecipients] = useState<EmailRecipientFieldsValue>({
+    to: [],
+    cc: [],
+    bcc: [],
+  });
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -486,7 +501,18 @@ export function ConversationDetailPage() {
       const el = messagesViewportRef.current;
       if (el) el.scrollTop = 0;
     }
+    setEmailSubject("");
+    setEmailRecipients({ to: [], cc: [], bcc: [] });
   }, [id, isEmailLayout]);
+
+  useEffect(() => {
+    const email = conversation?.contact.email?.trim().toLowerCase();
+    if (!email) return;
+    setEmailRecipients((prev) => {
+      if (prev.to.length > 0) return prev;
+      return { ...prev, to: [email] };
+    });
+  }, [conversation?.id, conversation?.contact.email]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1169,6 +1195,13 @@ export function ConversationDetailPage() {
     try {
       const { mediaUrl, mimeType } = await api.uploadMessageMedia(file);
       const caption = outboundBodyWithSignature(newMessage, privateNote);
+      const emailExtra =
+        !privateNote && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
+          ? {
+              ...(emailSubject.trim() ? { emailSubject: emailSubject.trim() } : {}),
+              ...emailRecipientsPayload(emailRecipients),
+            }
+          : {};
       await api.post("/messages", {
         contactId: conversation.contact.id,
         conversationId: conversation.id,
@@ -1177,11 +1210,7 @@ export function ConversationDetailPage() {
         mediaType: mimeType,
         ...(caption ? { body: caption } : {}),
         isPrivate: privateNote || undefined,
-        ...(!privateNote &&
-        emailSubject.trim() &&
-        (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
-          ? { emailSubject: emailSubject.trim() }
-          : {}),
+        ...emailExtra,
       });
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
@@ -1217,15 +1246,20 @@ export function ConversationDetailPage() {
     setSending(true);
     setFlowError("");
     try {
+      const emailExtra =
+        !privateNote && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
+          ? {
+              ...(emailSubject.trim() ? { emailSubject: emailSubject.trim() } : {}),
+              ...emailRecipientsPayload(emailRecipients),
+            }
+          : {};
       await api.post("/messages", {
         contactId: conversation.contact.id,
         conversationId: conversation.id,
         type: "TEXT",
         body: outboundBodyWithSignature(newMessage, privateNote),
         isPrivate: privateNote || undefined,
-        ...(!privateNote && emailSubject.trim() && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
-          ? { emailSubject: emailSubject.trim() }
-          : {}),
+        ...emailExtra,
       });
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
@@ -1716,6 +1750,14 @@ export function ConversationDetailPage() {
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
   const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
   const contactEmail = contactEmailDisplay(conversation.contact);
+  const threadEmailSubject = useMemo(
+    () =>
+      emailConversationSubject(
+        conversation.messages ?? [],
+        t("inboxesPage.emailWorkspace.noSubject"),
+      ),
+    [conversation.messages, t],
+  );
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
   ).emailFromAddress;
@@ -2568,8 +2610,12 @@ export function ConversationDetailPage() {
                 </Link>
                 <div className="min-w-0 flex-1">
                 <h2 className="truncate text-lg font-semibold text-ink-900 dark:text-ink-50">
-                  {emailSubject.trim() || conversation.contact.name}
+                  {emailSubject.trim() || threadEmailSubject}
                 </h2>
+                <p className="mt-0.5 truncate text-xs text-ink-500 dark:text-ink-400">
+                  {conversation.contact.name}
+                  {contactEmail ? ` · ${contactEmail}` : ""}
+                </p>
                 <div className="mt-2 space-y-1 text-xs text-ink-600 dark:text-ink-300">
                   {inboxFromAddress ? (
                     <p>
@@ -2966,8 +3012,11 @@ export function ConversationDetailPage() {
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
               const displayBody =
                 isEmailInbox && msg.type === "TEXT" ? emailMessageContent(msg.body) : msg.body?.trim() || "";
+              const messageEmailSubject =
+                isEmailInbox && msg.type === "TEXT" ? emailSubjectFromBody(msg.body) : null;
               const hasRenderableBody =
                 Boolean(displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE") ||
+                Boolean(messageEmailSubject) ||
                 msg.type === "IMAGE" ||
                 msg.type === "DOCUMENT" ||
                 msg.type === "VIDEO" ||
@@ -3034,6 +3083,27 @@ export function ConversationDetailPage() {
                       <Lock className="h-3 w-3" />
                       {t("conversationDetail.internalNoteLabel")}
                     </p>
+                  ) : null}
+                  {isEmailInbox && !msg.isPrivate ? (
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={clsx(
+                          "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          inbound
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
+                            : "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-200",
+                        )}
+                      >
+                        {inbound
+                          ? t("inboxesPage.emailWorkspace.directionReceived")
+                          : t("inboxesPage.emailWorkspace.directionSent")}
+                      </span>
+                      {messageEmailSubject ? (
+                        <span className="min-w-0 truncate text-[11px] font-medium text-ink-600 dark:text-ink-300">
+                          {messageEmailSubject}
+                        </span>
+                      ) : null}
+                    </div>
                   ) : null}
                   {msg.type === "IMAGE" && msg.mediaUrl ? (
                     <>
@@ -3286,17 +3356,26 @@ export function ConversationDetailPage() {
                       </p>
                     ) : null}
                     {isEmailInbox && !privateNote ? (
-                      <label className="mb-2 block">
-                        <span className="mb-1 block text-[11px] font-medium text-ink-500">
-                          {t("conversationDetail.emailSubjectLabel")}
-                        </span>
-                        <input
-                          value={emailSubject}
-                          onChange={(e) => setEmailSubject(e.target.value)}
-                          className="input-field text-sm"
-                          placeholder={t("conversationDetail.emailSubjectPlaceholder")}
+                      <div className="mb-2 space-y-2">
+                        <EmailRecipientFields
+                          value={emailRecipients}
+                          onChange={setEmailRecipients}
+                          density="compact"
+                          toRequired={false}
+                          disabled={sending || attachBusy}
                         />
-                      </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-medium text-ink-500">
+                            {t("conversationDetail.emailSubjectLabel")}
+                          </span>
+                          <input
+                            value={emailSubject}
+                            onChange={(e) => setEmailSubject(e.target.value)}
+                            className="input-field text-sm"
+                            placeholder={t("conversationDetail.emailSubjectPlaceholder")}
+                          />
+                        </label>
+                      </div>
                     ) : null}
                     <textarea
                       ref={composerTextareaRef}

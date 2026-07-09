@@ -26,6 +26,42 @@ import {
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { parseEmailAddressList } from "@openconduit/shared";
+
+const emailListField = z
+  .union([z.string().max(4000), z.array(z.string().email().max(320)).max(50)])
+  .optional();
+
+const composeEmailSchema = z
+  .object({
+    /** Um e-mail ou lista (vírgula / ponto-e-vírgula). Preferir `toEmails` para vários. */
+    toEmail: z.string().max(4000).optional(),
+    toEmails: z.array(z.string().email().max(320)).max(50).optional(),
+    toName: z.string().max(200).optional(),
+    cc: emailListField,
+    bcc: emailListField,
+    subject: z.string().min(1).max(998),
+    body: z.string().min(1).max(4096),
+  })
+  .superRefine((data, ctx) => {
+    const to = [
+      ...parseEmailAddressList(data.toEmails),
+      ...parseEmailAddressList(data.toEmail),
+    ];
+    const seen = new Set<string>();
+    const unique = to.filter((e) => {
+      if (seen.has(e)) return false;
+      seen.add(e);
+      return true;
+    });
+    if (unique.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["toEmail"],
+        message: "At least one valid To email is required",
+      });
+    }
+  });
 
 const testWhatsappConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
@@ -33,13 +69,6 @@ const testWhatsappConnectionSchema = z.object({
 
 const testEmailConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
-});
-
-const composeEmailSchema = z.object({
-  toEmail: z.string().email().max(320),
-  toName: z.string().max(200).optional(),
-  subject: z.string().min(1).max(998),
-  body: z.string().min(1).max(4096),
 });
 
 const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
@@ -522,12 +551,18 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const toEmail = parsed.data.toEmail.trim().toLowerCase();
-    const phone = participantPhoneKey("EMAIL", toEmail);
+    const toEmails = [
+      ...parseEmailAddressList(parsed.data.toEmails),
+      ...parseEmailAddressList(parsed.data.toEmail),
+    ].filter((email, index, arr) => arr.indexOf(email) === index);
+    const ccEmails = parseEmailAddressList(parsed.data.cc);
+    const bccEmails = parseEmailAddressList(parsed.data.bcc);
+    const primaryTo = toEmails[0]!;
+    const phone = participantPhoneKey("EMAIL", primaryTo);
     let contact = await prisma.contact.findFirst({
       where: {
         organizationId,
-        OR: [{ phone }, { email: { equals: toEmail, mode: "insensitive" } }],
+        OR: [{ phone }, { email: { equals: primaryTo, mode: "insensitive" } }],
       },
     });
     if (!contact) {
@@ -535,14 +570,14 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         data: {
           organizationId,
           phone,
-          name: parsed.data.toName?.trim() || toEmail,
-          email: toEmail,
+          name: parsed.data.toName?.trim() || primaryTo,
+          email: primaryTo,
         },
       });
     } else if (!contact.email) {
       contact = await prisma.contact.update({
         where: { id: contact.id },
-        data: { email: toEmail },
+        data: { email: primaryTo },
       });
     }
 
@@ -555,6 +590,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           type: "TEXT",
           body: parsed.data.body,
           emailSubject: parsed.data.subject.trim(),
+          emailTo: toEmails.join(", "),
+          ...(ccEmails.length > 0 ? { emailCc: ccEmails.join(", ") } : {}),
+          ...(bccEmails.length > 0 ? { emailBcc: bccEmails.join(", ") } : {}),
         },
         actor: { kind: "user", userId: request.user.id },
         log: app.log,

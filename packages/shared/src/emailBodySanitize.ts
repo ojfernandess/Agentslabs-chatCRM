@@ -55,16 +55,46 @@ export function stripEmailQuotedContent(text: string): string {
   return result;
 }
 
+/**
+ * Extrai o assunto do formato armazenado "assunto\\n\\ncorpo".
+ * Funciona para inbound (IMAP) e outbound (após persistir o assunto no envio).
+ */
+export function emailSubjectFromBody(body: string | null | undefined): string | null {
+  const raw = body?.replace(/\r\n/g, "\n").trim();
+  if (!raw) return null;
+
+  const parts = raw.split("\n\n");
+  const first = parts[0]?.trim() ?? "";
+  if (!first || first.startsWith("<") || first.startsWith("<!--")) return null;
+
+  // Sem separador: corpo legado (outbound antigo) ou assunto sozinho.
+  if (parts.length === 1) {
+    if (first.includes("\n") || first.length > 200) return null;
+    if (/^\((?:sem assunto|no subject)\)$/i.test(first)) return first;
+    // Só confiar em prefixos de reply/forward quando não há "\n\n".
+    if (/^(?:re|fw|fwd|enc|res):\s+/i.test(first)) return first;
+    return null;
+  }
+
+  // Com separador: a 1.ª parte é o assunto (formato composeEmailInboundBody).
+  if (first.includes("\n") || first.length > 998) return null;
+  return first;
+}
+
 /** Extrai corpo (após assunto) do formato armazenado "assunto\\n\\ncorpo". */
 export function emailStoredContent(body: string | null | undefined): string {
-  const raw = body?.trim();
+  const raw = body?.replace(/\r\n/g, "\n").trim();
   if (!raw) return "";
 
-  const subjectSplit = raw.split(/\n\n/);
+  const subject = emailSubjectFromBody(raw);
+  if (!subject) return raw;
+
+  const subjectSplit = raw.split("\n\n");
   if (subjectSplit.length >= 2 && subjectSplit[0]?.trim()) {
     return subjectSplit.slice(1).join("\n\n").trim();
   }
-  return raw;
+  // Assunto sozinho (sem corpo).
+  return "";
 }
 
 export function isEmailHtmlStoredContent(content: string): boolean {
@@ -279,20 +309,24 @@ export function sanitizeEmailHtml(html: string): string {
   return input.trim();
 }
 
-/** Monta corpo inbound: assunto + texto ou HTML marcado. */
+/**
+ * Monta corpo armazenado de e-mail: assunto + texto ou HTML marcado.
+ * Usado em inbound (IMAP) e outbound (SMTP) para manter o título recuperável.
+ */
 export function composeEmailInboundBody(
   subject: string | undefined,
   content: string | undefined,
-  options?: { html?: boolean },
+  options?: { html?: boolean; stripQuotes?: boolean },
 ): string {
   const subj = subject?.trim() || "(Sem assunto)";
   const raw = content?.trim() || "";
-  if (!raw) return subj;
+  if (!raw) return `${subj}\n\n`;
   if (options?.html) {
     const sanitized = sanitizeEmailHtml(raw);
-    if (!sanitized) return subj;
+    if (!sanitized) return `${subj}\n\n`;
     return `${subj}\n\n${EMAIL_HTML_BODY_MARKER}\n${sanitized}`;
   }
-  const cleaned = stripEmailQuotedContent(raw);
-  return cleaned ? `${subj}\n\n${cleaned}` : subj;
+  const stripQuotes = options?.stripQuotes !== false;
+  const cleaned = stripQuotes ? stripEmailQuotedContent(raw) : raw;
+  return cleaned ? `${subj}\n\n${cleaned}` : `${subj}\n\n`;
 }

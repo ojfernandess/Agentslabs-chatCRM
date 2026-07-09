@@ -4,10 +4,14 @@ import { ImagePlus, Mail, Paperclip, Send, X } from "lucide-react";
 import { AnimatePresence, motion, backdropVariants, modalVariants } from "@/components/Motion";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import {
+  EmailRecipientFields,
+  emailRecipientsPayload,
+  hasValidEmailTo,
+  type EmailRecipientFieldsValue,
+} from "@/components/inboxes/EmailRecipientFields";
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
+const emptyRecipients = (): EmailRecipientFieldsValue => ({ to: [], cc: [], bcc: [] });
 
 export function EmailComposeModal({
   open,
@@ -25,7 +29,7 @@ export function EmailComposeModal({
   onSent: (conversationId: string) => void;
 }) {
   const { t } = useI18n();
-  const [toEmail, setToEmail] = useState("");
+  const [recipients, setRecipients] = useState<EmailRecipientFieldsValue>(emptyRecipients);
   const [toName, setToName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -37,7 +41,7 @@ export function EmailComposeModal({
 
   useEffect(() => {
     if (!open) {
-      setToEmail("");
+      setRecipients(emptyRecipients());
       setToName("");
       setSubject("");
       setBody("");
@@ -49,7 +53,7 @@ export function EmailComposeModal({
 
   const canSend =
     smtpReady &&
-    isValidEmail(toEmail) &&
+    hasValidEmailTo(recipients) &&
     subject.trim().length > 0 &&
     (body.trim().length > 0 || pendingFiles.length > 0) &&
     !sending;
@@ -70,11 +74,14 @@ export function EmailComposeModal({
     try {
       const trimmedSubject = subject.trim();
       const trimmedBody = body.trim();
+      const recipientPayload = emailRecipientsPayload(recipients);
       const res = await api.post<{ conversationId: string; contactId: string }>(
         `/inboxes/${inboxId}/compose-email`,
         {
-          toEmail: toEmail.trim(),
+          toEmails: recipients.to,
           toName: toName.trim() || undefined,
+          ...(recipients.cc.length > 0 ? { cc: recipients.cc } : {}),
+          ...(recipients.bcc.length > 0 ? { bcc: recipients.bcc } : {}),
           subject: trimmedSubject,
           body: trimmedBody || "(anexo)",
         },
@@ -91,6 +98,7 @@ export function EmailComposeModal({
           mediaUrl,
           mediaType: mimeType,
           emailSubject: trimmedSubject,
+          ...recipientPayload,
         });
       }
 
@@ -155,20 +163,13 @@ export function EmailComposeModal({
                 </p>
               ) : null}
 
+              <EmailRecipientFields
+                value={recipients}
+                onChange={setRecipients}
+                disabled={sending}
+              />
+
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
-                    {t("inboxesPage.emailWorkspace.composeToEmail")}
-                  </span>
-                  <input
-                    type="email"
-                    value={toEmail}
-                    onChange={(e) => setToEmail(e.target.value)}
-                    className="input-field"
-                    placeholder="cliente@empresa.com"
-                    autoComplete="email"
-                  />
-                </label>
                 <label className="block sm:col-span-2">
                   <span className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
                     {t("inboxesPage.emailWorkspace.composeToName")}
@@ -219,77 +220,80 @@ export function EmailComposeModal({
                       <button
                         type="button"
                         onClick={() => removeFile(index)}
-                        className="rounded p-0.5 text-ink-500 hover:bg-ink-200/80 dark:hover:bg-ink-800"
+                        className="rounded p-0.5 hover:bg-ink-200 dark:hover:bg-ink-700"
                         aria-label={t("inboxesPage.emailWorkspace.composeRemoveAttachment")}
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-1">
-                <button
-                  type="button"
-                  disabled={sending}
-                  onClick={() => imageInputRef.current?.click()}
-                  title={t("inboxesPage.emailWorkspace.composeAttachImage")}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-100 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  disabled={sending}
-                  onClick={() => fileInputRef.current?.click()}
-                  title={t("inboxesPage.emailWorkspace.composeAttachFile")}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-600 hover:bg-ink-100 disabled:opacity-40 dark:text-ink-300 dark:hover:bg-ink-800"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-              </div>
-
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm"
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-
               {error ? (
-                <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-100">
                   {error}
                 </p>
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-ink-100 px-5 py-4 dark:border-ink-800">
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={sending}>
-                {t("common.cancel")}
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-100 px-5 py-3 dark:border-ink-800">
+              <div className="flex items-center gap-1">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
+                  title={t("inboxesPage.emailWorkspace.composeAttachImage")}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  {t("inboxesPage.emailWorkspace.composeAttachImage")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
+                  title={t("inboxesPage.emailWorkspace.composeAttachFile")}
+                >
+                  <Paperclip className="h-4 w-4" />
+                  {t("inboxesPage.emailWorkspace.composeAttachFile")}
+                </button>
+              </div>
               <button
                 type="button"
-                className={clsx("btn-primary inline-flex items-center gap-2", !canSend && "opacity-50")}
                 disabled={!canSend}
                 onClick={() => void handleSend()}
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition",
+                  canSend
+                    ? "bg-amber-500 hover:bg-amber-600"
+                    : "cursor-not-allowed bg-ink-300 dark:bg-ink-700",
+                )}
               >
                 <Send className="h-4 w-4" />
-                {sending ? t("inboxesPage.emailWorkspace.composeSending") : t("inboxesPage.emailWorkspace.composeSend")}
+                {sending
+                  ? t("inboxesPage.emailWorkspace.composeSending")
+                  : t("inboxesPage.emailWorkspace.composeSend")}
               </button>
             </div>
           </motion.div>

@@ -29,6 +29,7 @@ import {
 import { sendInboxSmtpEmail } from "./inboxEmailSmtp.js";
 import { buildEmailOutboundThreadHeaders } from "./emailThreadRouting.js";
 import { loadEmailOutboundAttachment } from "./emailMediaAttachment.js";
+import { composeEmailInboundBody, parseEmailAddressList } from "@openconduit/shared";
 import {
   agentNameOnlyPrefixForExternalChannel,
   agentNameOnlyPrefixForced,
@@ -151,6 +152,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
     conversationId: dataConversationId,
     inboxId: dataInboxId,
     emailSubject,
+    emailTo,
+    emailCc,
+    emailBcc,
   } = data;
 
   if (actor.kind === "agent_bot" && isPrivate) {
@@ -371,6 +375,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
   }
 
   let providerMsgId: string | undefined;
+  /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
+  let resolvedEmailSubject: string | null = null;
   if (!isPrivate && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
@@ -465,11 +471,15 @@ export async function deliverOutboundWhatsAppMessage(options: {
     (type === "TEXT" || type === "IMAGE" || type === "DOCUMENT")
   ) {
     const creds = resolveInboxEmailSmtpCredentials(inboxChannelConfig);
-    const to = contactEmailForInboxChannel(contact, "EMAIL");
+    const contactEmail = contactEmailForInboxChannel(contact, "EMAIL");
+    const toList = parseEmailAddressList(emailTo);
+    const ccList = parseEmailAddressList(emailCc);
+    const bccList = parseEmailAddressList(emailBcc);
+    const to = toList.length > 0 ? toList : contactEmail ? [contactEmail] : [];
     if (!creds) {
       throw new Error("Email inbox SMTP is not configured");
     }
-    if (!to) {
+    if (to.length === 0) {
       throw new Error("Contact has no email address for this channel");
     }
 
@@ -498,6 +508,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       const subject =
         emailSubject?.trim() ||
         defaultEmailSubject(inboxRow?.name ?? "OpenNexo CRM", contact.name, priorOutbound > 0);
+      resolvedEmailSubject = subject;
       const threadHeaders = await buildEmailOutboundThreadHeaders(conversation.id);
       const emailText =
         text ||
@@ -506,6 +517,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
         const sent = await sendInboxSmtpEmail({
           creds,
           to,
+          cc: ccList.length > 0 ? ccList : undefined,
+          bcc: bccList.length > 0 ? bccList : undefined,
           subject,
           text: emailText,
           replyTo: creds.fromAddress,
@@ -538,12 +551,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
             : "FAILED"
           : "SENT";
 
+  let storedBody = messageBody;
+  if (
+    !isPrivate &&
+    inboxChannelType === "EMAIL" &&
+    resolvedEmailSubject &&
+    type === "TEXT" &&
+    messageBody != null
+  ) {
+    storedBody = composeEmailInboundBody(resolvedEmailSubject, messageBody, { stripQuotes: false });
+  }
+
   const message = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       direction: "OUTBOUND",
       type,
-      body: messageBody,
+      body: storedBody,
       mediaUrl,
       mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
       isPrivate: Boolean(isPrivate),
@@ -558,7 +582,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     messageId: message.id,
     conversationId: conversation.id,
     type,
-    body: messageBody,
+    body: storedBody,
     mediaUrl: mediaUrl ?? null,
     isPrivate: Boolean(isPrivate),
     status: message.status,

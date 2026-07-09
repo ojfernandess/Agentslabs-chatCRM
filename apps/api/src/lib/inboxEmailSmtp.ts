@@ -47,9 +47,21 @@ export async function testInboxSmtpConnection(
   }
 }
 
+function normalizeRecipientField(value: string | string[] | null | undefined): string | undefined {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    const list = value.map((v) => v.trim()).filter(Boolean);
+    return list.length > 0 ? list.join(", ") : undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 export async function sendInboxSmtpEmail(options: {
   creds: InboxEmailSmtpCredentials;
-  to: string;
+  to: string | string[];
+  cc?: string | string[] | null;
+  bcc?: string | string[] | null;
   subject: string;
   text: string;
   replyTo?: string | null;
@@ -57,11 +69,20 @@ export async function sendInboxSmtpEmail(options: {
   references?: string | null;
   attachments?: EmailSmtpAttachment[];
 }): Promise<{ messageId: string | null }> {
+  const to = normalizeRecipientField(options.to);
+  if (!to) {
+    throw new Error("At least one To recipient is required");
+  }
+  const cc = normalizeRecipientField(options.cc);
+  const bcc = normalizeRecipientField(options.bcc);
+
   const transporter = nodemailer.createTransport(transportOptions(options.creds));
   try {
     const info = await transporter.sendMail({
       from: options.creds.fromAddress,
-      to: options.to,
+      to,
+      ...(cc ? { cc } : {}),
+      ...(bcc ? { bcc } : {}),
       subject: options.subject,
       text: options.text,
       replyTo: options.replyTo?.trim() || options.creds.fromAddress,

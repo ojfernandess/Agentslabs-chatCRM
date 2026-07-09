@@ -2,6 +2,7 @@ import {
   emailHtmlFromStoredContent,
   emailMessageDisplayBody,
   emailStoredContent,
+  emailSubjectFromBody,
   htmlToPlainTextForEmail,
   isEmailHtmlStoredContent,
   stripEmailQuotedContent,
@@ -21,10 +22,39 @@ export function contactEmailDisplay(contact: {
   return null;
 }
 
+/** Assunto de um único body armazenado (inbound ou outbound). */
 export function emailThreadSubject(body: string | null | undefined, fallback: string): string {
-  const line = body?.trim().split(/\r?\n/)[0]?.trim();
-  if (!line || line.startsWith("<") || line.startsWith("<!--")) return fallback;
-  return line.length > 90 ? `${line.slice(0, 87)}…` : line;
+  const subject = emailSubjectFromBody(body)?.trim();
+  if (!subject) return fallback;
+  return subject.length > 90 ? `${subject.slice(0, 87)}…` : subject;
+}
+
+/**
+ * Título do thread: prioriza a mensagem mais antiga com assunto válido,
+ * depois a mais recente; evita usar a 1.ª linha do corpo de replies outbound legados.
+ */
+export function emailConversationSubject(
+  messages: Array<{ body: string | null; direction?: string; createdAt?: string }> | null | undefined,
+  fallback: string,
+): string {
+  if (!messages?.length) return fallback;
+
+  const chronological = [...messages].sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return ta - tb;
+  });
+
+  for (const msg of chronological) {
+    const subject = emailSubjectFromBody(msg.body)?.trim();
+    if (subject) {
+      return subject.length > 90 ? `${subject.slice(0, 87)}…` : subject;
+    }
+  }
+
+  // Lista da inbox só traz a última mensagem — tentar essa.
+  const last = messages[0];
+  return emailThreadSubject(last?.body, fallback);
 }
 
 /** Pré-visualização em texto para listas (sem HTML cru). */
@@ -46,4 +76,4 @@ export function emailMessageContent(body: string | null | undefined): string {
   return emailMessageDisplayBody(body);
 }
 
-export { stripEmailQuotedContent };
+export { stripEmailQuotedContent, emailSubjectFromBody };
