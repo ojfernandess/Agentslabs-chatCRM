@@ -1,7 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { startOfDay, subDays, format } from "date-fns";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { listEmailInboxIdsHiddenFromConversations } from "../lib/inboxEmailConfig.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
@@ -17,6 +19,15 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const weekAgoStart = startOfDay(subDays(now, 7));
 
     const orgWhere = { organizationId };
+
+    const hiddenEmailInboxIds = await listEmailInboxIdsHiddenFromConversations(organizationId);
+    const recentConversationsWhere: Prisma.ConversationWhereInput = {
+      ...orgWhere,
+      status: "OPEN",
+    };
+    if (hiddenEmailInboxIds.length > 0) {
+      recentConversationsWhere.NOT = { inboxId: { in: hiddenEmailInboxIds } };
+    }
 
     const [
       openConversations,
@@ -59,7 +70,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         _count: true,
       }),
       prisma.conversation.findMany({
-        where: { ...orgWhere, status: "OPEN" },
+        where: recentConversationsWhere,
         take: 5,
         orderBy: { updatedAt: "desc" },
         include: {
