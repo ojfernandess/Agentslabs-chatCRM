@@ -1684,6 +1684,15 @@ export function ConversationDetailPage() {
     return merged.slice(-18);
   }, [conversation, t]);
 
+  const threadEmailSubject = useMemo(
+    () =>
+      emailConversationSubject(
+        conversation?.messages ?? [],
+        t("inboxesPage.emailWorkspace.noSubject"),
+      ),
+    [conversation?.messages, t],
+  );
+
   if (loading && !isEmailLayout) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -1750,14 +1759,6 @@ export function ConversationDetailPage() {
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
   const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
   const contactEmail = contactEmailDisplay(conversation.contact);
-  const threadEmailSubject = useMemo(
-    () =>
-      emailConversationSubject(
-        conversation.messages ?? [],
-        t("inboxesPage.emailWorkspace.noSubject"),
-      ),
-    [conversation.messages, t],
-  );
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
   ).emailFromAddress;
