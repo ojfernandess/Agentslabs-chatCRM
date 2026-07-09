@@ -10,7 +10,7 @@ type Props = {
   className?: string;
 };
 
-const springPop = { type: "spring" as const, stiffness: 520, damping: 26 };
+const softEase = { duration: 0.28, ease: [0.4, 0, 0.2, 1] as const };
 
 export function EmailUnreadCountBadge({ count, title, variant, className }: Props) {
   const reduceMotion = useReducedMotion();
@@ -24,10 +24,10 @@ export function EmailUnreadCountBadge({ count, title, variant, className }: Prop
         transition: { duration: 0.15 },
       }
     : {
-        initial: { opacity: 0, scale: 0.55 },
+        initial: { opacity: 0, scale: 0.85 },
         animate: { opacity: 1, scale: 1 },
-        exit: { opacity: 0, scale: 0.55 },
-        transition: springPop,
+        exit: { opacity: 0, scale: 0.85 },
+        transition: softEase,
       };
 
   if (variant === "sidebar-collapsed") {
@@ -45,12 +45,15 @@ export function EmailUnreadCountBadge({ count, title, variant, className }: Prop
           >
             {!reduceMotion ? (
               <span
-                className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75 motion-reduce:animate-none"
+                className="email-unread-dot-ripple absolute inline-flex h-full w-full rounded-full bg-brand-400"
                 aria-hidden
               />
             ) : null}
             <span
-              className="relative inline-flex h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white dark:ring-ink-950"
+              className={clsx(
+                "relative inline-flex h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white dark:ring-ink-950",
+                !reduceMotion && "email-unread-dot-breathe",
+              )}
               aria-hidden
             />
           </motion.span>
@@ -64,35 +67,26 @@ export function EmailUnreadCountBadge({ count, title, variant, className }: Prop
       ? "ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white dark:bg-brand-500"
       : "ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500";
 
-  const idlePulse = reduceMotion
-    ? undefined
-    : {
-        scale: [1, 1.06, 1],
-        transition: { duration: 2.4, ease: "easeInOut" as const, repeat: Infinity },
-      };
-
   return (
     <AnimatePresence mode="popLayout">
       {count > 0 ? (
         <motion.span
           key="email-unread-pill"
-          className={clsx(pillClasses, className)}
+          className={clsx(pillClasses, !reduceMotion && "email-unread-badge-pulse", className)}
           title={title}
           aria-label={title}
           role="status"
           aria-live="polite"
           {...presenceMotion}
         >
-          <motion.span className="inline-flex" animate={idlePulse}>
-            <motion.span
-              key={display}
-              className="tabular-nums"
-              initial={reduceMotion ? false : { scale: 1.35, opacity: 0.7 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={springPop}
-            >
-              {display}
-            </motion.span>
+          <motion.span
+            key={display}
+            className="tabular-nums"
+            initial={reduceMotion ? false : { opacity: 0.6 }}
+            animate={{ opacity: 1 }}
+            transition={softEase}
+          >
+            {display}
           </motion.span>
         </motion.span>
       ) : null}
