@@ -3055,6 +3055,9 @@ export function ConversationDetailPage() {
                 <div
                   className={clsx(
                     "crm-bubble relative min-w-0 p-4",
+                    emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && "email-workspace-msg",
+                    emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && inbound && "email-workspace-msg-in",
+                    emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && !inbound && "email-workspace-msg-out",
                     emailWorkspaceMode
                       ? isEmailInbox && msg.type === "TEXT"
                         ? "w-full min-w-0 flex-1 max-w-none"

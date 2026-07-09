@@ -27,6 +27,7 @@ import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { parseEmailAddressList } from "@openconduit/shared";
+import { getEmailInboxUnreadCounts } from "../lib/inboxUnreadCounts.js";
 
 const emailListField = z
   .union([z.string().max(4000), z.array(z.string().email().max(320)).max(50)])
@@ -218,6 +219,37 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     return {
       data: rows.map((row) => enrichWhatsappInboxResponse(organizationId, row)),
     };
+  });
+
+  app.get("/email-unread-counts", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inboxWhere =
+      request.user.role === "AGENT"
+        ? {
+            organizationId,
+            channelType: InboxChannelType.EMAIL,
+            members: { some: { userId: request.user.id } },
+          }
+        : {
+            organizationId,
+            channelType: InboxChannelType.EMAIL,
+          };
+
+    const emailInboxes = await prisma.inbox.findMany({
+      where: inboxWhere,
+      select: { id: true },
+    });
+
+    const counts = await getEmailInboxUnreadCounts(
+      prisma,
+      organizationId,
+      request.user.id,
+      emailInboxes.map((row) => row.id),
+    );
+
+    return { counts };
   });
 
   app.post("/", { preHandler: [requireAdmin] }, async (request, reply) => {

@@ -46,6 +46,7 @@ import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
 type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
 type SidebarInbox = { id: string; name: string; channelType?: string };
+type EmailInboxUnreadCounts = Record<string, { unread: number; unreadReceived: number }>;
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
@@ -164,6 +165,7 @@ export function Layout() {
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
+  const [emailInboxUnread, setEmailInboxUnread] = useState<EmailInboxUnreadCounts>({});
   const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
 
   const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
@@ -358,6 +360,31 @@ export function Layout() {
     };
   }, [user?.id]);
 
+  const fetchEmailInboxUnreadCounts = useCallback(() => {
+    if (!user) {
+      setEmailInboxUnread({});
+      return;
+    }
+    void api
+      .get<{ counts: EmailInboxUnreadCounts }>("/inboxes/email-unread-counts")
+      .then((res) => setEmailInboxUnread(res.counts ?? {}))
+      .catch(() => setEmailInboxUnread({}));
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchEmailInboxUnreadCounts();
+  }, [fetchEmailInboxUnreadCounts, sidebarInboxes]);
+
+  useEffect(() => {
+    const refresh = () => fetchEmailInboxUnreadCounts();
+    window.addEventListener("openconduit:conversation-read", refresh);
+    window.addEventListener("openconduit:email-inbox-unread-changed", refresh);
+    return () => {
+      window.removeEventListener("openconduit:conversation-read", refresh);
+      window.removeEventListener("openconduit:email-inbox-unread-changed", refresh);
+    };
+  }, [fetchEmailInboxUnreadCounts]);
+
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => {
       const next = !prev;
@@ -415,6 +442,44 @@ export function Layout() {
         </span>
       )
     ) : null;
+
+  const emailInboxUnreadBadges = (
+    counts: { unread: number; unreadReceived: number } | undefined,
+    collapsed: boolean,
+  ) => {
+    const unread = counts?.unread ?? 0;
+    const received = counts?.unreadReceived ?? 0;
+    if (unread <= 0 && received <= 0) return null;
+
+    const title = t("nav.emailInboxUnreadTitle")
+      .replace("{unread}", String(unread))
+      .replace("{received}", String(received));
+
+    if (collapsed) {
+      return (
+        <span
+          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white dark:ring-ink-950"
+          title={title}
+          aria-label={title}
+        />
+      );
+    }
+
+    return (
+      <span className="ml-auto flex shrink-0 items-center gap-1" title={title}>
+        {unread > 0 ? (
+          <span className="rounded-full bg-ink-700 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-ink-200 dark:text-ink-900">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        ) : null}
+        {received > 0 ? (
+          <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-emerald-500 dark:text-emerald-950">
+            {received > 99 ? "99+" : received}
+          </span>
+        ) : null}
+      </span>
+    );
+  };
 
   const handleLogout = () => {
     logout();
@@ -571,10 +636,28 @@ export function Layout() {
                             : conversationInboxId === inbox.id && !conversationTeamId,
                           collapsed,
                         )}
-                        title={inbox.name}
+                        title={
+                          inbox.channelType === "EMAIL"
+                            ? `${inbox.name} — ${t("nav.emailInboxUnreadTitle")
+                                .replace("{unread}", String(emailInboxUnread[inbox.id]?.unread ?? 0))
+                                .replace("{received}", String(emailInboxUnread[inbox.id]?.unreadReceived ?? 0))}`
+                            : inbox.name
+                        }
                       >
-                        <Inbox className={clsx("shrink-0", collapsed ? "h-5 w-5" : "h-4 w-4 opacity-70")} />
-                        {!collapsed ? <span className="min-w-0 truncate">{inbox.name}</span> : null}
+                        <span className="relative shrink-0">
+                          <Inbox className={clsx(collapsed ? "h-5 w-5" : "h-4 w-4 opacity-70")} />
+                          {collapsed && inbox.channelType === "EMAIL"
+                            ? emailInboxUnreadBadges(emailInboxUnread[inbox.id], true)
+                            : null}
+                        </span>
+                        {!collapsed ? (
+                          <>
+                            <span className="min-w-0 flex-1 truncate">{inbox.name}</span>
+                            {inbox.channelType === "EMAIL"
+                              ? emailInboxUnreadBadges(emailInboxUnread[inbox.id], false)
+                              : null}
+                          </>
+                        ) : null}
                       </Link>
                     ))}
                   </div>

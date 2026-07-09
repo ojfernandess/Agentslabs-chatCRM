@@ -287,6 +287,27 @@
     --crm-bubble-meta: rgba(254, 243, 199, 0.70);
   }
 
+  /* Workspace de e-mail: cartões full-width com contraste estável no modo escuro */
+  .email-workspace-msg {
+    border-radius: 0.75rem;
+  }
+
+  .dark .email-workspace-msg-in {
+    --crm-bubble-bg: rgba(30, 41, 59, 0.92);
+    --crm-bubble-border: rgba(255, 255, 255, 0.1);
+    --crm-bubble-text: rgba(248, 250, 252, 0.96);
+    --crm-bubble-meta: rgba(148, 163, 184, 0.78);
+    --crm-bubble-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+
+  .dark .email-workspace-msg-out {
+    --crm-bubble-bg: rgba(30, 58, 95, 0.75);
+    --crm-bubble-border: rgba(96, 165, 250, 0.28);
+    --crm-bubble-text: rgba(248, 250, 252, 0.98);
+    --crm-bubble-meta: rgba(191, 219, 254, 0.72);
+    --crm-bubble-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+
   .page-shell {
     @apply w-full max-w-full min-w-0 p-4 sm:p-6 lg:p-8;
   }

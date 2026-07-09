@@ -96,6 +96,7 @@ export function EmailInboxLayout() {
   const [inbox, setInbox] = useState<EmailInboxRow | null>(null);
   const [conversations, setConversations] = useState<EmailConversation[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [listSearch, setListSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -187,17 +188,30 @@ export function EmailInboxLayout() {
     }
   }, [inboxId, isAdmin, navigate]);
 
+  const countUnreadFromList = useCallback((rows: EmailConversation[]) => {
+    let unread = 0;
+    let unreadReceived = 0;
+    for (const conv of rows) {
+      if (!conv.isUnread) continue;
+      unread += 1;
+      if (conv.messages[0]?.direction === "INBOUND") unreadReceived += 1;
+    }
+    return { unread, unreadReceived };
+  }, []);
+
   const refreshUnreadCount = useCallback(async () => {
     if (!inboxId) return;
     try {
       const res = await api.get<{ data: EmailConversation[] }>(
         `/conversations?inboxId=${encodeURIComponent(inboxId)}&pageSize=80`,
       );
-      setUnreadCount(res.data.filter((c) => c.isUnread).length);
+      const { unread, unreadReceived } = countUnreadFromList(res.data);
+      setUnreadCount(unread);
+      setUnreadReceivedCount(unreadReceived);
     } catch {
       /* ignore */
     }
-  }, [inboxId]);
+  }, [inboxId, countUnreadFromList]);
 
   const loadConversations = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -213,7 +227,9 @@ export function EmailInboxLayout() {
         const res = await api.get<{ data: EmailConversation[] }>(`/conversations?${params}`);
         setConversations(res.data);
         if (folder === "inbox" && !debouncedSearch) {
-          setUnreadCount(res.data.filter((c) => c.isUnread).length);
+          const { unread, unreadReceived } = countUnreadFromList(res.data);
+          setUnreadCount(unread);
+          setUnreadReceivedCount(unreadReceived);
         } else {
           void refreshUnreadCount();
         }
@@ -223,7 +239,7 @@ export function EmailInboxLayout() {
         if (!opts?.silent) setListLoading(false);
       }
     },
-    [inboxId, folder, debouncedSearch, refreshUnreadCount],
+    [inboxId, folder, debouncedSearch, refreshUnreadCount, countUnreadFromList],
   );
 
   const prefetchConversation = useCallback((conversationId: string) => {
@@ -303,14 +319,29 @@ export function EmailInboxLayout() {
     const onRead = (e: Event) => {
       const conversationId = (e as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
       if (!conversationId) return;
-      setConversations((prev) =>
-        prev.map((c) => (c.id === conversationId ? { ...c, isUnread: false } : c)),
-      );
-      setUnreadCount((n) => Math.max(0, n - 1));
+      setConversations((prev) => {
+        const target = prev.find((c) => c.id === conversationId);
+        if (target?.isUnread) {
+          setUnreadCount((n) => Math.max(0, n - 1));
+          if (target.messages[0]?.direction === "INBOUND") {
+            setUnreadReceivedCount((n) => Math.max(0, n - 1));
+          }
+        }
+        return prev.map((c) => (c.id === conversationId ? { ...c, isUnread: false } : c));
+      });
     };
     window.addEventListener("openconduit:conversation-read", onRead);
     return () => window.removeEventListener("openconduit:conversation-read", onRead);
   }, []);
+
+  useEffect(() => {
+    if (!inboxId) return;
+    window.dispatchEvent(
+      new CustomEvent("openconduit:email-inbox-unread-changed", {
+        detail: { inboxId, unread: unreadCount, unreadReceived: unreadReceivedCount },
+      }),
+    );
+  }, [inboxId, unreadCount, unreadReceivedCount]);
 
   const syncInbox = useCallback(async (opts?: { reprocess?: boolean }) => {
     if (!inboxId || !ready) return;
@@ -570,12 +601,30 @@ export function EmailInboxLayout() {
               >
                 <Inbox className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
                 <span className="min-w-0 flex-1 truncate">{t("inboxesPage.emailWorkspace.folderInbox")}</span>
-                {unreadCount > 0 ? (
-                  <span
-                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-700 px-1.5 text-[11px] font-semibold text-white dark:bg-ink-200 dark:text-ink-900"
-                    title={t("inboxesPage.emailWorkspace.unreadCountLabel").replace("{count}", String(unreadCount))}
-                  >
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                {unreadCount > 0 || unreadReceivedCount > 0 ? (
+                  <span className="ml-auto flex shrink-0 items-center gap-1">
+                    {unreadCount > 0 ? (
+                      <span
+                        className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-700 px-1.5 text-[11px] font-semibold text-white dark:bg-ink-200 dark:text-ink-900"
+                        title={t("inboxesPage.emailWorkspace.unreadCountLabel").replace(
+                          "{count}",
+                          String(unreadCount),
+                        )}
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    ) : null}
+                    {unreadReceivedCount > 0 ? (
+                      <span
+                        className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold text-white dark:bg-emerald-500 dark:text-emerald-950"
+                        title={t("inboxesPage.emailWorkspace.unreadReceivedCountLabel").replace(
+                          "{count}",
+                          String(unreadReceivedCount),
+                        )}
+                      >
+                        {unreadReceivedCount > 99 ? "99+" : unreadReceivedCount}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
               </button>

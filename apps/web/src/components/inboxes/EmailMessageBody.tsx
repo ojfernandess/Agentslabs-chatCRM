@@ -6,6 +6,7 @@ import {
   sanitizeEmailHtml,
 } from "@openconduit/shared";
 import clsx from "clsx";
+import { useDarkMode } from "@/hooks/useDarkMode";
 
 const URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
 
@@ -59,26 +60,31 @@ function linkifyPlainText(text: string): ReactNode[] {
   return nodes;
 }
 
-function buildEmailDocument(html: string, origin: string): string {
+function buildEmailDocument(html: string, origin: string, dark: boolean): string {
+  const bg = dark ? "#0f172a" : "#ffffff";
+  const text = dark ? "#e2e8f0" : "#1f2937";
+  const link = dark ? "#93c5fd" : "#1d4ed8";
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="${dark ? "dark" : "light"}" />
 <base href="${origin}/" target="_blank" />
 <style>
   html, body {
     margin: 0;
     padding: 0;
-    background: #fff;
+    background: ${bg};
     overflow-x: hidden;
     width: 100%;
+    color-scheme: ${dark ? "dark" : "light"};
   }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.45;
-    color: #1f2937;
+    color: ${text};
     word-break: break-word;
     overflow-wrap: anywhere;
     box-sizing: border-box;
@@ -87,7 +93,7 @@ function buildEmailDocument(html: string, origin: string): string {
   img { max-width: 100% !important; height: auto !important; }
   table { max-width: 100% !important; width: auto !important; }
   td, th { word-break: break-word; }
-  a { color: #1d4ed8; }
+  a { color: ${link}; }
 </style>
 </head>
 <body>${html}</body>
@@ -101,6 +107,7 @@ export function EmailMessageBody({
   body: string | null | undefined;
   className?: string;
 }) {
+  const isDark = useDarkMode();
   const display = useMemo(() => emailMessageDisplayBody(body), [body]);
   const html = useMemo(() => {
     if (!display) return null;
@@ -119,7 +126,7 @@ export function EmailMessageBody({
     if (!doc) return;
 
     doc.open();
-    doc.write(buildEmailDocument(html, window.location.origin));
+    doc.write(buildEmailDocument(html, window.location.origin, isDark));
     doc.close();
 
     let cancelled = false;
@@ -130,7 +137,6 @@ export function EmailMessageBody({
         doc.documentElement?.scrollHeight ?? 0,
         80,
       );
-      // Evita micro-ajustes que disparam scroll no contentor pai.
       setFrameHeight((prev) => {
         const next = Math.min(h + 12, 8000);
         return Math.abs(prev - next) < 4 ? prev : next;
@@ -149,20 +155,28 @@ export function EmailMessageBody({
       window.clearTimeout(timer);
       window.clearTimeout(timer2);
     };
-  }, [html]);
+  }, [html, isDark]);
 
   if (!display) return null;
 
   if (html) {
     return (
-      <div className={clsx("email-html-frame w-full min-w-0 overflow-hidden rounded-md", className)}>
+      <div
+        className={clsx(
+          "email-html-frame w-full min-w-0 overflow-hidden rounded-md border border-ink-100 dark:border-ink-700/60",
+          className,
+        )}
+      >
         <iframe
           ref={iframeRef}
           title="Email"
           sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
           referrerPolicy="no-referrer"
           scrolling="no"
-          className="block w-full max-w-full border-0 bg-white"
+          className={clsx(
+            "block w-full max-w-full border-0",
+            isDark ? "bg-[#0f172a]" : "bg-white",
+          )}
           style={{ height: frameHeight, minHeight: 80 }}
         />
       </div>
@@ -172,7 +186,7 @@ export function EmailMessageBody({
   return (
     <p
       className={clsx(
-        "whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed",
+        "whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed text-ink-900 dark:text-ink-100",
         className,
       )}
     >
