@@ -17,6 +17,7 @@ import {
 } from "@/components/inboxes/EmailInboxConfigFields";
 import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
 import { EmailComposeModal } from "@/components/inboxes/EmailComposeModal";
+import { EmailUnreadCountBadge } from "@/components/inboxes/EmailUnreadCountBadge";
 import {
   buildInboxEmailChannelConfig,
   MASKED_EMAIL_SECRET,
@@ -591,17 +592,14 @@ export function EmailInboxLayout() {
               >
                 <Inbox className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
                 <span className="min-w-0 flex-1 truncate">{t("inboxesPage.emailWorkspace.folderInbox")}</span>
-                {unreadReceivedCount > 0 ? (
-                  <span
-                    className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white dark:bg-brand-500"
-                    title={t("inboxesPage.emailWorkspace.unreadReceivedCountLabel").replace(
-                      "{count}",
-                      String(unreadReceivedCount),
-                    )}
-                  >
-                    {unreadReceivedCount > 99 ? "99+" : unreadReceivedCount}
-                  </span>
-                ) : null}
+                <EmailUnreadCountBadge
+                  count={unreadReceivedCount}
+                  title={t("inboxesPage.emailWorkspace.unreadReceivedCountLabel").replace(
+                    "{count}",
+                    String(unreadReceivedCount),
+                  )}
+                  variant="folder"
+                />
               </button>
               <button
                 type="button"

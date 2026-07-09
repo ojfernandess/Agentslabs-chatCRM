@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
+import { EmailUnreadCountBadge } from "@/components/inboxes/EmailUnreadCountBadge";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
 import { useActionableReminders } from "@/hooks/useActionableReminders";
@@ -445,28 +446,14 @@ export function Layout() {
 
   const emailInboxUnreadBadges = (count: number | undefined, collapsed: boolean) => {
     const received = count ?? 0;
-    if (received <= 0) return null;
-
     const title = t("nav.emailInboxUnreadTitle").replace("{count}", String(received));
 
-    if (collapsed) {
-      return (
-        <span
-          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white dark:ring-ink-950"
-          title={title}
-          aria-label={title}
-        />
-      );
-    }
-
     return (
-      <span
-        className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500"
+      <EmailUnreadCountBadge
+        count={received}
         title={title}
-        aria-label={title}
-      >
-        {received > 99 ? "99+" : received}
-      </span>
+        variant={collapsed ? "sidebar-collapsed" : "sidebar-expanded"}
+      />
     );
   };
 

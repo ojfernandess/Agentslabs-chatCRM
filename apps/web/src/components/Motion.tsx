@@ -1,8 +1,8 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import type { ReactNode } from "react";
 
-export { motion, AnimatePresence };
+export { motion, AnimatePresence, useReducedMotion };
 export type { Variants };
 
 // Page wrapper — fades in the whole page content
