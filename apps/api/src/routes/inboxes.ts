@@ -546,6 +546,160 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  const createEmailFolderSchema = z.object({
+    name: z.string().min(1).max(120),
+  });
+
+  const patchEmailFolderSchema = z.object({
+    name: z.string().min(1).max(120),
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/email-folders", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, channelType: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== InboxChannelType.EMAIL) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not an email channel",
+        statusCode: 400,
+      });
+    }
+
+    const folders = await prisma.inboxEmailFolder.findMany({
+      where: { inboxId: inbox.id, userId: request.user.id, organizationId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, name: true, sortOrder: true, createdAt: true },
+    });
+    return { data: folders };
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/email-folders", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const body = createEmailFolderSchema.parse(request.body);
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, channelType: true },
+    });
+    if (!inbox) {
+      return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+    }
+    if (inbox.channelType !== InboxChannelType.EMAIL) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not an email channel",
+        statusCode: 400,
+      });
+    }
+
+    const maxSort = await prisma.inboxEmailFolder.aggregate({
+      where: { inboxId: inbox.id, userId: request.user.id },
+      _max: { sortOrder: true },
+    });
+
+    try {
+      const folder = await prisma.inboxEmailFolder.create({
+        data: {
+          name: body.name.trim(),
+          organizationId,
+          inboxId: inbox.id,
+          userId: request.user.id,
+          sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+        },
+        select: { id: true, name: true, sortOrder: true, createdAt: true },
+      });
+      return reply.status(201).send(folder);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "A folder with this name already exists",
+          statusCode: 409,
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.patch<{ Params: { id: string; folderId: string } }>(
+    "/:id/email-folders/:folderId",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const body = patchEmailFolderSchema.parse(request.body);
+      const folder = await prisma.inboxEmailFolder.findFirst({
+        where: {
+          id: request.params.folderId,
+          inboxId: request.params.id,
+          userId: request.user.id,
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (!folder) {
+        return reply.status(404).send({ error: "Not Found", message: "Email folder not found", statusCode: 404 });
+      }
+
+      try {
+        const updated = await prisma.inboxEmailFolder.update({
+          where: { id: folder.id },
+          data: { name: body.name.trim() },
+          select: { id: true, name: true, sortOrder: true, createdAt: true },
+        });
+        return updated;
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          return reply.status(409).send({
+            error: "Conflict",
+            message: "A folder with this name already exists",
+            statusCode: 409,
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string; folderId: string } }>(
+    "/:id/email-folders/:folderId",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const folder = await prisma.inboxEmailFolder.findFirst({
+        where: {
+          id: request.params.folderId,
+          inboxId: request.params.id,
+          userId: request.user.id,
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (!folder) {
+        return reply.status(404).send({ error: "Not Found", message: "Email folder not found", statusCode: 404 });
+      }
+
+      await prisma.$transaction([
+        prisma.conversationUserEmailState.updateMany({
+          where: { userId: request.user.id, emailFolderId: folder.id },
+          data: { emailFolderId: null },
+        }),
+        prisma.inboxEmailFolder.delete({ where: { id: folder.id } }),
+      ]);
+      return reply.status(204).send();
+    },
+  );
+
   app.post<{ Params: { id: string } }>("/:id/compose-email", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;

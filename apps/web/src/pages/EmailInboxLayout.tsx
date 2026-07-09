@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useMatch, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Inbox, Mail, MessageSquare, PenSquare, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, Folder, FolderPlus, Inbox, Mail, MessageSquare, PenSquare, RefreshCw, Search, Settings2, Star, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import { api } from "@/lib/api";
@@ -58,6 +58,8 @@ type EmailConversation = {
   status: string;
   priority?: ConversationPriority | null;
   isUnread?: boolean;
+  isStarred?: boolean;
+  emailFolderId?: string | null;
   deletedAt?: string | null;
   updatedAt: string;
   contact: {
@@ -72,7 +74,32 @@ type EmailConversation = {
   messages: { body: string | null; direction: string; createdAt: string }[];
 };
 
-type EmailFolder = "inbox" | "trash";
+type EmailFolderRow = { id: string; name: string; sortOrder: number };
+
+type FolderView =
+  | { kind: "inbox" }
+  | { kind: "trash" }
+  | { kind: "starred" }
+  | { kind: "custom"; id: string };
+
+function parseFolderView(param: string | null): FolderView {
+  if (!param || param === "inbox") return { kind: "inbox" };
+  if (param === "trash") return { kind: "trash" };
+  if (param === "starred") return { kind: "starred" };
+  return { kind: "custom", id: param };
+}
+
+function folderViewToParam(view: FolderView): string | null {
+  if (view.kind === "inbox") return null;
+  if (view.kind === "trash") return "trash";
+  if (view.kind === "starred") return "starred";
+  return view.id;
+}
+
+function folderQuerySuffix(view: FolderView): string {
+  const param = folderViewToParam(view);
+  return param ? `?folder=${encodeURIComponent(param)}` : "";
+}
 
 const statusColors: Record<string, string> = {
   OPEN: "bg-green-100 text-green-700 dark:bg-emerald-950/55 dark:text-emerald-200",
@@ -93,9 +120,13 @@ export function EmailInboxLayout() {
   const isAdmin = isTenantAdmin(user?.role);
 
   const tab = searchParams.get("tab") === "settings" && isAdmin ? "settings" : "messages";
-  const folder: EmailFolder = searchParams.get("folder") === "trash" ? "trash" : "inbox";
+  const folderView = useMemo(() => parseFolderView(searchParams.get("folder")), [searchParams]);
   const [inbox, setInbox] = useState<EmailInboxRow | null>(null);
   const [conversations, setConversations] = useState<EmailConversation[]>([]);
+  const [customFolders, setCustomFolders] = useState<EmailFolderRow[]>([]);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [folderCreateError, setFolderCreateError] = useState<string | null>(null);
   const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [listSearch, setListSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -150,21 +181,21 @@ export function EmailInboxLayout() {
     [setSearchParams],
   );
 
-  const setFolder = useCallback(
-    (next: EmailFolder) => {
+  const setFolderView = useCallback(
+    (next: FolderView) => {
       setSearchParams(
         (prev) => {
           const n = new URLSearchParams(prev);
           n.delete("tab");
-          if (next === "trash") n.set("folder", "trash");
+          const param = folderViewToParam(next);
+          if (param) n.set("folder", param);
           else n.delete("folder");
           return n;
         },
         { replace: true },
       );
       if (activeThreadId && inboxId) {
-        const qs = next === "trash" ? "?folder=trash" : "";
-        navigate(`/inboxes/${inboxId}/email${qs}`, { replace: true });
+        navigate(`/inboxes/${inboxId}/email${folderQuerySuffix(next)}`, { replace: true });
       }
     },
     [setSearchParams, activeThreadId, navigate, inboxId],
@@ -187,6 +218,16 @@ export function EmailInboxLayout() {
       setEditForm(emailInboxFormFromChannelConfig(row.channelConfig));
     }
   }, [inboxId, isAdmin, navigate]);
+
+  const loadCustomFolders = useCallback(async () => {
+    if (!inboxId) return;
+    try {
+      const res = await api.get<{ data: EmailFolderRow[] }>(`/inboxes/${inboxId}/email-folders`);
+      setCustomFolders(res.data ?? []);
+    } catch {
+      setCustomFolders([]);
+    }
+  }, [inboxId]);
 
   const countUnreadReceivedFromList = useCallback((rows: EmailConversation[]) => {
     let count = 0;
@@ -218,11 +259,13 @@ export function EmailInboxLayout() {
           inboxId,
           pageSize: "80",
         });
-        if (folder === "trash") params.set("trash", "1");
+        if (folderView.kind === "trash") params.set("trash", "1");
+        else if (folderView.kind === "starred") params.set("starred", "1");
+        else if (folderView.kind === "custom") params.set("emailFolderId", folderView.id);
         if (debouncedSearch) params.set("q", debouncedSearch);
         const res = await api.get<{ data: EmailConversation[] }>(`/conversations?${params}`);
         setConversations(res.data);
-        if (folder === "inbox" && !debouncedSearch) {
+        if (folderView.kind === "inbox" && !debouncedSearch) {
           setUnreadReceivedCount(countUnreadReceivedFromList(res.data));
         } else {
           void refreshUnreadCount();
@@ -233,8 +276,43 @@ export function EmailInboxLayout() {
         if (!opts?.silent) setListLoading(false);
       }
     },
-    [inboxId, folder, debouncedSearch, refreshUnreadCount, countUnreadReceivedFromList],
+    [inboxId, folderView, debouncedSearch, refreshUnreadCount, countUnreadReceivedFromList],
   );
+
+  const toggleConversationStar = useCallback(
+    async (conv: EmailConversation) => {
+      const next = !conv.isStarred;
+      try {
+        await api.post(`/conversations/${conv.id}/star`, { starred: next });
+        if (folderView.kind === "starred" && !next) {
+          setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+        } else {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === conv.id ? { ...c, isStarred: next } : c)),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [folderView.kind],
+  );
+
+  const createCustomFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name || !inboxId) return;
+    setFolderCreateError(null);
+    try {
+      const created = await api.post<EmailFolderRow>(`/inboxes/${inboxId}/email-folders`, { name });
+      setCustomFolders((prev) => [...prev, created]);
+      setNewFolderName("");
+      setCreatingFolder(false);
+    } catch (e) {
+      setFolderCreateError(
+        e instanceof Error ? e.message : t("inboxesPage.emailWorkspace.createFolderFailed"),
+      );
+    }
+  }, [inboxId, newFolderName, t]);
 
   const prefetchConversation = useCallback((conversationId: string) => {
     if (getCachedConversation(conversationId)) return;
@@ -258,6 +336,8 @@ export function EmailInboxLayout() {
                   ...(update.status !== undefined ? { status: update.status } : {}),
                   ...(update.priority !== undefined ? { priority: update.priority } : {}),
                   ...(update.isUnread !== undefined ? { isUnread: update.isUnread } : {}),
+                  ...(update.isStarred !== undefined ? { isStarred: update.isStarred } : {}),
+                  ...(update.emailFolderId !== undefined ? { emailFolderId: update.emailFolderId } : {}),
                 }
               : c,
           ),
@@ -266,13 +346,27 @@ export function EmailInboxLayout() {
         if (update.isUnread !== undefined) {
           void refreshUnreadCount();
         }
-        if (folder === "trash") {
+        if (folderView.kind === "trash") {
+          setConversations((prev) => prev.filter((c) => c.id !== update.id));
+        }
+        if (update.emailFolderId !== undefined) {
+          const staysInView =
+            folderView.kind === "inbox"
+              ? update.emailFolderId === null
+              : folderView.kind === "custom"
+                ? update.emailFolderId === folderView.id
+                : true;
+          if (!staysInView) {
+            setConversations((prev) => prev.filter((c) => c.id !== update.id));
+          }
+        }
+        if (update.isStarred === false && folderView.kind === "starred") {
           setConversations((prev) => prev.filter((c) => c.id !== update.id));
         }
       }
       void loadConversations({ silent: true });
     },
-    [loadConversations, folder, refreshUnreadCount],
+    [loadConversations, folderView, refreshUnreadCount],
   );
 
   const statusLabel = useCallback(
@@ -307,7 +401,8 @@ export function EmailInboxLayout() {
   useEffect(() => {
     if (!inboxId || loading) return;
     void loadConversations();
-  }, [inboxId, loading, loadConversations]);
+    void loadCustomFolders();
+  }, [inboxId, loading, loadConversations, loadCustomFolders]);
 
   useEffect(() => {
     const onRead = (e: Event) => {
@@ -438,11 +533,15 @@ export function EmailInboxLayout() {
   }
 
   const emptyLabel =
-    folder === "trash"
+    folderView.kind === "trash"
       ? t("inboxesPage.emailWorkspace.emptyTrash")
-      : debouncedSearch
-        ? t("inboxesPage.emailWorkspace.searchEmpty")
-        : t("inboxesPage.emailWorkspace.emptyThreads");
+      : folderView.kind === "starred"
+        ? t("inboxesPage.emailWorkspace.emptyStarred")
+        : folderView.kind === "custom"
+          ? t("inboxesPage.emailWorkspace.emptyFolder")
+          : debouncedSearch
+            ? t("inboxesPage.emailWorkspace.searchEmpty")
+            : t("inboxesPage.emailWorkspace.emptyThreads");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f6f8fc] dark:bg-[#0B1220]">
@@ -562,7 +661,7 @@ export function EmailInboxLayout() {
               <button
                 type="button"
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
-                disabled={!ready || folder === "trash"}
+                disabled={!ready || folderView.kind === "trash"}
                 onClick={() => setComposeOpen(true)}
               >
                 <PenSquare className="h-3.5 w-3.5" />
@@ -582,10 +681,10 @@ export function EmailInboxLayout() {
             <div className="space-y-1 border-b border-ink-100 px-2 py-2 dark:border-ink-800">
               <button
                 type="button"
-                onClick={() => setFolder("inbox")}
+                onClick={() => setFolderView({ kind: "inbox" })}
                 className={clsx(
                   "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
-                  folder === "inbox"
+                  folderView.kind === "inbox"
                     ? "bg-ink-100 font-medium text-ink-900 dark:bg-ink-800 dark:text-ink-50"
                     : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-900/60",
                 )}
@@ -603,10 +702,91 @@ export function EmailInboxLayout() {
               </button>
               <button
                 type="button"
-                onClick={() => setFolder("trash")}
+                onClick={() => setFolderView({ kind: "starred" })}
                 className={clsx(
                   "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
-                  folder === "trash"
+                  folderView.kind === "starred"
+                    ? "bg-ink-100 font-medium text-ink-900 dark:bg-ink-800 dark:text-ink-50"
+                    : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-900/60",
+                )}
+              >
+                <Star className="h-4 w-4 shrink-0 text-amber-500" />
+                <span className="min-w-0 flex-1 truncate">{t("inboxesPage.emailWorkspace.folderStarred")}</span>
+              </button>
+              {customFolders.map((customFolder) => (
+                <button
+                  key={customFolder.id}
+                  type="button"
+                  onClick={() => setFolderView({ kind: "custom", id: customFolder.id })}
+                  className={clsx(
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+                    folderView.kind === "custom" && folderView.id === customFolder.id
+                      ? "bg-ink-100 font-medium text-ink-900 dark:bg-ink-800 dark:text-ink-50"
+                      : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-900/60",
+                  )}
+                >
+                  <Folder className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
+                  <span className="min-w-0 flex-1 truncate">{customFolder.name}</span>
+                </button>
+              ))}
+              {creatingFolder ? (
+                <div className="space-y-1 rounded-lg border border-ink-200 bg-ink-50 p-2 dark:border-ink-700 dark:bg-ink-900/60">
+                  <input
+                    type="text"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder={t("inboxesPage.emailWorkspace.newFolderPlaceholder")}
+                    className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-xs dark:border-ink-700 dark:bg-ink-950"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void createCustomFolder();
+                      if (e.key === "Escape") {
+                        setCreatingFolder(false);
+                        setNewFolderName("");
+                        setFolderCreateError(null);
+                      }
+                    }}
+                  />
+                  {folderCreateError ? (
+                    <p className="text-[10px] text-rose-600 dark:text-rose-300">{folderCreateError}</p>
+                  ) : null}
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-md bg-brand-600 px-2 py-1 text-[11px] font-semibold text-white"
+                      onClick={() => void createCustomFolder()}
+                    >
+                      {t("inboxesPage.emailWorkspace.createFolder")}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md px-2 py-1 text-[11px] text-ink-500"
+                      onClick={() => {
+                        setCreatingFolder(false);
+                        setNewFolderName("");
+                        setFolderCreateError(null);
+                      }}
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCreatingFolder(true)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-ink-500 transition hover:bg-ink-50 dark:text-ink-400 dark:hover:bg-ink-900/60"
+                >
+                  <FolderPlus className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{t("inboxesPage.emailWorkspace.newFolder")}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setFolderView({ kind: "trash" })}
+                className={clsx(
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition",
+                  folderView.kind === "trash"
                     ? "bg-ink-100 font-medium text-ink-900 dark:bg-ink-800 dark:text-ink-50"
                     : "text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-900/60",
                 )}
@@ -661,7 +841,8 @@ export function EmailInboxLayout() {
                               status: conv.status,
                               priority: conv.priority ?? null,
                               isUnread: conv.isUnread,
-                              deletedAt: conv.deletedAt ?? (folder === "trash" ? new Date().toISOString() : null),
+                              isStarred: conv.isStarred,
+                              deletedAt: conv.deletedAt ?? (folderView.kind === "trash" ? new Date().toISOString() : null),
                               contact: { id: conv.contact.id, name: conv.contact.name },
                             },
                             position: { x: e.clientX, y: e.clientY },
@@ -669,7 +850,7 @@ export function EmailInboxLayout() {
                         }}
                       >
                         <NavLink
-                          to={`/inboxes/${inboxId}/email/c/${conv.id}${folder === "trash" ? "?folder=trash" : ""}`}
+                          to={`/inboxes/${inboxId}/email/c/${conv.id}${folderQuerySuffix(folderView)}`}
                           preventScrollReset
                           onMouseDown={() => prefetchConversation(conv.id)}
                           onMouseEnter={() => prefetchConversation(conv.id)}
@@ -717,6 +898,30 @@ export function EmailInboxLayout() {
                             <span className="shrink-0 text-[11px] font-medium text-ink-500 dark:text-ink-500">
                               {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
                             </span>
+                            <button
+                              type="button"
+                              className={clsx(
+                                "shrink-0 rounded-md p-1 transition hover:bg-ink-100 dark:hover:bg-ink-800",
+                                conv.isStarred ? "text-amber-500" : "text-ink-400 hover:text-amber-500",
+                              )}
+                              title={
+                                conv.isStarred
+                                  ? t("inboxesPage.emailWorkspace.unstarEmail")
+                                  : t("inboxesPage.emailWorkspace.starEmail")
+                              }
+                              aria-label={
+                                conv.isStarred
+                                  ? t("inboxesPage.emailWorkspace.unstarEmail")
+                                  : t("inboxesPage.emailWorkspace.starEmail")
+                              }
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void toggleConversationStar(conv);
+                              }}
+                            >
+                              <Star className={clsx("h-3.5 w-3.5", conv.isStarred && "fill-current")} />
+                            </button>
                           </div>
                           <p
                             className={clsx(
@@ -786,15 +991,16 @@ export function EmailInboxLayout() {
         position={contextMenu?.position ?? null}
         onClose={() => setContextMenu(null)}
         conversationPath={(conversationId) =>
-          `/inboxes/${inboxId}/email/c/${conversationId}${folder === "trash" ? "?folder=trash" : ""}`
+          `/inboxes/${inboxId}/email/c/${conversationId}${folderQuerySuffix(folderView)}`
         }
+        emailFolders={customFolders}
         onUpdated={handleContextMenuUpdated}
         onDeleted={(conversationId) => {
           setConversations((prev) => prev.filter((c) => c.id !== conversationId));
           setContextMenu(null);
           void refreshUnreadCount();
           if (activeThreadId === conversationId) {
-            navigate(`/inboxes/${inboxId}/email${folder === "trash" ? "?folder=trash" : ""}`, {
+            navigate(`/inboxes/${inboxId}/email${folderQuerySuffix(folderView)}`, {
               replace: true,
             });
           }

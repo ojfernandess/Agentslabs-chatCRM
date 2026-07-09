@@ -15,6 +15,9 @@ import {
   ChevronRight,
   Check,
   ArchiveRestore,
+  Star,
+  FolderInput,
+  Inbox,
 } from "lucide-react";
 import { priorityIcon, type ConversationPriority } from "@/lib/conversationPriority";
 import clsx from "clsx";
@@ -27,6 +30,7 @@ export interface ConversationContextTarget {
   status: string;
   priority?: ConversationPriority | null;
   isUnread?: boolean;
+  isStarred?: boolean;
   deletedAt?: string | null;
   contact: { id: string; name: string };
 }
@@ -36,6 +40,8 @@ export type ConversationContextMenuUpdate = {
   status?: string;
   priority?: ConversationPriority | null;
   isUnread?: boolean;
+  isStarred?: boolean;
+  emailFolderId?: string | null;
 };
 
 interface ConversationContextMenuProps {
@@ -46,9 +52,11 @@ interface ConversationContextMenuProps {
   onDeleted: (conversationId: string) => void;
   /** Caminho da conversa (ex.: workspace de e-mail). Por omissão `/conversations/:id`. */
   conversationPath?: (conversationId: string) => string;
+  /** Pastas de e-mail para mover conversas (workspace de e-mail). */
+  emailFolders?: { id: string; name: string }[];
 }
 
-type SubmenuKey = "priority" | "tags" | "agents" | "teams";
+type SubmenuKey = "priority" | "tags" | "agents" | "teams" | "emailFolders";
 type PriorityValue = (typeof PRIORITIES)[number] | "NONE";
 
 const PRIORITIES = ["URGENT", "HIGH", "MEDIUM", "LOW"] as const;
@@ -66,6 +74,7 @@ export function ConversationContextMenu({
   onUpdated,
   onDeleted,
   conversationPath,
+  emailFolders,
 }: ConversationContextMenuProps) {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -234,6 +243,35 @@ export function ConversationContextMenu({
     }
   };
 
+  const toggleStar = async () => {
+    if (!target) return;
+    const next = !target.isStarred;
+    setBusy(true);
+    try {
+      await api.post(`/conversations/${target.id}/star`, { starred: next });
+      onUpdated({ id: target.id, isStarred: next });
+      onClose();
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const moveToEmailFolder = async (folderId: string | null) => {
+    if (!target) return;
+    setBusy(true);
+    try {
+      await api.post(`/conversations/${target.id}/email-folder`, { folderId });
+      onUpdated({ id: target.id, emailFolderId: folderId });
+      onClose();
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pathFor = useCallback(
     (conversationId: string) =>
       conversationPath ? conversationPath(conversationId) : `/conversations/${conversationId}`,
@@ -305,6 +343,46 @@ export function ConversationContextMenu({
           disabled={busy}
           onClick={() => void patchConversation({ status: "PENDING" })}
         />
+      ) : null}
+
+      {emailFolders ? (
+        <>
+          <MenuSeparator />
+          <MenuItem
+            icon={Star}
+            label={
+              target.isStarred
+                ? t("inboxesPage.emailWorkspace.unstarEmail")
+                : t("inboxesPage.emailWorkspace.starEmail")
+            }
+            disabled={busy}
+            onClick={() => void toggleStar()}
+          />
+          <SubmenuRow
+            icon={FolderInput}
+            label={t("inboxesPage.emailWorkspace.moveToFolder")}
+            open={openSub === "emailFolders"}
+            disabled={busy}
+            onEnter={() => setOpenSub("emailFolders")}
+            onLeave={() => setOpenSub((s) => (s === "emailFolders" ? null : s))}
+          >
+            <MenuItem
+              icon={Inbox}
+              label={t("inboxesPage.emailWorkspace.folderInbox")}
+              disabled={busy}
+              onClick={() => void moveToEmailFolder(null)}
+            />
+            {emailFolders.map((folder) => (
+              <MenuItem
+                key={folder.id}
+                icon={FolderInput}
+                label={folder.name}
+                disabled={busy}
+                onClick={() => void moveToEmailFolder(folder.id)}
+              />
+            ))}
+          </SubmenuRow>
+        </>
       ) : null}
 
       <MenuSeparator />

@@ -190,6 +190,7 @@ model Organization {
   bots               Bot[]
   broadcastCampaigns BroadcastCampaign[]
   inboxes            Inbox[]
+  inboxEmailFolders  InboxEmailFolder[]
   slaPolicies        SlaPolicy[]
   cannedResponses    CannedResponse[]
 
@@ -268,6 +269,7 @@ model Inbox {
 
   members            InboxMember[]
   conversations      Conversation[]
+  emailFolders       InboxEmailFolder[]
   broadcastCampaigns BroadcastCampaign[]
   wavoipDevices      WavoipDevice[]
   threeCxRoutePoints ThreeCxRoutePoint[]
@@ -506,6 +508,8 @@ model User {
   broadcastCampaignsApproved   BroadcastCampaign[]           @relation("BroadcastCampaignApprover")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
   conversationReadStates       ConversationUserReadState[]
+  conversationEmailStates      ConversationUserEmailState[]
+  inboxEmailFolders            InboxEmailFolder[]
   closureRecordsResolved     ConversationClosureRecord[]   @relation("ClosureRecordResolvedBy")
   closureRecordsReopened     ConversationClosureRecord[]   @relation("ClosureRecordReopenedBy")
   closureRecordsAssigned     ConversationClosureRecord[]   @relation("ClosureRecordAssignee")
@@ -586,6 +590,47 @@ model ConversationUserReadState {
   @@id([userId, conversationId])
   @@index([userId])
   @@map("conversation_user_read_states")
+}
+
+/// Estado de e-mail por utilizador (favorito e pasta personalizada).
+model ConversationUserEmailState {
+  userId         String   @map("user_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  isStarred      Boolean  @default(false) @map("is_starred")
+  emailFolderId  String?  @map("email_folder_id") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  emailFolder  InboxEmailFolder? @relation(fields: [emailFolderId], references: [id], onDelete: SetNull)
+
+  @@id([userId, conversationId])
+  @@index([userId, emailFolderId])
+  @@index([userId, isStarred])
+  @@map("conversation_user_email_states")
+}
+
+/// Pasta personalizada de e-mail (por utilizador e caixa).
+model InboxEmailFolder {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  inboxId String @map("inbox_id") @db.Uuid
+  inbox   Inbox  @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  placements ConversationUserEmailState[]
+
+  @@unique([inboxId, userId, name])
+  @@index([inboxId, userId])
+  @@map("inbox_email_folders")
 }
 
 model Contact {
@@ -897,6 +942,7 @@ model Conversation {
   messages               Message[]
   closureRecords         ConversationClosureRecord[]
   userReadStates         ConversationUserReadState[]
+  userEmailStates        ConversationUserEmailState[]
   botInteractions        BotInteraction[]
   automationContext      AutomationConversationContext?
   automationInteractions AutomationInteraction[]

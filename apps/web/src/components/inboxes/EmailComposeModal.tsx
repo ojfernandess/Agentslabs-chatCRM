@@ -10,6 +10,7 @@ import {
   hasValidEmailTo,
   type EmailRecipientFieldsValue,
 } from "@/components/inboxes/EmailRecipientFields";
+import { EmailContactPicker } from "@/components/inboxes/EmailContactPicker";
 
 const emptyRecipients = (): EmailRecipientFieldsValue => ({ to: [], cc: [], bcc: [] });
 
@@ -167,6 +168,17 @@ export function EmailComposeModal({
                 value={recipients}
                 onChange={setRecipients}
                 disabled={sending}
+              />
+
+              <EmailContactPicker
+                disabled={sending}
+                onPick={({ name, email }) => {
+                  setToName(name);
+                  setRecipients((prev) => ({
+                    ...prev,
+                    to: prev.to.includes(email) ? prev.to : [...prev.to, email],
+                  }));
+                }}
               />
 
               <div className="grid gap-3 sm:grid-cols-2">

@@ -22,6 +22,7 @@ import {
   importContactRows,
   parseContactImportFile,
 } from "../lib/contactImportExport.js";
+import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -104,6 +105,7 @@ const querySchema = z.object({
   tag: z.string().uuid().optional(),
   stage: z.string().uuid().optional(),
   assignee: z.string().uuid().optional(),
+  hasEmail: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 const syncAvatarsSchema = z.object({
@@ -274,6 +276,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     const query = querySchema.parse(request.query);
     const where: Record<string, unknown> = { organizationId };
+
+    if (query.hasEmail === "1" || query.hasEmail === "true") {
+      const emailFilter = contactHasEmailFilter();
+      where.AND = where.AND ? [...(Array.isArray(where.AND) ? where.AND : [where.AND]), emailFilter] : [emailFilter];
+    }
 
     if (query.search) {
       const q = query.search.trim();

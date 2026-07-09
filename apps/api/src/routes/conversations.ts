@@ -55,6 +55,12 @@ import {
 } from "../lib/agentAssistLlm.js";
 import { loadActiveVoiceCallsByConversation } from "../lib/activeVoiceCalls.js";
 import { listEmailInboxIdsHiddenFromConversations } from "../lib/inboxEmailConfig.js";
+import {
+  applyEmailWorkspaceConversationFilters,
+  loadEmailStateByConversation,
+  upsertConversationEmailFolder,
+  upsertConversationEmailStar,
+} from "../lib/conversationUserEmailState.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -70,6 +76,10 @@ const querySchema = z.object({
   waitingAttendance: z.enum(["1", "true", "0", "false"]).optional(),
   /** `1` = só conversas na lixeira (deletedAt != null). Por omissão exclui lixeira. */
   trash: z.enum(["1", "true", "0", "false"]).optional(),
+  /** `1` = só e-mails favoritos do utilizador (workspace de e-mail). */
+  starred: z.enum(["1", "true", "0", "false"]).optional(),
+  /** Pasta personalizada de e-mail do utilizador. */
+  emailFolderId: z.string().uuid().optional(),
   /** Pesquisa por nome, e-mail, telefone ou corpo da última mensagem. */
   q: z.string().max(200).optional(),
 });
@@ -210,8 +220,32 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const waitingAttendance = isMineFlag(query.waitingAttendance);
     const mineRequested = isMineFlag(query.mine);
     const trashOnly = isMineFlag(query.trash);
+    const starredOnly = isMineFlag(query.starred);
 
     where.deletedAt = trashOnly ? { not: null } : null;
+
+    if (query.inboxId && query.emailFolderId) {
+      const folder = await prisma.inboxEmailFolder.findFirst({
+        where: {
+          id: query.emailFolderId,
+          inboxId: query.inboxId,
+          userId: request.user.id,
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (!folder) {
+        return reply.status(404).send({ error: "Not Found", message: "Email folder not found", statusCode: 404 });
+      }
+    }
+
+    applyEmailWorkspaceConversationFilters(where, {
+      userId: request.user.id,
+      trashOnly,
+      starredOnly,
+      emailFolderId: query.emailFolderId,
+      inboxScoped: Boolean(query.inboxId) && !starredOnly && !query.emailFolderId && !trashOnly,
+    });
 
     if (!botAttendance && !(waitingAttendance && !mineRequested) && query.status) {
       where.status = query.status;
@@ -454,14 +488,22 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       organizationId,
       withFlags.map((row) => row.id),
     );
+    const emailStateByConversation = await loadEmailStateByConversation(
+      prisma,
+      request.user.id,
+      withFlags.map((row) => row.id),
+    );
 
     return {
       data: withFlags.map((row) => {
         const { lastMessage: _lastMessage, ...rest } = row;
+        const emailState = emailStateByConversation.get(row.id);
         return {
           ...stripCsatSurveyToken(rest),
           agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
           isUnread: row.isUnread,
+          isStarred: emailState?.isStarred ?? false,
+          emailFolderId: emailState?.emailFolderId ?? null,
           activeVoiceCall: activeVoiceByConversation.get(row.id) ?? null,
           contact: {
             ...rest.contact,
@@ -904,6 +946,89 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       conversationId: existing.id,
     });
     return reply.status(204).send();
+  });
+
+  const starSchema = z.object({
+    starred: z.boolean(),
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/star", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const body = starSchema.parse(request.body);
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId, deletedAt: null },
+      select: { id: true, teamId: true, inboxId: true, inbox: { select: { channelType: true } } },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (existing.inbox.channelType !== "EMAIL") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Star is only supported for email conversations",
+        statusCode: 400,
+      });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    await upsertConversationEmailStar(prisma, request.user.id, existing.id, body.starred);
+    return { starred: body.starred };
+  });
+
+  const moveEmailFolderSchema = z.object({
+    folderId: z.string().uuid().nullable(),
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/email-folder", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const body = moveEmailFolderSchema.parse(request.body);
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId, deletedAt: null },
+      select: { id: true, teamId: true, inboxId: true, inbox: { select: { channelType: true } } },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (existing.inbox.channelType !== "EMAIL") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Email folders are only supported for email conversations",
+        statusCode: 400,
+      });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    if (body.folderId) {
+      const folder = await prisma.inboxEmailFolder.findFirst({
+        where: {
+          id: body.folderId,
+          inboxId: existing.inboxId,
+          userId: request.user.id,
+          organizationId,
+        },
+        select: { id: true },
+      });
+      if (!folder) {
+        return reply.status(404).send({ error: "Not Found", message: "Email folder not found", statusCode: 404 });
+      }
+    }
+
+    await upsertConversationEmailFolder(prisma, request.user.id, existing.id, body.folderId);
+    return { folderId: body.folderId };
   });
 
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
