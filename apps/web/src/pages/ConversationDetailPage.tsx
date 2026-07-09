@@ -2613,7 +2613,7 @@ export function ConversationDetailPage() {
                 <h2 className="truncate text-lg font-semibold text-ink-900 dark:text-ink-50">
                   {emailSubject.trim() || threadEmailSubject}
                 </h2>
-                <p className="mt-0.5 truncate text-xs text-ink-500 dark:text-ink-400">
+                <p className="mt-0.5 truncate text-xs text-ink-500 dark:text-ink-500">
                   {conversation.contact.name}
                   {contactEmail ? ` · ${contactEmail}` : ""}
                 </p>
@@ -3103,7 +3103,7 @@ export function ConversationDetailPage() {
                           : t("inboxesPage.emailWorkspace.directionSent")}
                       </span>
                       {messageEmailSubject ? (
-                        <span className="min-w-0 truncate text-[11px] font-medium text-ink-600 dark:text-ink-300">
+                        <span className="min-w-0 truncate text-[11px] font-medium text-ink-500 dark:text-ink-500">
                           {messageEmailSubject}
                         </span>
                       ) : null}

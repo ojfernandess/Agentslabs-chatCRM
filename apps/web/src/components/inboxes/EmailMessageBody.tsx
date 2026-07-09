@@ -186,7 +186,7 @@ export function EmailMessageBody({
   return (
     <p
       className={clsx(
-        "whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed text-ink-900 dark:text-ink-100",
+        "whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed text-inherit",
         className,
       )}
     >

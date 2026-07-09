@@ -95,7 +95,6 @@ export function EmailInboxLayout() {
   const folder: EmailFolder = searchParams.get("folder") === "trash" ? "trash" : "inbox";
   const [inbox, setInbox] = useState<EmailInboxRow | null>(null);
   const [conversations, setConversations] = useState<EmailConversation[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [listSearch, setListSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -188,15 +187,13 @@ export function EmailInboxLayout() {
     }
   }, [inboxId, isAdmin, navigate]);
 
-  const countUnreadFromList = useCallback((rows: EmailConversation[]) => {
-    let unread = 0;
-    let unreadReceived = 0;
+  const countUnreadReceivedFromList = useCallback((rows: EmailConversation[]) => {
+    let count = 0;
     for (const conv of rows) {
       if (!conv.isUnread) continue;
-      unread += 1;
-      if (conv.messages[0]?.direction === "INBOUND") unreadReceived += 1;
+      if (conv.messages[0]?.direction === "INBOUND") count += 1;
     }
-    return { unread, unreadReceived };
+    return count;
   }, []);
 
   const refreshUnreadCount = useCallback(async () => {
@@ -205,13 +202,11 @@ export function EmailInboxLayout() {
       const res = await api.get<{ data: EmailConversation[] }>(
         `/conversations?inboxId=${encodeURIComponent(inboxId)}&pageSize=80`,
       );
-      const { unread, unreadReceived } = countUnreadFromList(res.data);
-      setUnreadCount(unread);
-      setUnreadReceivedCount(unreadReceived);
+      setUnreadReceivedCount(countUnreadReceivedFromList(res.data));
     } catch {
       /* ignore */
     }
-  }, [inboxId, countUnreadFromList]);
+  }, [inboxId, countUnreadReceivedFromList]);
 
   const loadConversations = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -227,9 +222,7 @@ export function EmailInboxLayout() {
         const res = await api.get<{ data: EmailConversation[] }>(`/conversations?${params}`);
         setConversations(res.data);
         if (folder === "inbox" && !debouncedSearch) {
-          const { unread, unreadReceived } = countUnreadFromList(res.data);
-          setUnreadCount(unread);
-          setUnreadReceivedCount(unreadReceived);
+          setUnreadReceivedCount(countUnreadReceivedFromList(res.data));
         } else {
           void refreshUnreadCount();
         }
@@ -239,7 +232,7 @@ export function EmailInboxLayout() {
         if (!opts?.silent) setListLoading(false);
       }
     },
-    [inboxId, folder, debouncedSearch, refreshUnreadCount, countUnreadFromList],
+    [inboxId, folder, debouncedSearch, refreshUnreadCount, countUnreadReceivedFromList],
   );
 
   const prefetchConversation = useCallback((conversationId: string) => {
@@ -321,11 +314,8 @@ export function EmailInboxLayout() {
       if (!conversationId) return;
       setConversations((prev) => {
         const target = prev.find((c) => c.id === conversationId);
-        if (target?.isUnread) {
-          setUnreadCount((n) => Math.max(0, n - 1));
-          if (target.messages[0]?.direction === "INBOUND") {
-            setUnreadReceivedCount((n) => Math.max(0, n - 1));
-          }
+        if (target?.isUnread && target.messages[0]?.direction === "INBOUND") {
+          setUnreadReceivedCount((n) => Math.max(0, n - 1));
         }
         return prev.map((c) => (c.id === conversationId ? { ...c, isUnread: false } : c));
       });
@@ -338,10 +328,10 @@ export function EmailInboxLayout() {
     if (!inboxId) return;
     window.dispatchEvent(
       new CustomEvent("openconduit:email-inbox-unread-changed", {
-        detail: { inboxId, unread: unreadCount, unreadReceived: unreadReceivedCount },
+        detail: { inboxId, unreadReceived: unreadReceivedCount },
       }),
     );
-  }, [inboxId, unreadCount, unreadReceivedCount]);
+  }, [inboxId, unreadReceivedCount]);
 
   const syncInbox = useCallback(async (opts?: { reprocess?: boolean }) => {
     if (!inboxId || !ready) return;
@@ -601,30 +591,15 @@ export function EmailInboxLayout() {
               >
                 <Inbox className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
                 <span className="min-w-0 flex-1 truncate">{t("inboxesPage.emailWorkspace.folderInbox")}</span>
-                {unreadCount > 0 || unreadReceivedCount > 0 ? (
-                  <span className="ml-auto flex shrink-0 items-center gap-1">
-                    {unreadCount > 0 ? (
-                      <span
-                        className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-700 px-1.5 text-[11px] font-semibold text-white dark:bg-ink-200 dark:text-ink-900"
-                        title={t("inboxesPage.emailWorkspace.unreadCountLabel").replace(
-                          "{count}",
-                          String(unreadCount),
-                        )}
-                      >
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </span>
-                    ) : null}
-                    {unreadReceivedCount > 0 ? (
-                      <span
-                        className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold text-white dark:bg-emerald-500 dark:text-emerald-950"
-                        title={t("inboxesPage.emailWorkspace.unreadReceivedCountLabel").replace(
-                          "{count}",
-                          String(unreadReceivedCount),
-                        )}
-                      >
-                        {unreadReceivedCount > 99 ? "99+" : unreadReceivedCount}
-                      </span>
-                    ) : null}
+                {unreadReceivedCount > 0 ? (
+                  <span
+                    className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white dark:bg-brand-500"
+                    title={t("inboxesPage.emailWorkspace.unreadReceivedCountLabel").replace(
+                      "{count}",
+                      String(unreadReceivedCount),
+                    )}
+                  >
+                    {unreadReceivedCount > 99 ? "99+" : unreadReceivedCount}
                   </span>
                 ) : null}
               </button>
@@ -724,7 +699,7 @@ export function EmailInboxLayout() {
                               <p
                                 className={clsx(
                                   "truncate text-sm text-ink-900 dark:text-ink-50",
-                                  conv.isUnread ? "font-bold" : "font-medium",
+                                  conv.isUnread ? "font-bold" : "font-semibold",
                                 )}
                               >
                                 {conv.contact.name}
@@ -741,20 +716,22 @@ export function EmailInboxLayout() {
                                 {statusLabel(conv.status)}
                               </span>
                             </div>
-                            <span className="shrink-0 text-[10px] text-ink-400">
+                            <span className="shrink-0 text-[11px] font-medium text-ink-500 dark:text-ink-500">
                               {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: false, locale: dateLocale })}
                             </span>
                           </div>
                           <p
                             className={clsx(
-                              "mt-0.5 truncate text-xs text-ink-700 dark:text-ink-200",
-                              conv.isUnread && "font-semibold",
+                              "mt-0.5 line-clamp-1 text-sm",
+                              conv.isUnread
+                                ? "font-medium text-ink-800 dark:text-ink-200"
+                                : "text-ink-600 dark:text-ink-400",
                             )}
                           >
                             {subject}
                           </p>
                           {email ? (
-                            <p className="truncate text-[11px] text-ink-500 dark:text-ink-400">{email}</p>
+                            <p className="truncate text-[11px] text-ink-500 dark:text-ink-500">{email}</p>
                           ) : null}
                           <div className="mt-1 flex min-w-0 items-center gap-1.5">
                             {lastDirection ? (
@@ -771,7 +748,16 @@ export function EmailInboxLayout() {
                                   : t("inboxesPage.emailWorkspace.directionReceived")}
                               </span>
                             ) : null}
-                            <p className="min-w-0 truncate text-xs text-ink-500 dark:text-ink-400">{preview}</p>
+                            <p
+                              className={clsx(
+                                "min-w-0 truncate text-sm",
+                                conv.isUnread
+                                  ? "font-medium text-ink-800 dark:text-ink-200"
+                                  : "text-ink-600 dark:text-ink-400",
+                              )}
+                            >
+                              {preview}
+                            </p>
                           </div>
                         </NavLink>
                       </li>

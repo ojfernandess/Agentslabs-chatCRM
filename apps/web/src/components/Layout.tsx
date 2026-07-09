@@ -46,7 +46,7 @@ import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
 type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
 type SidebarInbox = { id: string; name: string; channelType?: string };
-type EmailInboxUnreadCounts = Record<string, { unread: number; unreadReceived: number }>;
+type EmailInboxUnreadCounts = Record<string, number>;
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
@@ -443,17 +443,11 @@ export function Layout() {
       )
     ) : null;
 
-  const emailInboxUnreadBadges = (
-    counts: { unread: number; unreadReceived: number } | undefined,
-    collapsed: boolean,
-  ) => {
-    const unread = counts?.unread ?? 0;
-    const received = counts?.unreadReceived ?? 0;
-    if (unread <= 0 && received <= 0) return null;
+  const emailInboxUnreadBadges = (count: number | undefined, collapsed: boolean) => {
+    const received = count ?? 0;
+    if (received <= 0) return null;
 
-    const title = t("nav.emailInboxUnreadTitle")
-      .replace("{unread}", String(unread))
-      .replace("{received}", String(received));
+    const title = t("nav.emailInboxUnreadTitle").replace("{count}", String(received));
 
     if (collapsed) {
       return (
@@ -466,17 +460,12 @@ export function Layout() {
     }
 
     return (
-      <span className="ml-auto flex shrink-0 items-center gap-1" title={title}>
-        {unread > 0 ? (
-          <span className="rounded-full bg-ink-700 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-ink-200 dark:text-ink-900">
-            {unread > 99 ? "99+" : unread}
-          </span>
-        ) : null}
-        {received > 0 ? (
-          <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-emerald-500 dark:text-emerald-950">
-            {received > 99 ? "99+" : received}
-          </span>
-        ) : null}
+      <span
+        className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500"
+        title={title}
+        aria-label={title}
+      >
+        {received > 99 ? "99+" : received}
       </span>
     );
   };
@@ -638,9 +627,10 @@ export function Layout() {
                         )}
                         title={
                           inbox.channelType === "EMAIL"
-                            ? `${inbox.name} — ${t("nav.emailInboxUnreadTitle")
-                                .replace("{unread}", String(emailInboxUnread[inbox.id]?.unread ?? 0))
-                                .replace("{received}", String(emailInboxUnread[inbox.id]?.unreadReceived ?? 0))}`
+                            ? `${inbox.name} — ${t("nav.emailInboxUnreadTitle").replace(
+                                "{count}",
+                                String(emailInboxUnread[inbox.id] ?? 0),
+                              )}`
                             : inbox.name
                         }
                       >

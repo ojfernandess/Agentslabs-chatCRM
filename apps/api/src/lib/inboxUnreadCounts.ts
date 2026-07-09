@@ -4,20 +4,16 @@ import {
   loadLastReadAtByConversation,
 } from "./teamTransferUnread.js";
 
-export type InboxUnreadCountRow = {
-  unread: number;
-  unreadReceived: number;
-};
-
+/** Conta apenas conversas não lidas cuja última mensagem é recebida (INBOUND). */
 export async function getEmailInboxUnreadCounts(
   prisma: PrismaClient,
   organizationId: string,
   userId: string,
   inboxIds: string[],
-): Promise<Record<string, InboxUnreadCountRow>> {
-  const out: Record<string, InboxUnreadCountRow> = {};
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
   if (inboxIds.length === 0) return out;
-  for (const id of inboxIds) out[id] = { unread: 0, unreadReceived: 0 };
+  for (const id of inboxIds) out[id] = 0;
 
   const conversations = await prisma.conversation.findMany({
     where: {
@@ -46,6 +42,7 @@ export async function getEmailInboxUnreadCounts(
 
   for (const conv of conversations) {
     const lastMessage = conv.messages[0] ?? null;
+    if (lastMessage?.direction !== "INBOUND") continue;
     const isUnread = isConversationUnreadForUser(
       {
         id: conv.id,
@@ -56,10 +53,7 @@ export async function getEmailInboxUnreadCounts(
       readStates.get(conv.id),
     );
     if (!isUnread) continue;
-    const bucket = out[conv.inboxId];
-    if (!bucket) continue;
-    bucket.unread += 1;
-    if (lastMessage?.direction === "INBOUND") bucket.unreadReceived += 1;
+    out[conv.inboxId] = (out[conv.inboxId] ?? 0) + 1;
   }
 
   return out;
