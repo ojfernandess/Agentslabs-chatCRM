@@ -47,9 +47,9 @@ export const messages = {
       transferUnknownTeam: "time destino",
     },
     publicDocs: {
-      title: "Documentação da API",
+      title: "Documentação da API — OpenNexo CRM",
       subtitle:
-        "Referência dos caminhos HTTP do produto. Não inclui tokens, chaves nem identificadores reais — apenas padrões de URL, autenticação e exemplos de payload.",
+        "Referência HTTP do OpenNexo CRM. Não inclui tokens, chaves nem identificadores reais — apenas padrões de URL, autenticação e exemplos de payload.",
       disabledTitle: "Documentação indisponível",
       disabledBody:
         "A documentação pública está desativada pelo administrador da plataforma. Peça o acesso ou consulte a equipe interna.",
@@ -63,10 +63,11 @@ export const messages = {
       colExample: "Exemplo (payload)",
       authLegendTitle: "Guia rápido de autenticação",
       authLegendBody:
-        "• JWT de sessão — POST /api/v1/auth/login com email e senha de usuário ADMIN ou SUPER_ADMIN. Envie o campo `token` da resposta em Authorization: Bearer <jwt> nas rotas do painel (/api/v1/…).\n\n• Token do bot (ocb_) — gerado na página Bots («Gerar token da API»). Use Authorization: Bearer ocb_… em /api/v1/agent-bot/* (perfil, mensagens, conversas). Para só consultar o bot com esse token: GET /api/v1/bots (lista com um elemento) ou GET /api/v1/bots/<id deste bot>.\n\n• Criar, editar ou apagar bots, gerar novo ocb_ ou rotas administrativas de bot: apenas com JWT de admin, nunca só com ocb_.",
+        "• JWT de sessão — POST /api/v1/auth/login com email e senha de usuário ADMIN ou SUPER_ADMIN. Envie o campo `token` da resposta em Authorization: Bearer <jwt> nas rotas do painel (/api/v1/…).\n\n• Token de perfil (ocu_) — gerado em Configurações → Perfil. Use o cabeçalho `api_access_token: ocu_…` ou `Authorization: Bearer ocu_…` nas rotas de automação e funil. SUPER_ADMIN com ocu_ deve enviar também o UUID do tenant (`organization-id`, `x-organization-id` ou `?organizationId=`).\n\n• Token do bot (ocb_) — gerado na página Bots. Use Authorization: Bearer ocb_… em /api/v1/agent-bot/*. Para só consultar o bot: GET /api/v1/bots.\n\n• Criar, editar ou apagar bots: apenas JWT de admin, nunca só com ocb_.",
       auth: {
         none: "Nenhuma",
         session_jwt: "JWT de sessão (usuário)",
+        session_jwt_or_api_access_token: "JWT ou token ocu_ (perfil)",
         session_jwt_or_bot_bearer_readonly:
           "JWT ou ocb_ (só GET /api/v1/bots e GET /bots/:id)",
         super_admin_jwt: "JWT super admin",
@@ -74,6 +75,22 @@ export const messages = {
         platform_app_bearer: "Bearer app de plataforma",
         path_ingest_token: "Token no path (ingestão)",
       },
+      navTitle: "Navegação",
+      navBotAutomation: "Bot & automação",
+      navFullApi: "Toda a API",
+      navQuickGuide: "Guia rápido (automação)",
+      navEmailGuide: "Guia rápido (e-mail)",
+      navBotAutomationHint:
+        "Token de perfil, API do bot (perfil, equipas, mensagens, estado e equipa da conversa), automações /automations, bots admin, conversas, mensagens e funil.",
+      navFullApiHint: "Todos os grupos publicados no JSON de sistema, incluindo workspace de e-mail.",
+      automationGuideTitle: "Guia rápido para automação",
+      automationGuideIntro:
+        "Fluxo recomendado: token de perfil ou bot (ocb_), listar equipas, atribuir conversa a equipa, etiquetas e funil CRM.",
+      emailGuideTitle: "Guia rápido — workspace de e-mail",
+      emailGuideIntro:
+        "Rotas JWT para caixas EMAIL: pastas personalizadas, favoritos, compose, sincronização IMAP e filtros na listagem de conversas. Requer caixa com SMTP/IMAP configurado.",
+      emailGuideKeyEndpoints: "Endpoints-chave",
+      methodsLegend: "Métodos",
     },
     nav: {
       dashboard: "Painel",
@@ -4916,9 +4933,9 @@ export const messages = {
       transferUnknownTeam: "destination team",
     },
     publicDocs: {
-      title: "API documentation",
+      title: "API documentation — OpenNexo CRM",
       subtitle:
-        "HTTP route reference for this product. No tokens, keys, or real IDs — URL patterns, authentication, and example payloads only.",
+        "HTTP reference for OpenNexo CRM. No tokens, keys, or real IDs — URL patterns, authentication, and example payloads only.",
       disabledTitle: "Documentation unavailable",
       disabledBody:
         "Public documentation is turned off by the platform administrator. Ask your team for access or internal docs.",
@@ -4932,10 +4949,11 @@ export const messages = {
       colExample: "Example (payload)",
       authLegendTitle: "Authentication quick guide",
       authLegendBody:
-        "• Session JWT — POST /api/v1/auth/login with an ADMIN or SUPER_ADMIN user email and password. Send the `token` field from the response as Authorization: Bearer <jwt> on /api/v1/… routes.\n\n• Bot token (ocb_) — issued from Settings → Bots («Generate inbox token»). Use Authorization: Bearer ocb_… on /api/v1/agent-bot/* (profile, messages, conversations). Read-only bot lookup with that token: GET /api/v1/bots (single item in `data`) or GET /api/v1/bots/<this bot’s id>.\n\n• Create/update/delete bots, mint a new ocb_, or admin bot routes: JWT only, not ocb_.",
+        "• Session JWT — POST /api/v1/auth/login with an ADMIN or SUPER_ADMIN email and password. Send the response `token` as Authorization: Bearer <jwt> on /api/v1/… routes.\n\n• Profile token (ocu_) — from Settings → Profile. Use header `api_access_token: ocu_…` or `Authorization: Bearer ocu_…` on automation and funnel routes. SUPER_ADMIN with ocu_ must also send the tenant UUID (`organization-id`, `x-organization-id`, or `?organizationId=`).\n\n• Bot token (ocb_) — from Bots page. Use Authorization: Bearer ocb_… on /api/v1/agent-bot/*. Read-only bot lookup: GET /api/v1/bots.\n\n• Create/update/delete bots: JWT only, not ocb_.",
       auth: {
         none: "None",
         session_jwt: "Session JWT (user)",
+        session_jwt_or_api_access_token: "JWT or ocu_ profile token",
         session_jwt_or_bot_bearer_readonly:
           "JWT or ocb_ (GET /api/v1/bots and GET /bots/:id only)",
         super_admin_jwt: "Super admin JWT",
@@ -4943,6 +4961,22 @@ export const messages = {
         platform_app_bearer: "Platform application bearer",
         path_ingest_token: "Secret token in path (ingest)",
       },
+      navTitle: "Navigation",
+      navBotAutomation: "Bot & automation",
+      navFullApi: "Full API",
+      navQuickGuide: "Quick guide (automation)",
+      navEmailGuide: "Quick guide (email)",
+      navBotAutomationHint:
+        "Profile token, bot API (profile, teams, messages, conversation state/team), /automations, admin bots, conversations, messages, and CRM funnel.",
+      navFullApiHint: "All groups in the system JSON, including the email workspace.",
+      automationGuideTitle: "Automation quick guide",
+      automationGuideIntro:
+        "Recommended flow: profile token or bot (ocb_), list teams, assign conversation to team, tags, and CRM funnel.",
+      emailGuideTitle: "Email workspace quick guide",
+      emailGuideIntro:
+        "JWT routes for EMAIL inboxes: custom folders, starred, compose, IMAP sync, and conversation list filters. Requires SMTP/IMAP on the inbox.",
+      emailGuideKeyEndpoints: "Key endpoints",
+      methodsLegend: "Methods",
     },
     nav: {
       dashboard: "Dashboard",

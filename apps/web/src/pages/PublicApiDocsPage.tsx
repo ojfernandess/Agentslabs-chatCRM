@@ -285,6 +285,13 @@ export function PublicApiDocsPage() {
         agentBotConvTeam: findEndpoint(data.groups, "/api/v1/agent-bot/conversations/:id/team"),
         crmBoard: findEndpoint(data.groups, "/api/v1/pipeline/board"),
         crmLeadTypes: findEndpoint(data.groups, "/api/v1/lead-types"),
+        emailFolders: findEndpoint(data.groups, "/api/v1/inboxes/:id/email-folders"),
+        composeEmail: findEndpoint(data.groups, "/api/v1/inboxes/:id/compose-email"),
+        syncEmail: findEndpoint(data.groups, "/api/v1/inboxes/:id/sync-email"),
+        starConv: findEndpoint(data.groups, "/api/v1/conversations/:id/star"),
+        moveFolder: findEndpoint(data.groups, "/api/v1/conversations/:id/email-folder"),
+        listConversations: findEndpoint(data.groups, "/api/v1/conversations"),
+        contactsHasEmail: findEndpoint(data.groups, "/api/v1/contacts"),
       }
     : null;
 
@@ -357,7 +364,7 @@ export function PublicApiDocsPage() {
                   <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleString("pt-BR")}</time>
                 </p>
                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-ink-500">
-                  <span className="mr-1 text-ink-400">Métodos</span>
+                  <span className="mr-1 text-ink-400">{tDoc("publicDocs.methodsLegend")}</span>
                   {(["GET", "POST", "PUT", "PATCH", "DELETE", "WS"] as const).map((m) => {
                     const { pill } = METHOD_ACCENTS[m] ?? METHOD_FALLBACK;
                     return (
@@ -372,7 +379,7 @@ export function PublicApiDocsPage() {
 
             <div className="mt-8 grid gap-6 lg:grid-cols-[260px,minmax(0,1fr)]">
               <aside className="h-fit rounded-lg border border-ink-200/90 bg-white p-4 shadow-sm dark:border-ink-700/90 dark:bg-ink-900/80">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">Navegação</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-500">{tDoc("publicDocs.navTitle")}</p>
                 <div className="mb-3 flex rounded-lg border border-ink-200/90 p-0.5 dark:border-ink-700">
                   <button
                     type="button"
@@ -383,7 +390,7 @@ export function PublicApiDocsPage() {
                         : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
                     }`}
                   >
-                    Bot &amp; automação
+                    {tDoc("publicDocs.navBotAutomation")}
                   </button>
                   <button
                     type="button"
@@ -394,17 +401,18 @@ export function PublicApiDocsPage() {
                         : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
                     }`}
                   >
-                    Toda a API
+                    {tDoc("publicDocs.navFullApi")}
                   </button>
                 </div>
                 <p className="mb-2 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
-                  {navMode === "bot_automation"
-                    ? "Token de perfil, API do bot (perfil, equipas, mensagens, estado e equipa da conversa), automações /automations, bots admin, conversas, mensagens e funil."
-                    : "Todos os grupos publicados no JSON de sistema."}
+                  {navMode === "bot_automation" ? tDoc("publicDocs.navBotAutomationHint") : tDoc("publicDocs.navFullApiHint")}
                 </p>
                 <nav className="space-y-1.5">
                   <a className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-rapido">
-                    Guia rápido
+                    {tDoc("publicDocs.navQuickGuide")}
+                  </a>
+                  <a className="block rounded px-2 py-1 text-sm hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-email">
+                    {tDoc("publicDocs.navEmailGuide")}
                   </a>
                   {(navMode === "bot_automation" ? botAutomationGroups : data.groups).map((g) => (
                     <a
@@ -423,10 +431,8 @@ export function PublicApiDocsPage() {
                   id="guia-rapido"
                   className="rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/80 to-white p-5 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60"
                 >
-                  <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">Guia rápido para automação</h2>
-                  <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">
-                    Fluxo recomendado: token de perfil ou bot (<code className="text-[11px]">ocb_</code>), listar equipas, atribuir conversa a equipa, etiquetas e funil CRM.
-                  </p>
+                  <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.automationGuideTitle")}</h2>
+                  <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.automationGuideIntro")}</p>
                   <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
                       <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">1) Token do perfil</h3>
@@ -485,7 +491,7 @@ curl -X PATCH "https://SEU_DOMINIO/api/v1/agent-bot/conversations/<id>/team" \\
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-ink-500 dark:text-ink-400">
-                    Endpoints-chave:{" "}
+                    {tDoc("publicDocs.emailGuideKeyEndpoints")}:{" "}
                     <code>{quickEndpoints?.ticketTags?.path ?? "/api/v1/automations/conversations/:id/tags"}</code>,{" "}
                     <code>{quickEndpoints?.automationTeams?.path ?? "/api/v1/automations/teams"}</code>,{" "}
                     <code>{quickEndpoints?.ticketTeam?.path ?? "/api/v1/automations/conversations/:id/team"}</code>,{" "}
@@ -493,6 +499,87 @@ curl -X PATCH "https://SEU_DOMINIO/api/v1/agent-bot/conversations/<id>/team" \\
                     <code>{quickEndpoints?.agentBotConvTeam?.path ?? "/api/v1/agent-bot/conversations/:id/team"}</code>,{" "}
                     <code>{quickEndpoints?.crmBoard?.path ?? "/api/v1/pipeline/board"}</code>,{" "}
                     <code>{quickEndpoints?.crmLeadTypes?.path ?? "/api/v1/lead-types"}</code>.
+                  </p>
+                </section>
+
+                <section
+                  id="guia-email"
+                  className="rounded-lg border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white p-5 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/25 dark:to-ink-900/60"
+                >
+                  <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.emailGuideTitle")}</h2>
+                  <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.emailGuideIntro")}</p>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">1) Pastas e favoritos</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        CRUD em <code>{quickEndpoints?.emailFolders?.path ?? "/api/v1/inboxes/:id/email-folders"}</code>; favoritar com{" "}
+                        <code>{quickEndpoints?.starConv?.path ?? "/api/v1/conversations/:id/star"}</code>; mover com{" "}
+                        <code>{quickEndpoints?.moveFolder?.path ?? "/api/v1/conversations/:id/email-folder"}</code>.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl "https://SEU_DOMINIO/api/v1/inboxes/<uuid-caixa>/email-folders" \\
+  -H "Authorization: Bearer <jwt>"
+
+curl -X POST "https://SEU_DOMINIO/api/v1/conversations/<id>/star" \\
+  -H "Authorization: Bearer <jwt>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"starred":true}'`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">2) Listar e filtrar threads</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Use <code>inboxId</code> com <code>starred=1</code>, <code>emailFolderId</code>, <code>trash=1</code> ou <code>q=</code>.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl "https://SEU_DOMINIO/api/v1/conversations?inboxId=<uuid>&starred=1" \\
+  -H "Authorization: Bearer <jwt>"
+
+curl "https://SEU_DOMINIO/api/v1/conversations?inboxId=<uuid>&emailFolderId=<uuid-pasta>" \\
+  -H "Authorization: Bearer <jwt>"`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">3) Enviar e sincronizar</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Novo e-mail: <code>{quickEndpoints?.composeEmail?.path ?? "/api/v1/inboxes/:id/compose-email"}</code>; IMAP:{" "}
+                        <code>{quickEndpoints?.syncEmail?.path ?? "/api/v1/inboxes/:id/sync-email"}</code>.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl -X POST "https://SEU_DOMINIO/api/v1/inboxes/<uuid>/compose-email" \\
+  -H "Authorization: Bearer <jwt>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"toEmails":["cliente@exemplo.com"],"subject":"Proposta","body":"Olá!"}'
+
+curl -X POST "https://SEU_DOMINIO/api/v1/inboxes/<uuid>/sync-email" \\
+  -H "Authorization: Bearer <jwt>"`}
+                      </pre>
+                    </div>
+                    <div className="rounded-md border border-ink-200/80 bg-white p-4 dark:border-ink-700 dark:bg-ink-900/70">
+                      <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">4) Contactos com e-mail</h3>
+                      <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
+                        Para autocomplete no compose: <code>?hasEmail=1</code> em{" "}
+                        <code>{quickEndpoints?.contactsHasEmail?.path ?? "/api/v1/contacts"}</code>. Resposta de e-mail na thread via POST /messages com{" "}
+                        <code>emailSubject</code>, <code>emailTo</code>, <code>emailCc</code>.
+                      </p>
+                      <pre className="mt-3 overflow-auto rounded border border-ink-200 bg-ink-900/[0.03] p-2 font-mono text-[11px] dark:border-ink-700 dark:bg-black/25">
+{`curl "https://SEU_DOMINIO/api/v1/contacts?hasEmail=1&search=maria" \\
+  -H "Authorization: Bearer <jwt>"`}
+                      </pre>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-ink-500 dark:text-ink-400">
+                    {tDoc("publicDocs.emailGuideKeyEndpoints")}:{" "}
+                    <code>{quickEndpoints?.emailFolders?.path ?? "/api/v1/inboxes/:id/email-folders"}</code>,{" "}
+                    <code>{quickEndpoints?.composeEmail?.path ?? "/api/v1/inboxes/:id/compose-email"}</code>,{" "}
+                    <code>{quickEndpoints?.syncEmail?.path ?? "/api/v1/inboxes/:id/sync-email"}</code>,{" "}
+                    <code>{quickEndpoints?.starConv?.path ?? "/api/v1/conversations/:id/star"}</code>,{" "}
+                    <code>{quickEndpoints?.moveFolder?.path ?? "/api/v1/conversations/:id/email-folder"}</code>,{" "}
+                    <code>{quickEndpoints?.listConversations?.path ?? "/api/v1/conversations"}</code>. Ver grupo{" "}
+                    <a className="text-brand-600 underline dark:text-brand-400" href="#group-email_workspace">
+                      Workspace de e-mail
+                    </a>
+                    .
                   </p>
                 </section>
 

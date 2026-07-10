@@ -5,8 +5,9 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     method: "GET",
     path: "/api/v1/dashboard",
     auth: "session_jwt",
-    descriptionEn: "Dashboard summary.",
-    descriptionPt: "Resumo do painel.",
+    descriptionEn: "Dashboard summary (active chats exclude hidden email inboxes).",
+    descriptionPt:
+      "Resumo do painel (atendimentos ativos excluem e-mails com «Ocultar da página Conversas» ativo).",
     examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <jwt>",
   },
   {
@@ -25,7 +26,7 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionEn: "List and create contacts.",
     descriptionPt: "Listar e criar contactos.",
     examplePayloadPt:
-      'GET: sem corpo; query opcional ?page=1&pageSize=20&search=ana&tag=<uuid-tag>&stage=<uuid-etapa>&assignee=<uuid-user>.\n\nPOST application/json:\n{\n  "phone": "+5511999990000",\n  "name": "Maria Silva",\n  "notes": "Opcional",\n  "tags": ["<uuid-tag>"]\n}',
+      'GET: sem corpo; query opcional ?page=1&pageSize=20&search=ana&hasEmail=1&tag=<uuid-tag>&stage=<uuid-etapa>&assignee=<uuid-user>.\n\nhasEmail=1 — só contactos com e-mail cadastrado (campo email ou chave oc|EMAIL|...).\n\nPOST application/json:\n{\n  "phone": "+5511999990000",\n  "name": "Maria Silva",\n  "notes": "Opcional",\n  "tags": ["<uuid-tag>"]\n}',
   },
   {
     method: "GET|PUT|DELETE",
@@ -66,10 +67,12 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     method: "GET|PUT",
     path: "/api/v1/conversations",
     auth: "session_jwt",
-    descriptionEn: "List/update conversations (see route file for query params).",
-    descriptionPt: "Listar/atualizar conversas.",
+    descriptionEn:
+      "List conversations. Email workspace filters: trash, starred, custom folder. Hidden email inboxes excluded from global list when no inboxId.",
+    descriptionPt:
+      "Listar conversas. Filtros do workspace de e-mail: lixeira, favoritos, pasta. Caixas ocultas excluídas da lista global sem inboxId.",
     examplePayloadPt:
-      "GET: sem corpo. Query exemplo: ?page=1&pageSize=20&status=OPEN&inboxId=<uuid>&teamId=<uuid>&assignedToId=<uuid>&leadTypeId=<uuid>&mine=1&since=2026-01-01T00:00:00.000Z\n\nPUT de atualização aplica-se a /api/v1/conversations/:id (ver linha seguinte).",
+      "GET: sem corpo.\n\nQuery comum:\n?page=1&pageSize=20&status=OPEN&inboxId=<uuid>&teamId=<uuid>&assignedToId=<uuid>&leadTypeId=<uuid>&mine=1&since=2026-01-01T00:00:00.000Z\n\nE-mail (com inboxId):\n?trash=1 — só lixeira\n?starred=1 — favoritos do utilizador\n?emailFolderId=<uuid-pasta> — pasta personalizada\n?q=texto — pesquisa nome, e-mail, telefone ou corpo\n\nResposta inclui isUnread, isStarred, emailFolderId (e-mail).\n\nPUT de atualização aplica-se a /api/v1/conversations/:id (ver linha seguinte).",
   },
   {
     method: "GET",
@@ -96,7 +99,7 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionEn: "Send message / create draft.",
     descriptionPt: "Enviar mensagem / rascunho.",
     examplePayloadPt:
-      'Texto ao cliente:\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá, em que posso ajudar?",\n  "isPrivate": false\n}\n\nMídia (URL pública HTTPS):\n{\n  "contactId": "<uuid>",\n  "type": "IMAGE",\n  "mediaUrl": "https://exemplo.com/foto.png",\n  "mediaType": "image/png"\n}\n\nModelo WhatsApp:\n{\n  "contactId": "<uuid>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["valor1", "valor2"]\n}\n\nNota interna:\n{\n  "contactId": "<uuid>",\n  "type": "TEXT",\n  "body": "Ligou reclamando da fatura",\n  "isPrivate": true\n}',
+      'Texto ao cliente:\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá, em que posso ajudar?",\n  "isPrivate": false\n}\n\nResposta de e-mail (reply na mesma thread):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid>",\n  "inboxId": "<uuid-caixa-email>",\n  "type": "TEXT",\n  "body": "Segue informação solicitada.",\n  "emailSubject": "Re: Proposta",\n  "emailTo": "cliente@exemplo.com",\n  "emailCc": "gestor@exemplo.com",\n  "emailBcc": ""\n}\n\nMídia (URL pública HTTPS):\n{\n  "contactId": "<uuid>",\n  "type": "IMAGE",\n  "mediaUrl": "https://exemplo.com/foto.png",\n  "mediaType": "image/png"\n}\n\nModelo WhatsApp:\n{\n  "contactId": "<uuid>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["valor1", "valor2"]\n}\n\nNota interna:\n{\n  "contactId": "<uuid>",\n  "type": "TEXT",\n  "body": "Ligou reclamando da fatura",\n  "isPrivate": true\n}',
   },
   {
     method: "POST",
@@ -452,7 +455,7 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionPt:
       "Caixas de entrada (cada uma tem `id` UUID estável, estilo Chatwoot), membros; admin para criar/editar. O `id` serve nos filtros de conversas (`inboxId`) e no webhook do agent bot (`inbox_id`).",
     examplePayloadPt:
-      'GET: sem corpo.\n\nResposta 200 (excerpt): `data` inclui objetos com `"id": "<uuid-da-caixa>"`, `name`, `channelType`, etc. Esse UUID é o identificador permanente da caixa (como no Chatwoot).\n\nPOST application/json:\n{\n  "name": "Suporte WhatsApp",\n  "channelType": "WHATSAPP",\n  "channelConfig": null,\n  "isDefault": false\n}\n\nPOST /api/v1/inboxes/:id/members — {\"userId\": \"<uuid>\"}\n\nPATCH /api/v1/inboxes/:id — nome, channelConfig, etc.',
+      'GET: sem corpo.\n\nResposta 200 (excerpt): `data` inclui objetos com `"id": "<uuid-da-caixa>"`, `name`, `channelType` (WHATSAPP, EMAIL, …), `channelConfig` (SMTP/IMAP para EMAIL), etc.\n\nPOST application/json:\n{\n  "name": "Suporte WhatsApp",\n  "channelType": "WHATSAPP",\n  "channelConfig": null,\n  "isDefault": false\n}\n\nCaixa EMAIL — channelConfig (exemplo):\n{\n  "emailFromAddress": "suporte@empresa.com",\n  "emailSmtpHost": "smtp.empresa.com",\n  "emailSmtpPort": 587,\n  "emailSmtpUser": "suporte@empresa.com",\n  "emailHideFromConversations": false\n}\n\nRotas específicas de e-mail: ver grupo «Workspace de e-mail».\n\nPOST /api/v1/inboxes/:id/members — {"userId": "<uuid>"}\n\nPATCH /api/v1/inboxes/:id — nome, channelConfig, etc.',
   },
   {
     method: "POST",
@@ -547,7 +550,7 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     descriptionPt:
       "Teste de conectividade: envia evento `webhook_test` para um URL (segredo HMAC opcional). Para usar antes de criar o bot. Só JWT admin.",
     examplePayloadPt:
-      'POST application/json:\n{\n  "webhookUrl": "https://seu-servidor.com/agent-hook",\n  "webhookSecret": "opcional — mesma chave que validará X-OpenConduit-Signature",\n  "probeName": "Rótulo opcional no JSON (nome simulado do bot)"\n}\n\nResposta 200:\n{ "ok": true, "httpStatus": 200, "latencyMs": 42 }\nou { "ok": false, "httpStatus": 502, "latencyMs": 1200, "responseBodySnippet": "..." }\nou { "ok": false, "latencyMs": 300, "error": "fetch failed..." }.',
+      'POST application/json:\n{\n  "webhookUrl": "https://seu-servidor.com/agent-hook",\n  "webhookSecret": "opcional — chave para validar assinatura HMAC SHA-256 no cabeçalho do webhook",\n  "probeName": "Rótulo opcional no JSON (nome simulado do bot)"\n}\n\nResposta 200:\n{ "ok": true, "httpStatus": 200, "latencyMs": 42 }\nou { "ok": false, "httpStatus": 502, "latencyMs": 1200, "responseBodySnippet": "..." }\nou { "ok": false, "latencyMs": 300, "error": "fetch failed..." }.',
   },
   {
     method: "POST",
