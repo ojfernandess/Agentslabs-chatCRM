@@ -12,6 +12,7 @@ export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = 
     schemaVersion: 10,
     titlePt: "Documentação v10 — respostas, convenções e modelos",
     changesPt: [
+      "Exportação Postman Collection v2.1 em GET /api/v1/public/system-documentation/postman",
       "Exemplos de resposta de sucesso e tabela de erros HTTP por rota",
       "Secção «Convenções gerais» (erros, paginação, filtros, rate limit, versionamento)",
       "Secção «Modelos de dados» com enums extraídos do schema Prisma",

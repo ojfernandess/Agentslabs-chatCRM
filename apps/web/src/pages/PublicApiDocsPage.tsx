@@ -422,6 +422,16 @@ export function PublicApiDocsPage() {
             <a href="/api/v1/public/system-documentation" className="btn-secondary text-sm shadow-sm" target="_blank" rel="noopener noreferrer">
               {tDoc("publicDocs.jsonLink")}
             </a>
+            {data ? (
+              <a
+                href={`/api/v1/public/system-documentation/postman`}
+                className="btn-secondary text-sm shadow-sm"
+                download={`opennexo-crm-api-v${data.schemaVersion}.postman_collection.json`}
+                title={tDoc("publicDocs.postmanHint")}
+              >
+                {tDoc("publicDocs.postmanLink")}
+              </a>
+            ) : null}
             <Link to="/login" className="btn-ghost text-sm font-semibold">
               {tDoc("login.submit")}
             </Link>
