@@ -74,6 +74,8 @@ const querySchema = z.object({
   mine: z.enum(["1", "true", "0", "false"]).optional(),
   botAttendance: z.enum(["1", "true", "0", "false"]).optional(),
   waitingAttendance: z.enum(["1", "true", "0", "false"]).optional(),
+  /** OPEN em atendimento humano (com ou sem atendente) — usado no contador da aba Atendimento. */
+  activeAttendance: z.enum(["1", "true", "0", "false"]).optional(),
   /** `1` = só conversas na lixeira (deletedAt != null). Por omissão exclui lixeira. */
   trash: z.enum(["1", "true", "0", "false"]).optional(),
   /** `1` = só e-mails favoritos do utilizador (workspace de e-mail). */
@@ -218,6 +220,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const where: Prisma.ConversationWhereInput = { organizationId };
     const botAttendance = isMineFlag(query.botAttendance);
     const waitingAttendance = isMineFlag(query.waitingAttendance);
+    const activeAttendance = isMineFlag(query.activeAttendance);
     const mineRequested = isMineFlag(query.mine);
     const trashOnly = isMineFlag(query.trash);
     const starredOnly = isMineFlag(query.starred);
@@ -247,7 +250,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       inboxScoped: Boolean(query.inboxId) && !starredOnly && !query.emailFolderId && !trashOnly,
     });
 
-    if (!botAttendance && !(waitingAttendance && !mineRequested) && query.status) {
+    if (
+      !botAttendance &&
+      !(waitingAttendance && !mineRequested) &&
+      !(activeAttendance && !mineRequested) &&
+      query.status
+    ) {
       where.status = query.status;
     }
 
@@ -308,6 +316,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       }
       where.status = "OPEN";
       where.assignedToId = null;
+    }
+
+    /** Atendimentos ativos (OPEN com ou sem atendente) — contador da aba Atendimento. */
+    if (activeAttendance && !mineRequested) {
+      const orgSettings = await prisma.settings.findUnique({
+        where: { organizationId },
+        select: { conversationsAttendanceTabEnabled: true },
+      });
+      if (!orgSettings?.conversationsAttendanceTabEnabled) {
+        return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
+      }
+      where.status = "OPEN";
     }
 
     if (botAttendance) {

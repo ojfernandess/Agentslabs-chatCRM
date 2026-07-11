@@ -4338,7 +4338,7 @@ export const messages = {
         "Na finalização manual da conversa, o atendente pode marcar um lembrete para o contacto (como na página Lembretes).",
       workflowAttendanceTab: "Aba «Atendimento» em Conversas",
       workflowAttendanceTabHint:
-        "Mostra uma aba dedicada com conversas abertas (OPEN) à espera de um agente humano, sem atendente atribuído.",
+        "Mostra uma aba dedicada com conversas abertas (OPEN) em atendimento humano — na fila ou já assumidas por um agente.",
       workflowAttendanceTabAutoOpen: "Abrir aba Atendimento por defeito",
       workflowAttendanceTabAutoOpenHint:
         "Ao entrar em Conversas, abre automaticamente a aba Atendimento quando existirem conversas aguardando atendimento.",
@@ -9262,7 +9262,7 @@ export const messages = {
         "On manual resolution, agents can schedule a follow-up reminder for the contact (same as the Reminders page).",
       workflowAttendanceTab: "«Attendance» tab in Conversations",
       workflowAttendanceTabHint:
-        "Shows a dedicated tab with open (OPEN) conversations waiting for a human agent, with no assignee.",
+        "Shows a dedicated tab with open (OPEN) human-attendance conversations — in the queue or already claimed by an agent.",
       workflowAttendanceTabAutoOpen: "Open Attendance tab by default",
       workflowAttendanceTabAutoOpenHint:
         "When entering Conversations, automatically opens the Attendance tab if conversations are waiting for an agent.",

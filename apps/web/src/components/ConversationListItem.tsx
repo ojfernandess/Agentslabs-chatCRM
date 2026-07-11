@@ -204,6 +204,15 @@ export function ConversationListItem({
             </p>
 
             <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-[10px] text-ink-500 dark:text-ink-400">
+              {hasHumanAssignee &&
+              (conv.status === "OPEN" || conv.status === "PENDING") ? (
+                <span
+                  className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
+                  title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                >
+                  {t("conversations.inAttendance")}
+                </span>
+              ) : null}
               {hasHumanAssignee ? (
                 <span
                   className="inline-flex min-w-0 max-w-[45%] items-center gap-1 truncate"

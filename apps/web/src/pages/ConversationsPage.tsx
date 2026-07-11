@@ -150,6 +150,7 @@ export function ConversationsPage({
     org: 0,
     bot: 0,
     attendanceQueue: 0,
+    attendanceActive: 0,
     mine: 0,
   });
   const [statusCounts, setStatusCounts] = useState({
@@ -379,7 +380,7 @@ export function ConversationsPage({
       return;
     }
 
-    if (scopeCounts.attendanceQueue > 0) {
+    if (scopeCounts.attendanceActive > 0) {
       initialAttendanceScopeApplied.current = true;
       setScopeParam("attendance");
       return;
@@ -391,7 +392,7 @@ export function ConversationsPage({
     scopeCountsLoaded,
     orgAttendanceTabEnabled,
     orgAttendanceTabAutoOpen,
-    scopeCounts.attendanceQueue,
+    scopeCounts.attendanceActive,
     searchParams,
     setScopeParam,
   ]);
@@ -455,16 +456,21 @@ export function ConversationsPage({
       botParams.set("botAttendance", "1");
       const queueParams = new URLSearchParams(base);
       queueParams.set("waitingAttendance", "1");
+      const activeParams = new URLSearchParams(base);
+      activeParams.set("activeAttendance", "1");
       const mineParams = new URLSearchParams(base);
       mineParams.set("mine", "1");
 
-      const [orgRes, botRes, queueRes, mineRes] = await Promise.all([
+      const [orgRes, botRes, queueRes, activeRes, mineRes] = await Promise.all([
         api.get<{ total: number }>(`/conversations?${orgParams}`),
         orgAgentBotTriageActive
           ? api.get<{ total: number }>(`/conversations?${botParams}`)
           : Promise.resolve({ total: 0 }),
         orgAttendanceTabEnabled
           ? api.get<{ total: number }>(`/conversations?${queueParams}`)
+          : Promise.resolve({ total: 0 }),
+        orgAttendanceTabEnabled
+          ? api.get<{ total: number }>(`/conversations?${activeParams}`)
           : Promise.resolve({ total: 0 }),
         api.get<{ total: number }>(`/conversations?${mineParams}`),
       ]);
@@ -473,6 +479,7 @@ export function ConversationsPage({
         org: orgRes.total ?? 0,
         bot: botRes.total ?? 0,
         attendanceQueue: queueRes.total ?? 0,
+        attendanceActive: activeRes.total ?? 0,
         mine: mineRes.total ?? 0,
       });
     } catch {
@@ -762,7 +769,7 @@ export function ConversationsPage({
                   >
                     <Headset className="h-3.5 w-3.5" />
                     {t("conversations.scopeAttendance")}
-                    <ScopeTabCount count={scopeCounts.attendanceQueue} selected={attendanceScopeActive} />
+                    <ScopeTabCount count={scopeCounts.attendanceActive} selected={attendanceScopeActive} />
                   </button>
                 ) : null}
                 <button
