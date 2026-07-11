@@ -12,8 +12,10 @@ type Props = {
   thumbnail?: string | null;
   channelType?: string;
   priority?: ConversationPriority | null;
-  /** list = cartões da lista; detail = cabeçalho da conversa; message = balão no chat. */
-  size?: "list" | "detail" | "message";
+  /** list = cartões da lista; listCompact = lista split-pane; detail = cabeçalho; message = balão. */
+  size?: "list" | "listCompact" | "detail" | "message";
+  /** Atalho para size="listCompact". */
+  compact?: boolean;
   /** Indicador de presença (cabeçalho do detalhe). */
   presenceOnline?: boolean;
   className?: string;
@@ -29,12 +31,21 @@ export function ConversationListAvatar({
   channelType,
   priority,
   size = "list",
+  compact = false,
   presenceOnline,
   className,
 }: Props) {
   const isWhatsApp = channelType === "WHATSAPP";
-  const showPriority = size !== "message" && isConversationPriority(priority);
-  const avatarVariant = size === "detail" ? "detail" : size === "message" ? "message" : "list";
+  const resolvedSize = compact ? "listCompact" : size;
+  const showPriority = resolvedSize !== "message" && isConversationPriority(priority);
+  const avatarVariant =
+    resolvedSize === "detail"
+      ? "detail"
+      : resolvedSize === "message"
+        ? "message"
+        : resolvedSize === "listCompact"
+          ? "listCompact"
+          : "list";
 
   return (
     <div className={clsx("relative shrink-0", className)}>
@@ -59,11 +70,12 @@ export function ConversationListAvatar({
         <span
           className={clsx(
             "absolute flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white shadow-md ring-2 ring-white dark:bg-ink-900 dark:ring-ink-950",
-            size === "detail" ? "-left-0.5 -top-0.5" : "-bottom-0.5 -right-0.5",
+            resolvedSize === "detail" ? "-left-0.5 -top-0.5" : "-bottom-0.5 -right-0.5",
+            resolvedSize === "listCompact" && "h-[18px] w-[18px]",
           )}
           title="WhatsApp"
         >
-          <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+          <WhatsAppBrandIcon className={clsx("h-3.5 w-3.5", resolvedSize === "listCompact" && "h-3 w-3")} />
         </span>
       ) : null}
       {showPriority ? (

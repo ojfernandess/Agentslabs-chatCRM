@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { NavLink, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone } from "lucide-react";
 import clsx from "clsx";
-import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
@@ -17,13 +16,10 @@ import {
   ConversationContextMenu,
   type ConversationContextTarget,
 } from "@/components/ConversationContextMenu";
-import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
-import { ConversationListAvatar } from "@/components/ConversationListAvatar";
-import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
+import { ConversationListItem } from "@/components/ConversationListItem";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
-import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
-import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
+import type { ConversationPriority } from "@/lib/conversationPriority";
 import {
   getCachedConversation,
   getInflightConversation,
@@ -62,12 +58,6 @@ interface Conversation {
   messages: { body: string | null; direction: string; createdAt: string; type?: string }[];
   activeVoiceCall?: ActiveVoiceCall | null;
 }
-
-const statusColors: Record<string, string> = {
-  OPEN: "bg-green-100 text-green-700 dark:bg-emerald-950/55 dark:text-emerald-200",
-  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-950/45 dark:text-amber-200",
-  RESOLVED: "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
-};
 
 function ScopeTabCount({ count, selected }: { count: number; selected: boolean }) {
   return (
@@ -624,6 +614,13 @@ export function ConversationsPage({
     { key: "RESOLVED", label: t("conversations.filterResolved") },
   ];
 
+  const scopePillClass = splitView
+    ? "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold transition-colors"
+    : "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors";
+  const statusPillClass = splitView
+    ? "rounded-full px-2 py-1 text-[11px] font-semibold transition-colors"
+    : "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors";
+
   return (
     <PageTransition>
       <div className={clsx("relative h-full min-h-0", splitView && "flex flex-col")}>
@@ -745,14 +742,19 @@ export function ConversationsPage({
                 : "card-surface",
             )}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
-              <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={clsx(
+                "flex flex-col gap-2 border-b border-ink-100 bg-white/70 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25",
+                splitView ? "px-2 py-2" : "flex-wrap items-center justify-between gap-3 px-4 py-3",
+              )}
+            >
+              <div className={clsx("flex flex-wrap items-center gap-1.5", splitView && "gap-1")}>
                 {orgAttendanceTabEnabled ? (
                   <button
                     type="button"
                     onClick={() => setScopeParam("attendance")}
                     className={clsx(
-                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      scopePillClass,
                       attendanceScopeActive
                         ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                         : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -767,7 +769,7 @@ export function ConversationsPage({
                   type="button"
                   onClick={() => setScopeParam("org")}
                   className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    scopePillClass,
                     !mineActive && !botAttendanceActive && !attendanceScopeActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -785,7 +787,7 @@ export function ConversationsPage({
                     type="button"
                     onClick={() => setScopeParam("mine")}
                     className={clsx(
-                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      scopePillClass,
                       mineActive
                         ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                         : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -801,7 +803,7 @@ export function ConversationsPage({
                     type="button"
                     onClick={() => setScopeParam("bot")}
                     className={clsx(
-                      "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                      scopePillClass,
                       botAttendanceActive
                         ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                         : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -823,7 +825,7 @@ export function ConversationsPage({
                       type="button"
                       onClick={() => setStatusFilter(f.key)}
                       className={clsx(
-                        "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                        statusPillClass,
                         statusFilter === f.key
                           ? "bg-white text-ink-900 shadow-sm dark:bg-ink-950 dark:text-ink-50"
                           : "text-ink-600 hover:bg-ink-200/70 dark:text-ink-300 dark:hover:bg-ink-900",
@@ -848,8 +850,8 @@ export function ConversationsPage({
                 </div>
                 ) : null}
 
-                <div className="hidden items-center gap-2 md:flex">
-                  <UsersRound className="h-4 w-4 shrink-0 text-ink-400 dark:text-ink-500" />
+                <div className={clsx("flex items-center gap-1.5", splitView ? "w-full" : "hidden gap-2 md:flex")}>
+                  <UsersRound className="h-3.5 w-3.5 shrink-0 text-ink-400 dark:text-ink-500" />
                   <label htmlFor="conv-team-filter" className="sr-only">
                     {t("conversations.filterTeam")}
                   </label>
@@ -857,7 +859,10 @@ export function ConversationsPage({
                     id="conv-team-filter"
                     value={teamFilter}
                     onChange={(e) => setTeamFilterUrl(e.target.value)}
-                    className="h-10 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
+                    className={clsx(
+                      "min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100",
+                      splitView ? "h-8" : "h-10 rounded-xl px-2.5 text-xs",
+                    )}
                   >
                     <option value="">{t("conversations.allTeams")}</option>
                     {teamOptions.map((opt) => (
@@ -866,7 +871,7 @@ export function ConversationsPage({
                       </option>
                     ))}
                   </select>
-                  <Inbox className="h-4 w-4 shrink-0 text-ink-400 dark:text-ink-500" />
+                  <Inbox className="h-3.5 w-3.5 shrink-0 text-ink-400 dark:text-ink-500" />
                   <label htmlFor="conv-inbox-filter" className="sr-only">
                     {t("conversations.filterInbox")}
                   </label>
@@ -874,7 +879,10 @@ export function ConversationsPage({
                     id="conv-inbox-filter"
                     value={inboxFilter}
                     onChange={(e) => setInboxFilterUrl(e.target.value)}
-                    className="h-10 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
+                    className={clsx(
+                      "min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100",
+                      splitView ? "h-8" : "h-10 rounded-xl px-2.5 text-xs",
+                    )}
                   >
                     <option value="">{t("conversations.allInboxes")}</option>
                     {inboxOptions.map((opt) => (
@@ -888,12 +896,17 @@ export function ConversationsPage({
             </div>
 
             {orgAttendanceTabEnabled && attendanceScopeActive ? (
-              <div className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/15">
+              <div
+                className={clsx(
+                  "flex flex-wrap items-center border-b border-ink-100 bg-white/50 dark:border-ink-800 dark:bg-ink-950/15",
+                  splitView ? "gap-1.5 px-2 py-1.5" : "gap-2 px-4 py-2",
+                )}
+              >
                 <button
                   type="button"
                   onClick={() => setAttendanceSubView("queue")}
                   className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    scopePillClass,
                     !mineActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -907,7 +920,7 @@ export function ConversationsPage({
                   type="button"
                   onClick={() => setAttendanceSubView("mine")}
                   className={clsx(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    scopePillClass,
                     mineActive
                       ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
                       : "bg-ink-100 text-ink-700 hover:bg-ink-200 dark:bg-ink-900/60 dark:text-ink-200 dark:hover:bg-ink-900",
@@ -920,7 +933,7 @@ export function ConversationsPage({
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+            <div className={clsx("min-h-0 flex-1 overflow-y-auto", splitView ? "p-0" : "p-3 sm:p-4")}>
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
@@ -961,189 +974,33 @@ export function ConversationsPage({
                   </p>
                 </motion.div>
               ) : (
-                <div className="space-y-2">
-                  {filteredConversations.map((conv) => {
-                    const lastMessage = conv.messages?.[0];
-                    const isSelected = splitView && activeThreadId === conv.id;
-                    return (
-                      <div
-                        key={conv.id}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setContextMenu({
-                            target: {
-                              id: conv.id,
-                              status: conv.status,
-                              priority: conv.priority ?? null,
-                              isUnread: conv.isUnread,
-                              contact: { id: conv.contact.id, name: conv.contact.name },
-                            },
-                            position: { x: e.clientX, y: e.clientY },
-                          });
-                        }}
-                      >
-                        <div
-                          className={clsx(
-                            "flex items-center gap-1",
-                            "rounded-2xl border transition-all",
-                            "border-ink-200 bg-white/80 shadow-sm hover:-translate-y-0.5 hover:shadow-md",
-                            "dark:border-ink-800 dark:bg-ink-950/20 dark:shadow-none dark:hover:border-ink-700 dark:hover:bg-ink-900/30",
-                            priorityListCardClass(conv.priority),
-                            conv.priority === "URGENT" && "dark:hover:border-red-500/80",
-                            conv.isUnread &&
-                              "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
-                            isSelected &&
-                              "border-brand-400 bg-brand-50/70 ring-2 ring-brand-400/35 shadow-md dark:border-brand-500/60 dark:bg-brand-950/40 dark:ring-brand-400/30",
-                          )}
-                        >
-                        <NavLink
-                          to={`/conversations/${conv.id}${conversationLinkSuffix}`}
-                          preventScrollReset
-                          onMouseDown={() => prefetchConversation(conv.id)}
-                          onMouseEnter={() => prefetchConversation(conv.id)}
-                          onFocus={() => prefetchConversation(conv.id)}
-                          className="group flex min-w-0 flex-1 items-center gap-4 p-4"
-                        >
-                          <ConversationListAvatar
-                            contactId={conv.contact.id}
-                            contactName={conv.contact.name}
-                            profilePictureUrl={conv.contact.profilePictureUrl}
-                            hasAvatar={conv.contact.hasAvatar}
-                            thumbnail={conv.contact.thumbnail}
-                            channelType={conv.inbox?.channelType}
-                            priority={conv.priority}
-                          />
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {conv.isUnread ? (
-                                <span
-                                  className="h-2 w-2 shrink-0 rounded-full bg-brand-500 ring-2 ring-brand-200 dark:ring-brand-900/50"
-                                  title={t("conversations.unreadBadge")}
-                                  aria-hidden
-                                />
-                              ) : null}
-                              <span
-                                className={clsx(
-                                  "truncate text-ink-900 dark:text-ink-50",
-                                  conv.isUnread ? "font-bold" : "font-semibold",
-                                )}
-                              >
-                                {conv.contact.name}
-                              </span>
-                              {isConversationPriority(conv.priority) ? (
-                                <ConversationPriorityBadge priority={conv.priority} />
-                              ) : null}
-                              <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-semibold", statusColors[conv.status])}>
-                                {statusLabel(conv.status)}
-                              </span>
-                              {conv.inbox ? (
-                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200">
-                                  {conv.inbox.name}
-                                </span>
-                              ) : null}
-                              {typeof conv.assignedTo?.id === "string" &&
-                              conv.assignedTo.id.length > 0 &&
-                              (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                                <span
-                                  className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-100"
-                                  title={`${conv.assignedTo.name} · ${t("conversations.inAttendance")}`}
-                                >
-                                  <UserCircle className="h-3 w-3 shrink-0" aria-hidden />
-                                  <span className="truncate">{conv.assignedTo.name}</span>
-                                  <span className="shrink-0 opacity-90">· {t("conversations.inAttendance")}</span>
-                                </span>
-                              ) : conv.assignedTo?.name ? (
-                                <span
-                                  className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
-                                  title={`${t("conversations.listAssignee")}: ${conv.assignedTo.name}`}
-                                >
-                                  <UserCircle className="h-3 w-3 shrink-0" aria-hidden />
-                                  <span className="truncate">{conv.assignedTo.name}</span>
-                                </span>
-                              ) : null}
-                              <ConversationVoiceCallListBadge activeVoiceCall={conv.activeVoiceCall} />
-                              {conv.awaitingHumanHandoff &&
-                              !(typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0) ? (
-                                <span
-                                  className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-900 dark:bg-red-950/45 dark:text-red-100"
-                                  title={t("conversationDetail.awaitingHumanBanner")}
-                                >
-                                  {t("conversationDetail.awaitingHumanBadge")}
-                                </span>
-                              ) : null}
-                              {conv.agentBotTriageActive && !conv.awaitingHumanHandoff && (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
-                                  title={t("conversationDetail.botTriageBanner")}
-                                >
-                                  <Bot className="h-3.5 w-3.5" />
-                                  {typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0
-                                    ? t("conversationDetail.transferToBot")
-                                    : t("conversationDetail.botInAttendance")}
-                                </span>
-                              ) : null}
-                              {conv.status === "RESOLVED" && conv.leadType ? (
-                                <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: conv.leadType.color }}>
-                                  {conv.leadType.name}
-                                </span>
-                              ) : null}
-                              {conv.status === "RESOLVED" && conv.closureValue != null && conv.closureValue > 0 ? (
-                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200">
-                                  {fmtMoney(conv.closureValue)}
-                                </span>
-                              ) : null}
-                              {orgListShowContactTags
-                                ? filterTagsForDisplay(conv.contact.tags ?? []).map(({ tag }) => (
-                                    <span
-                                      key={tag.id}
-                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-                                      style={{ backgroundColor: tag.color }}
-                                    >
-                                      {tag.name}
-                                    </span>
-                                  ))
-                                : null}
-                            </div>
-                            <p
-                              className={clsx(
-                                "mt-1 line-clamp-1 text-sm",
-                                conv.isUnread
-                                  ? "font-medium text-ink-800 dark:text-ink-200"
-                                  : "text-ink-600 dark:text-ink-400",
-                              )}
-                            >
-                              {formatMessageBodyForPreview(lastMessage?.body, {
-                                messageType: lastMessage?.type,
-                              }) || t("conversations.noMessages")}
-                            </p>
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-ink-500 dark:text-ink-500">
-                            <Clock className="h-3.5 w-3.5" />
-                            {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
-                          </div>
-                        </NavLink>
-                        <div className="flex shrink-0 items-center justify-center pr-3">
-                          <TelephonyCallButton
-                            phone={conv.contact.phone}
-                            inboxId={conv.inbox?.id}
-                            conversationId={conv.id}
-                            contactId={conv.contact.id}
-                            activeVoiceCall={conv.activeVoiceCall}
-                            iconOnly
-                            stopPropagation
-                            peerOnCall={(() => {
-                              const call = conv.activeVoiceCall;
-                              if (!call?.agent?.id || call.agent.id === user?.id) return null;
-                              return { agentName: call.agent.name };
-                            })()}
-                          />
-                        </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div>
+                  {filteredConversations.map((conv) => (
+                    <ConversationListItem
+                      key={conv.id}
+                      conv={conv}
+                      isSelected={Boolean(splitView && activeThreadId === conv.id)}
+                      linkTo={`/conversations/${conv.id}${conversationLinkSuffix}`}
+                      statusLabel={statusLabel}
+                      fmtMoney={fmtMoney}
+                      showContactTags={orgListShowContactTags}
+                      currentUserId={user?.id}
+                      onPrefetch={() => prefetchConversation(conv.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenu({
+                          target: {
+                            id: conv.id,
+                            status: conv.status,
+                            priority: conv.priority ?? null,
+                            isUnread: conv.isUnread,
+                            contact: { id: conv.contact.id, name: conv.contact.name },
+                          },
+                          position: { x: e.clientX, y: e.clientY },
+                        });
+                      }}
+                    />
+                  ))}
                 </div>
               )}
             </div>

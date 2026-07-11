@@ -30,7 +30,7 @@ function gradientForName(name: string): (typeof INITIAL_GRADIENTS)[number] {
   return INITIAL_GRADIENTS[h % INITIAL_GRADIENTS.length]!;
 }
 
-export type ContactAvatarVariant = "default" | "list" | "detail" | "message";
+export type ContactAvatarVariant = "default" | "list" | "listCompact" | "detail" | "message";
 
 type Props = {
   contactId: string;
@@ -85,13 +85,15 @@ export function ContactAvatar({
   const sizeClass =
     variant === "list"
       ? "h-[3.25rem] w-[3.25rem] text-sm"
-      : variant === "detail"
+      : variant === "listCompact"
+        ? "h-10 w-10 text-xs"
+        : variant === "detail"
         ? "h-12 w-12 text-sm"
         : variant === "message"
           ? "h-8 w-8 text-[10px]"
           : "h-10 w-10 text-[10px]";
 
-  const lazy = variant === "list";
+  const lazy = variant === "list" || variant === "listCompact";
 
   return (
     <span
