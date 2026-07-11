@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone } from "lucide-react";
 import clsx from "clsx";
@@ -24,6 +24,12 @@ import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
+import {
+  getCachedConversation,
+  getInflightConversation,
+  setCachedConversation,
+  setInflightConversation,
+} from "@/lib/conversationDetailCache";
 function conversationLeadTypeId(conv: Conversation): string | null {
   return conv.leadType?.id ?? conv.contact.pipelineStage?.leadTypeId ?? null;
 }
@@ -121,6 +127,21 @@ export function ConversationsPage() {
   } | null>(null);
   const hasAnimated = useRef(false);
   const initialAttendanceScopeApplied = useRef(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const threadMatch = useMatch("/conversations/:id");
+  const activeThreadId = threadMatch?.params.id ?? null;
+
+  const prefetchConversation = useCallback((conversationId: string) => {
+    if (getCachedConversation(conversationId)) return;
+    const existing = getInflightConversation(conversationId);
+    if (existing) return;
+    const promise = api.get(`/conversations/${conversationId}`).then((data) => {
+      setCachedConversation(conversationId, data);
+      return data;
+    });
+    setInflightConversation(conversationId, promise);
+  }, []);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -594,13 +615,21 @@ export function ConversationsPage() {
 
   return (
     <PageTransition>
-      <div className="relative h-full min-h-0">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
-        <div className="relative flex h-full min-h-0 w-full flex-col gap-4 p-4 sm:p-6 lg:p-8">
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <aside
+            className={clsx(
+              "flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
+              activeThreadId && "hidden lg:flex",
+            )}
+          >
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_80%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
+              <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4 lg:gap-2 lg:p-3">
+          <header className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between lg:gap-2">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("conversations.title")}</h1>
-              <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("conversations.subtitle")}</p>
+              <h1 className="text-xl font-bold tracking-tight text-ink-900 dark:text-ink-50 lg:text-lg">{t("conversations.title")}</h1>
+              <p className="mt-0.5 text-xs text-ink-600 dark:text-ink-400 lg:hidden">{t("conversations.subtitle")}</p>
             </div>
             <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-4xl">
               <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
@@ -673,7 +702,7 @@ export function ConversationsPage() {
             </div>
           </header>
 
-          <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden">
+          <section className="card-surface flex min-h-0 flex-1 flex-col overflow-hidden lg:rounded-xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-white/70 px-4 py-3 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25">
               <div className="flex flex-wrap items-center gap-2">
                 {orgAttendanceTabEnabled ? (
@@ -922,9 +951,19 @@ export function ConversationsPage() {
                               "border-brand-300/80 bg-brand-50/40 ring-1 ring-brand-400/25 dark:border-brand-500/40 dark:bg-brand-950/25 dark:ring-brand-400/20",
                           )}
                         >
-                        <Link
-                          to={`/conversations/${conv.id}`}
-                          className="group flex min-w-0 flex-1 items-center gap-4 p-4"
+                        <NavLink
+                          to={{ pathname: conv.id, search: location.search }}
+                          preventScrollReset
+                          onMouseDown={() => prefetchConversation(conv.id)}
+                          onMouseEnter={() => prefetchConversation(conv.id)}
+                          onFocus={() => prefetchConversation(conv.id)}
+                          className={({ isActive }) =>
+                            clsx(
+                              "group flex min-w-0 flex-1 items-center gap-4 p-4 transition-colors",
+                              (isActive || activeThreadId === conv.id) &&
+                                "rounded-2xl bg-brand-50/60 ring-1 ring-brand-400/30 dark:bg-brand-950/30 dark:ring-brand-500/25",
+                            )
+                          }
                         >
                           <ConversationListAvatar
                             contactId={conv.contact.id}
@@ -1045,7 +1084,7 @@ export function ConversationsPage() {
                             <Clock className="h-3.5 w-3.5" />
                             {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: dateLocale })}
                           </div>
-                        </Link>
+                        </NavLink>
                         <div className="flex shrink-0 items-center justify-center pr-3">
                           <TelephonyCallButton
                             phone={conv.contact.phone}
@@ -1070,6 +1109,17 @@ export function ConversationsPage() {
               )}
             </div>
           </section>
+              </div>
+            </div>
+          </aside>
+          <main
+            className={clsx(
+              "min-h-0 flex min-w-0 flex-col bg-ink-50 dark:bg-[#0E1624]",
+              !activeThreadId && "hidden lg:flex",
+            )}
+          >
+            <Outlet context={{ refreshList: loadConversations }} />
+          </main>
         </div>
       </div>
       <ConversationsStartChatModal
@@ -1114,8 +1164,26 @@ export function ConversationsPage() {
         onDeleted={(conversationId) => {
           setConversations((prev) => prev.filter((c) => c.id !== conversationId));
           setContextMenu(null);
+          if (activeThreadId === conversationId) {
+            navigate({ pathname: "/conversations", search: location.search }, { replace: true });
+          }
         }}
       />
     </PageTransition>
+  );
+}
+
+export type ConversationsOutletContext = {
+  refreshList: () => Promise<void>;
+};
+
+export function ConversationsThreadPlaceholder() {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+      <MessageSquare className="mb-3 h-12 w-12 text-brand-500/70" />
+      <p className="text-sm font-medium text-ink-800 dark:text-ink-100">{t("conversations.selectThread")}</p>
+      <p className="mt-1 max-w-sm text-xs text-ink-500">{t("conversations.selectThreadHint")}</p>
+    </div>
   );
 }

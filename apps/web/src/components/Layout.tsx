@@ -301,9 +301,9 @@ export function Layout() {
   const showTeamsNav = tenantAdmin || sidebarTeams.length > 0;
 
   const conversationTeamId =
-    location.pathname === "/conversations" ? new URLSearchParams(location.search).get("teamId") : null;
+    location.pathname.startsWith("/conversations") ? new URLSearchParams(location.search).get("teamId") : null;
   const conversationInboxId =
-    location.pathname === "/conversations" ? new URLSearchParams(location.search).get("inboxId") : null;
+    location.pathname.startsWith("/conversations") ? new URLSearchParams(location.search).get("inboxId") : null;
 
   const fetchSidebarTeams = useCallback(() => {
     if (!user) {
@@ -537,7 +537,7 @@ export function Layout() {
                   to="/conversations"
                   title={collapsed ? t("nav.conversations") : undefined}
                   className={navItemClass(
-                    location.pathname === "/conversations" && !conversationTeamId && !conversationInboxId,
+                    location.pathname.startsWith("/conversations") && !conversationTeamId && !conversationInboxId,
                     collapsed,
                   )}
                 >

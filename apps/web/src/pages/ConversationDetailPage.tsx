@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useParams, Link, useNavigate, useMatch, useOutletContext } from "react-router-dom";
+import { useParams, Link, useNavigate, useMatch, useOutletContext, useLocation } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
 import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
@@ -283,10 +283,19 @@ function messageGroupedWithPrevious(messages: Message[], index: number): boolean
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const emailLayoutMatch = useMatch("/inboxes/:inboxId/email/c/:id");
+  const conversationsLayoutMatch = useMatch("/conversations/:id");
+  const splitPaneMode = Boolean(conversationsLayoutMatch);
   const emailInboxId = emailLayoutMatch?.params.inboxId;
   const isEmailLayout = Boolean(emailLayoutMatch);
   const emailOutlet = useOutletContext<import("@/pages/EmailInboxLayout").EmailInboxOutletContext | undefined>();
+  const conversationsOutlet = useOutletContext<import("@/pages/ConversationsPage").ConversationsOutletContext | undefined>();
+
+  const refreshParentList = useCallback(() => {
+    void conversationsOutlet?.refreshList?.();
+    void emailOutlet?.refreshThreads?.();
+  }, [conversationsOutlet, emailOutlet]);
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
@@ -333,7 +342,7 @@ export function ConversationDetailPage() {
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
-  const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
+  const [crmDesktopOpen, setCrmDesktopOpen] = useState(false);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
   const [pilotFlags, setPilotFlags] = useState<{
@@ -397,6 +406,16 @@ export function ConversationDetailPage() {
       setCrmMobileOpen(false);
     }
   }, [isEmailLayout]);
+
+  useEffect(() => {
+    setCrmDesktopOpen(false);
+    setCrmMobileOpen(false);
+    setCopilotDesktopOpen(false);
+    setCopilotMobileOpen(false);
+    setCopilotBusy(false);
+    setCopilotError("");
+    setCopilotInsights(null);
+  }, [id]);
 
   const toggleEmailCrmPanel = useCallback(() => {
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
@@ -1127,6 +1146,7 @@ export function ConversationDetailPage() {
       setVoicePreview(null);
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
+      void refreshParentList();
     } catch {
       setFlowError(t("conversationDetail.voiceSendFailed"));
     } finally {
@@ -1215,7 +1235,7 @@ export function ConversationDetailPage() {
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
-      void emailOutlet?.refreshThreads?.();
+      void refreshParentList();
     } catch {
       setFlowError(
         conversation.inbox?.channelType === "EMAIL" || isEmailLayout
@@ -1264,7 +1284,7 @@ export function ConversationDetailPage() {
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
-      void emailOutlet?.refreshThreads();
+      void refreshParentList();
     } catch (err) {
       setFlowError(
         err instanceof ApiError
@@ -1346,6 +1366,7 @@ export function ConversationDetailPage() {
       if (extra?.resolveReminder) {
         dispatchRemindersUpdated();
       }
+      void refreshParentList();
       if (status === "RESOLVED" && resolveNextIdRef.current) {
         const nextId = resolveNextIdRef.current;
         resolveNextIdRef.current = null;
@@ -2588,7 +2609,9 @@ export function ConversationDetailPage() {
         "relative flex h-full min-h-0",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
-          : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
+          : splitPaneMode
+            ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row"
+            : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
       {!emailWorkspaceMode ? (
@@ -2604,7 +2627,7 @@ export function ConversationDetailPage() {
                   className="mt-0.5 shrink-0 rounded-lg p-2 text-ink-500 transition hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800 dark:hover:text-ink-100"
                   title={t("inboxesPage.emailWorkspace.backToInbox")}
                   onClick={() => {
-                    void emailOutlet?.refreshThreads?.();
+                    void refreshParentList();
                   }}
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -2670,8 +2693,11 @@ export function ConversationDetailPage() {
         >
           <div className="flex items-start gap-3">
             <Link
-              to={emailInboxId ? `/inboxes/${emailInboxId}/email` : "/conversations"}
-              className="mt-1 rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+              to={splitPaneMode ? { pathname: "/conversations", search: location.search } : "/conversations"}
+              className={clsx(
+                "mt-1 rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200",
+                splitPaneMode && "lg:hidden",
+              )}
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
@@ -3691,7 +3717,9 @@ export function ConversationDetailPage() {
             ? crmDesktopOpen
               ? "hidden xl:flex w-[min(100%,320px)]"
               : "hidden"
-            : clsx("hidden xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
+            : crmDesktopOpen
+              ? "hidden xl:flex w-[min(100%,380px)]"
+              : "hidden",
         )}
       >
         <div
