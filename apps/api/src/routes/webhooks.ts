@@ -498,6 +498,14 @@ async function handleWhatsAppPost(
         }
       }
 
+      if (contact.isBlocked) {
+        app.log.info(
+          { organizationId, contactId: contact.id, phone },
+          "Ignoring inbound WhatsApp message from blocked contact",
+        );
+        continue;
+      }
+
       let conversation = await ensureConversationForChannelInbox({
         organizationId,
         contactId: contact.id,

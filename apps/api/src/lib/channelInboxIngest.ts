@@ -55,6 +55,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   conversationId: string;
   messageId: string;
   contactId: string;
+  accepted: boolean;
 }> {
   const {
     organizationId,
@@ -148,6 +149,14 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     }
   }
 
+  if (contact.isBlocked) {
+    log.info(
+      { organizationId, contactId: contact.id, channelType, inboxId },
+      "Inbound message ignored: contact is blocked",
+    );
+    return { conversationId: "", messageId: "", contactId: contact.id, accepted: false };
+  }
+
   if (externalMessageId) {
     const existing = await prisma.message.findFirst({
       where: {
@@ -180,6 +189,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
         conversationId: existing.conversationId,
         messageId: existing.id,
         contactId: existing.conversation.contactId,
+        accepted: true,
       };
     }
   }
@@ -375,5 +385,6 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     conversationId: conversation.id,
     messageId: inbound.id,
     contactId: contact.id,
+    accepted: true,
   };
 }

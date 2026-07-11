@@ -278,7 +278,7 @@ export async function syncInboxEmailViaImap(options: {
         let imported = false;
 
         if (htmlBody || cleanedText || inboundAttachments.length === 0) {
-          await processChannelInboxInbound({
+          const result = await processChannelInboxInbound({
             ...baseInbound,
             body: htmlBody
               ? composeEmailInboundBody(parsed.subject, htmlBody, { html: true })
@@ -286,7 +286,7 @@ export async function syncInboxEmailViaImap(options: {
             type: "TEXT",
             externalMessageId: messageId,
           });
-          imported = true;
+          if (result.accepted) imported = true;
         }
 
         for (let i = 0; i < inboundAttachments.length; i += 1) {
@@ -303,7 +303,7 @@ export async function syncInboxEmailViaImap(options: {
             continue;
           }
           const attName = att.filename?.trim() || undefined;
-          await processChannelInboxInbound({
+          const result = await processChannelInboxInbound({
             ...baseInbound,
             body: attName ?? composeEmailInboundBody(parsed.subject, textBody),
             type: messageTypeForAttachment(att.contentType),
@@ -311,7 +311,7 @@ export async function syncInboxEmailViaImap(options: {
             mediaType: stored.mediaType,
             externalMessageId: `${messageId}#att-${i}`,
           });
-          imported = true;
+          if (result.accepted) imported = true;
         }
 
         if (imported) processed += 1;
