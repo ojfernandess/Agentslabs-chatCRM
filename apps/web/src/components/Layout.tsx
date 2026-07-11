@@ -301,9 +301,13 @@ export function Layout() {
   const showTeamsNav = tenantAdmin || sidebarTeams.length > 0;
 
   const conversationTeamId =
-    location.pathname.startsWith("/conversations") ? new URLSearchParams(location.search).get("teamId") : null;
+    location.pathname.startsWith("/conversations")
+      ? new URLSearchParams(location.search).get("teamId")
+      : null;
   const conversationInboxId =
-    location.pathname.startsWith("/conversations") ? new URLSearchParams(location.search).get("inboxId") : null;
+    location.pathname.startsWith("/conversations")
+      ? new URLSearchParams(location.search).get("inboxId")
+      : null;
 
   const fetchSidebarTeams = useCallback(() => {
     if (!user) {

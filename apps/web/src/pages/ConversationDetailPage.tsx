@@ -283,17 +283,13 @@ function messageGroupedWithPrevious(messages: Message[], index: number): boolean
 export function ConversationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const emailLayoutMatch = useMatch("/inboxes/:inboxId/email/c/:id");
-  const conversationsLayoutMatch = useMatch("/conversations/:id");
-  const splitPaneMode = Boolean(conversationsLayoutMatch);
   const emailInboxId = emailLayoutMatch?.params.inboxId;
   const isEmailLayout = Boolean(emailLayoutMatch);
   const emailOutlet = useOutletContext<import("@/pages/EmailInboxLayout").EmailInboxOutletContext | undefined>();
-  const conversationsOutlet = useOutletContext<import("@/pages/ConversationsPage").ConversationsOutletContext | undefined>();
-
-  const refreshParentList = useCallback(() => {
-    void conversationsOutlet?.refreshList?.();
-    void emailOutlet?.refreshThreads?.();
-  }, [conversationsOutlet, emailOutlet]);
+  const conversationsOutlet =
+    useOutletContext<import("@/pages/ConversationsLayout").ConversationsOutletContext | undefined>();
+  const isSplitLayout = Boolean(conversationsOutlet?.refreshList);
+  const isEmbeddedLayout = isEmailLayout || isSplitLayout;
   const navigate = useNavigate();
   const location = useLocation();
   const { t, dateLocale } = useI18n();
@@ -342,7 +338,7 @@ export function ConversationDetailPage() {
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
-  const [crmDesktopOpen, setCrmDesktopOpen] = useState(false);
+  const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
   const [pilotFlags, setPilotFlags] = useState<{
@@ -406,16 +402,6 @@ export function ConversationDetailPage() {
       setCrmMobileOpen(false);
     }
   }, [isEmailLayout]);
-
-  useEffect(() => {
-    setCrmDesktopOpen(false);
-    setCrmMobileOpen(false);
-    setCopilotDesktopOpen(false);
-    setCopilotMobileOpen(false);
-    setCopilotBusy(false);
-    setCopilotError("");
-    setCopilotInsights(null);
-  }, [id]);
 
   const toggleEmailCrmPanel = useCallback(() => {
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
@@ -515,14 +501,14 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     // No workspace de e-mail o utilizador lê de cima para baixo — não forçar o fundo.
-    stickToBottomRef.current = !isEmailLayout;
-    if (isEmailLayout) {
+    stickToBottomRef.current = !isEmbeddedLayout;
+    if (isEmbeddedLayout) {
       const el = messagesViewportRef.current;
       if (el) el.scrollTop = 0;
     }
     setEmailSubject("");
     setEmailRecipients({ to: [], cc: [], bcc: [] });
-  }, [id, isEmailLayout]);
+  }, [id, isEmbeddedLayout]);
 
   useEffect(() => {
     const email = conversation?.contact.email?.trim().toLowerCase();
@@ -694,19 +680,19 @@ export function ConversationDetailPage() {
         const nextId = nextConversationId("next");
         if (!nextId) return;
         e.preventDefault();
-        navigate(`/conversations/${nextId}`);
+        navigate(`/conversations/${nextId}${location.search}`);
         return;
       }
       if (e.altKey && k === "k") {
         const prevId = nextConversationId("prev");
         if (!prevId) return;
         e.preventDefault();
-        navigate(`/conversations/${prevId}`);
+        navigate(`/conversations/${prevId}${location.search}`);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [id, navigate, nextConversationId, openResolveModal]);
+  }, [id, navigate, nextConversationId, openResolveModal, location.search]);
 
   const onMessagesViewportScroll = useCallback(() => {
     const el = messagesViewportRef.current;
@@ -971,9 +957,9 @@ export function ConversationDetailPage() {
       void loadConversation({ silent: true });
       return;
     }
-    if (!isEmailLayout) setLoading(true);
-    void loadConversation({ silent: isEmailLayout });
-  }, [id, isEmailLayout, loadConversation]);
+    if (!isEmbeddedLayout) setLoading(true);
+    void loadConversation({ silent: isEmbeddedLayout });
+  }, [id, isEmbeddedLayout, loadConversation]);
 
   useEffect(() => {
     if (!id) return;
@@ -1015,7 +1001,7 @@ export function ConversationDetailPage() {
   }, [id, loadConversation]);
 
   useEffect(() => {
-    if (isEmailLayout) return;
+    if (isEmbeddedLayout) return;
     if (!stickToBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [conversation?.messages, isEmailLayout]);
@@ -1146,7 +1132,6 @@ export function ConversationDetailPage() {
       setVoicePreview(null);
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
-      void refreshParentList();
     } catch {
       setFlowError(t("conversationDetail.voiceSendFailed"));
     } finally {
@@ -1235,7 +1220,8 @@ export function ConversationDetailPage() {
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
-      void refreshParentList();
+      void emailOutlet?.refreshThreads?.();
+      void conversationsOutlet?.refreshList?.();
     } catch {
       setFlowError(
         conversation.inbox?.channelType === "EMAIL" || isEmailLayout
@@ -1284,7 +1270,8 @@ export function ConversationDetailPage() {
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
       await loadConversation();
-      void refreshParentList();
+      void emailOutlet?.refreshThreads();
+      void conversationsOutlet?.refreshList?.();
     } catch (err) {
       setFlowError(
         err instanceof ApiError
@@ -1366,11 +1353,10 @@ export function ConversationDetailPage() {
       if (extra?.resolveReminder) {
         dispatchRemindersUpdated();
       }
-      void refreshParentList();
       if (status === "RESOLVED" && resolveNextIdRef.current) {
         const nextId = resolveNextIdRef.current;
         resolveNextIdRef.current = null;
-        navigate(`/conversations/${nextId}`);
+        navigate(`/conversations/${nextId}${location.search}`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -1714,7 +1700,7 @@ export function ConversationDetailPage() {
     [conversation?.messages, t],
   );
 
-  if (loading && !isEmailLayout) {
+  if (loading && !isEmbeddedLayout) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
@@ -1723,7 +1709,7 @@ export function ConversationDetailPage() {
   }
 
   if (!conversation || conversation.id !== id) {
-    if (isEmailLayout) {
+    if (isEmbeddedLayout) {
       return (
         <div className="flex h-full min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624]">
           <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
@@ -1779,9 +1765,6 @@ export function ConversationDetailPage() {
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
   const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
-  const sidePanelDesktopOpen = crmDesktopOpen || copilotDesktopOpen;
-  const chatThreadWidthClass =
-    splitPaneMode && !emailWorkspaceMode ? "mx-auto w-full max-w-4xl" : "w-full";
   const contactEmail = contactEmailDisplay(conversation.contact);
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
@@ -2609,26 +2592,16 @@ export function ConversationDetailPage() {
   return (
     <div
       className={clsx(
-        "relative flex h-full min-h-0 w-full",
+        "relative flex h-full min-h-0",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
-          : splitPaneMode
-            ? clsx(
-                "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624]",
-                sidePanelDesktopOpen && "xl:flex-row",
-              )
-            : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
+          : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
       {!emailWorkspaceMode ? (
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
       ) : null}
-      <div
-        className={clsx(
-          "relative flex min-h-0 min-w-0 flex-1 flex-col",
-          splitPaneMode && !emailWorkspaceMode && "xl:pr-14",
-        )}
-      >
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {emailWorkspaceMode ? (
           <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2638,7 +2611,8 @@ export function ConversationDetailPage() {
                   className="mt-0.5 shrink-0 rounded-lg p-2 text-ink-500 transition hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800 dark:hover:text-ink-100"
                   title={t("inboxesPage.emailWorkspace.backToInbox")}
                   onClick={() => {
-                    void refreshParentList();
+                    void emailOutlet?.refreshThreads?.();
+      void conversationsOutlet?.refreshList?.();
                   }}
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -2702,13 +2676,21 @@ export function ConversationDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
-          <div className={clsx("flex items-start gap-3", chatThreadWidthClass)}>
+          <div className="flex items-start gap-3">
             <Link
-              to={splitPaneMode ? { pathname: "/conversations", search: location.search } : "/conversations"}
+              to={
+                emailInboxId
+                  ? `/inboxes/${emailInboxId}/email`
+                  : `/conversations${location.search}`
+              }
               className={clsx(
                 "mt-1 rounded-xl p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-ink-200",
-                splitPaneMode && "lg:hidden",
+                isSplitLayout && "lg:hidden",
               )}
+              onClick={() => {
+                void emailOutlet?.refreshThreads?.();
+                void conversationsOutlet?.refreshList?.();
+              }}
             >
               <ArrowLeft className="h-5 w-5" />
             </Link>
@@ -2879,7 +2861,7 @@ export function ConversationDetailPage() {
             </div>
           </div>
 
-          <div className={clsx("mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0", chatThreadWidthClass)}>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0">
             {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
@@ -3039,7 +3021,7 @@ export function ConversationDetailPage() {
           ) : (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
-          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3", chatThreadWidthClass)}>
+          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -3285,7 +3267,7 @@ export function ConversationDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
-          <form onSubmit={handleSend} className={clsx("w-full min-w-0", chatThreadWidthClass)}>
+          <form onSubmit={handleSend} className="w-full min-w-0">
             <div
               className={clsx(
                 "w-full min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-[#111C2B]/70",
@@ -3728,9 +3710,7 @@ export function ConversationDetailPage() {
             ? crmDesktopOpen
               ? "hidden xl:flex w-[min(100%,320px)]"
               : "hidden"
-            : crmDesktopOpen
-              ? "hidden xl:flex w-[min(100%,380px)]"
-              : "hidden",
+            : clsx("hidden xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
         )}
       >
         <div

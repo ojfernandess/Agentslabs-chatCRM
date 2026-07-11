@@ -7,10 +7,7 @@ import { AcceptInvitePage } from "@/pages/AcceptInvitePage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { AiInsightsPage } from "@/pages/AiInsightsPage";
-import {
-  ConversationsPage,
-  ConversationsThreadPlaceholder,
-} from "@/pages/ConversationsPage";
+import { ConversationsLayout, ConversationsThreadPlaceholder } from "@/pages/ConversationsLayout";
 import { ConversationDetailPage } from "@/pages/ConversationDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
@@ -140,7 +137,7 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="ai-insights" element={<AiInsightsPage />} />
-        <Route path="conversations" element={<ConversationsPage />}>
+        <Route path="conversations" element={<ConversationsLayout />}>
           <Route index element={<ConversationsThreadPlaceholder />} />
           <Route path=":id" element={<ConversationDetailPage />} />
         </Route>
