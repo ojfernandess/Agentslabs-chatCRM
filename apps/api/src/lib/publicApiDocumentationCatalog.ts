@@ -26,6 +26,15 @@ export type PublicApiDocEndpoint = {
   examplePayloadPt: string;
 };
 
+export type { PublicApiDocEndpointEnriched, PublicApiDocError, PublicApiDocGroupEnriched } from "./publicApiDocumentationEnrichment.js";
+export { enrichDocumentationGroups, endpointSlug } from "./publicApiDocumentationEnrichment.js";
+export type { PublicApiDocConventions, PublicApiDocAuthRow } from "./publicApiDocumentationConventions.js";
+export { PUBLIC_API_DOCUMENTATION_CONVENTIONS } from "./publicApiDocumentationConventions.js";
+export type { PublicApiDocResourceSchema, PublicApiDocSchemaField } from "./publicApiDocumentationSchemas.js";
+export { PUBLIC_API_DOCUMENTATION_SCHEMAS } from "./publicApiDocumentationSchemas.js";
+export type { PublicApiDocChangelogEntry } from "./publicApiDocumentationChangelog.js";
+export { PUBLIC_API_DOCUMENTATION_CHANGELOG } from "./publicApiDocumentationChangelog.js";
+
 export type PublicApiDocGroup = {
   id: string;
   titleEn: string;
@@ -200,7 +209,7 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         descriptionPt:
           "Início de sessão (resposta com `token` — usar como Authorization: Bearer <token> nas rotas do tenant; gestão de bots exige ADMIN ou SUPER_ADMIN).",
         examplePayloadPt:
-          'POST application/json:\n{\n  "email": "usuario@exemplo.com",\n  "password": "<sua_senha>"\n}\n\nResposta 200: { "token": "<jwt>", "user": { ... } } — use o campo `token` em Authorization: Bearer <jwt> nas rotas autenticadas (utilizador ADMIN ou SUPER_ADMIN no tenant).',
+          'POST application/json:\n{\n  "email": "usuario@exemplo.com",\n  "password": "<sua_senha>"\n}',
       },
       {
         method: "POST",
