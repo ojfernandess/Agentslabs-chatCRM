@@ -135,50 +135,53 @@ export function ConversationListItem({
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                {conv.isUnread ? (
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-1">
+                  {conv.isUnread ? (
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"
+                      title={t("conversations.unreadBadge")}
+                      aria-hidden
+                    />
+                  ) : null}
                   <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"
-                    title={t("conversations.unreadBadge")}
-                    aria-hidden
-                  />
-                ) : null}
-                <span
-                  className={clsx(
-                    "min-w-0 truncate text-sm text-ink-900 dark:text-ink-50",
-                    conv.isUnread ? "font-bold" : "font-semibold",
-                  )}
-                  title={conv.contact.name}
-                >
-                  {conv.contact.name}
-                </span>
-                <span
-                  className={clsx(
-                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none",
-                    statusColors[conv.status] ?? statusColors.OPEN,
-                  )}
-                >
-                  {statusLabel(conv.status)}
-                </span>
-                {channelLabel ? (
-                  <span
-                    className="hidden shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 sm:inline dark:bg-violet-950/35 dark:text-violet-200"
-                    title={conv.inbox?.name}
+                    className={clsx(
+                      "break-words text-sm leading-snug text-ink-900 dark:text-ink-50",
+                      conv.isUnread ? "font-bold" : "font-semibold",
+                    )}
                   >
-                    {channelLabel}
+                    {conv.contact.name}
                   </span>
-                ) : null}
-                {showBotBadge ? (
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
                   <span
-                    className="hidden shrink-0 items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 md:inline-flex dark:bg-violet-950/35 dark:text-violet-200"
-                    title={t("conversationDetail.botTriageBanner")}
+                    className={clsx(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                      statusColors[conv.status] ?? statusColors.OPEN,
+                    )}
                   >
-                    <Bot className="h-3 w-3" aria-hidden />
-                    {hasHumanAssignee
-                      ? t("conversationDetail.transferToBot")
-                      : t("conversationDetail.botInAttendance")}
+                    {statusLabel(conv.status)}
                   </span>
-                ) : null}
+                  {channelLabel ? (
+                    <span
+                      className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                      title={conv.inbox?.name}
+                    >
+                      {channelLabel}
+                    </span>
+                  ) : null}
+                  {showBotBadge ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                      title={t("conversationDetail.botTriageBanner")}
+                    >
+                      <Bot className="h-3 w-3" aria-hidden />
+                      {hasHumanAssignee
+                        ? t("conversationDetail.transferToBot")
+                        : t("conversationDetail.botInAttendance")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <span
                 className="shrink-0 text-[10px] font-medium tabular-nums text-ink-500 dark:text-ink-400"

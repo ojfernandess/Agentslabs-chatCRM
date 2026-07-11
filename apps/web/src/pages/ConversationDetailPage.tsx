@@ -501,14 +501,14 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     // No workspace de e-mail o utilizador lê de cima para baixo — não forçar o fundo.
-    stickToBottomRef.current = !isEmbeddedLayout;
-    if (isEmbeddedLayout) {
+    stickToBottomRef.current = !isEmailLayout;
+    if (isEmailLayout) {
       const el = messagesViewportRef.current;
       if (el) el.scrollTop = 0;
     }
     setEmailSubject("");
     setEmailRecipients({ to: [], cc: [], bcc: [] });
-  }, [id, isEmbeddedLayout]);
+  }, [id, isEmailLayout]);
 
   useEffect(() => {
     const email = conversation?.contact.email?.trim().toLowerCase();
@@ -1001,7 +1001,7 @@ export function ConversationDetailPage() {
   }, [id, loadConversation]);
 
   useEffect(() => {
-    if (isEmbeddedLayout) return;
+    if (isEmailLayout) return;
     if (!stickToBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [conversation?.messages, isEmailLayout]);
@@ -2710,7 +2710,7 @@ export function ConversationDetailPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-semibold tracking-tight text-ink-900 dark:text-ink-50">
+                      <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-ink-900 dark:text-ink-50">
                         {conversation.contact.name}
                       </h2>
                       <span
