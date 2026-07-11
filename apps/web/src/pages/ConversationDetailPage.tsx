@@ -332,7 +332,6 @@ export function ConversationDetailPage() {
   const [evolutionRichChat, setEvolutionRichChat] = useState(false);
   const [whatsappProvider, setWhatsappProvider] = useState<string | null>(null);
   const [templateModalTemplate, setTemplateModalTemplate] = useState<MessageTemplateRow | null>(null);
-  const [agentBotTriageActive, setAgentBotTriageActive] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -740,7 +739,6 @@ export function ConversationDetailPage() {
       setCachedConversation(requestId, data);
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
-      setAgentBotTriageActive(data.agentBotTriageActive ?? false);
     } catch {
       if (!opts?.silent && requestId === activeConversationIdRef.current) setConversation(null);
     } finally {
@@ -1778,6 +1776,7 @@ export function ConversationDetailPage() {
   const assigneeId = conversation.assignedTo?.id;
   const hasHumanAssignee = typeof assigneeId === "string" && assigneeId.length > 0;
   const hasNoHumanAssignee = !hasHumanAssignee;
+  const agentBotTriageActive = conversation.agentBotTriageActive ?? false;
   const canResolve =
     (conversation.status === "OPEN" || conversation.status === "PENDING") && hasHumanAssignee;
   const canTransfer = canResolve && teamOptions.length > 0;
