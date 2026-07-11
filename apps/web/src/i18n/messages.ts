@@ -3745,6 +3745,15 @@ export const messages = {
       noPipelineStage: "Sem etapa",
       openKanban: "Abrir Kanban",
       openContactCrm: "Ficha completa no CRM",
+      blockContact: "Bloquear contato",
+      unblockContact: "Desbloquear contato",
+      blockContactConfirm:
+        "Bloquear este contato? Mensagens públicas (WhatsApp, e-mail, etc.) não poderão ser enviadas. Notas internas continuam disponíveis.",
+      blockContactFailed: "Não foi possível atualizar o bloqueio do contato.",
+      contactBlocked: "Contato bloqueado",
+      contactBlockedBanner:
+        "Este contato está bloqueado. O envio de mensagens públicas está desativado — use notas internas se precisar registar algo.",
+      contactBlockedHint: "Mensagens recebidas continuam visíveis; apenas o envio público está bloqueado.",
       templates: "Modelos",
       cannedResponses: "Respostas prontas",
       pickTemplate: "Inserir texto do modelo",
@@ -4072,6 +4081,13 @@ export const messages = {
       exportHistoryInbound: "Cliente",
       exportHistoryOutbound: "Atendente",
       exportHistoryAttachment: "({type})",
+      blockContact: "Bloquear contato",
+      unblockContact: "Desbloquear contato",
+      blockContactConfirm:
+        "Bloquear este contato? Mensagens públicas não poderão ser enviadas. Notas internas continuam disponíveis.",
+      blockContactFailed: "Não foi possível atualizar o bloqueio.",
+      contactBlockedBadge: "Bloqueado",
+      contactBlockedBanner: "Contato bloqueado — envio de mensagens públicas desativado.",
     },
     reminders: {
       title: "Lembretes",
@@ -8654,6 +8670,15 @@ export const messages = {
       noPipelineStage: "No stage",
       openKanban: "Open Kanban",
       openContactCrm: "Full CRM record",
+      blockContact: "Block contact",
+      unblockContact: "Unblock contact",
+      blockContactConfirm:
+        "Block this contact? Public messages (WhatsApp, email, etc.) cannot be sent. Internal notes remain available.",
+      blockContactFailed: "Could not update contact block status.",
+      contactBlocked: "Contact blocked",
+      contactBlockedBanner:
+        "This contact is blocked. Public outbound messages are disabled — use internal notes if you need to log something.",
+      contactBlockedHint: "Inbound messages remain visible; only public outbound sending is blocked.",
       templates: "Templates",
       cannedResponses: "Canned responses",
       pickTemplate: "Insert template text",
@@ -8981,6 +9006,13 @@ export const messages = {
       exportHistoryInbound: "Customer",
       exportHistoryOutbound: "Agent",
       exportHistoryAttachment: "({type})",
+      blockContact: "Block contact",
+      unblockContact: "Unblock contact",
+      blockContactConfirm:
+        "Block this contact? Public messages cannot be sent. Internal notes remain available.",
+      blockContactFailed: "Could not update block status.",
+      contactBlockedBadge: "Blocked",
+      contactBlockedBanner: "Contact blocked — public outbound messages are disabled.",
     },
     reminders: {
       title: "Reminders",

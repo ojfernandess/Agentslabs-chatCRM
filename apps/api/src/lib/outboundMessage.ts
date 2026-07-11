@@ -167,6 +167,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
   if (!contact) {
     throw new Error("Contact not found");
   }
+  if (contact.isBlocked && !isPrivate) {
+    throw new Error("Contact is blocked");
+  }
 
   const channelSettings = await prisma.settings.findUnique({
     where: { organizationId },

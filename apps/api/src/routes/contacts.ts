@@ -48,6 +48,7 @@ const updateContactSchema = z.object({
   pipelineStageId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   optedIn: z.boolean().optional(),
+  isBlocked: z.boolean().optional(),
 });
 
 async function findOrCreateAccountByName(
@@ -614,6 +615,10 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.optedIn !== undefined) {
       data.optedIn = parsed.data.optedIn;
       if (parsed.data.optedIn) data.optedInAt = new Date();
+    }
+    if (parsed.data.isBlocked !== undefined) {
+      data.isBlocked = parsed.data.isBlocked;
+      data.blockedAt = parsed.data.isBlocked ? new Date() : null;
     }
 
     const wantsCompany = parsed.data.company !== undefined;

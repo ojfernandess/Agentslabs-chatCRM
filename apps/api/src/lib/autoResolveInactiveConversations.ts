@@ -35,8 +35,12 @@ async function listIdleConversationIds(
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT c.id
     FROM conversations c
+    INNER JOIN inboxes i ON i.id = c.inbox_id
+    INNER JOIN contacts ct ON ct.id = c.contact_id
     WHERE c.organization_id = ${organizationId}::uuid
       AND c.status IN ('OPEN', 'PENDING')
+      AND i.channel_type != 'EMAIL'
+      AND ct.is_blocked = false
       ${assignedClause}
       AND COALESCE(
         (SELECT MAX(m.created_at) FROM messages m

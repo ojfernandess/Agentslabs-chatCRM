@@ -646,6 +646,8 @@ model Contact {
   isGroupChat       Boolean   @default(false) @map("is_group_chat")
   optedIn           Boolean   @default(false) @map("opted_in")
   optedInAt         DateTime? @map("opted_in_at")
+  isBlocked         Boolean   @default(false) @map("is_blocked")
+  blockedAt         DateTime? @map("blocked_at")
   lifecycleStage    String?   @map("lifecycle_stage") @db.VarChar(64)
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")

@@ -182,6 +182,9 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       if (msg === "Contact not found") {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });
       }
+      if (msg === "Contact is blocked") {
+        return reply.status(403).send({ error: "Forbidden", message: msg, statusCode: 403, code: "contact_blocked" });
+      }
       if (msg === "Template not found") {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });
       }

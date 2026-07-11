@@ -57,6 +57,7 @@ import {
   Mail,
   MoreHorizontal,
   PhoneCall,
+  ShieldBan,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -257,6 +258,7 @@ interface ConversationDetail {
     assignedTo?: { id: string; name: string } | null;
     createdBy?: { id: string; name: string } | null;
     tags?: { tag: { id: string; name: string; color: string } }[];
+    isBlocked?: boolean;
     pipelineStage?: {
       id: string;
       name: string;
@@ -378,6 +380,7 @@ export function ConversationDetailPage() {
   const [editingContactNoteIndex, setEditingContactNoteIndex] = useState<number | null>(null);
   const [editingContactNoteDraft, setEditingContactNoteDraft] = useState("");
   const [priorityBusy, setPriorityBusy] = useState(false);
+  const [contactBlockBusy, setContactBlockBusy] = useState(false);
   const [priorityError, setPriorityError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1020,6 +1023,21 @@ export function ConversationDetailPage() {
     return trimmed ? `${trimmed}\n\n${sig}` : sig;
   };
 
+  /** Meta / 360dialog / Twilio seguem janela de sessão de 24h; Evolution API não. */
+  const applies24hSessionPolicy =
+    whatsappProvider === "meta" ||
+    whatsappProvider === "360dialog" ||
+    whatsappProvider === "twilio" ||
+    whatsappProvider == null;
+
+  const isOutsideWindow =
+    !isEmailLayout &&
+    conversation?.inbox?.channelType !== "EMAIL" &&
+    applies24hSessionPolicy &&
+    (lastInbound ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24 : true);
+
+  const contactIsBlocked = Boolean(conversation?.contact.isBlocked);
+
   const composerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter") return;
     const pref = readSendShortcutPref();
@@ -1027,6 +1045,7 @@ export function ConversationDetailPage() {
       !!newMessage.trim() &&
       !!conversation &&
       !(isOutsideWindow && !privateNote) &&
+      !(contactIsBlocked && !privateNote) &&
       !recording &&
       !voicePreview &&
       !sending &&
@@ -1043,19 +1062,6 @@ export function ConversationDetailPage() {
       if (canSend) e.currentTarget.form?.requestSubmit();
     }
   };
-
-  /** Meta / 360dialog / Twilio seguem janela de sessão de 24h; Evolution API não. */
-  const applies24hSessionPolicy =
-    whatsappProvider === "meta" ||
-    whatsappProvider === "360dialog" ||
-    whatsappProvider === "twilio" ||
-    whatsappProvider == null;
-
-  const isOutsideWindow =
-    !isEmailLayout &&
-    conversation?.inbox?.channelType !== "EMAIL" &&
-    applies24hSessionPolicy &&
-    (lastInbound ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24 : true);
 
   const isWaba = whatsappProvider === "meta" || whatsappProvider === "360dialog";
 
@@ -1114,6 +1120,7 @@ export function ConversationDetailPage() {
   async function sendVoiceFromPreview() {
     if (!conversation || !voicePreview) return;
     if (isOutsideWindow && !privateNote) return;
+    if (contactIsBlocked && !privateNote) return;
     setVoiceBusy(true);
     setFlowError("");
     const { blob, ext } = voicePreview;
@@ -1142,6 +1149,7 @@ export function ConversationDetailPage() {
   async function handleVoiceToggle() {
     if (!conversation || voiceBusy) return;
     if (isOutsideWindow && !privateNote) return;
+    if (contactIsBlocked && !privateNote) return;
 
     if (recording && mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
@@ -1248,6 +1256,7 @@ export function ConversationDetailPage() {
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !conversation) return;
+    if (contactIsBlocked && !privateNote) return;
 
     setSending(true);
     setFlowError("");
@@ -1384,6 +1393,26 @@ export function ConversationDetailPage() {
       setPriorityError(t("conversationDetail.prioritySaveFailed"));
     } finally {
       setPriorityBusy(false);
+    }
+  };
+
+  const toggleContactBlocked = async () => {
+    if (!conversation) return;
+    const next = !conversation.contact.isBlocked;
+    if (next && !window.confirm(t("conversationDetail.blockContactConfirm"))) return;
+    setContactBlockBusy(true);
+    setFlowError("");
+    try {
+      await api.put(`/contacts/${conversation.contact.id}`, { isBlocked: next });
+      setConversation((c) =>
+        c ? { ...c, contact: { ...c.contact, isBlocked: next } } : c,
+      );
+    } catch (err) {
+      setFlowError(
+        err instanceof ApiError ? err.message : t("conversationDetail.blockContactFailed"),
+      );
+    } finally {
+      setContactBlockBusy(false);
     }
   };
 
@@ -1935,6 +1964,34 @@ export function ConversationDetailPage() {
             </div>
           );
         })()}
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-white/10">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.blockContact")}
+          </p>
+          <p className="mt-1 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
+            {t("conversationDetail.contactBlockedHint")}
+          </p>
+          <button
+            type="button"
+            disabled={contactBlockBusy}
+            onClick={() => void toggleContactBlocked()}
+            className={clsx(
+              "mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-50",
+              conversation.contact.isBlocked
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40"
+                : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-900/45 dark:bg-red-950/35 dark:text-red-200 dark:hover:bg-red-900/40",
+            )}
+          >
+            {contactBlockBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ShieldBan className="h-3.5 w-3.5" />
+            )}
+            {conversation.contact.isBlocked
+              ? t("conversationDetail.unblockContact")
+              : t("conversationDetail.blockContact")}
+          </button>
+        </div>
         <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-ink-700">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
             {t("conversationDetail.prioritySection")}
@@ -2883,6 +2940,15 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.outsideWindow")}
               </div>
             ) : null}
+            {contactIsBlocked ? (
+              <div
+                className="flex items-center gap-1 rounded-lg bg-red-100 px-2.5 py-1.5 text-[11px] font-medium text-red-900 dark:bg-red-950/50 dark:text-red-200"
+                title={t("conversationDetail.contactBlockedHint")}
+              >
+                <ShieldBan className="h-3.5 w-3.5" />
+                {t("conversationDetail.contactBlocked")}
+              </div>
+            ) : null}
             {canStartAttendance ? (
               <button
                 type="button"
@@ -3310,6 +3376,7 @@ export function ConversationDetailPage() {
                       type="button"
                       disabled={
                         (isOutsideWindow && !privateNote) ||
+                        (contactIsBlocked && !privateNote) ||
                         recording ||
                         sending ||
                         !!voicePreview ||
@@ -3367,7 +3434,7 @@ export function ConversationDetailPage() {
                   <VoicePreviewPanel
                     previewUrl={voicePreviewUrl}
                     busy={voiceBusy}
-                    sendDisabled={isOutsideWindow && !privateNote}
+                    sendDisabled={(isOutsideWindow && !privateNote) || (contactIsBlocked && !privateNote)}
                     onDiscard={() => setVoicePreview(null)}
                     onSend={() => void sendVoiceFromPreview()}
                   />
@@ -3376,6 +3443,11 @@ export function ConversationDetailPage() {
                     {isOutsideWindow && isWaba && !privateNote ? (
                       <p className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
                         {t("conversationDetail.outsideWindowTemplateHint")}
+                      </p>
+                    ) : null}
+                    {contactIsBlocked && !privateNote ? (
+                      <p className="mb-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-950 dark:text-red-100">
+                        {t("conversationDetail.contactBlockedBanner")}
                       </p>
                     ) : null}
                     {isEmailInbox && !privateNote ? (
@@ -3415,7 +3487,7 @@ export function ConversationDetailPage() {
                               ? t("conversationDetail.placeholderTemplate")
                               : t("conversationDetail.placeholderNormal")
                       }
-                      disabled={(isOutsideWindow && !privateNote) || recording}
+                      disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || recording}
                       className={clsx(
                         "w-full resize-y rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500",
                         composerExpanded ? "min-h-[11rem]" : "min-h-[4.75rem]",
@@ -3455,7 +3527,7 @@ export function ConversationDetailPage() {
                     <div className="relative" ref={cannedWrapRef}>
                       <motion.button
                         type="button"
-                        disabled={recording || !!voicePreview || (isOutsideWindow && !privateNote)}
+                        disabled={recording || !!voicePreview || ((isOutsideWindow || contactIsBlocked) && !privateNote)}
                         onClick={() => {
                           setCannedMenuOpen((o) => !o);
                           setTemplateMenuOpen(false);
@@ -3490,7 +3562,7 @@ export function ConversationDetailPage() {
                     <div className="relative" ref={templateWrapRef}>
                       <motion.button
                         type="button"
-                        disabled={recording || !!voicePreview || (!isWaba && isOutsideWindow && !privateNote)}
+                        disabled={recording || !!voicePreview || (!isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote)}
                         onClick={() => {
                           setTemplateMenuOpen((o) => !o);
                           setCannedMenuOpen(false);
@@ -3515,7 +3587,7 @@ export function ConversationDetailPage() {
                                 const isEvolutionProvider =
                                   whatsappProvider === "evolution" || whatsappProvider === "evolution_go";
                                 if (
-                                  (isWaba && isOutsideWindow && !privateNote) ||
+                                  (isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote) ||
                                   (isEvolutionProvider && !privateNote)
                                 ) {
                                   setTemplateModalTemplate({
@@ -3543,7 +3615,7 @@ export function ConversationDetailPage() {
                   <div className="relative" ref={emojiWrapRef}>
                     <motion.button
                       type="button"
-                      disabled={recording || !!voicePreview || (isOutsideWindow && !privateNote)}
+                      disabled={recording || !!voicePreview || ((isOutsideWindow || contactIsBlocked) && !privateNote)}
                       onClick={() => {
                         setEmojiOpen((o) => !o);
                         setTemplateMenuOpen(false);
@@ -3570,7 +3642,7 @@ export function ConversationDetailPage() {
                         onClick={() => imageInputRef.current?.click()}
                         disabled={
                           attachBusy ||
-                          (!privateNote && isOutsideWindow && !isEmailInbox) ||
+                          (!privateNote && (isOutsideWindow || contactIsBlocked) && !isEmailInbox) ||
                           recording ||
                           !!voicePreview
                         }
@@ -3585,7 +3657,7 @@ export function ConversationDetailPage() {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={
                           attachBusy ||
-                          (!privateNote && isOutsideWindow && !isEmailInbox) ||
+                          (!privateNote && (isOutsideWindow || contactIsBlocked) && !isEmailInbox) ||
                           recording ||
                           !!voicePreview
                         }
@@ -3601,7 +3673,7 @@ export function ConversationDetailPage() {
                   <motion.button
                     type="button"
                     onClick={() => void handleVoiceToggle()}
-                    disabled={(isOutsideWindow && !privateNote) || voiceBusy || sending || attachBusy}
+                    disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || voiceBusy || sending || attachBusy}
                     title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
                     className={clsx(
                       "flex h-9 w-9 items-center justify-center rounded-lg transition-colors disabled:opacity-40",
@@ -3628,7 +3700,7 @@ export function ConversationDetailPage() {
                   disabled={
                     sending ||
                     !newMessage.trim() ||
-                    (isOutsideWindow && !privateNote) ||
+                    ((isOutsideWindow || contactIsBlocked) && !privateNote) ||
                     attachBusy ||
                     !!voicePreview ||
                     recording

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import {
   ArrowLeft,
   Phone,
@@ -18,6 +18,8 @@ import {
   MessageCircle,
   Download,
   ChevronDown as ChevronDownIcon,
+  ShieldBan,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import clsx from "clsx";
@@ -76,6 +78,7 @@ interface ContactDetail {
   notes: string | null;
   optedIn: boolean;
   optedInAt: string | null;
+  isBlocked?: boolean;
   createdAt: string;
   tags: { tag: TagItem }[];
   pipelineStage: StageItem | null;
@@ -155,6 +158,8 @@ export function ContactDetailPage() {
   const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
   const [nvoipWaOpen, setNvoipWaOpen] = useState(false);
   const [showHistoryExportMenu, setShowHistoryExportMenu] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
   const historyExportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -289,6 +294,22 @@ export function ContactDetailPage() {
     }
   };
 
+  const toggleContactBlocked = async () => {
+    if (!contact || !id) return;
+    const next = !contact.isBlocked;
+    if (next && !window.confirm(t("contactDetail.blockContactConfirm"))) return;
+    setBlockBusy(true);
+    setBlockError(null);
+    try {
+      const updated = await api.put<ContactDetail>(`/contacts/${id}`, { isBlocked: next });
+      setContact(updated);
+    } catch (err) {
+      setBlockError(err instanceof ApiError ? err.message : t("contactDetail.blockContactFailed"));
+    } finally {
+      setBlockBusy(false);
+    }
+  };
+
   const historyExportLabels = {
     title: t("contactDetail.exportHistoryTitle"),
     contact: t("contactDetail.exportHistoryContact"),
@@ -351,7 +372,15 @@ export function ContactDetailPage() {
             className="h-14 w-14 rounded-2xl text-lg"
           />
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{contact.name}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{contact.name}</h1>
+              {contact.isBlocked ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+                  <ShieldBan className="h-3.5 w-3.5" />
+                  {t("contactDetail.contactBlockedBadge")}
+                </span>
+              ) : null}
+            </div>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
               <span className="inline-flex items-center gap-1">
                 <Phone className="h-3.5 w-3.5" /> {contact.phone}
@@ -430,6 +459,24 @@ export function ContactDetailPage() {
             ) : null}
           </div>
           <button
+            type="button"
+            disabled={blockBusy}
+            onClick={() => void toggleContactBlocked()}
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50",
+              contact.isBlocked
+                ? "border-emerald-200 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-950/40"
+                : "border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40",
+            )}
+          >
+            {blockBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldBan className="h-4 w-4" />
+            )}
+            {contact.isBlocked ? t("contactDetail.unblockContact") : t("contactDetail.blockContact")}
+          </button>
+          <button
             onClick={() => setEditing(!editing)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
           >
@@ -448,6 +495,16 @@ export function ContactDetailPage() {
           </button>
         </div>
       </div>
+
+      {contact.isBlocked ? (
+        <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
+          <ShieldBan className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{t("contactDetail.contactBlockedBanner")}</p>
+        </div>
+      ) : null}
+      {blockError ? (
+        <p className="mb-4 text-sm text-red-600 dark:text-red-400">{blockError}</p>
+      ) : null}
 
       <div className="mb-6 flex gap-1 border-b border-gray-200 dark:border-ink-800">
         {(["overview", "chats"] as const).map((k) => (
