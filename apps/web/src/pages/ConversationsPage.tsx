@@ -615,8 +615,8 @@ export function ConversationsPage() {
 
   return (
     <PageTransition>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside
             className={clsx(
               "flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
@@ -1114,7 +1114,7 @@ export function ConversationsPage() {
           </aside>
           <main
             className={clsx(
-              "min-h-0 flex min-w-0 flex-col bg-ink-50 dark:bg-[#0E1624]",
+              "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-ink-50 dark:bg-[#0E1624]",
               !activeThreadId && "hidden lg:flex",
             )}
           >

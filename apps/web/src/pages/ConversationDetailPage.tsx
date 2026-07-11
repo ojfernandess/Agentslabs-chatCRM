@@ -1779,6 +1779,9 @@ export function ConversationDetailPage() {
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
   const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
+  const sidePanelDesktopOpen = crmDesktopOpen || copilotDesktopOpen;
+  const chatThreadWidthClass =
+    splitPaneMode && !emailWorkspaceMode ? "mx-auto w-full max-w-4xl" : "w-full";
   const contactEmail = contactEmailDisplay(conversation.contact);
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
@@ -2606,18 +2609,26 @@ export function ConversationDetailPage() {
   return (
     <div
       className={clsx(
-        "relative flex h-full min-h-0",
+        "relative flex h-full min-h-0 w-full",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
           : splitPaneMode
-            ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row"
+            ? clsx(
+                "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624]",
+                sidePanelDesktopOpen && "xl:flex-row",
+              )
             : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
       {!emailWorkspaceMode ? (
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
       ) : null}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        className={clsx(
+          "relative flex min-h-0 min-w-0 flex-1 flex-col",
+          splitPaneMode && !emailWorkspaceMode && "xl:pr-14",
+        )}
+      >
         {emailWorkspaceMode ? (
           <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B]">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2691,7 +2702,7 @@ export function ConversationDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
-          <div className="flex items-start gap-3">
+          <div className={clsx("flex items-start gap-3", chatThreadWidthClass)}>
             <Link
               to={splitPaneMode ? { pathname: "/conversations", search: location.search } : "/conversations"}
               className={clsx(
@@ -2868,7 +2879,7 @@ export function ConversationDetailPage() {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0">
+          <div className={clsx("mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0", chatThreadWidthClass)}>
             {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
@@ -3028,7 +3039,7 @@ export function ConversationDetailPage() {
           ) : (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
-          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
+          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3", chatThreadWidthClass)}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -3274,7 +3285,7 @@ export function ConversationDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
-          <form onSubmit={handleSend} className="w-full min-w-0">
+          <form onSubmit={handleSend} className={clsx("w-full min-w-0", chatThreadWidthClass)}>
             <div
               className={clsx(
                 "w-full min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-[#111C2B]/70",
