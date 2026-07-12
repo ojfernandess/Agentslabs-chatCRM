@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone } from "lucide-react";
+import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone, Tag } from "lucide-react";
 import clsx from "clsx";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -628,6 +628,9 @@ export function ConversationsPage({
   const statusPillClass = splitView
     ? "rounded-full px-2 py-1 text-[11px] font-semibold transition-colors"
     : "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors";
+  const listFilterSelectClass = splitView
+    ? "h-8 min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
+    : "h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100";
 
   return (
     <PageTransition>
@@ -668,7 +671,7 @@ export function ConversationsPage({
                     id="conv-tag-filter"
                     value={tagFilter}
                     onChange={(e) => setTagFilter(e.target.value)}
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100"
+                    className={listFilterSelectClass}
                   >
                     <option value="">{t("conversations.allTags")}</option>
                     {tagOptions.map((opt) => (
@@ -684,7 +687,7 @@ export function ConversationsPage({
                     id="conv-lead-type-filter"
                     value={leadTypeFilter}
                     onChange={(e) => setLeadTypeFilter(e.target.value)}
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100"
+                    className={listFilterSelectClass}
                   >
                     <option value="">{t("conversations.allLeadTypes")}</option>
                     {leadTypeOptions.map((opt) => (
@@ -718,27 +721,64 @@ export function ConversationsPage({
             </div>
           </header>
           ) : (
-          <div className="flex shrink-0 items-center gap-2 border-b border-ink-100 px-1 pb-2 dark:border-ink-800">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
-              <input
-                type="search"
-                value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                placeholder={t("conversations.searchListPlaceholder")}
-                className="input-field h-10 pl-10 text-sm"
-                aria-label={t("conversations.searchListPlaceholder")}
-              />
+          <div className="flex shrink-0 flex-col gap-1.5 border-b border-ink-100 px-1 pb-2 dark:border-ink-800">
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
+                <input
+                  type="search"
+                  value={listSearch}
+                  onChange={(e) => setListSearch(e.target.value)}
+                  placeholder={t("conversations.searchListPlaceholder")}
+                  className="input-field h-10 pl-10 text-sm"
+                  aria-label={t("conversations.searchListPlaceholder")}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setComposeOpen(true)}
+                className="btn-primary inline-flex h-10 w-10 shrink-0 rounded-xl p-0 shadow-md shadow-brand-500/20"
+                title={t("conversations.newMessageTooltip")}
+                aria-label={t("conversations.newMessageTooltip")}
+              >
+                <MessageSquarePlus className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setComposeOpen(true)}
-              className="btn-primary inline-flex h-10 w-10 shrink-0 rounded-xl p-0 shadow-md shadow-brand-500/20"
-              title={t("conversations.newMessageTooltip")}
-              aria-label={t("conversations.newMessageTooltip")}
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5 shrink-0 text-ink-400 dark:text-ink-500" aria-hidden />
+              <label htmlFor="conv-tag-filter-split" className="sr-only">
+                {t("conversations.filterTag")}
+              </label>
+              <select
+                id="conv-tag-filter-split"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+                className={listFilterSelectClass}
+              >
+                <option value="">{t("conversations.allTags")}</option>
+                {tagOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.name}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="conv-lead-type-filter-split" className="sr-only">
+                {t("conversations.filterLeadType")}
+              </label>
+              <select
+                id="conv-lead-type-filter-split"
+                value={leadTypeFilter}
+                onChange={(e) => setLeadTypeFilter(e.target.value)}
+                className={listFilterSelectClass}
+              >
+                <option value="">{t("conversations.allLeadTypes")}</option>
+                {leadTypeOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           )}
 
