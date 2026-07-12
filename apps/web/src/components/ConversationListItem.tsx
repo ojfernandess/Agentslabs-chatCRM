@@ -70,6 +70,7 @@ type Props = {
   fmtMoney: (n: number) => string;
   showContactTags: boolean;
   currentUserId?: string;
+  splitView?: boolean;
   onPrefetch: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 };
@@ -82,6 +83,7 @@ export function ConversationListItem({
   fmtMoney,
   showContactTags,
   currentUserId,
+  splitView = false,
   onPrefetch,
   onContextMenu,
 }: Props) {
@@ -203,17 +205,34 @@ export function ConversationListItem({
               {preview}
             </p>
 
-            <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-[10px] text-ink-500 dark:text-ink-400">
+            <div
+              className={clsx(
+                "mt-1 flex min-w-0 gap-2 text-[10px] text-ink-500 dark:text-ink-400",
+                splitView ? "flex-wrap items-center" : "items-center overflow-hidden",
+              )}
+            >
               {hasHumanAssignee &&
               (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                <span
-                  className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
-                  title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
-                >
-                  {t("conversations.inAttendance")}
-                </span>
+                splitView ? (
+                  <span
+                    className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 dark:border-emerald-800/45 dark:bg-emerald-950/40"
+                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                  >
+                    <UserCircle className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+                    <span className="break-words text-[11px] font-semibold leading-snug text-emerald-900 dark:text-emerald-100">
+                      {conv.assignedTo!.name}
+                    </span>
+                  </span>
+                ) : (
+                  <span
+                    className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
+                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                  >
+                    {t("conversations.inAttendance")}
+                  </span>
+                )
               ) : null}
-              {hasHumanAssignee ? (
+              {hasHumanAssignee && !splitView ? (
                 <span
                   className="inline-flex min-w-0 max-w-[45%] items-center gap-1 truncate"
                   title={
@@ -224,6 +243,19 @@ export function ConversationListItem({
                 >
                   <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
                   <span className="truncate">{conv.assignedTo!.name}</span>
+                </span>
+              ) : hasHumanAssignee &&
+                splitView &&
+                conv.status !== "OPEN" &&
+                conv.status !== "PENDING" ? (
+                <span
+                  className="inline-flex max-w-full flex-wrap items-center gap-1"
+                  title={`${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`}
+                >
+                  <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                  <span className="break-words text-[10px] font-medium leading-snug text-ink-600 dark:text-ink-300">
+                    {conv.assignedTo!.name}
+                  </span>
                 </span>
               ) : null}
               {isConversationPriority(conv.priority) ? (

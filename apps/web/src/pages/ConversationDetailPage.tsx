@@ -2802,11 +2802,17 @@ export function ConversationDetailPage() {
                       {hasHumanAssignee &&
                       (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
                         <span
-                          className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
+                          className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
                           title={`${conversation.assignedTo?.name ?? ""} · ${t("conversations.inAttendance")}`}
                         >
                           <Headset className="h-3 w-3 shrink-0" aria-hidden />
-                          {t("conversations.inAttendance")}
+                          {isSplitLayout ? (
+                            <span className="break-words font-semibold normal-case tracking-normal">
+                              {conversation.assignedTo?.name}
+                            </span>
+                          ) : (
+                            t("conversations.inAttendance")
+                          )}
                         </span>
                       ) : conversation.awaitingHumanHandoff ? (
                         <span
@@ -2900,9 +2906,25 @@ export function ConversationDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] text-ink-600 dark:text-ink-400">
-                    <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.conversationAssignee")}:</span>{" "}
-                    {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
+                  <p
+                    className={clsx(
+                      "text-[11px] text-ink-600 dark:text-ink-400",
+                      isSplitLayout && hasHumanAssignee && "text-xs",
+                    )}
+                  >
+                    <span className="font-medium text-ink-700 dark:text-ink-300">
+                      {t("conversationDetail.conversationAssignee")}:
+                    </span>{" "}
+                    <span
+                      className={clsx(
+                        isSplitLayout &&
+                          hasHumanAssignee &&
+                          (conversation.status === "OPEN" || conversation.status === "PENDING") &&
+                          "break-words font-semibold text-emerald-800 dark:text-emerald-200",
+                      )}
+                    >
+                      {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
+                    </span>
                   </p>
                   {clientWaitLabel ? (
                     <p className="flex items-center gap-1 text-[11px] font-medium text-amber-800 dark:text-amber-200/90">

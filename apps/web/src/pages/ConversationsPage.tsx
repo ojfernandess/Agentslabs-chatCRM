@@ -380,7 +380,7 @@ export function ConversationsPage({
       return;
     }
 
-    if (scopeCounts.attendanceActive > 0) {
+    if (scopeCounts.attendanceQueue > 0 || scopeCounts.mine > 0) {
       initialAttendanceScopeApplied.current = true;
       setScopeParam("attendance");
       return;
@@ -392,7 +392,8 @@ export function ConversationsPage({
     scopeCountsLoaded,
     orgAttendanceTabEnabled,
     orgAttendanceTabAutoOpen,
-    scopeCounts.attendanceActive,
+    scopeCounts.attendanceQueue,
+    scopeCounts.mine,
     searchParams,
     setScopeParam,
   ]);
@@ -991,6 +992,7 @@ export function ConversationsPage({
                       statusLabel={statusLabel}
                       fmtMoney={fmtMoney}
                       showContactTags={orgListShowContactTags}
+                      splitView={splitView}
                       currentUserId={user?.id}
                       onPrefetch={() => prefetchConversation(conv.id)}
                       onContextMenu={(e) => {
