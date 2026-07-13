@@ -66,9 +66,10 @@ export function ContactAvatar({
   const [directFailed, setDirectFailed] = useState(false);
 
   const url = profilePictureUrl?.trim() ?? "";
+  const mustUseProxy = Boolean(url && needsProfilePictureProxy(url));
   const cachedSrc = useMemo(
-    () => (hasAvatar ? contactProfilePictureSrc(contactId, thumbnail) : null),
-    [contactId, hasAvatar, thumbnail],
+    () => (hasAvatar || mustUseProxy ? contactProfilePictureSrc(contactId, thumbnail) : null),
+    [contactId, hasAvatar, mustUseProxy, thumbnail],
   );
   const directSrc =
     url && !needsProfilePictureProxy(url) ? url : null;

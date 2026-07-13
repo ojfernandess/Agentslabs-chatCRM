@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { Loader2, MessageCircle, Search, Sparkles } from "lucide-react";
+import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   formatRelativeTime,
@@ -27,14 +28,6 @@ type Props = {
   analyzing: boolean;
   analyzeDisabled: boolean;
 };
-
-function avatarInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 export function ConversationListPanel({
   rows,
@@ -113,7 +106,6 @@ export function ConversationListPanel({
           <ul className="space-y-1">
             {rows.map((row) => {
               const selected = row.id === selectedId;
-              const thumb = row.contact.thumbnail || row.contact.profilePictureUrl;
               const count = messageCount(row);
               return (
                 <li key={row.id}>
@@ -127,13 +119,15 @@ export function ConversationListPanel({
                         : "hover:bg-ink-50 dark:hover:bg-ink-800/40",
                     )}
                   >
-                    {thumb ? (
-                      <img src={thumb} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white dark:ring-ink-800" />
-                    ) : (
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-violet-600 text-sm font-bold text-white">
-                        {avatarInitials(row.contact.name)}
-                      </span>
-                    )}
+                    <ContactAvatar
+                      contactId={row.contact.id}
+                      name={row.contact.name}
+                      profilePictureUrl={row.contact.profilePictureUrl}
+                      hasAvatar={row.contact.hasAvatar}
+                      thumbnail={row.contact.thumbnail}
+                      variant="listCompact"
+                      className="h-11 w-11"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">{row.contact.name}</span>

@@ -23,6 +23,7 @@ export type AiInsightsConversationRow = {
     phone: string;
     profilePictureUrl?: string | null;
     thumbnail?: string | null;
+    hasAvatar?: boolean;
     tags?: { tag: { id: string; name: string; color: string } }[];
   };
   assignedTo: { id: string; name: string } | null;
