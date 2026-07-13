@@ -27,6 +27,7 @@ const bodySchema = z.object({
   order: z.number().int().min(0).optional(),
   valueRollup: z.nativeEnum(LeadValueRollup).optional(),
   closurePlaybook: closurePlaybookSchema,
+  enableAgentBinding: z.boolean().optional(),
 });
 
 async function enforceSingleWonType(organizationId: string, keepId: string): Promise<void> {
@@ -73,6 +74,7 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
         color: parsed.data.color,
         order,
         valueRollup,
+        enableAgentBinding: parsed.data.enableAgentBinding ?? false,
         ...(closurePlaybook !== undefined ? { closurePlaybook } : {}),
       },
     });
@@ -112,6 +114,9 @@ export async function leadTypeRoutes(app: FastifyInstance): Promise<void> {
         color: parsed.data.color,
         order,
         valueRollup,
+        ...(parsed.data.enableAgentBinding !== undefined
+          ? { enableAgentBinding: parsed.data.enableAgentBinding }
+          : {}),
         ...(closurePlaybookPatch !== undefined ? { closurePlaybook: closurePlaybookPatch } : {}),
       },
     });

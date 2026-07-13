@@ -269,7 +269,17 @@ interface ConversationDetail {
   team: { id: string; name: string } | null;
   messages?: Message[];
   contactTimeline?: ContactTimelineEvent[];
+  leadOwnerConflict?: LeadOwnerConflict | null;
 }
+
+type LeadOwnerConflict = {
+  originalAgent: { id: string; name: string };
+  savedAt: string;
+  leadType: { id: string; name: string; color: string };
+  closureRecordId: string | null;
+  closureReason: string | null;
+  closureValue: number | null;
+};
 
 const MSG_GROUP_MINUTES = 5;
 const PRESENCE_RECENT_MINUTES = 15;
@@ -337,6 +347,7 @@ export function ConversationDetailPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferTeamId, setTransferTeamId] = useState("");
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
+  const [leadOwnerDecisionBusy, setLeadOwnerDecisionBusy] = useState(false);
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
@@ -1597,6 +1608,29 @@ export function ConversationDetailPage() {
       /* ignore */
     } finally {
       setTagBusy(false);
+    }
+  };
+
+  const submitLeadOwnerDecision = async (action: "transfer" | "proceed") => {
+    if (!conversation || !id) return;
+    setLeadOwnerDecisionBusy(true);
+    setFlowError("");
+    try {
+      const data = await api.post<ConversationDetail>(`/conversations/${id}/lead-owner-decision`, {
+        action,
+      });
+      setConversation(data);
+      if (action === "transfer") {
+        setTeamPickerId(data.team?.id ?? "");
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "";
+      setFlowError(msg || t("conversationDetail.leadOwnerDecisionFailed"));
+    } finally {
+      setLeadOwnerDecisionBusy(false);
     }
   };
 
@@ -3093,6 +3127,80 @@ export function ConversationDetailPage() {
           >
             {t("conversationDetail.botTriageBanner")}
           </ConversationDismissibleBanner>
+        ) : null}
+
+        {conversation.leadOwnerConflict ? (
+          <div
+            className="shrink-0 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 backdrop-blur-sm dark:border-amber-900/50 dark:bg-amber-950/40 sm:px-5"
+            role="region"
+            aria-label={t("conversationDetail.leadOwnerBannerTitle")}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                    <User className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                      {t("conversationDetail.leadOwnerBannerTitle")}
+                    </p>
+                    <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-200/90">
+                      {t("conversationDetail.leadOwnerBannerBody")
+                        .replace("{agent}", conversation.leadOwnerConflict.originalAgent.name)
+                        .replace(
+                          "{date}",
+                          format(new Date(conversation.leadOwnerConflict.savedAt), "PPp", {
+                            locale: dateLocale,
+                          }),
+                        )
+                        .replace("{leadType}", conversation.leadOwnerConflict.leadType.name)}
+                    </p>
+                    {conversation.leadOwnerConflict.closureReason ? (
+                      <p className="mt-1 text-xs text-amber-800/85 dark:text-amber-300/85">
+                        {t("conversationDetail.leadOwnerBannerReason").replace(
+                          "{reason}",
+                          conversation.leadOwnerConflict.closureReason,
+                        )}
+                      </p>
+                    ) : null}
+                    {conversation.leadOwnerConflict.closureValue != null &&
+                    conversation.leadOwnerConflict.closureValue > 0 ? (
+                      <p className="mt-0.5 text-xs text-amber-800/85 dark:text-amber-300/85">
+                        {t("conversationDetail.leadOwnerBannerValue").replace(
+                          "{value}",
+                          fmtMoney(conversation.leadOwnerConflict.closureValue),
+                        )}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  disabled={leadOwnerDecisionBusy}
+                  onClick={() => void submitLeadOwnerDecision("transfer")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
+                >
+                  {leadOwnerDecisionBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                  )}
+                  {t("conversationDetail.leadOwnerTransfer")}
+                </button>
+                <button
+                  type="button"
+                  disabled={leadOwnerDecisionBusy}
+                  onClick={() => void submitLeadOwnerDecision("proceed")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                >
+                  {t("conversationDetail.leadOwnerProceed")}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         <div

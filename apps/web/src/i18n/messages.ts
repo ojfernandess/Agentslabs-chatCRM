@@ -3621,6 +3621,14 @@ export const messages = {
       awaitingHumanBadge: "Aguardando atendimento",
       awaitingHumanBanner:
         "O bot transferiu esta conversa para atendimento humano. As respostas automáticas estão em pausa até a conversa voltar à pendência (fila do bot) ou ser tratada pela equipa.",
+      leadOwnerBannerTitle: "Lead vinculado a outro atendente",
+      leadOwnerBannerBody:
+        "Este cliente teve um lead ({leadType}) salvo por {agent} em {date}.",
+      leadOwnerBannerReason: "Registro: {reason}",
+      leadOwnerBannerValue: "Valor registrado: {value}",
+      leadOwnerTransfer: "Transferir para o atendente responsável",
+      leadOwnerProceed: "Prosseguir com o atendimento",
+      leadOwnerDecisionFailed: "Não foi possível registrar a decisão. Tente novamente.",
       startAttendance: "Iniciar atendimento",
       startAttendanceHint: "Atribuir a conversa a si sem enviar mensagem (equivalente à aceitação manual).",
       reopen: "Reabrir conversa",
@@ -4168,6 +4176,11 @@ export const messages = {
       leadTypePlaybookDueDays: "Prazo sugerido (dias)",
       leadTypePlaybookNoteTemplate: "Modelo da nota (use {{closureReason}})",
       leadTypePlaybookCreateDealWithoutValue: "Criar negócio mesmo sem valor monetário",
+      leadTypeAgentBindingTitle: "Vínculo de atendente",
+      leadTypeAgentBindingHint:
+        "Quando activo, ao finalizar com este tipo o lead fica vinculado ao atendente que salvou. Se outro atendente abrir a conversa, verá um aviso com opção de transferir ou prosseguir.",
+      leadTypeAgentBindingEnable: "Activar aviso de vínculo de atendente",
+      leadTypeAgentBindingBadge: "Vínculo de atendente",
       leadTypeRollupLabel_PIPELINE: "Valor em negociação",
       leadTypeRollupLabel_WON: "Valor contabilizado como venda",
       leadTypeRollupLabel_LOST: "Perdido (fora das somas)",
@@ -8546,6 +8559,14 @@ export const messages = {
       awaitingHumanBadge: "Awaiting agent",
       awaitingHumanBanner:
         "The bot handed this conversation to your team. Automated replies stay paused until the conversation is set back to pending (bot queue) or handled by an agent.",
+      leadOwnerBannerTitle: "Lead linked to another agent",
+      leadOwnerBannerBody:
+        "This contact had a lead ({leadType}) saved by {agent} on {date}.",
+      leadOwnerBannerReason: "Record: {reason}",
+      leadOwnerBannerValue: "Recorded value: {value}",
+      leadOwnerTransfer: "Transfer to responsible agent",
+      leadOwnerProceed: "Proceed with handling",
+      leadOwnerDecisionFailed: "Could not record your choice. Please try again.",
       startAttendance: "Start handling",
       startAttendanceHint: "Assign this conversation to yourself without sending a message (manual claim).",
       reopen: "Reopen conversation",
@@ -9093,6 +9114,11 @@ export const messages = {
       leadTypePlaybookDueDays: "Suggested due date (days)",
       leadTypePlaybookNoteTemplate: "Note template (use {{closureReason}})",
       leadTypePlaybookCreateDealWithoutValue: "Create deal even without monetary value",
+      leadTypeAgentBindingTitle: "Agent binding",
+      leadTypeAgentBindingHint:
+        "When enabled, resolving with this lead type links the lead to the agent who saved it. If another agent opens the conversation, they see a notice to transfer or proceed.",
+      leadTypeAgentBindingEnable: "Enable agent binding notice",
+      leadTypeAgentBindingBadge: "Agent binding",
       leadTypeRollupLabel_PIPELINE: "Pipeline / negotiation value",
       leadTypeRollupLabel_WON: "Counted as closed-won revenue",
       leadTypeRollupLabel_LOST: "Lost (excluded)",

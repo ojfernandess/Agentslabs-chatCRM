@@ -494,6 +494,8 @@ model User {
 
   assignedContacts             Contact[]                     @relation("AssignedContacts")
   createdContacts              Contact[]                     @relation("ContactCreator")
+  contactsLeadSaved            Contact[]                     @relation("ContactLeadSavedBy")
+  leadOwnerPromptDecisions     Conversation[]                @relation("LeadOwnerPromptDecidedBy")
   assignedConversations        Conversation[]                @relation("AssignedConversations")
   reminders                    Reminder[]
   auditLogs                    AuditLog[]
@@ -667,6 +669,14 @@ model Contact {
   pipelineStageId String?        @map("pipeline_stage_id") @db.Uuid
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
 
+  /// Atendente que salvou o lead (quando o tipo de lead tem vínculo de atendente activo).
+  leadSavedById String?   @map("lead_saved_by_id") @db.Uuid
+  leadSavedBy   User?     @relation("ContactLeadSavedBy", fields: [leadSavedById], references: [id], onDelete: SetNull)
+  leadSavedAt   DateTime? @map("lead_saved_at")
+  leadSavedLeadTypeId String?   @map("lead_saved_lead_type_id") @db.Uuid
+  leadSavedLeadType   LeadType? @relation("ContactLeadSavedLeadType", fields: [leadSavedLeadTypeId], references: [id], onDelete: SetNull)
+  leadSavedClosureRecordId String? @map("lead_saved_closure_record_id") @db.Uuid
+
   tags                ContactTag[]
   conversations       Conversation[]
   reminders           Reminder[]
@@ -684,6 +694,8 @@ model Contact {
   @@index([createdById])
   @@index([pipelineStageId])
   @@index([accountId])
+  @@index([leadSavedById])
+  @@index([leadSavedLeadTypeId])
   @@map("contacts")
 }
 
@@ -886,9 +898,12 @@ model LeadType {
   valueRollup    LeadValueRollup @default(PIPELINE) @map("value_roll_up")
   /// Próximo passo sugerido ao finalizar conversa com este tipo (JSON).
   closurePlaybook Json?          @map("closure_playbook")
+  /// Quando activo, finalizar com este tipo vincula o lead ao atendente e activa aviso em recontactos.
+  enableAgentBinding Boolean     @default(false) @map("enable_agent_binding")
   organizationId String          @map("organization_id") @db.Uuid
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  contactsLeadSaved           Contact[]                   @relation("ContactLeadSavedLeadType")
   conversations               Conversation[]
   closureRecords              ConversationClosureRecord[]
   pipelineStages              PipelineStage[]
@@ -940,6 +955,12 @@ model Conversation {
 
   /// Após transferência pelo agente nativo: não voltar a responder até voltar a `PENDING` (fila do bot) ou `awaitingHumanHandoff` limpo.
   awaitingHumanHandoff Boolean @default(false) @map("awaiting_human_handoff")
+
+  /// Decisão do aviso de vínculo de lead (transferir ao responsável original ou prosseguir).
+  leadOwnerPromptAction      String?   @map("lead_owner_prompt_action") @db.VarChar(16)
+  leadOwnerPromptDecidedById String?   @map("lead_owner_prompt_decided_by_id") @db.Uuid
+  leadOwnerPromptDecidedBy   User?     @relation("LeadOwnerPromptDecidedBy", fields: [leadOwnerPromptDecidedById], references: [id], onDelete: SetNull)
+  leadOwnerPromptDecidedAt   DateTime? @map("lead_owner_prompt_decided_at")
 
   messages               Message[]
   closureRecords         ConversationClosureRecord[]

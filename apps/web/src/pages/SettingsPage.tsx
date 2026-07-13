@@ -172,6 +172,7 @@ interface LeadTypeRow {
   order: number;
   valueRollup: "PIPELINE" | "WON" | "LOST" | "NONE";
   closurePlaybook?: unknown;
+  enableAgentBinding?: boolean;
 }
 
 const LEAD_ROLLUP_LABEL_KEY: Record<LeadTypeRow["valueRollup"], string> = {
@@ -288,6 +289,7 @@ export function SettingsPage() {
   const [editPbDueDays, setEditPbDueDays] = useState(1);
   const [editPbNoteTemplate, setEditPbNoteTemplate] = useState("");
   const [editPbCreateDealWithoutValue, setEditPbCreateDealWithoutValue] = useState(false);
+  const [editLtEnableAgentBinding, setEditLtEnableAgentBinding] = useState(false);
   const [editLtSubmitting, setEditLtSubmitting] = useState(false);
   const [pipelineOrphans, setPipelineOrphans] = useState<CrmPipelineStageRow[]>([]);
   const [orphanBusyId, setOrphanBusyId] = useState<string | null>(null);
@@ -762,6 +764,7 @@ export function SettingsPage() {
     setEditPbDueDays(pb.reminderDueDays ?? 1);
     setEditPbNoteTemplate(pb.reminderNoteTemplate ?? "");
     setEditPbCreateDealWithoutValue(pb.createDealWithoutValue === true);
+    setEditLtEnableAgentBinding(lt.enableAgentBinding === true);
     setLtError("");
   };
 
@@ -782,6 +785,7 @@ export function SettingsPage() {
         color: editLtColor,
         order: row.order,
         valueRollup: editLtRollup,
+        enableAgentBinding: editLtEnableAgentBinding,
         closurePlaybook: {
           suggestReminder: editPbSuggestReminder,
           reminderDueDays: editPbDueDays,
@@ -2945,6 +2949,25 @@ export function SettingsPage() {
                                   </span>
                                 </label>
                               </div>
+                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
+                                <p className="text-xs font-semibold text-ink-800 dark:text-ink-100">
+                                  {t("settings.leadTypeAgentBindingTitle")}
+                                </p>
+                                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                                  {t("settings.leadTypeAgentBindingHint")}
+                                </p>
+                                <label className="mt-3 flex cursor-pointer items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={editLtEnableAgentBinding}
+                                    onChange={(e) => setEditLtEnableAgentBinding(e.target.checked)}
+                                    className="h-4 w-4 rounded border-ink-300 text-brand-500"
+                                  />
+                                  <span className="text-xs text-ink-700 dark:text-ink-200">
+                                    {t("settings.leadTypeAgentBindingEnable")}
+                                  </span>
+                                </label>
+                              </div>
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   type="submit"
@@ -2974,6 +2997,11 @@ export function SettingsPage() {
                                 </span>
                                 <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
                                   {t(LEAD_ROLLUP_LABEL_KEY[lt.valueRollup ?? "PIPELINE"])}
+                                  {lt.enableAgentBinding ? (
+                                    <span className="ml-2 text-brand-600 dark:text-brand-300">
+                                      · {t("settings.leadTypeAgentBindingBadge")}
+                                    </span>
+                                  ) : null}
                                 </p>
                               </div>
                               <div className="flex shrink-0 items-center gap-2">

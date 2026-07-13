@@ -6,6 +6,7 @@ import { buildCsatWhatsAppBody, newCsatSurveyToken } from "./csatSurvey.js";
 import { ensurePipelineStageForLeadType } from "./pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "./dealStageSync.js";
 import { createConversationClosureRecord } from "./conversationClosureRecords.js";
+import { applyLeadOwnerBindingOnResolve } from "./leadOwnerBinding.js";
 import { clearAutomationConversationContext } from "./automationConversationContextLib.js";
 
 const AUTO_CLOSURE_REASON = "Resolução automática por inatividade.";
@@ -133,7 +134,7 @@ async function processOneConversation(
           teamId: true,
         },
       });
-      await createConversationClosureRecord(tx, {
+      const closureRow = await createConversationClosureRecord(tx, {
         organizationId,
         conversationId,
         resolvedById: actorUserId,
@@ -142,6 +143,13 @@ async function processOneConversation(
         leadTypeId: ltid,
         closureReason: AUTO_CLOSURE_REASON,
         closureValue: null,
+      });
+      await applyLeadOwnerBindingOnResolve(tx, {
+        organizationId,
+        contactId: existing.contactId,
+        leadTypeId: ltid,
+        savedByUserId: actorUserId,
+        closureRecordId: closureRow.id,
       });
       return { conversation: conv };
     });

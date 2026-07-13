@@ -45,6 +45,12 @@ import {
   maybeCreateDealOnConversationClosure,
   maybeCreateReminderOnConversationClosure,
 } from "../lib/conversationClosureCommerce.js";
+import {
+  applyLeadOwnerBindingOnResolve,
+  buildLeadOwnerConflict,
+  contactLeadBindingInclude,
+  findTeamForLeadOwnerTransfer,
+} from "../lib/leadOwnerBinding.js";
 import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
@@ -1421,6 +1427,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
                 pipeline: { select: { id: true, name: true } },
               },
             },
+            ...contactLeadBindingInclude,
           },
         },
         assignedTo: { select: { id: true, name: true } },
@@ -1494,6 +1501,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       conversation.id,
     ]);
 
+    const leadOwnerConflict = await buildLeadOwnerConflict(
+      conversation.contact,
+      conversation,
+      request.user.id,
+    );
+
     return {
       ...stripCsatSurveyToken(convRest),
       activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
@@ -1517,6 +1530,238 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             : null,
       contactTimeline,
       agentBotTriageActive,
+      leadOwnerConflict,
+    };
+  });
+
+  const leadOwnerDecisionSchema = z.object({
+    action: z.enum(["transfer", "proceed"]),
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/lead-owner-decision", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsed = leadOwnerDecisionSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      include: {
+        contact: { include: contactLeadBindingInclude },
+        assignedTo: { select: { id: true, name: true } },
+        team: { select: { id: true, name: true } },
+      },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const conflict = await buildLeadOwnerConflict(existing.contact, existing, request.user.id);
+    if (!conflict) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "No lead owner conflict to resolve on this conversation",
+        statusCode: 400,
+      });
+    }
+
+    const prevTeamId = existing.teamId;
+    const prevAssignedToId = existing.assignedToId;
+    const now = new Date();
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const patch: {
+          leadOwnerPromptAction: string;
+          leadOwnerPromptDecidedById: string;
+          leadOwnerPromptDecidedAt: Date;
+          assignedToId?: string | null;
+          teamId?: string | null;
+          teamTransferPulseAt?: Date | null;
+          awaitingHumanHandoff?: boolean;
+        } = {
+          leadOwnerPromptAction: parsed.data.action,
+          leadOwnerPromptDecidedById: request.user.id,
+          leadOwnerPromptDecidedAt: now,
+        };
+
+        if (parsed.data.action === "transfer") {
+          const teamId = await findTeamForLeadOwnerTransfer(
+            tx,
+            organizationId,
+            conflict.originalAgent.id,
+            existing.teamId,
+          );
+          if (!teamId) {
+            throw new Error("LEAD_OWNER_NO_TEAM");
+          }
+          patch.assignedToId = conflict.originalAgent.id;
+          patch.teamId = teamId;
+          if (teamId !== existing.teamId) {
+            patch.teamTransferPulseAt = new Date();
+          }
+          patch.awaitingHumanHandoff = false;
+        }
+
+        await tx.conversation.update({
+          where: { id: existing.id },
+          data: patch,
+        });
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "LEAD_OWNER_NO_TEAM") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Original agent is not a member of any team — cannot transfer",
+          statusCode: 400,
+        });
+      }
+      throw err;
+    }
+
+    void recordAuditLog({
+      actorUserId: request.user.id,
+      organizationId,
+      action: "lead.owner_decision",
+      resourceType: "conversation",
+      resourceId: existing.id,
+      metadata: {
+        decision: parsed.data.action,
+        contactId: existing.contactId,
+        originalAgentId: conflict.originalAgent.id,
+        originalAgentName: conflict.originalAgent.name,
+        leadTypeId: conflict.leadType.id,
+        leadTypeName: conflict.leadType.name,
+        savedAt: conflict.savedAt,
+        closureRecordId: conflict.closureRecordId,
+      },
+      ip: clientIp(request),
+    });
+
+    await appendTimelineEvent({
+      organizationId,
+      subjectType: "CONTACT",
+      subjectId: existing.contactId,
+      eventType: "lead.owner_decision",
+      channel: "conversation",
+      payload: {
+        conversationId: existing.id,
+        decision: parsed.data.action,
+        originalAgentId: conflict.originalAgent.id,
+        originalAgentName: conflict.originalAgent.name,
+        leadTypeId: conflict.leadType.id,
+        leadTypeName: conflict.leadType.name,
+        savedAt: conflict.savedAt,
+        closureRecordId: conflict.closureRecordId,
+      } as Prisma.InputJsonValue,
+      actorUserId: request.user.id,
+      sourceId: existing.id,
+    });
+
+    const updated = await prisma.conversation.findFirst({
+      where: { id: existing.id, organizationId },
+      include: {
+        contact: {
+          include: {
+            assignedTo: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, name: true } },
+            tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+            pipelineStage: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                pipeline: { select: { id: true, name: true } },
+              },
+            },
+            ...contactLeadBindingInclude,
+          },
+        },
+        assignedTo: { select: { id: true, name: true } },
+        team: { select: { id: true, name: true } },
+        inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+        leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
+        closureRecords: {
+          orderBy: { sessionIndex: "asc" },
+          include: closureRecordInclude,
+        },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            actorUser: {
+              select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+            },
+          },
+        },
+      },
+    });
+    if (!updated) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+
+    if (parsed.data.action === "transfer") {
+      const teamChanged = updated.teamId !== prevTeamId;
+      const assigneeChanged = updated.assignedToId !== prevAssignedToId;
+      if (teamChanged || assigneeChanged) {
+        broadcastToOrganization(organizationId, {
+          type: "conversation.transferred",
+          conversationId: updated.id,
+          teamId: updated.teamId,
+          teamName: updated.team?.name ?? null,
+          previousTeamId: prevTeamId,
+          assignedToId: updated.assignedToId,
+          previousAssignedToId: prevAssignedToId,
+          contact: updated.contact,
+        });
+      }
+    }
+
+    const contactTimeline = await fetchContactTimelineForConversation(organizationId, updated.contactId);
+    const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, updated.inboxId);
+    const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, updated.inbox.channelType);
+    const contactHasAvatar = await hasContactAvatarCache(organizationId, updated.contact.id);
+    const { closureRecords, ...convRest } = updated;
+    const leadOwnerConflict = await buildLeadOwnerConflict(updated.contact, updated, request.user.id);
+
+    return {
+      ...stripCsatSurveyToken(convRest),
+      contact: {
+        ...updated.contact,
+        hasAvatar: contactHasAvatar,
+        thumbnail: contactHasAvatar
+          ? `/api/v1/contacts/${updated.contact.id}/profile-picture`
+          : null,
+      },
+      closureRecords: closureRecords.map((r) => ({
+        id: r.id,
+        sessionIndex: r.sessionIndex,
+        resolvedAt: r.resolvedAt.toISOString(),
+        reopenedAt: r.reopenedAt?.toISOString() ?? null,
+        isNewAttendance: r.isNewAttendance,
+        closureReason: r.closureReason,
+        closureValue: r.closureValue,
+        csatScore: r.csatScore,
+        csatComment: r.csatComment,
+        csatRecordedAt: r.csatRecordedAt?.toISOString() ?? null,
+        resolvedBy: r.resolvedBy,
+        reopenedBy: r.reopenedBy,
+        assignedTo: r.assignedTo,
+        team: r.team,
+        leadType: r.leadType,
+      })),
+      contactTimeline,
+      agentBotTriageActive,
+      leadOwnerConflict,
     };
   });
 
@@ -1682,6 +1927,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       awaitingHumanHandoff?: boolean;
       teamTransferPulseAt?: Date | null;
       priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT" | null;
+      leadOwnerPromptAction?: string | null;
+      leadOwnerPromptDecidedById?: string | null;
+      leadOwnerPromptDecidedAt?: Date | null;
     } = {};
 
     if (parsed.data.priority !== undefined) {
@@ -1729,6 +1977,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       data.csatRecordedAt = null;
       data.csatSurveyToken = null;
       data.awaitingHumanHandoff = false;
+      data.leadOwnerPromptAction = null;
+      data.leadOwnerPromptDecidedById = null;
+      data.leadOwnerPromptDecidedAt = null;
     } else if (nextStatus === "RESOLVED" && existing.status !== "RESOLVED") {
       if (existing.status === "OPEN" || existing.status === "PENDING") {
         const rawCr = parsed.data.closureReason;
@@ -1777,6 +2028,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               include: {
                 assignedTo: { select: { id: true, name: true } },
                 createdBy: { select: { id: true, name: true } },
+                ...contactLeadBindingInclude,
               },
             },
             assignedTo: { select: { id: true, name: true } },
@@ -1838,6 +2090,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               closureValue: data.closureValue ?? null,
             });
             createdClosureRecordId = closureRow.id;
+
+            if (ltid && createdClosureRecordId) {
+              await applyLeadOwnerBindingOnResolve(tx, {
+                organizationId,
+                contactId: existing.contactId,
+                leadTypeId: ltid,
+                savedByUserId: request.user.id,
+                closureRecordId: createdClosureRecordId,
+              });
+            }
 
             if (ltid && stageForDeal && ltPlaybook && createdClosureRecordId) {
               dealMeta = await maybeCreateDealOnConversationClosure(tx, {
@@ -2104,6 +2366,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
       const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
       const { closureRecords, ...convBody } = conversation;
+      const leadOwnerConflict = await buildLeadOwnerConflict(
+        conversation.contact,
+        conversation,
+        request.user.id,
+      );
       return {
         ...stripCsatSurveyToken(convBody),
         closureRecords: closureRecords.map((r) => ({
@@ -2125,6 +2392,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         })),
         contactTimeline,
         agentBotTriageActive,
+        leadOwnerConflict,
       };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
