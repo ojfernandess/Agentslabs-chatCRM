@@ -17,6 +17,7 @@ import {
   type ConversationContextTarget,
 } from "@/components/ConversationContextMenu";
 import { ConversationListItem } from "@/components/ConversationListItem";
+import { ConversationsSplitToolbar } from "@/components/conversations/ConversationsSplitToolbar";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import type { ConversationPriority } from "@/lib/conversationPriority";
@@ -641,7 +642,7 @@ export function ConversationsPage({
         <div
           className={clsx(
             "relative flex h-full min-h-0 w-full flex-col gap-4",
-            splitView ? "gap-2 p-2 sm:p-3" : "p-4 sm:p-6 lg:p-8",
+            splitView ? "gap-0 p-0" : "p-4 sm:p-6 lg:p-8",
           )}
         >
           {!splitView ? (
@@ -721,65 +722,35 @@ export function ConversationsPage({
             </div>
           </header>
           ) : (
-          <div className="flex shrink-0 flex-col gap-1.5 border-b border-ink-100 px-1 pb-2 dark:border-ink-800">
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
-                <input
-                  type="search"
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                  placeholder={t("conversations.searchListPlaceholder")}
-                  className="input-field h-10 pl-10 text-sm"
-                  aria-label={t("conversations.searchListPlaceholder")}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setComposeOpen(true)}
-                className="btn-primary inline-flex h-10 w-10 shrink-0 rounded-xl p-0 shadow-md shadow-brand-500/20"
-                title={t("conversations.newMessageTooltip")}
-                aria-label={t("conversations.newMessageTooltip")}
-              >
-                <MessageSquarePlus className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Tag className="h-3.5 w-3.5 shrink-0 text-ink-400 dark:text-ink-500" aria-hidden />
-              <label htmlFor="conv-tag-filter-split" className="sr-only">
-                {t("conversations.filterTag")}
-              </label>
-              <select
-                id="conv-tag-filter-split"
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
-                className={listFilterSelectClass}
-              >
-                <option value="">{t("conversations.allTags")}</option>
-                {tagOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name}
-                  </option>
-                ))}
-              </select>
-              <label htmlFor="conv-lead-type-filter-split" className="sr-only">
-                {t("conversations.filterLeadType")}
-              </label>
-              <select
-                id="conv-lead-type-filter-split"
-                value={leadTypeFilter}
-                onChange={(e) => setLeadTypeFilter(e.target.value)}
-                className={listFilterSelectClass}
-              >
-                <option value="">{t("conversations.allLeadTypes")}</option>
-                {leadTypeOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <ConversationsSplitToolbar
+            listSearch={listSearch}
+            onListSearchChange={setListSearch}
+            onCompose={() => setComposeOpen(true)}
+            tagFilter={tagFilter}
+            onTagFilterChange={setTagFilter}
+            leadTypeFilter={leadTypeFilter}
+            onLeadTypeFilterChange={setLeadTypeFilter}
+            tagOptions={tagOptions}
+            leadTypeOptions={leadTypeOptions}
+            orgAttendanceTabEnabled={orgAttendanceTabEnabled}
+            orgAgentBotTriageActive={orgAgentBotTriageActive}
+            attendanceScopeActive={attendanceScopeActive}
+            mineActive={mineActive}
+            botAttendanceActive={botAttendanceActive}
+            scopeCounts={scopeCounts}
+            statusCounts={statusCounts}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            statusFilters={filters}
+            teamFilter={teamFilter}
+            onTeamFilterChange={setTeamFilterUrl}
+            inboxFilter={inboxFilter}
+            onInboxFilterChange={setInboxFilterUrl}
+            teamOptions={teamOptions}
+            inboxOptions={inboxOptions}
+            onScopeChange={setScopeParam}
+            onAttendanceSubView={setAttendanceSubView}
+          />
           )}
 
           <section
@@ -790,13 +761,14 @@ export function ConversationsPage({
                 : "card-surface",
             )}
           >
+            {!splitView ? (
             <div
               className={clsx(
                 "flex flex-col gap-2 border-b border-ink-100 bg-white/70 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/25",
-                splitView ? "px-2 py-2" : "flex-wrap items-center justify-between gap-3 px-4 py-3",
+                "flex-wrap items-center justify-between gap-3 px-4 py-3",
               )}
             >
-              <div className={clsx("flex flex-wrap items-center gap-1.5", splitView && "gap-1")}>
+              <div className="flex flex-wrap items-center gap-1.5">
                 {orgAttendanceTabEnabled ? (
                   <button
                     type="button"
@@ -898,7 +870,7 @@ export function ConversationsPage({
                 </div>
                 ) : null}
 
-                <div className={clsx("flex items-center gap-1.5", splitView ? "w-full" : "hidden gap-2 md:flex")}>
+                <div className={clsx("flex items-center gap-1.5", "hidden gap-2 md:flex")}>
                   <UsersRound className="h-3.5 w-3.5 shrink-0 text-ink-400 dark:text-ink-500" />
                   <label htmlFor="conv-team-filter" className="sr-only">
                     {t("conversations.filterTeam")}
@@ -907,10 +879,7 @@ export function ConversationsPage({
                     id="conv-team-filter"
                     value={teamFilter}
                     onChange={(e) => setTeamFilterUrl(e.target.value)}
-                    className={clsx(
-                      "min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100",
-                      splitView ? "h-8" : "h-10 rounded-xl px-2.5 text-xs",
-                    )}
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
                   >
                     <option value="">{t("conversations.allTeams")}</option>
                     {teamOptions.map((opt) => (
@@ -927,10 +896,7 @@ export function ConversationsPage({
                     id="conv-inbox-filter"
                     value={inboxFilter}
                     onChange={(e) => setInboxFilterUrl(e.target.value)}
-                    className={clsx(
-                      "min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100",
-                      splitView ? "h-8" : "h-10 rounded-xl px-2.5 text-xs",
-                    )}
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
                   >
                     <option value="">{t("conversations.allInboxes")}</option>
                     {inboxOptions.map((opt) => (
@@ -942,13 +908,11 @@ export function ConversationsPage({
                 </div>
               </div>
             </div>
+            ) : null}
 
-            {orgAttendanceTabEnabled && attendanceScopeActive ? (
+            {!splitView && orgAttendanceTabEnabled && attendanceScopeActive ? (
               <div
-                className={clsx(
-                  "flex flex-wrap items-center border-b border-ink-100 bg-white/50 dark:border-ink-800 dark:bg-ink-950/15",
-                  splitView ? "gap-1.5 px-2 py-1.5" : "gap-2 px-4 py-2",
-                )}
+                className="flex flex-wrap items-center gap-2 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/15"
               >
                 <button
                   type="button"
