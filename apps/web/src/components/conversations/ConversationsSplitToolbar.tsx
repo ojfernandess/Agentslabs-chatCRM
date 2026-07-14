@@ -70,11 +70,18 @@ function SplitScopeCount({ count, active }: { count: number; active: boolean }) 
     <span
       className={clsx(
         "min-w-[1.1rem] text-center text-[10px] font-bold tabular-nums leading-none",
-        active ? "text-brand-600 dark:text-brand-300" : "text-ink-500 dark:text-ink-400",
+        active ? "text-brand-600 dark:text-brand-300" : "text-ink-400 dark:text-ink-500",
       )}
     >
       {count}
     </span>
+  );
+}
+
+function scopeIconClass(active: boolean): string {
+  return clsx(
+    "h-4 w-4 shrink-0 transition-colors",
+    active ? "text-brand-600 dark:text-brand-400" : "text-ink-400 dark:text-ink-500",
   );
 }
 
@@ -149,20 +156,33 @@ export function ConversationsSplitToolbar(props: Props) {
   const statusAllCount = statusCounts.open + statusCounts.pending + statusCounts.resolved;
   const showStatusRow = !botAttendanceActive && (!attendanceScopeActive || mineActive);
 
-  const scopeTabClass = (active: boolean) =>
+  const scopeTabButtonClass = (active: boolean) =>
     clsx(
-      "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 border-b-2 px-0.5 py-1 transition-colors",
+      "relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 transition-colors",
       active
-        ? "border-brand-500 text-brand-600 dark:border-brand-400 dark:text-brand-300"
-        : "border-transparent text-ink-500 hover:text-ink-700 dark:text-ink-400 dark:hover:text-ink-200",
+        ? "bg-white text-brand-600 dark:bg-ink-900/60 dark:text-brand-300"
+        : "bg-transparent text-ink-500 hover:bg-white/60 dark:text-ink-400 dark:hover:bg-ink-900/30",
     );
 
-  const statusTabClass = (active: boolean) =>
+  const statusCountBadgeClass = (active: boolean, key: string) => {
+    if (active) {
+      return "rounded-full bg-brand-100 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-brand-700 dark:bg-brand-500/20 dark:text-brand-200";
+    }
+    if (key === "PENDING") {
+      return "rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
+    }
+    if (key === "OPEN") {
+      return "rounded-full bg-emerald-50 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
+    }
+    return "text-[10px] font-bold tabular-nums leading-none text-ink-400 dark:text-ink-500";
+  };
+
+  const statusTabButtonClass = (active: boolean) =>
     clsx(
-      "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors",
+      "relative inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold transition-colors",
       active
-        ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600"
-        : "text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800/60",
+        ? "text-brand-600 dark:text-brand-300"
+        : "text-ink-500 hover:text-ink-700 dark:text-ink-400 dark:hover:text-ink-200",
     );
 
   const statusCountFor = (key: string): number | null => {
@@ -236,10 +256,11 @@ export function ConversationsSplitToolbar(props: Props) {
 
       {/* Âmbito: atendimento · todas · bot */}
       <div
-        className="flex flex-nowrap items-stretch divide-x divide-ink-200/80 dark:divide-ink-800/80"
+        className="overflow-hidden rounded-lg border border-ink-200/90 bg-ink-50/50 dark:border-ink-700/80 dark:bg-ink-900/25"
         role="tablist"
         aria-label={t("conversations.title")}
       >
+        <div className="flex flex-nowrap items-stretch divide-x divide-ink-200/80 dark:divide-ink-700/80">
         {orgAttendanceTabEnabled ? (
           <button
             type="button"
@@ -247,10 +268,13 @@ export function ConversationsSplitToolbar(props: Props) {
             aria-selected={attendanceScopeActive}
             title={t("conversations.scopeAttendance")}
             onClick={() => onScopeChange("attendance")}
-            className={scopeTabClass(attendanceScopeActive)}
+            className={scopeTabButtonClass(attendanceScopeActive)}
           >
-            <Headset className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <Headset className={scopeIconClass(attendanceScopeActive)} strokeWidth={2} />
             <SplitScopeCount count={scopeCounts.attendanceActive} active={attendanceScopeActive} />
+            {attendanceScopeActive ? (
+              <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-brand-500 dark:bg-brand-400" aria-hidden />
+            ) : null}
           </button>
         ) : null}
         <button
@@ -259,10 +283,13 @@ export function ConversationsSplitToolbar(props: Props) {
           aria-selected={orgScopeActive}
           title={t("conversations.scopeOrg")}
           onClick={() => onScopeChange("org")}
-          className={scopeTabClass(orgScopeActive)}
+          className={scopeTabButtonClass(orgScopeActive)}
         >
-          <MessageSquare className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+          <MessageSquare className={scopeIconClass(orgScopeActive)} strokeWidth={2} />
           <SplitScopeCount count={scopeCounts.org} active={orgScopeActive} />
+          {orgScopeActive ? (
+            <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-brand-500 dark:bg-brand-400" aria-hidden />
+          ) : null}
         </button>
         {!orgAttendanceTabEnabled ? (
           <button
@@ -271,10 +298,13 @@ export function ConversationsSplitToolbar(props: Props) {
             aria-selected={mineActive}
             title={t("conversations.myAssignments")}
             onClick={() => onScopeChange("mine")}
-            className={scopeTabClass(mineActive)}
+            className={scopeTabButtonClass(mineActive)}
           >
-            <UserCircle className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <UserCircle className={scopeIconClass(mineActive)} strokeWidth={2} />
             <SplitScopeCount count={scopeCounts.mine} active={mineActive} />
+            {mineActive ? (
+              <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-brand-500 dark:bg-brand-400" aria-hidden />
+            ) : null}
           </button>
         ) : null}
         {orgAgentBotTriageActive ? (
@@ -284,43 +314,68 @@ export function ConversationsSplitToolbar(props: Props) {
             aria-selected={botAttendanceActive}
             title={t("conversations.scopeBotAttendance")}
             onClick={() => onScopeChange("bot")}
-            className={scopeTabClass(botAttendanceActive)}
+            className={scopeTabButtonClass(botAttendanceActive)}
           >
-            <Bot className={clsx("h-3.5 w-3.5 shrink-0", botAttendanceActive && "animate-bot-head-nod")} strokeWidth={2} />
+            <Bot
+              className={clsx(scopeIconClass(botAttendanceActive), botAttendanceActive && "animate-bot-head-nod")}
+              strokeWidth={2}
+            />
             <SplitScopeCount count={scopeCounts.bot} active={botAttendanceActive} />
+            {botAttendanceActive ? (
+              <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-brand-500 dark:bg-brand-400" aria-hidden />
+            ) : null}
           </button>
         ) : null}
+        </div>
       </div>
 
       {/* Sub-aba atendimento: fila / meus */}
       {orgAttendanceTabEnabled && attendanceScopeActive ? (
-        <div className="flex flex-nowrap items-center gap-1">
+        <div
+          className="flex flex-nowrap items-stretch border-b border-ink-200/80 dark:border-ink-700/80"
+          role="tablist"
+          aria-label={t("conversations.scopeAttendance")}
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={!mineActive}
             onClick={() => onAttendanceSubView("queue")}
-            className={statusTabClass(!mineActive)}
+            className={statusTabButtonClass(!mineActive)}
             title={t("conversations.attendanceQueue")}
           >
-            <Clock className="h-3 w-3 shrink-0" />
+            <Clock className={clsx("h-3 w-3 shrink-0", !mineActive ? "text-brand-600" : "text-ink-400")} />
             <span className="truncate">{t("conversations.attendanceQueue")}</span>
-            <span className="tabular-nums opacity-90">{scopeCounts.attendanceQueue}</span>
+            <span className={statusCountBadgeClass(!mineActive, "")}>{scopeCounts.attendanceQueue}</span>
+            {!mineActive ? (
+              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand-500 dark:bg-brand-400" aria-hidden />
+            ) : null}
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={mineActive}
             onClick={() => onAttendanceSubView("mine")}
-            className={statusTabClass(mineActive)}
+            className={statusTabButtonClass(mineActive)}
             title={t("conversations.myAssignments")}
           >
-            <UserCircle className="h-3 w-3 shrink-0" />
+            <UserCircle className={clsx("h-3 w-3 shrink-0", mineActive ? "text-brand-600" : "text-ink-400")} />
             <span className="truncate">{t("conversations.myAssignments")}</span>
-            <span className="tabular-nums opacity-90">{scopeCounts.mine}</span>
+            <span className={statusCountBadgeClass(mineActive, "")}>{scopeCounts.mine}</span>
+            {mineActive ? (
+              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand-500 dark:bg-brand-400" aria-hidden />
+            ) : null}
           </button>
         </div>
       ) : null}
 
       {/* Estado: todas · abertas · pendentes · finalizadas */}
       {showStatusRow ? (
-        <div className="flex flex-nowrap items-center gap-0.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className="flex flex-nowrap items-stretch gap-0 overflow-x-auto border-b border-ink-200/80 dark:border-ink-700/80 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+          aria-label={t("conversations.filterStatus")}
+        >
           {statusFilters.map((f) => {
             const count = statusCountFor(f.key);
             const active = statusFilter === f.key;
@@ -328,20 +383,18 @@ export function ConversationsSplitToolbar(props: Props) {
               <button
                 key={f.key || "all"}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => onStatusFilterChange(f.key)}
-                className={statusTabClass(active)}
+                className={statusTabButtonClass(active)}
                 title={f.label}
               >
                 <span className="max-w-[5.5rem] truncate">{f.label}</span>
                 {count != null ? (
-                  <span
-                    className={clsx(
-                      "rounded px-1 py-px text-[10px] font-bold tabular-nums leading-none",
-                      active ? "bg-white/20" : "bg-ink-200/70 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
-                    )}
-                  >
-                    {count}
-                  </span>
+                  <span className={statusCountBadgeClass(active, f.key)}>{count}</span>
+                ) : null}
+                {active ? (
+                  <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand-500 dark:bg-brand-400" aria-hidden />
                 ) : null}
               </button>
             );
