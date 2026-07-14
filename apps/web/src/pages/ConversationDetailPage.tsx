@@ -2850,9 +2850,10 @@ export function ConversationDetailPage() {
                         </span>
                       ) : conversation.awaitingHumanHandoff ? (
                         <span
-                          className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-900 dark:bg-red-950/60 dark:text-red-100"
+                          className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:ring-red-500/40"
                           title={t("conversationDetail.awaitingHumanBanner")}
                         >
+                          <Headset className="h-3 w-3 shrink-0" aria-hidden />
                           {t("conversationDetail.awaitingHumanBadge")}
                         </span>
                       ) : null}

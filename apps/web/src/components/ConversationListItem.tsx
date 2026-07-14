@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Bot, UserCircle } from "lucide-react";
+import { Bot, Headset, UserCircle } from "lucide-react";
 import clsx from "clsx";
 import { format, isToday, isYesterday } from "date-fns";
 import type { Locale } from "date-fns";
@@ -43,6 +43,9 @@ const statusColors: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-950/45 dark:text-amber-200",
   RESOLVED: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
 };
+
+const awaitingHumanBadgeClass =
+  "inline-flex shrink-0 items-center gap-0.5 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:text-white dark:ring-red-500/40";
 
 function formatListTimestamp(iso: string, dateLocale: Locale): string {
   const date = new Date(iso);
@@ -183,6 +186,15 @@ export function ConversationListItem({
                         : t("conversationDetail.botInAttendance")}
                     </span>
                   ) : null}
+                  {showAwaitingHuman ? (
+                    <span
+                      className={awaitingHumanBadgeClass}
+                      title={t("conversationDetail.awaitingHumanBanner")}
+                    >
+                      <Headset className="h-3 w-3" aria-hidden />
+                      {t("conversationDetail.awaitingHumanBadge")}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <span
@@ -290,14 +302,6 @@ export function ConversationListItem({
               ))}
               {displayTags.length > 2 ? (
                 <span className="shrink-0 text-ink-400">+{displayTags.length - 2}</span>
-              ) : null}
-              {showAwaitingHuman ? (
-                <span
-                  className="shrink-0 truncate rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-800 dark:bg-red-950/45 dark:text-red-100"
-                  title={t("conversationDetail.awaitingHumanBanner")}
-                >
-                  {t("conversationDetail.awaitingHumanBadge")}
-                </span>
               ) : null}
               <ConversationVoiceCallListBadge
                 activeVoiceCall={conv.activeVoiceCall}
