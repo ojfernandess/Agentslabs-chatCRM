@@ -260,7 +260,7 @@ export function ConversationsSplitToolbar(props: Props) {
         role="tablist"
         aria-label={t("conversations.title")}
       >
-        <div className="flex flex-nowrap items-stretch divide-x divide-ink-200/80 dark:divide-ink-700/80">
+        <div className="flex flex-nowrap items-stretch">
         {orgAttendanceTabEnabled ? (
           <button
             type="button"
