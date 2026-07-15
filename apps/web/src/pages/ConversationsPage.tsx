@@ -370,12 +370,22 @@ export function ConversationsPage({
       return;
     }
 
+    // Com conversa aberta (ex.: refresh em /conversations/:id), não mudar o âmbito —
+    // evita que a lista passe de «todas» para «fila de atendimento» e outras conversas sumam.
+    if (activeThreadId) {
+      initialAttendanceScopeApplied.current = true;
+      return;
+    }
+
     const hasExplicitScope =
       searchParams.get("mine") === "1" ||
       searchParams.get("mine") === "true" ||
       searchParams.get("bot") === "1" ||
       searchParams.get("botAttendance") === "1" ||
-      searchParams.get("attendance") === "1";
+      searchParams.get("attendance") === "1" ||
+      Boolean(searchParams.get("status")) ||
+      Boolean(searchParams.get("teamId")) ||
+      Boolean(searchParams.get("inboxId"));
     if (hasExplicitScope) {
       initialAttendanceScopeApplied.current = true;
       return;
@@ -389,6 +399,7 @@ export function ConversationsPage({
 
     initialAttendanceScopeApplied.current = true;
   }, [
+    activeThreadId,
     channelSettingsLoaded,
     scopeCountsLoaded,
     orgAttendanceTabEnabled,
