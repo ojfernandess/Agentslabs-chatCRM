@@ -20,6 +20,30 @@ export function defaultScheduledLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
 }
 
+export function isoToDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function dispatchConfigToScheduleState(dispatch: Record<string, unknown>): FollowUpScheduleState {
+  const cron = String(dispatch.cronExpression ?? "").trim();
+  if (cron) {
+    return { ...defaultFollowUpScheduleState(), scheduleMode: "recurring" };
+  }
+  if (dispatch.executionMode === "scheduled") {
+    const local = isoToDatetimeLocal(String(dispatch.scheduledAt ?? ""));
+    return {
+      ...defaultFollowUpScheduleState(),
+      scheduleMode: "scheduled",
+      scheduledAt: local || defaultScheduledLocal(),
+    };
+  }
+  return { ...defaultFollowUpScheduleState(), scheduleMode: "now" };
+}
+
 export interface FollowUpScheduleState {
   scheduleMode: FollowUpScheduleMode;
   scheduledAt: string;

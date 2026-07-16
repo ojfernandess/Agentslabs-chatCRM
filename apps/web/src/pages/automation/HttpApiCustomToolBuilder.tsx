@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import {
-  CalendarClock,
   ChevronRight,
   Inbox,
   Loader2,
@@ -24,6 +23,12 @@ import {
 } from "@/lib/campaignTemplates";
 import type { InboxOption, TemplateOption } from "@/pages/broadcasts/campaignTypes";
 import { HttpApiCustomTemplatePreviewPanel } from "./HttpApiCustomTemplatePreviewPanel";
+import {
+  buildFollowUpSchedulePayload,
+  dispatchConfigToScheduleState,
+  FollowUpScheduleFields,
+  type FollowUpScheduleState,
+} from "@/pages/broadcasts/FollowUpScheduleFields";
 
 type TemplateWithBody = TemplateOption & { body?: string; metaCategory?: string | null };
 
@@ -143,10 +148,9 @@ export function HttpApiCustomToolBuilder({
   const [autoCreateCampaign, setAutoCreateCampaign] = useState(dispatch0.autoCreateCampaign !== false);
   const [autoStart, setAutoStart] = useState(dispatch0.autoStart !== false);
   const [campaignName, setCampaignName] = useState(String(dispatch0.campaignName ?? ""));
-  const [executionMode, setExecutionMode] = useState<"manual" | "scheduled">(
-    dispatch0.executionMode === "scheduled" ? "scheduled" : "manual",
+  const [scheduleState, setScheduleState] = useState<FollowUpScheduleState>(() =>
+    dispatchConfigToScheduleState(dispatch0),
   );
-  const [scheduledAt, setScheduledAt] = useState(String(dispatch0.scheduledAt ?? ""));
 
   const [inboxes, setInboxes] = useState<InboxOption[]>([]);
   const [templates, setTemplates] = useState<TemplateWithBody[]>([]);
@@ -231,6 +235,7 @@ export function HttpApiCustomToolBuilder({
     } catch {
       defaultQuery = {};
     }
+    const schedulePayload = buildFollowUpSchedulePayload(scheduleState);
     const patch: Record<string, unknown> = {
       presetKey: typeof cfg0.presetKey === "string" ? cfg0.presetKey : "http_api_custom",
       executor: typeof cfg0.executor === "string" ? cfg0.executor : "http_custom_dispatch",
@@ -252,8 +257,9 @@ export function HttpApiCustomToolBuilder({
         templateId: messageType === "TEMPLATE" ? templateId || undefined : undefined,
         body: messageType === "TEXT" ? body : body || undefined,
         templateVariableMapping: messageType === "TEMPLATE" ? templateSlots : undefined,
-        executionMode,
-        scheduledAt: executionMode === "scheduled" && scheduledAt ? scheduledAt : undefined,
+        executionMode: schedulePayload.scheduleType === "IMMEDIATE" ? "manual" : "scheduled",
+        scheduledAt: schedulePayload.scheduledAt,
+        cronExpression: schedulePayload.cronExpression,
         autoCreateCampaign,
         autoStart,
         avoidDuplicates,
@@ -297,7 +303,6 @@ export function HttpApiCustomToolBuilder({
     customAuthValue,
     defaultHeadersJson,
     defaultQueryJson,
-    executionMode,
     followUpAfterSend,
     httpPath,
     inboxId,
@@ -305,7 +310,7 @@ export function HttpApiCustomToolBuilder({
     nameField,
     phoneField,
     responseArrayPath,
-    scheduledAt,
+    scheduleState,
     selectedTagIds,
     templateId,
     templateSlots,
@@ -731,19 +736,12 @@ export function HttpApiCustomToolBuilder({
               </div>
             </>
           ) : null}
-          <label className="block text-xs font-medium">
-            <span className="inline-flex items-center gap-1"><CalendarClock className="h-3 w-3" /> {t("automationPage.httpCustomSchedule")}</span>
-            <select value={executionMode} onChange={(e) => setExecutionMode(e.target.value as "manual" | "scheduled")} className={fieldCls()}>
-              <option value="manual">{t("automationPage.httpCustomScheduleManual")}</option>
-              <option value="scheduled">{t("automationPage.httpCustomScheduleLater")}</option>
-            </select>
-          </label>
-          {executionMode === "scheduled" ? (
-            <label className="block text-xs font-medium">
-              scheduledAt (ISO)
-              <input value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={fieldCls("font-mono")} />
-            </label>
-          ) : null}
+          <FollowUpScheduleFields
+            state={scheduleState}
+            onChange={(patch) => setScheduleState((prev) => ({ ...prev, ...patch }))}
+            title={t("automationPage.httpCustomSchedule")}
+            showRecurring={campaignKind === "followup"}
+          />
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
