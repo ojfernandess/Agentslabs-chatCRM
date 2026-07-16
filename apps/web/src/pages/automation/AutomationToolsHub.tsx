@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AutomationCustomToolRow, AutomationToolsTranslate, ToolPresetMeta } from "./automationToolTypes";
+import { LucideIconPickerField, UiAccentColorPickerField } from "./ToolUiAppearanceFields";
 
 const FAV_KEY = "oc_automation_tool_favorites_v1";
 
@@ -895,22 +896,14 @@ export function AutomationToolsHub({
               />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+              <div className="text-xs font-medium text-ink-700 dark:text-ink-300">
                 {t("automationPage.toolsCreateIcon")} (Lucide)
-                <input
-                  value={createIcon}
-                  onChange={(e) => setCreateIcon(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm font-mono dark:border-ink-600 dark:bg-ink-950"
-                />
-              </label>
-              <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                <LucideIconPickerField value={createIcon} onChange={setCreateIcon} t={t} />
+              </div>
+              <div className="text-xs font-medium text-ink-700 dark:text-ink-300">
                 {t("automationPage.toolsCreateColor")}
-                <input
-                  value={createColor}
-                  onChange={(e) => setCreateColor(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                />
-              </label>
+                <UiAccentColorPickerField value={createColor} onChange={setCreateColor} t={t} />
+              </div>
             </div>
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -1173,22 +1166,14 @@ export function AutomationToolsHub({
               </label>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                <div className="text-xs font-medium text-ink-700 dark:text-ink-300">
                   {t("automationPage.toolsCreateIcon")} (Lucide)
-                  <input
-                    value={editIcon}
-                    onChange={(e) => setEditIcon(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  />
-                </label>
-                <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                  <LucideIconPickerField value={editIcon} onChange={setEditIcon} t={t} />
+                </div>
+                <div className="text-xs font-medium text-ink-700 dark:text-ink-300">
                   {t("automationPage.toolsCreateColor")}
-                  <input
-                    value={editColor}
-                    onChange={(e) => setEditColor(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
-                  />
-                </label>
+                  <UiAccentColorPickerField value={editColor} onChange={setEditColor} t={t} />
+                </div>
               </div>
 
               <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
