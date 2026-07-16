@@ -740,7 +740,6 @@ export function HttpApiCustomToolBuilder({
             state={scheduleState}
             onChange={(patch) => setScheduleState((prev) => ({ ...prev, ...patch }))}
             title={t("automationPage.httpCustomSchedule")}
-            showRecurring={campaignKind === "followup"}
           />
           <div className="flex flex-wrap gap-2 pt-2">
             <button
