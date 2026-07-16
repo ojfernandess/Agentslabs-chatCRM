@@ -29,7 +29,7 @@ type HubTab = "marketplace" | "mine" | "create";
 type CredentialEditorProps = {
   tool: AutomationCustomToolRow;
   t: AutomationToolsTranslate;
-  onSave: (patch: Record<string, unknown>) => void;
+  onSave: (patch: Record<string, unknown>) => void | Promise<void>;
 };
 
 function MarketplaceIcon({ name }: { name: string }) {
@@ -45,6 +45,66 @@ const VARIABLE_SNIPPETS = [
   "{{agent.name}}",
   "{{custom.variable}}",
 ];
+
+const HTTP_API_DEFAULT_CONFIG = {
+  presetKey: null,
+  executor: "http_client",
+  baseUrl: "https://httpbin.org",
+  httpMethod: "GET",
+  httpPath: "/get",
+  authType: "none",
+  defaultHeaders: {},
+  defaultQuery: {},
+  bodyTemplate: {},
+};
+
+const HTTP_API_CUSTOM_DEFAULT_CONFIG = {
+  presetKey: "http_api_custom",
+  executor: "http_custom_dispatch",
+  baseUrl: "https://api.example.com",
+  httpMethod: "GET",
+  httpPath: "/contacts",
+  authType: "none",
+  bearerToken: "",
+  apiKeyHeader: "X-Api-Key",
+  apiKeyValue: "",
+  basicUser: "",
+  basicPassword: "",
+  customAuthHeader: "",
+  customAuthValue: "",
+  defaultHeaders: {},
+  defaultQuery: {},
+  responseArrayPath: "",
+  fieldMapping: {
+    phone: "telefone",
+    name: "nome",
+    variables: [
+      { key: "valor", jsonPath: "valor", label: "Valor" },
+      { key: "vencimento", jsonPath: "vencimento", label: "Vencimento" },
+    ],
+  },
+  dispatch: {
+    messageType: "TEXT",
+    body: "Olá {{nome}}, sua fatura de {{valor}} vence em {{vencimento}}.",
+    executionMode: "manual",
+    autoCreateCampaign: true,
+    autoStart: true,
+    avoidDuplicates: true,
+    campaignKind: "broadcast",
+  },
+};
+
+const HTTP_API_CUSTOM_DEFAULT_PARAMS = {
+  type: "object",
+  properties: {
+    dryRun: { type: "boolean", description: "Apenas pré-visualizar sem criar campanha" },
+  },
+};
+
+function defaultConfigForCreateType(type: string): Record<string, unknown> {
+  if (type === "HTTP_API_CUSTOM") return HTTP_API_CUSTOM_DEFAULT_CONFIG;
+  return HTTP_API_DEFAULT_CONFIG;
+}
 
 const MARKETPLACE_FILTER_KEYS = [
   "ALL",
@@ -105,7 +165,7 @@ export function AutomationToolsHub({
   installToolPreset: (presetKey: string) => Promise<void>;
   presetInstalled: (presetKey: string) => boolean;
   deleteCustomToolRow: (toolId: string) => Promise<void>;
-  saveToolConfigPatch: (toolId: string, patch: Record<string, unknown>) => Promise<void>;
+  saveToolConfigPatch: (toolId: string, patch: Record<string, unknown>, options?: { keepOpen?: boolean }) => Promise<void>;
   patchTool: (toolId: string, patch: Record<string, unknown>) => Promise<void>;
   editingToolId: string | null;
   setEditingToolId: (id: string | null) => void;
@@ -147,25 +207,27 @@ export function AutomationToolsHub({
   const [createIcon, setCreateIcon] = useState("Globe");
   const [createColor, setCreateColor] = useState("cyan");
   const [createConfigJson, setCreateConfigJson] = useState(() =>
-    JSON.stringify(
-      {
-        presetKey: null,
-        executor: "http_client",
-        baseUrl: "https://httpbin.org",
-        httpMethod: "GET",
-        httpPath: "/get",
-        authType: "none",
-        defaultHeaders: {},
-        defaultQuery: {},
-        bodyTemplate: {},
-      },
-      null,
-      2,
-    ),
+    JSON.stringify(HTTP_API_DEFAULT_CONFIG, null, 2),
   );
   const [createParamsJson, setCreateParamsJson] = useState("{}");
   const [createSaving, setCreateSaving] = useState(false);
   const [createErr, setCreateErr] = useState("");
+
+  useEffect(() => {
+    if (editingToolId) setHubTab("mine");
+  }, [editingToolId]);
+
+  useEffect(() => {
+    setCreateConfigJson(JSON.stringify(defaultConfigForCreateType(createType), null, 2));
+    if (createType === "HTTP_API_CUSTOM") {
+      setCreateCategory("AUTOMATION");
+      setCreateIcon("Radio");
+      setCreateColor("rose");
+      setCreateParamsJson(JSON.stringify(HTTP_API_CUSTOM_DEFAULT_PARAMS, null, 2));
+    } else {
+      setCreateParamsJson("{}");
+    }
+  }, [createType]);
 
   const [editTool, setEditTool] = useState<AutomationCustomToolRow | null>(null);
   const [editName, setEditName] = useState("");
@@ -370,7 +432,7 @@ export function AutomationToolsHub({
     };
     setCreateSaving(true);
     try {
-      await api.post("/automation/custom-tools", {
+      const created = await api.post<AutomationCustomToolRow>("/automation/custom-tools", {
         name: createName.trim(),
         description: createDesc.trim(),
         toolType: createType,
@@ -383,6 +445,9 @@ export function AutomationToolsHub({
       setCreateDesc("");
       await onToolsUpdated();
       setHubTab("mine");
+      if (createType === "HTTP_API_CUSTOM" && created.id) {
+        setEditingToolId(created.id);
+      }
     } catch {
       setCreateErr(t("automationPage.loadError"));
     } finally {
@@ -631,7 +696,7 @@ export function AutomationToolsHub({
                 const calls = tool.executionCount ?? 0;
                 const avg = tool.avgDurationMs != null ? `${Math.round(tool.avgDurationMs)} ms` : "—";
                 const canTest = tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK";
-                const isHttpCustom = tool.toolType === "HTTP_API_CUSTOM";
+                const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
                 return (
                   <div
                     key={tool.id}
@@ -695,7 +760,11 @@ export function AutomationToolsHub({
                         onClick={() => setEditingToolId(editingToolId === tool.id ? null : tool.id)}
                         className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold dark:border-ink-600"
                       >
-                        {editingToolId === tool.id ? t("automationPage.toolCloseEditor") : t("automationPage.toolEditSecrets")}
+                        {editingToolId === tool.id
+                          ? t("automationPage.toolCloseEditor")
+                          : isHttpCustom
+                            ? t("automationPage.httpCustomConfigure")
+                            : t("automationPage.toolEditSecrets")}
                       </button>
                       <button
                         type="button"
@@ -722,7 +791,7 @@ export function AutomationToolsHub({
                       {isHttpCustom ? (
                         <button
                           type="button"
-                          onClick={() => openEditTool(tool)}
+                          onClick={() => setEditingToolId(tool.id)}
                           className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >
                           <Play className="h-3.5 w-3.5" />
@@ -751,7 +820,13 @@ export function AutomationToolsHub({
                     </div>
                     {editingToolId === tool.id ? (
                       <div className="mt-4 border-t border-ink-200/60 pt-4 dark:border-ink-700/60">
-                        <CredentialEditor tool={tool} t={t} onSave={(patch) => void saveToolConfigPatch(tool.id, patch)} />
+                        <CredentialEditor
+                          tool={tool}
+                          t={t}
+                          onSave={(patch) =>
+                            void saveToolConfigPatch(tool.id, patch, { keepOpen: isHttpCustom })
+                          }
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -780,8 +855,8 @@ export function AutomationToolsHub({
                   onChange={(e) => setCreateType(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
                 >
-                  <option value="HTTP_API">HTTP API</option>
-                  <option value="HTTP_API_CUSTOM">HTTP API Customizada</option>
+                  <option value="HTTP_API">{t("automationPage.toolsCreateTypeHttpApi")}</option>
+                  <option value="HTTP_API_CUSTOM">{t("automationPage.toolsCreateTypeHttpCustom")}</option>
                   <option value="WEBHOOK">Webhook</option>
                   <option value="MCP">MCP Tool</option>
                   <option value="INTEGRATION">Integration</option>
@@ -797,6 +872,11 @@ export function AutomationToolsHub({
                 />
               </label>
             </div>
+            {createType === "HTTP_API_CUSTOM" ? (
+              <div className="rounded-xl border border-rose-200/80 bg-rose-50/60 px-4 py-3 text-xs text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-100">
+                {t("automationPage.httpCustomCreateHint")}
+              </div>
+            ) : null}
             <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
               {t("automationPage.toolName")}
               <input
@@ -976,6 +1056,21 @@ export function AutomationToolsHub({
                         {JSON.stringify(testResult, null, 2)}
                       </pre>
                     ) : null}
+                  </div>
+                ) : drawerTool.toolType && (drawerTool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM" ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-ink-500">{t("automationPage.httpCustomCreateHint")}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawerTool(null);
+                        setEditingToolId(drawerTool.id);
+                      }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 font-semibold text-white"
+                    >
+                      <Play className="h-4 w-4" />
+                      {t("automationPage.httpCustomOpenBuilder")}
+                    </button>
                   </div>
                 ) : (
                   <p className="text-xs text-ink-500">{t("automationPage.toolsTestUnsupported")}</p>

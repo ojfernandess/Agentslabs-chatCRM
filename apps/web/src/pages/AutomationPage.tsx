@@ -1083,8 +1083,11 @@ export function AutomationPage() {
     setLoading(true);
     setError("");
     try {
-      await api.post("/automation/custom-tools/from-preset", { presetKey });
+      const created = await api.post<AutomationCustomToolRow>("/automation/custom-tools/from-preset", { presetKey });
       await loadTools();
+      if (created.toolType === "HTTP_API_CUSTOM" && created.id) {
+        setEditingToolId(created.id);
+      }
     } catch {
       setError("load_failed");
     } finally {
@@ -1092,7 +1095,11 @@ export function AutomationPage() {
     }
   };
 
-  const saveToolConfigPatch = async (toolId: string, patch: Record<string, unknown>) => {
+  const saveToolConfigPatch = async (
+    toolId: string,
+    patch: Record<string, unknown>,
+    options?: { keepOpen?: boolean },
+  ) => {
     const cleaned = compactToolConfigPatch(patch);
     if (Object.keys(cleaned).length === 0) return;
     setLoading(true);
@@ -1100,7 +1107,7 @@ export function AutomationPage() {
     try {
       await api.patch(`/automation/custom-tools/${toolId}`, { config: cleaned });
       await loadTools();
-      setEditingToolId(null);
+      if (!options?.keepOpen) setEditingToolId(null);
     } catch {
       setError("load_failed");
     } finally {
@@ -1420,7 +1427,7 @@ export function AutomationPage() {
               installToolPreset={(k) => installToolPreset(k)}
               presetInstalled={presetInstalled}
               deleteCustomToolRow={(id) => deleteCustomToolRow(id)}
-              saveToolConfigPatch={(id, p) => saveToolConfigPatch(id, p)}
+              saveToolConfigPatch={(id, p, opts) => saveToolConfigPatch(id, p, opts)}
               patchTool={(id, p) => patchAutomationTool(id, p)}
               editingToolId={editingToolId}
               setEditingToolId={setEditingToolId}
@@ -3786,6 +3793,10 @@ function GoogleCalendarToolEditor({
   );
 }
 
+function isHttpApiCustomTool(tool: AutomationCustomToolRow): boolean {
+  return (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
+}
+
 function ToolCredentialEditor({
   tool,
   t,
@@ -3793,7 +3804,7 @@ function ToolCredentialEditor({
 }: {
   tool: AutomationCustomToolRow;
   t: Translate;
-  onSave: (patch: Record<string, unknown>) => void;
+  onSave: (patch: Record<string, unknown>) => void | Promise<void>;
 }) {
   const c = (tool.config ?? {}) as Record<string, unknown>;
   const provider = String(c.provider ?? "");
@@ -3833,7 +3844,7 @@ function ToolCredentialEditor({
     return <HttpLikeToolEditor tool={tool} t={t} onSave={onSave} />;
   }
 
-  if (tool.toolType === "HTTP_API_CUSTOM") {
+  if (isHttpApiCustomTool(tool)) {
     return <HttpApiCustomToolBuilder tool={tool} t={t} onSave={onSave} />;
   }
 

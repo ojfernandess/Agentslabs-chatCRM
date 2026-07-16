@@ -48,7 +48,12 @@ import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRo
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
-import { dispatchHttpApiCustomTool, previewHttpApiCustomTool } from "../lib/automationHttpApiCustom.js";
+import {
+  dispatchHttpApiCustomTool,
+  mergeHttpApiCustomDispatchConfig,
+  parseHttpApiCustomConfig,
+  previewHttpApiCustomTool,
+} from "../lib/automationHttpApiCustom.js";
 import {
   AUTOMATION_CONFIG_EXPORT_VERSION,
   exportAutomationConfig,
@@ -1673,7 +1678,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       if (parsed.data.description !== undefined) data.description = parsed.data.description;
       if (parsed.data.toolType !== undefined) data.toolType = parsed.data.toolType;
       if (parsed.data.config !== undefined) {
-        data.config = asJson(mergeToolConfig(current.config, parsed.data.config));
+        if (current.toolType === "HTTP_API_CUSTOM") {
+          const merged = mergeHttpApiCustomDispatchConfig(
+            parseHttpApiCustomConfig(current.config),
+            parsed.data.config as Record<string, unknown>,
+          );
+          data.config = asJson(mergeToolConfig(current.config, merged));
+        } else {
+          data.config = asJson(mergeToolConfig(current.config, parsed.data.config));
+        }
       }
       if (parsed.data.parametersSchema !== undefined) data.parametersSchema = asJson(parsed.data.parametersSchema);
       if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;

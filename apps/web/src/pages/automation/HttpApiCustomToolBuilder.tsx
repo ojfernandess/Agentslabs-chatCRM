@@ -80,7 +80,7 @@ export function HttpApiCustomToolBuilder({
 }: {
   tool: AutomationCustomToolRow;
   t: Translate;
-  onSave: (patch: Record<string, unknown>) => void;
+  onSave: (patch: Record<string, unknown>) => void | Promise<void>;
 }) {
   const cfg0 = readConfig(tool);
   const dispatch0 = readDispatch(cfg0);
@@ -93,6 +93,16 @@ export function HttpApiCustomToolBuilder({
   const [bearerToken, setBearerToken] = useState("");
   const [apiKeyHeader, setApiKeyHeader] = useState(String(cfg0.apiKeyHeader ?? "X-Api-Key"));
   const [apiKeyValue, setApiKeyValue] = useState("");
+  const [basicUser, setBasicUser] = useState(String(cfg0.basicUser ?? ""));
+  const [basicPassword, setBasicPassword] = useState("");
+  const [customAuthHeader, setCustomAuthHeader] = useState(String(cfg0.customAuthHeader ?? ""));
+  const [customAuthValue, setCustomAuthValue] = useState("");
+  const [defaultHeadersJson, setDefaultHeadersJson] = useState(() =>
+    JSON.stringify((cfg0.defaultHeaders && typeof cfg0.defaultHeaders === "object" ? cfg0.defaultHeaders : {}) as object, null, 2),
+  );
+  const [defaultQueryJson, setDefaultQueryJson] = useState(() =>
+    JSON.stringify((cfg0.defaultQuery && typeof cfg0.defaultQuery === "object" ? cfg0.defaultQuery : {}) as object, null, 2),
+  );
   const [responseArrayPath, setResponseArrayPath] = useState(String(cfg0.responseArrayPath ?? ""));
   const [phoneField, setPhoneField] = useState(String(mapping0.phone ?? "telefone"));
   const [nameField, setNameField] = useState(String(mapping0.name ?? "nome"));
@@ -185,11 +195,27 @@ export function HttpApiCustomToolBuilder({
   }, [variables]);
 
   const buildPatch = useCallback((): Record<string, unknown> => {
+    let defaultHeaders: Record<string, unknown> = {};
+    let defaultQuery: Record<string, unknown> = {};
+    try {
+      defaultHeaders = JSON.parse(defaultHeadersJson || "{}") as Record<string, unknown>;
+    } catch {
+      defaultHeaders = {};
+    }
+    try {
+      defaultQuery = JSON.parse(defaultQueryJson || "{}") as Record<string, unknown>;
+    } catch {
+      defaultQuery = {};
+    }
     const patch: Record<string, unknown> = {
+      presetKey: typeof cfg0.presetKey === "string" ? cfg0.presetKey : "http_api_custom",
+      executor: typeof cfg0.executor === "string" ? cfg0.executor : "http_custom_dispatch",
       baseUrl: baseUrl.trim(),
       httpMethod: "GET",
       httpPath: httpPath.trim() || "/",
       authType,
+      defaultHeaders,
+      defaultQuery,
       responseArrayPath: responseArrayPath.trim(),
       fieldMapping: {
         phone: phoneField.trim(),
@@ -218,6 +244,14 @@ export function HttpApiCustomToolBuilder({
       patch.apiKeyHeader = apiKeyHeader.trim();
       patch.apiKeyValue = apiKeyValue.trim();
     }
+    if (authType === "basic") {
+      patch.basicUser = basicUser.trim();
+      if (basicPassword.trim() && basicPassword !== "***") patch.basicPassword = basicPassword.trim();
+    }
+    if (authType === "custom_header") {
+      patch.customAuthHeader = customAuthHeader.trim();
+      if (customAuthValue.trim() && customAuthValue !== "***") patch.customAuthValue = customAuthValue.trim();
+    }
     return patch;
   }, [
     apiKeyHeader,
@@ -227,10 +261,18 @@ export function HttpApiCustomToolBuilder({
     autoStart,
     avoidDuplicates,
     baseUrl,
+    basicPassword,
+    basicUser,
     body,
     bearerToken,
     campaignKind,
     campaignName,
+    cfg0.executor,
+    cfg0.presetKey,
+    customAuthHeader,
+    customAuthValue,
+    defaultHeadersJson,
+    defaultQueryJson,
     executionMode,
     followUpAfterSend,
     httpPath,
@@ -246,16 +288,15 @@ export function HttpApiCustomToolBuilder({
     variables,
   ]);
 
-  const saveCurrent = useCallback(() => {
-    onSave(buildPatch());
+  const saveCurrent = useCallback(async () => {
+    await onSave(buildPatch());
   }, [buildPatch, onSave]);
 
   const runPreview = async () => {
     setError("");
     setPreviewBusy(true);
-    saveCurrent();
     try {
-      await new Promise((r) => setTimeout(r, 250));
+      await saveCurrent();
       const res = await api.post<PreviewResult>(`/automation/custom-tools/${tool.id}/custom-preview`, {});
       setPreview(res);
       if (!res.ok) setError(res.error ?? t("automationPage.httpCustomPreviewFailed"));
@@ -269,9 +310,8 @@ export function HttpApiCustomToolBuilder({
   const runDispatch = async (dryRun: boolean) => {
     setError("");
     setDispatchBusy(true);
-    saveCurrent();
     try {
-      await new Promise((r) => setTimeout(r, 250));
+      await saveCurrent();
       const res = await api.post<DispatchResult>(`/automation/custom-tools/${tool.id}/custom-dispatch`, { dryRun });
       setDispatchResult(res);
       if (!res.ok) setError(res.error ?? t("automationPage.httpCustomDispatchFailed"));
@@ -346,12 +386,13 @@ export function HttpApiCustomToolBuilder({
               <option value="bearer">Bearer</option>
               <option value="api_key">API Key</option>
               <option value="basic">Basic</option>
+              <option value="custom_header">Custom header</option>
             </select>
           </label>
           {authType === "bearer" ? (
             <label className="block text-xs font-medium">
               Bearer token
-              <input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} className={fieldCls()} />
+              <input type="password" value={bearerToken} onChange={(e) => setBearerToken(e.target.value)} placeholder="••••••••" className={fieldCls()} />
             </label>
           ) : null}
           {authType === "api_key" ? (
@@ -362,10 +403,42 @@ export function HttpApiCustomToolBuilder({
               </label>
               <label className="block text-xs font-medium">
                 API Key
-                <input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={fieldCls()} />
+                <input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} placeholder="••••••••" className={fieldCls()} />
               </label>
             </>
           ) : null}
+          {authType === "basic" ? (
+            <>
+              <label className="block text-xs font-medium">
+                Username
+                <input value={basicUser} onChange={(e) => setBasicUser(e.target.value)} className={fieldCls()} />
+              </label>
+              <label className="block text-xs font-medium">
+                Password
+                <input type="password" value={basicPassword} onChange={(e) => setBasicPassword(e.target.value)} placeholder="••••••••" className={fieldCls()} />
+              </label>
+            </>
+          ) : null}
+          {authType === "custom_header" ? (
+            <>
+              <label className="block text-xs font-medium">
+                Header name
+                <input value={customAuthHeader} onChange={(e) => setCustomAuthHeader(e.target.value)} className={fieldCls()} />
+              </label>
+              <label className="block text-xs font-medium">
+                Header value
+                <input type="password" value={customAuthValue} onChange={(e) => setCustomAuthValue(e.target.value)} placeholder="••••••••" className={fieldCls()} />
+              </label>
+            </>
+          ) : null}
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolDefaultQueryJson")}
+            <textarea value={defaultQueryJson} onChange={(e) => setDefaultQueryJson(e.target.value)} rows={3} className={fieldCls("font-mono text-[11px]")} />
+          </label>
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolDefaultHeadersJson")}
+            <textarea value={defaultHeadersJson} onChange={(e) => setDefaultHeadersJson(e.target.value)} rows={3} className={fieldCls("font-mono text-[11px]")} />
+          </label>
           <button
             type="button"
             disabled={previewBusy}
@@ -394,6 +467,15 @@ export function HttpApiCustomToolBuilder({
       {step === "mapping" ? (
         <div className="space-y-3">
           <p className="text-xs text-ink-500">{t("automationPage.httpCustomMappingHelp")}</p>
+          <button
+            type="button"
+            disabled={previewBusy}
+            onClick={() => void runPreview()}
+            className="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold dark:border-ink-600 disabled:opacity-50"
+          >
+            {previewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {t("automationPage.httpCustomRefreshMapping")}
+          </button>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-medium">
               <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" /> {t("automationPage.httpCustomFieldPhone")}</span>
@@ -680,7 +762,7 @@ export function HttpApiCustomToolBuilder({
         >
           {t("automationPage.httpCustomPrev")}
         </button>
-        <button type="button" onClick={saveCurrent} className="rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-ink-200 dark:text-ink-900">
+        <button type="button" onClick={() => void saveCurrent()} className="rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-semibold text-white dark:bg-ink-200 dark:text-ink-900">
           {t("automationPage.toolSaveCredentials")}
         </button>
         <button

@@ -940,6 +940,8 @@ export const messages = {
       toolsLogs: "Logs",
       toolsCreateHeading: "Builder de ferramenta",
       toolsCreateType: "Tipo de ferramenta",
+      toolsCreateTypeHttpApi: "HTTP API",
+      toolsCreateTypeHttpCustom: "HTTP API Customizada",
       toolsCreateBlurb:
         "Defina tipo, metadados e configuração JSON. Para HTTP, use authType: none | bearer | api_key | basic | custom_header. Variáveis {{contact.name}} funcionam no testador.",
       toolsCreateValidation: "Preencha nome e descrição.",
@@ -1011,6 +1013,9 @@ export const messages = {
         "Estado de automação por conversa e data da última limpeza: ao limpar, o JSON é reposto e o agente nativo deixa de ver mensagens anteriores à limpeza (as mensagens no chat não são apagadas). Agendamentos: página de Lembretes.",
       refresh: "Atualizar",
       httpCustomTitle: "HTTP API Customizada — disparo omnichannel",
+      httpCustomConfigure: "Configurar",
+      httpCustomCreateHint:
+        "Após criar, o assistente de configuração abre automaticamente: endpoint GET, mapeamento de campos, caixa de entrada, template e campanha omnichannel.",
       httpCustomOpenBuilder: "Abrir builder",
       httpCustomStep_endpoint: "Endpoint",
       httpCustomStep_mapping: "Mapeamento",
@@ -1024,6 +1029,7 @@ export const messages = {
       httpCustomPreviewError: "Falha ao obter resposta",
       httpCustomPreviewFailed: "Não foi possível testar o endpoint.",
       httpCustomMappingHelp: "Mapeie os campos do JSON para telefone, nome e variáveis dinâmicas.",
+      httpCustomRefreshMapping: "Atualizar pré-visualização do mapeamento",
       httpCustomFieldPhone: "Telefone",
       httpCustomFieldName: "Nome",
       httpCustomVariables: "Variáveis",
@@ -5935,6 +5941,8 @@ export const messages = {
       toolsLogs: "Logs",
       toolsCreateHeading: "Tool builder",
       toolsCreateType: "Tool type",
+      toolsCreateTypeHttpApi: "HTTP API",
+      toolsCreateTypeHttpCustom: "Custom HTTP API",
       toolsCreateBlurb:
         "Set type, metadata, and JSON config. For HTTP use authType: none | bearer | api_key | basic | custom_header. {{contact.name}} variables work in the tester.",
       toolsCreateValidation: "Name and description are required.",
@@ -6006,6 +6014,9 @@ export const messages = {
         "Per-conversation automation state and «clear» timestamp: clearing resets JSON state and hides pre-clear messages from the native agent LLM (messages are not deleted). Scheduling: Reminders page.",
       refresh: "Refresh",
       httpCustomTitle: "Custom HTTP API — omnichannel dispatch",
+      httpCustomConfigure: "Configure",
+      httpCustomCreateHint:
+        "After creation, the setup wizard opens automatically: GET endpoint, field mapping, inbox, template, and omnichannel campaign.",
       httpCustomOpenBuilder: "Open builder",
       httpCustomStep_endpoint: "Endpoint",
       httpCustomStep_mapping: "Mapping",
@@ -6019,6 +6030,7 @@ export const messages = {
       httpCustomPreviewError: "Failed to fetch response",
       httpCustomPreviewFailed: "Could not test the endpoint.",
       httpCustomMappingHelp: "Map JSON fields to phone, name, and dynamic variables.",
+      httpCustomRefreshMapping: "Refresh mapping preview",
       httpCustomFieldPhone: "Phone",
       httpCustomFieldName: "Name",
       httpCustomVariables: "Variables",

@@ -127,11 +127,10 @@ export function extractJsonArrayFromResponse(data: unknown, arrayPath?: string):
   return [];
 }
 
-export function suggestJsonFieldPaths(sample: unknown, max = 24): string[] {
+export function suggestJsonFieldPaths(sample: unknown, max = 32): string[] {
   if (!sample || typeof sample !== "object") return [];
   const flat = flattenTemplateContext(sample);
   return Object.keys(flat)
-    .filter((k) => !k.includes("."))
     .slice(0, max)
     .sort();
 }
