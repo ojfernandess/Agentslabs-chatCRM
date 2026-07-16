@@ -42,6 +42,14 @@ export interface BroadcastSegmentRules {
   /** Follow-up: não prefixar nome do atendente/bot no envio (Meta Cloud, etc.). */
   outboundSenderDisabled?: boolean;
   nvoipTorpedo?: NvoipTorpedoCampaignConfig;
+  /** Lista explícita de contactos (ex.: HTTP API Customizada). */
+  contactIds?: string[];
+  /** Variáveis por contacto para renderização de template/texto. */
+  recipientVariables?: Record<string, Record<string, string>>;
+  /** Ferramenta HTTP API Customizada que originou a campanha. */
+  httpApiCustomToolId?: string;
+  /** Mapeamento slot → chave de variável para templates WhatsApp. */
+  templateVariableMapping?: { slot: number; variableKey: string }[];
 }
 
 export interface BroadcastAbVariantPayload {
@@ -100,7 +108,8 @@ export function segmentHasAudienceFilters(
   if (tagIds.length > 0) return true;
   if (!segmentRules) return false;
   return Boolean(
-    segmentRules.pipelineStageIds?.length ||
+    segmentRules.contactIds?.length ||
+      segmentRules.pipelineStageIds?.length ||
       segmentRules.lifecycleStages?.length ||
       segmentRules.cities?.length ||
       segmentRules.optedInOnly ||
@@ -143,6 +152,21 @@ export function parseSegmentRules(raw: unknown): BroadcastSegmentRules | null {
         ? o.campaignKind
         : undefined,
     nvoipTorpedo: parseNvoipTorpedoConfig(o.nvoipTorpedo),
+    contactIds: Array.isArray(o.contactIds) ? o.contactIds.filter((x): x is string => typeof x === "string") : undefined,
+    recipientVariables:
+      o.recipientVariables && typeof o.recipientVariables === "object"
+        ? (o.recipientVariables as Record<string, Record<string, string>>)
+        : undefined,
+    httpApiCustomToolId: typeof o.httpApiCustomToolId === "string" ? o.httpApiCustomToolId : undefined,
+    templateVariableMapping: Array.isArray(o.templateVariableMapping)
+      ? o.templateVariableMapping
+          .filter((r): r is Record<string, unknown> => r != null && typeof r === "object")
+          .map((r) => ({
+            slot: typeof r.slot === "number" ? r.slot : Number(r.slot),
+            variableKey: typeof r.variableKey === "string" ? r.variableKey : "",
+          }))
+          .filter((r) => r.slot > 0 && r.variableKey)
+      : undefined,
   };
 }
 

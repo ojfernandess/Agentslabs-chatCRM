@@ -23,6 +23,7 @@ import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
 import { AutomationExecutionsTab } from "@/pages/automation/AutomationExecutionsTab";
+import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBuilder";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 import {
@@ -3830,6 +3831,10 @@ function ToolCredentialEditor({
 
   if (tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK") {
     return <HttpLikeToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (tool.toolType === "HTTP_API_CUSTOM") {
+    return <HttpApiCustomToolBuilder tool={tool} t={t} onSave={onSave} />;
   }
 
   if (tool.toolType === "INTEGRATION") {

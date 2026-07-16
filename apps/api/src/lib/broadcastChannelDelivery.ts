@@ -12,6 +12,7 @@ import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { parseSegmentRules, substituteContactVars } from "./broadcastTypes.js";
 import type { BroadcastAbVariantPayload, FollowUpAfterSendMode } from "./broadcastTypes.js";
+import { renderHttpApiCustomText, buildTemplateBodyParameters } from "./automationHttpApiCustom.js";
 import { seedFollowUpCampaignAutomationContext } from "./automationConversationContextLib.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { resolveBroadcastOutboundActor } from "./broadcastOutboundActor.js";
@@ -139,8 +140,10 @@ export async function deliverBroadcastToContact(options: {
   log: FastifyBaseLogger;
 }): Promise<void> {
   const { campaign, contact, payload, actorUserId, log } = options;
+  const segmentRules = parseSegmentRules(campaign.segmentRules);
+  const recipientVars = segmentRules?.recipientVariables?.[contact.id] ?? {};
   const bodyRaw = payload.body ?? campaign.body ?? "";
-  const body = substituteContactVars(bodyRaw, contact);
+  const body = renderHttpApiCustomText(bodyRaw, contact, recipientVars);
   const channel = campaign.channel;
 
   if (channel === "EMAIL") {
@@ -235,9 +238,11 @@ export async function deliverBroadcastToContact(options: {
     });
     let templateBodyParameters: string[] | undefined;
     if (tpl && tpl.bodyVariableCount > 0) {
-      const firstName = contact.name.trim().split(/\s+/)[0] || contact.name.trim() || "";
-      templateBodyParameters = Array.from({ length: tpl.bodyVariableCount }, (_, i) =>
-        i === 0 ? firstName : "",
+      templateBodyParameters = buildTemplateBodyParameters(
+        segmentRules?.templateVariableMapping,
+        recipientVars,
+        contact,
+        tpl.bodyVariableCount,
       );
     }
     sendInput = {
@@ -267,7 +272,6 @@ export async function deliverBroadcastToContact(options: {
     postSendConversationPolicy: postSendPolicyForCampaign(campaign),
   });
 
-  const segmentRules = parseSegmentRules(campaign.segmentRules);
   if (
     segmentRules?.campaignKind === "followup" &&
     message.status === "SENT" &&

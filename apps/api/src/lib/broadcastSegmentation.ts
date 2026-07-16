@@ -61,6 +61,7 @@ export async function validateSegmentInput(
   segmentRules: BroadcastSegmentRules | null,
 ): Promise<void> {
   const rules = segmentRules ?? {};
+  if (rules.contactIds?.length) return;
   const effectiveTagIds = rules.tagIds?.length ? rules.tagIds : tagIds;
   if (effectiveTagIds.length > 0) {
     await assertTagsBelongToOrganization(organizationId, effectiveTagIds);
@@ -74,6 +75,10 @@ export async function countBroadcastAudienceAdvanced(
   tagIds: string[],
   segmentRules: BroadcastSegmentRules | null,
 ): Promise<number> {
+  if (segmentRules?.contactIds?.length) {
+    const ids = await listBroadcastAudienceContactIdsAdvanced(organizationId, tagIds, segmentRules);
+    return ids.length;
+  }
   await validateSegmentInput(organizationId, tagIds, segmentRules);
   const where = buildSegmentWhere(organizationId, tagIds, segmentRules);
 
@@ -104,6 +109,15 @@ export async function listBroadcastAudienceContactIdsAdvanced(
   tagIds: string[],
   segmentRules: BroadcastSegmentRules | null,
 ): Promise<string[]> {
+  if (segmentRules?.contactIds?.length) {
+    const ids = [...new Set(segmentRules.contactIds)];
+    const rows = await prisma.contact.findMany({
+      where: { organizationId, id: { in: ids }, isGroupChat: false },
+      select: { id: true },
+    });
+    const found = new Set(rows.map((r) => r.id));
+    return ids.filter((id) => found.has(id));
+  }
   await validateSegmentInput(organizationId, tagIds, segmentRules);
   const where = buildSegmentWhere(organizationId, tagIds, segmentRules);
   const rows = await prisma.contact.findMany({ where, select: { id: true } });

@@ -631,6 +631,7 @@ export function AutomationToolsHub({
                 const calls = tool.executionCount ?? 0;
                 const avg = tool.avgDurationMs != null ? `${Math.round(tool.avgDurationMs)} ms` : "—";
                 const canTest = tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK";
+                const isHttpCustom = tool.toolType === "HTTP_API_CUSTOM";
                 return (
                   <div
                     key={tool.id}
@@ -718,6 +719,16 @@ export function AutomationToolsHub({
                           {t("automationPage.toolsTest")}
                         </button>
                       ) : null}
+                      {isHttpCustom ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditTool(tool)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          {t("automationPage.httpCustomOpenBuilder")}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => {
@@ -770,6 +781,7 @@ export function AutomationToolsHub({
                   className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950"
                 >
                   <option value="HTTP_API">HTTP API</option>
+                  <option value="HTTP_API_CUSTOM">HTTP API Customizada</option>
                   <option value="WEBHOOK">Webhook</option>
                   <option value="MCP">MCP Tool</option>
                   <option value="INTEGRATION">Integration</option>

@@ -48,6 +48,7 @@ import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRo
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
+import { dispatchHttpApiCustomTool, previewHttpApiCustomTool } from "../lib/automationHttpApiCustom.js";
 import {
   AUTOMATION_CONFIG_EXPORT_VERSION,
   exportAutomationConfig,
@@ -1925,6 +1926,74 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: errMsg,
         responsePreview: responseText.slice(0, 12_000),
       };
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/custom-tools/:id/custom-preview",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const tool = await prisma.automationCustomTool.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+      if (!tool) {
+        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+      }
+      if (tool.toolType !== "HTTP_API_CUSTOM") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Preview supports HTTP_API_CUSTOM tools only",
+          statusCode: 400,
+        });
+      }
+      const result = await previewHttpApiCustomTool(tool);
+      return result;
+    },
+  );
+
+  const customDispatchSchema = z.object({
+    dryRun: z.boolean().optional(),
+  });
+
+  app.post<{ Params: { id: string } }>(
+    "/custom-tools/:id/custom-dispatch",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const parsed = customDispatchSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const tool = await prisma.automationCustomTool.findFirst({
+        where: { id: request.params.id, organizationId },
+      });
+      if (!tool) {
+        return reply.status(404).send({ error: "Not Found", message: "Tool not found", statusCode: 404 });
+      }
+      if (tool.toolType !== "HTTP_API_CUSTOM") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Dispatch supports HTTP_API_CUSTOM tools only",
+          statusCode: 400,
+        });
+      }
+      if (!tool.isActive) {
+        return reply.status(400).send({ error: "Bad Request", message: "Tool is inactive", statusCode: 400 });
+      }
+      const result = await dispatchHttpApiCustomTool({
+        app: request.server,
+        organizationId,
+        userId: request.user.id,
+        tool,
+        dryRun: parsed.data.dryRun === true,
+      });
+      if (!result.ok) {
+        return reply.status(400).send({ error: "Bad Request", message: result.error ?? "dispatch_failed", ...result });
+      }
+      return result;
     },
   );
 
