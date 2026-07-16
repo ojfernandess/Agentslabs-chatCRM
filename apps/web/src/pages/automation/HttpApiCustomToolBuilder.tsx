@@ -17,10 +17,15 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AutomationCustomToolRow } from "./automationToolTypes";
+import type { MappedSampleRow } from "@/lib/httpApiCustomTemplatePreview";
+import { remapFirstMappedRow } from "@/lib/httpApiCustomTemplatePreview";
 import {
   filterTemplatesForWhatsappInbox,
 } from "@/lib/campaignTemplates";
 import type { InboxOption, TemplateOption } from "@/pages/broadcasts/campaignTypes";
+import { HttpApiCustomTemplatePreviewPanel } from "./HttpApiCustomTemplatePreviewPanel";
+
+type TemplateWithBody = TemplateOption & { body?: string; metaCategory?: string | null };
 
 type Translate = (key: string) => string;
 
@@ -144,7 +149,7 @@ export function HttpApiCustomToolBuilder({
   const [scheduledAt, setScheduledAt] = useState(String(dispatch0.scheduledAt ?? ""));
 
   const [inboxes, setInboxes] = useState<InboxOption[]>([]);
-  const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [templates, setTemplates] = useState<TemplateWithBody[]>([]);
   const [tags, setTags] = useState<TagOption[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
     Array.isArray(dispatch0.followUpTagIds) ? (dispatch0.followUpTagIds as string[]) : [],
@@ -172,7 +177,7 @@ export function HttpApiCustomToolBuilder({
     }
     setTemplatesLoading(true);
     try {
-      const res = await api.get<TemplateOption[]>(`/templates?inboxId=${encodeURIComponent(nextInboxId)}&sync=1`);
+      const res = await api.get<TemplateWithBody[]>(`/templates?inboxId=${encodeURIComponent(nextInboxId)}&sync=1`);
       const inbox = inboxes.find((i) => i.id === nextInboxId);
       setTemplates(
         filterTemplatesForWhatsappInbox(Array.isArray(res) ? res : [], inbox, { allowVariableTemplates: true }),
@@ -193,6 +198,25 @@ export function HttpApiCustomToolBuilder({
     for (const v of variables) if (v.key.trim()) keys.add(v.key.trim());
     return [...keys];
   }, [variables]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((tpl) => tpl.id === templateId) ?? null,
+    [templates, templateId],
+  );
+
+  const liveMappedPreview = useMemo((): MappedSampleRow[] | undefined => {
+    if (preview?.sampleJson) {
+      const remapped = remapFirstMappedRow(
+        preview.sampleJson,
+        responseArrayPath,
+        phoneField,
+        nameField,
+        variables.filter((v) => v.key.trim() && v.jsonPath.trim()),
+      );
+      if (remapped) return [remapped];
+    }
+    return preview?.mappedPreview;
+  }, [preview, responseArrayPath, phoneField, nameField, variables]);
 
   const buildPatch = useCallback((): Record<string, unknown> => {
     let defaultHeaders: Record<string, unknown> = {};
@@ -632,6 +656,14 @@ export function HttpApiCustomToolBuilder({
               </span>
             ))}
           </div>
+          <HttpApiCustomTemplatePreviewPanel
+            messageType={messageType}
+            body={body}
+            template={selectedTemplate}
+            templateSlots={templateSlots}
+            mappedPreview={liveMappedPreview}
+            t={t}
+          />
         </div>
       ) : null}
 
