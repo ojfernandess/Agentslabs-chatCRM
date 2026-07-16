@@ -20,17 +20,10 @@ import type { AutomationCustomToolRow } from "./automationToolTypes";
 import {
   filterTemplatesForWhatsappInbox,
 } from "@/lib/campaignTemplates";
+import type { InboxOption, TemplateOption } from "@/pages/broadcasts/campaignTypes";
 
 type Translate = (key: string) => string;
 
-type InboxOption = { id: string; name: string; channelType?: string; channelConfig?: unknown };
-type TemplateOption = {
-  id: string;
-  name: string;
-  body?: string;
-  bodyVariableCount?: number;
-  providerTemplateId?: string | null;
-};
 type TagOption = { id: string; name: string };
 
 type VariableMapping = { key: string; jsonPath: string; label?: string };
@@ -155,7 +148,9 @@ export function HttpApiCustomToolBuilder({
 
   useEffect(() => {
     void api.get<{ data: InboxOption[] }>("/inboxes").then((res) => {
-      setInboxes((res.data ?? []).filter((i) => i.channelType === "WHATSAPP" || !i.channelType));
+      setInboxes(
+        (res.data ?? []).filter((i) => i.channelType === "WHATSAPP"),
+      );
     }).catch(() => setInboxes([]));
     void api.get<TagOption[]>("/tags").then((res) => setTags(Array.isArray(res) ? res : [])).catch(() => setTags([]));
   }, []);
