@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type BroadcastCampaignStatus } from "@prisma/client";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { assertHttpUrlAllowed, truncateBody } from "./httpToolTest.js";
@@ -320,10 +320,11 @@ export async function filterContactsAlreadyDispatched(
   contactIds: string[],
 ): Promise<string[]> {
   if (contactIds.length === 0) return [];
+  const campaignStatuses: BroadcastCampaignStatus[] = ["DRAFT", "RUNNING", "COMPLETED", "FAILED"];
   const campaigns = await prisma.broadcastCampaign.findMany({
     where: {
       organizationId,
-      status: { in: ["DRAFT", "RUNNING", "PAUSED", "COMPLETED"] },
+      status: { in: campaignStatuses },
     },
     select: { id: true, segmentRules: true },
     take: 200,

@@ -1991,7 +1991,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         dryRun: parsed.data.dryRun === true,
       });
       if (!result.ok) {
-        return reply.status(400).send({ error: "Bad Request", message: result.error ?? "dispatch_failed", ...result });
+        return reply.status(400).send({
+          ...result,
+          error: "Bad Request",
+          message: result.error ?? "dispatch_failed",
+        });
       }
       return result;
     },
