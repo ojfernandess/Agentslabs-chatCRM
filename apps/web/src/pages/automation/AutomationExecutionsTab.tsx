@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, ClipboardCopy, Download, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
+import { resolveAutomationToolIdFromLogNode } from "@/pages/automation/agentPromptBuilder";
 
 type BotRow = { id: string; name: string };
+type ToolRow = { id: string; name: string };
 
 type ExecRow = {
   id: string;
@@ -30,6 +32,8 @@ type LogEntry = {
   outputContext: unknown;
   stackTrace: string | null;
   createdAt: string;
+  automationToolId?: string | null;
+  automationToolName?: string | null;
 };
 
 type ExecDetail = ExecRow & { logEntries: LogEntry[] };
@@ -53,6 +57,29 @@ function levelBadgeClass(level: string): string {
 function treeDepth(nodePath: string): number {
   if (!nodePath) return 0;
   return nodePath.split("/").filter(Boolean).length - 1;
+}
+
+function resolveCustomToolLabel(
+  entry: Pick<LogEntry, "nodeId" | "nodeName" | "automationToolId" | "automationToolName">,
+  toolNameById: Map<string, string>,
+): { title: string; toolFunctionId: string | null } {
+  const toolUuid =
+    entry.automationToolId ?? resolveAutomationToolIdFromLogNode(entry.nodeId, entry.nodeName);
+  const toolFunctionId =
+    entry.nodeId.startsWith("oc_tool_") ? entry.nodeId : toolUuid ? `oc_tool_${toolUuid.replace(/-/g, "")}` : null;
+
+  let toolName = entry.automationToolName ?? (toolUuid ? toolNameById.get(toolUuid) : undefined) ?? null;
+  if (!toolName && entry.nodeName.startsWith("Tool: ") && !/oc_tool_/i.test(entry.nodeName)) {
+    toolName = entry.nodeName.slice("Tool: ".length).trim() || null;
+  }
+
+  if (toolName) {
+    return { title: `Tool: ${toolName}`, toolFunctionId: toolFunctionId ?? entry.nodeId };
+  }
+  if (toolFunctionId || toolUuid) {
+    return { title: entry.nodeName, toolFunctionId: toolFunctionId ?? entry.nodeId };
+  }
+  return { title: entry.nodeName, toolFunctionId: null };
 }
 
 function csvEscapeCell(s: string): string {
@@ -146,12 +173,14 @@ export function AutomationExecutionsTab({
   setLoading,
   setError,
   bots,
+  tools,
 }: {
   t: (path: string) => string;
   loading: boolean;
   setLoading: (v: boolean) => void;
   setError: (code: string) => void;
   bots: BotRow[];
+  tools: ToolRow[];
 }) {
   const [rows, setRows] = useState<ExecRow[]>([]);
   const [offset, setOffset] = useState(0);
@@ -175,6 +204,24 @@ export function AutomationExecutionsTab({
   const [queryNonce, setQueryNonce] = useState(0);
   const [copyFlash, setCopyFlash] = useState<"ok" | "fail" | null>(null);
   const copyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [localTools, setLocalTools] = useState<ToolRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api.get<{ data: ToolRow[] }>("/automation/custom-tools");
+        if (!cancelled) {
+          setLocalTools((res.data ?? []).map((tool) => ({ id: tool.id, name: tool.name })));
+        }
+      } catch {
+        if (!cancelled) setLocalTools([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +303,14 @@ export function AutomationExecutionsTab({
     if (!detail?.logEntries) return [];
     return [...detail.logEntries].sort((a, b) => a.sequence - b.sequence);
   }, [detail]);
+
+  const toolNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tool of [...tools, ...localTools]) {
+      if (tool.id && tool.name) map.set(tool.id, tool.name);
+    }
+    return map;
+  }, [tools, localTools]);
 
   const exportFile = async (format: "json" | "csv") => {
     if (!selectedId) return;
@@ -596,7 +651,9 @@ export function AutomationExecutionsTab({
           ) : (
             <div className="max-h-[520px] space-y-1 overflow-y-auto p-2">
               <p className="px-2 font-mono text-[10px] text-ink-400">{detail.id}</p>
-              {sortedEntries.map((e) => (
+              {sortedEntries.map((e) => {
+                const toolLabel = resolveCustomToolLabel(e, toolNameById);
+                return (
                 <details
                   key={e.id}
                   className="rounded-lg border border-ink-100 bg-ink-50/50 dark:border-ink-800 dark:bg-ink-950/40"
@@ -606,7 +663,10 @@ export function AutomationExecutionsTab({
                     <span className={clsx("mr-2 rounded px-1 py-0.5 text-[10px] font-bold", levelBadgeClass(e.level))}>
                       {e.level}
                     </span>
-                    <span className="text-ink-500">#{e.sequence}</span> {e.nodeName}
+                    <span className="text-ink-500">#{e.sequence}</span> {toolLabel.title}
+                    {toolLabel.toolFunctionId ? (
+                      <span className="ml-2 font-mono text-[10px] text-ink-400">{toolLabel.toolFunctionId}</span>
+                    ) : null}
                     <span className="ml-2 text-[10px] text-ink-400">{e.nodePath}</span>
                   </summary>
                   <div className="space-y-2 border-t border-ink-100 px-2 py-2 text-[11px] dark:border-ink-800">
@@ -629,7 +689,8 @@ export function AutomationExecutionsTab({
                     <p className="text-[10px] text-ink-400">{new Date(e.createdAt).toISOString()}</p>
                   </div>
                 </details>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

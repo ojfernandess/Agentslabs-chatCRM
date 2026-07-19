@@ -4,6 +4,7 @@ import type { AutomationLogLevel, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { flushAutomationLogBuffer } from "../lib/automationExecutionLog.js";
+import { resolveAutomationToolIdFromLogNode } from "../lib/automationHttpToolExecute.js";
 import { requireAdmin } from "../middleware/auth.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -35,6 +36,34 @@ function csvEscape(s: string): string {
   const t = s.replace(/"/g, '""');
   if (/[",\n\r]/.test(t)) return `"${t}"`;
   return t;
+}
+
+async function enrichExecutionLogEntries(
+  organizationId: string,
+  logEntries: Array<{ nodeId: string; nodeName: string }>,
+) {
+  const toolIds = new Set<string>();
+  for (const entry of logEntries) {
+    const toolId = resolveAutomationToolIdFromLogNode(entry.nodeId, entry.nodeName);
+    if (toolId) toolIds.add(toolId);
+  }
+  if (toolIds.size === 0) {
+    return logEntries.map((entry) => ({
+      ...entry,
+      automationToolId: null as string | null,
+      automationToolName: null as string | null,
+    }));
+  }
+  const toolRows = await prisma.automationCustomTool.findMany({
+    where: { organizationId, id: { in: [...toolIds] } },
+    select: { id: true, name: true },
+  });
+  const toolNameById = new Map(toolRows.map((row) => [row.id, row.name]));
+  return logEntries.map((entry) => {
+    const automationToolId = resolveAutomationToolIdFromLogNode(entry.nodeId, entry.nodeName);
+    const automationToolName = automationToolId ? (toolNameById.get(automationToolId) ?? null) : null;
+    return { ...entry, automationToolId, automationToolName };
+  });
 }
 
 export async function registerAutomationExecutionLogRoutes(app: FastifyInstance): Promise<void> {
@@ -177,7 +206,8 @@ export async function registerAutomationExecutionLogRoutes(app: FastifyInstance)
     if (!exec) {
       return reply.status(404).send({ error: "Not Found", message: "Execution not found", statusCode: 404 });
     }
-    return exec;
+    const logEntries = await enrichExecutionLogEntries(organizationId, exec.logEntries);
+    return { ...exec, logEntries };
   });
 
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>(

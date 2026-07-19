@@ -1002,17 +1002,22 @@ export async function generateNativeAgentReply(input: {
           maxToolRounds: 6,
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
-            tlog?.info({ id: name, name: `Tool: ${name}` }, "Chamada à ferramenta", {
+            const customId = parseAutomationToolIdFromOpenAiName(name);
+            const customRow = customId ? customHttpTools.find((t) => t.id === customId) : undefined;
+            const toolNodeName = customRow ? `Tool: ${customRow.name}` : `Tool: ${name}`;
+            const logToolResult = (outputPreview: string) => {
+              tlog?.info({ id: name, name: toolNodeName }, "Resultado da ferramenta", {
+                output: { preview: outputPreview.slice(0, 4000) },
+              });
+            };
+            tlog?.info({ id: name, name: toolNodeName }, "Chamada à ferramenta", {
               input: { argsPreview: argsJson.slice(0, 4000) },
             });
-            const customId = parseAutomationToolIdFromOpenAiName(name);
             if (customId) {
-              const row = customHttpTools.find((t) => t.id === customId);
+              const row = customRow;
               if (!row) {
                 const out = JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" });
-                tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
-                  output: { preview: out },
-                });
+                logToolResult(out);
                 return out;
               }
               let args: Record<string, unknown> = {};
@@ -1021,9 +1026,7 @@ export async function generateNativeAgentReply(input: {
                 if (p && typeof p === "object" && !Array.isArray(p)) args = p as Record<string, unknown>;
               } catch {
                 const out = JSON.stringify({ ok: false, error: "invalid_json_arguments" });
-                tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
-                  output: { preview: out },
-                });
+                logToolResult(out);
                 return out;
               }
               const exec = await runAutomationHttpLikeTool({
@@ -1040,9 +1043,7 @@ export async function generateNativeAgentReply(input: {
                 bodyPreview: exec.responseText.slice(0, 12_000),
                 error: exec.error,
               });
-              tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
-                output: { preview: out.slice(0, 4000) },
-              });
+              logToolResult(out);
               return out;
             }
             const out = await executeNativeTool({
@@ -1057,9 +1058,7 @@ export async function generateNativeAgentReply(input: {
               pinnedArticleIds,
               userMessage,
             });
-            tlog?.info({ id: name, name: `Tool: ${name}` }, "Resultado da ferramenta", {
-              output: { preview: out.slice(0, 4000) },
-            });
+            logToolResult(out);
             return out;
           },
           signal,

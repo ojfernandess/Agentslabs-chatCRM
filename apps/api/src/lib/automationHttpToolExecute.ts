@@ -205,6 +205,23 @@ export function parseAutomationToolIdFromOpenAiName(name: string): string | null
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+const AUTOMATION_TOOL_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Resolve UUID da ferramenta a partir de campos persistidos no log de execução. */
+export function resolveAutomationToolIdFromLogNode(nodeId: string, nodeName: string): string | null {
+  const fromId = parseAutomationToolIdFromOpenAiName(nodeId);
+  if (fromId) return fromId;
+  const stripped = nodeName.replace(/^Tool:\s*/i, "").trim();
+  const fromName = parseAutomationToolIdFromOpenAiName(stripped);
+  if (fromName) return fromName;
+  const ocMatch =
+    nodeName.match(/oc_tool_[a-f0-9]{32}/i)?.[0] ?? nodeId.match(/oc_tool_[a-f0-9]{32}/i)?.[0];
+  if (ocMatch) return parseAutomationToolIdFromOpenAiName(ocMatch);
+  if (AUTOMATION_TOOL_UUID_RE.test(nodeId)) return nodeId;
+  return null;
+}
+
 function safeOpenAiParametersSchema(schema: unknown): Record<string, unknown> {
   if (schema && typeof schema === "object" && !Array.isArray(schema)) {
     const o = schema as Record<string, unknown>;

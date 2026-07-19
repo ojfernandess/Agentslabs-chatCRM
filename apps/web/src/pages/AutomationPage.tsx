@@ -923,7 +923,10 @@ export function AutomationPage() {
           await loadTools();
         }
         if (tab === "interactions") await loadInteractions();
-        if (tab === "executions") await loadBots();
+        if (tab === "executions") {
+          await loadBots();
+          await loadTools();
+        }
         if (tab === "context") await loadContextRows();
       } else {
         if (tab === "knowledge") await loadKnowledge();
@@ -1375,6 +1378,7 @@ export function AutomationPage() {
             setLoading={setLoading}
             setError={setError}
             bots={bots}
+            tools={tools}
           />
         ) : null}
 
