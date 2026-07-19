@@ -8,7 +8,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
-import { assertHttpUrlAllowed, truncateBody } from "../lib/httpToolTest.js";
+import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, truncateBody } from "../lib/httpToolTest.js";
 import { secureHttpFetch } from "../lib/secureHttpFetch.js";
 import {
   buildHttpToolFlatContext,
@@ -1870,14 +1870,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       let responseText = "";
       let errMsg: string | null = null;
 
-      const reqSummary = {
+      const reqSummary = buildToolExecutionRequestSummary({
         method,
         url: url.toString(),
-        headerKeys: [...headers.keys()],
+        headers,
+        bodyStr,
         bodySource,
-        bodyBytes: bodyStr?.length ?? 0,
-        bodyPreview: bodyStr ? truncateBody(bodyStr, 4000) : null,
-      };
+      });
 
       try {
         const ctrl = new AbortController();
@@ -1903,10 +1902,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
             statusCode,
             durationMs,
             requestSummary: asJson(reqSummary),
-            responseSummary: asJson({
-              preview: responseText.slice(0, 8000),
-              truncated: responseText.length > 8000,
-            }),
+            responseSummary: asJson(buildToolExecutionResponseSummary(responseText)),
             errorMessage: errMsg,
             tokensUsed: null,
             botId: null,

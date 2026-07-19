@@ -22,6 +22,7 @@ import {
 import { api } from "@/lib/api";
 import type { AutomationCustomToolRow, AutomationToolsTranslate, ToolPresetMeta } from "./automationToolTypes";
 import { LucideIconPickerField, UiAccentColorPickerField } from "./ToolUiAppearanceFields";
+import { ToolExecutionDetailPanel, type ToolExecutionRow } from "./ToolExecutionDetailPanel";
 
 const FAV_KEY = "oc_automation_tool_favorites_v1";
 
@@ -128,6 +129,18 @@ function effectiveMarketCategory(p: ToolPresetMeta): string | null {
   return null;
 }
 
+function executionSummaryLine(ex: ToolExecutionRow): string {
+  const req =
+    ex.requestSummary && typeof ex.requestSummary === "object"
+      ? (ex.requestSummary as Record<string, unknown>)
+      : null;
+  if (req?.method && req?.url) {
+    const url = String(req.url);
+    return `${String(req.method)} ${url.length > 72 ? `${url.slice(0, 72)}…` : url}`;
+  }
+  return ex.source ?? "—";
+}
+
 function loadFavorites(): Set<string> {
   try {
     const raw = localStorage.getItem(FAV_KEY);
@@ -198,8 +211,9 @@ export function AutomationToolsHub({
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
 
-  const [executions, setExecutions] = useState<Array<Record<string, unknown>>>([]);
+  const [executions, setExecutions] = useState<ToolExecutionRow[]>([]);
   const [execLoading, setExecLoading] = useState(false);
+  const [selectedExecution, setSelectedExecution] = useState<ToolExecutionRow | null>(null);
 
   const [createType, setCreateType] = useState("HTTP_API");
   const [createName, setCreateName] = useState("");
@@ -341,7 +355,7 @@ export function AutomationToolsHub({
       const res = await api.get<{ data: Array<Record<string, unknown>> }>(
         `/automation/custom-tools/${toolId}/executions?limit=50`,
       );
-      setExecutions(res.data ?? []);
+      setExecutions((res.data ?? []) as ToolExecutionRow[]);
     } catch {
       setExecutions([]);
     } finally {
@@ -1086,21 +1100,33 @@ export function AutomationToolsHub({
                   ) : (
                     <ul className="space-y-2">
                       {executions.map((ex) => (
-                        <li key={String(ex.id)} className="rounded-lg border border-ink-200 p-2 text-xs dark:border-ink-700">
+                        <li key={ex.id} className="rounded-lg border border-ink-200 p-2 text-xs dark:border-ink-700">
                           <div className="flex justify-between gap-2">
-                            <span className="font-mono text-[10px] text-ink-500">{String(ex.createdAt)}</span>
+                            <span className="font-mono text-[10px] text-ink-500">
+                              {new Date(ex.createdAt).toLocaleString()}
+                            </span>
                             <span
                               className={clsx(
                                 "font-semibold",
                                 ex.ok ? "text-emerald-600" : "text-red-600",
                               )}
                             >
-                              {ex.statusCode != null ? String(ex.statusCode) : "—"} · {String(ex.durationMs)}ms
+                              {ex.statusCode != null ? String(ex.statusCode) : "—"} · {String(ex.durationMs ?? "—")}ms
                             </span>
                           </div>
+                          <p className="mt-1 break-all font-mono text-[10px] text-ink-600 dark:text-ink-300">
+                            {executionSummaryLine(ex)}
+                          </p>
                           {ex.errorMessage ? (
-                            <p className="mt-1 text-red-600 dark:text-red-400">{String(ex.errorMessage)}</p>
+                            <p className="mt-1 line-clamp-2 text-red-600 dark:text-red-400">{ex.errorMessage}</p>
                           ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExecution(ex)}
+                            className="mt-2 text-[11px] font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                          >
+                            {t("automationPage.toolsExecutionViewDetail")}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -1230,6 +1256,14 @@ export function AutomationToolsHub({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {selectedExecution ? (
+        <ToolExecutionDetailPanel
+          execution={selectedExecution}
+          t={t}
+          onClose={() => setSelectedExecution(null)}
+        />
       ) : null}
     </div>
   );

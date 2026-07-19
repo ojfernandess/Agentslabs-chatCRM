@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { assertHttpUrlAllowed, truncateBody } from "./httpToolTest.js";
+import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, truncateBody } from "./httpToolTest.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 
 function asJson(v: unknown): Prisma.InputJsonValue {
@@ -469,14 +469,13 @@ export async function runAutomationHttpLikeTool(input: {
   let responseText = "";
   let errMsg: string | null = null;
 
-  const reqSummary = {
+  const reqSummary = buildToolExecutionRequestSummary({
     method,
     url: url.toString(),
-    headerKeys: [...headers.keys()],
+    headers,
+    bodyStr,
     bodySource,
-    bodyBytes: bodyStr?.length ?? 0,
-    bodyPreview: bodyStr ? truncateBody(bodyStr, 4000) : null,
-  };
+  });
 
   try {
     const ctrl = new AbortController();
@@ -502,10 +501,7 @@ export async function runAutomationHttpLikeTool(input: {
         statusCode,
         durationMs,
         requestSummary: asJson(reqSummary),
-        responseSummary: asJson({
-          preview: responseText.slice(0, 8000),
-          truncated: responseText.length > 8000,
-        }),
+        responseSummary: asJson(buildToolExecutionResponseSummary(responseText)),
         errorMessage: errMsg,
         tokensUsed: null,
         botId,
