@@ -141,6 +141,10 @@ const defaultBehaviorConfig = () => ({
   },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
   connectedTools: [] as Array<Record<string, unknown>>,
+  toolCallNotify: {
+    enabled: false,
+    message: "" as string,
+  },
 });
 
 function deriveBotAutomationSource(bot: { webhookUrl: string | null; config: unknown }): {

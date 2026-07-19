@@ -40,6 +40,25 @@ import {
   parseInstructionFallbacks,
   type InstructionFallback,
 } from "./instructionFallbacks.js";
+import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+
+const DEFAULT_TOOL_CALL_NOTIFY_MESSAGE = "Um momento, estou a consultar isso para si…";
+
+export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
+  enabled: boolean;
+  message: string;
+} {
+  const fallback = { enabled: false, message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE };
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return fallback;
+  const raw = (behaviorConfig as Record<string, unknown>).toolCallNotify;
+  if (!raw || typeof raw !== "object") return fallback;
+  const o = raw as Record<string, unknown>;
+  const message =
+    typeof o.message === "string" && o.message.trim()
+      ? o.message.trim().slice(0, 500)
+      : DEFAULT_TOOL_CALL_NOTIFY_MESSAGE;
+  return { enabled: o.enabled === true, message };
+}
 
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
@@ -658,8 +677,19 @@ export async function generateNativeAgentReply(input: {
   executionLog?: AutomationExecutionLogPort | null;
   /** Test-chat: histórico vindo do cliente em vez da BD. */
   historyOverride?: PreviewChatTurn[];
+  /** Contacto da conversa — necessário para aviso pré-ferramenta outbound. */
+  contactId?: string;
 }): Promise<string> {
-  const { organizationId, bot, conversation, message, log, executionLog: ex, historyOverride } = input;
+  const {
+    organizationId,
+    bot,
+    conversation,
+    message,
+    log,
+    executionLog: ex,
+    historyOverride,
+    contactId,
+  } = input;
   if (message.direction !== "INBOUND") return "";
   const userMessage = (message.body ?? "").trim();
   if (!userMessage) return "";
@@ -760,6 +790,10 @@ export async function generateNativeAgentReply(input: {
   );
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
+  const toolCallNotify = parseToolCallNotifyFromBehavior(profile.behaviorConfig);
+  const effectiveContactId = contactId ?? conversation.contactId ?? undefined;
+  const sandboxReply = historyOverride != null;
+  let toolCallNotifySent = false;
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
   let customHttpTools: AutomationHttpToolRow[] = [];
@@ -1002,6 +1036,40 @@ export async function generateNativeAgentReply(input: {
           maxToolRounds: 6,
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
+            if (
+              toolCallNotify.enabled &&
+              !toolCallNotifySent &&
+              !sandboxReply &&
+              effectiveContactId
+            ) {
+              toolCallNotifySent = true;
+              try {
+                await deliverOutboundWhatsAppMessage({
+                  organizationId,
+                  data: {
+                    contactId: effectiveContactId,
+                    conversationId: conversation.id,
+                    type: "TEXT",
+                    body: toolCallNotify.message,
+                  },
+                  actor: { kind: "agent_bot", botId: bot.id },
+                  log,
+                  newConversation: { status: "PENDING", assignedToId: null },
+                });
+                tlog?.info(
+                  { id: name, name: "Aviso pré-ferramenta" },
+                  "Mensagem enviada ao contacto antes da ferramenta",
+                  { output: { messagePreview: toolCallNotify.message.slice(0, 240) } },
+                );
+              } catch (err) {
+                log.warn({ err, botId: bot.id, toolFunctionName: name }, "tool call pre-notify outbound failed");
+                tlog?.warn(
+                  { id: name, name: "Aviso pré-ferramenta" },
+                  "Falha ao enviar aviso pré-ferramenta",
+                  { stack: err instanceof Error ? err.stack : undefined },
+                );
+              }
+            }
             const customId = parseAutomationToolIdFromOpenAiName(name);
             const customRow = customId ? customHttpTools.find((t) => t.id === customId) : undefined;
             const toolNodeName = customRow ? `Tool: ${customRow.name}` : `Tool: ${name}`;

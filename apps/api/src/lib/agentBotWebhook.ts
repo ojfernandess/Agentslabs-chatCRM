@@ -270,6 +270,7 @@ async function dispatchAgentBotNativeFallback(input: {
       message,
       log,
       executionLog: exLog.child("agent_llm"),
+      contactId: contact.id,
     });
 
     const handoffAfter = await prisma.conversation.findFirst({

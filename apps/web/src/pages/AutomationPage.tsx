@@ -308,6 +308,10 @@ const defaultBehavior = {
   scheduling: { useOrgReminders: true, externalCalendar: "none" },
   connectedTools: defaultConnectedTools(),
   connectedTags: defaultConnectedTags(),
+  toolCallNotify: {
+    enabled: false,
+    message: "",
+  },
 };
 
 export type AgentConnectedTagRow = {
@@ -366,6 +370,8 @@ type AgentFormFields = {
   teamTransferHints: Array<{ teamId: string; instruction: string }>;
   /** Fallbacks por trecho seleccionado nas instruções principais. */
   instructionFallbacks: InstructionFallback[];
+  toolCallNotifyEnabled: boolean;
+  toolCallNotifyMessage: string;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -404,6 +410,8 @@ function emptyAgentForm(): AgentFormFields {
     connectedTags: defaultConnectedTags(),
     teamTransferHints: [],
     instructionFallbacks: [],
+    toolCallNotifyEnabled: false,
+    toolCallNotifyMessage: "",
   };
 }
 
@@ -446,6 +454,10 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const strippedCore = splitStoredSystemInstructions(fullInstr).userCore;
   const promptUserCore = userFromPb != null ? userFromPb : strippedCore;
   const instructionFallbacks = parseInstructionFallbacks(pb.instructionFallbacks);
+  const toolCallNotifyRaw =
+    beh.toolCallNotify && typeof beh.toolCallNotify === "object"
+      ? (beh.toolCallNotify as Record<string, unknown>)
+      : defaultBehavior.toolCallNotify;
 
   return {
     mode: "edit",
@@ -490,6 +502,8 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     connectedTags: normalizeConnectedTags(beh.connectedTags),
     teamTransferHints,
     instructionFallbacks,
+    toolCallNotifyEnabled: Boolean(toolCallNotifyRaw.enabled),
+    toolCallNotifyMessage: typeof toolCallNotifyRaw.message === "string" ? toolCallNotifyRaw.message : "",
   };
 }
 
@@ -646,6 +660,10 @@ function formToPayload(
     scheduling: {
       ...defaultBehavior.scheduling,
       externalCalendar: schedulingExternal,
+    },
+    toolCallNotify: {
+      enabled: form.toolCallNotifyEnabled,
+      message: form.toolCallNotifyMessage.trim(),
     },
     promptBuilder: {
       userCore: form.promptUserCore,
@@ -2448,6 +2466,38 @@ function AgentsTab({
                       />
                     </label>
                   </>
+                ) : null}
+              </div>
+
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  <MessageCircle className="h-4 w-4 text-brand-600" />
+                  {t("automationPage.agentToolCallNotifySection")}
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={agentForm.toolCallNotifyEnabled}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({ ...f, toolCallNotifyEnabled: e.target.checked }))
+                    }
+                  />
+                  {t("automationPage.agentToolCallNotifyToggle")}
+                </label>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentToolCallNotifyHelp")}</p>
+                {agentForm.toolCallNotifyEnabled ? (
+                  <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                    {t("automationPage.agentToolCallNotifyMessage")}
+                    <textarea
+                      value={agentForm.toolCallNotifyMessage}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({ ...f, toolCallNotifyMessage: e.target.value }))
+                      }
+                      rows={2}
+                      placeholder={t("automationPage.agentToolCallNotifyMessagePh")}
+                      className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                    />
+                  </label>
                 ) : null}
               </div>
 
