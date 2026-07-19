@@ -144,6 +144,7 @@ const defaultBehaviorConfig = () => ({
   toolCallNotify: {
     enabled: false,
     message: "" as string,
+    selectedTools: [] as string[],
   },
 });
 

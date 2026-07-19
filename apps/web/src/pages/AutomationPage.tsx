@@ -31,6 +31,8 @@ import {
   mergeSystemWithAutoBlock,
   nativeOpenAiToolFunctionName,
   splitStoredSystemInstructions,
+  toolCallNotifyKeyCustom,
+  toolCallNotifyKeyNative,
 } from "@/pages/automation/agentPromptBuilder";
 import {
   parseInstructionFallbacks,
@@ -311,6 +313,7 @@ const defaultBehavior = {
   toolCallNotify: {
     enabled: false,
     message: "",
+    selectedTools: [] as string[],
   },
 };
 
@@ -372,6 +375,7 @@ type AgentFormFields = {
   instructionFallbacks: InstructionFallback[];
   toolCallNotifyEnabled: boolean;
   toolCallNotifyMessage: string;
+  toolCallNotifySelectedTools: string[];
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -412,6 +416,7 @@ function emptyAgentForm(): AgentFormFields {
     instructionFallbacks: [],
     toolCallNotifyEnabled: false,
     toolCallNotifyMessage: "",
+    toolCallNotifySelectedTools: [],
   };
 }
 
@@ -458,6 +463,23 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     beh.toolCallNotify && typeof beh.toolCallNotify === "object"
       ? (beh.toolCallNotify as Record<string, unknown>)
       : defaultBehavior.toolCallNotify;
+  const connectedToolsNormalized = normalizeConnectedTools(beh.connectedTools);
+  const hasExplicitNotifySelection = "selectedTools" in toolCallNotifyRaw;
+  const parsedNotifySelected =
+    hasExplicitNotifySelection && Array.isArray(toolCallNotifyRaw.selectedTools)
+      ? toolCallNotifyRaw.selectedTools.filter((x): x is string => typeof x === "string")
+      : hasExplicitNotifySelection
+        ? []
+        : null;
+  const toolCallNotifySelectedTools =
+    parsedNotifySelected === null
+      ? [
+          ...NATIVE_TOOL_KEYS.filter((k) => nativeTools[k]).map((k) => toolCallNotifyKeyNative(k)),
+          ...connectedToolsNormalized
+            .filter((x) => x.enabled)
+            .map((x) => toolCallNotifyKeyCustom(x.toolId)),
+        ]
+      : parsedNotifySelected;
 
   return {
     mode: "edit",
@@ -498,12 +520,13 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     })(),
     nativeTools,
     promptModuleIds,
-    connectedTools: normalizeConnectedTools(beh.connectedTools),
+    connectedTools: connectedToolsNormalized,
     connectedTags: normalizeConnectedTags(beh.connectedTags),
     teamTransferHints,
     instructionFallbacks,
     toolCallNotifyEnabled: Boolean(toolCallNotifyRaw.enabled),
     toolCallNotifyMessage: typeof toolCallNotifyRaw.message === "string" ? toolCallNotifyRaw.message : "",
+    toolCallNotifySelectedTools,
   };
 }
 
@@ -664,6 +687,7 @@ function formToPayload(
     toolCallNotify: {
       enabled: form.toolCallNotifyEnabled,
       message: form.toolCallNotifyMessage.trim(),
+      selectedTools: form.toolCallNotifySelectedTools,
     },
     promptBuilder: {
       userCore: form.promptUserCore,
@@ -1700,6 +1724,22 @@ function AgentsTab({
 
   const toolLabel = (key: NativeToolKey) => t(`automationPage.agentTool_${key}`);
 
+  const toolCallNotifyCandidates = useMemo(() => {
+    const natives = NATIVE_TOOL_KEYS.filter((k) => agentForm.nativeTools[k]).map((k) => ({
+      key: toolCallNotifyKeyNative(k),
+      label: toolLabel(k),
+    }));
+    const customs = agentForm.connectedTools
+      .filter((x) => x.enabled)
+      .map((ct) => {
+        const tl = tools.find((row) => row.id === ct.toolId);
+        if (!tl) return null;
+        return { key: toolCallNotifyKeyCustom(ct.toolId), label: tl.name };
+      })
+      .filter((x): x is { key: string; label: string } => x != null);
+    return [...natives, ...customs];
+  }, [agentForm.nativeTools, agentForm.connectedTools, tools, t]);
+
   const promptAutoPreview = useMemo(() => {
     const linkedTitles = agentForm.promptLinkedKnowledgeIds
       .map((id) => articles.find((a) => a.id === id)?.title)
@@ -2478,26 +2518,72 @@ function AgentsTab({
                   <input
                     type="checkbox"
                     checked={agentForm.toolCallNotifyEnabled}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({ ...f, toolCallNotifyEnabled: e.target.checked }))
-                    }
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setAgentForm((f) => ({
+                        ...f,
+                        toolCallNotifyEnabled: enabled,
+                        toolCallNotifySelectedTools:
+                          enabled && f.toolCallNotifySelectedTools.length === 0
+                            ? toolCallNotifyCandidates.map((row) => row.key)
+                            : f.toolCallNotifySelectedTools,
+                      }));
+                    }}
                   />
                   {t("automationPage.agentToolCallNotifyToggle")}
                 </label>
                 <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentToolCallNotifyHelp")}</p>
                 {agentForm.toolCallNotifyEnabled ? (
-                  <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
-                    {t("automationPage.agentToolCallNotifyMessage")}
-                    <textarea
-                      value={agentForm.toolCallNotifyMessage}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({ ...f, toolCallNotifyMessage: e.target.value }))
-                      }
-                      rows={2}
-                      placeholder={t("automationPage.agentToolCallNotifyMessagePh")}
-                      className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
-                    />
-                  </label>
+                  <>
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                        {t("automationPage.agentToolCallNotifyTools")}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-ink-500">
+                        {t("automationPage.agentToolCallNotifyToolsHelp")}
+                      </p>
+                      {toolCallNotifyCandidates.length === 0 ? (
+                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                          {t("automationPage.agentToolCallNotifyToolsEmpty")}
+                        </p>
+                      ) : (
+                        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
+                          {toolCallNotifyCandidates.map((row) => (
+                            <li key={row.key}>
+                              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
+                                <input
+                                  type="checkbox"
+                                  className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                                  checked={agentForm.toolCallNotifySelectedTools.includes(row.key)}
+                                  onChange={() =>
+                                    setAgentForm((f) => {
+                                      const next = new Set(f.toolCallNotifySelectedTools);
+                                      if (next.has(row.key)) next.delete(row.key);
+                                      else next.add(row.key);
+                                      return { ...f, toolCallNotifySelectedTools: [...next] };
+                                    })
+                                  }
+                                />
+                                <span>{row.label}</span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                      {t("automationPage.agentToolCallNotifyMessage")}
+                      <textarea
+                        value={agentForm.toolCallNotifyMessage}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({ ...f, toolCallNotifyMessage: e.target.value }))
+                        }
+                        rows={2}
+                        placeholder={t("automationPage.agentToolCallNotifyMessagePh")}
+                        className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                      />
+                    </label>
+                  </>
                 ) : null}
               </div>
 

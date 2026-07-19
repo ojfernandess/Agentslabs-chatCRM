@@ -47,8 +47,10 @@ const DEFAULT_TOOL_CALL_NOTIFY_MESSAGE = "Um momento, estou a consultar isso par
 export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
   enabled: boolean;
   message: string;
+  /** `null` = perfis antigos (avisar em qualquer ferramenta). */
+  selectedTools: string[] | null;
 } {
-  const fallback = { enabled: false, message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE };
+  const fallback = { enabled: false, message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE, selectedTools: [] as string[] };
   if (!behaviorConfig || typeof behaviorConfig !== "object") return fallback;
   const raw = (behaviorConfig as Record<string, unknown>).toolCallNotify;
   if (!raw || typeof raw !== "object") return fallback;
@@ -57,7 +59,40 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
     typeof o.message === "string" && o.message.trim()
       ? o.message.trim().slice(0, 500)
       : DEFAULT_TOOL_CALL_NOTIFY_MESSAGE;
-  return { enabled: o.enabled === true, message };
+  let selectedTools: string[] | null = null;
+  if ("selectedTools" in o) {
+    selectedTools = Array.isArray(o.selectedTools)
+      ? o.selectedTools.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [];
+  }
+  return { enabled: o.enabled === true, message, selectedTools };
+}
+
+const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
+  buscar_conhecimento: "native:knowledge_search",
+  listar_equipas: "native:list_teams",
+  transfer_to_team: "native:transfer_to_team",
+  call_human: "native:call_human",
+  set_conversation_status: "native:set_conversation_status",
+  listar_etiquetas: "native:assign_contact_tags",
+  atribuir_etiquetas: "native:assign_contact_tags",
+};
+
+export function toolCallNotifySelectionKey(functionName: string): string | null {
+  const customId = parseAutomationToolIdFromOpenAiName(functionName);
+  if (customId) return `custom:${customId}`;
+  return OPENAI_FUNCTION_TO_NOTIFY_KEY[functionName] ?? null;
+}
+
+export function shouldNotifyBeforeToolCall(
+  functionName: string,
+  config: { enabled: boolean; selectedTools: string[] | null },
+): boolean {
+  if (!config.enabled) return false;
+  const key = toolCallNotifySelectionKey(functionName);
+  if (!key) return false;
+  if (config.selectedTools === null) return true;
+  return config.selectedTools.includes(key);
 }
 
 const STALL_RE =
@@ -1037,10 +1072,10 @@ export async function generateNativeAgentReply(input: {
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
             if (
-              toolCallNotify.enabled &&
               !toolCallNotifySent &&
               !sandboxReply &&
-              effectiveContactId
+              effectiveContactId &&
+              shouldNotifyBeforeToolCall(name, toolCallNotify)
             ) {
               toolCallNotifySent = true;
               try {

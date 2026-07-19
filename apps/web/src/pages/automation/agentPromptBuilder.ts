@@ -54,6 +54,14 @@ export function resolveAutomationToolIdFromLogNode(nodeId: string, nodeName: str
   return null;
 }
 
+export function toolCallNotifyKeyNative(nativeKey: string): string {
+  return `native:${nativeKey}`;
+}
+
+export function toolCallNotifyKeyCustom(toolId: string): string {
+  return `custom:${toolId}`;
+}
+
 export type ConnectedToolInstructionRow = { name: string; instruction: string; toolId: string };
 export type ConnectedTagInstructionRow = { name: string; instruction: string; tagId: string };
 export type TeamTransferHint = { teamId: string; teamName: string; instruction: string };
