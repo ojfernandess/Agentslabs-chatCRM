@@ -8,7 +8,9 @@ import { secureHttpFetch } from "./secureHttpFetch.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
-const MAX_MEDIA_BASE64_BYTES = 4 * 1024 * 1024;
+export const HTTP_TOOL_MEDIA_BASE64_MAX_BYTES = 4 * 1024 * 1024;
+
+const INBOUND_MEDIA_MESSAGE_TYPES = new Set(["IMAGE", "DOCUMENT", "VIDEO", "AUDIO"]);
 
 export type HttpToolInboundMediaPayload = {
   mediaUrl: string;
@@ -16,6 +18,21 @@ export type HttpToolInboundMediaPayload = {
   filename: string;
   buffer: Buffer;
   base64: string;
+};
+
+/** Anexo normalizado disponível em templates HTTP (`{{attachment.url}}`, `{{attachments.0.base64}}`, …). */
+export type HttpToolMessageAttachment = {
+  messageId: string;
+  type: string;
+  createdAt: string;
+  url: string;
+  mimeType: string;
+  filename: string;
+  base64: string;
+  sizeBytes: number;
+  /** Bytes carregados em memória (usados em multipart; não serializados no JSON do template). */
+  hasBinary: boolean;
+  base64Available: boolean;
 };
 
 function mimeFromMediaFilename(name: string, hint: string | null | undefined): string {
@@ -70,7 +87,7 @@ export async function loadHttpToolMediaBytes(
             mediaType: mime,
             filename: name,
             buffer,
-            base64: buffer.length <= MAX_MEDIA_BASE64_BYTES ? buffer.toString("base64") : "",
+            base64: buffer.length <= HTTP_TOOL_MEDIA_BASE64_MAX_BYTES ? buffer.toString("base64") : "",
           };
         }
       }
@@ -90,7 +107,7 @@ export async function loadHttpToolMediaBytes(
         mediaType: mime,
         filename,
         buffer,
-        base64: buffer.length <= MAX_MEDIA_BASE64_BYTES ? buffer.toString("base64") : "",
+        base64: buffer.length <= HTTP_TOOL_MEDIA_BASE64_MAX_BYTES ? buffer.toString("base64") : "",
       };
     }
   } catch {
@@ -107,7 +124,39 @@ function mediaSummaryForContext(media: HttpToolInboundMediaPayload | null): Reco
     filename: media.filename,
     mediaBase64: media.base64 || undefined,
     sizeBytes: media.buffer.length,
+    hasBinary: media.buffer.length > 0,
+    base64Available: media.base64.length > 0,
   };
+}
+
+export function buildHttpToolAttachmentRecord(input: {
+  messageId: string;
+  type: string;
+  createdAt: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  loaded?: HttpToolInboundMediaPayload | null;
+}): HttpToolMessageAttachment | null {
+  const url = (input.loaded?.mediaUrl ?? input.mediaUrl ?? "").trim();
+  if (!url) return null;
+  const loaded = input.loaded;
+  const base64 = loaded?.base64 ?? "";
+  return {
+    messageId: input.messageId,
+    type: input.type,
+    createdAt: input.createdAt,
+    url,
+    mimeType: loaded?.mediaType ?? (input.mediaType ?? "").trim(),
+    filename: loaded?.filename ?? filenameFromMediaUrl(url),
+    base64,
+    sizeBytes: loaded?.buffer.length ?? 0,
+    hasBinary: Boolean(loaded?.buffer.length),
+    base64Available: base64.length > 0,
+  };
+}
+
+function isInboundMediaMessageType(type: string): boolean {
+  return INBOUND_MEDIA_MESSAGE_TYPES.has(type);
 }
 
 /** Contexto automático para templates HTTP (mensagem, contacto, mídia recente). */
@@ -125,8 +174,7 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
   contact?: { id: string; name: string | null; phone: string | null } | null;
 }): Promise<Record<string, unknown>> {
   const currentMedia =
-    input.message.mediaUrl?.trim() &&
-    (input.message.type === "IMAGE" || input.message.type === "DOCUMENT" || input.message.type === "VIDEO")
+    input.message.mediaUrl?.trim() && isInboundMediaMessageType(input.message.type)
       ? await loadHttpToolMediaBytes(input.message.mediaUrl, input.message.mediaType)
       : null;
 
@@ -135,7 +183,7 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
       conversationId: input.conversationId,
       direction: "INBOUND",
       mediaUrl: { not: null },
-      type: { in: ["IMAGE", "DOCUMENT", "VIDEO"] },
+      type: { in: ["IMAGE", "DOCUMENT", "VIDEO", "AUDIO"] },
     },
     orderBy: { createdAt: "desc" },
     take: 8,
@@ -149,7 +197,16 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
   });
 
   const recentInboundMedia: Record<string, unknown>[] = [];
+  const attachments: HttpToolMessageAttachment[] = [];
+  const attachmentIds = new Set<string>();
   let fallbackMedia: HttpToolInboundMediaPayload | null = null;
+
+  const pushAttachment = (record: HttpToolMessageAttachment | null) => {
+    if (!record || attachmentIds.has(record.messageId)) return;
+    attachmentIds.add(record.messageId);
+    attachments.push(record);
+  };
+
   for (const row of recentRows) {
     if (!row.mediaUrl?.trim()) continue;
     const loaded = await loadHttpToolMediaBytes(row.mediaUrl, row.mediaType);
@@ -161,6 +218,16 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
         createdAt: row.createdAt.toISOString(),
         ...summary,
       });
+      pushAttachment(
+        buildHttpToolAttachmentRecord({
+          messageId: row.id,
+          type: row.type,
+          createdAt: row.createdAt.toISOString(),
+          mediaUrl: row.mediaUrl,
+          mediaType: row.mediaType,
+          loaded,
+        }),
+      );
       if (!fallbackMedia && loaded) fallbackMedia = loaded;
     }
   }
@@ -173,9 +240,25 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
     body: (input.message.body ?? "").trim(),
     mediaUrl: input.message.mediaUrl ?? "",
     mediaType: input.message.mediaType ?? "",
+    createdAt: input.message.createdAt.toISOString(),
   };
   const currentSummary = mediaSummaryForContext(currentMedia);
   if (currentSummary) Object.assign(messageCtx, currentSummary);
+
+  const currentAttachment = buildHttpToolAttachmentRecord({
+    messageId: input.message.id,
+    type: input.message.type,
+    createdAt: input.message.createdAt.toISOString(),
+    mediaUrl: input.message.mediaUrl,
+    mediaType: input.message.mediaType,
+    loaded: currentMedia,
+  });
+  if (currentAttachment) {
+    messageCtx.attachment = currentAttachment;
+    pushAttachment(currentAttachment);
+  }
+
+  const primaryAttachment = currentAttachment ?? attachments[0] ?? null;
 
   const contactCtx = input.contact
     ? {
@@ -189,11 +272,17 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
     message: messageCtx,
     contact: contactCtx,
     conversation: { id: input.conversationId },
+    attachment: primaryAttachment ?? {},
+    attachments,
     recentInboundMedia,
     mediaUrl: primaryMedia?.mediaUrl ?? input.message.mediaUrl ?? "",
     mediaType: primaryMedia?.mediaType ?? input.message.mediaType ?? "",
     mediaBase64: primaryMedia?.base64 ?? "",
     mediaFilename: primaryMedia?.filename ?? "",
+    attachmentUrl: primaryAttachment?.url ?? input.message.mediaUrl ?? "",
+    attachmentMimeType: primaryAttachment?.mimeType ?? input.message.mediaType ?? "",
+    attachmentFilename: primaryAttachment?.filename ?? "",
+    attachmentBase64: primaryAttachment?.base64 ?? "",
   };
 }
 

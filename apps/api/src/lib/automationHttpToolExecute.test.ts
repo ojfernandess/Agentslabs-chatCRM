@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildHttpToolFlatContext,
+  buildHttpToolAttachmentRecord,
   expandTemplateValue,
   extractInlineBodyFromArgs,
   resolveHttpRequestBody,
@@ -136,4 +137,37 @@ test("resolveHttpRequestBody builds multipart when bodyType is multipart and med
   });
   assert.equal(resolved.source, "multipart");
   assert.ok(resolved.multipartFormData);
+});
+
+test("buildHttpToolAttachmentRecord exposes url, base64 and hasBinary flags", () => {
+  const attachment = buildHttpToolAttachmentRecord({
+    messageId: "msg-1",
+    type: "IMAGE",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    loaded: {
+      mediaUrl: "https://example.com/a.png",
+      mediaType: "image/png",
+      filename: "a.png",
+      buffer: Buffer.from("bin"),
+      base64: "Ymlu",
+    },
+  });
+  assert.ok(attachment);
+  assert.equal(attachment!.url, "https://example.com/a.png");
+  assert.equal(attachment!.base64, "Ymlu");
+  assert.equal(attachment!.hasBinary, true);
+  assert.equal(attachment!.base64Available, true);
+});
+
+test("flattenTemplateContext exposes nested attachment and attachments array paths", () => {
+  const flat = buildHttpToolFlatContext({
+    sampleContext: {
+      attachment: { url: "https://x/y.jpg", base64: "abc" },
+      attachments: [{ base64: "first" }, { base64: "second" }],
+    },
+  });
+  assert.equal(flat["attachment.url"], "https://x/y.jpg");
+  assert.equal(flat["attachment.base64"], "abc");
+  assert.equal(flat["attachments.0.base64"], "first");
+  assert.equal(flat["attachments.1.base64"], "second");
 });
