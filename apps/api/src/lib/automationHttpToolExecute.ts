@@ -1,7 +1,247 @@
 import { Prisma } from "@prisma/client";
+import { Blob } from "node:buffer";
 import { prisma } from "../db.js";
+import { getPublicOrigin } from "../config.js";
 import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, truncateBody } from "./httpToolTest.js";
+import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
+
+const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
+const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
+const MAX_MEDIA_BASE64_BYTES = 4 * 1024 * 1024;
+
+export type HttpToolInboundMediaPayload = {
+  mediaUrl: string;
+  mediaType: string;
+  filename: string;
+  buffer: Buffer;
+  base64: string;
+};
+
+function mimeFromMediaFilename(name: string, hint: string | null | undefined): string {
+  const mt = (hint ?? "").split(";")[0].trim().toLowerCase();
+  if (mt && mt !== "application/octet-stream") return mt;
+  const ext = name.split(".").pop()?.toLowerCase();
+  const map: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    pdf: "application/pdf",
+  };
+  return (ext && map[ext]) || "application/octet-stream";
+}
+
+function filenameFromMediaUrl(mediaUrl: string): string {
+  try {
+    const u = new URL(mediaUrl, getPublicOrigin());
+    const idx = u.pathname.indexOf(LOCAL_MEDIA_PATH);
+    if (idx !== -1) {
+      const name = u.pathname.slice(idx + LOCAL_MEDIA_PATH.length);
+      if (LOCAL_MEDIA_FILENAME_RE.test(name)) return name;
+    }
+    const tail = u.pathname.split("/").pop() ?? "upload.bin";
+    return tail.includes(".") ? tail : "upload.bin";
+  } catch {
+    return "upload.bin";
+  }
+}
+
+/** Carrega bytes de mediaUrl (storage local/MinIO ou URL pública). */
+export async function loadHttpToolMediaBytes(
+  mediaUrl: string,
+  mediaType?: string | null,
+): Promise<HttpToolInboundMediaPayload | null> {
+  const trimmed = mediaUrl.trim();
+  if (!trimmed) return null;
+
+  try {
+    const u = new URL(trimmed, getPublicOrigin());
+    const idx = u.pathname.indexOf(LOCAL_MEDIA_PATH);
+    if (idx !== -1) {
+      const name = u.pathname.slice(idx + LOCAL_MEDIA_PATH.length);
+      if (LOCAL_MEDIA_FILENAME_RE.test(name)) {
+        const buffer = await readMessageMediaFile(name);
+        if (buffer && buffer.length > 0) {
+          const mime = mimeFromMediaFilename(name, mediaType);
+          return {
+            mediaUrl: trimmed,
+            mediaType: mime,
+            filename: name,
+            buffer,
+            base64: buffer.length <= MAX_MEDIA_BASE64_BYTES ? buffer.toString("base64") : "",
+          };
+        }
+      }
+    }
+
+    if (u.protocol === "https:" || u.protocol === "http:") {
+      assertHttpUrlAllowed(trimmed);
+      const res = await secureHttpFetch(trimmed, { signal: AbortSignal.timeout(90_000) });
+      if (!res.ok) return null;
+      const ab = await res.arrayBuffer();
+      const buffer = Buffer.from(ab);
+      if (buffer.length === 0) return null;
+      const filename = filenameFromMediaUrl(trimmed);
+      const mime = mimeFromMediaFilename(filename, res.headers.get("content-type") ?? mediaType);
+      return {
+        mediaUrl: trimmed,
+        mediaType: mime,
+        filename,
+        buffer,
+        base64: buffer.length <= MAX_MEDIA_BASE64_BYTES ? buffer.toString("base64") : "",
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function mediaSummaryForContext(media: HttpToolInboundMediaPayload | null): Record<string, unknown> | null {
+  if (!media) return null;
+  return {
+    mediaUrl: media.mediaUrl,
+    mediaType: media.mediaType,
+    filename: media.filename,
+    mediaBase64: media.base64 || undefined,
+    sizeBytes: media.buffer.length,
+  };
+}
+
+/** Contexto automático para templates HTTP (mensagem, contacto, mídia recente). */
+export async function buildNativeAgentHttpToolRuntimeContext(input: {
+  organizationId: string;
+  conversationId: string;
+  message: {
+    id: string;
+    type: string;
+    body: string | null;
+    mediaUrl: string | null;
+    mediaType: string | null;
+    createdAt: Date;
+  };
+  contact?: { id: string; name: string | null; phone: string | null } | null;
+}): Promise<Record<string, unknown>> {
+  const currentMedia =
+    input.message.mediaUrl?.trim() &&
+    (input.message.type === "IMAGE" || input.message.type === "DOCUMENT" || input.message.type === "VIDEO")
+      ? await loadHttpToolMediaBytes(input.message.mediaUrl, input.message.mediaType)
+      : null;
+
+  const recentRows = await prisma.message.findMany({
+    where: {
+      conversationId: input.conversationId,
+      direction: "INBOUND",
+      mediaUrl: { not: null },
+      type: { in: ["IMAGE", "DOCUMENT", "VIDEO"] },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      type: true,
+      mediaUrl: true,
+      mediaType: true,
+      createdAt: true,
+    },
+  });
+
+  const recentInboundMedia: Record<string, unknown>[] = [];
+  let fallbackMedia: HttpToolInboundMediaPayload | null = null;
+  for (const row of recentRows) {
+    if (!row.mediaUrl?.trim()) continue;
+    const loaded = await loadHttpToolMediaBytes(row.mediaUrl, row.mediaType);
+    const summary = mediaSummaryForContext(loaded);
+    if (summary) {
+      recentInboundMedia.push({
+        messageId: row.id,
+        type: row.type,
+        createdAt: row.createdAt.toISOString(),
+        ...summary,
+      });
+      if (!fallbackMedia && loaded) fallbackMedia = loaded;
+    }
+  }
+
+  const primaryMedia = currentMedia ?? fallbackMedia;
+
+  const messageCtx: Record<string, unknown> = {
+    id: input.message.id,
+    type: input.message.type,
+    body: (input.message.body ?? "").trim(),
+    mediaUrl: input.message.mediaUrl ?? "",
+    mediaType: input.message.mediaType ?? "",
+  };
+  const currentSummary = mediaSummaryForContext(currentMedia);
+  if (currentSummary) Object.assign(messageCtx, currentSummary);
+
+  const contactCtx = input.contact
+    ? {
+        id: input.contact.id,
+        name: input.contact.name ?? "",
+        phone: input.contact.phone ?? "",
+      }
+    : {};
+
+  return {
+    message: messageCtx,
+    contact: contactCtx,
+    conversation: { id: input.conversationId },
+    recentInboundMedia,
+    mediaUrl: primaryMedia?.mediaUrl ?? input.message.mediaUrl ?? "",
+    mediaType: primaryMedia?.mediaType ?? input.message.mediaType ?? "",
+    mediaBase64: primaryMedia?.base64 ?? "",
+    mediaFilename: primaryMedia?.filename ?? "",
+  };
+}
+
+function mergeLlmArgsWithRuntimeContext(
+  llmArgs: Record<string, unknown>,
+  runtimeSampleContext?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!runtimeSampleContext || Object.keys(runtimeSampleContext).length === 0) return llmArgs;
+  const existing =
+    llmArgs.sampleContext && typeof llmArgs.sampleContext === "object" && !Array.isArray(llmArgs.sampleContext)
+      ? (llmArgs.sampleContext as Record<string, unknown>)
+      : {};
+  return {
+    ...llmArgs,
+    sampleContext: { ...runtimeSampleContext, ...existing },
+  };
+}
+
+function isMultipartBodyType(bodyType: string): boolean {
+  const t = bodyType.trim().toLowerCase();
+  return t === "multipart" || t === "multipart/form-data" || t === "form-data";
+}
+
+function buildMultipartFormData(input: {
+  cfg: Record<string, unknown>;
+  expandedBody: unknown;
+  inboundMedia: HttpToolInboundMediaPayload | null;
+}): FormData | null {
+  const fileField = String(input.cfg.multipartFileField ?? "file").trim() || "file";
+  if (!input.inboundMedia) return null;
+
+  const form = new FormData();
+  const blob = new Blob([input.inboundMedia.buffer], { type: input.inboundMedia.mediaType });
+  form.append(fileField, blob, input.inboundMedia.filename);
+
+  if (input.expandedBody && typeof input.expandedBody === "object" && !Array.isArray(input.expandedBody)) {
+    for (const [k, v] of Object.entries(input.expandedBody as Record<string, unknown>)) {
+      if (k === fileField || v === undefined || v === null) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        form.append(k, String(v));
+      } else {
+        form.append(k, JSON.stringify(v));
+      }
+    }
+  }
+
+  return form;
+}
 
 function asJson(v: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
@@ -126,8 +366,14 @@ export function resolveHttpRequestBody(options: {
   cfg: Record<string, unknown>;
   args: Record<string, unknown>;
   flat: Record<string, string>;
-}): { bodyStr?: string; contentType?: string; source?: "explicit" | "template" | "inline" | "none" } {
-  const { cfg, args, flat } = options;
+  inboundMedia?: HttpToolInboundMediaPayload | null;
+}): {
+  bodyStr?: string;
+  multipartFormData?: FormData;
+  contentType?: string;
+  source?: "explicit" | "template" | "inline" | "none" | "multipart";
+} {
+  const { cfg, args, flat, inboundMedia } = options;
   const bodyType = String(cfg.bodyType ?? "json").trim().toLowerCase();
   const configuredTemplate = cfg.bodyTemplate ?? cfg.body;
 
@@ -150,6 +396,14 @@ export function resolveHttpRequestBody(options: {
   }
 
   const expanded = expandTemplateValue(bodyPayload, flat);
+
+  if (isMultipartBodyType(bodyType)) {
+    const form = buildMultipartFormData({ cfg, expandedBody: expanded, inboundMedia: inboundMedia ?? null });
+    if (form) {
+      return { multipartFormData: form, source: "multipart" };
+    }
+    return { source: "none" };
+  }
 
   if (bodyType === "text" || bodyType === "plain" || bodyType === "text/plain") {
     const text = typeof expanded === "string" ? expanded : JSON.stringify(expanded);
@@ -320,8 +574,11 @@ export async function runAutomationHttpLikeTool(input: {
   botId: string;
   conversationId: string;
   executionSource: string;
+  /** Contexto da conversa (mensagem, contacto, mídia) injectado em sampleContext. */
+  runtimeSampleContext?: Record<string, unknown>;
 }): Promise<{ ok: boolean; statusCode: number | null; responseText: string; error: string | null; durationMs: number }> {
-  const { tool, llmArgs, organizationId, botId, conversationId, executionSource } = input;
+  const { tool, organizationId, botId, conversationId, executionSource, runtimeSampleContext } = input;
+  const llmArgs = mergeLlmArgsWithRuntimeContext(input.llmArgs, runtimeSampleContext);
   if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
     return { ok: false, statusCode: null, responseText: "", error: "unsupported_tool_type", durationMs: 0 };
   }
@@ -470,15 +727,55 @@ export async function runAutomationHttpLikeTool(input: {
   }
 
   let bodyStr: string | undefined;
+  let multipartFormData: FormData | undefined;
   let bodySource: string | undefined;
   if (method !== "GET" && method !== "HEAD") {
-    const resolvedBody = resolveHttpRequestBody({ cfg, args: llmArgs, flat });
+    const mediaUrlForUpload =
+      typeof flat.mediaUrl === "string" && flat.mediaUrl.trim()
+        ? flat.mediaUrl.trim()
+        : typeof flat["message.mediaUrl"] === "string" && flat["message.mediaUrl"].trim()
+          ? flat["message.mediaUrl"].trim()
+          : "";
+    const mediaTypeForUpload =
+      flat.mediaType || flat["message.mediaType"] || undefined;
+    const inboundMedia = isMultipartBodyType(String(cfg.bodyType ?? "json"))
+      ? mediaUrlForUpload
+        ? await loadHttpToolMediaBytes(mediaUrlForUpload, mediaTypeForUpload)
+        : null
+      : null;
+
+    const resolvedBody = resolveHttpRequestBody({ cfg, args: llmArgs, flat, inboundMedia });
     bodyStr = resolvedBody.bodyStr;
+    multipartFormData = resolvedBody.multipartFormData;
     bodySource = resolvedBody.source;
     if (bodyStr && resolvedBody.contentType && !headers.has("Content-Type")) {
       headers.set("Content-Type", resolvedBody.contentType);
     }
+    if (multipartFormData && headers.has("Content-Type")) {
+      headers.delete("Content-Type");
+    }
+    if (
+      isMultipartBodyType(String(cfg.bodyType ?? "json")) &&
+      method !== "GET" &&
+      method !== "HEAD" &&
+      !multipartFormData
+    ) {
+      return {
+        ok: false,
+        statusCode: null,
+        responseText: JSON.stringify({
+          ok: false,
+          error: "inbound_media_missing",
+          message:
+            "Ferramenta multipart requer mídia inbound (imagem/documento) na mensagem ou no histórico recente da conversa.",
+        }),
+        error: "inbound_media_missing",
+        durationMs: 0,
+      };
+    }
   }
+
+  const requestBody: FormData | string | undefined = multipartFormData ?? bodyStr;
 
   const started = Date.now();
   let ok = false;
@@ -490,14 +787,14 @@ export async function runAutomationHttpLikeTool(input: {
     method,
     url: url.toString(),
     headers,
-    bodyStr,
+    bodyStr: multipartFormData ? `[multipart/form-data; file=${String(cfg.multipartFileField ?? "file")}]` : bodyStr,
     bodySource,
   });
 
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 25_000);
-    const res = await secureHttpFetch(url.toString(), { method, headers, body: bodyStr, signal: ctrl.signal });
+    const res = await secureHttpFetch(url.toString(), { method, headers, body: requestBody, signal: ctrl.signal });
     clearTimeout(t);
     statusCode = res.status;
     ok = res.ok;

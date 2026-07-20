@@ -434,10 +434,10 @@ export const messages = {
       agentToolCallNotifySection: "Aviso antes de consultar ferramentas",
       agentToolCallNotifyToggle: "Notificar o contacto ao usar uma ferramenta",
       agentToolCallNotifyHelp:
-        "Quando activo, envia ao cliente a mensagem do agente antes de invocar ferramentas seleccionadas (ex.: confirmação + «aguarde enquanto finalizo»). Se o agente não escrever nada, usa a mensagem configurada — só nesse caso, e apenas se não houver resposta final substantiva depois das ferramentas.",
+        "Quando activo, envia ao cliente um aviso na primeira consulta a ferramentas seleccionadas — usa o texto do agente se existir, senão a mensagem configurada. Dispara antes da execução, para o hóspede não ficar em silêncio durante consultas ou uploads.",
       agentToolCallNotifyTools: "Ferramentas com aviso",
       agentToolCallNotifyToolsHelp:
-        "Seleccione ferramentas cujo uso deve avisar o cliente. O aviso usa o texto do agente quando existir; dispara uma vez por turno, na primeira consulta.",
+        "Seleccione ferramentas cujo uso deve avisar o cliente imediatamente (uma vez por turno). Inclui ferramentas HTTP POST de upload quando configuradas.",
       agentToolCallNotifyToolsEmpty:
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
       agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
@@ -5482,10 +5482,10 @@ export const messages = {
       agentToolCallNotifySection: "Notice before tool calls",
       agentToolCallNotifyToggle: "Notify the contact when using a tool",
       agentToolCallNotifyHelp:
-        "When enabled, sends the agent’s message to the customer before invoking selected tools (e.g. confirmation + “please wait while I finish”). If the agent writes nothing, uses the configured notice—only then, and only if there is no substantive final reply after the tools.",
+        "When enabled, sends the customer a notice on the first call to selected tools—using the agent’s text when present, otherwise the configured message. Fires before execution so guests are not left waiting silently during lookups or uploads.",
       agentToolCallNotifyTools: "Tools to notify on",
       agentToolCallNotifyToolsHelp:
-        "Select tools whose use should notify the customer. Uses the agent’s text when present; fires once per turn on the first tool call.",
+        "Select tools that should notify the customer immediately (once per turn). Includes configured HTTP POST upload tools.",
       agentToolCallNotifyToolsEmpty:
         "Enable native capabilities or connected tools on this agent to select them here.",
       agentToolCallNotifyMessage: "Notice message (optional)",

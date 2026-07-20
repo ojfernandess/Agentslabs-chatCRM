@@ -90,3 +90,50 @@ test("expandTemplateValue preserves arrays and nested objects", () => {
   assert.equal(out.mode, "digital");
   assert.deepEqual(out.dependents, [{ name: "Filho" }]);
 });
+
+test("resolveHttpRequestBody expands mediaBase64 from sampleContext in JSON body", () => {
+  const args = {
+    sampleContext: {
+      mediaBase64: "abc123",
+      reservationId: "R-99",
+    },
+  };
+  const flat = buildHttpToolFlatContext(args);
+  const resolved = resolveHttpRequestBody({
+    cfg: {
+      bodyTemplate: {
+        reservationId: "{{reservationId}}",
+        photoBase64: "{{mediaBase64}}",
+      },
+    },
+    args,
+    flat,
+  });
+  const parsed = JSON.parse(resolved.bodyStr ?? "{}") as { reservationId: string; photoBase64: string };
+  assert.equal(parsed.reservationId, "R-99");
+  assert.equal(parsed.photoBase64, "abc123");
+});
+
+test("resolveHttpRequestBody builds multipart when bodyType is multipart and media is present", () => {
+  const args = { sampleContext: { guestName: "Maria" } };
+  const flat = buildHttpToolFlatContext(args);
+  const media = {
+    mediaUrl: "https://example.com/api/v1/messages/media/abc123.png",
+    mediaType: "image/png",
+    filename: "abc123.png",
+    buffer: Buffer.from("fake-image"),
+    base64: "ZmFrZS1pbWFnZQ==",
+  };
+  const resolved = resolveHttpRequestBody({
+    cfg: {
+      bodyType: "multipart",
+      multipartFileField: "photo",
+      bodyTemplate: { guestName: "{{guestName}}" },
+    },
+    args,
+    flat,
+    inboundMedia: media,
+  });
+  assert.equal(resolved.source, "multipart");
+  assert.ok(resolved.multipartFormData);
+});

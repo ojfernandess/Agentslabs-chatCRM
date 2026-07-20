@@ -28,6 +28,7 @@ import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 import {
+  buildNativeAgentHttpToolRuntimeContext,
   openAiToolDefinitionForAutomationTool,
   parseAutomationToolIdFromOpenAiName,
   runAutomationHttpLikeTool,
@@ -92,7 +93,12 @@ export function shouldNotifyBeforeToolCall(
   const key = toolCallNotifySelectionKey(functionName);
   if (!key) return false;
   if (config.selectedTools === null) return true;
-  return config.selectedTools.includes(key);
+  const selected = config.selectedTools;
+  if (selected.includes(key)) return true;
+  if (key === "native:transfer_to_team" && selected.includes("native:assign_team_to_conversation")) {
+    return true;
+  }
+  return false;
 }
 
 /** Texto intermédio quando o modelo invoca ferramentas sem resposta final ao cliente. */
@@ -790,8 +796,18 @@ export async function generateNativeAgentReply(input: {
     contactId,
   } = input;
   if (message.direction !== "INBOUND") return "";
-  const userMessage = (message.body ?? "").trim();
-  if (!userMessage) return "";
+  const userMessageRaw = (message.body ?? "").trim();
+  const hasInboundMedia =
+    Boolean(message.mediaUrl?.trim()) &&
+    (message.type === "IMAGE" || message.type === "DOCUMENT" || message.type === "VIDEO");
+  if (!userMessageRaw && !hasInboundMedia) return "";
+  const userMessage =
+    userMessageRaw ||
+    (message.type === "IMAGE"
+      ? "[Imagem enviada pelo cliente]"
+      : message.type === "DOCUMENT"
+        ? "[Documento enviado pelo cliente]"
+        : "[Ficheiro enviado pelo cliente]");
 
   const profile = await prisma.automationAgentProfile.findUnique({
     where: { botId: bot.id },
@@ -1095,6 +1111,22 @@ export async function generateNativeAgentReply(input: {
   ];
   const useTools = provider !== "google_gemini" && tools.length > 0;
 
+  let httpToolRuntimeContext: Record<string, unknown> | undefined;
+  if (customHttpTools.length > 0 && historyOverride == null) {
+    const contactRow = effectiveContactId
+      ? await prisma.contact.findFirst({
+          where: { id: effectiveContactId, organizationId },
+          select: { id: true, name: true, phone: true },
+        })
+      : null;
+    httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
+      organizationId,
+      conversationId: conversation.id,
+      message,
+      contact: contactRow,
+    });
+  }
+
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
       stage: "nativeAgentReply_start",
@@ -1165,21 +1197,19 @@ export async function generateNativeAgentReply(input: {
               sent: false,
             };
 
-            if (assistantTrim) {
-              await sendToolCallInterimNotify({
-                organizationId,
-                botId: bot.id,
-                conversationId: conversation.id,
-                contactId: effectiveContactId,
-                body,
-                log,
-                executionLog: ex,
-                toolNames,
-                round,
-                usedAgentStallText,
-              });
-              pendingToolCallInterim.data.sent = true;
-            }
+            await sendToolCallInterimNotify({
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              contactId: effectiveContactId,
+              body,
+              log,
+              executionLog: ex,
+              toolNames,
+              round,
+              usedAgentStallText,
+            });
+            pendingToolCallInterim.data.sent = true;
           },
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
@@ -1217,6 +1247,7 @@ export async function generateNativeAgentReply(input: {
                 botId: bot.id,
                 conversationId: conversation.id,
                 executionSource: "native_agent",
+                runtimeSampleContext: httpToolRuntimeContext,
               });
               const out = JSON.stringify({
                 ok: exec.ok,
