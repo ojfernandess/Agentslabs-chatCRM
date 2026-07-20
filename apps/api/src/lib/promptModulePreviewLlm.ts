@@ -53,6 +53,12 @@ export async function callOpenAiCompatibleChatWithTools(params: {
   userMessage: string;
   tools: OpenAiToolDefinition[];
   onToolCall: (name: string, argsJson: string) => Promise<string>;
+  /** Invocado quando o modelo devolve texto (ou vazio) junto com tool_calls — antes de executar as ferramentas. */
+  onAssistantToolRound?: (input: {
+    assistantContent: string | null;
+    toolNames: string[];
+    round: number;
+  }) => Promise<void>;
   maxToolRounds?: number;
   signal?: AbortSignal;
 }): Promise<{ text: string; toolRounds: number; usage?: PreviewLlmUsage }> {
@@ -132,6 +138,14 @@ export async function callOpenAiCompatibleChatWithTools(params: {
         return { text: fallback, toolRounds, usage: totalUsage };
       }
       toolRounds++;
+      const toolNames = toolCalls.map((tc) => tc.function.name);
+      if (params.onAssistantToolRound) {
+        await params.onAssistantToolRound({
+          assistantContent: typeof choice?.content === "string" ? choice.content : null,
+          toolNames,
+          round: toolRounds,
+        });
+      }
       messages.push({
         role: "assistant",
         content: choice?.content ?? null,

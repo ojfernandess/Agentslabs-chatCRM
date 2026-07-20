@@ -434,10 +434,10 @@ export const messages = {
       agentToolCallNotifySection: "Aviso antes de consultar ferramentas",
       agentToolCallNotifyToggle: "Notificar o contacto ao usar uma ferramenta",
       agentToolCallNotifyHelp:
-        "Quando activo, envia uma mensagem curta ao cliente antes da primeira chamada a uma ferramenta seleccionada (consulta ou envio de dados), por exemplo a pedir um momento enquanto verifica informação.",
+        "Quando activo, detecta se o agente invoca ferramentas seleccionadas sem concluir a resposta ao cliente (ex.: «um momento, vou verificar»). Envia então um aviso imediato — preferindo a mensagem do agente quando for de espera — e, após as ferramentas, a resposta final com o resultado.",
       agentToolCallNotifyTools: "Ferramentas com aviso",
       agentToolCallNotifyToolsHelp:
-        "Seleccione em quais ferramentas activas do agente o aviso deve ser enviado. Só a primeira chamada seleccionada em cada resposta dispara a mensagem.",
+        "Seleccione em quais ferramentas activas o aviso intermédio deve ser enviado. Só dispara quando o modelo chama essas ferramentas antes da resposta final.",
       agentToolCallNotifyToolsEmpty:
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
       agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
@@ -5482,10 +5482,10 @@ export const messages = {
       agentToolCallNotifySection: "Notice before tool calls",
       agentToolCallNotifyToggle: "Notify the contact when using a tool",
       agentToolCallNotifyHelp:
-        "When enabled, sends a short message to the customer before the first call to a selected tool in a reply (lookup or data submission), e.g. asking them to wait while information is fetched.",
+        "When enabled, detects when the agent invokes selected tools without finishing the customer reply (e.g. “one moment, let me check”). It sends an immediate notice—preferring the agent’s wait message when detected—then the final answer with tool results afterward.",
       agentToolCallNotifyTools: "Tools to notify on",
       agentToolCallNotifyToolsHelp:
-        "Pick which active agent tools should trigger the notice. Only the first matching tool call in each reply sends the message.",
+        "Pick which active tools trigger the interim notice. It only fires when the model calls those tools before the final reply.",
       agentToolCallNotifyToolsEmpty:
         "Enable native capabilities or connected tools on this agent to select them here.",
       agentToolCallNotifyMessage: "Notice message (optional)",

@@ -95,6 +95,66 @@ export function shouldNotifyBeforeToolCall(
   return config.selectedTools.includes(key);
 }
 
+/** Texto intermédio quando o modelo invoca ferramentas sem resposta final ao cliente. */
+export function resolveToolCallInterimMessage(
+  assistantContent: string | null,
+  configuredMessage: string,
+): string {
+  const assistantTrim = (assistantContent ?? "").trim();
+  if (assistantTrim && isLikelyStallOnlyReply(assistantTrim)) {
+    return assistantTrim;
+  }
+  return configuredMessage;
+}
+
+async function sendToolCallInterimNotify(input: {
+  organizationId: string;
+  botId: string;
+  conversationId: string;
+  contactId: string;
+  body: string;
+  log: FastifyBaseLogger;
+  executionLog?: AutomationExecutionLogPort | null;
+  toolNames: string[];
+  round: number;
+  usedAgentStallText: boolean;
+}): Promise<void> {
+  const tlog = input.executionLog?.child("tools");
+  try {
+    await deliverOutboundWhatsAppMessage({
+      organizationId: input.organizationId,
+      data: {
+        contactId: input.contactId,
+        conversationId: input.conversationId,
+        type: "TEXT",
+        body: input.body,
+      },
+      actor: { kind: "agent_bot", botId: input.botId },
+      log: input.log,
+      newConversation: { status: "PENDING", assignedToId: null },
+    });
+    tlog?.info(
+      { id: "interim_notify", name: "Aviso intermédio" },
+      "Mensagem enviada ao contacto — agente invocou ferramenta sem resposta final",
+      {
+        output: {
+          round: input.round,
+          toolNames: input.toolNames.slice(0, 8),
+          usedAgentStallText: input.usedAgentStallText,
+          messagePreview: input.body.slice(0, 240),
+        },
+      },
+    );
+  } catch (err) {
+    input.log.warn({ err, botId: input.botId, toolNames: input.toolNames }, "tool call interim notify failed");
+    tlog?.warn(
+      { id: "interim_notify", name: "Aviso intermédio" },
+      "Falha ao enviar aviso intermédio",
+      { stack: err instanceof Error ? err.stack : undefined },
+    );
+  }
+}
+
 const STALL_RE =
   /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
 
@@ -1069,42 +1129,39 @@ export async function generateNativeAgentReply(input: {
           userMessage,
           tools,
           maxToolRounds: 6,
+          onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
+            if (
+              toolCallNotifySent ||
+              sandboxReply ||
+              !effectiveContactId ||
+              !toolCallNotify.enabled
+            ) {
+              return;
+            }
+            const matchesSelected = toolNames.some((name) =>
+              shouldNotifyBeforeToolCall(name, toolCallNotify),
+            );
+            if (!matchesSelected) return;
+
+            const assistantTrim = (assistantContent ?? "").trim();
+            const usedAgentStallText = Boolean(assistantTrim && isLikelyStallOnlyReply(assistantTrim));
+            const body = resolveToolCallInterimMessage(assistantContent, toolCallNotify.message);
+            toolCallNotifySent = true;
+            await sendToolCallInterimNotify({
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              contactId: effectiveContactId,
+              body,
+              log,
+              executionLog: ex,
+              toolNames,
+              round,
+              usedAgentStallText,
+            });
+          },
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
-            if (
-              !toolCallNotifySent &&
-              !sandboxReply &&
-              effectiveContactId &&
-              shouldNotifyBeforeToolCall(name, toolCallNotify)
-            ) {
-              toolCallNotifySent = true;
-              try {
-                await deliverOutboundWhatsAppMessage({
-                  organizationId,
-                  data: {
-                    contactId: effectiveContactId,
-                    conversationId: conversation.id,
-                    type: "TEXT",
-                    body: toolCallNotify.message,
-                  },
-                  actor: { kind: "agent_bot", botId: bot.id },
-                  log,
-                  newConversation: { status: "PENDING", assignedToId: null },
-                });
-                tlog?.info(
-                  { id: name, name: "Aviso pré-ferramenta" },
-                  "Mensagem enviada ao contacto antes da ferramenta",
-                  { output: { messagePreview: toolCallNotify.message.slice(0, 240) } },
-                );
-              } catch (err) {
-                log.warn({ err, botId: bot.id, toolFunctionName: name }, "tool call pre-notify outbound failed");
-                tlog?.warn(
-                  { id: name, name: "Aviso pré-ferramenta" },
-                  "Falha ao enviar aviso pré-ferramenta",
-                  { stack: err instanceof Error ? err.stack : undefined },
-                );
-              }
-            }
             const customId = parseAutomationToolIdFromOpenAiName(name);
             const customRow = customId ? customHttpTools.find((t) => t.id === customId) : undefined;
             const toolNodeName = customRow ? `Tool: ${customRow.name}` : `Tool: ${name}`;
