@@ -45,6 +45,13 @@ import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 
 const DEFAULT_TOOL_CALL_NOTIFY_MESSAGE = "Um momento, estou a consultar isso para si…";
 
+/** Tempo máximo por pedido LLM do agente nativo (várias rondas de tools + HTTP externo). */
+const NATIVE_AGENT_LLM_TIMEOUT_MS = 90_000;
+
+function nativeAgentLlmAbortSignal(): AbortSignal {
+  return AbortSignal.timeout(NATIVE_AGENT_LLM_TIMEOUT_MS);
+}
+
 export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
   enabled: boolean;
   message: string;
@@ -1099,7 +1106,6 @@ export async function generateNativeAgentReply(input: {
       }))
       .filter((m): m is PreviewChatTurn => Boolean(m.content));
 
-  const signal = AbortSignal.timeout(28_000);
   let replyText = "";
   let completedToolRounds = 0;
 
@@ -1126,6 +1132,8 @@ export async function generateNativeAgentReply(input: {
       contact: contactRow,
     });
   }
+
+  const signal = nativeAgentLlmAbortSignal();
 
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
@@ -1283,7 +1291,13 @@ export async function generateNativeAgentReply(input: {
           { output: { replyChars: replyText.length, toolRounds: completedToolRounds } },
         );
       } catch (err) {
-        log.warn({ err, botId: bot.id }, "OpenAI tool chat failed; falling back to plain chat");
+        const timedOut =
+          err instanceof Error &&
+          (err.name === "TimeoutError" || err.name === "AbortError" || /timeout|aborted/i.test(err.message));
+        log.warn(
+          { err, botId: bot.id, timedOut, timeoutMs: NATIVE_AGENT_LLM_TIMEOUT_MS },
+          "OpenAI tool chat failed; falling back to plain chat",
+        );
         ex?.warn({ id: "llm", name: "Modelo + tools" }, "Falha com tools — fallback para chat simples", {
           stack: err instanceof Error ? err.stack : undefined,
         });
@@ -1296,7 +1310,7 @@ export async function generateNativeAgentReply(input: {
           system: systemBase,
           history,
           userMessage,
-          signal,
+          signal: nativeAgentLlmAbortSignal(),
         });
         replyText = r.text.trim();
         ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
