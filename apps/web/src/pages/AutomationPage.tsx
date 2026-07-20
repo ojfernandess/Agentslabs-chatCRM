@@ -3489,12 +3489,31 @@ function HttpLikeToolEditor({
   const [defaultQueryJson, setDefaultQueryJson] = useState(() =>
     JSON.stringify((c.defaultQuery && typeof c.defaultQuery === "object" ? c.defaultQuery : {}) as object, null, 2),
   );
+  const [bodyType, setBodyType] = useState(() => {
+    const raw = String(c.bodyType ?? "json").trim().toLowerCase();
+    if (raw === "multipart" || raw === "multipart/form-data" || raw === "form-data") return "multipart";
+    if (raw === "form" || raw === "form-urlencoded" || raw === "application/x-www-form-urlencoded") {
+      return "form-urlencoded";
+    }
+    if (raw === "text" || raw === "plain" || raw === "text/plain") return "text";
+    return "json";
+  });
+  const [bodyTemplateJson, setBodyTemplateJson] = useState(() => {
+    const tpl = c.bodyTemplate ?? c.body;
+    if (tpl && typeof tpl === "object" && !Array.isArray(tpl)) {
+      return JSON.stringify(tpl as object, null, 2);
+    }
+    return "{}";
+  });
+  const [multipartFileField, setMultipartFileField] = useState(String(c.multipartFileField ?? "file"));
+  const showBodyFields = !["GET", "HEAD"].includes(httpMethod.toUpperCase());
   const fieldCls =
     "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
 
   const handleSave = () => {
     let defaultHeaders: Record<string, unknown> = {};
     let defaultQuery: Record<string, unknown> = {};
+    let bodyTemplate: Record<string, unknown> = {};
     try {
       defaultHeaders = JSON.parse(defaultHeadersJson || "{}") as Record<string, unknown>;
     } catch {
@@ -3507,6 +3526,20 @@ function HttpLikeToolEditor({
       window.alert(t("automationPage.toolsCreateConfigInvalid"));
       return;
     }
+    if (showBodyFields) {
+      try {
+        const parsed = JSON.parse(bodyTemplateJson || "{}") as unknown;
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          bodyTemplate = parsed as Record<string, unknown>;
+        } else {
+          window.alert(t("automationPage.toolBodyTemplateInvalid"));
+          return;
+        }
+      } catch {
+        window.alert(t("automationPage.toolsCreateConfigInvalid"));
+        return;
+      }
+    }
     const patch: Record<string, unknown> = {
       httpMethod,
       authType,
@@ -3514,6 +3547,13 @@ function HttpLikeToolEditor({
       defaultQuery,
       executor: c.executor ?? "http_client",
     };
+    if (showBodyFields) {
+      patch.bodyType = bodyType;
+      patch.bodyTemplate = bodyTemplate;
+      if (bodyType === "multipart") {
+        patch.multipartFileField = multipartFileField.trim() || "file";
+      }
+    }
     for (const k of ["presetKey", "nativeToolKey"] as const) {
       const v = c[k];
       if (typeof v === "string" && v) patch[k] = v;
@@ -3580,6 +3620,48 @@ function HttpLikeToolEditor({
           ))}
         </select>
       </label>
+      {showBodyFields ? (
+        <>
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolBodyType")}
+            <select value={bodyType} onChange={(e) => setBodyType(e.target.value)} className={fieldCls}>
+              <option value="json">{t("automationPage.toolBodyTypeJson")}</option>
+              <option value="multipart">{t("automationPage.toolBodyTypeMultipart")}</option>
+              <option value="form-urlencoded">{t("automationPage.toolBodyTypeForm")}</option>
+              <option value="text">{t("automationPage.toolBodyTypeText")}</option>
+            </select>
+          </label>
+          <p className="text-[10px] text-ink-500">{t("automationPage.toolBodyTypeHint")}</p>
+          {bodyType === "multipart" ? (
+            <label className="block text-xs font-medium">
+              {t("automationPage.toolMultipartFileField")}
+              <input
+                value={multipartFileField}
+                onChange={(e) => setMultipartFileField(e.target.value)}
+                placeholder="file"
+                className={fieldCls}
+              />
+            </label>
+          ) : null}
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolBodyTemplateJson")}
+            <textarea
+              value={bodyTemplateJson}
+              onChange={(e) => setBodyTemplateJson(e.target.value)}
+              rows={6}
+              placeholder={
+                bodyType === "multipart"
+                  ? '{"type":"{{type}}","reservationIdOrLocalizer":"{{reservationIdOrLocalizer}}"}'
+                  : '{"type":"{{type}}","data":"{{attachmentBase64}}"}'
+              }
+              className={clsx(fieldCls, "font-mono text-[11px]")}
+            />
+          </label>
+          <p className="text-[10px] text-ink-500">{t("automationPage.toolBodyTemplateHint")}</p>
+        </>
+      ) : (
+        <p className="text-[10px] text-ink-500">{t("automationPage.toolBodyGetHint")}</p>
+      )}
       <label className="block text-xs font-medium">
         {t("automationPage.toolAuthType")}
         <select value={authType} onChange={(e) => setAuthType(e.target.value)} className={fieldCls}>

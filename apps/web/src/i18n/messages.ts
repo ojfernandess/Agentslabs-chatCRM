@@ -1007,7 +1007,20 @@ export const messages = {
         "Path: só o caminho (ex. /rooms/availability) ou com query em `{{chave}}` (ex. ?arrival_date={{arrival_date}}&\"ages[0]\"={{ages_0}}). Preferível: Path sem query + JSON «Query predefinida» com valores `{{chave}}` ou fixos — o teste envia valores reais no campo «Payload» em `query`.",
       toolDefaultQueryJson: "Query predefinida (JSON)",
       toolDefaultQueryHint:
-        "Chaves = nomes na query string; valores string podem usar {{arrival_date}} etc. Valores do «Payload».query substituem após expandir templates.",
+        "Chaves = nomes na query string; valores string podem usar {{arrival_date}} etc. Valores do «Payload».query substituem após expandir templates. Não coloque imagens ou base64 aqui — use Body template.",
+      toolBodyType: "Tipo de body",
+      toolBodyTypeJson: "JSON (application/json)",
+      toolBodyTypeMultipart: "Multipart (upload de ficheiro)",
+      toolBodyTypeForm: "Form URL encoded",
+      toolBodyTypeText: "Texto plano",
+      toolBodyTypeHint:
+        "Para POST/PUT/PATCH. JSON: use {{attachmentBase64}} ou {{attachmentUrl}} no template. Multipart: envia automaticamente a imagem WhatsApp no campo de ficheiro.",
+      toolMultipartFileField: "Campo multipart do ficheiro",
+      toolBodyTemplateJson: "Body template (JSON)",
+      toolBodyTemplateHint:
+        "Corpo da requisição com placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, etc. O agente nativo injecta mídia da conversa automaticamente. Prioridade sobre argumentos inline do modelo.",
+      toolBodyTemplateInvalid: "Body template deve ser um objecto JSON (ex.: {\"type\":\"{{type}}\"}).",
+      toolBodyGetHint: "Body template aplica-se a POST, PUT, PATCH e DELETE — não a GET/HEAD.",
       toolHttpMethod: "Método HTTP",
       toolAuthType: "Autenticação",
       toolDefaultHeadersJson: "Headers predefinidos (JSON)",
@@ -6049,7 +6062,20 @@ export const messages = {
         "Path: pathname only (e.g. /rooms/availability) or include `{{placeholders}}` in the query string. Recommended: path without query + «Default query» JSON using `{{keys}}` — the test panel sends real values under `query` in the payload.",
       toolDefaultQueryJson: "Default query (JSON)",
       toolDefaultQueryHint:
-        "Keys = query parameter names; string values may use {{arrival_date}} etc. Payload `query` values merge after template expansion.",
+        "Keys = query parameter names; string values may use {{arrival_date}} etc. Payload `query` values merge after template expansion. Do not put images or base64 here — use Body template.",
+      toolBodyType: "Body type",
+      toolBodyTypeJson: "JSON (application/json)",
+      toolBodyTypeMultipart: "Multipart (file upload)",
+      toolBodyTypeForm: "Form URL encoded",
+      toolBodyTypeText: "Plain text",
+      toolBodyTypeHint:
+        "For POST/PUT/PATCH. JSON: use {{attachmentBase64}} or {{attachmentUrl}} in the template. Multipart: sends the WhatsApp image automatically in the file field.",
+      toolMultipartFileField: "Multipart file field name",
+      toolBodyTemplateJson: "Body template (JSON)",
+      toolBodyTemplateHint:
+        "Request body with placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, etc. The native agent injects conversation media automatically. Takes priority over inline model arguments.",
+      toolBodyTemplateInvalid: "Body template must be a JSON object (e.g. {\"type\":\"{{type}}\"}).",
+      toolBodyGetHint: "Body template applies to POST, PUT, PATCH, and DELETE — not GET/HEAD.",
       toolHttpMethod: "HTTP method",
       toolAuthType: "Authentication",
       toolDefaultHeadersJson: "Default headers (JSON)",
