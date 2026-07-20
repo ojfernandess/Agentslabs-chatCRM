@@ -1128,6 +1128,7 @@ export async function generateNativeAgentReply(input: {
     httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
       organizationId,
       conversationId: conversation.id,
+      lastClearedAt,
       message,
       contact: contactRow,
     });

@@ -5,6 +5,8 @@ import {
   generateBotTransferHandoffBrief,
   getAssistOpenAiCredentialsForOrganization,
 } from "./agentAssistLlm.js";
+import { buildNativeAgentTranscriptWhere } from "./agentConversationHistory.js";
+import { loadAutomationConversationContext } from "./automationConversationContextLib.js";
 import { broadcastToOrganization } from "./workspaceHub.js";
 
 export type NativeHandoffToolName = "transfer_to_team" | "assign_team_to_conversation" | "call_human";
@@ -23,22 +25,27 @@ export async function recordNativeAgentTransferHandoff(input: {
 }): Promise<void> {
   let brief = null;
   try {
-    const [conv, credentials] = await Promise.all([
+    const [conv, credentials, automationCtx] = await Promise.all([
       prisma.conversation.findFirst({
         where: { id: input.conversationId, organizationId: input.organizationId },
         select: {
           contact: { select: { name: true } },
-          messages: {
-            orderBy: { createdAt: "asc" },
-            take: 60,
-            select: { direction: true, body: true, isPrivate: true },
-          },
         },
       }),
       getAssistOpenAiCredentialsForOrganization(input.organizationId),
+      loadAutomationConversationContext(input.conversationId),
     ]);
+    const messages = await prisma.message.findMany({
+      where: buildNativeAgentTranscriptWhere({
+        conversationId: input.conversationId,
+        lastClearedAt: automationCtx.lastClearedAt,
+      }),
+      orderBy: { createdAt: "asc" },
+      take: 60,
+      select: { direction: true, body: true, isPrivate: true },
+    });
     if (conv && credentials) {
-      const transcript = buildPublicConversationTranscript(conv.messages, 45);
+      const transcript = buildPublicConversationTranscript(messages, 45);
       brief = await generateBotTransferHandoffBrief(
         {
           contactName: conv.contact?.name ?? "",

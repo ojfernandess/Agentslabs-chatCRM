@@ -5,6 +5,7 @@ import { getPublicOrigin } from "../config.js";
 import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, truncateBody } from "./httpToolTest.js";
 import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
+import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -163,6 +164,7 @@ function isInboundMediaMessageType(type: string): boolean {
 export async function buildNativeAgentHttpToolRuntimeContext(input: {
   organizationId: string;
   conversationId: string;
+  lastClearedAt?: Date | null;
   message: {
     id: string;
     type: string;
@@ -173,18 +175,22 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
   };
   contact?: { id: string; name: string | null; phone: string | null } | null;
 }): Promise<Record<string, unknown>> {
+  const lastClearedAt = input.lastClearedAt ?? null;
+  const messageWithinContext =
+    !lastClearedAt || input.message.createdAt.getTime() > lastClearedAt.getTime();
+
   const currentMedia =
-    input.message.mediaUrl?.trim() && isInboundMediaMessageType(input.message.type)
+    messageWithinContext &&
+    input.message.mediaUrl?.trim() &&
+    isInboundMediaMessageType(input.message.type)
       ? await loadHttpToolMediaBytes(input.message.mediaUrl, input.message.mediaType)
       : null;
 
   const recentRows = await prisma.message.findMany({
-    where: {
+    where: buildNativeAgentInboundMediaWhere({
       conversationId: input.conversationId,
-      direction: "INBOUND",
-      mediaUrl: { not: null },
-      type: { in: ["IMAGE", "DOCUMENT", "VIDEO", "AUDIO"] },
-    },
+      lastClearedAt,
+    }),
     orderBy: { createdAt: "desc" },
     take: 8,
     select: {
