@@ -434,10 +434,10 @@ export const messages = {
       agentToolCallNotifySection: "Aviso antes de consultar ferramentas",
       agentToolCallNotifyToggle: "Notificar o contacto ao usar uma ferramenta",
       agentToolCallNotifyHelp:
-        "Quando activo, envia aviso ao cliente apenas se o agente invocar ferramentas seleccionadas sem concluir a resposta (silêncio ou «um momento…»). Se houver resposta final substantiva após as ferramentas, o aviso não é enviado — evita mensagens duplicadas.",
+        "Quando activo, envia ao cliente a mensagem do agente antes de invocar ferramentas seleccionadas (ex.: confirmação + «aguarde enquanto finalizo»). Se o agente não escrever nada, usa a mensagem configurada — só nesse caso, e apenas se não houver resposta final substantiva depois das ferramentas.",
       agentToolCallNotifyTools: "Ferramentas com aviso",
       agentToolCallNotifyToolsHelp:
-        "Seleccione ferramentas cujo uso, sem resposta imediata do agente, deve gerar um aviso. Não dispara quando o agente já devolve resposta completa ao cliente.",
+        "Seleccione ferramentas cujo uso deve avisar o cliente. O aviso usa o texto do agente quando existir; dispara uma vez por turno, na primeira consulta.",
       agentToolCallNotifyToolsEmpty:
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
       agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
@@ -5482,10 +5482,10 @@ export const messages = {
       agentToolCallNotifySection: "Notice before tool calls",
       agentToolCallNotifyToggle: "Notify the contact when using a tool",
       agentToolCallNotifyHelp:
-        "When enabled, notifies the customer only if the agent invokes selected tools without finishing the reply (silence or “one moment…”). If a substantive final answer follows the tools, the notice is skipped—avoiding duplicate messages.",
+        "When enabled, sends the agent’s message to the customer before invoking selected tools (e.g. confirmation + “please wait while I finish”). If the agent writes nothing, uses the configured notice—only then, and only if there is no substantive final reply after the tools.",
       agentToolCallNotifyTools: "Tools to notify on",
       agentToolCallNotifyToolsHelp:
-        "Select tools whose use without an immediate agent reply should trigger a notice. Does not fire when the agent already returns a complete answer.",
+        "Select tools whose use should notify the customer. Uses the agent’s text when present; fires once per turn on the first tool call.",
       agentToolCallNotifyToolsEmpty:
         "Enable native capabilities or connected tools on this agent to select them here.",
       agentToolCallNotifyMessage: "Notice message (optional)",
