@@ -107,6 +107,19 @@ export function resolveToolCallInterimMessage(
   return configuredMessage;
 }
 
+/** Só avisar quando o turno do modelo não inclui resposta útil ao cliente (silêncio ou só “aguarde”). */
+export function shouldQueueToolCallInterimNotify(assistantContent: string | null): boolean {
+  const assistantTrim = (assistantContent ?? "").trim();
+  if (!assistantTrim) return true;
+  return isLikelyStallOnlyReply(assistantTrim);
+}
+
+export function hasSubstantiveAgentReplyToCustomer(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return !isLikelyStallOnlyReply(t);
+}
+
 async function sendToolCallInterimNotify(input: {
   organizationId: string;
   botId: string;
@@ -888,7 +901,13 @@ export async function generateNativeAgentReply(input: {
   const toolCallNotify = parseToolCallNotifyFromBehavior(profile.behaviorConfig);
   const effectiveContactId = contactId ?? conversation.contactId ?? undefined;
   const sandboxReply = historyOverride != null;
-  let toolCallNotifySent = false;
+  type PendingToolCallInterim = {
+    body: string;
+    toolNames: string[];
+    round: number;
+    usedAgentStallText: boolean;
+  };
+  const pendingToolCallInterim: { data: PendingToolCallInterim | null } = { data: null };
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
   let customHttpTools: AutomationHttpToolRow[] = [];
@@ -1131,10 +1150,11 @@ export async function generateNativeAgentReply(input: {
           maxToolRounds: 6,
           onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
             if (
-              toolCallNotifySent ||
+              pendingToolCallInterim.data ||
               sandboxReply ||
               !effectiveContactId ||
-              !toolCallNotify.enabled
+              !toolCallNotify.enabled ||
+              !shouldQueueToolCallInterimNotify(assistantContent)
             ) {
               return;
             }
@@ -1145,20 +1165,12 @@ export async function generateNativeAgentReply(input: {
 
             const assistantTrim = (assistantContent ?? "").trim();
             const usedAgentStallText = Boolean(assistantTrim && isLikelyStallOnlyReply(assistantTrim));
-            const body = resolveToolCallInterimMessage(assistantContent, toolCallNotify.message);
-            toolCallNotifySent = true;
-            await sendToolCallInterimNotify({
-              organizationId,
-              botId: bot.id,
-              conversationId: conversation.id,
-              contactId: effectiveContactId,
-              body,
-              log,
-              executionLog: ex,
+            pendingToolCallInterim.data = {
+              body: resolveToolCallInterimMessage(assistantContent, toolCallNotify.message),
               toolNames,
               round,
               usedAgentStallText,
-            });
+            };
           },
           onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
@@ -1317,6 +1329,29 @@ export async function generateNativeAgentReply(input: {
       pinnedArticleIds,
     });
     if (fixed.trim()) replyText = fixed.trim();
+  }
+
+  const interimNotify = pendingToolCallInterim.data;
+  if (
+    interimNotify &&
+    !sandboxReply &&
+    effectiveContactId &&
+    toolCallNotify.enabled &&
+    !hasSubstantiveAgentReplyToCustomer(replyText)
+  ) {
+    await sendToolCallInterimNotify({
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      contactId: effectiveContactId,
+      body: interimNotify.body,
+      log,
+      executionLog: ex,
+      toolNames: interimNotify.toolNames,
+      round: interimNotify.round,
+      usedAgentStallText: interimNotify.usedAgentStallText,
+    });
+    pendingToolCallInterim.data = null;
   }
 
   return replyText;

@@ -434,10 +434,10 @@ export const messages = {
       agentToolCallNotifySection: "Aviso antes de consultar ferramentas",
       agentToolCallNotifyToggle: "Notificar o contacto ao usar uma ferramenta",
       agentToolCallNotifyHelp:
-        "Quando activo, detecta se o agente invoca ferramentas seleccionadas sem concluir a resposta ao cliente (ex.: «um momento, vou verificar»). Envia então um aviso imediato — preferindo a mensagem do agente quando for de espera — e, após as ferramentas, a resposta final com o resultado.",
+        "Quando activo, envia aviso ao cliente apenas se o agente invocar ferramentas seleccionadas sem concluir a resposta (silêncio ou «um momento…»). Se houver resposta final substantiva após as ferramentas, o aviso não é enviado — evita mensagens duplicadas.",
       agentToolCallNotifyTools: "Ferramentas com aviso",
       agentToolCallNotifyToolsHelp:
-        "Seleccione em quais ferramentas activas o aviso intermédio deve ser enviado. Só dispara quando o modelo chama essas ferramentas antes da resposta final.",
+        "Seleccione ferramentas cujo uso, sem resposta imediata do agente, deve gerar um aviso. Não dispara quando o agente já devolve resposta completa ao cliente.",
       agentToolCallNotifyToolsEmpty:
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
       agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
@@ -5482,10 +5482,10 @@ export const messages = {
       agentToolCallNotifySection: "Notice before tool calls",
       agentToolCallNotifyToggle: "Notify the contact when using a tool",
       agentToolCallNotifyHelp:
-        "When enabled, detects when the agent invokes selected tools without finishing the customer reply (e.g. “one moment, let me check”). It sends an immediate notice—preferring the agent’s wait message when detected—then the final answer with tool results afterward.",
+        "When enabled, notifies the customer only if the agent invokes selected tools without finishing the reply (silence or “one moment…”). If a substantive final answer follows the tools, the notice is skipped—avoiding duplicate messages.",
       agentToolCallNotifyTools: "Tools to notify on",
       agentToolCallNotifyToolsHelp:
-        "Pick which active tools trigger the interim notice. It only fires when the model calls those tools before the final reply.",
+        "Select tools whose use without an immediate agent reply should trigger a notice. Does not fire when the agent already returns a complete answer.",
       agentToolCallNotifyToolsEmpty:
         "Enable native capabilities or connected tools on this agent to select them here.",
       agentToolCallNotifyMessage: "Notice message (optional)",
