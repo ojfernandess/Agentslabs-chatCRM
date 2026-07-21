@@ -579,6 +579,105 @@ function safeOpenAiParametersSchema(schema: unknown): Record<string, unknown> {
   return { type: "object", properties: {} };
 }
 
+function schemaProperties(schema: Record<string, unknown>): Record<string, unknown> | null {
+  const props = schema.properties;
+  if (!props || typeof props !== "object" || Array.isArray(props)) return null;
+  return props as Record<string, unknown>;
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function maxTypoDistanceForKey(key: string): number {
+  return Math.max(5, Math.floor(key.length * 0.2));
+}
+
+function findLikelySchemaKeyAlias(
+  argKey: string,
+  expectedKey: string,
+): boolean {
+  if (argKey === expectedKey) return true;
+  const argLower = argKey.toLowerCase();
+  const expLower = expectedKey.toLowerCase();
+  if (argLower === expLower) return true;
+  return levenshteinDistance(argLower, expLower) <= maxTypoDistanceForKey(expectedKey);
+}
+
+/** Corrige typos frequentes do LLM nos nomes dos argumentos (ex.: reservationIdOrLocalLocalizer). */
+export function normalizeLlmArgsKeyAliases(
+  llmArgs: Record<string, unknown>,
+  schema: unknown,
+): Record<string, unknown> {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return llmArgs;
+  const s = schema as Record<string, unknown>;
+  const props = schemaProperties(s);
+  if (!props) return llmArgs;
+
+  const normalized: Record<string, unknown> = { ...llmArgs };
+  const claimedArgKeys = new Set<string>();
+
+  for (const expectedKey of Object.keys(props)) {
+    const current = normalized[expectedKey];
+    if (current !== undefined && current !== null) {
+      claimedArgKeys.add(expectedKey);
+      continue;
+    }
+
+    for (const [argKey, val] of Object.entries(llmArgs)) {
+      if (val === undefined || val === null) continue;
+      if (claimedArgKeys.has(argKey)) continue;
+      if (!findLikelySchemaKeyAlias(argKey, expectedKey)) continue;
+      normalized[expectedKey] = val;
+      claimedArgKeys.add(argKey);
+      break;
+    }
+  }
+
+  for (const [key, childSchema] of Object.entries(props)) {
+    const val = normalized[key];
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+    if (!childSchema || typeof childSchema !== "object" || Array.isArray(childSchema)) continue;
+    normalized[key] = normalizeLlmArgsKeyAliases(val as Record<string, unknown>, childSchema);
+  }
+
+  return normalized;
+}
+
+function collectSimilarArgKeyHints(
+  missing: string[],
+  llmArgs: Record<string, unknown>,
+): string[] {
+  const hints: string[] = [];
+  const argKeys = Object.keys(llmArgs);
+  for (const field of missing) {
+    const rootField = field.split(".")[0] ?? field;
+    if (rootField in llmArgs && llmArgs[rootField] !== undefined && llmArgs[rootField] !== null) continue;
+    for (const argKey of argKeys) {
+      if (argKey === rootField) continue;
+      if (!findLikelySchemaKeyAlias(argKey, rootField)) continue;
+      hints.push(`Recebido «${argKey}» — o schema espera «${rootField}».`);
+      break;
+    }
+  }
+  return hints;
+}
+
 /** Verifica campos `required` do JSON Schema (níveis aninhados) antes de chamar a API externa. */
 export function collectMissingRequiredSchemaFields(schema: unknown, data: unknown, pathPrefix = ""): string[] {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) return [];
@@ -635,7 +734,12 @@ export function collectMissingRequiredSchemaFields(schema: unknown, data: unknow
   return missing;
 }
 
-function buildValidationErrorPayload(missing: string[]): string {
+function buildValidationErrorPayload(missing: string[], llmArgs?: Record<string, unknown>): string {
+  const hints = llmArgs ? collectSimilarArgKeyHints(missing, llmArgs) : [];
+  const typoBlock =
+    hints.length > 0
+      ? ` Possíveis typos nos nomes dos campos: ${hints.join(" ")}`
+      : "";
   return JSON.stringify({
     ok: false,
     validationError: true,
@@ -644,7 +748,9 @@ function buildValidationErrorPayload(missing: string[]): string {
       "Argumentos incompletos para a ferramenta HTTP. O modelo deve incluir todos os campos obrigatórios do schema antes de repetir a chamada. " +
       (missing.includes("body.room_units") || missing.some((m) => m.endsWith(".room_units"))
         ? "Para reservas: body.room_units é obrigatório — use um objeto cuja chave é o room_type_id devolvido pela consulta de disponibilidade, com adults, kids e guests em cada unidade."
-        : `Campos em falta: ${missing.join(", ")}.`),
+        : `Campos em falta: ${missing.join(", ")}.`) +
+      typoBlock +
+      " Se esta ferramenta prepara dados para outra (ex.: upload de documento antes do check-in), corrija e invoque-a novamente antes de avançar.",
   });
 }
 
@@ -673,7 +779,9 @@ export async function runAutomationHttpLikeTool(input: {
   runtimeSampleContext?: Record<string, unknown>;
 }): Promise<{ ok: boolean; statusCode: number | null; responseText: string; error: string | null; durationMs: number }> {
   const { tool, organizationId, botId, conversationId, executionSource, runtimeSampleContext } = input;
-  const llmArgs = mergeLlmArgsWithRuntimeContext(input.llmArgs, runtimeSampleContext);
+  const mergedArgs = mergeLlmArgsWithRuntimeContext(input.llmArgs, runtimeSampleContext);
+  const paramSchema = safeOpenAiParametersSchema(tool.parametersSchema);
+  const llmArgs = normalizeLlmArgsKeyAliases(mergedArgs, paramSchema);
   if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
     return { ok: false, statusCode: null, responseText: "", error: "unsupported_tool_type", durationMs: 0 };
   }
@@ -681,10 +789,9 @@ export async function runAutomationHttpLikeTool(input: {
     return { ok: false, statusCode: null, responseText: "", error: "organization_mismatch", durationMs: 0 };
   }
 
-  const paramSchema = safeOpenAiParametersSchema(tool.parametersSchema);
   const missingRequired = collectMissingRequiredSchemaFields(paramSchema, llmArgs);
   if (missingRequired.length > 0) {
-    const responseText = buildValidationErrorPayload(missingRequired);
+    const responseText = buildValidationErrorPayload(missingRequired, mergedArgs);
     const durationMs = 0;
     await prisma.$transaction(async (tx) => {
       await tx.automationToolExecution.create({

@@ -5,6 +5,7 @@ import {
   buildHttpToolAttachmentRecord,
   expandTemplateValue,
   extractInlineBodyFromArgs,
+  normalizeLlmArgsKeyAliases,
   resolveHttpRequestBody,
 } from "./automationHttpToolExecute.js";
 
@@ -157,6 +158,44 @@ test("buildHttpToolAttachmentRecord exposes url, base64 and hasBinary flags", ()
   assert.equal(attachment!.base64, "Ymlu");
   assert.equal(attachment!.hasBinary, true);
   assert.equal(attachment!.base64Available, true);
+});
+
+test("normalizeLlmArgsKeyAliases fixes common reservationId typo from the model", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      reservationIdOrLocalizer: { type: "string" },
+      type: { type: "string" },
+    },
+    required: ["reservationIdOrLocalizer"],
+  };
+  const normalized = normalizeLlmArgsKeyAliases(
+    { reservationIdOrLocalLocalizer: "A3FIULCZ", type: "document" },
+    schema,
+  );
+  assert.equal(normalized.reservationIdOrLocalizer, "A3FIULCZ");
+  assert.equal(normalized.type, "document");
+});
+
+test("normalizeLlmArgsKeyAliases fixes nested object key typos", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      mainGuest: {
+        type: "object",
+        properties: {
+          mobilePhoneNumber: { type: "string" },
+        },
+        required: ["mobilePhoneNumber"],
+      },
+    },
+  };
+  const normalized = normalizeLlmArgsKeyAliases(
+    { mainGuest: { mobilePhoneNumer: "+5511999999999" } },
+    schema,
+  );
+  const guest = normalized.mainGuest as Record<string, unknown>;
+  assert.equal(guest.mobilePhoneNumber, "+5511999999999");
 });
 
 test("flattenTemplateContext exposes nested attachment and attachments array paths", () => {
