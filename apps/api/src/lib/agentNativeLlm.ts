@@ -43,6 +43,7 @@ import {
   type InstructionFallback,
 } from "./instructionFallbacks.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { analyzeLiveExecutionQuality } from "./automationExecutionQuality.js";
 
 const DEFAULT_TOOL_CALL_NOTIFY_MESSAGE = "Um momento, estou a consultar isso para si…";
 
@@ -51,6 +52,13 @@ const NATIVE_AGENT_LLM_TIMEOUT_MS = 90_000;
 
 function nativeAgentLlmAbortSignal(): AbortSignal {
   return AbortSignal.timeout(NATIVE_AGENT_LLM_TIMEOUT_MS);
+}
+
+export function parseAgentSupervisorFromBehavior(behaviorConfig: unknown): { enabled: boolean } {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return { enabled: false };
+  const raw = (behaviorConfig as Record<string, unknown>).agentSupervisor;
+  if (!raw || typeof raw !== "object") return { enabled: false };
+  return { enabled: (raw as Record<string, unknown>).enabled === true };
 }
 
 export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
@@ -1573,6 +1581,109 @@ export async function generateNativeAgentReply(input: {
       usedAgentStallText: interimNotify.usedAgentStallText,
     });
     pendingToolCallInterim.data = null;
+  }
+
+  const priorAgentReplies = history
+    .filter((h) => h.role === "assistant")
+    .map((h) => h.content)
+    .slice(-4);
+  const qualitySignals = analyzeLiveExecutionQuality({
+    userMessage,
+    replyText,
+    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+    outboundSent: false,
+    priorAgentReplies,
+  });
+  if (qualitySignals.length > 0) {
+    ex?.info(
+      { id: "quality", name: "Análise de qualidade" },
+      `${qualitySignals.length} sinal(is) de qualidade detectado(s)`,
+      {
+        output: {
+          replyPreview: replyText.slice(0, 2000),
+          signals: qualitySignals,
+        },
+      },
+    );
+    for (const signal of qualitySignals) {
+      const logFn = signal.severity === "error" ? ex?.error.bind(ex) : ex?.warn.bind(ex);
+      logFn?.(
+        { id: "quality", name: signal.title },
+        signal.detail,
+        {
+          output: {
+            kind: signal.kind,
+            toolName: signal.toolName,
+            toolPreview: signal.toolPreview?.slice(0, 500),
+            replyPreview: signal.replyPreview?.slice(0, 500),
+            suggestedActions: signal.suggestedActions,
+          },
+        },
+      );
+    }
+  }
+
+  const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
+  if (agentSupervisor.enabled && replyText.trim()) {
+    const toolSummary =
+      toolRoundOutcomes.length > 0
+        ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 200)}`).join("\n")
+        : "(nenhuma ferramenta invocada)";
+    const supervisorPrompt =
+      "És um supervisor de qualidade de atendimento. Analisa se a resposta do agente está correta, " +
+      "usa dados das ferramentas quando existirem, e responde em JSON com approved (boolean) e summary (string). " +
+      "approved=true se a resposta pode ser enviada ao cliente.";
+    const supervisorUser =
+      `Cliente: ${userMessage.slice(0, 1500)}\n\nFerramentas:\n${toolSummary}\n\nResposta proposta:\n${replyText.slice(0, 2500)}`;
+    try {
+      let supervisorText = "";
+      if (provider === "google_gemini") {
+        const r = await callGeminiGenerateContent({
+          apiKey,
+          model,
+          temperature: 0.2,
+          maxTokens: 256,
+          system: supervisorPrompt,
+          history: [],
+          userMessage: supervisorUser,
+          signal,
+        });
+        supervisorText = r.text.trim();
+      } else {
+        const r = await callOpenAiCompatibleChat({
+          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+          apiKey,
+          model,
+          temperature: 0.2,
+          maxTokens: 256,
+          system: supervisorPrompt,
+          history: [],
+          userMessage: supervisorUser,
+          signal,
+        });
+        supervisorText = r.text.trim();
+      }
+      let approved = true;
+      let summary = supervisorText.slice(0, 500);
+      try {
+        const parsed = JSON.parse(supervisorText) as { approved?: boolean; summary?: string };
+        if (typeof parsed.approved === "boolean") approved = parsed.approved;
+        if (typeof parsed.summary === "string" && parsed.summary.trim()) summary = parsed.summary.trim();
+      } catch {
+        approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
+      }
+      const supLog = approved ? ex?.info.bind(ex) : ex?.warn.bind(ex);
+      supLog?.(
+        { id: "supervisor", name: "Agente supervisor" },
+        approved ? "Supervisor aprovou a resposta" : "Supervisor sinalizou possível problema",
+        { output: { approved, summary, replyPreview: replyText.slice(0, 500) } },
+      );
+    } catch (err) {
+      log.warn({ err, botId: bot.id }, "agent supervisor review failed");
+      ex?.warn({ id: "supervisor", name: "Agente supervisor" }, "Revisão do supervisor falhou", {
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
   }
 
   return replyText;

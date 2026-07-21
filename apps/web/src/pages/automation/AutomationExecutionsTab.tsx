@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { ChevronRight, ClipboardCopy, Download, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { resolveAutomationToolIdFromLogNode } from "@/pages/automation/agentPromptBuilder";
+import { ExecutionFlowView } from "@/pages/automation/ExecutionFlowView";
+import type { ExecutionFlowGraph, ExecutionQualitySignal } from "@/pages/automation/executionQualityTypes";
 
 type BotRow = { id: string; name: string };
 type ToolRow = { id: string; name: string };
@@ -36,7 +38,11 @@ type LogEntry = {
   automationToolName?: string | null;
 };
 
-type ExecDetail = ExecRow & { logEntries: LogEntry[] };
+type ExecDetail = ExecRow & {
+  logEntries: LogEntry[];
+  qualitySignals?: ExecutionQualitySignal[];
+  flowGraph?: ExecutionFlowGraph;
+};
 
 function levelBadgeClass(level: string): string {
   switch (level) {
@@ -205,6 +211,9 @@ export function AutomationExecutionsTab({
   const [copyFlash, setCopyFlash] = useState<"ok" | "fail" | null>(null);
   const copyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localTools, setLocalTools] = useState<ToolRow[]>([]);
+  const [detailSubTab, setDetailSubTab] = useState<"logs" | "flow" | "quality">("logs");
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -297,6 +306,8 @@ export function AutomationExecutionsTab({
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId);
     else setDetail(null);
+    setDetailSubTab("logs");
+    setDismissedSignals(new Set());
   }, [selectedId, loadDetail]);
 
   const sortedEntries = useMemo(() => {
@@ -311,6 +322,43 @@ export function AutomationExecutionsTab({
     }
     return map;
   }, [tools, localTools]);
+
+  const visibleQualitySignals = useMemo(() => {
+    if (!detail?.qualitySignals) return [];
+    return detail.qualitySignals.filter((s) => !dismissedSignals.has(s.id));
+  }, [detail, dismissedSignals]);
+
+  const runQualityAction = useCallback(
+    async (action: "send_now" | "ignore" | "retry", signalId?: string) => {
+      if (!selectedId) return;
+      setActionBusy(action);
+      setError("");
+      try {
+        await api.post(`/automation/execution-logs/${selectedId}/quality-action`, { action });
+        if (signalId) setDismissedSignals((prev) => new Set(prev).add(signalId));
+        if (action !== "ignore") await loadDetail(selectedId);
+      } catch {
+        setError("load_failed");
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [selectedId, loadDetail, setError],
+  );
+
+  const signalIcon = (kind: ExecutionQualitySignal["kind"]) => {
+    switch (kind) {
+      case "possible_hallucination":
+        return "🔴";
+      case "lost_context":
+      case "tool_not_answered":
+      case "tool_ignored":
+      case "conversation_loop":
+        return "⚠";
+      default:
+        return "ℹ";
+    }
+  };
 
   const exportFile = async (format: "json" | "csv") => {
     if (!selectedId) return;
@@ -649,8 +697,127 @@ export function AutomationExecutionsTab({
           ) : !detail ? (
             <p className="p-4 text-sm text-ink-500">{loading ? "…" : "—"}</p>
           ) : (
-            <div className="max-h-[520px] space-y-1 overflow-y-auto p-2">
-              <p className="px-2 font-mono text-[10px] text-ink-400">{detail.id}</p>
+            <div className="max-h-[520px] overflow-y-auto">
+              <p className="px-2 pt-2 font-mono text-[10px] text-ink-400">{detail.id}</p>
+
+              {visibleQualitySignals.length > 0 ? (
+                <div className="mx-2 mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50/90 p-2 dark:border-amber-900/50 dark:bg-amber-950/30">
+                  <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">
+                    {t("automationPage.execQualityTitle")}
+                  </p>
+                  {visibleQualitySignals.map((signal) => (
+                    <div
+                      key={signal.id}
+                      className={clsx(
+                        "rounded-lg border px-2 py-2 text-xs",
+                        signal.severity === "error"
+                          ? "border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-950/30"
+                          : "border-amber-200 bg-white/80 dark:border-amber-900/30 dark:bg-ink-950/40",
+                      )}
+                    >
+                      <p className="font-semibold text-ink-900 dark:text-ink-50">
+                        {signalIcon(signal.kind)} {signal.title}
+                      </p>
+                      <p className="mt-1 text-ink-600 dark:text-ink-300">{signal.detail}</p>
+                      {signal.toolName ? (
+                        <p className="mt-1 text-[10px] text-ink-500">
+                          {t("automationPage.execQualityTool")}: {signal.toolName}
+                        </p>
+                      ) : null}
+                      {signal.suggestedActions?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {signal.suggestedActions.includes("send_now") ? (
+                            <button
+                              type="button"
+                              disabled={actionBusy != null}
+                              onClick={() => void runQualityAction("send_now", signal.id)}
+                              className="rounded bg-brand-600 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                            >
+                              {t("automationPage.execQualityActionSend")}
+                            </button>
+                          ) : null}
+                          {signal.suggestedActions.includes("ignore") ? (
+                            <button
+                              type="button"
+                              disabled={actionBusy != null}
+                              onClick={() => void runQualityAction("ignore", signal.id)}
+                              className="rounded border border-ink-200 px-2 py-1 text-[10px] font-semibold dark:border-ink-600"
+                            >
+                              {t("automationPage.execQualityActionIgnore")}
+                            </button>
+                          ) : null}
+                          {signal.suggestedActions.includes("retry") ? (
+                            <button
+                              type="button"
+                              disabled={actionBusy != null}
+                              onClick={() => void runQualityAction("retry", signal.id)}
+                              className="rounded border border-ink-200 px-2 py-1 text-[10px] font-semibold dark:border-ink-600"
+                            >
+                              {t("automationPage.execQualityActionRetry")}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mx-2 mt-2 inline-flex rounded-lg border border-ink-200 p-0.5 dark:border-ink-600">
+                {(["logs", "flow", "quality"] as const).map((tabId) => (
+                  <button
+                    key={tabId}
+                    type="button"
+                    onClick={() => setDetailSubTab(tabId)}
+                    className={clsx(
+                      "rounded-md px-2.5 py-1 text-[11px] font-semibold",
+                      detailSubTab === tabId
+                        ? "bg-brand-600 text-white"
+                        : "text-ink-600 hover:text-ink-900 dark:text-ink-400",
+                    )}
+                  >
+                    {t(`automationPage.execDetailTab_${tabId}`)}
+                    {tabId === "quality" && visibleQualitySignals.length > 0 ? (
+                      <span className="ml-1 rounded-full bg-amber-200 px-1.5 text-[9px] text-amber-900">
+                        {visibleQualitySignals.length}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+
+              {detailSubTab === "flow" ? (
+                <ExecutionFlowView graph={detail.flowGraph} t={t} />
+              ) : detailSubTab === "quality" ? (
+                <div className="space-y-2 p-2">
+                  {visibleQualitySignals.length === 0 ? (
+                    <p className="text-sm text-ink-500">{t("automationPage.execQualityEmpty")}</p>
+                  ) : (
+                    visibleQualitySignals.map((signal) => (
+                      <div
+                        key={`full-${signal.id}`}
+                        className="rounded-lg border border-ink-200 bg-ink-50/50 p-3 text-xs dark:border-ink-700 dark:bg-ink-950/40"
+                      >
+                        <p className="font-semibold">
+                          {signalIcon(signal.kind)} {signal.title}
+                        </p>
+                        <p className="mt-1 text-ink-600 dark:text-ink-300">{signal.detail}</p>
+                        {signal.toolPreview ? (
+                          <pre className="mt-2 max-h-24 overflow-auto rounded bg-ink-900/90 p-2 font-mono text-[10px] text-ink-100">
+                            {signal.toolPreview}
+                          </pre>
+                        ) : null}
+                        {signal.replyPreview ? (
+                          <pre className="mt-2 max-h-24 overflow-auto rounded bg-ink-800/90 p-2 font-mono text-[10px] text-ink-100">
+                            {signal.replyPreview}
+                          </pre>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1 p-2">
               {sortedEntries.map((e) => {
                 const toolLabel = resolveCustomToolLabel(e, toolNameById);
                 return (
@@ -691,6 +858,8 @@ export function AutomationExecutionsTab({
                 </details>
                 );
               })}
+                </div>
+              )}
             </div>
           )}
         </div>

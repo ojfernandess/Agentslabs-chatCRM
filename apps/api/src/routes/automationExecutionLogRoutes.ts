@@ -5,6 +5,12 @@ import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { flushAutomationLogBuffer } from "../lib/automationExecutionLog.js";
 import { resolveAutomationToolIdFromLogNode } from "../lib/automationHttpToolExecute.js";
+import {
+  analyzeExecutionQualityFromLogs,
+  buildExecutionFlowGraph,
+} from "../lib/automationExecutionQuality.js";
+import { generateNativeAgentReply } from "../lib/agentNativeLlm.js";
+import { deliverAgentReplyMessage } from "../lib/agentVoiceReply.js";
 import { requireAdmin } from "../middleware/auth.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -207,7 +213,9 @@ export async function registerAutomationExecutionLogRoutes(app: FastifyInstance)
       return reply.status(404).send({ error: "Not Found", message: "Execution not found", statusCode: 404 });
     }
     const logEntries = await enrichExecutionLogEntries(organizationId, exec.logEntries);
-    return { ...exec, logEntries };
+    const qualitySignals = analyzeExecutionQualityFromLogs(exec.logEntries);
+    const flowGraph = buildExecutionFlowGraph(exec.logEntries);
+    return { ...exec, logEntries, qualitySignals, flowGraph };
   });
 
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>(
@@ -256,6 +264,153 @@ export async function registerAutomationExecutionLogRoutes(app: FastifyInstance)
       reply.header("Content-Type", "application/json; charset=utf-8");
       reply.header("Content-Disposition", `attachment; filename="execution-${id}.json"`);
       return reply.send(JSON.stringify(reloaded, null, 2));
+    },
+  );
+
+  const actionBodySchema = z.object({
+    action: z.enum(["send_now", "ignore", "retry"]),
+    replyText: z.string().max(8000).optional(),
+  });
+
+  app.post<{ Params: { id: string } }>(
+    "/execution-logs/:id/quality-action",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      if (!isTenantAdminLike(request.user)) {
+        return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+      }
+      const parsed = actionBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+      const id = request.params.id;
+      await flushAutomationLogBuffer().catch(() => {});
+      const exec = await prisma.automationExecution.findFirst({
+        where: { id, organizationId },
+        include: {
+          logEntries: { orderBy: { sequence: "asc" } },
+          bot: { select: { id: true, name: true } },
+        },
+      });
+      if (!exec) {
+        return reply.status(404).send({ error: "Not Found", message: "Execution not found", statusCode: 404 });
+      }
+
+      if (parsed.data.action === "ignore") {
+        return { ok: true, action: "ignore" };
+      }
+
+      if (!exec.conversationId) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Execution has no conversationId",
+          statusCode: 400,
+        });
+      }
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: exec.conversationId, organizationId },
+        include: { contact: true },
+      });
+      if (!conversation?.contact) {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+      }
+
+      let triggerMessage =
+        exec.triggerMessageId != null
+          ? await prisma.message.findFirst({
+              where: { id: exec.triggerMessageId, conversationId: conversation.id },
+            })
+          : null;
+      if (!triggerMessage) {
+        triggerMessage = await prisma.message.findFirst({
+          where: { conversationId: conversation.id, direction: "INBOUND" },
+          orderBy: { createdAt: "desc" },
+        });
+      }
+      if (!triggerMessage) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "No inbound message to retry",
+          statusCode: 400,
+        });
+      }
+
+      const profile = await prisma.automationAgentProfile.findUnique({
+        where: { botId: exec.botId },
+        select: { behaviorConfig: true },
+      });
+
+      const bot = await prisma.bot.findFirst({
+        where: { id: exec.botId, organizationId },
+      });
+      if (!bot) {
+        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+      }
+
+      if (parsed.data.action === "retry") {
+        const replyText = await generateNativeAgentReply({
+          organizationId,
+          bot,
+          conversation,
+          message: triggerMessage,
+          log: request.log,
+          contactId: conversation.contact.id,
+        });
+        if (!replyText.trim()) {
+          return reply.status(422).send({
+            error: "Unprocessable Entity",
+            message: "Agent returned empty reply",
+            statusCode: 422,
+          });
+        }
+        await deliverAgentReplyMessage({
+          organizationId,
+          botId: exec.botId,
+          conversation,
+          contact: conversation.contact,
+          inboundMessage: triggerMessage,
+          replyText,
+          behaviorConfig: profile?.behaviorConfig,
+          log: request.log,
+        });
+        return { ok: true, action: "retry", replyChars: replyText.length };
+      }
+
+      let replyText = parsed.data.replyText?.trim() ?? "";
+      if (!replyText) {
+        for (let i = exec.logEntries.length - 1; i >= 0; i -= 1) {
+          const e = exec.logEntries[i];
+          if (e.nodeId !== "quality" || !e.outputContext || typeof e.outputContext !== "object") continue;
+          const o = e.outputContext as Record<string, unknown>;
+          const rp = o.replyPreview;
+          if (typeof rp === "string" && rp.trim()) {
+            replyText = rp.trim();
+            break;
+          }
+        }
+      }
+      if (!replyText) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "No reply text available to send",
+          statusCode: 400,
+        });
+      }
+
+      await deliverAgentReplyMessage({
+        organizationId,
+        botId: exec.botId,
+        conversation,
+        contact: conversation.contact,
+        inboundMessage: triggerMessage,
+        replyText,
+        behaviorConfig: profile?.behaviorConfig,
+        log: request.log,
+      });
+      return { ok: true, action: "send_now", replyChars: replyText.length };
     },
   );
 }

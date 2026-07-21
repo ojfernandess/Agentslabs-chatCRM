@@ -42,6 +42,13 @@ import { InstructionFallbacksEditor } from "@/components/automation/InstructionF
 import { AutomationChatbotHub } from "@/pages/automation/AutomationChatbotHub";
 import { AutomationConfigTransferPanel } from "@/pages/automation/AutomationConfigTransferPanel";
 import { AutomationCrmFlowHub } from "@/pages/automation/AutomationCrmFlowHub";
+import { PromptBlocksEditor } from "@/pages/automation/PromptBlocksEditor";
+import {
+  blocksToPromptUserCore,
+  emptyPromptBlocks,
+  parsePromptBlocksFromBehavior,
+  type PromptBlocks,
+} from "@/pages/automation/promptBlocks";
 
 export type { AutomationCustomToolRow } from "@/pages/automation/automationToolTypes";
 
@@ -349,6 +356,7 @@ type AgentFormFields = {
   apiKey: string;
   /** Núcleo editável; ao gravar junta-se o bloco automático de ferramentas / KB. */
   promptUserCore: string;
+  promptBlocks: PromptBlocks;
   /** Artigos da KB referenciados no bloco automático. */
   promptLinkedKnowledgeIds: string[];
   temperature: number;
@@ -378,6 +386,7 @@ type AgentFormFields = {
   toolCallNotifyMessage: string;
   toolCallNotifySelectedTools: string[];
   toolCallNotifyEnsureResultDelivered: boolean;
+  agentSupervisorEnabled: boolean;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -394,6 +403,7 @@ function emptyAgentForm(): AgentFormFields {
     apiBaseUrl: DEFAULT_API_BASE.openai,
     apiKey: "",
     promptUserCore: "",
+    promptBlocks: emptyPromptBlocks(),
     promptLinkedKnowledgeIds: [],
     temperature: 0.7,
     maxTokens: 1024,
@@ -420,6 +430,7 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifyMessage: "",
     toolCallNotifySelectedTools: [],
     toolCallNotifyEnsureResultDelivered: false,
+    agentSupervisorEnabled: false,
   };
 }
 
@@ -460,7 +471,10 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const userFromPb = typeof pb.userCore === "string" ? pb.userCore : null;
   const fullInstr = String(llm.systemInstructions ?? "");
   const strippedCore = splitStoredSystemInstructions(fullInstr).userCore;
-  const promptUserCore = userFromPb != null ? userFromPb : strippedCore;
+  const coreFallback = userFromPb != null ? userFromPb : strippedCore;
+  const parsedBlocks = parsePromptBlocksFromBehavior(beh, coreFallback);
+  const promptUserCore = parsedBlocks.userCore;
+  const promptBlocks = parsedBlocks.blocks;
   const instructionFallbacks = parseInstructionFallbacks(pb.instructionFallbacks);
   const toolCallNotifyRaw =
     beh.toolCallNotify && typeof beh.toolCallNotify === "object"
@@ -484,6 +498,12 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         ]
       : parsedNotifySelected;
 
+  const supervisorRaw = beh.agentSupervisor;
+  const agentSupervisorEnabled =
+    supervisorRaw && typeof supervisorRaw === "object"
+      ? (supervisorRaw as Record<string, unknown>).enabled === true
+      : false;
+
   return {
     mode: "edit",
     createBot: false,
@@ -497,6 +517,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     apiBaseUrl: String(llm.apiBaseUrl ?? DEFAULT_API_BASE[prov] ?? ""),
     apiKey: typeof llm.apiKey === "string" ? llm.apiKey : "",
     promptUserCore,
+    promptBlocks,
     promptLinkedKnowledgeIds,
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
@@ -531,6 +552,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifyMessage: typeof toolCallNotifyRaw.message === "string" ? toolCallNotifyRaw.message : "",
     toolCallNotifySelectedTools,
     toolCallNotifyEnsureResultDelivered: toolCallNotifyRaw.ensureResultDelivered === true,
+    agentSupervisorEnabled,
   };
 }
 
@@ -631,7 +653,10 @@ function formToPayload(
     instructionFallbacks: fallbacksResolved,
     t: ctx.t,
   });
-  const mergedInstructions = mergeSystemWithAutoBlock(form.promptUserCore, autoInner);
+  const mergedInstructions = mergeSystemWithAutoBlock(
+    blocksToPromptUserCore(form.promptBlocks) || form.promptUserCore,
+    autoInner,
+  );
 
   const modelResolved =
     form.model.trim() ||
@@ -694,8 +719,12 @@ function formToPayload(
       selectedTools: form.toolCallNotifySelectedTools,
       ensureResultDelivered: form.toolCallNotifyEnsureResultDelivered,
     },
+    agentSupervisor: {
+      enabled: form.agentSupervisorEnabled,
+    },
     promptBuilder: {
-      userCore: form.promptUserCore,
+      userCore: blocksToPromptUserCore(form.promptBlocks) || form.promptUserCore,
+      blocks: form.promptBlocks,
       linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
       teamTransferHints: form.teamTransferHints.filter((h) => h.instruction.trim()),
       instructionFallbacks: fallbacksResolved,
@@ -2608,6 +2637,20 @@ function AgentsTab({
                 ) : null}
               </div>
 
+              <div className="rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
+                <label className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
+                  <input
+                    type="checkbox"
+                    checked={agentForm.agentSupervisorEnabled}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({ ...f, agentSupervisorEnabled: e.target.checked }))
+                    }
+                  />
+                  {t("automationPage.agentSupervisorToggle")}
+                </label>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentSupervisorHelp")}</p>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                   {t("automationPage.agentTemperature")}: {agentForm.temperature.toFixed(2)}
@@ -2782,18 +2825,17 @@ function AgentsTab({
                   </div>
                 ) : (
                   <div className="mt-4 space-y-5">
-                    <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                      {t("automationPage.promptUserCoreLabel")}
-                      <textarea
-                        ref={promptUserCoreRef}
-                        value={agentForm.promptUserCore}
-                        onChange={(e) => setAgentForm((f) => ({ ...f, promptUserCore: e.target.value }))}
-                        rows={4}
-                        placeholder={t("automationPage.agentSystemInstructionsPh")}
-                        className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm leading-relaxed dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                      />
-                      <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptUserCoreHint")}</p>
-                    </label>
+                    <PromptBlocksEditor
+                      blocks={agentForm.promptBlocks}
+                      t={t}
+                      onChange={(nextBlocks) =>
+                        setAgentForm((f) => ({
+                          ...f,
+                          promptBlocks: nextBlocks,
+                          promptUserCore: blocksToPromptUserCore(nextBlocks),
+                        }))
+                      }
+                    />
                     <InstructionFallbacksEditor
                       textareaRef={promptUserCoreRef}
                       fallbacks={agentForm.instructionFallbacks}
