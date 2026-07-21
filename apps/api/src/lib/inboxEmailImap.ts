@@ -11,6 +11,7 @@ import {
 import { processChannelInboxInbound } from "./channelInboxIngest.js";
 import { collectEmailThreadMessageIds } from "./emailThreadRouting.js";
 import { putMessageMediaFile } from "./mediaStorage.js";
+import { prisma } from "../db.js";
 import {
   readEmailImapLastUid,
   resolveInboxEmailImapCredentials,
@@ -119,6 +120,7 @@ async function resolveCidImagesInHtml(
   for (const att of attachments) {
     const cid = normalizeCid(att.cid);
     if (!cid) continue;
+    if (cidToUrl.has(cid)) continue;
     if (!String(att.contentType ?? "").toLowerCase().startsWith("image/")) continue;
     const stored = await persistInboundAttachment(att);
     if (!stored) continue;
@@ -244,6 +246,21 @@ export async function syncInboxEmailViaImap(options: {
             ? parsed.messageId.trim().slice(0, 512)
             : `imap-uid:${msg.uid}`;
 
+        const existingEmail = await prisma.message.findFirst({
+          where: {
+            providerMsgId: messageId,
+            conversation: { organizationId: options.organizationId, inboxId: options.inboxId },
+          },
+          select: { id: true, body: true },
+        });
+        const existingHasHtml =
+          Boolean(existingEmail?.body?.includes("<!--oc-email-html-->"));
+        if (existingEmail && existingHasHtml) {
+          skipped += 1;
+          continue;
+        }
+        const needsHtmlUpgrade = Boolean(existingEmail && !existingHasHtml);
+
         const participantName =
           typeof parsed.from === "object" && parsed.from && !Array.isArray(parsed.from)
             ? (parsed.from as { name?: string }).name?.trim() || fromEmail
@@ -268,7 +285,7 @@ export async function syncInboxEmailViaImap(options: {
         };
 
         let usedInlineCids = new Set<string>();
-        if (htmlBody) {
+        if (htmlBody && (!existingEmail || needsHtmlUpgrade)) {
           const resolved = await resolveCidImagesInHtml(htmlBody, inboundAttachments);
           htmlBody = resolved.html;
           usedInlineCids = resolved.usedCids;
@@ -287,6 +304,12 @@ export async function syncInboxEmailViaImap(options: {
             externalMessageId: messageId,
           });
           if (result.accepted) imported = true;
+        }
+
+        if (existingEmail && !needsHtmlUpgrade) {
+          if (imported) processed += 1;
+          else skipped += 1;
+          continue;
         }
 
         for (let i = 0; i < inboundAttachments.length; i += 1) {

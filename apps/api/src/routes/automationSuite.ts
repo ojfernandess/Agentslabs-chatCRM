@@ -2910,10 +2910,9 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         where: { conversationId },
         select: { id: true },
       });
-      await clearAutomationConversationContext(organizationId, conversationId);
-      if (before) {
-        return { ok: true };
-      }
+      const cleared = await clearAutomationConversationContext(organizationId, conversationId, {
+        scope: "contact",
+      });
       const after = await prisma.automationConversationContext.findUnique({
         where: { conversationId },
         select: { id: true },
@@ -2926,7 +2925,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           statusCode: 404,
         });
       }
-      return { ok: true, createdContextRow: true };
+      return {
+        ok: true,
+        createdContextRow: !before,
+        clearedConversationIds: cleared.clearedConversationIds.length,
+      };
     },
   );
 

@@ -152,38 +152,69 @@ export function buildWebhookConversationContext(
 export async function clearAutomationConversationContext(
   organizationId: string,
   conversationId: string,
-): Promise<void> {
+  options?: { scope?: "conversation" | "contact" },
+): Promise<{ clearedConversationIds: string[] }> {
   const clearedAt = new Date();
-  const updated = await prisma.automationConversationContext.updateMany({
-    where: { conversationId, organizationId },
-    data: { state: asJson({}), lastClearedAt: clearedAt },
-  });
-  if (updated.count > 0) return;
+  const scope = options?.scope ?? "conversation";
 
   const conv = await prisma.conversation.findFirst({
     where: { id: conversationId, organizationId },
-    select: { id: true },
+    select: { id: true, contactId: true },
   });
-  if (!conv) return;
+  if (!conv) return { clearedConversationIds: [] };
+
+  const conversationIds =
+    scope === "contact"
+      ? (
+          await prisma.conversation.findMany({
+            where: { organizationId, contactId: conv.contactId },
+            select: { id: true },
+          })
+        ).map((row) => row.id)
+      : [conv.id];
+
+  if (conversationIds.length === 0) return { clearedConversationIds: [] };
+
+  await prisma.automationConversationContext.updateMany({
+    where: { organizationId, conversationId: { in: conversationIds } },
+    data: { state: asJson({}), lastClearedAt: clearedAt },
+  });
 
   const settings = await prisma.settings.findUnique({
     where: { organizationId },
     select: { agentBotId: true },
   });
   const botId = settings?.agentBotId;
-  if (!botId) return;
+  if (!botId) {
+    return { clearedConversationIds: conversationIds };
+  }
 
-  await prisma.automationConversationContext.upsert({
-    where: { conversationId },
-    create: {
-      organizationId,
-      conversationId,
-      botId,
-      state: asJson({}),
-      lastClearedAt: clearedAt,
-    },
-    update: { state: asJson({}), lastClearedAt: clearedAt, botId },
+  const existingRows = await prisma.automationConversationContext.findMany({
+    where: { organizationId, conversationId: { in: conversationIds } },
+    select: { conversationId: true },
   });
+  const existingIds = new Set(existingRows.map((row) => row.conversationId));
+  const missingIds = conversationIds.filter((id) => !existingIds.has(id));
+
+  if (missingIds.length > 0) {
+    await prisma.automationConversationContext.createMany({
+      data: missingIds.map((id) => ({
+        organizationId,
+        conversationId: id,
+        botId,
+        state: asJson({}),
+        lastClearedAt: clearedAt,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  await prisma.automationConversationContext.updateMany({
+    where: { organizationId, conversationId: { in: conversationIds } },
+    data: { state: asJson({}), lastClearedAt: clearedAt, botId },
+  });
+
+  return { clearedConversationIds: conversationIds };
 }
 
 export async function loadAutomationConversationContext(conversationId: string): Promise<{

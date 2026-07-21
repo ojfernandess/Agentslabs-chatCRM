@@ -350,7 +350,7 @@ export function ConversationDetailPage() {
   const [leadOwnerDecisionBusy, setLeadOwnerDecisionBusy] = useState(false);
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
-  const [crmDesktopOpen, setCrmDesktopOpen] = useState(true);
+  const [crmDesktopOpen, setCrmDesktopOpen] = useState(false);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
   const [copilotDesktopOpen, setCopilotDesktopOpen] = useState(false);
   const [pilotFlags, setPilotFlags] = useState<{
