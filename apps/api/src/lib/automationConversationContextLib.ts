@@ -19,6 +19,13 @@ export type AutomationContextState = {
     lastInboundAt: string;
     lastPreview: string;
   };
+  /** Última ronda de ferramentas do agente nativo (auditoria e continuidade entre turnos). */
+  lastNativeToolRound?: {
+    at: string;
+    toolCount: number;
+    tools: Array<{ name: string; ok: boolean; preview: string }>;
+    resultDeliveredToCustomer: boolean;
+  };
 };
 
 function asJson(v: unknown): Prisma.InputJsonValue {
@@ -50,7 +57,12 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
             lastPreview: String((o.nativeTurn as Record<string, unknown>).lastPreview ?? ""),
           }
         : undefined;
-    return { followUpCampaign, ...(nativeTurn ? { nativeTurn } : {}) };
+    const lastNativeToolRound = parseLastNativeToolRound(o.lastNativeToolRound);
+    return {
+      followUpCampaign,
+      ...(nativeTurn ? { nativeTurn } : {}),
+      ...(lastNativeToolRound ? { lastNativeToolRound } : {}),
+    };
   }
 
   if (o.source === "follow_up_campaign") {
@@ -79,6 +91,32 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
   }
 
   return {};
+}
+
+function parseLastNativeToolRound(raw: unknown): AutomationContextState["lastNativeToolRound"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const toolsRaw = Array.isArray(o.tools) ? o.tools : [];
+  const tools = toolsRaw
+    .map((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+      const t = row as Record<string, unknown>;
+      const name = typeof t.name === "string" ? t.name.trim() : "";
+      if (!name) return null;
+      return {
+        name: name.slice(0, 120),
+        ok: t.ok === true,
+        preview: typeof t.preview === "string" ? t.preview.slice(0, 500) : "",
+      };
+    })
+    .filter((x): x is { name: string; ok: boolean; preview: string } => x != null);
+  if (!tools.length && typeof o.at !== "string") return undefined;
+  return {
+    at: typeof o.at === "string" ? o.at : new Date().toISOString(),
+    toolCount: typeof o.toolCount === "number" ? o.toolCount : tools.length,
+    tools,
+    resultDeliveredToCustomer: o.resultDeliveredToCustomer === true,
+  };
 }
 
 export function buildFollowUpCampaignPromptBlock(ctx: FollowUpCampaignContextState): string {
@@ -212,11 +250,41 @@ export async function mergeNativeTurnAutomationContext(params: {
   const preview = (params.message.body ?? "").trim().slice(0, 500);
   const state: AutomationContextState = {
     ...(existing.state.followUpCampaign ? { followUpCampaign: existing.state.followUpCampaign } : {}),
+    ...(existing.state.lastNativeToolRound ? { lastNativeToolRound: existing.state.lastNativeToolRound } : {}),
     nativeTurn: {
       lastInboundMessageId: params.message.id,
       lastInboundAt: params.message.createdAt.toISOString(),
       lastPreview: preview,
     },
+  };
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+}
+
+export async function mergeNativeToolRoundAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  toolRound: NonNullable<AutomationContextState["lastNativeToolRound"]>;
+}): Promise<void> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const state: AutomationContextState = {
+    ...(existing.state.followUpCampaign ? { followUpCampaign: existing.state.followUpCampaign } : {}),
+    ...(existing.state.nativeTurn ? { nativeTurn: existing.state.nativeTurn } : {}),
+    lastNativeToolRound: params.toolRound,
   };
 
   await prisma.automationConversationContext.upsert({

@@ -442,6 +442,9 @@ export const messages = {
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
       agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
       agentToolCallNotifyMessagePh: "Um momento, estou a consultar isso para si…",
+      agentToolCallNotifyEnsureResultToggle: "Garantir entrega do resultado ao contacto",
+      agentToolCallNotifyEnsureResultHelp:
+        "Após as ferramentas, detecta se a resposta final ao cliente é só «aguarde» ou vazia. Se sim, reforça automaticamente a resposta com os resultados das consultas (ferramentas seleccionadas acima).",
       agentTemperature: "Temperatura",
       agentMaxTokens: "Max tokens",
       agentSystemInstructions: "Instruções do sistema",
@@ -5503,6 +5506,9 @@ export const messages = {
         "Enable native capabilities or connected tools on this agent to select them here.",
       agentToolCallNotifyMessage: "Notice message (optional)",
       agentToolCallNotifyMessagePh: "One moment, I'm looking that up for you…",
+      agentToolCallNotifyEnsureResultToggle: "Ensure tool results reach the contact",
+      agentToolCallNotifyEnsureResultHelp:
+        "After tools run, detects when the final reply is only “please wait” or empty. If so, automatically reinforces the reply using the tool outcomes (for tools selected above).",
       agentTemperature: "Temperature",
       agentMaxTokens: "Max tokens",
       agentSystemInstructions: "System instructions",

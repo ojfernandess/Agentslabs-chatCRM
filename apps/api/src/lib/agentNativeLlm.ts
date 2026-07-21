@@ -22,6 +22,7 @@ import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import {
   buildFollowUpCampaignPromptBlock,
   loadAutomationConversationContext,
+  mergeNativeToolRoundAutomationContext,
 } from "./automationConversationContextLib.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
@@ -57,8 +58,15 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
   message: string;
   /** `null` = perfis antigos (avisar em qualquer ferramenta). */
   selectedTools: string[] | null;
+  /** Após tools, garante que o cliente recebe resposta substantiva com o resultado (não só aviso inicial). */
+  ensureResultDelivered: boolean;
 } {
-  const fallback = { enabled: false, message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE, selectedTools: [] as string[] };
+  const fallback = {
+    enabled: false,
+    message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE,
+    selectedTools: [] as string[],
+    ensureResultDelivered: false,
+  };
   if (!behaviorConfig || typeof behaviorConfig !== "object") return fallback;
   const raw = (behaviorConfig as Record<string, unknown>).toolCallNotify;
   if (!raw || typeof raw !== "object") return fallback;
@@ -73,7 +81,44 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
       ? o.selectedTools.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
       : [];
   }
-  return { enabled: o.enabled === true, message, selectedTools };
+  return {
+    enabled: o.enabled === true,
+    message,
+    selectedTools,
+    ensureResultDelivered: o.ensureResultDelivered === true,
+  };
+}
+
+export type NativeToolRoundOutcome = {
+  name: string;
+  ok: boolean;
+  preview: string;
+  monitored: boolean;
+};
+
+export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<NativeToolRoundOutcome, "monitored"> {
+  try {
+    const parsed = JSON.parse(out) as { ok?: boolean; bodyPreview?: string; error?: string | null };
+    const preview =
+      (typeof parsed.bodyPreview === "string" && parsed.bodyPreview.trim()) ||
+      (typeof parsed.error === "string" && parsed.error.trim()) ||
+      out.slice(0, 400);
+    return { name, ok: parsed.ok === true, preview: preview.slice(0, 500) };
+  } catch {
+    return { name, ok: out.trim().length > 0 && !/error|failed|falhou/i.test(out), preview: out.slice(0, 500) };
+  }
+}
+
+/** Ferramentas monitorizadas foram invocadas mas a resposta final não entrega resultado ao cliente. */
+export function shouldEnsureToolResultFollowUp(input: {
+  ensureResultDelivered: boolean;
+  toolOutcomes: NativeToolRoundOutcome[];
+  replyText: string;
+}): boolean {
+  if (!input.ensureResultDelivered) return false;
+  const monitored = input.toolOutcomes.filter((t) => t.monitored);
+  if (monitored.length === 0) return false;
+  return !hasSubstantiveAgentReplyToCustomer(input.replyText);
 }
 
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
@@ -699,6 +744,65 @@ function parseConnectedToolAgentInstructions(behavior: unknown): Map<string, str
   return m;
 }
 
+async function augmentReplyWithToolOutcomes(params: {
+  userMessage: string;
+  draftReply: string;
+  toolOutcomes: NativeToolRoundOutcome[];
+  systemInstructions: string;
+  history: PreviewChatTurn[];
+  provider: string;
+  apiKey: string;
+  model: string;
+  apiBaseUrl: string;
+  temperature: number;
+  maxTokens: number;
+  signal: AbortSignal;
+  log: FastifyBaseLogger;
+}): Promise<string> {
+  const monitored = params.toolOutcomes.filter((t) => t.monitored);
+  if (!monitored.length) return params.draftReply.trim();
+  const toolBlock = monitored
+    .map((t, i) => `${i + 1}. ${t.name} — ${t.ok ? "ok" : "falhou"}: ${t.preview}`)
+    .join("\n");
+  const extra =
+    "\n\n[OpenConduit — resultado de ferramentas]\n" +
+    "O cliente ainda não recebeu uma resposta substantiva após consultas automáticas.\n" +
+    "Use os resultados abaixo para responder de forma clara e completa (mesma língua do cliente).\n" +
+    "Se alguma ferramenta falhou, explique o que falta ou peça só o necessário.\n" +
+    "Não repita apenas «um momento» ou «vou verificar».\n\n" +
+    toolBlock;
+  try {
+    if (params.provider === "google_gemini") {
+      const r = await callGeminiGenerateContent({
+        apiKey: params.apiKey,
+        model: params.model,
+        temperature: params.temperature,
+        maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
+        system: params.systemInstructions + extra,
+        history: params.history,
+        userMessage: params.userMessage,
+        signal: params.signal,
+      });
+      return r.text.trim();
+    }
+    const r = await callOpenAiCompatibleChat({
+      baseUrl: params.apiBaseUrl.replace(/\/+$/, ""),
+      apiKey: params.apiKey,
+      model: params.model,
+      temperature: params.temperature,
+      maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
+      system: params.systemInstructions + extra,
+      history: params.history,
+      userMessage: params.userMessage,
+      signal: params.signal,
+    });
+    return r.text.trim();
+  } catch (err) {
+    params.log.warn({ err }, "native tool outcome augment failed");
+    return params.draftReply.trim();
+  }
+}
+
 async function augmentStallWithKnowledge(params: {
   organizationId: string;
   botId: string;
@@ -965,8 +1069,11 @@ export async function generateNativeAgentReply(input: {
   }
   const customToolPreamble =
     customHttpTools.length > 0
-      ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n"
+      ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n" +
+        "- **Várias ferramentas na mesma ronda:** só invoque em paralelo ferramentas independentes. Respeite dependências do fluxo (ex.: uploads concluídos antes do check-in; referências Embratur antes de IDs numéricos).\n" +
+        "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com «um momento».\n"
       : "";
+  const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
 
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
@@ -1233,21 +1340,26 @@ export async function generateNativeAgentReply(input: {
             tlog?.info({ id: name, name: toolNodeName }, "Chamada à ferramenta", {
               input: { argsPreview: argsJson.slice(0, 4000) },
             });
+            const finishToolCall = (out: string) => {
+              logToolResult(out);
+              const parsed = parseToolCallOutcomeFromJson(name, out);
+              toolRoundOutcomes.push({
+                ...parsed,
+                monitored: shouldNotifyBeforeToolCall(name, toolCallNotify),
+              });
+              return out;
+            };
             if (customId) {
               const row = customRow;
               if (!row) {
-                const out = JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" });
-                logToolResult(out);
-                return out;
+                return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
               let args: Record<string, unknown> = {};
               try {
                 const p = JSON.parse(argsJson || "{}");
                 if (p && typeof p === "object" && !Array.isArray(p)) args = p as Record<string, unknown>;
               } catch {
-                const out = JSON.stringify({ ok: false, error: "invalid_json_arguments" });
-                logToolResult(out);
-                return out;
+                return finishToolCall(JSON.stringify({ ok: false, error: "invalid_json_arguments" }));
               }
               const exec = await runAutomationHttpLikeTool({
                 tool: row,
@@ -1258,29 +1370,29 @@ export async function generateNativeAgentReply(input: {
                 executionSource: "native_agent",
                 runtimeSampleContext: httpToolRuntimeContext,
               });
-              const out = JSON.stringify({
-                ok: exec.ok,
-                statusCode: exec.statusCode,
-                bodyPreview: exec.responseText.slice(0, 12_000),
-                error: exec.error,
-              });
-              logToolResult(out);
-              return out;
+              return finishToolCall(
+                JSON.stringify({
+                  ok: exec.ok,
+                  statusCode: exec.statusCode,
+                  bodyPreview: exec.responseText.slice(0, 12_000),
+                  error: exec.error,
+                }),
+              );
             }
-            const out = await executeNativeTool({
-              name,
-              argsJson,
-              organizationId,
-              botId: bot.id,
-              conversationId: conversation.id,
-              flags,
-              allowedTagIds,
-              log,
-              pinnedArticleIds,
-              userMessage,
-            });
-            logToolResult(out);
-            return out;
+            return finishToolCall(
+              await executeNativeTool({
+                name,
+                argsJson,
+                organizationId,
+                botId: bot.id,
+                conversationId: conversation.id,
+                flags,
+                allowedTagIds,
+                log,
+                pinnedArticleIds,
+                userMessage,
+              }),
+            );
           },
           signal,
         });
@@ -1384,6 +1496,59 @@ export async function generateNativeAgentReply(input: {
       pinnedArticleIds,
     });
     if (fixed.trim()) replyText = fixed.trim();
+  }
+
+  if (
+    shouldEnsureToolResultFollowUp({
+      ensureResultDelivered: toolCallNotify.ensureResultDelivered,
+      toolOutcomes: toolRoundOutcomes,
+      replyText,
+    })
+  ) {
+    ex?.warn(
+      { id: "tool_delivery", name: "Entrega de resultado" },
+      "Resposta final não entregou resultado das ferramentas — reforço automático",
+      {
+        input: {
+          monitoredTools: toolRoundOutcomes.filter((t) => t.monitored).map((t) => t.name).slice(0, 8),
+          replyChars: replyText.length,
+        },
+      },
+    );
+    const reinforced = await augmentReplyWithToolOutcomes({
+      userMessage,
+      draftReply: replyText,
+      toolOutcomes: toolRoundOutcomes,
+      systemInstructions: systemBase,
+      history,
+      provider,
+      apiKey,
+      model,
+      apiBaseUrl,
+      temperature,
+      maxTokens,
+      signal,
+      log,
+    });
+    if (reinforced.trim()) replyText = reinforced.trim();
+  }
+
+  if (toolRoundOutcomes.length > 0 && historyOverride == null) {
+    try {
+      await mergeNativeToolRoundAutomationContext({
+        organizationId,
+        conversationId: conversation.id,
+        botId: bot.id,
+        toolRound: {
+          at: new Date().toISOString(),
+          toolCount: toolRoundOutcomes.length,
+          tools: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+          resultDeliveredToCustomer: hasSubstantiveAgentReplyToCustomer(replyText),
+        },
+      });
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "merge native tool round context failed");
+    }
   }
 
   const interimNotify = pendingToolCallInterim.data;

@@ -314,6 +314,7 @@ const defaultBehavior = {
     enabled: false,
     message: "",
     selectedTools: [] as string[],
+    ensureResultDelivered: false,
   },
 };
 
@@ -376,6 +377,7 @@ type AgentFormFields = {
   toolCallNotifyEnabled: boolean;
   toolCallNotifyMessage: string;
   toolCallNotifySelectedTools: string[];
+  toolCallNotifyEnsureResultDelivered: boolean;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -417,6 +419,7 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifyEnabled: false,
     toolCallNotifyMessage: "",
     toolCallNotifySelectedTools: [],
+    toolCallNotifyEnsureResultDelivered: false,
   };
 }
 
@@ -527,6 +530,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifyEnabled: Boolean(toolCallNotifyRaw.enabled),
     toolCallNotifyMessage: typeof toolCallNotifyRaw.message === "string" ? toolCallNotifyRaw.message : "",
     toolCallNotifySelectedTools,
+    toolCallNotifyEnsureResultDelivered: toolCallNotifyRaw.ensureResultDelivered === true,
   };
 }
 
@@ -688,6 +692,7 @@ function formToPayload(
       enabled: form.toolCallNotifyEnabled,
       message: form.toolCallNotifyMessage.trim(),
       selectedTools: form.toolCallNotifySelectedTools,
+      ensureResultDelivered: form.toolCallNotifyEnsureResultDelivered,
     },
     promptBuilder: {
       userCore: form.promptUserCore,
@@ -2571,6 +2576,22 @@ function AgentsTab({
                         </ul>
                       )}
                     </div>
+                    <label className="mt-3 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={agentForm.toolCallNotifyEnsureResultDelivered}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({
+                            ...f,
+                            toolCallNotifyEnsureResultDelivered: e.target.checked,
+                          }))
+                        }
+                      />
+                      {t("automationPage.agentToolCallNotifyEnsureResultToggle")}
+                    </label>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      {t("automationPage.agentToolCallNotifyEnsureResultHelp")}
+                    </p>
                     <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
                       {t("automationPage.agentToolCallNotifyMessage")}
                       <textarea

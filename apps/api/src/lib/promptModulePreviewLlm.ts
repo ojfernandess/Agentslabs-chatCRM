@@ -151,13 +151,18 @@ export async function callOpenAiCompatibleChatWithTools(params: {
         content: choice?.content ?? null,
         tool_calls: toolCalls,
       });
-      for (const tc of toolCalls) {
-        const name = tc.function.name;
-        const out = await params.onToolCall(name, tc.function.arguments ?? "{}");
+      const toolResults = await Promise.all(
+        toolCalls.map(async (tc) => {
+          const name = tc.function.name;
+          const out = await params.onToolCall(name, tc.function.arguments ?? "{}");
+          return { id: tc.id, content: out };
+        }),
+      );
+      for (const result of toolResults) {
         messages.push({
           role: "tool",
-          tool_call_id: tc.id,
-          content: out,
+          tool_call_id: result.id,
+          content: result.content,
         });
       }
       continue;
