@@ -34,6 +34,15 @@ import {
 } from "./promptHubTypes";
 import { buildInstructionFallbackBlock, type InstructionFallback } from "./instructionFallbacks";
 import { InstructionFallbacksEditor } from "@/components/automation/InstructionFallbacksEditor";
+import { PromptBlocksEditor } from "./PromptBlocksEditor";
+import {
+  blocksToPromptUserCore,
+  blocksToStructuredMarkdown,
+  emptyPromptBlocks,
+  improvePromptFromMarkdown,
+  parseMarkdownPromptIntoBlocks,
+  type PromptBlocks,
+} from "./promptBlocks";
 
 const CATEGORY_IDS = [
   "general",
@@ -158,30 +167,11 @@ function resolveVariables(body: string, sample: Record<string, string>): string 
   });
 }
 
-const IMPROVE_SCAFFOLD = `
-
----
-
-## Estrutura sugerida (melhoria assistida)
-### Persona
-Quem é o agente e para quem fala.
-
-### Regras operacionais
-- Tom e limites claros.
-- O que nunca deve fazer.
-
-### Contexto dinâmico
-Use variáveis como {{contact.name}}, {{message}}, {{conversation.history}}.
-
-### Objetivo mensurável
-Um resultado concreto por conversa.
-
-### Restrições anti-alucinação
-- Cite apenas dados fornecidos no contexto.
-- Se faltar informação, peça confirmação.
-`;
-
 type EditorTab = "editor" | "preview" | "variables" | "tools" | "history";
+
+function syncBodyFromBlocks(blocks: PromptBlocks): string {
+  return blocksToStructuredMarkdown(blocks) || blocksToPromptUserCore(blocks);
+}
 
 export function AutomationPromptsHub({
   t,
@@ -227,6 +217,7 @@ export function AutomationPromptsHub({
   const [draftSlug, setDraftSlug] = useState("");
   const [draftVersion, setDraftVersion] = useState(1);
   const [draftBody, setDraftBody] = useState("");
+  const [draftBlocks, setDraftBlocks] = useState<PromptBlocks>(() => emptyPromptBlocks());
   const [draftCategory, setDraftCategory] = useState<string>("general");
   const [draftTags, setDraftTags] = useState("");
   const [draftStatus, setDraftStatus] = useState<PromptStatus>("active");
@@ -300,6 +291,7 @@ export function AutomationPromptsHub({
     setDraftSlug("");
     setDraftVersion(1);
     setDraftBody("");
+    setDraftBlocks(emptyPromptBlocks());
     setDraftCategory("general");
     setDraftTags("");
     setDraftStatus("active");
@@ -334,6 +326,7 @@ export function AutomationPromptsHub({
     setDraftSlug(row.slug);
     setDraftVersion(row.version);
     setDraftBody(row.body);
+    setDraftBlocks(parseMarkdownPromptIntoBlocks(row.body));
     setDraftCategory(lb.category ?? "general");
     setDraftTags((lb.tags ?? []).join(", "));
     setDraftStatus(lb.status ?? "active");
@@ -533,6 +526,7 @@ export function AutomationPromptsHub({
     setDraftCategory(tpl.categoryKey);
     setDraftModelHint(tpl.modelHint);
     setDraftBody(tpl.body);
+    setDraftBlocks(parseMarkdownPromptIntoBlocks(tpl.body));
     setDraftStatus("active");
     setDraftSlug(slugify(title));
     setDraftVersion(1);
@@ -547,18 +541,29 @@ export function AutomationPromptsHub({
     setTemplatesOpen(false);
     setEditorOpen(true);
     setEditorTab("editor");
+    setPromptHubBuilderSubTab("builder");
+  };
+
+  const applyDraftBlocks = (next: PromptBlocks) => {
+    setDraftBlocks(next);
+    setDraftBody(syncBodyFromBlocks(next));
   };
 
   const insertAtCursor = (text: string) => {
     const el = bodyRef.current;
     if (!el) {
-      setDraftBody((b) => b + text);
+      const nextBlocks = {
+        ...draftBlocks,
+        objective: `${draftBlocks.objective || ""}${text}`,
+      };
+      applyDraftBlocks(nextBlocks);
       return;
     }
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
     const next = el.value.slice(0, start) + text + el.value.slice(end);
     setDraftBody(next);
+    setDraftBlocks(parseMarkdownPromptIntoBlocks(next));
     requestAnimationFrame(() => {
       el.focus();
       const pos = start + text.length;
@@ -574,12 +579,17 @@ export function AutomationPromptsHub({
   };
 
   const improvePrompt = () => {
-    setDraftBody((b) => (b.trim() ? b.trimEnd() + IMPROVE_SCAFFOLD : b + IMPROVE_SCAFFOLD.trimStart()));
+    const source = draftBody.trim() || syncBodyFromBlocks(draftBlocks);
+    if (!source) return;
+    const { blocks, structuredMarkdown } = improvePromptFromMarkdown(source);
+    setDraftBlocks(blocks);
+    setDraftBody(structuredMarkdown || source);
   };
 
   const rollbackTo = (entry: PromptHistoryEntry) => {
     if (!window.confirm(t("automationPage.promptHub.historyRollbackConfirm"))) return;
     setDraftBody(entry.body);
+    setDraftBlocks(parseMarkdownPromptIntoBlocks(entry.body));
     setDraftVersion(entry.version);
   };
 
@@ -1274,39 +1284,60 @@ export function AutomationPromptsHub({
                           </div>
                         ) : (
                           <div className="mt-4 space-y-3">
-                            <div className="flex flex-wrap gap-2">
-                              {PROMPT_BLOCK_SNIPPETS.map((b) => (
-                                <button
-                                  key={b.key}
-                                  type="button"
-                                  onClick={() => insertAtCursor(`\n${b.heading}`)}
-                                  className="rounded-full border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium dark:border-ink-600 dark:bg-ink-900"
-                                >
-                                  {t(`automationPage.promptHub.block_${b.key}`)}
-                                </button>
-                              ))}
-                            </div>
+                            <PromptBlocksEditor
+                              blocks={draftBlocks}
+                              t={t}
+                              onChange={applyDraftBlocks}
+                            />
                             <div className="flex flex-wrap gap-1.5">
                               {VARIABLE_SNIPPETS.map((v) => (
                                 <button
                                   key={v}
                                   type="button"
-                                  onClick={() => insertAtCursor(v)}
+                                  onClick={() => {
+                                    const next = {
+                                      ...draftBlocks,
+                                      objective: `${draftBlocks.objective || ""}${draftBlocks.objective?.trim() ? "\n" : ""}${v}`,
+                                    };
+                                    applyDraftBlocks(next);
+                                  }}
                                   className="rounded-md bg-sky-500/15 px-2 py-0.5 font-mono text-[10px] text-sky-800 dark:text-sky-200"
                                 >
                                   {v}
                                 </button>
                               ))}
                             </div>
-                            <textarea
-                              ref={bodyRef}
-                              value={draftBody}
-                              onChange={(e) => setDraftBody(e.target.value)}
-                              onKeyDown={onBodyKeyDown}
-                              spellCheck={false}
-                              className="min-h-[320px] w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-4 py-3 font-mono text-sm leading-relaxed text-ink-100 shadow-inner ring-1 ring-inset ring-white/10 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-ink-700"
-                              placeholder={t("automationPage.agentSystemInstructionsPh")}
-                            />
+                            <details className="rounded-xl border border-dashed border-ink-200 bg-white/70 p-3 dark:border-ink-700 dark:bg-ink-950/40">
+                              <summary className="cursor-pointer text-xs font-semibold text-ink-700 dark:text-ink-300">
+                                {t("automationPage.promptAdvancedRaw")}
+                              </summary>
+                              <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.promptAdvancedRawHelp")}</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {PROMPT_BLOCK_SNIPPETS.map((b) => (
+                                  <button
+                                    key={b.key}
+                                    type="button"
+                                    onClick={() => insertAtCursor(`\n${b.heading}`)}
+                                    className="rounded-full border border-ink-200 bg-ink-50 px-2.5 py-1 text-[11px] font-medium dark:border-ink-600 dark:bg-ink-900"
+                                  >
+                                    {t(`automationPage.promptHub.block_${b.key}`)}
+                                  </button>
+                                ))}
+                              </div>
+                              <textarea
+                                ref={bodyRef}
+                                value={draftBody}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setDraftBody(v);
+                                  setDraftBlocks(parseMarkdownPromptIntoBlocks(v));
+                                }}
+                                onKeyDown={onBodyKeyDown}
+                                spellCheck={false}
+                                className="mt-2 min-h-[200px] w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-4 py-3 font-mono text-sm leading-relaxed text-ink-100 shadow-inner ring-1 ring-inset ring-white/10 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-ink-700"
+                                placeholder={t("automationPage.agentSystemInstructionsPh")}
+                              />
+                            </details>
                             <InstructionFallbacksEditor
                               textareaRef={bodyRef}
                               fallbacks={draftInstructionFallbacks}

@@ -481,6 +481,26 @@ export const messages = {
       promptBlockHint_flows: "Passos do atendimento (saudação → qualificação → resolução).",
       promptBlockHint_fallback: "Comportamento quando não souber ou a ferramenta falhar.",
       promptBlockHint_examples: "Exemplos de diálogo ideal (few-shot).",
+      promptIncludeFull: "Incluir prompt completo",
+      promptIncludeFullHelp:
+        "Cole o prompt inteiro (markdown com ## Personalidade, ## Objetivo, etc.). O sistema detecta as secções e preenche os blocos — o funcionamento do agente mantém-se; só organiza o texto.",
+      promptIncludeFullPh:
+        "## Personalidade\n…\n\n## Objetivo\n…\n\n## Restrições\n…",
+      promptImportModeReplace: "Substituir blocos",
+      promptImportModeMerge: "Fundir com blocos atuais",
+      promptImportApply: "Aplicar ao editor",
+      promptImportEmpty: "Cole o texto do prompt antes de aplicar.",
+      promptImportApplied: "Prompt aplicado — {count} bloco(s) preenchido(s).",
+      promptImprovePerf: "Melhorar desempenho",
+      promptImportImproveHelp:
+        "«Incluir prompt completo» importa texto livre para os blocos. «Melhorar desempenho» detecta headings markdown e redistribui o conteúdo por Personalidade, Objetivo, Restrições, etc., sem inventar regras novas.",
+      promptImproveEmpty: "Escreva ou importe o prompt antes de melhorar.",
+      promptImproveNoStructure:
+        "Não foram detectadas secções markdown reconhecíveis. Use headings como ## Personalidade ou ## Objetivo.",
+      promptImproveApplied: "Estrutura melhorada — {count} bloco(s) preenchido(s).",
+      promptAdvancedRaw: "Texto completo (avançado)",
+      promptAdvancedRawHelp:
+        "Edição livre do markdown guardado no módulo. Alterações aqui sincronizam os blocos acima.",
       agentTemperature: "Temperatura",
       agentMaxTokens: "Max tokens",
       agentSystemInstructions: "Instruções do sistema",
@@ -522,7 +542,7 @@ export const messages = {
       agentTool_ping: "ping",
       promptBuilderTitle: "Editor de prompt",
       promptBuilderHelp:
-        "Escreva o núcleo do agente abaixo; ao activar ferramentas ou artigos, o sistema acrescenta automaticamente instruções claras ao prompt final guardado no modelo.",
+        "Monte Personalidade, Objetivo e restantes blocos; pode incluir um prompt completo ou melhorar a estrutura via markdown. Ao activar ferramentas ou artigos, o sistema acrescenta instruções automáticas ao prompt final.",
       promptBuilderTabBuilder: "Montar",
       promptBuilderTabMerged: "Prompt final",
       promptUserCoreLabel: "Instruções principais (voz do agente)",
@@ -666,8 +686,9 @@ export const messages = {
         use: "Usar",
         templatesTitle: "Templates prontos",
         editorTitle: "Editor de prompt",
-        improve: "Melhorar prompt",
+        improve: "Melhorar desempenho",
         fieldCategory: "Categoria",
+
         fieldTags: "Tags (vírgula)",
         fieldStatus: "Estado",
         fieldModel: "Modelo sugerido",
@@ -680,11 +701,11 @@ export const messages = {
         tabTools: "Ferramentas",
         tabHistory: "Histórico",
         editorPromptBuilderIntro:
-          "Monte o corpo do módulo em «Montar» ou veja o texto completo em «Prompt final» (o mesmo guardado neste módulo).",
+          "Monte por blocos (Personalidade, Objetivo, …), importe o prompt completo ou melhore a estrutura via markdown. Em «Prompt final» vê o texto que será guardado.",
         mergedModuleHelp:
           "Neste módulo, o «Prompt final» é o corpo do texto. Nos agentes, o prompt final pode incluir blocos automáticos além dos módulos seleccionados.",
         editorHint:
-          "Markdown suportado. Variáveis `{{chave}}` em destaque. Tab insere indentação. Blocos aceleram a estrutura.",
+          "Use «Incluir prompt completo» ou «Melhorar desempenho» para preencher os blocos a partir de markdown. Variáveis `{{chave}}` podem ser inseridas abaixo.",
         previewContext: "Contexto de teste",
         previewChat: "Simulação (sem chamada ao modelo)",
         previewEmpty: "Envie uma mensagem para ver o texto resolvido com as variáveis de exemplo.",
@@ -5581,6 +5602,26 @@ export const messages = {
       promptBlockHint_flows: "Service steps (greeting → qualification → resolution).",
       promptBlockHint_fallback: "Behavior when unsure or when a tool fails.",
       promptBlockHint_examples: "Ideal dialogue examples (few-shot).",
+      promptIncludeFull: "Include full prompt",
+      promptIncludeFullHelp:
+        "Paste the entire prompt (markdown with ## Personality, ## Objective, etc.). The system detects sections and fills the blocks — agent behaviour stays the same; only the text is organised.",
+      promptIncludeFullPh:
+        "## Personality\n…\n\n## Objective\n…\n\n## Restrictions\n…",
+      promptImportModeReplace: "Replace blocks",
+      promptImportModeMerge: "Merge with current blocks",
+      promptImportApply: "Apply to editor",
+      promptImportEmpty: "Paste the prompt text before applying.",
+      promptImportApplied: "Prompt applied — {count} block(s) filled.",
+      promptImprovePerf: "Improve performance",
+      promptImportImproveHelp:
+        "«Include full prompt» imports free text into the blocks. «Improve performance» detects markdown headings and redistributes content into Personality, Objective, Restrictions, etc., without inventing new rules.",
+      promptImproveEmpty: "Write or import the prompt before improving.",
+      promptImproveNoStructure:
+        "No recognised markdown sections found. Use headings like ## Personality or ## Objective.",
+      promptImproveApplied: "Structure improved — {count} block(s) filled.",
+      promptAdvancedRaw: "Full text (advanced)",
+      promptAdvancedRawHelp:
+        "Free-form edit of the markdown stored in the module. Changes here sync the blocks above.",
       agentTemperature: "Temperature",
       agentMaxTokens: "Max tokens",
       agentSystemInstructions: "System instructions",
@@ -5621,7 +5662,7 @@ export const messages = {
       agentTool_ping: "ping",
       promptBuilderTitle: "Prompt editor",
       promptBuilderHelp:
-        "Write the core instructions below; when you enable tools or pick knowledge articles, the app appends clear operational instructions to the final prompt saved for the model.",
+        "Build Personality, Objective and the other blocks; you can paste a full prompt or improve structure from markdown. When you enable tools or pick knowledge articles, the app appends clear operational instructions to the final prompt.",
       promptBuilderTabBuilder: "Build",
       promptBuilderTabMerged: "Final prompt",
       promptUserCoreLabel: "Core instructions (agent voice)",
@@ -5762,7 +5803,7 @@ export const messages = {
         use: "Use",
         templatesTitle: "Ready-made templates",
         editorTitle: "Prompt editor",
-        improve: "Improve prompt",
+        improve: "Improve performance",
         fieldCategory: "Category",
         fieldTags: "Tags (comma)",
         fieldStatus: "Status",
@@ -5776,11 +5817,11 @@ export const messages = {
         tabTools: "Tools",
         tabHistory: "History",
         editorPromptBuilderIntro:
-          "Use «Montar» to edit the module body, or «Prompt final» for the full saved text (same as this module).",
+          "Build by blocks (Personality, Objective, …), import a full prompt, or improve structure from markdown. «Final prompt» shows what will be saved.",
         mergedModuleHelp:
-          "For a standalone module, «Prompt final» matches the body. On agents, the final prompt can add automatic blocks beyond selected modules.",
+          "For a standalone module, «Final prompt» matches the body. On agents, the final prompt can add automatic blocks beyond selected modules.",
         editorHint:
-          "Markdown-friendly. `{{variables}}` in the body. Tab inserts indentation. Blocks add structure quickly.",
+          "Use «Include full prompt» or «Improve performance» to fill blocks from markdown. Insert `{{variables}}` with the chips below.",
         previewContext: "Test context",
         previewChat: "Simulation (no model call)",
         previewEmpty: "Send a message to see variables replaced with sample values.",
