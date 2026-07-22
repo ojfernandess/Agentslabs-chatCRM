@@ -173,6 +173,10 @@ function syncBodyFromBlocks(blocks: PromptBlocks): string {
   return blocksToStructuredMarkdown(blocks) || blocksToPromptUserCore(blocks);
 }
 
+function promptLooksMultiSection(text: string): boolean {
+  return improvePromptFromMarkdown(text).filledCount >= 2;
+}
+
 export function AutomationPromptsHub({
   t,
   loading,
@@ -218,6 +222,7 @@ export function AutomationPromptsHub({
   const [draftVersion, setDraftVersion] = useState(1);
   const [draftBody, setDraftBody] = useState("");
   const [draftBlocks, setDraftBlocks] = useState<PromptBlocks>(() => emptyPromptBlocks());
+  const [draftUseFullText, setDraftUseFullText] = useState(false);
   const [draftCategory, setDraftCategory] = useState<string>("general");
   const [draftTags, setDraftTags] = useState("");
   const [draftStatus, setDraftStatus] = useState<PromptStatus>("active");
@@ -292,6 +297,7 @@ export function AutomationPromptsHub({
     setDraftVersion(1);
     setDraftBody("");
     setDraftBlocks(emptyPromptBlocks());
+    setDraftUseFullText(false);
     setDraftCategory("general");
     setDraftTags("");
     setDraftStatus("active");
@@ -326,7 +332,13 @@ export function AutomationPromptsHub({
     setDraftSlug(row.slug);
     setDraftVersion(row.version);
     setDraftBody(row.body);
-    setDraftBlocks(parseMarkdownPromptIntoBlocks(row.body));
+    if (promptLooksMultiSection(row.body)) {
+      setDraftBlocks(parseMarkdownPromptIntoBlocks(row.body));
+      setDraftUseFullText(false);
+    } else {
+      setDraftBlocks(emptyPromptBlocks());
+      setDraftUseFullText(Boolean(row.body.trim()));
+    }
     setDraftCategory(lb.category ?? "general");
     setDraftTags((lb.tags ?? []).join(", "));
     setDraftStatus(lb.status ?? "active");
@@ -526,7 +538,13 @@ export function AutomationPromptsHub({
     setDraftCategory(tpl.categoryKey);
     setDraftModelHint(tpl.modelHint);
     setDraftBody(tpl.body);
-    setDraftBlocks(parseMarkdownPromptIntoBlocks(tpl.body));
+    if (promptLooksMultiSection(tpl.body)) {
+      setDraftBlocks(parseMarkdownPromptIntoBlocks(tpl.body));
+      setDraftUseFullText(false);
+    } else {
+      setDraftBlocks(emptyPromptBlocks());
+      setDraftUseFullText(true);
+    }
     setDraftStatus("active");
     setDraftSlug(slugify(title));
     setDraftVersion(1);
@@ -547,6 +565,17 @@ export function AutomationPromptsHub({
   const applyDraftBlocks = (next: PromptBlocks) => {
     setDraftBlocks(next);
     setDraftBody(syncBodyFromBlocks(next));
+    setDraftUseFullText(false);
+  };
+
+  const applyPromptEditorChange = (next: {
+    blocks: PromptBlocks;
+    fullPrompt: string;
+    useFullPrompt: boolean;
+  }) => {
+    setDraftBlocks(next.blocks);
+    setDraftBody(next.fullPrompt);
+    setDraftUseFullText(next.useFullPrompt);
   };
 
   const insertAtCursor = (text: string) => {
@@ -584,12 +613,19 @@ export function AutomationPromptsHub({
     const { blocks, structuredMarkdown } = improvePromptFromMarkdown(source);
     setDraftBlocks(blocks);
     setDraftBody(structuredMarkdown || source);
+    setDraftUseFullText(false);
   };
 
   const rollbackTo = (entry: PromptHistoryEntry) => {
     if (!window.confirm(t("automationPage.promptHub.historyRollbackConfirm"))) return;
     setDraftBody(entry.body);
-    setDraftBlocks(parseMarkdownPromptIntoBlocks(entry.body));
+    if (promptLooksMultiSection(entry.body)) {
+      setDraftBlocks(parseMarkdownPromptIntoBlocks(entry.body));
+      setDraftUseFullText(false);
+    } else {
+      setDraftBlocks(emptyPromptBlocks());
+      setDraftUseFullText(Boolean(entry.body.trim()));
+    }
     setDraftVersion(entry.version);
   };
 
@@ -1286,9 +1322,13 @@ export function AutomationPromptsHub({
                           <div className="mt-4 space-y-3">
                             <PromptBlocksEditor
                               blocks={draftBlocks}
+                              fullPrompt={draftBody}
+                              useFullPrompt={draftUseFullText}
                               t={t}
-                              onChange={applyDraftBlocks}
+                              fullPromptTextareaRef={bodyRef}
+                              onChange={applyPromptEditorChange}
                             />
+                            {!draftUseFullText ? (
                             <div className="flex flex-wrap gap-1.5">
                               {VARIABLE_SNIPPETS.map((v) => (
                                 <button
@@ -1307,6 +1347,8 @@ export function AutomationPromptsHub({
                                 </button>
                               ))}
                             </div>
+                            ) : null}
+                            {!draftUseFullText ? (
                             <details className="rounded-xl border border-dashed border-ink-200 bg-white/70 p-3 dark:border-ink-700 dark:bg-ink-950/40">
                               <summary className="cursor-pointer text-xs font-semibold text-ink-700 dark:text-ink-300">
                                 {t("automationPage.promptAdvancedRaw")}
@@ -1331,6 +1373,7 @@ export function AutomationPromptsHub({
                                   const v = e.target.value;
                                   setDraftBody(v);
                                   setDraftBlocks(parseMarkdownPromptIntoBlocks(v));
+                                  setDraftUseFullText(false);
                                 }}
                                 onKeyDown={onBodyKeyDown}
                                 spellCheck={false}
@@ -1338,6 +1381,7 @@ export function AutomationPromptsHub({
                                 placeholder={t("automationPage.agentSystemInstructionsPh")}
                               />
                             </details>
+                            ) : null}
                             <InstructionFallbacksEditor
                               textareaRef={bodyRef}
                               fallbacks={draftInstructionFallbacks}

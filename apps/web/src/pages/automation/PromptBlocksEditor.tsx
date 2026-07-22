@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import clsx from "clsx";
 import { ChevronDown, FileText, Sparkles, Wand2 } from "lucide-react";
 import {
   PROMPT_BLOCK_KEYS,
   blocksToPromptUserCore,
   countFilledPromptBlocks,
+  emptyPromptBlocks,
   improvePromptFromMarkdown,
   mergeImportedPromptIntoBlocks,
   type PromptBlockKey,
@@ -13,53 +14,129 @@ import {
   promptBlockLabelKey,
 } from "./promptBlocks";
 
+export type PromptBlocksEditorChange = {
+  blocks: PromptBlocks;
+  fullPrompt: string;
+  /** true = o texto completo é a fonte de verdade (como antes dos blocos). */
+  useFullPrompt: boolean;
+};
+
 export function PromptBlocksEditor({
   blocks,
+  fullPrompt,
+  useFullPrompt,
   onChange,
   t,
-  /** Quando true, mostra «Incluir prompt completo» e «Melhorar desempenho». */
   enableImportImprove = true,
+  fullPromptTextareaRef,
 }: {
   blocks: PromptBlocks;
-  onChange: (next: PromptBlocks) => void;
+  fullPrompt: string;
+  useFullPrompt: boolean;
+  onChange: (next: PromptBlocksEditorChange) => void;
   t: (key: string) => string;
   enableImportImprove?: boolean;
+  /** Ref opcional para fallbacks / seleção de texto no prompt completo. */
+  fullPromptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
+  const [fullOpen, setFullOpen] = useState(useFullPrompt);
+  const [autofillBlocks, setAutofillBlocks] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  const applyImport = () => {
-    const raw = importText.trim();
+  useEffect(() => {
+    if (useFullPrompt) setFullOpen(true);
+  }, [useFullPrompt]);
+
+  const emit = (next: PromptBlocksEditorChange) => {
+    onChange(next);
+  };
+
+  const onFullPromptLiveChange = (text: string) => {
+    if (autofillBlocks) {
+      const nextBlocks = mergeImportedPromptIntoBlocks(emptyPromptBlocks(), text, "replace");
+      emit({
+        blocks: nextBlocks,
+        fullPrompt: text,
+        useFullPrompt: true,
+      });
+    } else {
+      emit({
+        blocks: emptyPromptBlocks(),
+        fullPrompt: text,
+        useFullPrompt: true,
+      });
+    }
+  };
+
+  const applyAutofillNow = () => {
+    const raw = fullPrompt.trim();
     if (!raw) {
       setStatusMsg(t("automationPage.promptImportEmpty"));
       return;
     }
-    const next = mergeImportedPromptIntoBlocks(blocks, raw, importMode);
-    onChange(next);
+    const nextBlocks = mergeImportedPromptIntoBlocks(emptyPromptBlocks(), raw, "replace");
+    emit({
+      blocks: nextBlocks,
+      fullPrompt: raw,
+      useFullPrompt: true,
+    });
     setStatusMsg(
       t("automationPage.promptImportApplied").replace(
         "{count}",
-        String(countFilledPromptBlocks(next)),
+        String(countFilledPromptBlocks(nextBlocks)),
       ),
     );
-    setImportOpen(false);
   };
 
   const applyImprove = () => {
-    const source = blocksToPromptUserCore(blocks).trim();
+    const source = (useFullPrompt ? fullPrompt : blocksToPromptUserCore(blocks) || fullPrompt).trim();
     if (!source) {
       setStatusMsg(t("automationPage.promptImproveEmpty"));
       return;
     }
-    const { blocks: next, filledCount } = improvePromptFromMarkdown(source);
+    const { blocks: next, structuredMarkdown, filledCount } = improvePromptFromMarkdown(source);
     if (filledCount === 0) {
       setStatusMsg(t("automationPage.promptImproveNoStructure"));
       return;
     }
-    onChange(next);
+    emit({
+      blocks: next,
+      fullPrompt: structuredMarkdown || source,
+      useFullPrompt: false,
+    });
+    setFullOpen(false);
     setStatusMsg(t("automationPage.promptImproveApplied").replace("{count}", String(filledCount)));
+  };
+
+  const openFullPrompt = () => {
+    setFullOpen(true);
+    setStatusMsg(null);
+    const seed = fullPrompt.trim() || blocksToPromptUserCore(blocks);
+    emit({
+      blocks: emptyPromptBlocks(),
+      fullPrompt: seed,
+      useFullPrompt: true,
+    });
+  };
+
+  const closeFullPromptKeepText = () => {
+    setFullOpen(false);
+    // Mantém o texto completo como fonte; blocos vazios para não sobrescrever ao gravar.
+    emit({
+      blocks: emptyPromptBlocks(),
+      fullPrompt,
+      useFullPrompt: true,
+    });
+  };
+
+  const switchToBlocksOnly = () => {
+    setFullOpen(false);
+    const core = blocksToPromptUserCore(blocks) || fullPrompt;
+    emit({
+      blocks: countFilledPromptBlocks(blocks) > 0 ? blocks : emptyPromptBlocks(),
+      fullPrompt: core,
+      useFullPrompt: false,
+    });
   };
 
   return (
@@ -70,12 +147,12 @@ export function PromptBlocksEditor({
             <button
               type="button"
               onClick={() => {
-                setImportOpen((v) => !v);
-                setStatusMsg(null);
+                if (fullOpen) closeFullPromptKeepText();
+                else openFullPrompt();
               }}
               className={clsx(
                 "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold shadow-sm transition",
-                importOpen
+                fullOpen || useFullPrompt
                   ? "border-brand-400 bg-brand-50 text-brand-900 dark:border-brand-600 dark:bg-brand-950/40 dark:text-brand-100"
                   : "border-ink-200 bg-white text-ink-800 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100 dark:hover:bg-ink-900",
               )}
@@ -99,13 +176,15 @@ export function PromptBlocksEditor({
               {statusMsg}
             </p>
           ) : null}
-          {importOpen ? (
+
+          {fullOpen || useFullPrompt ? (
             <div className="space-y-2 rounded-lg border border-ink-200 bg-white p-3 dark:border-ink-700 dark:bg-ink-950/80">
               <p className="text-[11px] text-ink-600 dark:text-ink-400">{t("automationPage.promptIncludeFullHelp")}</p>
               <textarea
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                rows={8}
+                ref={fullPromptTextareaRef}
+                value={fullPrompt}
+                onChange={(e) => onFullPromptLiveChange(e.target.value)}
+                rows={12}
                 spellCheck={false}
                 placeholder={t("automationPage.promptIncludeFullPh")}
                 className={clsx(
@@ -113,31 +192,52 @@ export function PromptBlocksEditor({
                   "dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100",
                 )}
               />
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-600 dark:text-ink-400">
-                  <input
-                    type="radio"
-                    name="prompt-import-mode"
-                    checked={importMode === "replace"}
-                    onChange={() => setImportMode("replace")}
-                  />
-                  {t("automationPage.promptImportModeReplace")}
-                </label>
-                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-600 dark:text-ink-400">
-                  <input
-                    type="radio"
-                    name="prompt-import-mode"
-                    checked={importMode === "merge"}
-                    onChange={() => setImportMode("merge")}
-                  />
-                  {t("automationPage.promptImportModeMerge")}
-                </label>
+              <label className="flex cursor-pointer items-start gap-2 text-[11px] text-ink-600 dark:text-ink-400">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded border-ink-300"
+                  checked={autofillBlocks}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setAutofillBlocks(on);
+                    if (on && fullPrompt.trim()) {
+                      const nextBlocks = mergeImportedPromptIntoBlocks(
+                        emptyPromptBlocks(),
+                        fullPrompt,
+                        "replace",
+                      );
+                      emit({
+                        blocks: nextBlocks,
+                        fullPrompt,
+                        useFullPrompt: true,
+                      });
+                    } else if (!on) {
+                      emit({
+                        blocks: emptyPromptBlocks(),
+                        fullPrompt,
+                        useFullPrompt: true,
+                      });
+                    }
+                  }}
+                />
+                <span>{t("automationPage.promptAutofillBlocksOptional")}</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {autofillBlocks ? (
+                  <button
+                    type="button"
+                    onClick={applyAutofillNow}
+                    className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-900 dark:border-brand-700 dark:bg-brand-950/40 dark:text-brand-100"
+                  >
+                    {t("automationPage.promptAutofillBlocksNow")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={applyImport}
-                  className="ml-auto rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500"
+                  onClick={switchToBlocksOnly}
+                  className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-700 dark:border-ink-600 dark:text-ink-200"
                 >
-                  {t("automationPage.promptImportApply")}
+                  {t("automationPage.promptUseBlocksEditor")}
                 </button>
               </div>
             </div>
@@ -145,42 +245,63 @@ export function PromptBlocksEditor({
         </div>
       ) : null}
 
-      <div className="space-y-2">
-        {PROMPT_BLOCK_KEYS.map((key, index) => (
-          <details
-            key={key}
-            open={index < 2 || Boolean(blocks[key]?.trim())}
-            className="group rounded-xl border border-ink-200/90 bg-white/90 dark:border-ink-700 dark:bg-ink-950/50"
-          >
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-semibold text-ink-900 dark:text-ink-50 [&::-webkit-details-marker]:hidden">
-              <ChevronDown className="h-4 w-4 shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
-              <span>{t(promptBlockLabelKey(key))}</span>
-              {blocks[key]?.trim() ? (
-                <span className="ml-auto rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800 dark:bg-brand-950/50 dark:text-brand-200">
-                  OK
-                </span>
-              ) : null}
-            </summary>
-            <div className="border-t border-ink-100 px-3 pb-3 pt-2 dark:border-ink-800">
-              <p className="mb-2 text-[11px] text-ink-500">{t(promptBlockHintKey(key))}</p>
-              <textarea
-                value={blocks[key]}
-                onChange={(e) => onChange({ ...blocks, [key]: e.target.value })}
-                rows={key === "examples" || key === "flows" ? 4 : 3}
-                className={clsx(
-                  "w-full rounded-lg border border-ink-200 px-3 py-2 text-sm leading-relaxed",
-                  "dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100",
-                )}
-              />
-            </div>
-            {index < PROMPT_BLOCK_KEYS.length - 1 ? (
-              <div className="flex justify-center py-1 text-ink-300 dark:text-ink-600" aria-hidden>
-                ↓
+      {!(fullOpen || useFullPrompt) || autofillBlocks || countFilledPromptBlocks(blocks) > 0 ? (
+        <div
+          className={clsx(
+            "space-y-2",
+            (fullOpen || useFullPrompt) && !autofillBlocks ? "opacity-60" : null,
+          )}
+        >
+          {(fullOpen || useFullPrompt) && !autofillBlocks ? (
+            <p className="text-[10px] text-ink-500">{t("automationPage.promptBlocksOptionalWhileFull")}</p>
+          ) : null}
+          {PROMPT_BLOCK_KEYS.map((key, index) => (
+            <details
+              key={key}
+              open={index < 2 || Boolean(blocks[key]?.trim())}
+              className="group rounded-xl border border-ink-200/90 bg-white/90 dark:border-ink-700 dark:bg-ink-950/50"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-semibold text-ink-900 dark:text-ink-50 [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="h-4 w-4 shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
+                <span>{t(promptBlockLabelKey(key))}</span>
+                {blocks[key]?.trim() ? (
+                  <span className="ml-auto rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800 dark:bg-brand-950/50 dark:text-brand-200">
+                    OK
+                  </span>
+                ) : null}
+              </summary>
+              <div className="border-t border-ink-100 px-3 pb-3 pt-2 dark:border-ink-800">
+                <p className="mb-2 text-[11px] text-ink-500">{t(promptBlockHintKey(key))}</p>
+                <textarea
+                  value={blocks[key]}
+                  onChange={(e) => {
+                    const nextBlocks = { ...blocks, [key]: e.target.value };
+                    emit({
+                      blocks: nextBlocks,
+                      fullPrompt: useFullPrompt
+                        ? fullPrompt
+                        : blocksToPromptUserCore(nextBlocks),
+                      useFullPrompt,
+                    });
+                  }}
+                  rows={key === "examples" || key === "flows" ? 4 : 3}
+                  disabled={useFullPrompt && !autofillBlocks}
+                  className={clsx(
+                    "w-full rounded-lg border border-ink-200 px-3 py-2 text-sm leading-relaxed",
+                    "dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100",
+                    useFullPrompt && !autofillBlocks ? "cursor-not-allowed opacity-70" : null,
+                  )}
+                />
               </div>
-            ) : null}
-          </details>
-        ))}
-      </div>
+              {index < PROMPT_BLOCK_KEYS.length - 1 ? (
+                <div className="flex justify-center py-1 text-ink-300 dark:text-ink-600" aria-hidden>
+                  ↓
+                </div>
+              ) : null}
+            </details>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

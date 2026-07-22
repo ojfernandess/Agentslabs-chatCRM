@@ -483,9 +483,15 @@ export const messages = {
       promptBlockHint_examples: "Exemplos de diálogo ideal (few-shot).",
       promptIncludeFull: "Incluir prompt completo",
       promptIncludeFullHelp:
-        "Cole o prompt inteiro (markdown com ## Personalidade, ## Objetivo, etc.). O sistema detecta as secções e preenche os blocos — o funcionamento do agente mantém-se; só organiza o texto.",
+        "Cole ou escreva o prompt inteiro como antes. Por defeito NÃO preenche os blocos — o texto completo é o que o agente usa. Pode opcionalmente activar a distribuição automática pelos blocos.",
       promptIncludeFullPh:
-        "## Personalidade\n…\n\n## Objetivo\n…\n\n## Restrições\n…",
+        "Cole aqui o seu prompt completo…\n\n(Opcional) ## Personalidade\n…\n\n## Objetivo\n…",
+      promptAutofillBlocksOptional:
+        "Preencher blocos automaticamente a partir deste texto (opcional)",
+      promptAutofillBlocksNow: "Atualizar blocos agora",
+      promptUseBlocksEditor: "Usar editor por blocos",
+      promptBlocksOptionalWhileFull:
+        "Modo prompt completo activo — os blocos ficam desactivados até activar o preenchimento automático ou «Melhorar desempenho».",
       promptImportModeReplace: "Substituir blocos",
       promptImportModeMerge: "Fundir com blocos atuais",
       promptImportApply: "Aplicar ao editor",
@@ -493,7 +499,7 @@ export const messages = {
       promptImportApplied: "Prompt aplicado — {count} bloco(s) preenchido(s).",
       promptImprovePerf: "Melhorar desempenho",
       promptImportImproveHelp:
-        "«Incluir prompt completo» importa texto livre para os blocos. «Melhorar desempenho» detecta headings markdown e redistribui o conteúdo por Personalidade, Objetivo, Restrições, etc., sem inventar regras novas.",
+        "«Incluir prompt completo» usa o texto livre (como antes). O preenchimento dos blocos é opcional. «Melhorar desempenho» detecta headings markdown e organiza Personalidade, Objetivo, etc., sem inventar regras.",
       promptImproveEmpty: "Escreva ou importe o prompt antes de melhorar.",
       promptImproveNoStructure:
         "Não foram detectadas secções markdown reconhecíveis. Use headings como ## Personalidade ou ## Objetivo.",
@@ -5604,9 +5610,14 @@ export const messages = {
       promptBlockHint_examples: "Ideal dialogue examples (few-shot).",
       promptIncludeFull: "Include full prompt",
       promptIncludeFullHelp:
-        "Paste the entire prompt (markdown with ## Personality, ## Objective, etc.). The system detects sections and fills the blocks — agent behaviour stays the same; only the text is organised.",
+        "Paste or write the entire prompt as before. By default it does NOT fill the blocks — the full text is what the agent uses. You can optionally enable automatic distribution into blocks.",
       promptIncludeFullPh:
-        "## Personality\n…\n\n## Objective\n…\n\n## Restrictions\n…",
+        "Paste your full prompt here…\n\n(Optional) ## Personality\n…\n\n## Objective\n…",
+      promptAutofillBlocksOptional: "Automatically fill blocks from this text (optional)",
+      promptAutofillBlocksNow: "Update blocks now",
+      promptUseBlocksEditor: "Use block editor",
+      promptBlocksOptionalWhileFull:
+        "Full-prompt mode is active — blocks stay disabled until you enable autofill or use «Improve performance».",
       promptImportModeReplace: "Replace blocks",
       promptImportModeMerge: "Merge with current blocks",
       promptImportApply: "Apply to editor",
@@ -5614,7 +5625,7 @@ export const messages = {
       promptImportApplied: "Prompt applied — {count} block(s) filled.",
       promptImprovePerf: "Improve performance",
       promptImportImproveHelp:
-        "«Include full prompt» imports free text into the blocks. «Improve performance» detects markdown headings and redistributes content into Personality, Objective, Restrictions, etc., without inventing new rules.",
+        "«Include full prompt» uses free-form text (as before). Filling blocks is optional. «Improve performance» detects markdown headings and organises Personality, Objective, etc., without inventing new rules.",
       promptImproveEmpty: "Write or import the prompt before improving.",
       promptImproveNoStructure:
         "No recognised markdown sections found. Use headings like ## Personality or ## Objective.",
