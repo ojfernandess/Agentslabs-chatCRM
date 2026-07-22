@@ -12,6 +12,9 @@ export type FollowUpCampaignContextState = {
   sentAt: string;
 };
 
+/** Identificadores e flags estáveis reutilizáveis entre tools/turnos (genérico para qualquer automação). */
+export type AutomationFlowSlots = Record<string, string | number | boolean>;
+
 export type AutomationContextState = {
   followUpCampaign?: FollowUpCampaignContextState;
   nativeTurn?: {
@@ -26,10 +29,42 @@ export type AutomationContextState = {
     tools: Array<{ name: string; ok: boolean; preview: string }>;
     resultDeliveredToCustomer: boolean;
   };
+  /** Slots de fluxo (IDs, flags, URLs) persistidos após tools bem-sucedidas. */
+  flowSlots?: AutomationFlowSlots;
+  /** Etapa livre do fluxo (ex.: "awaiting_document", "uploaded_selfie") — opcional. */
+  flowStep?: string;
 };
 
 function asJson(v: unknown): Prisma.InputJsonValue {
   return v as Prisma.InputJsonValue;
+}
+
+function parseNativeTurn(raw: unknown): AutomationContextState["nativeTurn"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  return {
+    lastInboundMessageId: String(o.lastInboundMessageId ?? ""),
+    lastInboundAt: String(o.lastInboundAt ?? ""),
+    lastPreview: String(o.lastPreview ?? ""),
+  };
+}
+
+export function parseFlowSlots(raw: unknown): AutomationFlowSlots | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: AutomationFlowSlots = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim();
+    if (!key || key.length > 120) continue;
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (s) out[key] = s.slice(0, 2000);
+    } else if (typeof v === "number" && Number.isFinite(v)) {
+      out[key] = v;
+    } else if (typeof v === "boolean") {
+      out[key] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Compatível com estado legado `{ source: "native_agent", ... }`. */
@@ -37,37 +72,32 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
 
-  if (o.followUpCampaign && typeof o.followUpCampaign === "object") {
-    const fu = o.followUpCampaign as Record<string, unknown>;
-    const followUpCampaign: FollowUpCampaignContextState = {
-      campaignId: String(fu.campaignId ?? ""),
-      campaignName: String(fu.campaignName ?? ""),
-      messageType: fu.messageType === "TEMPLATE" ? "TEMPLATE" : "TEXT",
-      templateId: typeof fu.templateId === "string" ? fu.templateId : null,
-      templateName: typeof fu.templateName === "string" ? fu.templateName : null,
-      outboundMessageId: String(fu.outboundMessageId ?? ""),
-      outboundBody: typeof fu.outboundBody === "string" ? fu.outboundBody : null,
-      sentAt: String(fu.sentAt ?? ""),
-    };
-    const nativeTurn =
-      o.nativeTurn && typeof o.nativeTurn === "object"
-        ? {
-            lastInboundMessageId: String((o.nativeTurn as Record<string, unknown>).lastInboundMessageId ?? ""),
-            lastInboundAt: String((o.nativeTurn as Record<string, unknown>).lastInboundAt ?? ""),
-            lastPreview: String((o.nativeTurn as Record<string, unknown>).lastPreview ?? ""),
-          }
-        : undefined;
-    const lastNativeToolRound = parseLastNativeToolRound(o.lastNativeToolRound);
-    return {
-      followUpCampaign,
-      ...(nativeTurn ? { nativeTurn } : {}),
-      ...(lastNativeToolRound ? { lastNativeToolRound } : {}),
-    };
-  }
+  // Formato canónico: campos de topo (follow-up, nativeTurn, tool round, flowSlots) — não exigir followUp.
+  if (
+    o.followUpCampaign ||
+    o.nativeTurn ||
+    o.lastNativeToolRound ||
+    o.flowSlots ||
+    typeof o.flowStep === "string" ||
+    o.source === "follow_up_campaign" ||
+    o.source === "native_agent"
+  ) {
+    const state: AutomationContextState = {};
 
-  if (o.source === "follow_up_campaign") {
-    return {
-      followUpCampaign: {
+    if (o.followUpCampaign && typeof o.followUpCampaign === "object") {
+      const fu = o.followUpCampaign as Record<string, unknown>;
+      state.followUpCampaign = {
+        campaignId: String(fu.campaignId ?? ""),
+        campaignName: String(fu.campaignName ?? ""),
+        messageType: fu.messageType === "TEMPLATE" ? "TEMPLATE" : "TEXT",
+        templateId: typeof fu.templateId === "string" ? fu.templateId : null,
+        templateName: typeof fu.templateName === "string" ? fu.templateName : null,
+        outboundMessageId: String(fu.outboundMessageId ?? ""),
+        outboundBody: typeof fu.outboundBody === "string" ? fu.outboundBody : null,
+        sentAt: String(fu.sentAt ?? ""),
+      };
+    } else if (o.source === "follow_up_campaign") {
+      state.followUpCampaign = {
         campaignId: String(o.campaignId ?? ""),
         campaignName: String(o.campaignName ?? ""),
         messageType: o.messageType === "TEMPLATE" ? "TEMPLATE" : "TEXT",
@@ -76,18 +106,31 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
         outboundMessageId: String(o.outboundMessageId ?? ""),
         outboundBody: typeof o.outboundBody === "string" ? o.outboundBody : null,
         sentAt: String(o.sentAt ?? ""),
-      },
-    };
-  }
+      };
+    }
 
-  if (o.source === "native_agent") {
-    return {
-      nativeTurn: {
-        lastInboundMessageId: String(o.lastInboundMessageId ?? ""),
-        lastInboundAt: String(o.lastInboundAt ?? ""),
-        lastPreview: String(o.lastPreview ?? ""),
-      },
-    };
+    const nativeTurn =
+      parseNativeTurn(o.nativeTurn) ??
+      (o.source === "native_agent"
+        ? {
+            lastInboundMessageId: String(o.lastInboundMessageId ?? ""),
+            lastInboundAt: String(o.lastInboundAt ?? ""),
+            lastPreview: String(o.lastPreview ?? ""),
+          }
+        : undefined);
+    if (nativeTurn) state.nativeTurn = nativeTurn;
+
+    const lastNativeToolRound = parseLastNativeToolRound(o.lastNativeToolRound);
+    if (lastNativeToolRound) state.lastNativeToolRound = lastNativeToolRound;
+
+    const flowSlots = parseFlowSlots(o.flowSlots);
+    if (flowSlots) state.flowSlots = flowSlots;
+
+    if (typeof o.flowStep === "string" && o.flowStep.trim()) {
+      state.flowStep = o.flowStep.trim().slice(0, 120);
+    }
+
+    return state;
   }
 
   return {};
@@ -132,6 +175,150 @@ export function buildFollowUpCampaignPromptBlock(ctx: FollowUpCampaignContextSta
     `«${body.slice(0, 2000)}»\n` +
     "Não presuma contexto de atendimentos anteriores já encerrados; foque neste envio e no pedido actual do cliente."
   );
+}
+
+/** Prompt com estado de fluxo + última ronda de tools (reutilização de IDs/flags). */
+export function buildNativeFlowStatePromptBlock(state: AutomationContextState): string {
+  const parts: string[] = [];
+  if (state.flowStep?.trim()) {
+    parts.push(`Etapa actual do fluxo: ${state.flowStep.trim()}`);
+  }
+  const slots = state.flowSlots;
+  if (slots && Object.keys(slots).length > 0) {
+    const lines = Object.entries(slots)
+      .slice(0, 40)
+      .map(([k, v]) => `- ${k}: ${String(v).slice(0, 200)}`);
+    parts.push("Valores já obtidos nesta conversa (reutilize como argumentos das tools quando o schema o exigir):\n" + lines.join("\n"));
+  }
+  const round = state.lastNativeToolRound;
+  if (round && round.tools.length > 0) {
+    const toolLines = round.tools
+      .slice(0, 8)
+      .map((t) => `- ${t.name}: ${t.ok ? "ok" : "falhou"} — ${t.preview.slice(0, 180)}`);
+    parts.push(
+      `Última ronda de ferramentas (${round.at}):\n` +
+        toolLines.join("\n") +
+        "\nSe uma tool anterior já devolveu IDs/URLs, reutilize-os; não peça ao cliente o que já está no estado.",
+    );
+  }
+  if (parts.length === 0) return "";
+  return "\n\n[OpenConduit — estado do fluxo da conversa]\n" + parts.join("\n\n");
+}
+
+const FLOW_SLOT_SKIP_KEYS = new Set([
+  "pathParams",
+  "query",
+  "headers",
+  "body",
+  "sampleContext",
+  "attachmentBase64",
+  "mediaBase64",
+  "attachmentUrl",
+  "mediaUrl",
+  "data",
+  "file",
+  "photo",
+  "image",
+]);
+
+/** Extrai slots estáveis de argumentos LLM (escalares) e de respostas JSON de tools. */
+export function extractFlowSlotsFromToolExchange(input: {
+  llmArgs?: Record<string, unknown>;
+  responseText?: string;
+  ok?: boolean;
+}): AutomationFlowSlots {
+  const out: AutomationFlowSlots = {};
+
+  const takeScalar = (key: string, val: unknown, depth = 0) => {
+    if (depth > 2 || FLOW_SLOT_SKIP_KEYS.has(key)) return;
+    if (typeof val === "string") {
+      const s = val.trim();
+      if (!s || s.length > 500) return;
+      // Evitar base64 / blobs
+      if (s.length > 120 && /^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 200) return;
+      out[key] = s;
+    } else if (typeof val === "number" && Number.isFinite(val)) {
+      out[key] = val;
+    } else if (typeof val === "boolean") {
+      out[key] = val;
+    } else if (val && typeof val === "object" && !Array.isArray(val) && depth < 1) {
+      for (const [ck, cv] of Object.entries(val as Record<string, unknown>)) {
+        if (typeof cv === "string" || typeof cv === "number" || typeof cv === "boolean") {
+          takeScalar(ck, cv, depth + 1);
+        }
+      }
+    }
+  };
+
+  if (input.llmArgs) {
+    for (const [k, v] of Object.entries(input.llmArgs)) {
+      takeScalar(k, v, 0);
+    }
+    const pathParams = input.llmArgs.pathParams;
+    if (pathParams && typeof pathParams === "object" && !Array.isArray(pathParams)) {
+      for (const [k, v] of Object.entries(pathParams as Record<string, unknown>)) {
+        takeScalar(k, v, 0);
+      }
+    }
+  }
+
+  if (input.ok && input.responseText?.trim()) {
+    try {
+      const parsed = JSON.parse(input.responseText) as unknown;
+      const root =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null;
+      if (root) {
+        const nested =
+          root.data && typeof root.data === "object" && !Array.isArray(root.data)
+            ? (root.data as Record<string, unknown>)
+            : root.result && typeof root.result === "object" && !Array.isArray(root.result)
+              ? (root.result as Record<string, unknown>)
+              : root;
+        for (const [k, v] of Object.entries(nested)) {
+          const keyLower = k.toLowerCase();
+          const looksLikeId =
+            keyLower === "id" ||
+            keyLower.endsWith("id") ||
+            keyLower.endsWith("url") ||
+            keyLower.includes("localizer") ||
+            keyLower.includes("token") ||
+            keyLower.includes("reference") ||
+            keyLower.includes("code");
+          if (looksLikeId) takeScalar(k, v, 0);
+        }
+      }
+    } catch {
+      /* ignore non-JSON */
+    }
+  }
+
+  return out;
+}
+
+function mergeStatePreserve(existing: AutomationContextState, patch: Partial<AutomationContextState>): AutomationContextState {
+  return {
+    ...(existing.followUpCampaign ? { followUpCampaign: existing.followUpCampaign } : {}),
+    ...(patch.followUpCampaign ? { followUpCampaign: patch.followUpCampaign } : {}),
+    ...(existing.nativeTurn || patch.nativeTurn
+      ? { nativeTurn: patch.nativeTurn ?? existing.nativeTurn }
+      : {}),
+    ...(existing.lastNativeToolRound || patch.lastNativeToolRound
+      ? { lastNativeToolRound: patch.lastNativeToolRound ?? existing.lastNativeToolRound }
+      : {}),
+    ...(existing.flowSlots || patch.flowSlots
+      ? {
+          flowSlots: {
+            ...(existing.flowSlots ?? {}),
+            ...(patch.flowSlots ?? {}),
+          },
+        }
+      : {}),
+    ...(existing.flowStep || patch.flowStep
+      ? { flowStep: patch.flowStep ?? existing.flowStep }
+      : {}),
+  };
 }
 
 export function buildWebhookConversationContext(
@@ -279,15 +466,13 @@ export async function mergeNativeTurnAutomationContext(params: {
 }): Promise<void> {
   const existing = await loadAutomationConversationContext(params.conversationId);
   const preview = (params.message.body ?? "").trim().slice(0, 500);
-  const state: AutomationContextState = {
-    ...(existing.state.followUpCampaign ? { followUpCampaign: existing.state.followUpCampaign } : {}),
-    ...(existing.state.lastNativeToolRound ? { lastNativeToolRound: existing.state.lastNativeToolRound } : {}),
+  const state = mergeStatePreserve(existing.state, {
     nativeTurn: {
       lastInboundMessageId: params.message.id,
       lastInboundAt: params.message.createdAt.toISOString(),
       lastPreview: preview,
     },
-  };
+  });
 
   await prisma.automationConversationContext.upsert({
     where: { conversationId: params.conversationId },
@@ -310,13 +495,15 @@ export async function mergeNativeToolRoundAutomationContext(params: {
   conversationId: string;
   botId: string;
   toolRound: NonNullable<AutomationContextState["lastNativeToolRound"]>;
+  flowSlots?: AutomationFlowSlots;
+  flowStep?: string;
 }): Promise<void> {
   const existing = await loadAutomationConversationContext(params.conversationId);
-  const state: AutomationContextState = {
-    ...(existing.state.followUpCampaign ? { followUpCampaign: existing.state.followUpCampaign } : {}),
-    ...(existing.state.nativeTurn ? { nativeTurn: existing.state.nativeTurn } : {}),
+  const state = mergeStatePreserve(existing.state, {
     lastNativeToolRound: params.toolRound,
-  };
+    ...(params.flowSlots ? { flowSlots: params.flowSlots } : {}),
+    ...(params.flowStep ? { flowStep: params.flowStep } : {}),
+  });
 
   await prisma.automationConversationContext.upsert({
     where: { conversationId: params.conversationId },
@@ -332,4 +519,37 @@ export async function mergeNativeToolRoundAutomationContext(params: {
       state: asJson(state),
     },
   });
+}
+
+/** Acrescenta/actualiza slots de fluxo sem apagar o resto do estado. */
+export async function mergeFlowSlotsAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  flowSlots: AutomationFlowSlots;
+  flowStep?: string;
+}): Promise<AutomationFlowSlots> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const state = mergeStatePreserve(existing.state, {
+    flowSlots: params.flowSlots,
+    ...(params.flowStep ? { flowStep: params.flowStep } : {}),
+  });
+  const mergedSlots = state.flowSlots ?? {};
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+
+  return mergedSlots;
 }

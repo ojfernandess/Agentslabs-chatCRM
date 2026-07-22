@@ -21,8 +21,12 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
 import {
   buildFollowUpCampaignPromptBlock,
+  buildNativeFlowStatePromptBlock,
+  extractFlowSlotsFromToolExchange,
   loadAutomationConversationContext,
+  mergeFlowSlotsAutomationContext,
   mergeNativeToolRoundAutomationContext,
+  type AutomationFlowSlots,
 } from "./automationConversationContextLib.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
@@ -1168,17 +1172,23 @@ export async function generateNativeAgentReply(input: {
       : "";
 
   const imageInboundHint =
-    message.type === "IMAGE" || userMessage.includes(IMAGE_TRANSCRIPTION_PREFIX)
-      ? "\n\n[OpenConduit — entrada de imagem]\n" +
+    message.type === "IMAGE" ||
+    message.type === "DOCUMENT" ||
+    userMessage.includes(IMAGE_TRANSCRIPTION_PREFIX)
+      ? "\n\n[OpenConduit — entrada de imagem/documento]\n" +
         "Se o texto incluir «" +
         IMAGE_TRANSCRIPTION_PREFIX +
-        "», trata-o como transcrição automática (descrição e textos extraídos) de uma imagem enviada pelo cliente."
+        "», trata-o apenas como ajuda de compreensão (descrição/OCR). " +
+        "O ficheiro binário original permanece disponível no servidor para ferramentas HTTP " +
+        "(templates {{attachmentBase64}} / multipart) — **não** inventes base64 nem copies o JSON da transcrição como anexo. " +
+        "Quando precisares de enviar a imagem/documento a uma API, invoca a tool de upload; o runtime injecta a mídia da mensagem actual."
       : "";
 
   const automationCtx = await loadAutomationConversationContext(conversation.id);
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
+  const flowStatePrompt = buildNativeFlowStatePromptBlock(automationCtx.state);
 
   const tagToolGuard =
     flags.assign_contact_tags && allowedTagIds.length > 0 && assignableTagsDescription.trim()
@@ -1196,7 +1206,8 @@ export async function generateNativeAgentReply(input: {
     tagToolGuard +
     audioInboundHint +
     imageInboundHint +
-    followUpPrompt;
+    followUpPrompt +
+    flowStatePrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
@@ -1233,6 +1244,7 @@ export async function generateNativeAgentReply(input: {
   const useTools = provider !== "google_gemini" && tools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;
+  let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   if (customHttpTools.length > 0 && historyOverride == null) {
     const contactRow = effectiveContactId
       ? await prisma.contact.findFirst({
@@ -1247,6 +1259,17 @@ export async function generateNativeAgentReply(input: {
       message,
       contact: contactRow,
     });
+    if (Object.keys(sessionFlowSlots).length > 0) {
+      httpToolRuntimeContext = {
+        ...httpToolRuntimeContext,
+        flowSlots: sessionFlowSlots,
+        conversation: {
+          ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? { id: conversation.id }),
+          flowSlots: sessionFlowSlots,
+          ...(automationCtx.state.flowStep ? { flowStep: automationCtx.state.flowStep } : {}),
+        },
+      };
+    }
   }
 
   const signal = nativeAgentLlmAbortSignal();
@@ -1378,12 +1401,47 @@ export async function generateNativeAgentReply(input: {
                 executionSource: "native_agent",
                 runtimeSampleContext: httpToolRuntimeContext,
               });
+              const extracted = extractFlowSlotsFromToolExchange({
+                llmArgs: args,
+                responseText: exec.responseText,
+                ok: exec.ok,
+              });
+              if (Object.keys(extracted).length > 0) {
+                sessionFlowSlots = { ...sessionFlowSlots, ...extracted };
+                if (httpToolRuntimeContext) {
+                  httpToolRuntimeContext = {
+                    ...httpToolRuntimeContext,
+                    flowSlots: sessionFlowSlots,
+                    conversation: {
+                      ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? {
+                        id: conversation.id,
+                      }),
+                      flowSlots: sessionFlowSlots,
+                    },
+                  };
+                }
+                if (historyOverride == null) {
+                  try {
+                    await mergeFlowSlotsAutomationContext({
+                      organizationId,
+                      conversationId: conversation.id,
+                      botId: bot.id,
+                      flowSlots: extracted,
+                    });
+                  } catch (err) {
+                    log.warn({ err, conversationId: conversation.id }, "merge flow slots failed");
+                  }
+                }
+              }
               return finishToolCall(
                 JSON.stringify({
                   ok: exec.ok,
                   statusCode: exec.statusCode,
                   bodyPreview: exec.responseText.slice(0, 12_000),
                   error: exec.error,
+                  ...(exec.autoFilledFields?.length
+                    ? { autoFilledFields: exec.autoFilledFields.slice(0, 20) }
+                    : {}),
                 }),
               );
             }
@@ -1553,6 +1611,7 @@ export async function generateNativeAgentReply(input: {
           tools: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
           resultDeliveredToCustomer: hasSubstantiveAgentReplyToCustomer(replyText),
         },
+        ...(Object.keys(sessionFlowSlots).length > 0 ? { flowSlots: sessionFlowSlots } : {}),
       });
     } catch (err) {
       log.warn({ err, conversationId: conversation.id }, "merge native tool round context failed");
@@ -1625,16 +1684,26 @@ export async function generateNativeAgentReply(input: {
 
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
   if (agentSupervisor.enabled && replyText.trim()) {
+    const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
     const toolSummary =
       toolRoundOutcomes.length > 0
         ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 200)}`).join("\n")
         : "(nenhuma ferramenta invocada)";
     const supervisorPrompt =
-      "És um supervisor de qualidade de atendimento. Analisa se a resposta do agente está correta, " +
-      "usa dados das ferramentas quando existirem, e responde em JSON com approved (boolean) e summary (string). " +
-      "approved=true se a resposta pode ser enviada ao cliente.";
+      "És um supervisor de qualidade de atendimento. Responde em JSON com approved (boolean) e summary (string).\n" +
+      "Critérios:\n" +
+      "- Avalia coerência da resposta com o **resultado das ferramentas** (ok/fail e dados), não com a literalidade do texto OCR/transcrição.\n" +
+      "- Se uma ou mais tools HTTP devolveram sucesso (ok/2xx) e a resposta do agente confirma o próximo passo natural do fluxo " +
+      "(pedir próximo documento, confirmar envio, avançar etapa), approved=true.\n" +
+      "- Não rejeites só porque a mensagem do cliente é uma transcrição de imagem/[Transcrição de imagem] ou porque a descrição visual " +
+      "não «parece» o tipo de ficheiro esperado, quando a tool de upload/processamento já correu com sucesso.\n" +
+      "- approved=false apenas se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
+      "- Turnos de recolha de dados (perguntas do agente, pedidos de documento) sem tool necessária: approved=true se a pergunta for adequada.";
     const supervisorUser =
-      `Cliente: ${userMessage.slice(0, 1500)}\n\nFerramentas:\n${toolSummary}\n\nResposta proposta:\n${replyText.slice(0, 2500)}`;
+      `Cliente: ${userMessage.slice(0, 1500)}\n\n` +
+      `Tools com sucesso nesta ronda: ${successfulTools.length}/${toolRoundOutcomes.length}\n` +
+      `Ferramentas:\n${toolSummary}\n\n` +
+      `Resposta proposta:\n${replyText.slice(0, 2500)}`;
     try {
       let supervisorText = "";
       if (provider === "google_gemini") {
@@ -1666,11 +1735,20 @@ export async function generateNativeAgentReply(input: {
       let approved = true;
       let summary = supervisorText.slice(0, 500);
       try {
-        const parsed = JSON.parse(supervisorText) as { approved?: boolean; summary?: string };
+        const jsonMatch = supervisorText.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch?.[0] ?? supervisorText) as {
+          approved?: boolean;
+          summary?: string;
+        };
         if (typeof parsed.approved === "boolean") approved = parsed.approved;
         if (typeof parsed.summary === "string" && parsed.summary.trim()) summary = parsed.summary.trim();
       } catch {
         approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
+      }
+      // Override defensivo: tools OK + resposta substantiva → não marcar falso negativo por OCR
+      if (!approved && successfulTools.length > 0 && hasSubstantiveAgentReplyToCustomer(replyText)) {
+        approved = true;
+        summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);
       }
       const supLog = approved ? ex?.info.bind(ex) : ex?.warn.bind(ex);
       supLog?.(

@@ -3,8 +3,11 @@ import test from "node:test";
 import {
   buildHttpToolFlatContext,
   buildHttpToolAttachmentRecord,
+  buildSchemaFillSources,
+  collectMissingRequiredSchemaFields,
   expandTemplateValue,
   extractInlineBodyFromArgs,
+  fillMissingRequiredSchemaFields,
   normalizeLlmArgsKeyAliases,
   resolveHttpRequestBody,
 } from "./automationHttpToolExecute.js";
@@ -196,6 +199,46 @@ test("normalizeLlmArgsKeyAliases fixes nested object key typos", () => {
   );
   const guest = normalized.mainGuest as Record<string, unknown>;
   assert.equal(guest.mobilePhoneNumber, "+5511999999999");
+});
+
+test("fillMissingRequiredSchemaFields applies schema defaults and flowSlots", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      reservationIdOrLocalizer: { type: "string" },
+      approveCheckin: { type: "boolean", default: true },
+      sentToReception: { type: "boolean", default: false },
+      validatedCheckin: { type: "boolean", default: true },
+    },
+    required: ["reservationIdOrLocalizer", "approveCheckin", "sentToReception", "validatedCheckin"],
+  };
+  const llmArgs = {
+    sampleContext: {
+      flowSlots: { reservationIdOrLocalizer: "A3FIULCZ" },
+    },
+  };
+  const fillSources = buildSchemaFillSources(llmArgs, { argDefaults: {} });
+  const { data, applied } = fillMissingRequiredSchemaFields({
+    schema,
+    data: llmArgs,
+    fillSources,
+  });
+  assert.equal(data.reservationIdOrLocalizer, "A3FIULCZ");
+  assert.equal(data.approveCheckin, true);
+  assert.equal(data.sentToReception, false);
+  assert.equal(data.validatedCheckin, true);
+  assert.ok(applied.length >= 4);
+  assert.equal(collectMissingRequiredSchemaFields(schema, data).length, 0);
+});
+test("buildHttpToolFlatContext promotes flowSlots to top-level template keys", () => {
+  const flat = buildHttpToolFlatContext({
+    sampleContext: {
+      flowSlots: { guestId: "G-1", reservationIdOrLocalizer: "ABC" },
+    },
+  });
+  assert.equal(flat.guestId, "G-1");
+  assert.equal(flat.reservationIdOrLocalizer, "ABC");
+  assert.equal(flat["flowSlots.guestId"], "G-1");
 });
 
 test("flattenTemplateContext exposes nested attachment and attachments array paths", () => {

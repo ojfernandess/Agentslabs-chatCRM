@@ -3714,7 +3714,7 @@ function HttpLikeToolEditor({
               rows={6}
               placeholder={
                 bodyType === "multipart"
-                  ? '{"type":"{{type}}","reservationIdOrLocalizer":"{{reservationIdOrLocalizer}}"}'
+                  ? '{"guestId":"{{conversation.flowSlots.guestId}}","note":"file field is automatic"}'
                   : '{"type":"{{type}}","data":"{{attachmentBase64}}"}'
               }
               className={clsx(fieldCls, "font-mono text-[11px]")}

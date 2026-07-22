@@ -401,6 +401,8 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
       defaultHeaders: {},
       defaultQuery: {},
       bodyTemplate: {},
+      /** Defaults estáveis injectados quando o modelo omite campos required do schema. */
+      argDefaults: {},
     },
     marketplace: { category: "AUTOMATION", icon: "Globe", popularity: 95, accent: "from-cyan-500/30 to-blue-600/10" },
   },

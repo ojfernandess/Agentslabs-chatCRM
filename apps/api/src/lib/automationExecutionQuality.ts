@@ -71,8 +71,44 @@ export type ExecutionLogEntryLike = {
 const GENERIC_REPLY_RE =
   /\b(como\s+posso\s+ajud(a|á)|posso\s+ajud(a|á)|em\s+que\s+posso\s+ajud(a|á)|how\s+can\s+i\s+help|what\s+can\s+i\s+do\s+for\s+you)\b/i;
 
-const TOOL_INTENT_RE =
+/** Palavras de domínio — sozinhas NÃO bastam para tool_ignored (evita OCR / recolha de dados). */
+const TOOL_DOMAIN_RE =
   /\b(saldo|balance|reserva|reservation|cancelar|cancel|check[\s-]?in|check[\s-]?out|pedido|order|status|extrato|statement|hotel|voo|flight|boleto|invoice|fatura|cpf|documento|document|agendamento|appointment|marcar|schedule)\b/i;
+
+/** Intenção real de consulta/acção que tipicamente exige ferramenta. */
+const TOOL_QUERY_INTENT_RE =
+  /\b((quero|preciso|pode|podes|poderia|gostaria)\s+(meu\s+)?(saldo|extrato|status|reserva)|consultar|verificar|checar|mostra(r)?\s+(meu|o|a)|qual\s+(é|e)\s+(o\s+)?(meu\s+)?(saldo|status|reserva)|cancelar\s+(a\s+)?(minha\s+)?reserva|fazer\s+check[\s-]?in|check[\s-]?in\s+(da|de|do)|check[\s-]?out)\b/i;
+
+const DATA_COLLECTION_REPLY_RE =
+  /\b(envie|envia|manda|mande|enviar|preciso\s+(do|da|de)|qual\s+(é|e)\s+o\s+seu|pode\s+enviar|fotografe|anexe|anexa|confirma\s+(o|a|os|as)|digite|informe)\b/i;
+
+const IMAGE_TRANSCRIPTION_BODY_RE = /\[Transcri[cç][aã]o de imagem\]/i;
+
+/** Mantido para detectConversationLoop (domínio + resposta genérica). */
+const TOOL_INTENT_RE = TOOL_DOMAIN_RE;
+
+function looksLikeDataProvisionTurn(userMessage: string, replyText: string): boolean {
+  const um = userMessage.trim();
+  if (IMAGE_TRANSCRIPTION_BODY_RE.test(um)) return true;
+  if (/^\[Imagem enviada pelo cliente\]$/i.test(um)) return true;
+  // Localizador / código curto sem verbo de consulta
+  if (/^[A-Z0-9\-_]{4,24}$/i.test(um) && !TOOL_QUERY_INTENT_RE.test(um)) return true;
+  if (DATA_COLLECTION_REPLY_RE.test(replyText)) return true;
+  // Agente a fazer pergunta de recolha
+  if (/\?\s*$/.test(replyText.trim()) && replyText.trim().length < 420) return true;
+  return false;
+}
+
+function shouldSignalToolIgnored(userMessage: string, replyText: string, anyToolCalled: boolean): boolean {
+  if (anyToolCalled || !userMessage.trim() || !replyText.trim()) return false;
+  if (looksLikeDataProvisionTurn(userMessage, replyText)) return false;
+  if (TOOL_QUERY_INTENT_RE.test(userMessage)) return true;
+  // Domínio + verbo de pedido explícito (ex.: "Quero meu saldo")
+  if (TOOL_DOMAIN_RE.test(userMessage) && /\b(quero|preciso|consulta|verifica|mostra|qual|cancelar|fazer)\b/i.test(userMessage)) {
+    return true;
+  }
+  return false;
+}
 
 function tokenizeForOverlap(text: string): Set<string> {
   const out = new Set<string>();
@@ -306,7 +342,7 @@ export function analyzeExecutionQualityFromLogs(entries: ExecutionLogEntryLike[]
     });
   }
 
-  if (userMessage && TOOL_INTENT_RE.test(userMessage) && !anyToolCalled && replyText) {
+  if (shouldSignalToolIgnored(userMessage, replyText, anyToolCalled)) {
     push({
       kind: "tool_ignored",
       severity: "warn",

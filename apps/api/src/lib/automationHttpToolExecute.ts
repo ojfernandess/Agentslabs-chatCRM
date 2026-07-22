@@ -274,6 +274,9 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
       }
     : {};
 
+  const messageType = input.message.type;
+  const attachmentMime = primaryAttachment?.mimeType ?? input.message.mediaType ?? "";
+
   return {
     message: messageCtx,
     contact: contactCtx,
@@ -286,9 +289,14 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
     mediaBase64: primaryMedia?.base64 ?? "",
     mediaFilename: primaryMedia?.filename ?? "",
     attachmentUrl: primaryAttachment?.url ?? input.message.mediaUrl ?? "",
-    attachmentMimeType: primaryAttachment?.mimeType ?? input.message.mediaType ?? "",
+    attachmentMimeType: attachmentMime,
     attachmentFilename: primaryAttachment?.filename ?? "",
     attachmentBase64: primaryAttachment?.base64 ?? "",
+    // Aliases convenientes para templates ({{type}} / {{mimeType}})
+    type: messageType,
+    mimeType: attachmentMime,
+    hasInboundMedia: Boolean(primaryAttachment?.hasBinary || primaryMedia?.buffer.length),
+    base64Available: Boolean(primaryAttachment?.base64Available || (primaryMedia?.base64?.length ?? 0) > 0),
   };
 }
 
@@ -450,6 +458,34 @@ export function buildHttpToolFlatContext(
   if (query && typeof query === "object" && !Array.isArray(query)) {
     for (const [k, v] of Object.entries(query as Record<string, unknown>)) {
       if (v !== undefined && v !== null) flat[k] = String(v);
+    }
+  }
+
+  // Promove flowSlots para chaves de topo ({{reservationId}} além de {{flowSlots.reservationId}})
+  const sample =
+    args.sampleContext && typeof args.sampleContext === "object" && !Array.isArray(args.sampleContext)
+      ? (args.sampleContext as Record<string, unknown>)
+      : null;
+  const slotBags: Record<string, unknown>[] = [];
+  if (sample?.flowSlots && typeof sample.flowSlots === "object" && !Array.isArray(sample.flowSlots)) {
+    slotBags.push(sample.flowSlots as Record<string, unknown>);
+  }
+  if (
+    sample?.conversation &&
+    typeof sample.conversation === "object" &&
+    !Array.isArray(sample.conversation)
+  ) {
+    const conv = sample.conversation as Record<string, unknown>;
+    if (conv.flowSlots && typeof conv.flowSlots === "object" && !Array.isArray(conv.flowSlots)) {
+      slotBags.push(conv.flowSlots as Record<string, unknown>);
+    }
+  }
+  for (const bag of slotBags) {
+    for (const [k, v] of Object.entries(bag)) {
+      if (v === undefined || v === null) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        if (!(k in flat) || !flat[k]) flat[k] = String(v);
+      }
     }
   }
 
@@ -734,6 +770,195 @@ export function collectMissingRequiredSchemaFields(schema: unknown, data: unknow
   return missing;
 }
 
+const CONTEXT_FILL_SKIP_KEYS = new Set([
+  ...HTTP_TOOL_RESERVED_ARG_KEYS,
+  "sampleContext",
+]);
+
+function isFillableScalar(v: unknown): v is string | number | boolean {
+  if (typeof v === "boolean" || typeof v === "number") return typeof v === "number" ? Number.isFinite(v) : true;
+  if (typeof v === "string") return true;
+  return false;
+}
+
+function lookupFillValue(sources: Record<string, unknown>, key: string): unknown {
+  if (key in sources && sources[key] !== undefined && sources[key] !== null) return sources[key];
+  const lower = key.toLowerCase();
+  for (const [sk, sv] of Object.entries(sources)) {
+    if (sk.toLowerCase() === lower) return sv;
+  }
+  // Alias leve: reservationId ↔ reservationIdOrLocalizer, etc.
+  for (const [sk, sv] of Object.entries(sources)) {
+    const a = sk.toLowerCase();
+    const b = lower;
+    if (a.includes(b) || b.includes(a)) {
+      if (Math.abs(a.length - b.length) <= Math.max(8, Math.floor(b.length * 0.35))) return sv;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Fontes genéricas para completar required omitidos pelo modelo:
+ * argDefaults da tool, defaults do JSON Schema, flowSlots / sampleContext.
+ */
+export function buildSchemaFillSources(
+  llmArgs: Record<string, unknown>,
+  cfg?: Record<string, unknown>,
+): Record<string, unknown> {
+  const sources: Record<string, unknown> = {};
+
+  const argDefaults =
+    cfg?.argDefaults && typeof cfg.argDefaults === "object" && !Array.isArray(cfg.argDefaults)
+      ? (cfg.argDefaults as Record<string, unknown>)
+      : null;
+  if (argDefaults) {
+    for (const [k, v] of Object.entries(argDefaults)) {
+      if (isFillableScalar(v) || (v && typeof v === "object")) sources[k] = v;
+    }
+  }
+
+  const sample =
+    llmArgs.sampleContext && typeof llmArgs.sampleContext === "object" && !Array.isArray(llmArgs.sampleContext)
+      ? (llmArgs.sampleContext as Record<string, unknown>)
+      : null;
+
+  if (sample) {
+    for (const [k, v] of Object.entries(sample)) {
+      if (CONTEXT_FILL_SKIP_KEYS.has(k)) continue;
+      if (isFillableScalar(v)) sources[k] = v;
+    }
+
+    const flowSlots =
+      (sample.flowSlots && typeof sample.flowSlots === "object" && !Array.isArray(sample.flowSlots)
+        ? (sample.flowSlots as Record<string, unknown>)
+        : null) ??
+      (sample.conversation &&
+      typeof sample.conversation === "object" &&
+      !Array.isArray(sample.conversation) &&
+      (sample.conversation as Record<string, unknown>).flowSlots &&
+      typeof (sample.conversation as Record<string, unknown>).flowSlots === "object"
+        ? ((sample.conversation as Record<string, unknown>).flowSlots as Record<string, unknown>)
+        : null);
+    if (flowSlots) {
+      for (const [k, v] of Object.entries(flowSlots)) {
+        if (isFillableScalar(v)) sources[k] = v;
+      }
+    }
+
+    const contact =
+      sample.contact && typeof sample.contact === "object" && !Array.isArray(sample.contact)
+        ? (sample.contact as Record<string, unknown>)
+        : null;
+    if (contact) {
+      if (typeof contact.name === "string" && contact.name.trim()) {
+        sources.contactName = contact.name;
+        sources.name = sources.name ?? contact.name;
+      }
+      if (typeof contact.phone === "string" && contact.phone.trim()) {
+        sources.contactPhone = contact.phone;
+        sources.phone = sources.phone ?? contact.phone;
+        sources.mobilePhoneNumber = sources.mobilePhoneNumber ?? contact.phone;
+      }
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * Preenche campos required em falta a partir de defaults do schema + contexto (retry antes de falhar).
+ * Não inventa valores: só usa default explícito, argDefaults ou slots/contexto já conhecidos.
+ */
+export function fillMissingRequiredSchemaFields(input: {
+  schema: unknown;
+  data: Record<string, unknown>;
+  fillSources: Record<string, unknown>;
+}): { data: Record<string, unknown>; applied: string[] } {
+  const applied: string[] = [];
+  const schema = input.schema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return { data: input.data, applied };
+  }
+
+  const fillAt = (
+    childSchema: unknown,
+    obj: Record<string, unknown>,
+    pathPrefix: string,
+  ): void => {
+    if (!childSchema || typeof childSchema !== "object" || Array.isArray(childSchema)) return;
+    const s = childSchema as Record<string, unknown>;
+    const props =
+      s.properties && typeof s.properties === "object" && !Array.isArray(s.properties)
+        ? (s.properties as Record<string, unknown>)
+        : null;
+    if (!props) return;
+
+    const required = Array.isArray(s.required)
+      ? s.required.filter((x): x is string => typeof x === "string" && x.length > 0)
+      : [];
+
+    for (const key of Object.keys(props)) {
+      const propSchema = props[key];
+      const path = pathPrefix ? `${pathPrefix}.${key}` : key;
+      const current = obj[key];
+
+      if (current === undefined || current === null) {
+        let filled: unknown;
+        if (propSchema && typeof propSchema === "object" && !Array.isArray(propSchema) && "default" in propSchema) {
+          filled = (propSchema as Record<string, unknown>).default;
+        }
+        if (filled === undefined) {
+          const fromCtx = lookupFillValue(input.fillSources, key);
+          if (fromCtx !== undefined && fromCtx !== null) filled = fromCtx;
+        }
+        if (filled !== undefined) {
+          obj[key] = filled;
+          applied.push(path);
+        }
+      }
+
+      const next = obj[key];
+      if (
+        next &&
+        typeof next === "object" &&
+        !Array.isArray(next) &&
+        propSchema &&
+        typeof propSchema === "object"
+      ) {
+        fillAt(propSchema, next as Record<string, unknown>, path);
+      } else if (
+        (next === undefined || next === null) &&
+        required.includes(key) &&
+        propSchema &&
+        typeof propSchema === "object" &&
+        !Array.isArray(propSchema) &&
+        ((propSchema as Record<string, unknown>).type === "object" ||
+          (propSchema as Record<string, unknown>).properties)
+      ) {
+        // Cria objecto vazio para permitir defaults aninhados
+        obj[key] = {};
+        applied.push(path);
+        fillAt(propSchema, obj[key] as Record<string, unknown>, path);
+      }
+    }
+  };
+
+  const data = { ...input.data };
+  fillAt(schema, data, "");
+  return { data, applied };
+}
+
+function templateReferencesMediaBase64(template: unknown): boolean {
+  const raw =
+    typeof template === "string"
+      ? template
+      : template != null
+        ? JSON.stringify(template)
+        : "";
+  return /\{\{\s*(attachmentBase64|mediaBase64|attachment\.base64|attachments\.\d+\.base64)\s*\}\}/i.test(raw);
+}
+
 function buildValidationErrorPayload(missing: string[], llmArgs?: Record<string, unknown>): string {
   const hints = llmArgs ? collectSimilarArgKeyHints(missing, llmArgs) : [];
   const typoBlock =
@@ -745,12 +970,9 @@ function buildValidationErrorPayload(missing: string[], llmArgs?: Record<string,
     validationError: true,
     missingFields: missing,
     message:
-      "Argumentos incompletos para a ferramenta HTTP. O modelo deve incluir todos os campos obrigatórios do schema antes de repetir a chamada. " +
-      (missing.includes("body.room_units") || missing.some((m) => m.endsWith(".room_units"))
-        ? "Para reservas: body.room_units é obrigatório — use um objeto cuja chave é o room_type_id devolvido pela consulta de disponibilidade, com adults, kids e guests em cada unidade."
-        : `Campos em falta: ${missing.join(", ")}.`) +
-      typoBlock +
-      " Se esta ferramenta prepara dados para outra (ex.: upload de documento antes do check-in), corrija e invoque-a novamente antes de avançar.",
+      "Argumentos incompletos para a ferramenta HTTP. Inclua os campos obrigatórios do schema (ou configure defaults/argDefaults / estado de conversa) antes de repetir a chamada. " +
+      `Campos em falta: ${missing.join(", ")}.` +
+      typoBlock,
   });
 }
 
@@ -777,11 +999,21 @@ export async function runAutomationHttpLikeTool(input: {
   executionSource: string;
   /** Contexto da conversa (mensagem, contacto, mídia) injectado em sampleContext. */
   runtimeSampleContext?: Record<string, unknown>;
-}): Promise<{ ok: boolean; statusCode: number | null; responseText: string; error: string | null; durationMs: number }> {
+}): Promise<{
+  ok: boolean;
+  statusCode: number | null;
+  responseText: string;
+  error: string | null;
+  durationMs: number;
+  /** Campos preenchidos automaticamente a partir de defaults/contexto antes do HTTP. */
+  autoFilledFields?: string[];
+}> {
   const { tool, organizationId, botId, conversationId, executionSource, runtimeSampleContext } = input;
   const mergedArgs = mergeLlmArgsWithRuntimeContext(input.llmArgs, runtimeSampleContext);
   const paramSchema = safeOpenAiParametersSchema(tool.parametersSchema);
-  const llmArgs = normalizeLlmArgsKeyAliases(mergedArgs, paramSchema);
+  const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
+  let llmArgs = normalizeLlmArgsKeyAliases(mergedArgs, paramSchema);
+
   if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
     return { ok: false, statusCode: null, responseText: "", error: "unsupported_tool_type", durationMs: 0 };
   }
@@ -789,7 +1021,31 @@ export async function runAutomationHttpLikeTool(input: {
     return { ok: false, statusCode: null, responseText: "", error: "organization_mismatch", durationMs: 0 };
   }
 
-  const missingRequired = collectMissingRequiredSchemaFields(paramSchema, llmArgs);
+  // Retry de schema: defaults JSON Schema + argDefaults + flowSlots/sampleContext
+  const fillSources = buildSchemaFillSources(llmArgs, cfg);
+  const filled = fillMissingRequiredSchemaFields({
+    schema: paramSchema,
+    data: llmArgs,
+    fillSources,
+  });
+  llmArgs = filled.data;
+  const autoFilledFields = filled.applied;
+
+  let missingRequired = collectMissingRequiredSchemaFields(paramSchema, llmArgs);
+  if (missingRequired.length > 0) {
+    // Segunda passagem: aliases já normalizados + fontes após merge
+    const filledAgain = fillMissingRequiredSchemaFields({
+      schema: paramSchema,
+      data: llmArgs,
+      fillSources: { ...fillSources, ...buildSchemaFillSources(llmArgs, cfg) },
+    });
+    llmArgs = filledAgain.data;
+    for (const p of filledAgain.applied) {
+      if (!autoFilledFields.includes(p)) autoFilledFields.push(p);
+    }
+    missingRequired = collectMissingRequiredSchemaFields(paramSchema, llmArgs);
+  }
+
   if (missingRequired.length > 0) {
     const responseText = buildValidationErrorPayload(missingRequired, mergedArgs);
     const durationMs = 0;
@@ -802,7 +1058,11 @@ export async function runAutomationHttpLikeTool(input: {
           ok: false,
           statusCode: null,
           durationMs,
-          requestSummary: asJson({ validation: true, missingFields: missingRequired }),
+          requestSummary: asJson({
+            validation: true,
+            missingFields: missingRequired,
+            autoFilledFields: autoFilledFields.slice(0, 40),
+          }),
           responseSummary: asJson({ preview: responseText.slice(0, 8000) }),
           errorMessage: "schema_validation_failed",
           tokensUsed: null,
@@ -816,10 +1076,9 @@ export async function runAutomationHttpLikeTool(input: {
       responseText,
       error: "schema_validation_failed",
       durationMs,
+      autoFilledFields,
     };
   }
-
-  const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
 
   const flat = buildHttpToolFlatContext(llmArgs, {
     organizationId,
@@ -946,6 +1205,35 @@ export async function runAutomationHttpLikeTool(input: {
         : null
       : null;
 
+    const configuredTemplate = cfg.bodyTemplate ?? cfg.body;
+    if (
+      !isMultipartBodyType(String(cfg.bodyType ?? "json")) &&
+      templateReferencesMediaBase64(configuredTemplate)
+    ) {
+      const b64 =
+        (typeof flat.attachmentBase64 === "string" && flat.attachmentBase64) ||
+        (typeof flat.mediaBase64 === "string" && flat.mediaBase64) ||
+        "";
+      const hasBinaryFlag = flat.hasInboundMedia === "true" || flat.base64Available === "true";
+      if (!b64) {
+        const mediaPresent = Boolean(mediaUrlForUpload) || hasBinaryFlag;
+        return {
+          ok: false,
+          statusCode: null,
+          responseText: JSON.stringify({
+            ok: false,
+            error: mediaPresent ? "attachment_base64_unavailable" : "inbound_media_missing",
+            message: mediaPresent
+              ? "O template referencia {{attachmentBase64}}/{{mediaBase64}}, mas o binário não está disponível em base64 (ficheiro demasiado grande ou falha ao carregar). Use bodyType multipart para anexos grandes, ou garanta mídia inbound na mensagem actual."
+              : "O template referencia anexo em base64, mas não há mídia inbound (imagem/documento) na mensagem actual nem no histórico recente. A transcrição OCR de imagem não substitui o ficheiro binário.",
+          }),
+          error: mediaPresent ? "attachment_base64_unavailable" : "inbound_media_missing",
+          durationMs: 0,
+          autoFilledFields,
+        };
+      }
+    }
+
     const resolvedBody = resolveHttpRequestBody({ cfg, args: llmArgs, flat, inboundMedia });
     bodyStr = resolvedBody.bodyStr;
     multipartFormData = resolvedBody.multipartFormData;
@@ -969,10 +1257,11 @@ export async function runAutomationHttpLikeTool(input: {
           ok: false,
           error: "inbound_media_missing",
           message:
-            "Ferramenta multipart requer mídia inbound (imagem/documento) na mensagem ou no histórico recente da conversa.",
+            "Ferramenta multipart requer mídia inbound (imagem/documento) na mensagem ou no histórico recente da conversa. A transcrição OCR não substitui o anexo binário.",
         }),
         error: "inbound_media_missing",
         durationMs: 0,
+        autoFilledFields,
       };
     }
   }
@@ -1016,7 +1305,10 @@ export async function runAutomationHttpLikeTool(input: {
         ok: ok && statusCode !== null && !errMsg,
         statusCode,
         durationMs,
-        requestSummary: asJson(reqSummary),
+        requestSummary: asJson({
+          ...reqSummary,
+          ...(autoFilledFields.length > 0 ? { autoFilledFields: autoFilledFields.slice(0, 40) } : {}),
+        }),
         responseSummary: asJson(buildToolExecutionResponseSummary(responseText)),
         errorMessage: errMsg,
         tokensUsed: null,
@@ -1047,6 +1339,7 @@ export async function runAutomationHttpLikeTool(input: {
     responseText,
     error: errMsg,
     durationMs,
+    autoFilledFields,
   };
 }
 

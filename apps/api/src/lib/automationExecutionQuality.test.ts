@@ -49,6 +49,24 @@ test("detects ignored tool when balance intent without tool call", () => {
   assert.ok(signals.some((s) => s.kind === "tool_ignored"));
 });
 
+test("does not flag tool_ignored on OCR / data-collection turns", () => {
+  const ocr = analyzeLiveExecutionQuality({
+    userMessage: '[Transcrição de imagem]{"description":"CNH","extractedText":"123"}',
+    replyText: "Documento recebido. Pode enviar a selfie?",
+    toolOutcomes: [],
+    outboundSent: true,
+  });
+  assert.ok(!ocr.some((s) => s.kind === "tool_ignored"));
+
+  const collect = analyzeLiveExecutionQuality({
+    userMessage: "documento",
+    replyText: "Por favor envie a foto do documento de identidade.",
+    toolOutcomes: [],
+    outboundSent: true,
+  });
+  assert.ok(!collect.some((s) => s.kind === "tool_ignored"));
+});
+
 test("detects conversation loop", () => {
   assert.equal(
     detectConversationLoop({

@@ -1057,7 +1057,7 @@ export const messages = {
       toolMultipartFileField: "Campo multipart do ficheiro",
       toolBodyTemplateJson: "Body template (JSON)",
       toolBodyTemplateHint:
-        "Corpo da requisição com placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, etc. O agente nativo injecta mídia da conversa automaticamente. Prioridade sobre argumentos inline do modelo.",
+        "Corpo com placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, {{flowSlots.*}}. Mídia inbound (binário) é injectada automaticamente — a OCR/transcrição não substitui o anexo. Use argDefaults no config da tool para flags/IDs estáveis quando o modelo omitir campos required.",
       toolBodyTemplateInvalid: "Body template deve ser um objecto JSON (ex.: {\"type\":\"{{type}}\"}).",
       toolBodyGetHint: "Body template aplica-se a POST, PUT, PATCH e DELETE — não a GET/HEAD.",
       toolHttpMethod: "Método HTTP",
@@ -6151,7 +6151,7 @@ export const messages = {
       toolMultipartFileField: "Multipart file field name",
       toolBodyTemplateJson: "Body template (JSON)",
       toolBodyTemplateHint:
-        "Request body with placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, etc. The native agent injects conversation media automatically. Takes priority over inline model arguments.",
+        "Body with placeholders {{type}}, {{attachmentBase64}}, {{attachmentUrl}}, {{contact.name}}, {{flowSlots.*}}. Inbound media (binary) is injected automatically — OCR/transcription does not replace the file. Use argDefaults in the tool config for stable flags/IDs when the model omits required fields.",
       toolBodyTemplateInvalid: "Body template must be a JSON object (e.g. {\"type\":\"{{type}}\"}).",
       toolBodyGetHint: "Body template applies to POST, PUT, PATCH, and DELETE — not GET/HEAD.",
       toolHttpMethod: "HTTP method",
