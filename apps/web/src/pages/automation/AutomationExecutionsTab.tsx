@@ -94,11 +94,21 @@ function csvEscapeCell(s: string): string {
   return t;
 }
 
-/** Same columns as GET …/export?format=csv (API). */
-function buildExecutionCsv(detail: ExecDetail, entries: LogEntry[]): string {
-  const header = ["sequence", "level", "nodePath", "nodeId", "nodeName", "message", "createdAt"].join(",");
+function buildExecutionCsv(detail: ExecDetail, entries: LogEntry[], options?: { includeExecutionId?: boolean }): string {
+  const withId = options?.includeExecutionId === true;
+  const header = [
+    ...(withId ? ["executionId"] : []),
+    "sequence",
+    "level",
+    "nodePath",
+    "nodeId",
+    "nodeName",
+    "message",
+    "createdAt",
+  ].join(",");
   const lines = entries.map((e) =>
     [
+      ...(withId ? [csvEscapeCell(detail.id)] : []),
       e.sequence,
       e.level,
       csvEscapeCell(e.nodePath),
@@ -151,6 +161,36 @@ function buildExecutionMarkdown(detail: ExecDetail, entries: LogEntry[]): string
   return lines.join("\n").trimEnd();
 }
 
+function buildBulkExecutionsMarkdown(details: ExecDetail[]): string {
+  return details
+    .map((detail, index) => {
+      const entries = [...detail.logEntries].sort((a, b) => a.sequence - b.sequence);
+      return `logs ${index + 1}\n\n${buildExecutionMarkdown(detail, entries)}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+function buildBulkExecutionsCsv(details: ExecDetail[]): string {
+  const parts = details.map((detail) => {
+    const entries = [...detail.logEntries].sort((a, b) => a.sequence - b.sequence);
+    return buildExecutionCsv(detail, entries, { includeExecutionId: true });
+  });
+  if (parts.length === 0) return "";
+  const [first, ...rest] = parts;
+  const bodyLines = rest.map((chunk) => chunk.split("\n").slice(1).join("\n")).filter(Boolean);
+  return [first, ...bodyLines].join("\n");
+}
+
+function downloadTextFile(filename: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -198,6 +238,8 @@ export function AutomationExecutionsTab({
   const [botId, setBotId] = useState("");
   const [executionId, setExecutionId] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [detail, setDetail] = useState<ExecDetail | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<{
@@ -253,6 +295,7 @@ export function AutomationExecutionsTab({
         if (!cancelled) {
           setRows(res.data);
           setHasMore(res.hasMore);
+          setCheckedIds(new Set());
         }
       } catch {
         if (!cancelled) setError("load_failed");
@@ -390,6 +433,87 @@ export function AutomationExecutionsTab({
     };
   }, []);
 
+  const allVisibleChecked = rows.length > 0 && rows.every((r) => checkedIds.has(r.id));
+  const someVisibleChecked = rows.some((r) => checkedIds.has(r.id));
+  const checkedCount = checkedIds.size;
+
+  const toggleCheckId = useCallback((id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setCheckedIds((prev) => {
+      if (rows.length === 0) return prev;
+      const allSelected = rows.every((r) => prev.has(r.id));
+      if (allSelected) {
+        const next = new Set(prev);
+        for (const r of rows) next.delete(r.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const r of rows) next.add(r.id);
+      return next;
+    });
+  }, [rows]);
+
+  const fetchCheckedDetails = useCallback(async (): Promise<ExecDetail[]> => {
+    const ids = rows.filter((r) => checkedIds.has(r.id)).map((r) => r.id);
+    if (ids.length === 0) return [];
+    const results = await Promise.all(
+      ids.map(async (id) => api.get<ExecDetail>(`/automation/execution-logs/${id}`)),
+    );
+    return results;
+  }, [rows, checkedIds]);
+
+  const exportCheckedAs = useCallback(
+    async (format: "markdown" | "json" | "csv", mode: "copy" | "download") => {
+      if (checkedCount === 0) return;
+      setBulkBusy(true);
+      setError("");
+      try {
+        const details = await fetchCheckedDetails();
+        if (details.length === 0) {
+          flashCopyMessage("fail");
+          return;
+        }
+        let text: string;
+        let mime: string;
+        let ext: string;
+        if (format === "json") {
+          text = JSON.stringify(details, null, 2);
+          mime = "application/json;charset=utf-8";
+          ext = "json";
+        } else if (format === "csv") {
+          text = buildBulkExecutionsCsv(details);
+          mime = "text/csv;charset=utf-8";
+          ext = "csv";
+        } else {
+          text = buildBulkExecutionsMarkdown(details);
+          mime = "text/markdown;charset=utf-8";
+          ext = "md";
+        }
+        if (mode === "copy") {
+          const ok = await copyTextToClipboard(text);
+          flashCopyMessage(ok ? "ok" : "fail");
+        } else {
+          const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+          downloadTextFile(`executions-${details.length}-${stamp}.${ext}`, text, mime);
+        }
+      } catch {
+        setError("load_failed");
+        flashCopyMessage("fail");
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [checkedCount, fetchCheckedDetails, flashCopyMessage, setError],
+  );
+
   const copyExecutionAs = useCallback(
     async (format: "markdown" | "json" | "csv") => {
       if (!detail) return;
@@ -402,7 +526,7 @@ export function AutomationExecutionsTab({
       if (ok) flashCopyMessage("ok");
       else flashCopyMessage("fail");
     },
-    [detail, flashCopyMessage, t],
+    [detail, flashCopyMessage],
   );
 
   return (
@@ -578,39 +702,152 @@ export function AutomationExecutionsTab({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-900/50">
-          <div className="border-b border-ink-100 px-3 py-2 text-sm font-semibold dark:border-ink-800">
-            {t("automationPage.execLogsList")}
+          <div className="space-y-2 border-b border-ink-100 px-3 py-2 dark:border-ink-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{t("automationPage.execLogsList")}</p>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-ink-600 dark:text-ink-300">
+                <input
+                  type="checkbox"
+                  className="rounded border-ink-300"
+                  checked={allVisibleChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someVisibleChecked && !allVisibleChecked;
+                  }}
+                  onChange={toggleSelectAllVisible}
+                  disabled={rows.length === 0}
+                />
+                {t("automationPage.execLogsSelectAll")}
+              </label>
+            </div>
+            {checkedCount > 0 ? (
+              <div className="flex flex-wrap items-center gap-1 rounded-lg border border-brand-200/70 bg-brand-50/50 p-1.5 dark:border-brand-900/40 dark:bg-brand-950/20">
+                <span className="px-1 text-[10px] font-semibold text-brand-800 dark:text-brand-200">
+                  {t("automationPage.execLogsSelectedCount").replace("{count}", String(checkedCount))}
+                </span>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("markdown", "copy")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsCopyMarkdown")}
+                >
+                  {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardCopy className="h-3 w-3" />}
+                  MD
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("json", "copy")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsCopyJson")}
+                >
+                  <ClipboardCopy className="h-3 w-3" /> JSON
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("csv", "copy")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsCopyCsv")}
+                >
+                  <ClipboardCopy className="h-3 w-3" /> CSV
+                </button>
+                <span className="mx-0.5 text-ink-300" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("json", "download")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsDownloadJson")}
+                >
+                  <Download className="h-3 w-3" /> JSON
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("csv", "download")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsDownloadCsv")}
+                >
+                  <Download className="h-3 w-3" /> CSV
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void exportCheckedAs("markdown", "download")}
+                  className="inline-flex items-center gap-1 rounded border border-ink-200 bg-white px-1.5 py-1 text-[10px] dark:border-ink-600 dark:bg-ink-950"
+                  title={t("automationPage.execLogsDownloadMarkdown")}
+                >
+                  <Download className="h-3 w-3" /> MD
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => setCheckedIds(new Set())}
+                  className="ml-auto rounded px-1.5 py-1 text-[10px] font-medium text-ink-500 underline hover:text-ink-800 dark:hover:text-ink-200"
+                >
+                  {t("automationPage.execLogsClearSelection")}
+                </button>
+                {copyFlash ? (
+                  <span
+                    className={clsx(
+                      "w-full text-[10px] sm:w-auto",
+                      copyFlash === "ok"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400",
+                    )}
+                  >
+                    {copyFlash === "ok" ? t("automationPage.execLogsCopied") : t("automationPage.execLogsCopyFailed")}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <ul className="max-h-[480px] divide-y divide-ink-100 overflow-y-auto dark:divide-ink-800">
             {rows.map((r) => (
               <li key={r.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(r.id)}
+                <div
                   className={clsx(
-                    "flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 dark:hover:bg-ink-800/60",
+                    "flex w-full items-start gap-2 px-3 py-2 text-sm hover:bg-ink-50 dark:hover:bg-ink-800/60",
                     selectedId === r.id && "bg-brand-50/80 dark:bg-brand-950/30",
+                    checkedIds.has(r.id) && "ring-1 ring-inset ring-brand-300/60 dark:ring-brand-700/50",
                   )}
                 >
-                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-ink-900 dark:text-ink-50">{r.bot.name}</p>
-                    <p className="truncate text-xs text-ink-500">{r.workflowKey}</p>
-                    <p className="text-[10px] text-ink-400">{new Date(r.startedAt).toISOString()}</p>
-                    <span
-                      className={clsx(
-                        "mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                        r.status === "success"
-                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
-                          : r.status === "error"
-                            ? "bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-100"
-                            : "bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
-                      )}
-                    >
-                      {r.status}
-                    </span>
-                  </div>
-                </button>
+                  <input
+                    type="checkbox"
+                    className="mt-1 rounded border-ink-300"
+                    checked={checkedIds.has(r.id)}
+                    onChange={() => toggleCheckId(r.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={t("automationPage.execLogsSelectOne")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(r.id)}
+                    className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                  >
+                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink-900 dark:text-ink-50">{r.bot.name}</p>
+                      <p className="truncate text-xs text-ink-500">{r.workflowKey}</p>
+                      <p className="text-[10px] text-ink-400">{new Date(r.startedAt).toISOString()}</p>
+                      <span
+                        className={clsx(
+                          "mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                          r.status === "success"
+                            ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                            : r.status === "error"
+                              ? "bg-red-100 text-red-900 dark:bg-red-950/40 dark:text-red-100"
+                              : "bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200",
+                        )}
+                      >
+                        {r.status}
+                      </span>
+                    </div>
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
