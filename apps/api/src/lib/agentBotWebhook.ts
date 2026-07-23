@@ -15,6 +15,7 @@ import { loadAutomationWebhookBundle } from "./automationWebhookBundle.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { deliverAgentReplyMessage } from "./agentVoiceReply.js";
 import { generateNativeAgentReply } from "./agentNativeLlm.js";
+import { withConversationAgentReplyLock } from "./llmSharedQuotaGate.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
 import { botVisualChatbotFlowId } from "./chatbotFlowTypes.js";
@@ -263,15 +264,17 @@ async function dispatchAgentBotNativeFallback(input: {
       });
     }
 
-    const replyText = await generateNativeAgentReply({
-      organizationId,
-      bot,
-      conversation,
-      message,
-      log,
-      executionLog: exLog.child("agent_llm"),
-      contactId: contact.id,
-    });
+    const replyText = await withConversationAgentReplyLock(conversation.id, () =>
+      generateNativeAgentReply({
+        organizationId,
+        bot,
+        conversation,
+        message,
+        log,
+        executionLog: exLog.child("agent_llm"),
+        contactId: contact.id,
+      }),
+    );
 
     const handoffAfter = await prisma.conversation.findFirst({
       where: { id: conversation.id },

@@ -1,3 +1,16 @@
+import {
+  acquireLlmQuotaSlot,
+  configureLlmQuotaGateDefaults,
+  llmQuotaGateKey,
+  markLlmQuotaCooldown,
+} from "./llmSharedQuotaGate.js";
+import { config } from "../config.js";
+
+configureLlmQuotaGateDefaults({
+  maxConcurrent: config.nativeLlmMaxConcurrent,
+  maxQueueWaitMs: config.nativeLlmMaxQueueWaitMs,
+});
+
 export type PreviewChatTurn = { role: "user" | "assistant"; content: string };
 
 export type PreviewLlmUsage = { prompt: number; completion: number; total: number };
@@ -63,33 +76,59 @@ async function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * POST com retry em 429 / rate_limit (TPM/RPM). Evita falha total após rondas de tools já executadas.
+ * POST com:
+ * - gate de concorrência partilhado por API key (vários contactos)
+ * - cooldown partilhado em 429 (evita stampede)
+ * - retry com backoff no próprio pedido
  */
 export async function fetchLlmJsonWithRateLimitRetry(
   url: string,
   init: RequestInit,
-  opts?: { maxAttempts?: number; signal?: AbortSignal },
+  opts?: {
+    maxAttempts?: number;
+    signal?: AbortSignal;
+    /** Chave do gate (ex.: `llmQuotaGateKey("openai", apiKey)`). */
+    quotaKey?: string;
+    maxQueueWaitMs?: number;
+  },
 ): Promise<{ res: Response; rawText: string }> {
   const maxAttempts = Math.max(1, Math.min(opts?.maxAttempts ?? 4, 6));
   const signal = opts?.signal ?? init.signal ?? undefined;
-  let lastRes: Response | null = null;
-  let lastBody = "";
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(url, { ...init, signal });
-    const rawText = await res.text();
-    if (res.status !== 429) {
-      return { res, rawText };
+  const quotaKey = opts?.quotaKey?.trim() || "";
+  const release = quotaKey
+    ? await acquireLlmQuotaSlot(quotaKey, {
+        signal,
+        maxQueueWaitMs: opts?.maxQueueWaitMs ?? config.nativeLlmMaxQueueWaitMs,
+      })
+    : () => undefined;
+
+  try {
+    let lastRes: Response | null = null;
+    let lastBody = "";
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await fetch(url, { ...init, signal });
+      const rawText = await res.text();
+      if (res.status !== 429) {
+        return { res, rawText };
+      }
+      lastRes = res;
+      lastBody = rawText;
+      const fromProvider = parseLlmRetryAfterMs(res, rawText);
+      const delayMs =
+        fromProvider > 0 ? fromProvider : Math.min(1500 * 2 ** attempt, 20_000);
+      if (quotaKey) {
+        markLlmQuotaCooldown(quotaKey, delayMs);
+      }
+      if (attempt >= maxAttempts - 1) break;
+      await sleepMs(delayMs, signal ?? undefined);
     }
-    lastRes = res;
-    lastBody = rawText;
-    if (attempt >= maxAttempts - 1) break;
-    const fromProvider = parseLlmRetryAfterMs(res, rawText);
-    const delayMs =
-      fromProvider > 0 ? fromProvider : Math.min(1500 * 2 ** attempt, 20_000);
-    await sleepMs(delayMs, signal ?? undefined);
+    return { res: lastRes!, rawText: lastBody };
+  } finally {
+    release();
   }
-  return { res: lastRes!, rawText: lastBody };
 }
+
+export { llmQuotaGateKey };
 
 export type OpenAiToolDefinition = {
   type: "function";
@@ -162,7 +201,10 @@ export async function callOpenAiCompatibleChatWithTools(params: {
         body: JSON.stringify(body),
         signal: params.signal,
       },
-      { signal: params.signal },
+      {
+        signal: params.signal,
+        quotaKey: llmQuotaGateKey("openai", params.apiKey),
+      },
     );
     if (!res.ok) {
       throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
@@ -279,7 +321,10 @@ export async function callOpenAiCompatibleChat(params: {
       body: JSON.stringify(body),
       signal: params.signal,
     },
-    { signal: params.signal },
+    {
+      signal: params.signal,
+      quotaKey: llmQuotaGateKey("openai", params.apiKey),
+    },
   );
   if (!res.ok) {
     throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
@@ -342,7 +387,10 @@ export async function callGeminiGenerateContent(params: {
       }),
       signal: params.signal,
     },
-    { signal: params.signal },
+    {
+      signal: params.signal,
+      quotaKey: llmQuotaGateKey("google_gemini", params.apiKey),
+    },
   );
   if (!res.ok) {
     throw new Error(`Gemini API HTTP ${res.status}: ${rawText.slice(0, 800)}`);

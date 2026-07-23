@@ -14,6 +14,14 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] ?? defaultValue;
 }
 
+function optionalIntEnv(name: string, defaultValue: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return defaultValue;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return defaultValue;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
 /** Aceita true/1/yes/on, trim, aspas opcionais e BOM UTF-8 (ficheiros .env no Windows). */
 function parseTruthyEnv(name: string): boolean {
   const raw = process.env[name];
@@ -160,6 +168,13 @@ export const config = {
   openAiVisionModel: optionalEnv("OPENAI_VISION_MODEL", "gpt-4o-mini").trim(),
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
+  /**
+   * Máximo de pedidos LLM em voo por API key (contactos partilham a mesma chave).
+   * Evita stampede TPM/RPM quando vários WhatsApps disparam o agente em paralelo.
+   */
+  nativeLlmMaxConcurrent: optionalIntEnv("NATIVE_LLM_MAX_CONCURRENT", 2, 1, 32),
+  /** Tempo máximo na fila do gate LLM antes de falhar (ms). */
+  nativeLlmMaxQueueWaitMs: optionalIntEnv("NATIVE_LLM_MAX_QUEUE_WAIT_MS", 90_000, 5_000, 300_000),
   /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */
   agentKbDebug: parseTruthyEnv("AGENT_KB_DEBUG"),
   /** API Nvoip v2 — https://nvoip.docs.apiary.io/ */
