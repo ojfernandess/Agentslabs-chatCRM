@@ -133,6 +133,93 @@ export function shouldEnsureToolResultFollowUp(input: {
   return !hasSubstantiveAgentReplyToCustomer(input.replyText);
 }
 
+/**
+ * Quando o modelo falha (ex. 429) depois de tools já executadas, ainda assim o contacto
+ * precisa de uma mensagem — mesmo sem `ensureResultDelivered` ou LLM de reforço.
+ */
+export function shouldForceDeliveryAfterTools(input: {
+  toolOutcomes: NativeToolRoundOutcome[];
+  replyText: string;
+}): boolean {
+  if (input.toolOutcomes.length === 0) return false;
+  return !hasSubstantiveAgentReplyToCustomer(input.replyText);
+}
+
+function humanizeToolPreviewForCustomer(preview: string): string {
+  const raw = preview.trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const o = parsed as Record<string, unknown>;
+      for (const key of [
+        "message",
+        "mensagem",
+        "summary",
+        "resumo",
+        "status",
+        "result",
+        "resultado",
+        "guestName",
+        "reservationCode",
+        "confirmationCode",
+      ]) {
+        const v = o[key];
+        if (typeof v === "string" && v.trim()) return v.trim().slice(0, 600);
+      }
+      if (typeof o.found === "boolean") {
+        const bits: string[] = [];
+        bits.push(o.found ? "Consulta concluída com registo encontrado." : "Consulta concluída — não encontramos o registo pedido.");
+        for (const key of ["guestName", "name", "reservationCode", "code", "checkIn", "checkOut"]) {
+          const v = o[key];
+          if (typeof v === "string" && v.trim()) bits.push(`${key}: ${v.trim()}`);
+        }
+        return bits.join(" ").slice(0, 600);
+      }
+    }
+  } catch {
+    /* plain text */
+  }
+  return raw.replace(/\s+/g, " ").slice(0, 500);
+}
+
+/**
+ * Resposta de última linha sem novo LLM — usa previews das tools já executadas.
+ * Evita «texto vazio — sem envio» após rate limit / falha na síntese final.
+ */
+export function buildDeterministicReplyFromToolOutcomes(
+  toolOutcomes: NativeToolRoundOutcome[],
+): string {
+  const preferred = [
+    ...toolOutcomes.filter((t) => t.monitored && t.ok),
+    ...toolOutcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento"),
+    ...toolOutcomes.filter((t) => t.ok),
+    ...toolOutcomes,
+  ];
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const t of preferred) {
+    if (seen.has(t.name)) continue;
+    seen.add(t.name);
+    if (t.name === "buscar_conhecimento") continue;
+    const human = humanizeToolPreviewForCustomer(t.preview);
+    if (!human) continue;
+    lines.push(human);
+    if (lines.length >= 2) break;
+  }
+  if (lines.length > 0) {
+    return (
+      "Segue o resultado da consulta:\n\n" +
+      lines.join("\n\n") +
+      "\n\nSe precisar de mais algum detalhe, é só dizer."
+    ).slice(0, 3500);
+  }
+  if (toolOutcomes.some((t) => t.ok)) {
+    return "Já consultei o sistema com base no seu pedido. Pode confirmar o próximo passo ou partilhar mais algum detalhe para eu avançar?";
+  }
+  return "Tentei consultar o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido ou partilhar mais um detalhe (por exemplo código ou nome)?";
+}
+
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
   buscar_conhecimento: "native:knowledge_search",
   listar_equipas: "native:list_teams",
@@ -1086,6 +1173,7 @@ export async function generateNativeAgentReply(input: {
         "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com «um momento».\n"
       : "";
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
+  let knowledgeSearchCallsThisTurn = 0;
 
   let kbProactiveAppendix = "";
   if (flags.knowledge_search) {
@@ -1122,17 +1210,15 @@ export async function generateNativeAgentReply(input: {
   const kbHasUsefulExcerpts =
     flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
   /**
-   * Mantemos `buscar_conhecimento` sempre registado quando `knowledge_search` está activo.
-   * Prompts de clientes exigem «executar buscar_conhecimento antes» — omitir a tool fazia o modelo
-   * achar que não cumpria a regra (apesar da pesquisa proactiva já ter corrido). Chamada duplicada
-   * à BD é aceitável para alinhar prompts rígidos e observabilidade.
+   * Mantemos `buscar_conhecimento` registado quando `knowledge_search` está activo (prompts rígidos).
+   * Limite de invocações no turno evita queimar TPM com 3–4 pesquisas idênticas após o appendix proactivo.
    */
   const omitBuscarConhecimento = false;
 
   const toolPreamble = kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
-      "- **`buscar_conhecimento`:** continua disponível. Se o seu prompt interno exigir uma chamada explícita à função antes de responder, invoque‑a com `query` adequada; se os excertos acima já bastarem, pode responder sem nova chamada.\n" +
+      "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
       (allowedTagIds.length > 0
         ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
@@ -1140,7 +1226,7 @@ export async function generateNativeAgentReply(input: {
       "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
       customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
-      "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar.\n" +
+      "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
       (allowedTagIds.length > 0
         ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
@@ -1153,7 +1239,7 @@ export async function generateNativeAgentReply(input: {
       ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
         "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
-        "A função `buscar_conhecimento` está disponível para uma segunda consulta ou se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
+        "A função `buscar_conhecimento` pode ser usada no máximo uma vez neste turno se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
         "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do hotel diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
         "Use `call_human` só se o hóspede pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
       : "") +
@@ -1380,6 +1466,23 @@ export async function generateNativeAgentReply(input: {
               });
               return out;
             };
+            if (name === "buscar_conhecimento") {
+              knowledgeSearchCallsThisTurn += 1;
+              const maxKbCalls = kbHasUsefulExcerpts ? 1 : 2;
+              if (knowledgeSearchCallsThisTurn > maxKbCalls) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: true,
+                    skipped: true,
+                    reason: "knowledge_search_quota_this_turn",
+                    bodyPreview:
+                      kbHasUsefulExcerpts
+                        ? "Já existem excertos úteis no contexto do sistema e uma pesquisa neste turno. Não repita buscar_conhecimento — responda agora ao cliente com os dados já obtidos."
+                        : "Limite de pesquisas de conhecimento neste turno atingido. Responda ao cliente com os resultados já obtidos ou peça só o detalhe em falta.",
+                  }),
+                );
+              }
+            }
             if (customId) {
               const row = customRow;
               if (!row) {
@@ -1479,22 +1582,42 @@ export async function generateNativeAgentReply(input: {
         );
         ex?.warn({ id: "llm", name: "Modelo + tools" }, "Falha com tools — fallback para chat simples", {
           stack: err instanceof Error ? err.stack : undefined,
+          output: {
+            toolsAlreadyRun: toolRoundOutcomes.length,
+            rateLimitLikely: err instanceof Error && /HTTP 429|rate.?limit/i.test(err.message),
+          },
         });
-        const r = await callOpenAiCompatibleChat({
-          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-          apiKey,
-          model,
-          temperature,
-          maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemBase,
-          history,
-          userMessage,
-          signal: nativeAgentLlmAbortSignal(),
-        });
-        replyText = r.text.trim();
-        ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
-          output: { replyChars: replyText.length },
-        });
+        try {
+          const r = await callOpenAiCompatibleChat({
+            baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+            apiKey,
+            model,
+            temperature,
+            maxTokens: Math.max(16, Math.min(8192, maxTokens)),
+            system: systemBase,
+            history,
+            userMessage,
+            signal: nativeAgentLlmAbortSignal(),
+          });
+          replyText = r.text.trim();
+          ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
+            output: { replyChars: replyText.length },
+          });
+        } catch (fallbackErr) {
+          log.warn(
+            { err: fallbackErr, botId: bot.id, toolsAlreadyRun: toolRoundOutcomes.length },
+            "OpenAI plain chat fallback also failed",
+          );
+          ex?.warn(
+            { id: "llm", name: "Modelo (fallback)" },
+            "Fallback sem tools também falhou",
+            {
+              stack: fallbackErr instanceof Error ? fallbackErr.stack : undefined,
+              output: { toolsAlreadyRun: toolRoundOutcomes.length },
+            },
+          );
+          replyText = "";
+        }
       }
     } else if (provider === "google_gemini") {
       ex?.info({ id: "llm", name: "Gemini" }, "Geração sem tools (Gemini)");
@@ -1530,13 +1653,25 @@ export async function generateNativeAgentReply(input: {
     log.warn({ err, botId: bot.id, provider }, "Agent bot native fallback generation failed");
     ex?.error({ id: "llm", name: "Geração" }, err instanceof Error ? err.message : String(err), {
       stack: err instanceof Error ? err.stack : undefined,
+      output: { toolsAlreadyRun: toolRoundOutcomes.length },
     });
-    return "";
+    if (toolRoundOutcomes.length === 0) {
+      return "";
+    }
+    replyText = "";
   }
 
-  if (!replyText && completedToolRounds > 0) {
-    replyText =
-      "Já tratei do seu pedido no sistema. Um agente humano irá continuar o atendimento em breve, se necessário.";
+  if (toolRoundOutcomes.length > 0) {
+    completedToolRounds = Math.max(completedToolRounds, 1);
+  }
+
+  if (!replyText && toolRoundOutcomes.length > 0) {
+    replyText = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+    ex?.warn(
+      { id: "llm", name: "Entrega determinística" },
+      "Resposta vazia após tools — mensagem sintetizada a partir dos resultados",
+      { output: { replyChars: replyText.length, toolCount: toolRoundOutcomes.length } },
+    );
   }
 
   if (
@@ -1545,23 +1680,27 @@ export async function generateNativeAgentReply(input: {
       (kbHasUsefulExcerpts && isLikelyKbDeflectionOnlyReply(replyText)))
   ) {
     ex?.warn({ id: "stall", name: "Correção de resposta" }, "Resposta parece stall ou deflexão — augment RAG");
-    const fixed = await augmentStallWithKnowledge({
-      organizationId,
-      botId: bot.id,
-      userMessage,
-      systemInstructions,
-      history,
-      provider,
-      apiKey,
-      model,
-      apiBaseUrl,
-      temperature,
-      maxTokens,
-      signal,
-      log,
-      pinnedArticleIds,
-    });
-    if (fixed.trim()) replyText = fixed.trim();
+    try {
+      const fixed = await augmentStallWithKnowledge({
+        organizationId,
+        botId: bot.id,
+        userMessage,
+        systemInstructions,
+        history,
+        provider,
+        apiKey,
+        model,
+        apiBaseUrl,
+        temperature,
+        maxTokens,
+        signal,
+        log,
+        pinnedArticleIds,
+      });
+      if (fixed.trim()) replyText = fixed.trim();
+    } catch (stallErr) {
+      log.warn({ err: stallErr, botId: bot.id }, "augmentStallWithKnowledge failed after rate-limit path");
+    }
   }
 
   if (
@@ -1597,6 +1736,18 @@ export async function generateNativeAgentReply(input: {
       log,
     });
     if (reinforced.trim()) replyText = reinforced.trim();
+  }
+
+  if (shouldForceDeliveryAfterTools({ toolOutcomes: toolRoundOutcomes, replyText })) {
+    const forced = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+    if (forced.trim()) {
+      replyText = forced.trim();
+      ex?.warn(
+        { id: "tool_delivery", name: "Entrega forçada" },
+        "Ainda sem resposta substantiva após tools — entrega determinística",
+        { output: { replyChars: replyText.length } },
+      );
+    }
   }
 
   if (toolRoundOutcomes.length > 0 && historyOverride == null) {

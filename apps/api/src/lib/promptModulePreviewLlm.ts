@@ -23,6 +23,74 @@ function applyOpenAiMaxTokensToBody(body: Record<string, unknown>, model: string
   }
 }
 
+/** Extrai atraso sugerido pelo provider (header Retry-After ou «try again in Xs» no corpo). */
+export function parseLlmRetryAfterMs(res: Response, body: string): number {
+  const header = res.headers.get("retry-after");
+  if (header) {
+    const sec = Number(header);
+    if (Number.isFinite(sec) && sec > 0) return Math.min(Math.ceil(sec * 1000), 60_000);
+    const dateMs = Date.parse(header);
+    if (Number.isFinite(dateMs)) return Math.min(Math.max(0, dateMs - Date.now()), 60_000);
+  }
+  const m = body.match(/try again in\s+([\d.]+)\s*s/i);
+  if (m) {
+    const sec = Number(m[1]);
+    if (Number.isFinite(sec) && sec > 0) return Math.min(Math.ceil(sec * 1000) + 300, 60_000);
+  }
+  return 0;
+}
+
+async function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return;
+  if (signal?.aborted) {
+    const err = new Error("Aborted");
+    err.name = "AbortError";
+    throw err;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      const err = new Error("Aborted");
+      err.name = "AbortError";
+      reject(err);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * POST com retry em 429 / rate_limit (TPM/RPM). Evita falha total após rondas de tools já executadas.
+ */
+export async function fetchLlmJsonWithRateLimitRetry(
+  url: string,
+  init: RequestInit,
+  opts?: { maxAttempts?: number; signal?: AbortSignal },
+): Promise<{ res: Response; rawText: string }> {
+  const maxAttempts = Math.max(1, Math.min(opts?.maxAttempts ?? 4, 6));
+  const signal = opts?.signal ?? init.signal ?? undefined;
+  let lastRes: Response | null = null;
+  let lastBody = "";
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, { ...init, signal });
+    const rawText = await res.text();
+    if (res.status !== 429) {
+      return { res, rawText };
+    }
+    lastRes = res;
+    lastBody = rawText;
+    if (attempt >= maxAttempts - 1) break;
+    const fromProvider = parseLlmRetryAfterMs(res, rawText);
+    const delayMs =
+      fromProvider > 0 ? fromProvider : Math.min(1500 * 2 ** attempt, 20_000);
+    await sleepMs(delayMs, signal ?? undefined);
+  }
+  return { res: lastRes!, rawText: lastBody };
+}
+
 export type OpenAiToolDefinition = {
   type: "function";
   function: { name: string; description: string; parameters: Record<string, unknown> };
@@ -83,16 +151,19 @@ export async function callOpenAiCompatibleChatWithTools(params: {
     };
     applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${params.apiKey}`,
+    const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${params.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: params.signal,
       },
-      body: JSON.stringify(body),
-      signal: params.signal,
-    });
-    const rawText = await res.text();
+      { signal: params.signal },
+    );
     if (!res.ok) {
       throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
     }
@@ -197,16 +268,19 @@ export async function callOpenAiCompatibleChat(params: {
   };
   applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.apiKey}`,
+  const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: params.signal,
     },
-    body: JSON.stringify(body),
-    signal: params.signal,
-  });
-  const rawText = await res.text();
+    { signal: params.signal },
+  );
   if (!res.ok) {
     throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
   }
@@ -253,20 +327,23 @@ export async function callGeminiGenerateContent(params: {
     });
   }
   contents.push({ role: "user", parts: [{ text: params.userMessage }] });
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: params.system }] },
-      contents,
-      generationConfig: {
-        temperature: params.temperature,
-        maxOutputTokens: params.maxTokens,
-      },
-    }),
-    signal: params.signal,
-  });
-  const rawText = await res.text();
+  const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: params.system }] },
+        contents,
+        generationConfig: {
+          temperature: params.temperature,
+          maxOutputTokens: params.maxTokens,
+        },
+      }),
+      signal: params.signal,
+    },
+    { signal: params.signal },
+  );
   if (!res.ok) {
     throw new Error(`Gemini API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
   }
