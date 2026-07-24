@@ -91,6 +91,9 @@ services:
       OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       GEMINI_PROMPT_PREVIEW_KEY: ${GEMINI_PROMPT_PREVIEW_KEY:-}
+      # Mem0 Platform (Agent Engine — provider mem0). Sem MEM0_API_KEY no contentor, Mem0 fica desactivado.
+      MEM0_API_KEY: ${MEM0_API_KEY:-}
+      MEM0_API_BASE_URL: ${MEM0_API_BASE_URL:-https://api.mem0.ai}
       # Logs `agent_kb_debug` / startup_flags (ver apps/api).
       AGENT_KB_DEBUG: ${AGENT_KB_DEBUG:-}
       # Áudio/mídia enviada: ficheiros neste diretório; expostos como ${PUBLIC_URL}/api/v1/messages/media/…

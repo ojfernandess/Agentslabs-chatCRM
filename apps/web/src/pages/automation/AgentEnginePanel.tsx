@@ -75,11 +75,6 @@ export function AgentEnginePanel({
       memoryEngine: { ...value.memoryEngine, ...p, provider: p.provider ?? value.memoryEngine.provider },
     });
 
-  const setProvider = (provider: AgentEngineMemoryOption) => {
-    patchMemory({ provider });
-    patch({ memory: provider });
-  };
-
   return (
     <div className="rounded-xl border border-violet-200/70 bg-violet-50/30 p-4 dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -170,7 +165,7 @@ export function AgentEnginePanel({
                   type="radio"
                   name="agentEngineMemory"
                   checked={value.memoryEngine.provider === id}
-                  onChange={() => setProvider(id)}
+                  onChange={() => patchMemory({ provider: id })}
                 />
                 <History className="h-3.5 w-3.5 text-violet-600" />
                 <span>{t(`automationPage.agentEngineMemory_${id}`)}</span>
