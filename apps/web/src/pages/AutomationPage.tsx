@@ -16,6 +16,8 @@ import {
   Cable,
   Tags,
   ShieldCheck,
+  ChevronDown,
+  History,
 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -411,6 +413,11 @@ type AgentFormFields = {
   toolCallNotifyForceDeliveryTools: string[];
   /** Resgate KB em stall (perguntas de conhecimento). Default true. */
   toolCallNotifyForceKnowledgeRescue: boolean;
+  /**
+   * Quando true + tools HTTP ligadas: não envia historyTurns ao LLM.
+   * Default false — fluxos multi-passo (check-in) mantêm contexto.
+   */
+  isolateHistoryForTools: boolean;
   agentSupervisorEnabled: boolean;
 };
 
@@ -461,6 +468,7 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifyForceDeliveryAllTools: true,
     toolCallNotifyForceDeliveryTools: [],
     toolCallNotifyForceKnowledgeRescue: true,
+    isolateHistoryForTools: false,
     agentSupervisorEnabled: false,
   };
 }
@@ -628,6 +636,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifyForceDeliveryAllTools,
     toolCallNotifyForceDeliveryTools,
     toolCallNotifyForceKnowledgeRescue: toolCallNotifyRaw.forceKnowledgeRescue !== false,
+    isolateHistoryForTools: beh.isolateHistoryForTools === true,
     agentSupervisorEnabled,
   };
 }
@@ -810,6 +819,7 @@ function formToPayload(
     agentSupervisor: {
       enabled: form.agentSupervisorEnabled,
     },
+    isolateHistoryForTools: form.isolateHistoryForTools === true,
     promptBuilder: {
       userCore: promptCoreForSave,
       blocks: form.promptUseFullText ? emptyPromptBlocks() : form.promptBlocks,
@@ -1773,23 +1783,14 @@ function AgentsTab({
   const [promptSyncStatus, setPromptSyncStatus] = useState<"ok" | "error" | null>(null);
   const [instructionSuggestBusy, setInstructionSuggestBusy] = useState<string | null>(null);
   const [suggestErrorModal, setSuggestErrorModal] = useState<SuggestInstructionErrorModal | null>(null);
-  /** Agente seleccionado para o painel de ligações (fora do modal de edição). */
+  /** Agente com cartão expandido para ligações (fora do modal de edição). */
   const [connectionsBotId, setConnectionsBotId] = useState<string | null>(null);
-  const [connectionsPanelTab, setConnectionsPanelTab] = useState<
-    "tools" | "tags" | "notify" | "delivery" | "supervisor"
-  >("tools");
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
-
-  const connectionsProfile = useMemo(
-    () => agentProfiles.find((p) => p.botId === connectionsBotId) ?? null,
-    [agentProfiles, connectionsBotId],
-  );
 
   const openAgentConnections = (row: AgentProfileRow) => {
     setAgentModalOpen(false);
     setAgentForm(profileToForm(row));
     setConnectionsBotId(row.botId);
-    setConnectionsPanelTab("tools");
   };
 
   const closeAgentConnections = () => {
@@ -2073,8 +2074,7 @@ function AgentsTab({
         </button>
       </div>
 
-      <div className={clsx("grid gap-4", connectionsBotId ? "lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]" : "")}>
-        <div className={clsx("grid gap-4", connectionsBotId ? "sm:grid-cols-1 xl:grid-cols-2" : "sm:grid-cols-2")}>
+      <div className="space-y-4">
         {agentProfiles.map((row) => {
           const llm = row.llmConfig as Record<string, unknown>;
           const beh = row.behaviorConfig as Record<string, unknown>;
@@ -2150,6 +2150,20 @@ function AgentsTab({
                   <button
                     type="button"
                     onClick={() => {
+                      if (connectionsSelected) closeAgentConnections();
+                      else openAgentConnections(row);
+                    }}
+                    className={clsx(
+                      "rounded p-1.5 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800",
+                      connectionsSelected ? "text-brand-600" : "",
+                    )}
+                    title={t("automationPage.agentConnectionsOpen")}
+                  >
+                    <ChevronDown className={clsx("h-4 w-4 transition-transform", connectionsSelected ? "rotate-180" : "")} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       setConnectionsBotId(null);
                       onEdit(row);
                     }}
@@ -2218,70 +2232,49 @@ function AgentsTab({
                   </span>
                 )}
               </div>
-            </div>
-          );
-        })}
-        </div>
 
-        {connectionsBotId && connectionsProfile && agentForm.editBotId === connectionsBotId ? (
-          <aside className="flex max-h-[min(85vh,48rem)] flex-col overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-lg dark:border-brand-900/50 dark:bg-ink-900 lg:sticky lg:top-4">
-            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+              {connectionsSelected && agentForm.editBotId === row.botId ? (
+                <div className="mt-4 space-y-3 border-t border-ink-100 pt-4 dark:border-ink-800">
+            <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
                   {t("automationPage.agentConnectionsPanelLabel")}
                 </p>
-                <h3 className="truncate text-base font-bold text-ink-900 dark:text-ink-50">
-                  {connectionsProfile.bot.name}
-                </h3>
                 <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.agentConnectionsPanelHelp")}</p>
               </div>
-              <button
-                type="button"
-                onClick={closeAgentConnections}
-                className="rounded p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
-                aria-label={t("common.cancel")}
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
-            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-ink-100 px-2 py-2 dark:border-ink-800">
-              {(
-                [
-                  { id: "tools" as const, label: t("automationPage.agentConnectionsTabTools"), icon: Cable },
-                  { id: "tags" as const, label: t("automationPage.agentConnectionsTabTags"), icon: Tags },
-                  { id: "notify" as const, label: t("automationPage.agentConnectionsTabNotify"), icon: MessageCircle },
-                  { id: "delivery" as const, label: t("automationPage.agentConnectionsTabDelivery"), icon: ShieldCheck },
-                  { id: "supervisor" as const, label: t("automationPage.agentConnectionsTabSupervisor"), icon: Bot },
-                ] as const
-              ).map((tabRow) => {
-                const Icon = tabRow.icon;
-                const active = connectionsPanelTab === tabRow.id;
-                return (
-                  <button
-                    key={tabRow.id}
-                    type="button"
-                    onClick={() => setConnectionsPanelTab(tabRow.id)}
-                    className={clsx(
-                      "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
-                      active
-                        ? "bg-brand-600 text-white"
-                        : "bg-ink-50 text-ink-700 hover:bg-ink-100 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {tabRow.label}
-                  </button>
-                );
-              })}
+            <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+              <label className="flex items-start gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={agentForm.isolateHistoryForTools}
+                  onChange={(e) =>
+                    setAgentForm((f) => ({ ...f, isolateHistoryForTools: e.target.checked }))
+                  }
+                />
+                <span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <History className="h-4 w-4 text-brand-600" />
+                    {t("automationPage.agentIsolateHistoryToggle")}
+                  </span>
+                  <span className="mt-1 block text-[11px] font-normal text-ink-500">
+                    {t("automationPage.agentIsolateHistoryHelp")}
+                  </span>
+                </span>
+              </label>
             </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {connectionsPanelTab === "notify" ? (
-                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+            <div className="max-h-[min(70vh,42rem)] space-y-3 overflow-y-auto pr-1">
+              <details open className="group rounded-xl border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-950/40">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-ink-900 marker:content-none dark:text-ink-100 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
                     <MessageCircle className="h-4 w-4 text-brand-600" />
                     {t("automationPage.agentToolCallNotifySection")}
-                  </div>
-                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <ChevronDown className="h-4 w-4 text-ink-400 transition group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="border-t border-ink-100 px-3 pb-3 pt-2 dark:border-ink-700">
+                  <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={agentForm.toolCallNotifyEnabled}
@@ -2401,14 +2394,18 @@ function AgentsTab({
                     </>
                   ) : null}
                 </div>
-              ) : null}
+              </details>
 
-              {connectionsPanelTab === "delivery" ? (
-                <div className="rounded-lg border border-ink-200/80 bg-ink-50/80 p-3 dark:border-ink-600 dark:bg-ink-800/40">
-                  <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">
+              <details open className="group rounded-xl border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-950/40">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-ink-900 marker:content-none dark:text-ink-100 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-brand-600" />
                     {t("automationPage.agentForceDeliverySection")}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-ink-500">
+                    <ChevronDown className="h-4 w-4 text-ink-400 transition group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="border-t border-ink-100 px-3 pb-3 pt-2 dark:border-ink-700">
+                  <p className="text-[11px] text-ink-500">
                     {t("automationPage.agentForceDeliveryHelp")}
                   </p>
                   <label className="mt-2 flex items-center gap-2 text-sm">
@@ -2509,10 +2506,17 @@ function AgentsTab({
                     </>
                   ) : null}
                 </div>
-              ) : null}
+              </details>
 
-              {connectionsPanelTab === "supervisor" ? (
-                <div className="rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
+              <details className="group rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-ink-900 marker:content-none dark:text-ink-100 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-fuchsia-600" />
+                    {t("automationPage.agentConnectionsTabSupervisor")}
+                    <ChevronDown className="h-4 w-4 text-ink-400 transition group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="border-t border-fuchsia-200/50 px-3 pb-3 pt-2 dark:border-fuchsia-900/40">
                   <label className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
                     <input
                       type="checkbox"
@@ -2525,14 +2529,22 @@ function AgentsTab({
                   </label>
                   <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentSupervisorHelp")}</p>
                 </div>
-              ) : null}
+              </details>
 
-              {connectionsPanelTab === "tools" ? (
-                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+              <details open className="group rounded-xl border border-brand-200 bg-brand-50/30 dark:border-brand-900/50 dark:bg-brand-950/20">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-ink-900 marker:content-none dark:text-ink-100 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <Cable className="h-4 w-4 text-brand-600" />
                     {t("automationPage.agentConnectedToolsTitle")}
-                  </p>
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsHelp")}</p>
+                    <span className="rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-800 dark:bg-brand-900/60 dark:text-brand-200">
+                      {agentForm.connectedTools.filter((x) => x.enabled).length}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-ink-400 transition group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="border-t border-brand-200/60 px-3 pb-3 pt-2 dark:border-brand-900/40">
+                  <p className="text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsHelp")}</p>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsSubLinksHelp")}</p>
                   <p className="mt-1 text-[11px] text-brand-700 dark:text-brand-400">
                     <button type="button" className="underline" onClick={onOpenToolsTab}>
                       {t("automationPage.agentNativeToolsTabLink")}
@@ -2754,14 +2766,21 @@ function AgentsTab({
                     </ul>
                   )}
                 </div>
-              ) : null}
+              </details>
 
-              {connectionsPanelTab === "tags" ? (
-                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+              <details className="group rounded-xl border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-950/40">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-ink-900 marker:content-none dark:text-ink-100 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <Tags className="h-4 w-4 text-brand-600" />
                     {t("automationPage.agentConnectedTagsTitle")}
-                  </p>
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedTagsHelp")}</p>
+                    <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-bold text-ink-700 dark:bg-ink-800 dark:text-ink-200">
+                      {agentForm.connectedTags.filter((x) => x.enabled).length}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-ink-400 transition group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="border-t border-ink-100 px-3 pb-3 pt-2 dark:border-ink-700">
+                  <p className="text-[11px] text-ink-500">{t("automationPage.agentConnectedTagsHelp")}</p>
                   {!agentForm.nativeTools.assign_contact_tags ? (
                     <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
                       {t("automationPage.agentConnectedTagsNativeOff")}
@@ -2874,9 +2893,9 @@ function AgentsTab({
                     </ul>
                   )}
                 </div>
-              ) : null}
+              </details>
             </div>
-            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-ink-100 px-4 py-3 dark:border-ink-800">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-ink-100 pt-3 dark:border-ink-800">
               <button
                 type="button"
                 onClick={closeAgentConnections}
@@ -2893,8 +2912,11 @@ function AgentsTab({
                 {t("automationPage.agentConnectionsSave")}
               </button>
             </div>
-          </aside>
-        ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
       {orphanBots.length > 0 ? (

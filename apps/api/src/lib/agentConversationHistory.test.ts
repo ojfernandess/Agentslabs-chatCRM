@@ -48,9 +48,32 @@ test("buildNativeAgentInboundMediaWhere filters inbound media after clear", () =
   assert.deepEqual(w.createdAt, { gt: t });
 });
 
-test("shouldIsolateHistoryForConnectedTools when auto HTTP tools present", () => {
-  assert.equal(shouldIsolateHistoryForConnectedTools(0), false);
-  assert.equal(shouldIsolateHistoryForConnectedTools(2), true);
+test("shouldIsolateHistoryForConnectedTools is opt-in only", () => {
+  assert.equal(
+    shouldIsolateHistoryForConnectedTools({ connectedAutoHttpToolCount: 2 }),
+    false,
+  );
+  assert.equal(
+    shouldIsolateHistoryForConnectedTools({
+      connectedAutoHttpToolCount: 2,
+      isolateHistoryEnabled: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIsolateHistoryForConnectedTools({
+      connectedAutoHttpToolCount: 0,
+      isolateHistoryEnabled: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldIsolateHistoryForConnectedTools({
+      connectedAutoHttpToolCount: 2,
+      isolateHistoryEnabled: true,
+    }),
+    true,
+  );
 });
 
 test("resolveNativeAgentHistoryTurns clears history when tools isolate", () => {

@@ -395,8 +395,8 @@ export const messages = {
       agentsSubheading: "Configure os agentes IA e o comportamento por bot.",
       agentNewButton: "+ Novo agente",
       agentConnectionsHint:
-        "Use o ícone de cabo em cada cartão para ligar ferramentas, etiquetas, avisos e supervisor — como nós externos no N8N, sem abrir o editor completo.",
-      agentConnectionsOpen: "Ligações do agente",
+        "Expanda o cartão (ícone de cabo ou seta) para ligar ferramentas, etiquetas, avisos e supervisor — sem abrir o editor completo.",
+      agentConnectionsOpen: "Expandir ligações do agente",
       agentConnectionsPanelLabel: "Ligações",
       agentConnectionsPanelHelp:
         "Alterações ficam gravadas neste agente. Guarde para aplicar em produção.",
@@ -404,10 +404,15 @@ export const messages = {
       agentConnectionsTabTags: "Etiquetas",
       agentConnectionsTabNotify: "Avisos",
       agentConnectionsTabDelivery: "Entrega",
-      agentConnectionsTabSupervisor: "Supervisor",
+      agentConnectionsTabSupervisor: "Agente supervisor",
       agentConnectionsSave: "Guardar ligações",
+      agentIsolateHistoryToggle: "Isolar histórico quando há ferramentas HTTP ligadas",
+      agentIsolateHistoryHelp:
+        "Desligado (recomendado em check-in e fluxos multi-passo): o agente mantém o contexto da conversa e segue o prompt. Ligado: apaga o histórico em cada turno para evitar misturar reservas — pode fazer o agente pedir o localizador de novo.",
+      agentConnectedToolsSubLinksHelp:
+        "Ao activar uma ferramenta, abrem-se as sub-ligações (permissão, modo, prioridade e instrução).",
       agentConnectionsModalTip:
-        "Ferramentas ligadas, etiquetas, aviso pré-tools, entrega forçada e supervisor configuram-se no painel «Ligações» do cartão do agente (ícone de cabo).",
+        "Ferramentas ligadas, etiquetas, aviso pré-tools, entrega forçada e supervisor configuram-se no cartão expandido do agente (ícone de cabo).",
       agentModalNewTitle: "Novo agente",
       agentModalEditTitle: "Editar agente",
       agentCreateBotToggle: "Criar bot automaticamente para esta organização",
@@ -5561,18 +5566,23 @@ export const messages = {
       agentsSubheading: "Configure AI agents and per-bot behavior.",
       agentNewButton: "+ New agent",
       agentConnectionsHint:
-        "Use the cable icon on each card to attach tools, tags, notices and supervisor — like external nodes in n8n, without opening the full editor.",
-      agentConnectionsOpen: "Agent connections",
+        "Expand the card (cable or chevron) to attach tools, tags, notices and supervisor — without opening the full editor.",
+      agentConnectionsOpen: "Expand agent connections",
       agentConnectionsPanelLabel: "Connections",
       agentConnectionsPanelHelp: "Changes are saved on this agent. Save to apply in production.",
       agentConnectionsTabTools: "Tools",
       agentConnectionsTabTags: "Tags",
       agentConnectionsTabNotify: "Notices",
       agentConnectionsTabDelivery: "Delivery",
-      agentConnectionsTabSupervisor: "Supervisor",
+      agentConnectionsTabSupervisor: "Supervisor agent",
       agentConnectionsSave: "Save connections",
+      agentIsolateHistoryToggle: "Isolate history when HTTP tools are linked",
+      agentIsolateHistoryHelp:
+        "Off (recommended for check-in and multi-step flows): the agent keeps conversation context and follows the prompt. On: clears history each turn to avoid mixing bookings — may make the agent ask for the locator again.",
+      agentConnectedToolsSubLinksHelp:
+        "When you enable a tool, its sub-links open (permission, mode, priority and instruction).",
       agentConnectionsModalTip:
-        "Connected tools, tags, pre-tool notice, forced delivery and supervisor are configured in the card’s Connections panel (cable icon).",
+        "Connected tools, tags, pre-tool notice, forced delivery and supervisor are configured on the expanded agent card (cable icon).",
       agentModalNewTitle: "New agent",
       agentModalEditTitle: "Edit agent",
       agentCreateBotToggle: "Automatically create an organization bot",

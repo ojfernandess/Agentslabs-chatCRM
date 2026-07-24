@@ -62,12 +62,17 @@ export function buildNativeAgentInboundMediaWhere(input: {
 export type NativeAgentHistoryTurn = { role: "user" | "assistant"; content: string };
 
 /**
- * Agentes com ferramentas HTTP/Webhook ligadas (modo automático) não devem
- * reutilizar o histórico da conversa como contexto do LLM — evita misturar
- * dados de outro hóspede/localizador na mesma thread (ex.: check-in).
+ * Isolamento de histórico quando há tools HTTP ligadas.
+ * **Opt-in** via `behavior.isolateHistoryForTools === true` — por omissão desligado
+ * para não partir fluxos multi-passo (check-in: localizador → foto → confirmação).
  */
-export function shouldIsolateHistoryForConnectedTools(connectedAutoHttpToolCount: number): boolean {
-  return connectedAutoHttpToolCount > 0;
+export function shouldIsolateHistoryForConnectedTools(input: {
+  connectedAutoHttpToolCount: number;
+  /** Explicitamente activo no perfil do agente. Default false. */
+  isolateHistoryEnabled?: boolean;
+}): boolean {
+  if (input.isolateHistoryEnabled !== true) return false;
+  return input.connectedAutoHttpToolCount > 0;
 }
 
 /**

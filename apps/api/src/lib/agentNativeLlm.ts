@@ -61,6 +61,11 @@ function nativeAgentLlmAbortSignal(): AbortSignal {
   return AbortSignal.timeout(NATIVE_AGENT_LLM_TIMEOUT_MS);
 }
 
+export function parseIsolateHistoryForToolsFromBehavior(behaviorConfig: unknown): boolean {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return false;
+  return (behaviorConfig as Record<string, unknown>).isolateHistoryForTools === true;
+}
+
 export function parseAgentSupervisorFromBehavior(behaviorConfig: unknown): { enabled: boolean } {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return { enabled: false };
   const raw = (behaviorConfig as Record<string, unknown>).agentSupervisor;
@@ -1593,7 +1598,10 @@ export async function generateNativeAgentReply(input: {
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
 
-  const isolateForConnectedTools = shouldIsolateHistoryForConnectedTools(customHttpTools.length);
+  const isolateForConnectedTools = shouldIsolateHistoryForConnectedTools({
+    connectedAutoHttpToolCount: customHttpTools.length,
+    isolateHistoryEnabled: parseIsolateHistoryForToolsFromBehavior(profile.behaviorConfig),
+  });
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
   if (
