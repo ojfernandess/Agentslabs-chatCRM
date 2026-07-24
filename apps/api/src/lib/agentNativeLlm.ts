@@ -18,14 +18,16 @@ import {
   rankedKnowledgeSearch,
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
-import { buildNativeAgentMessageWhere } from "./agentConversationHistory.js";
+import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolveNativeAgentHistoryTurns, shouldIsolateHistoryForConnectedTools } from "./agentConversationHistory.js";
 import {
   buildFollowUpCampaignPromptBlock,
+  buildIsolatedNativeFlowStatePromptBlock,
   buildNativeFlowStatePromptBlock,
   extractFlowSlotsFromToolExchange,
   loadAutomationConversationContext,
   mergeFlowSlotsAutomationContext,
   mergeNativeToolRoundAutomationContext,
+  replaceFlowSlotsAutomationContext,
   type AutomationFlowSlots,
 } from "./automationConversationContextLib.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
@@ -1590,7 +1592,36 @@ export async function generateNativeAgentReply(input: {
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
-  const flowStatePrompt = buildNativeFlowStatePromptBlock(automationCtx.state);
+
+  const isolateForConnectedTools = shouldIsolateHistoryForConnectedTools(customHttpTools.length);
+  let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
+  let identityConflictCleared = false;
+  if (
+    isolateForConnectedTools &&
+    flowSlotsConflictWithUserIdentity(sessionFlowSlots, userMessage)
+  ) {
+    sessionFlowSlots = {};
+    identityConflictCleared = true;
+    try {
+      await replaceFlowSlotsAutomationContext({
+        organizationId,
+        conversationId: conversation.id,
+        botId: bot.id,
+        flowSlots: {},
+        clearLastNativeToolRound: true,
+        flowStep: null,
+      });
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "failed to clear conflicting flow slots");
+    }
+  }
+
+  const flowStatePrompt = isolateForConnectedTools
+    ? buildIsolatedNativeFlowStatePromptBlock({
+        flowStep: identityConflictCleared ? undefined : automationCtx.state.flowStep,
+        flowSlots: sessionFlowSlots,
+      })
+    : buildNativeFlowStatePromptBlock(automationCtx.state);
 
   const tagToolGuard =
     flags.assign_contact_tags && allowedTagIds.length > 0 && assignableTagsDescription.trim()
@@ -1613,9 +1644,9 @@ export async function generateNativeAgentReply(input: {
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
-  const history =
-    historyOverride ??
-    (
+  let loadedHistory: PreviewChatTurn[] = [];
+  if (historyOverride == null && !isolateForConnectedTools) {
+    loadedHistory = (
       await prisma.message.findMany({
         where: buildNativeAgentMessageWhere({
           conversationId: conversation.id,
@@ -1633,6 +1664,13 @@ export async function generateNativeAgentReply(input: {
         content: (m.body ?? "").trim(),
       }))
       .filter((m): m is PreviewChatTurn => Boolean(m.content));
+  }
+
+  const { history, isolated: historyIsolated } = resolveNativeAgentHistoryTurns({
+    loadedHistory,
+    historyOverride,
+    isolateForConnectedTools,
+  });
 
   let replyText = "";
   let completedToolRounds = 0;
@@ -1646,7 +1684,6 @@ export async function generateNativeAgentReply(input: {
   const useTools = provider !== "google_gemini" && tools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;
-  let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   if (customHttpTools.length > 0 && historyOverride == null) {
     const contactRow = effectiveContactId
       ? await prisma.contact.findFirst({
@@ -1668,7 +1705,9 @@ export async function generateNativeAgentReply(input: {
         conversation: {
           ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? { id: conversation.id }),
           flowSlots: sessionFlowSlots,
-          ...(automationCtx.state.flowStep ? { flowStep: automationCtx.state.flowStep } : {}),
+          ...(automationCtx.state.flowStep && !identityConflictCleared
+            ? { flowStep: automationCtx.state.flowStep }
+            : {}),
         },
       };
     }
@@ -1691,6 +1730,8 @@ export async function generateNativeAgentReply(input: {
       openAiToolCount: tools.length,
       lastClearedAt: lastClearedAt?.toISOString() ?? null,
       historyTurns: history.length,
+      historyIsolated,
+      identityConflictCleared,
       apiKeySource:
         storedKey && storedKey !== "***"
           ? "profile"

@@ -13,6 +13,9 @@ import {
   Volume2,
   Clock,
   Blocks,
+  Cable,
+  Tags,
+  ShieldCheck,
 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -1770,7 +1773,28 @@ function AgentsTab({
   const [promptSyncStatus, setPromptSyncStatus] = useState<"ok" | "error" | null>(null);
   const [instructionSuggestBusy, setInstructionSuggestBusy] = useState<string | null>(null);
   const [suggestErrorModal, setSuggestErrorModal] = useState<SuggestInstructionErrorModal | null>(null);
+  /** Agente seleccionado para o painel de ligações (fora do modal de edição). */
+  const [connectionsBotId, setConnectionsBotId] = useState<string | null>(null);
+  const [connectionsPanelTab, setConnectionsPanelTab] = useState<
+    "tools" | "tags" | "notify" | "delivery" | "supervisor"
+  >("tools");
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
+
+  const connectionsProfile = useMemo(
+    () => agentProfiles.find((p) => p.botId === connectionsBotId) ?? null,
+    [agentProfiles, connectionsBotId],
+  );
+
+  const openAgentConnections = (row: AgentProfileRow) => {
+    setAgentModalOpen(false);
+    setAgentForm(profileToForm(row));
+    setConnectionsBotId(row.botId);
+    setConnectionsPanelTab("tools");
+  };
+
+  const closeAgentConnections = () => {
+    setConnectionsBotId(null);
+  };
 
   useEffect(() => {
     if (!agentModalOpen) {
@@ -2038,6 +2062,7 @@ function AgentsTab({
           <h2 className="text-xl font-bold text-ink-900 dark:text-ink-50">{t("automationPage.agentsHeading")}</h2>
           <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("automationPage.agentsSubheading")}</p>
           <p className="mt-2 text-xs text-ink-500 dark:text-ink-500">{t("automationPage.agentHint")}</p>
+          <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">{t("automationPage.agentConnectionsHint")}</p>
         </div>
         <button
           type="button"
@@ -2048,7 +2073,8 @@ function AgentsTab({
         </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={clsx("grid gap-4", connectionsBotId ? "lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]" : "")}>
+        <div className={clsx("grid gap-4", connectionsBotId ? "sm:grid-cols-1 xl:grid-cols-2" : "sm:grid-cols-2")}>
         {agentProfiles.map((row) => {
           const llm = row.llmConfig as Record<string, unknown>;
           const beh = row.behaviorConfig as Record<string, unknown>;
@@ -2065,11 +2091,17 @@ function AgentsTab({
               Array.isArray(a.botIds) &&
               a.botIds.includes(row.bot.id),
           ).length;
+          const connectionsSelected = connectionsBotId === row.botId;
 
           return (
             <div
               key={row.id}
-              className="flex flex-col rounded-xl border border-ink-200 bg-white p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900/60"
+              className={clsx(
+                "flex flex-col rounded-xl border bg-white p-4 shadow-sm dark:bg-ink-900/60",
+                connectionsSelected
+                  ? "border-brand-500 ring-2 ring-brand-500/30 dark:border-brand-500"
+                  : "border-ink-200 dark:border-ink-700",
+              )}
             >
               {row.bot.editInExternalAutomation ? (
                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
@@ -2104,7 +2136,23 @@ function AgentsTab({
                   </Link>
                   <button
                     type="button"
-                    onClick={() => onEdit(row)}
+                    onClick={() => openAgentConnections(row)}
+                    className={clsx(
+                      "rounded p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800",
+                      connectionsSelected
+                        ? "text-brand-600 dark:text-brand-400"
+                        : "text-ink-500 hover:text-ink-800",
+                    )}
+                    title={t("automationPage.agentConnectionsOpen")}
+                  >
+                    <Cable className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConnectionsBotId(null);
+                      onEdit(row);
+                    }}
                     className="rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-ink-800"
                     title={t("automationPage.agentEdit")}
                   >
@@ -2173,6 +2221,680 @@ function AgentsTab({
             </div>
           );
         })}
+        </div>
+
+        {connectionsBotId && connectionsProfile && agentForm.editBotId === connectionsBotId ? (
+          <aside className="flex max-h-[min(85vh,48rem)] flex-col overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-lg dark:border-brand-900/50 dark:bg-ink-900 lg:sticky lg:top-4">
+            <div className="flex shrink-0 items-start justify-between gap-2 border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+                  {t("automationPage.agentConnectionsPanelLabel")}
+                </p>
+                <h3 className="truncate text-base font-bold text-ink-900 dark:text-ink-50">
+                  {connectionsProfile.bot.name}
+                </h3>
+                <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.agentConnectionsPanelHelp")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAgentConnections}
+                className="rounded p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+                aria-label={t("common.cancel")}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-ink-100 px-2 py-2 dark:border-ink-800">
+              {(
+                [
+                  { id: "tools" as const, label: t("automationPage.agentConnectionsTabTools"), icon: Cable },
+                  { id: "tags" as const, label: t("automationPage.agentConnectionsTabTags"), icon: Tags },
+                  { id: "notify" as const, label: t("automationPage.agentConnectionsTabNotify"), icon: MessageCircle },
+                  { id: "delivery" as const, label: t("automationPage.agentConnectionsTabDelivery"), icon: ShieldCheck },
+                  { id: "supervisor" as const, label: t("automationPage.agentConnectionsTabSupervisor"), icon: Bot },
+                ] as const
+              ).map((tabRow) => {
+                const Icon = tabRow.icon;
+                const active = connectionsPanelTab === tabRow.id;
+                return (
+                  <button
+                    key={tabRow.id}
+                    type="button"
+                    onClick={() => setConnectionsPanelTab(tabRow.id)}
+                    className={clsx(
+                      "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
+                      active
+                        ? "bg-brand-600 text-white"
+                        : "bg-ink-50 text-ink-700 hover:bg-ink-100 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {tabRow.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+              {connectionsPanelTab === "notify" ? (
+                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                    <MessageCircle className="h-4 w-4 text-brand-600" />
+                    {t("automationPage.agentToolCallNotifySection")}
+                  </div>
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={agentForm.toolCallNotifyEnabled}
+                      onChange={(e) => {
+                        const enabled = e.target.checked;
+                        setAgentForm((f) => ({
+                          ...f,
+                          toolCallNotifyEnabled: enabled,
+                          toolCallNotifySelectedTools:
+                            enabled && f.toolCallNotifySelectedTools.length === 0
+                              ? toolCallNotifyCandidates.map((row) => row.key)
+                              : f.toolCallNotifySelectedTools,
+                        }));
+                      }}
+                    />
+                    {t("automationPage.agentToolCallNotifyToggle")}
+                  </label>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentToolCallNotifyHelp")}</p>
+                  {agentForm.toolCallNotifyEnabled ? (
+                    <>
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                          {t("automationPage.agentToolCallNotifyTools")}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-ink-500">
+                          {t("automationPage.agentToolCallNotifyToolsHelp")}
+                        </p>
+                        {toolCallNotifyCandidates.length === 0 ? (
+                          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                            {t("automationPage.agentToolCallNotifyToolsEmpty")}
+                          </p>
+                        ) : (
+                          <ul className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
+                            {toolCallNotifyCandidates.map((row) => {
+                              const selected = agentForm.toolCallNotifySelectedTools.includes(row.key);
+                              return (
+                                <li key={row.key} className="rounded-md border border-transparent px-1 py-0.5 hover:border-ink-100 dark:hover:border-ink-700">
+                                  <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
+                                    <input
+                                      type="checkbox"
+                                      className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                                      checked={selected}
+                                      onChange={() =>
+                                        setAgentForm((f) => {
+                                          const next = new Set(f.toolCallNotifySelectedTools);
+                                          const msgs = { ...f.toolCallNotifyToolMessages };
+                                          if (next.has(row.key)) {
+                                            next.delete(row.key);
+                                            delete msgs[row.key];
+                                          } else {
+                                            next.add(row.key);
+                                          }
+                                          return {
+                                            ...f,
+                                            toolCallNotifySelectedTools: [...next],
+                                            toolCallNotifyToolMessages: msgs,
+                                          };
+                                        })
+                                      }
+                                    />
+                                    <span className="font-medium">{row.label}</span>
+                                  </label>
+                                  {selected ? (
+                                    <input
+                                      type="text"
+                                      value={agentForm.toolCallNotifyToolMessages[row.key] ?? ""}
+                                      onChange={(e) =>
+                                        setAgentForm((f) => ({
+                                          ...f,
+                                          toolCallNotifyToolMessages: {
+                                            ...f.toolCallNotifyToolMessages,
+                                            [row.key]: e.target.value.slice(0, 500),
+                                          },
+                                        }))
+                                      }
+                                      placeholder={t("automationPage.agentToolCallNotifyPerToolMessagePh")}
+                                      className="mt-1 w-full rounded border border-ink-200 bg-white px-2 py-1 text-[11px] text-ink-800 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                                    />
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      <label className="mt-3 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={agentForm.toolCallNotifyEnsureResultDelivered}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({
+                              ...f,
+                              toolCallNotifyEnsureResultDelivered: e.target.checked,
+                            }))
+                          }
+                        />
+                        {t("automationPage.agentToolCallNotifyEnsureResultToggle")}
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentToolCallNotifyEnsureResultHelp")}
+                      </p>
+                      <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                        {t("automationPage.agentToolCallNotifyMessage")}
+                        <textarea
+                          value={agentForm.toolCallNotifyMessage}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({ ...f, toolCallNotifyMessage: e.target.value }))
+                          }
+                          rows={2}
+                          placeholder={t("automationPage.agentToolCallNotifyMessagePh")}
+                          className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                        />
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentToolCallNotifyPerToolMessageHelp")}
+                      </p>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {connectionsPanelTab === "delivery" ? (
+                <div className="rounded-lg border border-ink-200/80 bg-ink-50/80 p-3 dark:border-ink-600 dark:bg-ink-800/40">
+                  <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">
+                    {t("automationPage.agentForceDeliverySection")}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-500">
+                    {t("automationPage.agentForceDeliveryHelp")}
+                  </p>
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={agentForm.toolCallNotifyForceDeliveryEnabled}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({
+                          ...f,
+                          toolCallNotifyForceDeliveryEnabled: e.target.checked,
+                        }))
+                      }
+                    />
+                    {t("automationPage.agentForceDeliveryToggle")}
+                  </label>
+                  {agentForm.toolCallNotifyForceDeliveryEnabled ? (
+                    <>
+                      <label className="mt-2 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={agentForm.toolCallNotifyForceKnowledgeRescue}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({
+                              ...f,
+                              toolCallNotifyForceKnowledgeRescue: e.target.checked,
+                            }))
+                          }
+                        />
+                        {t("automationPage.agentForceKnowledgeRescueToggle")}
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentForceKnowledgeRescueHelp")}
+                      </p>
+                      <label className="mt-3 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={agentForm.toolCallNotifyForceDeliveryAllTools}
+                          onChange={(e) => {
+                            const all = e.target.checked;
+                            setAgentForm((f) => ({
+                              ...f,
+                              toolCallNotifyForceDeliveryAllTools: all,
+                              toolCallNotifyForceDeliveryTools:
+                                all
+                                  ? f.toolCallNotifyForceDeliveryTools
+                                  : f.toolCallNotifyForceDeliveryTools.length > 0
+                                    ? f.toolCallNotifyForceDeliveryTools
+                                    : forceDeliveryToolCandidates.map((row) => row.key),
+                            }));
+                          }}
+                        />
+                        {t("automationPage.agentForceDeliveryAllToolsToggle")}
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentForceDeliveryAllToolsHelp")}
+                      </p>
+                      {!agentForm.toolCallNotifyForceDeliveryAllTools ? (
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                            {t("automationPage.agentForceDeliveryTools")}
+                          </p>
+                          {forceDeliveryToolCandidates.length === 0 ? (
+                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                              {t("automationPage.agentToolCallNotifyToolsEmpty")}
+                            </p>
+                          ) : (
+                            <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
+                              {forceDeliveryToolCandidates.map((row) => {
+                                const selected = agentForm.toolCallNotifyForceDeliveryTools.includes(row.key);
+                                return (
+                                  <li key={`force-${row.key}`}>
+                                    <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
+                                      <input
+                                        type="checkbox"
+                                        className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                                        checked={selected}
+                                        onChange={() =>
+                                          setAgentForm((f) => {
+                                            const next = new Set(f.toolCallNotifyForceDeliveryTools);
+                                            if (next.has(row.key)) next.delete(row.key);
+                                            else next.add(row.key);
+                                            return {
+                                              ...f,
+                                              toolCallNotifyForceDeliveryTools: [...next],
+                                            };
+                                          })
+                                        }
+                                      />
+                                      <span className="font-medium">{row.label}</span>
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {connectionsPanelTab === "supervisor" ? (
+                <div className="rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
+                  <label className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
+                    <input
+                      type="checkbox"
+                      checked={agentForm.agentSupervisorEnabled}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({ ...f, agentSupervisorEnabled: e.target.checked }))
+                      }
+                    />
+                    {t("automationPage.agentSupervisorToggle")}
+                  </label>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentSupervisorHelp")}</p>
+                </div>
+              ) : null}
+
+              {connectionsPanelTab === "tools" ? (
+                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                    {t("automationPage.agentConnectedToolsTitle")}
+                  </p>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsHelp")}</p>
+                  <p className="mt-1 text-[11px] text-brand-700 dark:text-brand-400">
+                    <button type="button" className="underline" onClick={onOpenToolsTab}>
+                      {t("automationPage.agentNativeToolsTabLink")}
+                    </button>
+                  </p>
+                  {tools.length === 0 ? (
+                    <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedToolsEmpty")}</p>
+                  ) : (
+                    <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto">
+                      {tools.map((tl) => {
+                        const existing = agentForm.connectedTools.find((x) => x.toolId === tl.id);
+                        const enabled = Boolean(existing?.enabled);
+                        const row: AgentConnectedToolRow = existing ?? {
+                          toolId: tl.id,
+                          enabled: false,
+                          permission: "read",
+                          maxCallsPerConversation: null,
+                          priority: 0,
+                          runMode: "auto",
+                        };
+                        return (
+                          <li
+                            key={tl.id}
+                            className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
+                                <input
+                                  type="checkbox"
+                                  checked={enabled}
+                                  onChange={(e) => {
+                                    const on = e.target.checked;
+                                    setAgentForm((f) => {
+                                      const rest = f.connectedTools.filter((x) => x.toolId !== tl.id);
+                                      if (!on) return { ...f, connectedTools: rest };
+                                      return {
+                                        ...f,
+                                        connectedTools: [
+                                          ...rest,
+                                          {
+                                            toolId: tl.id,
+                                            enabled: true,
+                                            permission: "read",
+                                            maxCallsPerConversation: null,
+                                            priority: 0,
+                                            runMode: "auto",
+                                            agentInstruction: undefined,
+                                          },
+                                        ],
+                                      };
+                                    });
+                                  }}
+                                />
+                                {tl.name}
+                              </label>
+                              <span className="text-[10px] text-ink-400">{tl.toolType}</span>
+                            </div>
+                            {enabled ? (
+                              <div className="mt-2 grid gap-2 border-t border-ink-100 pt-2 dark:border-ink-800 sm:grid-cols-2">
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedPermission")}
+                                  <select
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                    value={row.permission}
+                                    onChange={(e) => {
+                                      const v = e.target.value as AgentConnectedToolRow["permission"];
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTools: f.connectedTools.map((x) =>
+                                          x.toolId === tl.id ? { ...x, permission: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                  >
+                                    <option value="read">read</option>
+                                    <option value="write">write</option>
+                                    <option value="admin">admin</option>
+                                  </select>
+                                </label>
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedRunMode")}
+                                  <select
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                    value={row.runMode}
+                                    onChange={(e) => {
+                                      const v = e.target.value as AgentConnectedToolRow["runMode"];
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTools: f.connectedTools.map((x) =>
+                                          x.toolId === tl.id ? { ...x, runMode: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                  >
+                                    <option value="auto">{t("automationPage.agentConnectedRunAuto")}</option>
+                                    <option value="manual">{t("automationPage.agentConnectedRunManual")}</option>
+                                  </select>
+                                </label>
+                                {row.runMode === "manual" &&
+                                (tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK") ? (
+                                  <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-200 sm:col-span-2">
+                                    {t("automationPage.agentConnectedRunManualNativeHint")}
+                                  </p>
+                                ) : null}
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedPriority")}
+                                  <input
+                                    type="number"
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                    value={row.priority}
+                                    onChange={(e) => {
+                                      const v = Number(e.target.value) || 0;
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTools: f.connectedTools.map((x) =>
+                                          x.toolId === tl.id ? { ...x, priority: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                  />
+                                </label>
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedMaxCalls")}
+                                  <input
+                                    type="number"
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
+                                    placeholder={t("automationPage.agentConnectedMaxCallsPh")}
+                                    value={row.maxCallsPerConversation ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const v = raw === "" ? null : Math.max(0, Number(raw) || 0);
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTools: f.connectedTools.map((x) =>
+                                          x.toolId === tl.id ? { ...x, maxCallsPerConversation: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                  />
+                                </label>
+                                <div className="sm:col-span-2">
+                                  <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                    {t("automationPage.agentConnectedToolInstruction")}
+                                    <textarea
+                                      rows={3}
+                                      value={row.agentInstruction ?? ""}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setAgentForm((f) => ({
+                                          ...f,
+                                          connectedTools: f.connectedTools.map((x) =>
+                                            x.toolId === tl.id ? { ...x, agentInstruction: v } : x,
+                                          ),
+                                        }));
+                                      }}
+                                      placeholder={t("automationPage.agentConnectedToolInstructionHint")}
+                                      className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
+                                    />
+                                    {tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK" ? (
+                                      <p className="mt-1 text-[10px] leading-snug text-ink-500">
+                                        {t("automationPage.agentConnectedToolNativeFnHint").replace(
+                                          "{fn}",
+                                          nativeOpenAiToolFunctionName(tl.id),
+                                        )}
+                                      </p>
+                                    ) : null}
+                                  </label>
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={Boolean(instructionSuggestBusy)}
+                                      onClick={() => {
+                                        void (async () => {
+                                          const busyKey = `tool:${tl.id}`;
+                                          const schema =
+                                            tl.config && typeof tl.config === "object" && "parametersSchema" in tl.config
+                                              ? JSON.stringify(
+                                                  (tl.config as { parametersSchema?: unknown }).parametersSchema,
+                                                ).slice(0, 3500)
+                                              : "";
+                                          try {
+                                            const text = await runSuggestInstruction(busyKey, {
+                                              kind: "connected_tool",
+                                              agentContextSnippet: agentForm.promptUserCore,
+                                              toolName: tl.name,
+                                              toolDescription: [
+                                                tl.description,
+                                                schema ? `parameters_schema:\n${schema}` : "",
+                                              ]
+                                                .filter(Boolean)
+                                                .join("\n\n"),
+                                            });
+                                            if (!text) return;
+                                            setAgentForm((f) => ({
+                                              ...f,
+                                              connectedTools: f.connectedTools.map((x) =>
+                                                x.toolId === tl.id ? { ...x, agentInstruction: text } : x,
+                                              ),
+                                            }));
+                                          } catch (err) {
+                                            reportSuggestInstructionError(err);
+                                          }
+                                        })();
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                                    >
+                                      <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                                      {instructionSuggestBusy === `tool:${tl.id}`
+                                        ? t("automationPage.promptBuilderSuggestBusy")
+                                        : t("automationPage.promptBuilderSuggestInstruction")}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+
+              {connectionsPanelTab === "tags" ? (
+                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                  <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
+                    {t("automationPage.agentConnectedTagsTitle")}
+                  </p>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedTagsHelp")}</p>
+                  {!agentForm.nativeTools.assign_contact_tags ? (
+                    <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                      {t("automationPage.agentConnectedTagsNativeOff")}
+                    </p>
+                  ) : null}
+                  {orgTags.length === 0 ? (
+                    <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedTagsEmpty")}</p>
+                  ) : (
+                    <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto">
+                      {orgTags.map((tg) => {
+                        const existing = agentForm.connectedTags.find((x) => x.tagId === tg.id);
+                        const enabled = Boolean(existing?.enabled);
+                        const row: AgentConnectedTagRow = existing ?? {
+                          tagId: tg.id,
+                          enabled: false,
+                          agentInstruction: undefined,
+                        };
+                        return (
+                          <li
+                            key={tg.id}
+                            className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
+                                <input
+                                  type="checkbox"
+                                  checked={enabled}
+                                  disabled={!agentForm.nativeTools.assign_contact_tags}
+                                  onChange={(e) => {
+                                    const on = e.target.checked;
+                                    setAgentForm((f) => {
+                                      const rest = f.connectedTags.filter((x) => x.tagId !== tg.id);
+                                      if (!on) return { ...f, connectedTags: rest };
+                                      return {
+                                        ...f,
+                                        nativeTools: { ...f.nativeTools, assign_contact_tags: true },
+                                        connectedTags: [
+                                          ...rest,
+                                          { tagId: tg.id, enabled: true, agentInstruction: undefined },
+                                        ],
+                                      };
+                                    });
+                                  }}
+                                />
+                                <span
+                                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: tg.color }}
+                                  aria-hidden
+                                />
+                                {tg.name}
+                              </label>
+                            </div>
+                            {enabled ? (
+                              <div className="mt-2 border-t border-ink-100 pt-2 dark:border-ink-800">
+                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
+                                  {t("automationPage.agentConnectedToolInstruction")}
+                                  <textarea
+                                    rows={3}
+                                    value={row.agentInstruction ?? ""}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        connectedTags: f.connectedTags.map((x) =>
+                                          x.tagId === tg.id ? { ...x, agentInstruction: v } : x,
+                                        ),
+                                      }));
+                                    }}
+                                    placeholder={t("automationPage.agentConnectedTagInstructionHint")}
+                                    className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(instructionSuggestBusy)}
+                                  onClick={() => {
+                                    void (async () => {
+                                      const busyKey = `tag:${tg.id}`;
+                                      try {
+                                        const text = await runSuggestInstruction(busyKey, {
+                                          kind: "connected_tag",
+                                          tagId: tg.id,
+                                          tagName: tg.name,
+                                          agentContextSnippet: agentForm.promptUserCore,
+                                        });
+                                        if (!text) return;
+                                        setAgentForm((f) => ({
+                                          ...f,
+                                          connectedTags: f.connectedTags.map((x) =>
+                                            x.tagId === tg.id ? { ...x, agentInstruction: text } : x,
+                                          ),
+                                        }));
+                                      } catch (err) {
+                                        reportSuggestInstructionError(err);
+                                      }
+                                    })();
+                                  }}
+                                  className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
+                                >
+                                  <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
+                                  {instructionSuggestBusy === `tag:${tg.id}`
+                                    ? t("automationPage.promptBuilderSuggestBusy")
+                                    : t("automationPage.promptBuilderSuggestInstruction")}
+                                </button>
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-ink-100 px-4 py-3 dark:border-ink-800">
+              <button
+                type="button"
+                onClick={closeAgentConnections}
+                className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => onSaveModal()}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {t("automationPage.agentConnectionsSave")}
+              </button>
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       {orphanBots.length > 0 ? (
@@ -2636,251 +3358,8 @@ function AgentsTab({
                 ) : null}
               </div>
 
-              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
-                  <MessageCircle className="h-4 w-4 text-brand-600" />
-                  {t("automationPage.agentToolCallNotifySection")}
-                </div>
-                <label className="mt-2 flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={agentForm.toolCallNotifyEnabled}
-                    onChange={(e) => {
-                      const enabled = e.target.checked;
-                      setAgentForm((f) => ({
-                        ...f,
-                        toolCallNotifyEnabled: enabled,
-                        toolCallNotifySelectedTools:
-                          enabled && f.toolCallNotifySelectedTools.length === 0
-                            ? toolCallNotifyCandidates.map((row) => row.key)
-                            : f.toolCallNotifySelectedTools,
-                      }));
-                    }}
-                  />
-                  {t("automationPage.agentToolCallNotifyToggle")}
-                </label>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentToolCallNotifyHelp")}</p>
-                {agentForm.toolCallNotifyEnabled ? (
-                  <>
-                    <div className="mt-3">
-                      <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                        {t("automationPage.agentToolCallNotifyTools")}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-ink-500">
-                        {t("automationPage.agentToolCallNotifyToolsHelp")}
-                      </p>
-                      {toolCallNotifyCandidates.length === 0 ? (
-                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                          {t("automationPage.agentToolCallNotifyToolsEmpty")}
-                        </p>
-                      ) : (
-                        <ul className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
-                          {toolCallNotifyCandidates.map((row) => {
-                            const selected = agentForm.toolCallNotifySelectedTools.includes(row.key);
-                            return (
-                              <li key={row.key} className="rounded-md border border-transparent px-1 py-0.5 hover:border-ink-100 dark:hover:border-ink-700">
-                                <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
-                                  <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
-                                    checked={selected}
-                                    onChange={() =>
-                                      setAgentForm((f) => {
-                                        const next = new Set(f.toolCallNotifySelectedTools);
-                                        const msgs = { ...f.toolCallNotifyToolMessages };
-                                        if (next.has(row.key)) {
-                                          next.delete(row.key);
-                                          delete msgs[row.key];
-                                        } else {
-                                          next.add(row.key);
-                                        }
-                                        return {
-                                          ...f,
-                                          toolCallNotifySelectedTools: [...next],
-                                          toolCallNotifyToolMessages: msgs,
-                                        };
-                                      })
-                                    }
-                                  />
-                                  <span className="font-medium">{row.label}</span>
-                                </label>
-                                {selected ? (
-                                  <input
-                                    type="text"
-                                    value={agentForm.toolCallNotifyToolMessages[row.key] ?? ""}
-                                    onChange={(e) =>
-                                      setAgentForm((f) => ({
-                                        ...f,
-                                        toolCallNotifyToolMessages: {
-                                          ...f.toolCallNotifyToolMessages,
-                                          [row.key]: e.target.value.slice(0, 500),
-                                        },
-                                      }))
-                                    }
-                                    placeholder={t("automationPage.agentToolCallNotifyPerToolMessagePh")}
-                                    className="mt-1 w-full rounded border border-ink-200 bg-white px-2 py-1 text-[11px] text-ink-800 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                                  />
-                                ) : null}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                    <label className="mt-3 flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={agentForm.toolCallNotifyEnsureResultDelivered}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({
-                            ...f,
-                            toolCallNotifyEnsureResultDelivered: e.target.checked,
-                          }))
-                        }
-                      />
-                      {t("automationPage.agentToolCallNotifyEnsureResultToggle")}
-                    </label>
-                    <p className="mt-1 text-[11px] text-ink-500">
-                      {t("automationPage.agentToolCallNotifyEnsureResultHelp")}
-                    </p>
-                    <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
-                      {t("automationPage.agentToolCallNotifyMessage")}
-                      <textarea
-                        value={agentForm.toolCallNotifyMessage}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({ ...f, toolCallNotifyMessage: e.target.value }))
-                        }
-                        rows={2}
-                        placeholder={t("automationPage.agentToolCallNotifyMessagePh")}
-                        className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
-                      />
-                    </label>
-                    <p className="mt-1 text-[11px] text-ink-500">
-                      {t("automationPage.agentToolCallNotifyPerToolMessageHelp")}
-                    </p>
-                  </>
-                ) : null}
-                <div className="mt-4 rounded-lg border border-ink-200/80 bg-white/60 p-3 dark:border-ink-600 dark:bg-ink-950/30">
-                  <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">
-                    {t("automationPage.agentForceDeliverySection")}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-ink-500">
-                    {t("automationPage.agentForceDeliveryHelp")}
-                  </p>
-                  <label className="mt-2 flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={agentForm.toolCallNotifyForceDeliveryEnabled}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({
-                          ...f,
-                          toolCallNotifyForceDeliveryEnabled: e.target.checked,
-                        }))
-                      }
-                    />
-                    {t("automationPage.agentForceDeliveryToggle")}
-                  </label>
-                  {agentForm.toolCallNotifyForceDeliveryEnabled ? (
-                    <>
-                      <label className="mt-2 flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={agentForm.toolCallNotifyForceKnowledgeRescue}
-                          onChange={(e) =>
-                            setAgentForm((f) => ({
-                              ...f,
-                              toolCallNotifyForceKnowledgeRescue: e.target.checked,
-                            }))
-                          }
-                        />
-                        {t("automationPage.agentForceKnowledgeRescueToggle")}
-                      </label>
-                      <p className="mt-1 text-[11px] text-ink-500">
-                        {t("automationPage.agentForceKnowledgeRescueHelp")}
-                      </p>
-                      <label className="mt-3 flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={agentForm.toolCallNotifyForceDeliveryAllTools}
-                          onChange={(e) => {
-                            const all = e.target.checked;
-                            setAgentForm((f) => ({
-                              ...f,
-                              toolCallNotifyForceDeliveryAllTools: all,
-                              toolCallNotifyForceDeliveryTools:
-                                all
-                                  ? f.toolCallNotifyForceDeliveryTools
-                                  : f.toolCallNotifyForceDeliveryTools.length > 0
-                                    ? f.toolCallNotifyForceDeliveryTools
-                                    : forceDeliveryToolCandidates.map((row) => row.key),
-                            }));
-                          }}
-                        />
-                        {t("automationPage.agentForceDeliveryAllToolsToggle")}
-                      </label>
-                      <p className="mt-1 text-[11px] text-ink-500">
-                        {t("automationPage.agentForceDeliveryAllToolsHelp")}
-                      </p>
-                      {!agentForm.toolCallNotifyForceDeliveryAllTools ? (
-                        <div className="mt-2">
-                          <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
-                            {t("automationPage.agentForceDeliveryTools")}
-                          </p>
-                          {forceDeliveryToolCandidates.length === 0 ? (
-                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                              {t("automationPage.agentToolCallNotifyToolsEmpty")}
-                            </p>
-                          ) : (
-                            <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
-                              {forceDeliveryToolCandidates.map((row) => {
-                                const selected = agentForm.toolCallNotifyForceDeliveryTools.includes(
-                                  row.key,
-                                );
-                                return (
-                                  <li key={`force-${row.key}`}>
-                                    <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
-                                      <input
-                                        type="checkbox"
-                                        className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
-                                        checked={selected}
-                                        onChange={() =>
-                                          setAgentForm((f) => {
-                                            const next = new Set(f.toolCallNotifyForceDeliveryTools);
-                                            if (next.has(row.key)) next.delete(row.key);
-                                            else next.add(row.key);
-                                            return {
-                                              ...f,
-                                              toolCallNotifyForceDeliveryTools: [...next],
-                                            };
-                                          })
-                                        }
-                                      />
-                                      <span className="font-medium">{row.label}</span>
-                                    </label>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
-                <label className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
-                  <input
-                    type="checkbox"
-                    checked={agentForm.agentSupervisorEnabled}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({ ...f, agentSupervisorEnabled: e.target.checked }))
-                    }
-                  />
-                  {t("automationPage.agentSupervisorToggle")}
-                </label>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentSupervisorHelp")}</p>
+              <div className="rounded-lg border border-brand-200/70 bg-brand-50/50 px-3 py-2 text-[11px] leading-relaxed text-brand-950 dark:border-brand-900/40 dark:bg-brand-950/25 dark:text-brand-100">
+                {t("automationPage.agentConnectionsModalTip")}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3219,344 +3698,6 @@ function AgentsTab({
                         ))}
                       </div>
                     </div>
-
-                    <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
-                  {t("automationPage.agentConnectedToolsTitle")}
-                </p>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedToolsHelp")}</p>
-                {tools.length === 0 ? (
-                  <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedToolsEmpty")}</p>
-                ) : (
-                  <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto">
-                    {tools.map((tl) => {
-                      const existing = agentForm.connectedTools.find((x) => x.toolId === tl.id);
-                      const enabled = Boolean(existing?.enabled);
-                      const row: AgentConnectedToolRow = existing ?? {
-                        toolId: tl.id,
-                        enabled: false,
-                        permission: "read",
-                        maxCallsPerConversation: null,
-                        priority: 0,
-                        runMode: "auto",
-                      };
-                      return (
-                        <li
-                          key={tl.id}
-                          className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
-                              <input
-                                type="checkbox"
-                                checked={enabled}
-                                onChange={(e) => {
-                                  const on = e.target.checked;
-                                  setAgentForm((f) => {
-                                    const rest = f.connectedTools.filter((x) => x.toolId !== tl.id);
-                                    if (!on) return { ...f, connectedTools: rest };
-                                    return {
-                                      ...f,
-                                      connectedTools: [
-                                        ...rest,
-                                        {
-                                          toolId: tl.id,
-                                          enabled: true,
-                                          permission: "read",
-                                          maxCallsPerConversation: null,
-                                          priority: 0,
-                                          runMode: "auto",
-                                          agentInstruction: undefined,
-                                        },
-                                      ],
-                                    };
-                                  });
-                                }}
-                              />
-                              {tl.name}
-                            </label>
-                            <span className="text-[10px] text-ink-400">{tl.toolType}</span>
-                          </div>
-                          {enabled ? (
-                            <div className="mt-2 grid gap-2 border-t border-ink-100 pt-2 dark:border-ink-800 sm:grid-cols-2">
-                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                {t("automationPage.agentConnectedPermission")}
-                                <select
-                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
-                                  value={row.permission}
-                                  onChange={(e) => {
-                                    const v = e.target.value as AgentConnectedToolRow["permission"];
-                                    setAgentForm((f) => ({
-                                      ...f,
-                                      connectedTools: f.connectedTools.map((x) =>
-                                        x.toolId === tl.id ? { ...x, permission: v } : x,
-                                      ),
-                                    }));
-                                  }}
-                                >
-                                  <option value="read">read</option>
-                                  <option value="write">write</option>
-                                  <option value="admin">admin</option>
-                                </select>
-                              </label>
-                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                {t("automationPage.agentConnectedRunMode")}
-                                <select
-                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
-                                  value={row.runMode}
-                                  onChange={(e) => {
-                                    const v = e.target.value as AgentConnectedToolRow["runMode"];
-                                    setAgentForm((f) => ({
-                                      ...f,
-                                      connectedTools: f.connectedTools.map((x) =>
-                                        x.toolId === tl.id ? { ...x, runMode: v } : x,
-                                      ),
-                                    }));
-                                  }}
-                                >
-                                  <option value="auto">{t("automationPage.agentConnectedRunAuto")}</option>
-                                  <option value="manual">{t("automationPage.agentConnectedRunManual")}</option>
-                                </select>
-                              </label>
-                              {row.runMode === "manual" &&
-                              (tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK") ? (
-                                <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-200 sm:col-span-2">
-                                  {t("automationPage.agentConnectedRunManualNativeHint")}
-                                </p>
-                              ) : null}
-                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                {t("automationPage.agentConnectedPriority")}
-                                <input
-                                  type="number"
-                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
-                                  value={row.priority}
-                                  onChange={(e) => {
-                                    const v = Number(e.target.value) || 0;
-                                    setAgentForm((f) => ({
-                                      ...f,
-                                      connectedTools: f.connectedTools.map((x) =>
-                                        x.toolId === tl.id ? { ...x, priority: v } : x,
-                                      ),
-                                    }));
-                                  }}
-                                />
-                              </label>
-                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                {t("automationPage.agentConnectedMaxCalls")}
-                                <input
-                                  type="number"
-                                  className="mt-0.5 w-full rounded border border-ink-200 px-1 py-1 text-xs dark:border-ink-600 dark:bg-ink-900"
-                                  placeholder={t("automationPage.agentConnectedMaxCallsPh")}
-                                  value={row.maxCallsPerConversation ?? ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    const v = raw === "" ? null : Math.max(0, Number(raw) || 0);
-                                    setAgentForm((f) => ({
-                                      ...f,
-                                      connectedTools: f.connectedTools.map((x) =>
-                                        x.toolId === tl.id ? { ...x, maxCallsPerConversation: v } : x,
-                                      ),
-                                    }));
-                                  }}
-                                />
-                              </label>
-                              <div className="sm:col-span-2">
-                                <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                  {t("automationPage.agentConnectedToolInstruction")}
-                                  <textarea
-                                    rows={3}
-                                    value={row.agentInstruction ?? ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setAgentForm((f) => ({
-                                        ...f,
-                                        connectedTools: f.connectedTools.map((x) =>
-                                          x.toolId === tl.id ? { ...x, agentInstruction: v } : x,
-                                        ),
-                                      }));
-                                    }}
-                                    placeholder={t("automationPage.agentConnectedToolInstructionHint")}
-                                    className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
-                                  />
-                                  {tl.toolType === "HTTP_API" || tl.toolType === "WEBHOOK" ? (
-                                    <p className="mt-1 text-[10px] leading-snug text-ink-500">
-                                      {t("automationPage.agentConnectedToolNativeFnHint").replace(
-                                        "{fn}",
-                                        nativeOpenAiToolFunctionName(tl.id),
-                                      )}
-                                    </p>
-                                  ) : null}
-                                </label>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={Boolean(instructionSuggestBusy)}
-                                    onClick={() => {
-                                      void (async () => {
-                                        const busyKey = `tool:${tl.id}`;
-                                        const schema =
-                                          tl.config && typeof tl.config === "object" && "parametersSchema" in tl.config
-                                            ? JSON.stringify((tl.config as { parametersSchema?: unknown }).parametersSchema).slice(
-                                                0,
-                                                3500,
-                                              )
-                                            : "";
-                                        try {
-                                          const text = await runSuggestInstruction(busyKey, {
-                                            kind: "connected_tool",
-                                            agentContextSnippet: agentForm.promptUserCore,
-                                            toolName: tl.name,
-                                            toolDescription: [tl.description, schema ? `parameters_schema:\n${schema}` : ""]
-                                              .filter(Boolean)
-                                              .join("\n\n"),
-                                          });
-                                          if (!text) return;
-                                          setAgentForm((f) => ({
-                                            ...f,
-                                            connectedTools: f.connectedTools.map((x) =>
-                                              x.toolId === tl.id ? { ...x, agentInstruction: text } : x,
-                                            ),
-                                          }));
-                                        } catch (err) {
-                                          reportSuggestInstructionError(err);
-                                        }
-                                      })();
-                                    }}
-                                    className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
-                                  >
-                                    <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
-                                    {instructionSuggestBusy === `tool:${tl.id}`
-                                      ? t("automationPage.promptBuilderSuggestBusy")
-                                      : t("automationPage.promptBuilderSuggestInstruction")}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">
-                  {t("automationPage.agentConnectedTagsTitle")}
-                </p>
-                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentConnectedTagsHelp")}</p>
-                {!agentForm.nativeTools.assign_contact_tags ? (
-                  <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
-                    {t("automationPage.agentConnectedTagsNativeOff")}
-                  </p>
-                ) : null}
-                {orgTags.length === 0 ? (
-                  <p className="mt-2 text-xs text-ink-500">{t("automationPage.agentConnectedTagsEmpty")}</p>
-                ) : (
-                  <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto">
-                    {orgTags.map((tg) => {
-                      const existing = agentForm.connectedTags.find((x) => x.tagId === tg.id);
-                      const enabled = Boolean(existing?.enabled);
-                      const row: AgentConnectedTagRow = existing ?? {
-                        tagId: tg.id,
-                        enabled: false,
-                        agentInstruction: undefined,
-                      };
-                      return (
-                        <li
-                          key={tg.id}
-                          className="rounded-lg border border-ink-200 bg-white px-2 py-2 dark:border-ink-600 dark:bg-ink-950/50"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 text-xs font-medium text-ink-800 dark:text-ink-200">
-                              <input
-                                type="checkbox"
-                                checked={enabled}
-                                disabled={!agentForm.nativeTools.assign_contact_tags}
-                                onChange={(e) => {
-                                  const on = e.target.checked;
-                                  setAgentForm((f) => {
-                                    const rest = f.connectedTags.filter((x) => x.tagId !== tg.id);
-                                    if (!on) return { ...f, connectedTags: rest };
-                                    return {
-                                      ...f,
-                                      nativeTools: { ...f.nativeTools, assign_contact_tags: true },
-                                      connectedTags: [
-                                        ...rest,
-                                        { tagId: tg.id, enabled: true, agentInstruction: undefined },
-                                      ],
-                                    };
-                                  });
-                                }}
-                              />
-                              <span
-                                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: tg.color }}
-                                aria-hidden
-                              />
-                              {tg.name}
-                            </label>
-                          </div>
-                          {enabled ? (
-                            <div className="mt-2 border-t border-ink-100 pt-2 dark:border-ink-800">
-                              <label className="text-[11px] font-medium text-ink-700 dark:text-ink-300">
-                                {t("automationPage.agentConnectedToolInstruction")}
-                                <textarea
-                                  rows={3}
-                                  value={row.agentInstruction ?? ""}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    setAgentForm((f) => ({
-                                      ...f,
-                                      connectedTags: f.connectedTags.map((x) =>
-                                        x.tagId === tg.id ? { ...x, agentInstruction: v } : x,
-                                      ),
-                                    }));
-                                  }}
-                                  placeholder={t("automationPage.agentConnectedTagInstructionHint")}
-                                  className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1.5 text-xs leading-relaxed dark:border-ink-600 dark:bg-ink-900"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                disabled={Boolean(instructionSuggestBusy)}
-                                onClick={() => {
-                                  void (async () => {
-                                    const busyKey = `tag:${tg.id}`;
-                                    try {
-                                      const text = await runSuggestInstruction(busyKey, {
-                                        kind: "connected_tag",
-                                        tagId: tg.id,
-                                        tagName: tg.name,
-                                        agentContextSnippet: agentForm.promptUserCore,
-                                      });
-                                      if (!text) return;
-                                      setAgentForm((f) => ({
-                                        ...f,
-                                        connectedTags: f.connectedTags.map((x) =>
-                                          x.tagId === tg.id ? { ...x, agentInstruction: text } : x,
-                                        ),
-                                      }));
-                                    } catch (err) {
-                                      reportSuggestInstructionError(err);
-                                    }
-                                  })();
-                                }}
-                                className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-brand-200 bg-white px-2 py-1 text-[11px] font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-800 dark:bg-ink-900 dark:text-brand-200 dark:hover:bg-brand-950/40"
-                              >
-                                <Sparkles className="h-3 w-3 shrink-0" aria-hidden />
-                                {instructionSuggestBusy === `tag:${tg.id}`
-                                  ? t("automationPage.promptBuilderSuggestBusy")
-                                  : t("automationPage.promptBuilderSuggestInstruction")}
-                              </button>
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
 
               <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
                 <p className="text-sm font-semibold text-ink-900 dark:text-ink-100">

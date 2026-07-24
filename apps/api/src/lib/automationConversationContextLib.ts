@@ -553,3 +553,58 @@ export async function mergeFlowSlotsAutomationContext(params: {
 
   return mergedSlots;
 }
+
+/** Substitui flowSlots (não faz merge) e opcionalmente limpa a última ronda de tools. */
+export async function replaceFlowSlotsAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  flowSlots: AutomationFlowSlots;
+  clearLastNativeToolRound?: boolean;
+  flowStep?: string | null;
+}): Promise<AutomationFlowSlots> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const state: AutomationContextState = { ...existing.state };
+  state.flowSlots = { ...params.flowSlots };
+  if (params.clearLastNativeToolRound) {
+    delete state.lastNativeToolRound;
+  }
+  if (params.flowStep === null) {
+    delete state.flowStep;
+  } else if (typeof params.flowStep === "string" && params.flowStep.trim()) {
+    state.flowStep = params.flowStep.trim();
+  }
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+
+  return state.flowSlots ?? {};
+}
+
+/**
+ * Com isolamento por tools: omite previews da última ronda (podem ter dados de outro hóspede)
+ * e usa apenas os slots de sessão já filtrados.
+ */
+export function buildIsolatedNativeFlowStatePromptBlock(input: {
+  flowStep?: string;
+  flowSlots?: AutomationFlowSlots;
+}): string {
+  return buildNativeFlowStatePromptBlock({
+    ...(input.flowStep?.trim() ? { flowStep: input.flowStep.trim() } : {}),
+    ...(input.flowSlots && Object.keys(input.flowSlots).length > 0
+      ? { flowSlots: input.flowSlots }
+      : {}),
+  });
+}
