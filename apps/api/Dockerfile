@@ -2,12 +2,12 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
 
 # Instalar API + shared (parte das deps fica em apps/api/node_modules com isolamento do lockfile).
-RUN npm ci --workspace=apps/api --workspace=packages/shared
+RUN npm ci --workspace=apps/api --workspace=packages/shared --omit=peer
 
 # Build shared first
 FROM deps AS build-shared

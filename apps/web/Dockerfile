@@ -3,10 +3,10 @@ WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
-RUN npm ci --workspace=apps/web --workspace=packages/shared
+RUN npm ci --workspace=apps/web --workspace=packages/shared --omit=peer
 
 # Build shared package
 FROM deps AS build-shared
