@@ -224,6 +224,7 @@ export function AutomationPromptsHub({
   const [draftBody, setDraftBody] = useState("");
   const [draftBlocks, setDraftBlocks] = useState<PromptBlocks>(() => emptyPromptBlocks());
   const [draftUseFullText, setDraftUseFullText] = useState(false);
+  const [draftAutofillBlocks, setDraftAutofillBlocks] = useState(false);
   const [draftCategory, setDraftCategory] = useState<string>("general");
   const [draftTags, setDraftTags] = useState("");
   const [draftStatus, setDraftStatus] = useState<PromptStatus>("active");
@@ -299,6 +300,7 @@ export function AutomationPromptsHub({
     setDraftBody("");
     setDraftBlocks(emptyPromptBlocks());
     setDraftUseFullText(false);
+    setDraftAutofillBlocks(false);
     setDraftCategory("general");
     setDraftTags("");
     setDraftStatus("active");
@@ -336,9 +338,11 @@ export function AutomationPromptsHub({
     if (promptLooksMultiSection(row.body)) {
       setDraftBlocks(parseMarkdownPromptIntoBlocks(row.body));
       setDraftUseFullText(false);
+      setDraftAutofillBlocks(false);
     } else {
       setDraftBlocks(emptyPromptBlocks());
       setDraftUseFullText(Boolean(row.body.trim()));
+      setDraftAutofillBlocks(false);
     }
     setDraftCategory(lb.category ?? "general");
     setDraftTags((lb.tags ?? []).join(", "));
@@ -542,9 +546,11 @@ export function AutomationPromptsHub({
     if (promptLooksMultiSection(tpl.body)) {
       setDraftBlocks(parseMarkdownPromptIntoBlocks(tpl.body));
       setDraftUseFullText(false);
+      setDraftAutofillBlocks(false);
     } else {
       setDraftBlocks(emptyPromptBlocks());
       setDraftUseFullText(true);
+      setDraftAutofillBlocks(false);
     }
     setDraftStatus("active");
     setDraftSlug(slugify(title));
@@ -567,16 +573,19 @@ export function AutomationPromptsHub({
     setDraftBlocks(next);
     setDraftBody(syncBodyFromBlocks(next));
     setDraftUseFullText(false);
+    setDraftAutofillBlocks(false);
   };
 
   const applyPromptEditorChange = (next: {
     blocks: PromptBlocks;
     fullPrompt: string;
     useFullPrompt: boolean;
+    autofillBlocks: boolean;
   }) => {
     setDraftBlocks(next.blocks);
     setDraftBody(next.fullPrompt);
     setDraftUseFullText(next.useFullPrompt);
+    setDraftAutofillBlocks(next.autofillBlocks);
   };
 
   const insertAtCursor = (text: string) => {
@@ -615,6 +624,7 @@ export function AutomationPromptsHub({
     setDraftBlocks(blocks);
     setDraftBody(structuredMarkdown || source);
     setDraftUseFullText(false);
+    setDraftAutofillBlocks(false);
   };
 
   const rollbackTo = (entry: PromptHistoryEntry) => {
@@ -623,9 +633,11 @@ export function AutomationPromptsHub({
     if (promptLooksMultiSection(entry.body)) {
       setDraftBlocks(parseMarkdownPromptIntoBlocks(entry.body));
       setDraftUseFullText(false);
+      setDraftAutofillBlocks(false);
     } else {
       setDraftBlocks(emptyPromptBlocks());
       setDraftUseFullText(Boolean(entry.body.trim()));
+      setDraftAutofillBlocks(false);
     }
     setDraftVersion(entry.version);
   };
@@ -1325,6 +1337,7 @@ export function AutomationPromptsHub({
                               blocks={draftBlocks}
                               fullPrompt={draftBody}
                               useFullPrompt={draftUseFullText}
+                              autofillBlocks={draftAutofillBlocks}
                               t={t}
                               fullPromptTextareaRef={bodyRef}
                               onChange={applyPromptEditorChange}
@@ -1375,6 +1388,7 @@ export function AutomationPromptsHub({
                                   setDraftBody(v);
                                   setDraftBlocks(parseMarkdownPromptIntoBlocks(v));
                                   setDraftUseFullText(false);
+                                  setDraftAutofillBlocks(false);
                                 }}
                                 onKeyDown={onBodyKeyDown}
                                 spellCheck={false}

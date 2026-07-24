@@ -21,12 +21,15 @@ export type PromptBlocksEditorChange = {
   fullPrompt: string;
   /** true = o texto completo é a fonte de verdade (como antes dos blocos). */
   useFullPrompt: boolean;
+  /** true = preencher/editar blocos a partir do texto completo (persistido no agente). */
+  autofillBlocks: boolean;
 };
 
 export function PromptBlocksEditor({
   blocks,
   fullPrompt,
   useFullPrompt,
+  autofillBlocks = false,
   onChange,
   t,
   enableImportImprove = true,
@@ -35,6 +38,8 @@ export function PromptBlocksEditor({
   blocks: PromptBlocks;
   fullPrompt: string;
   useFullPrompt: boolean;
+  /** Quando true, mostra e preenche blocos a partir do texto completo. */
+  autofillBlocks?: boolean;
   onChange: (next: PromptBlocksEditorChange) => void;
   t: (key: string) => string;
   enableImportImprove?: boolean;
@@ -42,7 +47,6 @@ export function PromptBlocksEditor({
   fullPromptTextareaRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
   const [fullOpen, setFullOpen] = useState(useFullPrompt);
-  const [autofillBlocks, setAutofillBlocks] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,12 +64,14 @@ export function PromptBlocksEditor({
         blocks: nextBlocks,
         fullPrompt: text,
         useFullPrompt: true,
+        autofillBlocks: true,
       });
     } else {
       emit({
         blocks: emptyPromptBlocks(),
         fullPrompt: text,
         useFullPrompt: true,
+        autofillBlocks: false,
       });
     }
   };
@@ -81,6 +87,7 @@ export function PromptBlocksEditor({
       blocks: nextBlocks,
       fullPrompt: raw,
       useFullPrompt: true,
+      autofillBlocks: true,
     });
     setStatusMsg(
       t("automationPage.promptImportApplied").replace(
@@ -109,6 +116,7 @@ export function PromptBlocksEditor({
       blocks: next,
       fullPrompt: structuredMarkdown || source,
       useFullPrompt: false,
+      autofillBlocks: false,
     });
     setFullOpen(false);
     setStatusMsg(t("automationPage.promptImproveApplied").replace("{count}", String(filledCount)));
@@ -123,6 +131,7 @@ export function PromptBlocksEditor({
       blocks: emptyPromptBlocks(),
       fullPrompt: seed,
       useFullPrompt: true,
+      autofillBlocks: false,
     });
   };
 
@@ -133,6 +142,7 @@ export function PromptBlocksEditor({
       blocks: emptyPromptBlocks(),
       fullPrompt,
       useFullPrompt: true,
+      autofillBlocks: false,
     });
   };
 
@@ -144,6 +154,7 @@ export function PromptBlocksEditor({
       blocks: countFilledPromptBlocks(blocks) > 0 ? blocks : emptyPromptBlocks(),
       fullPrompt: core,
       useFullPrompt: false,
+      autofillBlocks: false,
     });
   };
 
@@ -207,7 +218,6 @@ export function PromptBlocksEditor({
                   checked={autofillBlocks}
                   onChange={(e) => {
                     const on = e.target.checked;
-                    setAutofillBlocks(on);
                     if (on && fullPrompt.trim()) {
                       const nextBlocks = mergeImportedPromptIntoBlocks(
                         emptyPromptBlocks(),
@@ -218,12 +228,14 @@ export function PromptBlocksEditor({
                         blocks: nextBlocks,
                         fullPrompt,
                         useFullPrompt: true,
+                        autofillBlocks: true,
                       });
-                    } else if (!on) {
+                    } else {
                       emit({
-                        blocks: emptyPromptBlocks(),
+                        blocks: on ? blocks : emptyPromptBlocks(),
                         fullPrompt,
                         useFullPrompt: true,
+                        autofillBlocks: on,
                       });
                     }
                   }}
@@ -294,6 +306,7 @@ export function PromptBlocksEditor({
                             fullPrompt,
                           }),
                       useFullPrompt,
+                      autofillBlocks,
                     });
                   }}
                   rows={key === "examples" || key === "flows" ? 4 : 3}

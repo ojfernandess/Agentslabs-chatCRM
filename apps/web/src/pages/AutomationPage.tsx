@@ -54,6 +54,7 @@ import {
   countFilledPromptBlocks,
   emptyPromptBlocks,
   improvePromptFromMarkdown,
+  mergeImportedPromptIntoBlocks,
   parseMarkdownPromptIntoBlocks,
   parsePromptBlocksFromBehavior,
   type PromptBlocks,
@@ -372,6 +373,11 @@ type AgentFormFields = {
   promptBlocks: PromptBlocks;
   /** true = usar o texto completo (como antes dos blocos); false = montar a partir dos blocos. */
   promptUseFullText: boolean;
+  /**
+   * Com texto completo activo: preencher/mostrar blocos a partir desse texto.
+   * Persistido em promptBuilder.autofillBlocksFromFullPrompt.
+   */
+  promptAutofillBlocks: boolean;
   /** Artigos da KB referenciados no bloco automático. */
   promptLinkedKnowledgeIds: string[];
   temperature: number;
@@ -437,6 +443,7 @@ function emptyAgentForm(): AgentFormFields {
     promptUserCore: "",
     promptBlocks: emptyPromptBlocks(),
     promptUseFullText: false,
+    promptAutofillBlocks: false,
     promptLinkedKnowledgeIds: [],
     temperature: 0.7,
     maxTokens: 1024,
@@ -513,27 +520,39 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
   const coreFallback = userFromPb != null ? userFromPb : strippedCore;
   const parsedBlocks = parsePromptBlocksFromBehavior(beh, coreFallback);
   let promptUseFullText = false;
+  let promptAutofillBlocks = false;
   let promptUserCore = parsedBlocks.userCore;
   let promptBlocks = parsedBlocks.blocks;
   if (pb.useFullPrompt === true) {
     promptUseFullText = true;
     promptUserCore = coreFallback;
-    promptBlocks = emptyPromptBlocks();
+    const filledSaved = countFilledPromptBlocks(parsedBlocks.blocks);
+    promptAutofillBlocks =
+      pb.autofillBlocksFromFullPrompt === true ||
+      (pb.autofillBlocksFromFullPrompt !== false && filledSaved > 0);
+    promptBlocks = promptAutofillBlocks ? parsedBlocks.blocks : emptyPromptBlocks();
+    if (promptAutofillBlocks && filledSaved === 0 && coreFallback.trim()) {
+      promptBlocks = mergeImportedPromptIntoBlocks(emptyPromptBlocks(), coreFallback, "replace");
+    }
   } else if (pb.useFullPrompt === false) {
     promptUseFullText = false;
+    promptAutofillBlocks = false;
   } else {
     const filled = countFilledPromptBlocks(parsedBlocks.blocks);
     const multiFromMd = improvePromptFromMarkdown(coreFallback).filledCount >= 2;
     if (filled >= 2) {
       promptUseFullText = false;
+      promptAutofillBlocks = false;
     } else if (multiFromMd) {
       promptUseFullText = false;
+      promptAutofillBlocks = false;
       promptBlocks = parseMarkdownPromptIntoBlocks(coreFallback);
       promptUserCore = buildAgentPlaybookFromBlocks(promptBlocks) || coreFallback;
     } else if (coreFallback.trim()) {
       promptUseFullText = true;
       promptUserCore = coreFallback;
       promptBlocks = emptyPromptBlocks();
+      promptAutofillBlocks = false;
     }
   }
   const instructionFallbacks = parseInstructionFallbacks(pb.instructionFallbacks);
@@ -597,6 +616,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     promptUserCore,
     promptBlocks,
     promptUseFullText,
+    promptAutofillBlocks,
     promptLinkedKnowledgeIds,
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
@@ -822,8 +842,13 @@ function formToPayload(
     isolateHistoryForTools: form.isolateHistoryForTools === true,
     promptBuilder: {
       userCore: promptCoreForSave,
-      blocks: form.promptUseFullText ? emptyPromptBlocks() : form.promptBlocks,
+      blocks:
+        form.promptUseFullText && !form.promptAutofillBlocks
+          ? emptyPromptBlocks()
+          : form.promptBlocks,
       useFullPrompt: form.promptUseFullText,
+      autofillBlocksFromFullPrompt:
+        form.promptUseFullText === true && form.promptAutofillBlocks === true,
       linkedKnowledgeArticleIds: form.promptLinkedKnowledgeIds,
       teamTransferHints: form.teamTransferHints.filter((h) => h.instruction.trim()),
       instructionFallbacks: fallbacksResolved,
@@ -899,6 +924,7 @@ function applyPromptModuleSelectionToAgentForm(
     promptModuleIds: nextPromptModuleIds,
     promptUserCore,
     promptUseFullText: ordered.length > 0 ? true : f.promptUseFullText,
+    promptAutofillBlocks: ordered.length > 0 ? false : f.promptAutofillBlocks,
     promptBlocks: ordered.length > 0 ? emptyPromptBlocks() : f.promptBlocks,
     connectedTools,
     instructionFallbacks:
@@ -3562,14 +3588,16 @@ function AgentsTab({
                       blocks={agentForm.promptBlocks}
                       fullPrompt={agentForm.promptUserCore}
                       useFullPrompt={agentForm.promptUseFullText}
+                      autofillBlocks={agentForm.promptAutofillBlocks}
                       t={t}
                       fullPromptTextareaRef={promptUserCoreRef}
-                      onChange={({ blocks: nextBlocks, fullPrompt, useFullPrompt }) =>
+                      onChange={({ blocks: nextBlocks, fullPrompt, useFullPrompt, autofillBlocks }) =>
                         setAgentForm((f) => ({
                           ...f,
                           promptBlocks: nextBlocks,
                           promptUserCore: fullPrompt,
                           promptUseFullText: useFullPrompt,
+                          promptAutofillBlocks: autofillBlocks,
                         }))
                       }
                     />
