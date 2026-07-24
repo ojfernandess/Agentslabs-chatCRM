@@ -488,20 +488,24 @@ export const messages = {
         "Um segundo agente analisa a resposta proposta face à mensagem do cliente e aos resultados das ferramentas. Regista aprovação ou alertas nos logs de execução — não altera o envio automático.",
       promptBlock_personality: "Personalidade",
       promptBlock_objective: "Objetivo",
-      promptBlock_restrictions: "Restrições",
+      promptBlock_restrictions: "Restrições / regras obrigatórias",
       promptBlock_tools: "Ferramentas",
       promptBlock_memory: "Memória",
       promptBlock_flows: "Fluxos",
       promptBlock_fallback: "Fallback",
       promptBlock_examples: "Exemplos",
-      promptBlockHint_personality: "Tom, estilo e persona do agente (formal, empático, conciso…).",
-      promptBlockHint_objective: "O que o agente deve alcançar em cada conversa.",
-      promptBlockHint_restrictions: "Limites, compliance, o que nunca deve fazer ou dizer.",
-      promptBlockHint_tools: "Quando e como usar ferramentas nativas e personalizadas.",
+      promptBlockHint_personality: "Tom, estilo e persona do agente (formal, empático, conciso…). Não anula regras nem fluxos.",
+      promptBlockHint_objective: "O que o agente deve alcançar em cada conversa (ex.: atender hóspedes).",
+      promptBlockHint_restrictions:
+        "Regras obrigatórias (MUST FOLLOW): o que nunca fazer sem tool, compliance, limites. Ex.: «Nunca informe dados da reserva sem consultar a ferramenta.»",
+      promptBlockHint_tools:
+        "Quando e como usar ferramentas do playbook (nativas ou personalizadas). Padrão: regra → tool → se falhar → fallback.",
       promptBlockHint_memory: "Como usar histórico, contexto e dados do contacto.",
-      promptBlockHint_flows: "Passos do atendimento (saudação → qualificação → resolução).",
-      promptBlockHint_fallback: "Comportamento quando não souber ou a ferramenta falhar.",
-      promptBlockHint_examples: "Exemplos de diálogo ideal (few-shot).",
+      promptBlockHint_flows:
+        "Passos do atendimento em ordem (ex.: objetivo → regra → consultar tool → confirmar). O agente deve seguir a sequência.",
+      promptBlockHint_fallback:
+        "O que fazer se a ferramenta ou o fluxo falhar (ex.: solicitar o localizador). Só usar depois da falha.",
+      promptBlockHint_examples: "Exemplos de diálogo ideal (few-shot). Estilo apenas — não substituem regras.",
       promptIncludeFull: "Incluir prompt completo",
       promptIncludeFullHelp:
         "Cole ou escreva o prompt inteiro como antes. Por defeito NÃO preenche os blocos — o texto completo é o que o agente usa. Pode opcionalmente activar a distribuição automática pelos blocos.",
@@ -5636,20 +5640,25 @@ export const messages = {
         "A second agent reviews the proposed reply against the customer message and tool results. Logs approval or warnings in execution logs — does not change automatic delivery.",
       promptBlock_personality: "Personality",
       promptBlock_objective: "Objective",
-      promptBlock_restrictions: "Restrictions",
+      promptBlock_restrictions: "Restrictions / mandatory rules",
       promptBlock_tools: "Tools",
       promptBlock_memory: "Memory",
       promptBlock_flows: "Flows",
       promptBlock_fallback: "Fallback",
       promptBlock_examples: "Examples",
-      promptBlockHint_personality: "Tone, style, and persona (formal, empathetic, concise…).",
-      promptBlockHint_objective: "What the agent should achieve in each conversation.",
-      promptBlockHint_restrictions: "Limits, compliance, what it must never do or say.",
-      promptBlockHint_tools: "When and how to use native and custom tools.",
+      promptBlockHint_personality:
+        "Tone, style, and persona (formal, empathetic, concise…). Does not override rules or flows.",
+      promptBlockHint_objective: "What the agent should achieve in each conversation (e.g. assist guests).",
+      promptBlockHint_restrictions:
+        "Mandatory rules (MUST FOLLOW): what never to do without a tool, compliance, limits. E.g. “Never share reservation data without calling the tool.”",
+      promptBlockHint_tools:
+        "When and how to use playbook tools (native or custom). Pattern: rule → tool → on failure → fallback.",
       promptBlockHint_memory: "How to use history, context, and contact data.",
-      promptBlockHint_flows: "Service steps (greeting → qualification → resolution).",
-      promptBlockHint_fallback: "Behavior when unsure or when a tool fails.",
-      promptBlockHint_examples: "Ideal dialogue examples (few-shot).",
+      promptBlockHint_flows:
+        "Service steps in order (e.g. goal → rule → call tool → confirm). The agent must follow the sequence.",
+      promptBlockHint_fallback:
+        "What to do if the tool or flow fails (e.g. ask for the locator). Use only after failure.",
+      promptBlockHint_examples: "Ideal dialogue examples (few-shot). Style only — do not replace rules.",
       promptIncludeFull: "Include full prompt",
       promptIncludeFullHelp:
         "Paste or write the entire prompt as before. By default it does NOT fill the blocks — the full text is what the agent uses. You can optionally enable automatic distribution into blocks.",

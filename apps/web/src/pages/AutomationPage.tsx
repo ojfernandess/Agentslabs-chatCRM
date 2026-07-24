@@ -44,7 +44,8 @@ import { AutomationConfigTransferPanel } from "@/pages/automation/AutomationConf
 import { AutomationCrmFlowHub } from "@/pages/automation/AutomationCrmFlowHub";
 import { PromptBlocksEditor } from "@/pages/automation/PromptBlocksEditor";
 import {
-  blocksToPromptUserCore,
+  buildAgentPlaybookFromBlocks,
+  buildAgentUserCoreForPersist,
   countFilledPromptBlocks,
   emptyPromptBlocks,
   improvePromptFromMarkdown,
@@ -517,7 +518,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     } else if (multiFromMd) {
       promptUseFullText = false;
       promptBlocks = parseMarkdownPromptIntoBlocks(coreFallback);
-      promptUserCore = blocksToPromptUserCore(promptBlocks) || coreFallback;
+      promptUserCore = buildAgentPlaybookFromBlocks(promptBlocks) || coreFallback;
     } else if (coreFallback.trim()) {
       promptUseFullText = true;
       promptUserCore = coreFallback;
@@ -725,9 +726,11 @@ function formToPayload(
     instructionFallbacks: fallbacksResolved,
     t: ctx.t,
   });
-  const promptCoreForSave = form.promptUseFullText
-    ? form.promptUserCore.trim()
-    : blocksToPromptUserCore(form.promptBlocks) || form.promptUserCore.trim();
+  const promptCoreForSave = buildAgentUserCoreForPersist({
+    useFullPrompt: form.promptUseFullText,
+    blocks: form.promptBlocks,
+    fullPrompt: form.promptUserCore,
+  });
   const mergedInstructions = mergeSystemWithAutoBlock(promptCoreForSave, autoInner);
 
   const modelResolved =

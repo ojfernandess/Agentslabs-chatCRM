@@ -4,6 +4,8 @@ import { ChevronDown, FileText, Sparkles, Wand2 } from "lucide-react";
 import {
   PROMPT_BLOCK_KEYS,
   blocksToPromptUserCore,
+  buildAgentPlaybookFromBlocks,
+  buildAgentUserCoreForPersist,
   countFilledPromptBlocks,
   emptyPromptBlocks,
   improvePromptFromMarkdown,
@@ -89,7 +91,11 @@ export function PromptBlocksEditor({
   };
 
   const applyImprove = () => {
-    const source = (useFullPrompt ? fullPrompt : blocksToPromptUserCore(blocks) || fullPrompt).trim();
+    const source = (
+      useFullPrompt
+        ? fullPrompt
+        : buildAgentPlaybookFromBlocks(blocks) || blocksToPromptUserCore(blocks) || fullPrompt
+    ).trim();
     if (!source) {
       setStatusMsg(t("automationPage.promptImproveEmpty"));
       return;
@@ -111,7 +117,8 @@ export function PromptBlocksEditor({
   const openFullPrompt = () => {
     setFullOpen(true);
     setStatusMsg(null);
-    const seed = fullPrompt.trim() || blocksToPromptUserCore(blocks);
+    const seed =
+      fullPrompt.trim() || buildAgentPlaybookFromBlocks(blocks) || blocksToPromptUserCore(blocks);
     emit({
       blocks: emptyPromptBlocks(),
       fullPrompt: seed,
@@ -131,7 +138,8 @@ export function PromptBlocksEditor({
 
   const switchToBlocksOnly = () => {
     setFullOpen(false);
-    const core = blocksToPromptUserCore(blocks) || fullPrompt;
+    const core =
+      buildAgentPlaybookFromBlocks(blocks) || blocksToPromptUserCore(blocks) || fullPrompt;
     emit({
       blocks: countFilledPromptBlocks(blocks) > 0 ? blocks : emptyPromptBlocks(),
       fullPrompt: core,
@@ -280,7 +288,11 @@ export function PromptBlocksEditor({
                       blocks: nextBlocks,
                       fullPrompt: useFullPrompt
                         ? fullPrompt
-                        : blocksToPromptUserCore(nextBlocks),
+                        : buildAgentUserCoreForPersist({
+                            useFullPrompt: false,
+                            blocks: nextBlocks,
+                            fullPrompt,
+                          }),
                       useFullPrompt,
                     });
                   }}

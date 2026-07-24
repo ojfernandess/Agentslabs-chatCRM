@@ -32,6 +32,7 @@ import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js"
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
+import { applyAgentPlaybookToSystemInstructions } from "./agentPlaybook.js";
 import {
   buildNativeAgentHttpToolRuntimeContext,
   openAiToolDefinitionForAutomationTool,
@@ -1406,6 +1407,7 @@ export async function generateNativeAgentReply(input: {
     }
   }
   systemInstructions = mergeInstructionFallbacksIntoSystemPrompt(systemInstructions, instructionFallbacks);
+  systemInstructions = applyAgentPlaybookToSystemInstructions(systemInstructions, pbNested);
 
   let flags = applyConnectedTagNativeToolFlags(
     applyFallbackNativeToolFlags(parseNativeToolsFromBehavior(profile.behaviorConfig), instructionFallbacks),
@@ -1553,12 +1555,14 @@ export async function generateNativeAgentReply(input: {
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
         "A função `buscar_conhecimento` pode ser usada no máximo uma vez neste turno se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
         "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do agente diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
-        "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
+        "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente. " +
+        "Esta precedência **não** anula restrições do playbook do tipo «nunca informar X sem consultar a ferramenta» — nesse caso chame a tool indicada antes de afirmar dados."
       : "") +
     (customHttpTools.length > 0
       ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
         "Existem funções com nome `oc_tool_` no catálogo: são integrações HTTP/Webhook configuradas para este agente. " +
-        "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente."
+        "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente. " +
+        "Respeite sempre as restrições e fluxos do playbook do agente ao decidir quando e como usar estas ferramentas."
       : "");
 
   const audioInboundHint =

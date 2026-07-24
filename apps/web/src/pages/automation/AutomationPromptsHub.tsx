@@ -38,6 +38,7 @@ import { PromptBlocksEditor } from "./PromptBlocksEditor";
 import {
   blocksToPromptUserCore,
   blocksToStructuredMarkdown,
+  buildAgentPlaybookFromBlocks,
   emptyPromptBlocks,
   improvePromptFromMarkdown,
   parseMarkdownPromptIntoBlocks,
@@ -170,7 +171,7 @@ function resolveVariables(body: string, sample: Record<string, string>): string 
 type EditorTab = "editor" | "preview" | "variables" | "tools" | "history";
 
 function syncBodyFromBlocks(blocks: PromptBlocks): string {
-  return blocksToStructuredMarkdown(blocks) || blocksToPromptUserCore(blocks);
+  return buildAgentPlaybookFromBlocks(blocks) || blocksToStructuredMarkdown(blocks) || blocksToPromptUserCore(blocks);
 }
 
 function promptLooksMultiSection(text: string): boolean {

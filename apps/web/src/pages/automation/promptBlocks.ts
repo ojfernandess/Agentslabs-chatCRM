@@ -32,6 +32,24 @@ export function blocksToPromptUserCore(blocks: PromptBlocks): string {
     .join("\n\n---\n\n");
 }
 
+/**
+ * Ordem operacional do playbook (prioridade para o LLM).
+ * Diferente da ordem visual do editor (`PROMPT_BLOCK_KEYS`).
+ */
+export const PLAYBOOK_PRIORITY_KEYS: readonly PromptBlockKey[] = [
+  "objective",
+  "restrictions",
+  "flows",
+  "tools",
+  "fallback",
+  "personality",
+  "memory",
+  "examples",
+] as const;
+
+/** Marker idempotente do contrato de playbook. */
+export const AGENT_PLAYBOOK_MARKER = "[OpenConduit — playbook do agente]";
+
 /** Títulos canónicos em PT (usados ao reestruturar o markdown). */
 export const PROMPT_BLOCK_MARKDOWN_HEADINGS: Record<PromptBlockKey, string> = {
   personality: "Personalidade",
@@ -43,6 +61,59 @@ export const PROMPT_BLOCK_MARKDOWN_HEADINGS: Record<PromptBlockKey, string> = {
   fallback: "Fallback",
   examples: "Exemplos",
 };
+
+/** Heading emitido no playbook (restrições elevadas a MUST FOLLOW). */
+export function playbookSectionHeading(key: PromptBlockKey): string {
+  if (key === "restrictions") return "Restrições (obrigatório — cumprir sempre)";
+  return PROMPT_BLOCK_MARKDOWN_HEADINGS[key];
+}
+
+export function buildAgentPlaybookContract(): string {
+  return [
+    AGENT_PLAYBOOK_MARKER,
+    "Cumpra este playbook pela ordem de precedência abaixo. Em caso de conflito:",
+    "1) Restrições / regras obrigatórias prevalecem sobre tom e exemplos.",
+    "2) Siga os Fluxos passo a passo.",
+    "3) Antes de afirmar dados operacionais (reserva, estado, preços internos), consulte a ferramenta indicada no playbook ou nas ferramentas ligadas.",
+    "4) Só use Fallback quando a ferramenta ou o fluxo falhar / devolver vazio.",
+    "5) Personalidade e Exemplos definem estilo — nunca anulam regras nem saltam passos do fluxo.",
+  ].join("\n");
+}
+
+/**
+ * Monta o núcleo do system prompt a partir dos blocos — hierárquico e priorizado.
+ * Preferir isto a `blocksToPromptUserCore` no save / runtime.
+ */
+export function buildAgentPlaybookFromBlocks(blocks: PromptBlocks): string {
+  const sections: string[] = [];
+  for (const key of PLAYBOOK_PRIORITY_KEYS) {
+    const body = blocks[key]?.trim();
+    if (!body) continue;
+    sections.push(`## ${playbookSectionHeading(key)}\n${body}`);
+  }
+  if (sections.length === 0) return "";
+  return `${buildAgentPlaybookContract()}\n\n${sections.join("\n\n")}`;
+}
+
+/** Envelopa prompt completo com o contrato (idempotente). Não reescreve o texto do utilizador. */
+export function buildAgentPlaybookFromFullPrompt(fullPrompt: string): string {
+  const body = fullPrompt.trim();
+  if (!body) return "";
+  if (body.includes(AGENT_PLAYBOOK_MARKER)) return body;
+  return `${buildAgentPlaybookContract()}\n\n${body}`;
+}
+
+/** Núcleo para gravar / pré-visualizar: blocos → playbook; full → envelope. */
+export function buildAgentUserCoreForPersist(input: {
+  useFullPrompt: boolean;
+  blocks: PromptBlocks;
+  fullPrompt: string;
+}): string {
+  if (input.useFullPrompt) {
+    return buildAgentPlaybookFromFullPrompt(input.fullPrompt) || input.fullPrompt.trim();
+  }
+  return buildAgentPlaybookFromBlocks(input.blocks) || input.fullPrompt.trim();
+}
 
 /** Aliases de headings markdown → bloco (PT/EN e variantes comuns). */
 const HEADING_ALIASES: Record<PromptBlockKey, string[]> = {
@@ -78,6 +149,13 @@ const HEADING_ALIASES: Record<PromptBlockKey, string[]> = {
     "regras",
     "rules",
     "regras operacionais",
+    "regras obrigatórias",
+    "regras obrigatorias",
+    "regra obrigatória",
+    "regra obrigatoria",
+    "mandatory rules",
+    "mandatory rule",
+    "must follow",
     "não fazer",
     "nao fazer",
     "guardrails",
@@ -277,7 +355,7 @@ export function improvePromptFromMarkdown(rawText: string): {
     }
   }
 
-  const structuredMarkdown = blocksToStructuredMarkdown(blocks) || rawText.trim();
+  const structuredMarkdown = buildAgentPlaybookFromBlocks(blocks) || blocksToStructuredMarkdown(blocks) || rawText.trim();
   return {
     blocks,
     structuredMarkdown,
@@ -325,7 +403,7 @@ export function parsePromptBlocksFromBehavior(
     for (const k of PROMPT_BLOCK_KEYS) {
       blocks[k] = typeof o[k] === "string" ? o[k] : "";
     }
-    const merged = blocksToPromptUserCore(blocks);
+    const merged = buildAgentPlaybookFromBlocks(blocks);
     return { blocks, userCore: merged || fallbackUserCore };
   }
   return { blocks: { ...empty, objective: fallbackUserCore }, userCore: fallbackUserCore };
