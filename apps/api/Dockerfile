@@ -2,12 +2,15 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
+# mem0ai instala peers nativos (better-sqlite3); peers omitidos quebram date-fns-tz → date-fns.
+RUN apk add --no-cache python3 make g++
+
 COPY package.json package-lock.json .npmrc ./
 COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
 
 # Instalar API + shared (parte das deps fica em apps/api/node_modules com isolamento do lockfile).
-RUN npm ci --workspace=apps/api --workspace=packages/shared --omit=peer
+RUN npm ci --workspace=apps/api --workspace=packages/shared
 
 # Build shared first
 FROM deps AS build-shared
