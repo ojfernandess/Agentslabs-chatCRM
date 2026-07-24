@@ -325,6 +325,7 @@ const defaultBehavior = {
     message: "",
     selectedTools: [] as string[],
     ensureResultDelivered: false,
+    toolMessages: {} as Record<string, string>,
   },
 };
 
@@ -391,6 +392,8 @@ type AgentFormFields = {
   toolCallNotifyMessage: string;
   toolCallNotifySelectedTools: string[];
   toolCallNotifyEnsureResultDelivered: boolean;
+  /** Mensagens opcionais por ferramenta (chave = native:… / custom:…). Vazio = mensagem global. */
+  toolCallNotifyToolMessages: Record<string, string>;
   agentSupervisorEnabled: boolean;
 };
 
@@ -436,6 +439,7 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifyMessage: "",
     toolCallNotifySelectedTools: [],
     toolCallNotifyEnsureResultDelivered: false,
+    toolCallNotifyToolMessages: {},
     agentSupervisorEnabled: false,
   };
 }
@@ -526,6 +530,16 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         ]
       : parsedNotifySelected;
 
+  const toolCallNotifyToolMessages: Record<string, string> = {};
+  const rawToolMsgs = toolCallNotifyRaw.toolMessages;
+  if (rawToolMsgs && typeof rawToolMsgs === "object" && !Array.isArray(rawToolMsgs)) {
+    for (const [k, v] of Object.entries(rawToolMsgs as Record<string, unknown>)) {
+      if (typeof k === "string" && k.trim() && typeof v === "string" && v.trim()) {
+        toolCallNotifyToolMessages[k.trim()] = v.trim().slice(0, 500);
+      }
+    }
+  }
+
   const supervisorRaw = beh.agentSupervisor;
   const agentSupervisorEnabled =
     supervisorRaw && typeof supervisorRaw === "object"
@@ -581,6 +595,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifyMessage: typeof toolCallNotifyRaw.message === "string" ? toolCallNotifyRaw.message : "",
     toolCallNotifySelectedTools,
     toolCallNotifyEnsureResultDelivered: toolCallNotifyRaw.ensureResultDelivered === true,
+    toolCallNotifyToolMessages,
     agentSupervisorEnabled,
   };
 }
@@ -747,6 +762,11 @@ function formToPayload(
       message: form.toolCallNotifyMessage.trim(),
       selectedTools: form.toolCallNotifySelectedTools,
       ensureResultDelivered: form.toolCallNotifyEnsureResultDelivered,
+      toolMessages: Object.fromEntries(
+        Object.entries(form.toolCallNotifyToolMessages)
+          .map(([k, v]) => [k, v.trim().slice(0, 500)] as const)
+          .filter(([k, v]) => k && v && form.toolCallNotifySelectedTools.includes(k)),
+      ),
     },
     agentSupervisor: {
       enabled: form.agentSupervisorEnabled,
@@ -2613,27 +2633,56 @@ function AgentsTab({
                           {t("automationPage.agentToolCallNotifyToolsEmpty")}
                         </p>
                       ) : (
-                        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
-                          {toolCallNotifyCandidates.map((row) => (
-                            <li key={row.key}>
-                              <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
-                                <input
-                                  type="checkbox"
-                                  className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
-                                  checked={agentForm.toolCallNotifySelectedTools.includes(row.key)}
-                                  onChange={() =>
-                                    setAgentForm((f) => {
-                                      const next = new Set(f.toolCallNotifySelectedTools);
-                                      if (next.has(row.key)) next.delete(row.key);
-                                      else next.add(row.key);
-                                      return { ...f, toolCallNotifySelectedTools: [...next] };
-                                    })
-                                  }
-                                />
-                                <span>{row.label}</span>
-                              </label>
-                            </li>
-                          ))}
+                        <ul className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
+                          {toolCallNotifyCandidates.map((row) => {
+                            const selected = agentForm.toolCallNotifySelectedTools.includes(row.key);
+                            return (
+                              <li key={row.key} className="rounded-md border border-transparent px-1 py-0.5 hover:border-ink-100 dark:hover:border-ink-700">
+                                <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                                    checked={selected}
+                                    onChange={() =>
+                                      setAgentForm((f) => {
+                                        const next = new Set(f.toolCallNotifySelectedTools);
+                                        const msgs = { ...f.toolCallNotifyToolMessages };
+                                        if (next.has(row.key)) {
+                                          next.delete(row.key);
+                                          delete msgs[row.key];
+                                        } else {
+                                          next.add(row.key);
+                                        }
+                                        return {
+                                          ...f,
+                                          toolCallNotifySelectedTools: [...next],
+                                          toolCallNotifyToolMessages: msgs,
+                                        };
+                                      })
+                                    }
+                                  />
+                                  <span className="font-medium">{row.label}</span>
+                                </label>
+                                {selected ? (
+                                  <input
+                                    type="text"
+                                    value={agentForm.toolCallNotifyToolMessages[row.key] ?? ""}
+                                    onChange={(e) =>
+                                      setAgentForm((f) => ({
+                                        ...f,
+                                        toolCallNotifyToolMessages: {
+                                          ...f.toolCallNotifyToolMessages,
+                                          [row.key]: e.target.value.slice(0, 500),
+                                        },
+                                      }))
+                                    }
+                                    placeholder={t("automationPage.agentToolCallNotifyPerToolMessagePh")}
+                                    className="mt-1 w-full rounded border border-ink-200 bg-white px-2 py-1 text-[11px] text-ink-800 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                                  />
+                                ) : null}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
@@ -2665,6 +2714,9 @@ function AgentsTab({
                         className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
                       />
                     </label>
+                    <p className="mt-1 text-[11px] text-ink-500">
+                      {t("automationPage.agentToolCallNotifyPerToolMessageHelp")}
+                    </p>
                   </>
                 ) : null}
               </div>

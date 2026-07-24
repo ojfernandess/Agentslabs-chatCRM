@@ -461,11 +461,14 @@ export const messages = {
         "Quando activo, envia ao cliente um aviso na primeira consulta a ferramentas seleccionadas — usa o texto do agente se existir, senão a mensagem configurada. Dispara antes da execução, para o hóspede não ficar em silêncio durante consultas ou uploads.",
       agentToolCallNotifyTools: "Ferramentas com aviso",
       agentToolCallNotifyToolsHelp:
-        "Seleccione ferramentas cujo uso deve avisar o cliente imediatamente (uma vez por turno). Inclui ferramentas HTTP POST de upload quando configuradas.",
+        "Seleccione ferramentas cujo uso deve avisar o cliente imediatamente (uma vez por turno). Em cada ferramenta marcada pode definir uma mensagem própria (opcional); se estiver vazia, usa a mensagem global abaixo.",
       agentToolCallNotifyToolsEmpty:
         "Active capacidades nativas ou ferramentas ligadas neste agente para poder seleccioná-las aqui.",
-      agentToolCallNotifyMessage: "Mensagem de aviso (opcional)",
+      agentToolCallNotifyMessage: "Mensagem de aviso global (opcional)",
       agentToolCallNotifyMessagePh: "Um momento, estou a consultar isso para si…",
+      agentToolCallNotifyPerToolMessagePh: "Mensagem só para esta ferramenta (opcional)",
+      agentToolCallNotifyPerToolMessageHelp:
+        "Nas ferramentas seleccionadas, o campo sob cada nome é opcional. Em branco = usa a mensagem global. Se várias tools forem chamadas na mesma ronda, usa-se a primeira mensagem específica encontrada (ou a global).",
       agentToolCallNotifyEnsureResultToggle: "Garantir entrega do resultado ao contacto",
       agentToolCallNotifyEnsureResultHelp:
         "Após as ferramentas, detecta se a resposta final ao cliente é só «aguarde» ou vazia. Se sim, reforça automaticamente a resposta com os resultados das consultas (ferramentas seleccionadas acima).",
@@ -5595,11 +5598,14 @@ export const messages = {
         "When enabled, sends the customer a notice on the first call to selected tools—using the agent’s text when present, otherwise the configured message. Fires before execution so guests are not left waiting silently during lookups or uploads.",
       agentToolCallNotifyTools: "Tools to notify on",
       agentToolCallNotifyToolsHelp:
-        "Select tools that should notify the customer immediately (once per turn). Includes configured HTTP POST upload tools.",
+        "Select tools that should notify the customer immediately (once per turn). Each selected tool can have its own optional message; if blank, the global message below is used.",
       agentToolCallNotifyToolsEmpty:
         "Enable native capabilities or connected tools on this agent to select them here.",
-      agentToolCallNotifyMessage: "Notice message (optional)",
+      agentToolCallNotifyMessage: "Global notice message (optional)",
       agentToolCallNotifyMessagePh: "One moment, I'm looking that up for you…",
+      agentToolCallNotifyPerToolMessagePh: "Message for this tool only (optional)",
+      agentToolCallNotifyPerToolMessageHelp:
+        "Under each selected tool, the field is optional. Leave blank to use the global message. If several tools run in the same round, the first specific message found is used (otherwise the global one).",
       agentToolCallNotifyEnsureResultToggle: "Ensure tool results reach the contact",
       agentToolCallNotifyEnsureResultHelp:
         "After tools run, detects when the final reply is only “please wait” or empty. If so, automatically reinforces the reply using the tool outcomes (for tools selected above).",

@@ -145,6 +145,7 @@ const defaultBehaviorConfig = () => ({
     enabled: false,
     message: "" as string,
     selectedTools: [] as string[],
+    toolMessages: {} as Record<string, string>,
   },
 });
 

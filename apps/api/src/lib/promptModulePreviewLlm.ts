@@ -245,9 +245,9 @@ export async function callOpenAiCompatibleChatWithTools(params: {
 
     if (toolCalls.length) {
       if (toolRounds >= maxRounds) {
+        // Sem texto genérico: o caller sintetiza a partir dos tool outcomes (evita «a tempo» falso).
         const fallback =
-          (typeof choice?.content === "string" && choice.content.trim()) ||
-          "Não foi possível concluir as ações automáticas a tempo. Um agente humano irá ajudá-lo em seguida.";
+          typeof choice?.content === "string" && choice.content.trim() ? choice.content.trim() : "";
         return { text: fallback, toolRounds, usage: totalUsage };
       }
       toolRounds++;

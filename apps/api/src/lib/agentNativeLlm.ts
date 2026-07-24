@@ -72,12 +72,15 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
   selectedTools: string[] | null;
   /** Após tools, garante que o cliente recebe resposta substantiva com o resultado (não só aviso inicial). */
   ensureResultDelivered: boolean;
+  /** Mensagens opcionais por chave de selecção (`native:…` / `custom:uuid`). Vazio = usar `message`. */
+  toolMessages: Record<string, string>;
 } {
   const fallback = {
     enabled: false,
     message: DEFAULT_TOOL_CALL_NOTIFY_MESSAGE,
     selectedTools: [] as string[],
     ensureResultDelivered: false,
+    toolMessages: {} as Record<string, string>,
   };
   if (!behaviorConfig || typeof behaviorConfig !== "object") return fallback;
   const raw = (behaviorConfig as Record<string, unknown>).toolCallNotify;
@@ -93,11 +96,22 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
       ? o.selectedTools.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
       : [];
   }
+  const toolMessages: Record<string, string> = {};
+  const rawMsgs = o.toolMessages;
+  if (rawMsgs && typeof rawMsgs === "object" && !Array.isArray(rawMsgs)) {
+    for (const [k, v] of Object.entries(rawMsgs as Record<string, unknown>)) {
+      const key = k.trim();
+      if (!key || typeof v !== "string") continue;
+      const msg = v.trim().slice(0, 500);
+      if (msg) toolMessages[key] = msg;
+    }
+  }
   return {
     enabled: o.enabled === true,
     message,
     selectedTools,
     ensureResultDelivered: o.ensureResultDelivered === true,
+    toolMessages,
   };
 }
 
@@ -110,12 +124,22 @@ export type NativeToolRoundOutcome = {
 
 export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<NativeToolRoundOutcome, "monitored"> {
   try {
-    const parsed = JSON.parse(out) as { ok?: boolean; bodyPreview?: string; error?: string | null };
+    const parsed = JSON.parse(out) as {
+      ok?: boolean;
+      found?: boolean;
+      skipped?: boolean;
+      bodyPreview?: string;
+      error?: string | null;
+    };
     const preview =
       (typeof parsed.bodyPreview === "string" && parsed.bodyPreview.trim()) ||
       (typeof parsed.error === "string" && parsed.error.trim()) ||
       out.slice(0, 400);
-    return { name, ok: parsed.ok === true, preview: preview.slice(0, 500) };
+    const ok =
+      parsed.ok === true ||
+      parsed.found === true ||
+      (parsed.skipped === true && parsed.ok !== false);
+    return { name, ok, preview: preview.slice(0, 500) };
   } catch {
     return { name, ok: out.trim().length > 0 && !/error|failed|falhou/i.test(out), preview: out.slice(0, 500) };
   }
@@ -136,12 +160,14 @@ export function shouldEnsureToolResultFollowUp(input: {
 /**
  * Quando o modelo falha (ex. 429) depois de tools já executadas, ainda assim o contacto
  * precisa de uma mensagem — mesmo sem `ensureResultDelivered` ou LLM de reforço.
+ * Tools só de KB são tratadas por `shouldForceKnowledgeDelivery`.
  */
 export function shouldForceDeliveryAfterTools(input: {
   toolOutcomes: NativeToolRoundOutcome[];
   replyText: string;
 }): boolean {
-  if (input.toolOutcomes.length === 0) return false;
+  const actionable = input.toolOutcomes.filter((t) => t.name !== "buscar_conhecimento");
+  if (actionable.length === 0) return false;
   return !hasSubstantiveAgentReplyToCustomer(input.replyText);
 }
 
@@ -262,10 +288,34 @@ export function resolveToolCallInterimMessage(
   return configuredMessage;
 }
 
-export function hasSubstantiveAgentReplyToCustomer(text: string): boolean {
+/**
+ * Resolve a mensagem de aviso: texto do modelo → mensagem específica da 1.ª tool marcada → mensagem global.
+ */
+export function resolveToolCallNotifyBody(input: {
+  assistantContent: string | null;
+  toolNames: string[];
+  defaultMessage: string;
+  toolMessages: Record<string, string>;
+}): string {
+  const assistantTrim = (input.assistantContent ?? "").trim();
+  if (assistantTrim) return assistantTrim;
+  for (const name of input.toolNames) {
+    const key = toolCallNotifySelectionKey(name);
+    if (!key) continue;
+    const perTool = input.toolMessages[key]?.trim();
+    if (perTool) return perTool.slice(0, 500);
+  }
+  const globalMsg = input.defaultMessage.trim();
+  return globalMsg || DEFAULT_TOOL_CALL_NOTIFY_MESSAGE;
+}
+
+export function hasSubstantiveAgentReplyToCustomer(
+  text: string,
+  configuredStallMessages?: string[],
+): boolean {
   const t = text.trim();
   if (!t) return false;
-  return !isLikelyStallOnlyReply(t);
+  return !isLikelyStallOnlyReply(t, configuredStallMessages);
 }
 
 async function sendToolCallInterimNotify(input: {
@@ -317,14 +367,140 @@ async function sendToolCallInterimNotify(input: {
 }
 
 const STALL_RE =
-  /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar|prosseguir|continuar|finalizar|concluir|processar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor)\b|\b(enquanto)\s+.{0,40}?(finaliz|process|consult|verific)\b|\b(consultando|verificando|processando|finalizando)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search|proceed|finish)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
+  /\b(vou|irei)\s+.{0,48}?(verificar|consultar|buscar|pesquisar|checar|olhar|prosseguir|continuar|finalizar|concluir|processar)\b|\b(um\s+momento|só\s+um\s+momento|aguarde|já\s+volto|espere|momento\s+por\s+favor|momento\s+por\s+gentileza)\b|\b(enquanto)\s+.{0,40}?(finaliz|process|consult|verific)\b|\b(consultando|verificando|processando|finalizando)\b|\b(i'?ll|i\s+will)\s+.{0,32}?(check|look\s+up|search|proceed|finish)\b|\b(one\s+moment|just\s+a\s+moment|please\s+hold)\b/i;
+
+const TOOL_ROUNDS_EXHAUSTED_RE =
+  /não\s+foi\s+possível\s+concluir\s+as\s+ações\s+automáticas\s+a\s+tempo/i;
 
 /** Resposta curta só a “vou verificar” / “um momento”, sem conteúdo útil — típico quando o modelo não invocou a KB. */
-export function isLikelyStallOnlyReply(text: string): boolean {
+export function isLikelyStallOnlyReply(text: string, configuredStallMessages?: string[]): boolean {
   const t = text.trim();
+  if (!t) return false;
+  if (TOOL_ROUNDS_EXHAUSTED_RE.test(t) && t.length < 220) return true;
+  if (/^só\s+um\s+momento(\s+por\s+gentileza)?[.!…]?\s*$/i.test(t)) return true;
+  if (/^um\s+momento([,.]\s*.{0,60})?[.!…]?\s*$/i.test(t)) return true;
+  for (const raw of configuredStallMessages ?? []) {
+    const m = raw.trim();
+    if (m.length < 6) continue;
+    if (t.toLowerCase() === m.toLowerCase()) return true;
+    if (t.length <= Math.max(m.length + 24, 120) && t.toLowerCase().includes(m.toLowerCase()) && t.length < 200) {
+      return true;
+    }
+  }
   if (t.length < 8 || t.length > 280) return false;
   if (/[.!?][\s\S]{40,}/.test(t)) return false;
   return STALL_RE.test(t);
+}
+
+/** True quando a resposta ainda não entrega factos ao cliente (stall / fallback de teto de tools). */
+export function isNonDeliveringAgentReply(text: string, configuredStallMessages?: string[]): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  return isLikelyStallOnlyReply(t, configuredStallMessages);
+}
+
+export function knowledgeToolFoundUsefulExcerpts(toolOutcomes: NativeToolRoundOutcome[]): boolean {
+  return toolOutcomes.some((t) => {
+    if (t.name !== "buscar_conhecimento") return false;
+    if (t.ok && /"found"\s*:\s*true/i.test(t.preview)) return true;
+    if (/"found"\s*:\s*true/i.test(t.preview) && !/"skipped"\s*:\s*true/i.test(t.preview)) return true;
+    return false;
+  });
+}
+
+/**
+ * Stall/deflexão final com KB já disponível (appendix ou tool) — nunca deve ir para o contacto assim.
+ * Aplica-se a qualquer agente com knowledge_search (domínio independente).
+ */
+export function shouldForceKnowledgeDelivery(input: {
+  replyText: string;
+  kbHasUsefulExcerpts: boolean;
+  toolOutcomes: NativeToolRoundOutcome[];
+  configuredStallMessages?: string[];
+}): boolean {
+  const stallish =
+    isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages) ||
+    isLikelyKbDeflectionOnlyReply(input.replyText);
+  if (!stallish) return false;
+  if (input.kbHasUsefulExcerpts) return true;
+  return knowledgeToolFoundUsefulExcerpts(input.toolOutcomes);
+}
+
+function extractSnippetsFromKnowledgeToolPreview(preview: string): string[] {
+  const snippets: string[] = [];
+  const tryParse = (raw: string) => {
+    try {
+      return JSON.parse(raw) as {
+        found?: boolean;
+        articles?: Array<{ title?: string; excerpt?: string }>;
+        bodyPreview?: string;
+      };
+    } catch {
+      return null;
+    }
+  };
+  let parsed = tryParse(preview);
+  if (parsed?.bodyPreview && typeof parsed.bodyPreview === "string") {
+    const inner = tryParse(parsed.bodyPreview);
+    if (inner) parsed = inner;
+  }
+  if (parsed?.found && Array.isArray(parsed.articles)) {
+    for (const a of parsed.articles.slice(0, 2)) {
+      const title = typeof a.title === "string" ? a.title.trim() : "";
+      const excerpt = typeof a.excerpt === "string" ? a.excerpt.trim() : "";
+      if (!excerpt) continue;
+      snippets.push((title ? `${title}\n` : "") + excerpt.slice(0, 900));
+    }
+  }
+  return snippets;
+}
+
+function extractSnippetsFromProactiveAppendix(appendix: string): string[] {
+  if (!kbAppendixHasRetrievedExcerpts(appendix)) return [];
+  const withoutHeader = appendix.replace(
+    /^[\s\S]*?###\s*Base de conhecimento \(excertos recuperados automaticamente\)\s*/i,
+    "",
+  );
+  const withoutFooter = withoutHeader.replace(/\n\n\*\*Instruções:\*\*[\s\S]*$/i, "");
+  const parts = withoutFooter.split(/\*\*\d+\.\s+/).slice(1);
+  const snippets: string[] = [];
+  for (const part of parts.slice(0, 2)) {
+    const cleaned = part.replace(/\*\*/g, "").trim().slice(0, 900);
+    if (cleaned.length >= 40) snippets.push(cleaned);
+  }
+  return snippets;
+}
+
+/**
+ * Última linha sem novo LLM: monta resposta a partir de appendix / resultado de buscar_conhecimento.
+ * Evita enviar «Só um momento» quando a KB já tem factos.
+ */
+export function buildDeterministicReplyFromKnowledge(input: {
+  userMessage: string;
+  proactiveAppendix?: string;
+  toolOutcomes?: NativeToolRoundOutcome[];
+}): string {
+  const snippets: string[] = [];
+  for (const t of input.toolOutcomes ?? []) {
+    if (t.name !== "buscar_conhecimento") continue;
+    snippets.push(...extractSnippetsFromKnowledgeToolPreview(t.preview));
+    if (snippets.length >= 2) break;
+  }
+  if (snippets.length === 0 && input.proactiveAppendix) {
+    snippets.push(...extractSnippetsFromProactiveAppendix(input.proactiveAppendix));
+  }
+  const unique = [...new Set(snippets.map((s) => s.trim()).filter(Boolean))].slice(0, 2);
+  if (unique.length === 0) {
+    return (
+      "Consultei a base de conhecimento sobre o seu pedido, mas não consegui montar uma resposta clara neste momento. " +
+      "Pode reformular a pergunta com um pouco mais de detalhe?"
+    );
+  }
+  return (
+    "Encontrei isto na nossa base de conhecimento:\n\n" +
+    unique.join("\n\n---\n\n") +
+    "\n\nSe precisar de mais algum detalhe, é só dizer."
+  ).slice(0, 3500);
 }
 
 /** Resposta curta a negar informação quando já injectámos excertos da KB (modelo ignorou o contexto). */
@@ -917,62 +1093,79 @@ async function augmentStallWithKnowledge(params: {
   signal: AbortSignal;
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
+  /** Appendix proactivo já calculado — evita segunda pesquisa e acelera a correção. */
+  proactiveAppendix?: string;
 }): Promise<string> {
   const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
   if (!norm) return "";
   try {
-    let ranked = (
-      await rankedKnowledgeSearch({
+    let kbBlock = "";
+    if (params.proactiveAppendix && kbAppendixHasRetrievedExcerpts(params.proactiveAppendix)) {
+      kbBlock = params.proactiveAppendix;
+    } else {
+      let ranked = (
+        await rankedKnowledgeSearch({
+          organizationId: params.organizationId,
+          normalizedQuery: norm,
+          botId: params.botId,
+          limit: 6,
+          debugLog: params.log,
+        })
+      ).ranked;
+      ranked = await mergePinnedKnowledgeWhenRankedEmpty({
         organizationId: params.organizationId,
-        normalizedQuery: norm,
-        botId: params.botId,
-        limit: 6,
+        ranked,
+        pinnedArticleIds: params.pinnedArticleIds,
         debugLog: params.log,
-      })
-    ).ranked;
-    ranked = await mergePinnedKnowledgeWhenRankedEmpty({
-      organizationId: params.organizationId,
-      ranked,
-      pinnedArticleIds: params.pinnedArticleIds,
-      debugLog: params.log,
-    });
-    ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
-      organizationId: params.organizationId,
-      botId: params.botId,
-      ranked,
-      debugLog: params.log,
-    });
-    ranked = ranked.slice(0, 6);
-    const kbBlock = formatKnowledgeToolResult(ranked);
+      });
+      ranked = await mergeBotLinkedKnowledgeWhenRankedEmpty({
+        organizationId: params.organizationId,
+        botId: params.botId,
+        ranked,
+        debugLog: params.log,
+      });
+      ranked = ranked.slice(0, 6);
+      kbBlock = formatKnowledgeToolResult(ranked);
+    }
     const extra =
-      "\n\n[Instrução do sistema: A tua resposta anterior era só ‘vou verificar’ sem dados. Usa OBRIGATORIAMENTE os excertos abaixo da base de conhecimento para responder de forma completa ao cliente. Se não houver dados úteis, diz honestamente que não encontraste e oferece transferência para humano. Não repitas frases vazias de espera.]\n" +
+      "\n\n[OpenConduit — correção obrigatória]\n" +
+      "A tua resposta anterior era só espera («um momento» / «vou verificar») ou deflexão sem factos.\n" +
+      "Responde AGORA ao cliente com factos concretos dos excertos abaixo.\n" +
+      "PROIBIDO responder só com frases de espera («um momento», «aguarde», «vou verificar») sem dados.\n" +
+      "Se os excertos não cobrirem a pergunta, diga honestamente o que falta — sem inventar.\n\n" +
       kbBlock;
     const system = params.systemInstructions + extra;
+    // Histórico curto: evita o modelo repetir o stall dos turnos anteriores.
+    const shortHistory = params.history.slice(-4);
+    let text = "";
     if (params.provider === "google_gemini") {
       const r = await callGeminiGenerateContent({
         apiKey: params.apiKey,
         model: params.model,
-        temperature: params.temperature,
+        temperature: Math.min(params.temperature, 0.4),
         maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
         system,
-        history: params.history,
+        history: shortHistory,
         userMessage: params.userMessage,
         signal: params.signal,
       });
-      return r.text.trim();
+      text = r.text.trim();
+    } else {
+      const r = await callOpenAiCompatibleChat({
+        baseUrl: params.apiBaseUrl.replace(/\/+$/, ""),
+        apiKey: params.apiKey,
+        model: params.model,
+        temperature: Math.min(params.temperature, 0.4),
+        maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
+        system,
+        history: shortHistory,
+        userMessage: params.userMessage,
+        signal: params.signal,
+      });
+      text = r.text.trim();
     }
-    const r = await callOpenAiCompatibleChat({
-      baseUrl: params.apiBaseUrl.replace(/\/+$/, ""),
-      apiKey: params.apiKey,
-      model: params.model,
-      temperature: params.temperature,
-      maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
-      system,
-      history: params.history,
-      userMessage: params.userMessage,
-      signal: params.signal,
-    });
-    return r.text.trim();
+    if (!text || isNonDeliveringAgentReply(text)) return "";
+    return text;
   } catch (err) {
     params.log.warn({ err }, "native stall knowledge augment failed");
     return "";
@@ -1116,6 +1309,18 @@ export async function generateNativeAgentReply(input: {
   const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
   const toolCallNotify = parseToolCallNotifyFromBehavior(profile.behaviorConfig);
+  /** Mensagens de espera do agente (config + default) — nunca válidas como resposta final. */
+  const configuredStallMessages = [
+    ...new Set(
+      [
+        toolCallNotify.message,
+        DEFAULT_TOOL_CALL_NOTIFY_MESSAGE,
+        ...Object.values(toolCallNotify.toolMessages),
+      ]
+        .map((m) => m.trim())
+        .filter((m) => m.length >= 6),
+    ),
+  ];
   const effectiveContactId = contactId ?? conversation.contactId ?? undefined;
   const sandboxReply = historyOverride != null;
   type PendingToolCallInterim = {
@@ -1169,8 +1374,8 @@ export async function generateNativeAgentReply(input: {
   const customToolPreamble =
     customHttpTools.length > 0
       ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n" +
-        "- **Várias ferramentas na mesma ronda:** só invoque em paralelo ferramentas independentes. Respeite dependências do fluxo (ex.: uploads concluídos antes do check-in; referências Embratur antes de IDs numéricos).\n" +
-        "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com «um momento».\n"
+        "- **Várias ferramentas na mesma ronda:** só invoque em paralelo ferramentas independentes. Respeite dependências do fluxo (ex.: concluir um passo antes de outro que precise do resultado).\n" +
+        "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com frases de espera.\n"
       : "";
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
   let knowledgeSearchCallsThisTurn = 0;
@@ -1217,7 +1422,8 @@ export async function generateNativeAgentReply(input: {
 
   const toolPreamble = kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
-      "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos (morada, Wi‑Fi, horários, preços) quando constarem aí.\n" +
+      "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
+      "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
       "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
       "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
       (allowedTagIds.length > 0
@@ -1226,7 +1432,8 @@ export async function generateNativeAgentReply(input: {
       "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
       customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
-      "- Use `buscar_conhecimento` para factos da organização (moradas, preços, políticas, horários) antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
+      "- Use `buscar_conhecimento` para factos da organização antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
+      "- **PROIBIDO** como resposta final: frases de espera («um momento» / «vou verificar») sem dados da ferramenta.\n" +
       "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
       (allowedTagIds.length > 0
         ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
@@ -1237,11 +1444,11 @@ export async function generateNativeAgentReply(input: {
   const serverKbGuard =
     (kbHasUsefulExcerpts
       ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
-        "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do hóspede. " +
+        "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
         "A função `buscar_conhecimento` pode ser usada no máximo uma vez neste turno se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
-        "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do hotel diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
-        "Use `call_human` só se o hóspede pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
+        "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do agente diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
+        "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente."
       : "") +
     (customHttpTools.length > 0
       ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
@@ -1420,7 +1627,12 @@ export async function generateNativeAgentReply(input: {
             if (!matchesSelected) return;
 
             const assistantTrim = (assistantContent ?? "").trim();
-            const body = resolveToolCallInterimMessage(assistantContent, toolCallNotify.message);
+            const body = resolveToolCallNotifyBody({
+              assistantContent,
+              toolNames,
+              defaultMessage: toolCallNotify.message,
+              toolMessages: toolCallNotify.toolMessages,
+            });
             const usedAgentStallText = Boolean(assistantTrim);
             pendingToolCallInterim.data = {
               body,
@@ -1676,7 +1888,7 @@ export async function generateNativeAgentReply(input: {
 
   if (
     flags.knowledge_search &&
-    (isLikelyStallOnlyReply(replyText) ||
+    (isLikelyStallOnlyReply(replyText, configuredStallMessages) ||
       (kbHasUsefulExcerpts && isLikelyKbDeflectionOnlyReply(replyText)))
   ) {
     ex?.warn({ id: "stall", name: "Correção de resposta" }, "Resposta parece stall ou deflexão — augment RAG");
@@ -1696,8 +1908,11 @@ export async function generateNativeAgentReply(input: {
         signal,
         log,
         pinnedArticleIds,
+        proactiveAppendix: kbProactiveAppendix,
       });
-      if (fixed.trim()) replyText = fixed.trim();
+      if (fixed.trim() && hasSubstantiveAgentReplyToCustomer(fixed, configuredStallMessages)) {
+        replyText = fixed.trim();
+      }
     } catch (stallErr) {
       log.warn({ err: stallErr, botId: bot.id }, "augmentStallWithKnowledge failed after rate-limit path");
     }
@@ -1735,7 +1950,38 @@ export async function generateNativeAgentReply(input: {
       signal,
       log,
     });
-    if (reinforced.trim()) replyText = reinforced.trim();
+    if (reinforced.trim() && hasSubstantiveAgentReplyToCustomer(reinforced, configuredStallMessages)) {
+      replyText = reinforced.trim();
+    }
+  }
+
+  if (
+    shouldForceKnowledgeDelivery({
+      replyText,
+      kbHasUsefulExcerpts,
+      toolOutcomes: toolRoundOutcomes,
+      configuredStallMessages,
+    })
+  ) {
+    const kbForced = buildDeterministicReplyFromKnowledge({
+      userMessage,
+      proactiveAppendix: kbProactiveAppendix,
+      toolOutcomes: toolRoundOutcomes,
+    });
+    if (kbForced.trim()) {
+      replyText = kbForced.trim();
+      ex?.warn(
+        { id: "kb_delivery", name: "Entrega KB forçada" },
+        "Stall/deflexão com base de conhecimento disponível — resposta montada a partir dos excertos",
+        {
+          output: {
+            replyChars: replyText.length,
+            fromTool: knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes),
+            fromAppendix: kbHasUsefulExcerpts,
+          },
+        },
+      );
+    }
   }
 
   if (shouldForceDeliveryAfterTools({ toolOutcomes: toolRoundOutcomes, replyText })) {
@@ -1760,7 +2006,7 @@ export async function generateNativeAgentReply(input: {
           at: new Date().toISOString(),
           toolCount: toolRoundOutcomes.length,
           tools: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
-          resultDeliveredToCustomer: hasSubstantiveAgentReplyToCustomer(replyText),
+          resultDeliveredToCustomer: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
         },
         ...(Object.keys(sessionFlowSlots).length > 0 ? { flowSlots: sessionFlowSlots } : {}),
       });
@@ -1776,7 +2022,7 @@ export async function generateNativeAgentReply(input: {
     !sandboxReply &&
     effectiveContactId &&
     toolCallNotify.enabled &&
-    !hasSubstantiveAgentReplyToCustomer(replyText)
+    !hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages)
   ) {
     await sendToolCallInterimNotify({
       organizationId,
@@ -1848,10 +2094,13 @@ export async function generateNativeAgentReply(input: {
       "(pedir próximo documento, confirmar envio, avançar etapa), approved=true.\n" +
       "- Não rejeites só porque a mensagem do cliente é uma transcrição de imagem/[Transcrição de imagem] ou porque a descrição visual " +
       "não «parece» o tipo de ficheiro esperado, quando a tool de upload/processamento já correu com sucesso.\n" +
-      "- approved=false apenas se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
+      "- approved=false se a resposta for só espera («Só um momento», «Aguarde», «vou verificar») sem factos, " +
+      "especialmente quando a base de conhecimento já tinha excertos ou buscar_conhecimento devolveu found=true.\n" +
+      "- approved=false se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
       "- Turnos de recolha de dados (perguntas do agente, pedidos de documento) sem tool necessária: approved=true se a pergunta for adequada.";
     const supervisorUser =
       `Cliente: ${userMessage.slice(0, 1500)}\n\n` +
+      `KB proactiva com excertos úteis: ${kbHasUsefulExcerpts ? "sim" : "não"}\n` +
       `Tools com sucesso nesta ronda: ${successfulTools.length}/${toolRoundOutcomes.length}\n` +
       `Ferramentas:\n${toolSummary}\n\n` +
       `Resposta proposta:\n${replyText.slice(0, 2500)}`;
@@ -1896,8 +2145,26 @@ export async function generateNativeAgentReply(input: {
       } catch {
         approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
       }
+      // Stall final com KB disponível nunca é aprovável
+      if (
+        isNonDeliveringAgentReply(replyText, configuredStallMessages) &&
+        (kbHasUsefulExcerpts || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes))
+      ) {
+        approved = false;
+        summary = `${summary} [auto: stall com KB disponível — rejeitado]`.slice(0, 500);
+        const kbForced = buildDeterministicReplyFromKnowledge({
+          userMessage,
+          proactiveAppendix: kbProactiveAppendix,
+          toolOutcomes: toolRoundOutcomes,
+        });
+        if (kbForced.trim() && hasSubstantiveAgentReplyToCustomer(kbForced, configuredStallMessages)) {
+          replyText = kbForced.trim();
+          approved = true;
+          summary = `${summary} [auto: substituído por entrega KB]`.slice(0, 500);
+        }
+      }
       // Override defensivo: tools OK + resposta substantiva → não marcar falso negativo por OCR
-      if (!approved && successfulTools.length > 0 && hasSubstantiveAgentReplyToCustomer(replyText)) {
+      if (!approved && successfulTools.length > 0 && hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages)) {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);
       }
@@ -1913,6 +2180,23 @@ export async function generateNativeAgentReply(input: {
         stack: err instanceof Error ? err.stack : undefined,
       });
     }
+  }
+
+  // Rede final: nunca devolver stall se ainda houver KB utilizável
+  if (
+    shouldForceKnowledgeDelivery({
+      replyText,
+      kbHasUsefulExcerpts,
+      toolOutcomes: toolRoundOutcomes,
+      configuredStallMessages,
+    })
+  ) {
+    const last = buildDeterministicReplyFromKnowledge({
+      userMessage,
+      proactiveAppendix: kbProactiveAppendix,
+      toolOutcomes: toolRoundOutcomes,
+    });
+    if (last.trim()) replyText = last.trim();
   }
 
   return replyText;
