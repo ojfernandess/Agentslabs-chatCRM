@@ -28,6 +28,8 @@ import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
 import { AutomationExecutionsTab } from "@/pages/automation/AutomationExecutionsTab";
+import { MemoryCenterPanel } from "@/pages/automation/MemoryCenterPanel";
+import { MemoryAdminPanel } from "@/pages/automation/MemoryAdminPanel";
 import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBuilder";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
@@ -48,6 +50,11 @@ import { AutomationChatbotHub } from "@/pages/automation/AutomationChatbotHub";
 import { AutomationConfigTransferPanel } from "@/pages/automation/AutomationConfigTransferPanel";
 import { AutomationCrmFlowHub } from "@/pages/automation/AutomationCrmFlowHub";
 import { PromptBlocksEditor } from "@/pages/automation/PromptBlocksEditor";
+import {
+  AgentEnginePanel,
+  defaultMemoryEngineFormValues,
+  type AgentEngineFormValues,
+} from "@/pages/automation/AgentEnginePanel";
 import {
   buildAgentPlaybookFromBlocks,
   buildAgentUserCoreForPersist,
@@ -425,6 +432,7 @@ type AgentFormFields = {
    */
   isolateHistoryForTools: boolean;
   agentSupervisorEnabled: boolean;
+  agentEngine: AgentEngineFormValues;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -477,6 +485,14 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifyForceKnowledgeRescue: true,
     isolateHistoryForTools: false,
     agentSupervisorEnabled: false,
+    agentEngine: {
+      runtime: "openconduit",
+      memory: "openconduit",
+      memoryEngine: defaultMemoryEngineFormValues(),
+      supervisorEnabled: false,
+      strictMode: false,
+      observability: "basic",
+    },
   };
 }
 
@@ -601,6 +617,46 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       ? (supervisorRaw as Record<string, unknown>).enabled === true
       : false;
 
+  const engineRaw =
+    beh.agentEngine && typeof beh.agentEngine === "object"
+      ? (beh.agentEngine as Record<string, unknown>)
+      : {};
+  const memoryRaw =
+    beh.memoryEngine && typeof beh.memoryEngine === "object"
+      ? (beh.memoryEngine as Record<string, unknown>)
+      : {};
+  const memoryProvider =
+    memoryRaw.provider === "mem0" || engineRaw.memory === "mem0" ? "mem0" : "openconduit";
+  const agentEngine: AgentEngineFormValues = {
+    runtime:
+      engineRaw.runtime === "langgraph" ||
+      engineRaw.runtime === "crewai" ||
+      engineRaw.runtime === "autogen" ||
+      engineRaw.runtime === "mastra"
+        ? engineRaw.runtime
+        : "openconduit",
+    memory: memoryProvider,
+    memoryEngine: {
+      ...defaultMemoryEngineFormValues(),
+      provider: memoryProvider,
+      intelligentMemoryEnabled: memoryRaw.intelligentMemoryEnabled !== false,
+      autoSaveEnabled: memoryRaw.autoSaveEnabled !== false,
+      rememberPreferences: memoryRaw.rememberPreferences !== false,
+      rememberCommercialHistory: memoryRaw.rememberCommercialHistory !== false,
+      rememberTechnicalData: memoryRaw.rememberTechnicalData !== false,
+      ignoreCasualConversations: memoryRaw.ignoreCasualConversations !== false,
+      maxMemories:
+        typeof memoryRaw.maxMemories === "number" && Number.isFinite(memoryRaw.maxMemories)
+          ? Math.min(500, Math.max(10, Math.round(memoryRaw.maxMemories)))
+          : 100,
+    },
+    supervisorEnabled:
+      engineRaw.supervisorEnabled === true ||
+      (engineRaw.supervisorEnabled !== false && agentSupervisorEnabled),
+    strictMode: engineRaw.strictMode === true,
+    observability: engineRaw.observability === "full" ? "full" : "basic",
+  };
+
   return {
     mode: "edit",
     createBot: false,
@@ -657,7 +713,8 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifyForceDeliveryTools,
     toolCallNotifyForceKnowledgeRescue: toolCallNotifyRaw.forceKnowledgeRescue !== false,
     isolateHistoryForTools: beh.isolateHistoryForTools === true,
-    agentSupervisorEnabled,
+    agentSupervisorEnabled: agentEngine.supervisorEnabled,
+    agentEngine,
   };
 }
 
@@ -837,7 +894,24 @@ function formToPayload(
         : { forceDeliveryTools: form.toolCallNotifyForceDeliveryTools }),
     },
     agentSupervisor: {
-      enabled: form.agentSupervisorEnabled,
+      enabled: form.agentEngine.supervisorEnabled,
+    },
+    agentEngine: {
+      runtime: form.agentEngine.runtime,
+      memory: form.agentEngine.memoryEngine.provider,
+      supervisorEnabled: form.agentEngine.supervisorEnabled,
+      strictMode: form.agentEngine.strictMode,
+      observability: form.agentEngine.observability,
+    },
+    memoryEngine: {
+      provider: form.agentEngine.memoryEngine.provider,
+      intelligentMemoryEnabled: form.agentEngine.memoryEngine.intelligentMemoryEnabled,
+      autoSaveEnabled: form.agentEngine.memoryEngine.autoSaveEnabled,
+      rememberPreferences: form.agentEngine.memoryEngine.rememberPreferences,
+      rememberCommercialHistory: form.agentEngine.memoryEngine.rememberCommercialHistory,
+      rememberTechnicalData: form.agentEngine.memoryEngine.rememberTechnicalData,
+      ignoreCasualConversations: form.agentEngine.memoryEngine.ignoreCasualConversations,
+      maxMemories: form.agentEngine.memoryEngine.maxMemories,
     },
     isolateHistoryForTools: form.isolateHistoryForTools === true,
     promptBuilder: {
@@ -1017,8 +1091,6 @@ export function AutomationPage() {
       lastClearedAt: string | null;
     }>
   >([]);
-  const [ctxManualId, setCtxManualId] = useState("");
-  const [ctxView, setCtxView] = useState<unknown>(null);
   const [editingToolId, setEditingToolId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1347,20 +1419,6 @@ export function AutomationPage() {
     }
   };
 
-  const loadContextDetail = async (conversationId: string) => {
-    const id = conversationId.trim();
-    if (!id) return;
-    setError("");
-    try {
-      const row = await api.get<Record<string, unknown>>(`/automation/conversation-context/${id}`);
-      setCtxView(row);
-      setCtxManualId(id);
-    } catch {
-      setCtxView(null);
-      setError("load_failed");
-    }
-  };
-
   const clearContextForConversation = async (conversationId: string) => {
     const id = conversationId.trim();
     if (!id) return;
@@ -1370,7 +1428,6 @@ export function AutomationPage() {
     try {
       await api.post(`/automation/conversation-context/${id}/clear`, {});
       await loadContextRows();
-      setCtxView(null);
     } catch {
       setError("load_failed");
     } finally {
@@ -1661,78 +1718,16 @@ export function AutomationPage() {
         ) : null}
 
         {tab === "context" ? (
-          <div className="max-w-3xl space-y-6 text-sm text-ink-700 dark:text-ink-300">
-            <p>{t("automationPage.contextBlurb")}</p>
-            <div className="flex flex-wrap gap-2">
-              <input
-                value={ctxManualId}
-                onChange={(e) => setCtxManualId(e.target.value)}
-                placeholder={t("automationPage.contextConversationPlaceholder")}
-                className="min-w-[240px] flex-1 rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-              />
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => void loadContextDetail(ctxManualId)}
-                className="rounded-lg border border-ink-200 px-4 py-2 font-medium dark:border-ink-600"
-              >
-                {t("automationPage.contextLoad")}
-              </button>
-              <button
-                type="button"
-                disabled={loading || !ctxManualId.trim()}
-                onClick={() => void clearContextForConversation(ctxManualId)}
-                className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
-              >
-                {t("automationPage.contextClear")}
-              </button>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("automationPage.contextRecent")}</h3>
-              {ctxRows.length === 0 ? (
-                <p className="mt-2 text-xs text-ink-500">{t("automationPage.contextEmpty")}</p>
-              ) : (
-                <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-ink-200 dark:border-ink-700">
-                  {ctxRows.map((r) => (
-                    <li
-                      key={r.conversationId}
-                      className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 px-3 py-2 text-xs dark:border-ink-800"
-                    >
-                      <div className="min-w-0">
-                        <code className="break-all text-ink-800 dark:text-ink-200">{r.conversationId}</code>
-                        <div className="text-ink-500">
-                          {r.botName} · {new Date(r.updatedAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="font-medium text-brand-600"
-                          onClick={() => void loadContextDetail(r.conversationId)}
-                        >
-                          {t("automationPage.contextLoad")}
-                        </button>
-                        <button
-                          type="button"
-                          className="font-medium text-red-600"
-                          onClick={() => void clearContextForConversation(r.conversationId)}
-                        >
-                          {t("automationPage.contextClear")}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {ctxView ? (
-              <div className="rounded-xl border border-ink-200 bg-ink-50 p-3 dark:border-ink-700 dark:bg-ink-950/50">
-                <p className="text-xs font-semibold text-ink-500">{t("automationPage.contextSnapshot")}</p>
-                <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs text-ink-800 dark:text-ink-200">
-                  {JSON.stringify(ctxView, null, 2)}
-                </pre>
-              </div>
-            ) : null}
+          <div className="space-y-4">
+            <MemoryAdminPanel t={t} />
+            <MemoryCenterPanel
+              t={t}
+              locale={locale}
+              loading={loading}
+              contextRows={ctxRows}
+              onRefreshRows={loadContextRows}
+              onClearContext={clearContextForConversation}
+            />
           </div>
         ) : null}
       </div>
@@ -1811,6 +1806,8 @@ function AgentsTab({
   const [suggestErrorModal, setSuggestErrorModal] = useState<SuggestInstructionErrorModal | null>(null);
   /** Agente com cartão expandido para ligações (fora do modal de edição). */
   const [connectionsBotId, setConnectionsBotId] = useState<string | null>(null);
+  const [promptValidationScore, setPromptValidationScore] = useState<number | null>(null);
+  const [promptValidating, setPromptValidating] = useState(false);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   const openAgentConnections = (row: AgentProfileRow) => {
@@ -1821,6 +1818,27 @@ function AgentsTab({
 
   const closeAgentConnections = () => {
     setConnectionsBotId(null);
+  };
+
+  const validateAgentPromptScore = async () => {
+    if (!agentForm.editBotId) return;
+    setPromptValidating(true);
+    try {
+      const res = await api.post<{ data: { score: number } }>(
+        `/automation/agent-profiles/${agentForm.editBotId}/validate-prompt`,
+        {
+          userCore: agentForm.promptUserCore,
+          blocks: agentForm.promptBlocks,
+          connectedToolCount: agentForm.connectedTools.filter((x) => x.enabled).length,
+          hasFallbacks: agentForm.instructionFallbacks.length > 0,
+        },
+      );
+      setPromptValidationScore(res.data.score);
+    } catch {
+      setPromptValidationScore(null);
+    } finally {
+      setPromptValidating(false);
+    }
   };
 
   useEffect(() => {
@@ -2546,9 +2564,13 @@ function AgentsTab({
                   <label className="flex items-center gap-2 text-sm font-medium text-ink-800 dark:text-ink-200">
                     <input
                       type="checkbox"
-                      checked={agentForm.agentSupervisorEnabled}
+                      checked={agentForm.agentEngine.supervisorEnabled}
                       onChange={(e) =>
-                        setAgentForm((f) => ({ ...f, agentSupervisorEnabled: e.target.checked }))
+                        setAgentForm((f) => ({
+                          ...f,
+                          agentSupervisorEnabled: e.target.checked,
+                          agentEngine: { ...f.agentEngine, supervisorEnabled: e.target.checked },
+                        }))
                       }
                     />
                     {t("automationPage.agentSupervisorToggle")}
@@ -3258,6 +3280,21 @@ function AgentsTab({
                   </p>
                 ) : null}
               </label>
+
+              <AgentEnginePanel
+                value={agentForm.agentEngine}
+                onChange={(agentEngine) =>
+                  setAgentForm((f) => ({
+                    ...f,
+                    agentEngine,
+                    agentSupervisorEnabled: agentEngine.supervisorEnabled,
+                  }))
+                }
+                promptScore={promptValidationScore}
+                onValidatePrompt={agentForm.editBotId ? validateAgentPromptScore : undefined}
+                validatingPrompt={promptValidating}
+                t={t}
+              />
 
               {elevenLabsTools.length > 0 ? (
                 <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">

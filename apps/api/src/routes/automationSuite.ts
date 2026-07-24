@@ -45,6 +45,9 @@ import {
 } from "../lib/knowledgeFileIngest.js";
 import { newWebhookToken, redactSourceForClient, syncKnowledgeSource } from "../lib/knowledgeSourceService.js";
 import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRoutes.js";
+import { registerAgentEngineRoutes } from "./agentEngineRoutes.js";
+import { registerMemoryCenterRoutes } from "./memoryCenterRoutes.js";
+import { registerMemoryEngineRoutes } from "./memoryEngineRoutes.js";
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
@@ -146,6 +149,23 @@ const defaultBehaviorConfig = () => ({
     message: "" as string,
     selectedTools: [] as string[],
     toolMessages: {} as Record<string, string>,
+  },
+  agentEngine: {
+    runtime: "openconduit" as const,
+    memory: "openconduit" as const,
+    supervisorEnabled: false,
+    strictMode: false,
+    observability: "basic" as const,
+  },
+  memoryEngine: {
+    provider: "openconduit" as const,
+    intelligentMemoryEnabled: true,
+    autoSaveEnabled: true,
+    rememberPreferences: true,
+    rememberCommercialHistory: true,
+    rememberTechnicalData: true,
+    ignoreCasualConversations: true,
+    maxMemories: 100,
   },
 });
 
@@ -3002,6 +3022,9 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   });
 
   await registerAutomationExecutionLogRoutes(app);
+  await registerAgentEngineRoutes(app);
+  await registerMemoryCenterRoutes(app);
+  await registerMemoryEngineRoutes(app);
   await registerChatbotFlowRoutes(app);
   await registerCrmFlowRoutes(app);
 }

@@ -20,6 +20,16 @@ import {
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolveNativeAgentHistoryTurns, shouldIsolateHistoryForConnectedTools } from "./agentConversationHistory.js";
 import {
+  AgentRuntimeFactory,
+  evaluateStrictModeGate,
+  executeViaAgentEngine,
+  MemoryEngineService,
+  buildMemoryLoadedObservability,
+  logMemoryEvents,
+  parseAgentEngineConfig,
+  parseMemoryEngineConfig,
+} from "./agent-engine/index.js";
+import {
   buildFollowUpCampaignPromptBlock,
   buildIsolatedNativeFlowStatePromptBlock,
   buildNativeFlowStatePromptBlock,
@@ -1287,8 +1297,9 @@ async function augmentStallWithKnowledge(params: {
 
 /**
  * Gera resposta do agente nativo (tools + correção de “vou verificar” sem retorno).
+ * @internal Use `generateNativeAgentReply` — roteia via Agent Engine quando configurado.
  */
-export async function generateNativeAgentReply(input: {
+async function generateNativeAgentReplyCore(input: {
   organizationId: string;
   bot: Bot;
   conversation: Conversation;
@@ -1300,6 +1311,8 @@ export async function generateNativeAgentReply(input: {
   historyOverride?: PreviewChatTurn[];
   /** Contacto da conversa — necessário para aviso pré-ferramenta outbound. */
   contactId?: string;
+  /** Evita re-entrada no Agent Engine (OpenNexo / LangGraph executors). */
+  skipEngineRoute?: boolean;
 }): Promise<string> {
   const {
     organizationId,
@@ -1375,6 +1388,31 @@ export async function generateNativeAgentReply(input: {
     }
     return "";
   }
+
+  const engineConfig = parseAgentEngineConfig(profile.behaviorConfig);
+
+  if (!input.skipEngineRoute) {
+    ensureAgentEngineExecutorRegistered();
+    if (engineConfig.runtime !== "openconduit") {
+      return executeViaAgentEngine({
+        organizationId,
+        bot,
+        conversation,
+        message,
+        log,
+        executionLog: ex,
+        historyOverride,
+        contactId,
+        engineConfig,
+        llmConfig: llm,
+        behaviorConfig:
+          profile.behaviorConfig && typeof profile.behaviorConfig === "object"
+            ? (profile.behaviorConfig as Record<string, unknown>)
+            : {},
+      });
+    }
+  }
+
   const temperatureRaw = llm.temperature;
   const maxTokensRaw = llm.maxTokens;
   const temperature =
@@ -1639,9 +1677,40 @@ export async function generateNativeAgentReply(input: {
         assignableTagsDescription.trim()
       : "";
 
+  let mem0Appendix = "";
+  const memoryEngineConfig = parseMemoryEngineConfig(profile.behaviorConfig);
+  if (memoryEngineConfig.intelligentMemoryEnabled) {
+    const memoryEngine = MemoryEngineService.fromKind(engineConfig.memory);
+    const memoryLoaded = await memoryEngine.loadContext({
+      organizationId,
+      conversationId: conversation.id,
+      botId: bot.id,
+      contactId: effectiveContactId,
+      userMessage,
+      config: memoryEngineConfig,
+      providerKind: engineConfig.memory,
+    });
+    mem0Appendix = memoryLoaded.appendix;
+    if (memoryLoaded.loadedCount > 0) {
+      logMemoryEvents(ex, [buildMemoryLoadedObservability(memoryLoaded)]);
+      ex?.info(
+        { id: "memory_engine", name: "OpenNexo Memory Engine" },
+        `Memórias carregadas (${memoryLoaded.loadedCount})`,
+        {
+          output: {
+            count: memoryLoaded.loadedCount,
+            latencyMs: memoryLoaded.latencyMs,
+            provider: engineConfig.memory,
+          },
+        },
+      );
+    }
+  }
+
   const systemBase =
     systemInstructions +
     kbProactiveAppendix +
+    mem0Appendix +
     toolPreamble +
     serverKbGuard +
     tagToolGuard +
@@ -2269,6 +2338,7 @@ export async function generateNativeAgentReply(input: {
   }
 
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
+  let llmSupervisorApproved: boolean | null = null;
   if (agentSupervisor.enabled && replyText.trim()) {
     const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
     const toolSummary =
@@ -2329,11 +2399,12 @@ export async function generateNativeAgentReply(input: {
           approved?: boolean;
           summary?: string;
         };
-        if (typeof parsed.approved === "boolean") approved = parsed.approved;
-        if (typeof parsed.summary === "string" && parsed.summary.trim()) summary = parsed.summary.trim();
+      if (typeof parsed.approved === "boolean") approved = parsed.approved;
+      if (typeof parsed.summary === "string" && parsed.summary.trim()) summary = parsed.summary.trim();
       } catch {
         approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
       }
+      llmSupervisorApproved = approved;
       // Stall final com KB relevante: resgatar só quando a política de KB o permitir (não em turnos HTTP/fluxo).
       if (
         shouldForceKnowledgeDelivery({
@@ -2406,5 +2477,111 @@ export async function generateNativeAgentReply(input: {
     if (last.trim()) replyText = last.trim();
   }
 
+  if (replyText.trim() && memoryEngineConfig.intelligentMemoryEnabled) {
+    const memoryEngine = MemoryEngineService.fromKind(engineConfig.memory);
+    const saveResult = await memoryEngine.saveTurn({
+      organizationId,
+      conversationId: conversation.id,
+      botId: bot.id,
+      contactId: effectiveContactId,
+      userMessage,
+      assistantMessage: replyText,
+      config: memoryEngineConfig,
+    });
+    if (saveResult.created.length > 0 || saveResult.updated.length > 0) {
+      logMemoryEvents(ex, saveResult.events);
+      ex?.info(
+        { id: "memory_engine", name: "OpenNexo Memory Engine" },
+        `Memórias persistidas (+${saveResult.created.length} / ~${saveResult.updated.length})`,
+        {
+          output: {
+            created: saveResult.created.length,
+            updated: saveResult.updated.length,
+            skipped: saveResult.skipped,
+            provider: engineConfig.memory,
+          },
+        },
+      );
+    }
+  }
+
+  if (engineConfig.strictMode && replyText.trim()) {
+    const strictEval = evaluateStrictModeGate({
+      strictMode: true,
+      replyText,
+      userMessage,
+      toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+      kbHasUsefulExcerpts,
+      llmSupervisorApproved,
+      hasSubstantiveReply: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
+    });
+    ex?.info(
+      { id: "strict_mode", name: "Modo estrito" },
+      strictEval.blockSend
+        ? `Envio bloqueado — confiança ${strictEval.confidence}%`
+        : `Confiança ${strictEval.confidence}% — envio permitido`,
+      {
+        output: {
+          confidence: strictEval.confidence,
+          minConfidence: strictEval.minConfidence,
+          blockSend: strictEval.blockSend,
+          reasons: strictEval.reasons.slice(0, 8),
+        },
+      },
+    );
+    if (strictEval.blockSend) {
+      ex?.error(
+        { id: "strict_mode", name: "Modo estrito" },
+        `Hard-block: confiança ${strictEval.confidence}% < ${strictEval.minConfidence}%`,
+        { output: { confidence: strictEval.confidence, reasons: strictEval.reasons.slice(0, 8) } },
+      );
+      log.warn(
+        {
+          botId: bot.id,
+          conversationId: conversation.id,
+          confidence: strictEval.confidence,
+          reasons: strictEval.reasons,
+        },
+        "strict mode hard-block — reply not sent",
+      );
+      return "";
+    }
+  }
+
   return replyText;
+}
+
+let agentEngineExecutorRegistered = false;
+
+function ensureAgentEngineExecutorRegistered(): void {
+  if (agentEngineExecutorRegistered) return;
+  agentEngineExecutorRegistered = true;
+  AgentRuntimeFactory.registerExecutor("_default", async (runtimeInput) => {
+    const reply = await generateNativeAgentReplyCore({
+      organizationId: runtimeInput.organizationId,
+      bot: runtimeInput.bot,
+      conversation: runtimeInput.conversation,
+      message: runtimeInput.message,
+      log: runtimeInput.log,
+      executionLog: runtimeInput.executionLog,
+      historyOverride: runtimeInput.historyOverride,
+      contactId: runtimeInput.contactId,
+      skipEngineRoute: true,
+    });
+    return { reply };
+  });
+}
+
+/** Ponto de entrada público — compatível com agentes legados (OpenNexo Runtime por omissão). */
+export async function generateNativeAgentReply(input: {
+  organizationId: string;
+  bot: Bot;
+  conversation: Conversation;
+  message: Message;
+  log: FastifyBaseLogger;
+  executionLog?: import("./automationExecutionLog.js").AutomationExecutionLogPort | null;
+  historyOverride?: PreviewChatTurn[];
+  contactId?: string;
+}): Promise<string> {
+  return generateNativeAgentReplyCore(input);
 }

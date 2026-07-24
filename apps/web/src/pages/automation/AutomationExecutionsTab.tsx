@@ -4,6 +4,7 @@ import { ChevronRight, ClipboardCopy, Download, Loader2, RefreshCw } from "lucid
 import { api } from "@/lib/api";
 import { resolveAutomationToolIdFromLogNode } from "@/pages/automation/agentPromptBuilder";
 import { ExecutionFlowView } from "@/pages/automation/ExecutionFlowView";
+import { AgentInspectorPanel, type AgentInspectorData } from "@/pages/automation/AgentInspectorPanel";
 import type { ExecutionFlowGraph, ExecutionQualitySignal } from "@/pages/automation/executionQualityTypes";
 
 type BotRow = { id: string; name: string };
@@ -253,7 +254,10 @@ export function AutomationExecutionsTab({
   const [copyFlash, setCopyFlash] = useState<"ok" | "fail" | null>(null);
   const copyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localTools, setLocalTools] = useState<ToolRow[]>([]);
-  const [detailSubTab, setDetailSubTab] = useState<"logs" | "flow" | "quality">("logs");
+  const [detailSubTab, setDetailSubTab] = useState<"logs" | "flow" | "quality" | "inspector">("logs");
+  const [inspectorData, setInspectorData] = useState<AgentInspectorData | null>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
+  const [inspectorError, setInspectorError] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
 
@@ -351,7 +355,29 @@ export function AutomationExecutionsTab({
     else setDetail(null);
     setDetailSubTab("logs");
     setDismissedSignals(new Set());
+    setInspectorData(null);
+    setInspectorError(false);
   }, [selectedId, loadDetail]);
+
+  const loadInspector = useCallback(async (id: string) => {
+    setInspectorLoading(true);
+    setInspectorError(false);
+    try {
+      const res = await api.get<{ data: AgentInspectorData }>(`/automation/execution-logs/${id}/inspector`);
+      setInspectorData(res.data);
+    } catch {
+      setInspectorData(null);
+      setInspectorError(true);
+    } finally {
+      setInspectorLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (detailSubTab === "inspector" && selectedId) {
+      void loadInspector(selectedId);
+    }
+  }, [detailSubTab, selectedId, loadInspector]);
 
   const sortedEntries = useMemo(() => {
     if (!detail?.logEntries) return [];
@@ -1000,8 +1026,8 @@ export function AutomationExecutionsTab({
                 </div>
               ) : null}
 
-              <div className="mx-2 mt-2 inline-flex rounded-lg border border-ink-200 p-0.5 dark:border-ink-600">
-                {(["logs", "flow", "quality"] as const).map((tabId) => (
+              <div className="mx-2 mt-2 inline-flex flex-wrap rounded-lg border border-ink-200 p-0.5 dark:border-ink-600">
+                {(["logs", "flow", "inspector", "quality"] as const).map((tabId) => (
                   <button
                     key={tabId}
                     type="button"
@@ -1025,6 +1051,13 @@ export function AutomationExecutionsTab({
 
               {detailSubTab === "flow" ? (
                 <ExecutionFlowView graph={detail.flowGraph} t={t} />
+              ) : detailSubTab === "inspector" ? (
+                <AgentInspectorPanel
+                  data={inspectorData}
+                  loading={inspectorLoading}
+                  error={inspectorError}
+                  t={t}
+                />
               ) : detailSubTab === "quality" ? (
                 <div className="space-y-2 p-2">
                   {visibleQualitySignals.length === 0 ? (

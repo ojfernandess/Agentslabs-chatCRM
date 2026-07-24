@@ -177,6 +177,11 @@ export const config = {
   nativeLlmMaxQueueWaitMs: optionalIntEnv("NATIVE_LLM_MAX_QUEUE_WAIT_MS", 90_000, 5_000, 300_000),
   /** Logs estruturados (`agent_kb_debug`) na pesquisa de conhecimento do agente nativo. */
   agentKbDebug: parseTruthyEnv("AGENT_KB_DEBUG"),
+  /** Mem0 Platform — memória semântica externa (Agent Engine). */
+  mem0ApiKey: optionalEnv("MEM0_API_KEY", "").trim(),
+  mem0ApiBaseUrl: optionalEnv("MEM0_API_BASE_URL", "https://api.mem0.ai")
+    .trim()
+    .replace(/\/+$/, ""),
   /** API Nvoip v2 — https://nvoip.docs.apiary.io/ */
   nvoipApiBaseUrl: optionalEnv("NVOIP_API_BASE_URL", "https://api.nvoip.com.br/v2").replace(/\/+$/, ""),
   /** Basic auth para POST /oauth/token (credencial pública da documentação Nvoip). */
