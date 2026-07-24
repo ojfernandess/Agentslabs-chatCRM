@@ -74,6 +74,21 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
   ensureResultDelivered: boolean;
   /** Mensagens opcionais por chave de selecção (`native:…` / `custom:uuid`). Vazio = usar `message`. */
   toolMessages: Record<string, string>;
+  /**
+   * Entrega forçada inteligente (stall/vazio → sintetizar a partir das tools / KB).
+   * Default `true` quando o campo não existe — preserva o comportamento actual.
+   */
+  forceDeliveryEnabled: boolean;
+  /**
+   * Tools elegíveis para entrega forçada (`native:…` / `custom:…`).
+   * `null` = todas; `[]` = nenhuma; lista = apenas essas.
+   */
+  forceDeliveryTools: string[] | null;
+  /**
+   * Resgate da base de conhecimento em stall (só perguntas de conhecimento).
+   * Default `true` quando o campo não existe.
+   */
+  forceKnowledgeRescue: boolean;
 } {
   const fallback = {
     enabled: false,
@@ -81,6 +96,9 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
     selectedTools: [] as string[],
     ensureResultDelivered: false,
     toolMessages: {} as Record<string, string>,
+    forceDeliveryEnabled: true,
+    forceDeliveryTools: null as string[] | null,
+    forceKnowledgeRescue: true,
   };
   if (!behaviorConfig || typeof behaviorConfig !== "object") return fallback;
   const raw = (behaviorConfig as Record<string, unknown>).toolCallNotify;
@@ -106,12 +124,21 @@ export function parseToolCallNotifyFromBehavior(behaviorConfig: unknown): {
       if (msg) toolMessages[key] = msg;
     }
   }
+  let forceDeliveryTools: string[] | null = null;
+  if ("forceDeliveryTools" in o) {
+    forceDeliveryTools = Array.isArray(o.forceDeliveryTools)
+      ? o.forceDeliveryTools.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [];
+  }
   return {
     enabled: o.enabled === true,
     message,
     selectedTools,
     ensureResultDelivered: o.ensureResultDelivered === true,
     toolMessages,
+    forceDeliveryEnabled: o.forceDeliveryEnabled !== false,
+    forceDeliveryTools,
+    forceKnowledgeRescue: o.forceKnowledgeRescue !== false,
   };
 }
 
@@ -162,11 +189,31 @@ export function shouldEnsureToolResultFollowUp(input: {
  * precisa de uma mensagem — mesmo sem `ensureResultDelivered` ou LLM de reforço.
  * Tools só de KB são tratadas por `shouldForceKnowledgeDelivery`.
  */
+export function scopeForceDeliveryToolOutcomes(
+  toolOutcomes: NativeToolRoundOutcome[],
+  forceDeliveryTools: string[] | null | undefined,
+): NativeToolRoundOutcome[] {
+  if (forceDeliveryTools == null) {
+    return toolOutcomes.filter((t) => t.name !== "buscar_conhecimento");
+  }
+  if (forceDeliveryTools.length === 0) return [];
+  return toolOutcomes.filter((t) => {
+    if (t.name === "buscar_conhecimento") return false;
+    const sel = toolCallNotifySelectionKey(t.name);
+    return Boolean(sel && forceDeliveryTools.includes(sel));
+  });
+}
+
 export function shouldForceDeliveryAfterTools(input: {
   toolOutcomes: NativeToolRoundOutcome[];
   replyText: string;
+  /** Default true (omitido = comportamento legado). */
+  forceDeliveryEnabled?: boolean;
+  /** `null`/omitido = todas; lista = filtrar por chave de selecção. */
+  forceDeliveryTools?: string[] | null;
 }): boolean {
-  const actionable = input.toolOutcomes.filter((t) => t.name !== "buscar_conhecimento");
+  if (input.forceDeliveryEnabled === false) return false;
+  const actionable = scopeForceDeliveryToolOutcomes(input.toolOutcomes, input.forceDeliveryTools);
   if (actionable.length === 0) return false;
   return !hasSubstantiveAgentReplyToCustomer(input.replyText);
 }
@@ -409,22 +456,80 @@ export function knowledgeToolFoundUsefulExcerpts(toolOutcomes: NativeToolRoundOu
 }
 
 /**
- * Stall/deflexão final com KB já disponível (appendix ou tool) — nunca deve ir para o contacto assim.
- * Aplica-se a qualquer agente com knowledge_search (domínio independente).
+ * Mensagens que pedem factos da KB (endereço, Wi‑Fi, etc.) — não CPFs, localizadores ou respostas curtas de fluxo.
+ */
+export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  const compact = t.replace(/\s+/g, "");
+  // Documento / números (CPF, telefone, etc.)
+  if (/^[\d.\-\/]+$/.test(compact) && compact.replace(/\D/g, "").length >= 8) return false;
+  // Códigos tipo localizador (sem espaços, curtos)
+  if (/^[A-Z0-9]{5,14}$/i.test(compact) && t.length <= 14) return false;
+  // Respostas curtas de recolha de dados / confirmação
+  if (
+    t.length <= 48 &&
+    /^(sim|n[aã]o|ok|okay|certo|correto|brasileiro|estrangeiro|yes|no|male|female|masculino|feminino)\b/i.test(t)
+  ) {
+    return false;
+  }
+  if (/\?/.test(t)) return true;
+  if (
+    /\b(qual|onde|como|quando|quanto|endere[cç]o|wifi|wi[\s-]?fi|senha|hor[aá]rio|pre[cç]o|estacionamento|pol[ií]tica|cancelamento|comodidade|what|where|how|when|address|password|parking)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // Frase natural mais longa
+  if (t.length >= 28 && /[\p{L}]{4,}/u.test(t)) return true;
+  return false;
+}
+
+function hasNonKnowledgeToolsThisTurn(toolOutcomes: NativeToolRoundOutcome[]): boolean {
+  return toolOutcomes.some((t) => t.name !== "buscar_conhecimento");
+}
+
+/**
+ * Quando resgatar com KB (augment / entrega forçada).
+ * Nunca despejar appendix proactivo sobre um turno de tools HTTP/fluxo (ex.: CPF → found:false).
  */
 export function shouldForceKnowledgeDelivery(input: {
   replyText: string;
   kbHasUsefulExcerpts: boolean;
   toolOutcomes: NativeToolRoundOutcome[];
   configuredStallMessages?: string[];
+  userMessage?: string;
+  /** Master switch — default true. */
+  forceDeliveryEnabled?: boolean;
+  /** Resgate KB — default true. */
+  forceKnowledgeRescue?: boolean;
 }): boolean {
-  const stallish =
-    isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages) ||
-    isLikelyKbDeflectionOnlyReply(input.replyText);
-  if (!stallish) return false;
-  if (input.kbHasUsefulExcerpts) return true;
-  return knowledgeToolFoundUsefulExcerpts(input.toolOutcomes);
+  if (input.forceDeliveryEnabled === false) return false;
+  if (input.forceKnowledgeRescue === false) return false;
+
+  const stallOnly = isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages);
+  const kbDeflect = isLikelyKbDeflectionOnlyReply(input.replyText);
+  if (!stallOnly && !kbDeflect) return false;
+
+  const kbToolOk = knowledgeToolFoundUsefulExcerpts(input.toolOutcomes);
+  const nonKb = hasNonKnowledgeToolsThisTurn(input.toolOutcomes);
+  const seeking = userMessageLooksLikeKnowledgeSeekingQuery(input.userMessage ?? "");
+
+  // Turno de automação/HTTP: «não encontrei» pode ser correcto (found:false) — não substituir por artigos da KB.
+  if (nonKb) {
+    return kbToolOk && stallOnly;
+  }
+
+  // Só appendix proactivo: apenas se a pergunta parece de conhecimento.
+  if (input.kbHasUsefulExcerpts) {
+    return seeking || kbToolOk;
+  }
+  return kbToolOk;
 }
+
+/** Prefixo da entrega determinística KB — usado para não auto-aprovar dumps incorrectos. */
+export const FORCED_KB_REPLY_PREFIX_RE = /^encontrei isto na nossa base de conhecimento/i;
 
 function extractSnippetsFromKnowledgeToolPreview(preview: string): string[] {
   const snippets: string[] = [];
@@ -1877,19 +1982,31 @@ export async function generateNativeAgentReply(input: {
     completedToolRounds = Math.max(completedToolRounds, 1);
   }
 
-  if (!replyText && toolRoundOutcomes.length > 0) {
-    replyText = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
-    ex?.warn(
-      { id: "llm", name: "Entrega determinística" },
-      "Resposta vazia após tools — mensagem sintetizada a partir dos resultados",
-      { output: { replyChars: replyText.length, toolCount: toolRoundOutcomes.length } },
-    );
+  if (!replyText && toolRoundOutcomes.length > 0 && toolCallNotify.forceDeliveryEnabled) {
+    const scoped = scopeForceDeliveryToolOutcomes(toolRoundOutcomes, toolCallNotify.forceDeliveryTools);
+    if (scoped.length > 0) {
+      replyText = buildDeterministicReplyFromToolOutcomes(scoped);
+      if (replyText) {
+        ex?.warn(
+          { id: "llm", name: "Entrega determinística" },
+          "Resposta vazia após tools — mensagem sintetizada a partir dos resultados",
+          { output: { replyChars: replyText.length, toolCount: scoped.length } },
+        );
+      }
+    }
   }
 
   if (
     flags.knowledge_search &&
-    (isLikelyStallOnlyReply(replyText, configuredStallMessages) ||
-      (kbHasUsefulExcerpts && isLikelyKbDeflectionOnlyReply(replyText)))
+    shouldForceKnowledgeDelivery({
+      replyText,
+      kbHasUsefulExcerpts,
+      toolOutcomes: toolRoundOutcomes,
+      configuredStallMessages,
+      userMessage,
+      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+      forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
+    })
   ) {
     ex?.warn({ id: "stall", name: "Correção de resposta" }, "Resposta parece stall ou deflexão — augment RAG");
     try {
@@ -1961,6 +2078,9 @@ export async function generateNativeAgentReply(input: {
       kbHasUsefulExcerpts,
       toolOutcomes: toolRoundOutcomes,
       configuredStallMessages,
+      userMessage,
+      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+      forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
     })
   ) {
     const kbForced = buildDeterministicReplyFromKnowledge({
@@ -1984,14 +2104,30 @@ export async function generateNativeAgentReply(input: {
     }
   }
 
-  if (shouldForceDeliveryAfterTools({ toolOutcomes: toolRoundOutcomes, replyText })) {
-    const forced = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+  if (
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: toolRoundOutcomes,
+      replyText,
+      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+      forceDeliveryTools: toolCallNotify.forceDeliveryTools,
+    })
+  ) {
+    const scopedOutcomes = scopeForceDeliveryToolOutcomes(
+      toolRoundOutcomes,
+      toolCallNotify.forceDeliveryTools,
+    );
+    const forced = buildDeterministicReplyFromToolOutcomes(scopedOutcomes);
     if (forced.trim()) {
       replyText = forced.trim();
       ex?.warn(
         { id: "tool_delivery", name: "Entrega forçada" },
         "Ainda sem resposta substantiva após tools — entrega determinística",
-        { output: { replyChars: replyText.length } },
+        {
+          output: {
+            replyChars: replyText.length,
+            scopedToolCount: scopedOutcomes.length,
+          },
+        },
       );
     }
   }
@@ -2145,10 +2281,17 @@ export async function generateNativeAgentReply(input: {
       } catch {
         approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
       }
-      // Stall final com KB disponível nunca é aprovável
+      // Stall final com KB relevante: resgatar só quando a política de KB o permitir (não em turnos HTTP/fluxo).
       if (
-        isNonDeliveringAgentReply(replyText, configuredStallMessages) &&
-        (kbHasUsefulExcerpts || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes))
+        shouldForceKnowledgeDelivery({
+          replyText,
+          kbHasUsefulExcerpts,
+          toolOutcomes: toolRoundOutcomes,
+          configuredStallMessages,
+          userMessage,
+          forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+          forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
+        })
       ) {
         approved = false;
         summary = `${summary} [auto: stall com KB disponível — rejeitado]`.slice(0, 500);
@@ -2164,7 +2307,15 @@ export async function generateNativeAgentReply(input: {
         }
       }
       // Override defensivo: tools OK + resposta substantiva → não marcar falso negativo por OCR
-      if (!approved && successfulTools.length > 0 && hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages)) {
+      // Não forçar aprovação se a resposta é dump de KB irrelevante ou contradiz found:false.
+      const toolReportsNotFound = toolRoundOutcomes.some((t) => /"found"\s*:\s*false/i.test(t.preview));
+      const isForcedKbDump = FORCED_KB_REPLY_PREFIX_RE.test(replyText);
+      if (
+        !approved &&
+        successfulTools.length > 0 &&
+        hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages) &&
+        !(isForcedKbDump && (toolReportsNotFound || hasNonKnowledgeToolsThisTurn(toolRoundOutcomes)))
+      ) {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);
       }
@@ -2189,6 +2340,9 @@ export async function generateNativeAgentReply(input: {
       kbHasUsefulExcerpts,
       toolOutcomes: toolRoundOutcomes,
       configuredStallMessages,
+      userMessage,
+      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+      forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
     })
   ) {
     const last = buildDeterministicReplyFromKnowledge({

@@ -12,6 +12,7 @@ import {
   shouldEnsureToolResultFollowUp,
   shouldForceDeliveryAfterTools,
   shouldForceKnowledgeDelivery,
+  userMessageLooksLikeKnowledgeSeekingQuery,
 } from "./agentNativeLlm.js";
 
 test("parseToolCallNotifyFromBehavior reads ensureResultDelivered and toolMessages", () => {
@@ -118,6 +119,99 @@ test("isLikelyStallOnlyReply catches interim notify phrase", () => {
   assert.equal(isLikelyStallOnlyReply("O endereço é Rua Acruás, 267."), false);
 });
 
+test("parseToolCallNotifyFromBehavior defaults force delivery on (legacy)", () => {
+  const cfg = parseToolCallNotifyFromBehavior({
+    toolCallNotify: { enabled: true, message: "Aguarde" },
+  });
+  assert.equal(cfg.forceDeliveryEnabled, true);
+  assert.equal(cfg.forceDeliveryTools, null);
+  assert.equal(cfg.forceKnowledgeRescue, true);
+});
+
+test("parseToolCallNotifyFromBehavior reads force delivery toggles and tool filter", () => {
+  const cfg = parseToolCallNotifyFromBehavior({
+    toolCallNotify: {
+      enabled: false,
+      forceDeliveryEnabled: false,
+      forceKnowledgeRescue: false,
+      forceDeliveryTools: ["custom:abc", "native:create_reservation"],
+    },
+  });
+  assert.equal(cfg.forceDeliveryEnabled, false);
+  assert.equal(cfg.forceKnowledgeRescue, false);
+  assert.deepEqual(cfg.forceDeliveryTools, ["custom:abc", "native:create_reservation"]);
+});
+
+test("shouldForceDeliveryAfterTools respects enable and tool filter", () => {
+  const toolId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const outcomes = [
+    {
+      name: `oc_tool_${toolId.replace(/-/g, "")}`,
+      ok: true,
+      preview: '{"found":true}',
+      monitored: true,
+    },
+  ];
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: outcomes,
+      replyText: "",
+      forceDeliveryEnabled: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: outcomes,
+      replyText: "",
+      forceDeliveryEnabled: true,
+      forceDeliveryTools: [],
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: outcomes,
+      replyText: "",
+      forceDeliveryEnabled: true,
+      forceDeliveryTools: ["custom:bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: outcomes,
+      replyText: "",
+      forceDeliveryEnabled: true,
+      forceDeliveryTools: [`custom:${toolId}`],
+    }),
+    true,
+  );
+});
+
+test("shouldForceKnowledgeDelivery respects forceKnowledgeRescue off", () => {
+  assert.equal(
+    shouldForceKnowledgeDelivery({
+      replyText: "Só um momento por gentileza",
+      kbHasUsefulExcerpts: true,
+      toolOutcomes: [],
+      userMessage: "Qual o endereço da Club Suítes?",
+      forceKnowledgeRescue: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceKnowledgeDelivery({
+      replyText: "Só um momento por gentileza",
+      kbHasUsefulExcerpts: true,
+      toolOutcomes: [],
+      userMessage: "Qual o endereço da Club Suítes?",
+      forceDeliveryEnabled: false,
+    }),
+    false,
+  );
+});
+
 test("shouldForceDeliveryAfterTools when empty or stall after any tools", () => {
   const outcomes = [{ name: "oc_tool_reserva", ok: true, preview: '{"found":true}', monitored: true }];
   assert.equal(shouldForceDeliveryAfterTools({ toolOutcomes: outcomes, replyText: "" }), true);
@@ -148,6 +242,7 @@ test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {
       replyText: "Só um momento por gentileza",
       kbHasUsefulExcerpts: true,
       toolOutcomes: [],
+      userMessage: "Qual o endereço da Club Suítes?",
     }),
     true,
   );
@@ -156,9 +251,39 @@ test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {
       replyText: "O Wi-Fi é @@vivapp e a rede é Club.",
       kbHasUsefulExcerpts: true,
       toolOutcomes: [],
+      userMessage: "Qual o Wi-Fi?",
     }),
     false,
   );
+});
+
+test("shouldForceKnowledgeDelivery skips CPF/tool flow with proactive appendix", () => {
+  const httpTool = {
+    name: "oc_tool_consultar_main_guest",
+    ok: true,
+    preview: JSON.stringify({ data: { found: false } }),
+    monitored: true,
+  };
+  assert.equal(
+    shouldForceKnowledgeDelivery({
+      replyText: "Não encontrei o cadastro com esse documento. Pode confirmar o CPF?",
+      kbHasUsefulExcerpts: true,
+      toolOutcomes: [httpTool],
+      userMessage: "699.606.761-88",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceKnowledgeDelivery({
+      replyText: "Só um momento por gentileza",
+      kbHasUsefulExcerpts: true,
+      toolOutcomes: [httpTool],
+      userMessage: "699.606.761-88",
+    }),
+    false,
+  );
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("699.606.761-88"), false);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi da unidade?"), true);
 });
 
 test("buildDeterministicReplyFromKnowledge uses appendix excerpts", () => {

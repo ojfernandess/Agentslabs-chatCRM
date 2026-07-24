@@ -472,6 +472,17 @@ export const messages = {
       agentToolCallNotifyEnsureResultToggle: "Garantir entrega do resultado ao contacto",
       agentToolCallNotifyEnsureResultHelp:
         "Após as ferramentas, detecta se a resposta final ao cliente é só «aguarde» ou vazia. Se sim, reforça automaticamente a resposta com os resultados das consultas (ferramentas seleccionadas acima).",
+      agentForceDeliverySection: "Entrega forçada inteligente",
+      agentForceDeliveryHelp:
+        "Se o modelo falhar, devolver texto vazio ou ficar só no «aguarde» após ferramentas, sintetiza uma resposta a partir dos resultados já obtidos — sem alterar o fluxo normal quando a resposta já é substantiva. Perguntas de CPF/fluxo HTTP não são substituídas por artigos da base de conhecimento.",
+      agentForceDeliveryToggle: "Activar entrega forçada após ferramentas",
+      agentForceKnowledgeRescueToggle: "Resgatar base de conhecimento em stall",
+      agentForceKnowledgeRescueHelp:
+        "Só em perguntas que parecem de conhecimento (não CPF nem respostas curtas de fluxo). Evita despejar artigos irrelevantes sobre consultas HTTP.",
+      agentForceDeliveryAllToolsToggle: "Aplicar a todas as ferramentas",
+      agentForceDeliveryAllToolsHelp:
+        "Desmarque para limitar a entrega forçada apenas às ferramentas seleccionadas abaixo.",
+      agentForceDeliveryTools: "Ferramentas com entrega forçada",
       agentSupervisorToggle: "Agente supervisor (revisão antes do envio)",
       agentSupervisorHelp:
         "Um segundo agente analisa a resposta proposta face à mensagem do cliente e aos resultados das ferramentas. Regista aprovação ou alertas nos logs de execução — não altera o envio automático.",
@@ -5609,6 +5620,17 @@ export const messages = {
       agentToolCallNotifyEnsureResultToggle: "Ensure tool results reach the contact",
       agentToolCallNotifyEnsureResultHelp:
         "After tools run, detects when the final reply is only “please wait” or empty. If so, automatically reinforces the reply using the tool outcomes (for tools selected above).",
+      agentForceDeliverySection: "Smart forced delivery",
+      agentForceDeliveryHelp:
+        "If the model fails, returns empty text, or stalls on “please wait” after tools, synthesizes a reply from the tool outcomes already obtained — without changing the normal flow when the reply is already substantive. CPF/HTTP flow answers are not replaced with knowledge-base articles.",
+      agentForceDeliveryToggle: "Enable forced delivery after tools",
+      agentForceKnowledgeRescueToggle: "Rescue knowledge base on stall",
+      agentForceKnowledgeRescueHelp:
+        "Only for messages that look like knowledge questions (not CPF or short flow answers). Avoids dumping unrelated articles over HTTP lookups.",
+      agentForceDeliveryAllToolsToggle: "Apply to all tools",
+      agentForceDeliveryAllToolsHelp:
+        "Uncheck to limit forced delivery to the tools selected below.",
+      agentForceDeliveryTools: "Tools with forced delivery",
       agentSupervisorToggle: "Supervisor agent (review before send)",
       agentSupervisorHelp:
         "A second agent reviews the proposed reply against the customer message and tool results. Logs approval or warnings in execution logs — does not change automatic delivery.",

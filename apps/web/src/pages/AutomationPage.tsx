@@ -326,6 +326,9 @@ const defaultBehavior = {
     selectedTools: [] as string[],
     ensureResultDelivered: false,
     toolMessages: {} as Record<string, string>,
+    forceDeliveryEnabled: true,
+    forceDeliveryTools: null as string[] | null,
+    forceKnowledgeRescue: true,
   },
 };
 
@@ -394,6 +397,16 @@ type AgentFormFields = {
   toolCallNotifyEnsureResultDelivered: boolean;
   /** Mensagens opcionais por ferramenta (chave = native:… / custom:…). Vazio = mensagem global. */
   toolCallNotifyToolMessages: Record<string, string>;
+  /** Entrega forçada inteligente (stall/vazio → sintetizar a partir das tools). Default true. */
+  toolCallNotifyForceDeliveryEnabled: boolean;
+  /**
+   * `true` = todas as tools (não grava forceDeliveryTools).
+   * `false` = usar toolCallNotifyForceDeliveryTools.
+   */
+  toolCallNotifyForceDeliveryAllTools: boolean;
+  toolCallNotifyForceDeliveryTools: string[];
+  /** Resgate KB em stall (perguntas de conhecimento). Default true. */
+  toolCallNotifyForceKnowledgeRescue: boolean;
   agentSupervisorEnabled: boolean;
 };
 
@@ -440,6 +453,10 @@ function emptyAgentForm(): AgentFormFields {
     toolCallNotifySelectedTools: [],
     toolCallNotifyEnsureResultDelivered: false,
     toolCallNotifyToolMessages: {},
+    toolCallNotifyForceDeliveryEnabled: true,
+    toolCallNotifyForceDeliveryAllTools: true,
+    toolCallNotifyForceDeliveryTools: [],
+    toolCallNotifyForceKnowledgeRescue: true,
     agentSupervisorEnabled: false,
   };
 }
@@ -540,6 +557,13 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     }
   }
 
+  const hasForceDeliveryToolsKey = "forceDeliveryTools" in toolCallNotifyRaw;
+  const toolCallNotifyForceDeliveryTools =
+    hasForceDeliveryToolsKey && Array.isArray(toolCallNotifyRaw.forceDeliveryTools)
+      ? toolCallNotifyRaw.forceDeliveryTools.filter((x): x is string => typeof x === "string")
+      : [];
+  const toolCallNotifyForceDeliveryAllTools = !hasForceDeliveryToolsKey;
+
   const supervisorRaw = beh.agentSupervisor;
   const agentSupervisorEnabled =
     supervisorRaw && typeof supervisorRaw === "object"
@@ -596,6 +620,10 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     toolCallNotifySelectedTools,
     toolCallNotifyEnsureResultDelivered: toolCallNotifyRaw.ensureResultDelivered === true,
     toolCallNotifyToolMessages,
+    toolCallNotifyForceDeliveryEnabled: toolCallNotifyRaw.forceDeliveryEnabled !== false,
+    toolCallNotifyForceDeliveryAllTools,
+    toolCallNotifyForceDeliveryTools,
+    toolCallNotifyForceKnowledgeRescue: toolCallNotifyRaw.forceKnowledgeRescue !== false,
     agentSupervisorEnabled,
   };
 }
@@ -767,6 +795,11 @@ function formToPayload(
           .map(([k, v]) => [k, v.trim().slice(0, 500)] as const)
           .filter(([k, v]) => k && v && form.toolCallNotifySelectedTools.includes(k)),
       ),
+      forceDeliveryEnabled: form.toolCallNotifyForceDeliveryEnabled,
+      forceKnowledgeRescue: form.toolCallNotifyForceKnowledgeRescue,
+      ...(form.toolCallNotifyForceDeliveryAllTools
+        ? {}
+        : { forceDeliveryTools: form.toolCallNotifyForceDeliveryTools }),
     },
     agentSupervisor: {
       enabled: form.agentSupervisorEnabled,
@@ -1826,6 +1859,11 @@ function AgentsTab({
     return [...natives, ...customs];
   }, [agentForm.nativeTools, agentForm.connectedTools, tools, t]);
 
+  const forceDeliveryToolCandidates = useMemo(
+    () => toolCallNotifyCandidates.filter((row) => row.key !== toolCallNotifyKeyNative("knowledge_search")),
+    [toolCallNotifyCandidates],
+  );
+
   const promptAutoPreview = useMemo(() => {
     const linkedTitles = agentForm.promptLinkedKnowledgeIds
       .map((id) => articles.find((a) => a.id === id)?.title)
@@ -2719,6 +2757,113 @@ function AgentsTab({
                     </p>
                   </>
                 ) : null}
+                <div className="mt-4 rounded-lg border border-ink-200/80 bg-white/60 p-3 dark:border-ink-600 dark:bg-ink-950/30">
+                  <p className="text-xs font-semibold text-ink-800 dark:text-ink-200">
+                    {t("automationPage.agentForceDeliverySection")}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-500">
+                    {t("automationPage.agentForceDeliveryHelp")}
+                  </p>
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={agentForm.toolCallNotifyForceDeliveryEnabled}
+                      onChange={(e) =>
+                        setAgentForm((f) => ({
+                          ...f,
+                          toolCallNotifyForceDeliveryEnabled: e.target.checked,
+                        }))
+                      }
+                    />
+                    {t("automationPage.agentForceDeliveryToggle")}
+                  </label>
+                  {agentForm.toolCallNotifyForceDeliveryEnabled ? (
+                    <>
+                      <label className="mt-2 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={agentForm.toolCallNotifyForceKnowledgeRescue}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({
+                              ...f,
+                              toolCallNotifyForceKnowledgeRescue: e.target.checked,
+                            }))
+                          }
+                        />
+                        {t("automationPage.agentForceKnowledgeRescueToggle")}
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentForceKnowledgeRescueHelp")}
+                      </p>
+                      <label className="mt-3 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={agentForm.toolCallNotifyForceDeliveryAllTools}
+                          onChange={(e) => {
+                            const all = e.target.checked;
+                            setAgentForm((f) => ({
+                              ...f,
+                              toolCallNotifyForceDeliveryAllTools: all,
+                              toolCallNotifyForceDeliveryTools:
+                                all
+                                  ? f.toolCallNotifyForceDeliveryTools
+                                  : f.toolCallNotifyForceDeliveryTools.length > 0
+                                    ? f.toolCallNotifyForceDeliveryTools
+                                    : forceDeliveryToolCandidates.map((row) => row.key),
+                            }));
+                          }}
+                        />
+                        {t("automationPage.agentForceDeliveryAllToolsToggle")}
+                      </label>
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {t("automationPage.agentForceDeliveryAllToolsHelp")}
+                      </p>
+                      {!agentForm.toolCallNotifyForceDeliveryAllTools ? (
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                            {t("automationPage.agentForceDeliveryTools")}
+                          </p>
+                          {forceDeliveryToolCandidates.length === 0 ? (
+                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                              {t("automationPage.agentToolCallNotifyToolsEmpty")}
+                            </p>
+                          ) : (
+                            <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-ink-200 bg-white/80 p-2 dark:border-ink-600 dark:bg-ink-950/40">
+                              {forceDeliveryToolCandidates.map((row) => {
+                                const selected = agentForm.toolCallNotifyForceDeliveryTools.includes(
+                                  row.key,
+                                );
+                                return (
+                                  <li key={`force-${row.key}`}>
+                                    <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-800 dark:text-ink-200">
+                                      <input
+                                        type="checkbox"
+                                        className="h-3.5 w-3.5 rounded border-ink-300 text-brand-600"
+                                        checked={selected}
+                                        onChange={() =>
+                                          setAgentForm((f) => {
+                                            const next = new Set(f.toolCallNotifyForceDeliveryTools);
+                                            if (next.has(row.key)) next.delete(row.key);
+                                            else next.add(row.key);
+                                            return {
+                                              ...f,
+                                              toolCallNotifyForceDeliveryTools: [...next],
+                                            };
+                                          })
+                                        }
+                                      />
+                                      <span className="font-medium">{row.label}</span>
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               <div className="rounded-xl border border-fuchsia-200/60 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20">
