@@ -201,6 +201,19 @@ export function AutomationKnowledgeHub({
   } | null>(null);
   const [reindexArticleBusyId, setReindexArticleBusyId] = useState<string | null>(null);
   const [reindexArticleDoneId, setReindexArticleDoneId] = useState<string | null>(null);
+  const [optimizeModalOpen, setOptimizeModalOpen] = useState(false);
+  const [optimizeBusy, setOptimizeBusy] = useState(false);
+  const [optimizeBotId, setOptimizeBotId] = useState("");
+  const [optimizeResult, setOptimizeResult] = useState<{
+    content: string;
+    provider: string;
+    sectionsBefore: number;
+    sectionsAfter: number;
+    factsPreserved: boolean;
+    missingFacts: string[];
+    model: string;
+    analysis: { hasSections: boolean; sectionCount: number; estimatedChunks: number; factCount: number };
+  } | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const [sources, setSources] = useState<KbSourceRow[]>([]);
@@ -471,6 +484,54 @@ export function AutomationKnowledgeHub({
     } finally {
       setReindexArticleBusyId(null);
     }
+  };
+
+  const openOptimizeModal = () => {
+    setOptimizeResult(null);
+    setOptimizeBotId(kbForm.botIds[0] ?? "");
+    setOptimizeModalOpen(true);
+  };
+
+  const runOptimizeForRag = async () => {
+    if (!kbForm.content.trim() || !kbForm.title.trim()) return;
+    setOptimizeBusy(true);
+    setError("");
+    setOptimizeResult(null);
+    try {
+      const res = await api.post<{
+        content: string;
+        provider: string;
+        sectionsBefore: number;
+        sectionsAfter: number;
+        factsPreserved: boolean;
+        missingFacts: string[];
+        model: string;
+        analysis: { hasSections: boolean; sectionCount: number; estimatedChunks: number; factCount: number };
+      }>("/automation/knowledge-articles/optimize-for-rag", {
+        title: kbForm.title.trim(),
+        content: kbForm.content,
+        botId: optimizeBotId || undefined,
+      });
+      setOptimizeResult(res);
+    } catch {
+      setError("load_failed");
+      setOptimizeModalOpen(false);
+    } finally {
+      setOptimizeBusy(false);
+    }
+  };
+
+  const applyOptimizeResult = () => {
+    if (!optimizeResult?.factsPreserved && optimizeResult?.content === kbForm.content) {
+      setOptimizeModalOpen(false);
+      return;
+    }
+    if (optimizeResult?.content) {
+      setKbForm((f) => ({ ...f, content: optimizeResult.content }));
+      setEditorPreview(false);
+    }
+    setOptimizeModalOpen(false);
+    setOptimizeResult(null);
   };
 
   const resetSourceForm = useCallback(() => {
@@ -1606,6 +1667,131 @@ export function AutomationKnowledgeHub({
         </div>
       ) : null}
 
+      {optimizeModalOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kb-optimize-modal-title"
+        >
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-950">
+            <div className="border-b border-ink-200 px-5 py-4 dark:border-ink-700">
+              <h3 id="kb-optimize-modal-title" className="text-lg font-bold text-ink-900 dark:text-ink-50">
+                {t("automationPage.kbHub.optimizeForRagModalTitle")}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-600 dark:text-ink-400">
+                {t("automationPage.kbHub.optimizeForRagModalIntro")}
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <label className="block text-xs font-medium text-ink-700 dark:text-ink-300">
+                {t("automationPage.kbHub.optimizeForRagModalBot")}
+                <select
+                  value={optimizeBotId}
+                  onChange={(e) => setOptimizeBotId(e.target.value)}
+                  disabled={optimizeBusy}
+                  className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900"
+                >
+                  <option value="">{t("automationPage.kbHub.optimizeForRagModalBotNone")}</option>
+                  {(kbForm.botIds.length > 0
+                    ? bots.filter((b) => kbForm.botIds.includes(b.id))
+                    : bots
+                  ).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] font-normal text-ink-500">{t("automationPage.kbHub.optimizeForRagModalBotHint")}</span>
+              </label>
+              <p className="mt-3 rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 text-xs text-ink-600 dark:border-ink-800 dark:bg-ink-900/60 dark:text-ink-400">
+                {t("automationPage.kbHub.optimizeForRagModalAnalysis")
+                  .replace("{sections}", String(optimizeResult?.analysis.sectionCount ?? (kbForm.content.match(/^#{2,3}\s+\S+/gm)?.length ?? 0)))
+                  .replace("{chunks}", String(optimizeResult?.analysis.estimatedChunks ?? "—"))
+                  .replace("{facts}", String(optimizeResult?.analysis.factCount ?? "—"))}
+              </p>
+              {!metrics?.semanticSearchReady ? (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                  {t("automationPage.kbHub.optimizeForRagModalNoKey")}
+                </p>
+              ) : null}
+              {optimizeBusy ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-violet-800 dark:text-violet-200">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t("automationPage.kbHub.optimizeForRagModalRunning")}
+                </div>
+              ) : null}
+              {optimizeResult ? (
+                <>
+                  <p className="mt-4 rounded-lg border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-violet-900 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100">
+                    {t("automationPage.kbHub.optimizeForRagModalResult")
+                      .replace("{provider}", optimizeResult.provider)
+                      .replace("{sectionsBefore}", String(optimizeResult.sectionsBefore))
+                      .replace("{sectionsAfter}", String(optimizeResult.sectionsAfter))
+                      .replace("{model}", optimizeResult.model)}
+                  </p>
+                  <p
+                    className={clsx(
+                      "mt-2 rounded-lg border px-3 py-2 text-xs",
+                      optimizeResult.factsPreserved
+                        ? "border-emerald-200 bg-emerald-50/80 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100"
+                        : "border-amber-200 bg-amber-50/80 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100",
+                    )}
+                  >
+                    {optimizeResult.factsPreserved
+                      ? t("automationPage.kbHub.optimizeForRagModalFactsOk")
+                      : t("automationPage.kbHub.optimizeForRagModalFactsWarn")}
+                  </p>
+                  <label className="mt-3 block text-xs font-medium text-ink-700 dark:text-ink-300">
+                    {t("automationPage.kbHub.optimizeForRagModalPreview")}
+                    <textarea
+                      readOnly
+                      value={optimizeResult.content}
+                      rows={12}
+                      className="mt-1 w-full resize-y rounded-xl border border-ink-200 bg-ink-950 px-3 py-2 font-mono text-xs leading-relaxed text-ink-100 dark:border-ink-700"
+                    />
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-ink-200 px-5 py-4 dark:border-ink-700">
+              <button
+                type="button"
+                disabled={optimizeBusy}
+                onClick={() => {
+                  if (!optimizeBusy) {
+                    setOptimizeModalOpen(false);
+                    setOptimizeResult(null);
+                  }
+                }}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium dark:border-ink-600"
+              >
+                {optimizeResult ? t("automationPage.kbHub.optimizeForRagModalClose") : t("automationPage.cancel")}
+              </button>
+              {!optimizeResult ? (
+                <button
+                  type="button"
+                  disabled={optimizeBusy || !metrics?.semanticSearchReady || !kbForm.content.trim()}
+                  onClick={() => void runOptimizeForRag()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {optimizeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  {t("automationPage.kbHub.optimizeForRagModalConfirm")}
+                </button>
+              ) : optimizeResult.factsPreserved ? (
+                <button
+                  type="button"
+                  onClick={() => applyOptimizeResult()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  {t("automationPage.kbHub.optimizeForRagModalApply")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {sourceModalOpen ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-950">
@@ -1922,6 +2108,16 @@ export function AutomationKnowledgeHub({
                 {kbForm.id ? t("automationPage.kbEdit") : t("automationPage.kbNew")}
               </h3>
               <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={!kbForm.content.trim() || optimizeBusy}
+                  onClick={() => openOptimizeModal()}
+                  title={t("automationPage.kbHub.optimizeForRagHint")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950/40"
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  {t("automationPage.kbHub.optimizeForRag")}
+                </button>
                 <button
                   type="button"
                   onClick={() => setEditorPreview((p) => !p)}

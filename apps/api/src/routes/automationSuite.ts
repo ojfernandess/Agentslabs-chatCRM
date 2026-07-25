@@ -39,6 +39,11 @@ import {
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
 import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
 import {
+  analyzeDocumentRagReadiness,
+  optimizeKnowledgeDocumentForRag,
+  resolveRagProviderForDocumentOptimize,
+} from "../lib/knowledgeDocumentRagOptimize.js";
+import {
   extractKnowledgeFileText,
   titleFromFilename,
   wrapIngestError,
@@ -1017,6 +1022,61 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(502).send({
         error: "Bad Gateway",
         code: "kb_reindex_org_failed",
+        message: msg.slice(0, 1500),
+        statusCode: 502,
+      });
+    }
+  });
+
+  const knowledgeOptimizeForRagBody = z.object({
+    title: z.string().trim().min(1).max(500),
+    content: z.string().max(500_000),
+    botId: z.string().uuid().optional(),
+    provider: z.enum(["llamaindex", "openconduit"]).optional(),
+    locale: z.string().trim().max(16).optional(),
+  });
+
+  app.post("/knowledge-articles/optimize-for-rag", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!config.openAiPromptPreviewKey.trim()) {
+      return reply.status(503).send({
+        error: "Service Unavailable",
+        code: "kb_optimize_no_openai_key",
+        message: "Configure OPENAI_API_KEY no servidor para otimizar documentos.",
+        statusCode: 503,
+      });
+    }
+    const parsed = knowledgeOptimizeForRagBody.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", details: parsed.error.flatten(), statusCode: 400 });
+    }
+    const { title, content, botId, provider, locale } = parsed.data;
+    if (botId) {
+      const bot = await prisma.bot.findFirst({
+        where: { id: botId, organizationId },
+        select: { id: true },
+      });
+      if (!bot) {
+        return reply.status(404).send({ error: "Not Found", message: "Agente não encontrado", statusCode: 404 });
+      }
+    }
+    try {
+      const analysis = analyzeDocumentRagReadiness(content);
+      const result = await optimizeKnowledgeDocumentForRag({
+        organizationId,
+        title,
+        content,
+        botId,
+        provider,
+        locale,
+      });
+      return { ...result, analysis };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "optimize failed";
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        code: "kb_optimize_failed",
         message: msg.slice(0, 1500),
         statusCode: 502,
       });

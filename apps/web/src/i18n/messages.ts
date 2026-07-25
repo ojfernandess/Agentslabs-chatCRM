@@ -1147,6 +1147,29 @@ export const messages = {
         reindexDoc: "Embeddings",
         reindexDocBusy: "A indexar…",
         reindexDocDone: "Embeddings actualizados",
+        optimizeForRag: "Otimizar para RAG",
+        optimizeForRagHint:
+          "Reestrutura o markdown para o motor RAG do agente (secções ##, bullets factuais) sem omitir informação.",
+        optimizeForRagModalTitle: "Otimizar documento para RAG",
+        optimizeForRagModalIntro:
+          "Analisa todo o conteúdo e reorganiza em markdown optimizado para embeddings e busca híbrida. Todas as informações são preservadas; só a estrutura muda.",
+        optimizeForRagModalBot: "Agente (motor RAG)",
+        optimizeForRagModalBotHint: "Opcional — usa o provider LlamaIndex ou OpenConduit configurado no agente.",
+        optimizeForRagModalBotNone: "Organização (predefinição)",
+        optimizeForRagModalAnalysis:
+          "Actual: {sections} secções · ~{chunks} chunks · {facts} factos detectados",
+        optimizeForRagModalNoKey:
+          "OPENAI_API_KEY não está configurada no servidor. A optimização usa um modelo LLM no servidor.",
+        optimizeForRagModalConfirm: "Analisar e optimizar",
+        optimizeForRagModalRunning: "A reestruturar markdown… Isto pode demorar até um minuto.",
+        optimizeForRagModalResult:
+          "Motor {provider} · {sectionsBefore}→{sectionsAfter} secções · modelo {model}",
+        optimizeForRagModalFactsOk: "Validação: todos os factos críticos preservados.",
+        optimizeForRagModalFactsWarn:
+          "Validação: alguns factos não foram encontrados no texto optimizado — o original foi mantido.",
+        optimizeForRagModalPreview: "Pré-visualização optimizada",
+        optimizeForRagModalApply: "Aplicar ao documento",
+        optimizeForRagModalClose: "Fechar",
         importFile: "Importar ficheiro",
         importFileHint: "PDF, Word (.docx), Excel (.xlsx), texto, CSV — texto extraído vira um documento na KB.",
         importSource: "Origem",
@@ -6483,6 +6506,29 @@ export const messages = {
         reindexDoc: "Embeddings",
         reindexDocBusy: "Indexing…",
         reindexDocDone: "Embeddings updated",
+        optimizeForRag: "Optimize for RAG",
+        optimizeForRagHint:
+          "Restructures markdown for the agent's RAG engine (## sections, factual bullets) without dropping information.",
+        optimizeForRagModalTitle: "Optimize document for RAG",
+        optimizeForRagModalIntro:
+          "Analyzes the full content and reorganizes it into markdown optimized for embeddings and hybrid search. All information is preserved; only structure changes.",
+        optimizeForRagModalBot: "Agent (RAG engine)",
+        optimizeForRagModalBotHint: "Optional — uses the LlamaIndex or OpenConduit provider configured on the agent.",
+        optimizeForRagModalBotNone: "Organization (default)",
+        optimizeForRagModalAnalysis:
+          "Current: {sections} sections · ~{chunks} chunks · {facts} detected facts",
+        optimizeForRagModalNoKey:
+          "OPENAI_API_KEY is not configured on the server. Optimization uses an LLM on the server.",
+        optimizeForRagModalConfirm: "Analyze and optimize",
+        optimizeForRagModalRunning: "Restructuring markdown… This may take up to a minute.",
+        optimizeForRagModalResult:
+          "Engine {provider} · {sectionsBefore}→{sectionsAfter} sections · model {model}",
+        optimizeForRagModalFactsOk: "Validation: all critical facts preserved.",
+        optimizeForRagModalFactsWarn:
+          "Validation: some facts were missing in optimized text — original content was kept.",
+        optimizeForRagModalPreview: "Optimized preview",
+        optimizeForRagModalApply: "Apply to document",
+        optimizeForRagModalClose: "Close",
         importFile: "Import file",
         importFileHint: "PDF, Word (.docx), Excel (.xlsx), plain text, CSV — extracted text becomes a KB document.",
         importSource: "Source",
