@@ -1132,7 +1132,21 @@ export const messages = {
         reindexOrg: "Reindexar embeddings",
         reindexOrgHint: "Regenera vetores de todos os artigos (usa API OpenAI).",
         reindexOrgConfirm: "Reindexar toda a base? Isto chama a API de embeddings para cada documento activo com sync à IA.",
+        reindexOrgModalTitle: "Reindexar embeddings",
+        reindexOrgModalIntro:
+          "Regenera os vetores semânticos de todos os documentos activos com sync à IA. Usa chunking por secções markdown (## WiFi, ## Quartos, etc.).",
+        reindexOrgModalStats:
+          "{active} documentos activos · {sync} com sync IA · {indexed} chunks indexados · modelo {model}",
+        reindexOrgModalNoKey:
+          "OPENAI_API_KEY não está configurada no servidor. A reindexação não pode gerar embeddings até a chave estar disponível.",
+        reindexOrgModalConfirm: "Iniciar reindexação",
+        reindexOrgModalRunning: "A gerar embeddings… Isto pode demorar alguns minutos.",
+        reindexOrgModalSuccess:
+          "Concluído: {indexed}/{total} documentos indexados, {chunks} chunks, {errors} erros.",
+        reindexOrgModalClose: "Fechar",
         reindexDoc: "Embeddings",
+        reindexDocBusy: "A indexar…",
+        reindexDocDone: "Embeddings actualizados",
         importFile: "Importar ficheiro",
         importFileHint: "PDF, Word (.docx), Excel (.xlsx), texto, CSV — texto extraído vira um documento na KB.",
         importSource: "Origem",
@@ -6454,7 +6468,21 @@ export const messages = {
         reindexOrg: "Reindex embeddings",
         reindexOrgHint: "Regenerates vectors for all articles (calls OpenAI embeddings API).",
         reindexOrgConfirm: "Reindex the entire knowledge base? This calls the embeddings API for each active article synced to AI.",
+        reindexOrgModalTitle: "Reindex embeddings",
+        reindexOrgModalIntro:
+          "Regenerates semantic vectors for all active documents synced to AI. Uses markdown section chunking (## WiFi, ## Rooms, etc.).",
+        reindexOrgModalStats:
+          "{active} active documents · {sync} AI sync · {indexed} indexed chunks · model {model}",
+        reindexOrgModalNoKey:
+          "OPENAI_API_KEY is not configured on the server. Reindexing cannot generate embeddings until the key is available.",
+        reindexOrgModalConfirm: "Start reindex",
+        reindexOrgModalRunning: "Generating embeddings… This may take a few minutes.",
+        reindexOrgModalSuccess:
+          "Done: {indexed}/{total} documents indexed, {chunks} chunks, {errors} errors.",
+        reindexOrgModalClose: "Close",
         reindexDoc: "Embeddings",
+        reindexDocBusy: "Indexing…",
+        reindexDocDone: "Embeddings updated",
         importFile: "Import file",
         importFileHint: "PDF, Word (.docx), Excel (.xlsx), plain text, CSV — extracted text becomes a KB document.",
         importSource: "Source",

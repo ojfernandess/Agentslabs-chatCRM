@@ -192,6 +192,15 @@ export function AutomationKnowledgeHub({
   const [searchResults, setSearchResults] = useState<KnowledgeArticleRow[] | null>(null);
   const [searchMode, setSearchMode] = useState<string | null>(null);
   const [reindexBusy, setReindexBusy] = useState(false);
+  const [reindexModalOpen, setReindexModalOpen] = useState(false);
+  const [reindexResult, setReindexResult] = useState<{
+    articles: number;
+    articlesIndexed: number;
+    chunksTotal: number;
+    errors: number;
+  } | null>(null);
+  const [reindexArticleBusyId, setReindexArticleBusyId] = useState<string | null>(null);
+  const [reindexArticleDoneId, setReindexArticleDoneId] = useState<string | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const [sources, setSources] = useState<KbSourceRow[]>([]);
@@ -407,31 +416,60 @@ export function AutomationKnowledgeHub({
     }
   };
 
+  const openReindexModal = () => {
+    setReindexResult(null);
+    setReindexModalOpen(true);
+    void loadMetrics();
+  };
+
   const runReindexOrganization = async () => {
-    if (!window.confirm(t("automationPage.kbHub.reindexOrgConfirm"))) return;
     setReindexBusy(true);
     setError("");
+    setReindexResult(null);
     try {
-      await api.post<{ articles: number; errors: number }>("/automation/knowledge-articles/reindex-organization");
+      const res = await api.post<{
+        articles: number;
+        articlesIndexed: number;
+        articlesSkipped?: number;
+        chunksTotal: number;
+        errors: number;
+      }>("/automation/knowledge-articles/reindex-organization");
+      setReindexResult({
+        articles: res.articles,
+        articlesIndexed: res.articlesIndexed ?? res.articles,
+        chunksTotal: res.chunksTotal ?? 0,
+        errors: res.errors,
+      });
       await loadMetrics();
       await onRefresh();
     } catch {
       setError("load_failed");
+      setReindexModalOpen(false);
     } finally {
       setReindexBusy(false);
     }
   };
 
   const runReindexArticle = async (id: string) => {
-    setLoading(true);
+    setReindexArticleBusyId(id);
+    setReindexArticleDoneId(null);
     setError("");
     try {
-      await api.post(`/automation/knowledge-articles/${id}/reindex`);
+      const res = await api.post<{ chunks?: number; skipped?: boolean; reason?: string }>(
+        `/automation/knowledge-articles/${id}/reindex`,
+      );
+      if (res.skipped && res.reason === "no_openai_key") {
+        setError("load_failed");
+      } else {
+        setReindexArticleDoneId(id);
+        window.setTimeout(() => setReindexArticleDoneId((cur) => (cur === id ? null : cur)), 3000);
+      }
       await loadMetrics();
+      await onRefresh();
     } catch {
       setError("load_failed");
     } finally {
-      setLoading(false);
+      setReindexArticleBusyId(null);
     }
   };
 
@@ -757,7 +795,7 @@ export function AutomationKnowledgeHub({
             </button>
             <button
               type="button"
-              onClick={() => void runReindexOrganization()}
+              onClick={openReindexModal}
               disabled={loading || reindexBusy}
               title={t("automationPage.kbHub.reindexOrgHint")}
               className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-2.5 text-sm font-semibold text-emerald-900 shadow-sm backdrop-blur dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
@@ -1117,10 +1155,20 @@ export function AutomationKnowledgeHub({
                     </button>
                     <button
                       type="button"
+                      disabled={reindexArticleBusyId === a.id}
                       onClick={() => void runReindexArticle(a.id)}
-                      className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-800 dark:border-emerald-800 dark:text-emerald-200"
+                      className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-800 dark:border-emerald-800 dark:text-emerald-200 disabled:opacity-60"
                     >
-                      {t("automationPage.kbHub.reindexDoc")}
+                      {reindexArticleBusyId === a.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {t("automationPage.kbHub.reindexDocBusy")}
+                        </span>
+                      ) : reindexArticleDoneId === a.id ? (
+                        t("automationPage.kbHub.reindexDocDone")
+                      ) : (
+                        t("automationPage.kbHub.reindexDoc")
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1484,6 +1532,76 @@ export function AutomationKnowledgeHub({
             {!metrics?.topQueries.length ? (
               <p className="text-xs text-ink-500">{t("automationPage.kbHub.noAnalytics")}</p>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {reindexModalOpen ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kb-reindex-modal-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-950">
+            <h3 id="kb-reindex-modal-title" className="text-lg font-bold text-ink-900 dark:text-ink-50">
+              {t("automationPage.kbHub.reindexOrgModalTitle")}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-600 dark:text-ink-400">
+              {t("automationPage.kbHub.reindexOrgModalIntro")}
+            </p>
+            {metrics ? (
+              <p className="mt-3 rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2 text-xs text-ink-600 dark:border-ink-800 dark:bg-ink-900/60 dark:text-ink-400">
+                {t("automationPage.kbHub.reindexOrgModalStats")
+                  .replace("{active}", String(metrics.activeDocuments))
+                  .replace("{sync}", String(metrics.syncEnabled))
+                  .replace("{indexed}", String(metrics.indexedChunks))
+                  .replace("{model}", metrics.embeddingModel ?? "—")}
+              </p>
+            ) : null}
+            {!metrics?.semanticSearchReady ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                {t("automationPage.kbHub.reindexOrgModalNoKey")}
+              </p>
+            ) : null}
+            {reindexBusy ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-emerald-800 dark:text-emerald-200">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("automationPage.kbHub.reindexOrgModalRunning")}
+              </div>
+            ) : null}
+            {reindexResult ? (
+              <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+                {t("automationPage.kbHub.reindexOrgModalSuccess")
+                  .replace("{indexed}", String(reindexResult.articlesIndexed))
+                  .replace("{total}", String(reindexResult.articles))
+                  .replace("{chunks}", String(reindexResult.chunksTotal))
+                  .replace("{errors}", String(reindexResult.errors))}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={reindexBusy}
+                onClick={() => {
+                  if (!reindexBusy) setReindexModalOpen(false);
+                }}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium dark:border-ink-600"
+              >
+                {reindexResult ? t("automationPage.kbHub.reindexOrgModalClose") : t("automationPage.cancel")}
+              </button>
+              {!reindexResult ? (
+                <button
+                  type="button"
+                  disabled={reindexBusy || !metrics?.semanticSearchReady}
+                  onClick={() => void runReindexOrganization()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {reindexBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {t("automationPage.kbHub.reindexOrgModalConfirm")}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

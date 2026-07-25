@@ -145,16 +145,16 @@ export class OpenNexoKnowledgeProvider {
   async index(input: KnowledgeIndexInput): Promise<KnowledgeIndexResult> {
     if (input.documentId) {
       const result = await reindexKnowledgeArticle(input.documentId);
-      if ("skipped" in result) {
+      if ("skipped" in result && result.skipped) {
         return { indexed: 0, skipped: 1, chunks: 0, errors: [result.reason] };
       }
       return { indexed: 1, skipped: 0, chunks: result.chunks, errors: [] };
     }
     const bulk = await reindexAllKnowledgeArticlesForOrg(input.organizationId);
     return {
-      indexed: bulk.articles,
-      skipped: 0,
-      chunks: bulk.articles,
+      indexed: bulk.articlesIndexed,
+      skipped: bulk.articlesSkipped,
+      chunks: bulk.chunksTotal,
       errors: bulk.errors > 0 ? [`${bulk.errors} artigos falharam na reindexação`] : [],
     };
   }
