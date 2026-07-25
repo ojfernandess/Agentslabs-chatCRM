@@ -23,6 +23,7 @@ import { effectiveKnowledgeSearchBotId } from "../../knowledgeRetrieval.js";
 import { applyQueryEntityRankingBoost } from "../../knowledgeSearchRanking.js";
 import {
   adaptiveKnowledgeMinScore,
+  enrichKnowledgeChunksWithArticleSections,
   finalizeKnowledgeChunks,
 } from "../../knowledgeChunkPostProcess.js";
 
@@ -148,6 +149,13 @@ export class LlamaIndexKnowledgeProvider {
         limit: cfg.maxChunks,
         excerptMaxLen: 720,
       });
+
+      knowledgeChunks = await enrichKnowledgeChunksWithArticleSections(
+        knowledgeChunks,
+        input.query,
+        input.organizationId,
+        cfg.maxChunks,
+      );
 
       if (cfg.reranking && knowledgeChunks.length > 1) {
         knowledgeChunks = (

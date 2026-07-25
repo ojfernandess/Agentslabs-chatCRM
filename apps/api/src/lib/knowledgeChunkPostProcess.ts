@@ -1,3 +1,4 @@
+import { prisma } from "../db.js";
 import { applyQueryEntityRankingBoost } from "./knowledgeSearchRanking.js";
 import {
   chunkMatchesQueryTopics,
@@ -157,6 +158,56 @@ function resolveChunkTextForQuery(
   }
 
   return text;
+}
+
+/**
+ * Quando o vector search devolve chunks errados do documento certo, extrai a secção
+ * markdown correspondente à query a partir do conteúdo completo do artigo (path LlamaIndex).
+ */
+export async function enrichKnowledgeChunksWithArticleSections<T extends ScoredKnowledgeChunk>(
+  chunks: T[],
+  query: string,
+  organizationId: string,
+  limit: number,
+): Promise<T[]> {
+  const q = query.trim();
+  if (!q || chunks.length === 0) return chunks;
+
+  const combined = chunks.map((c) => c.text).join("\n\n");
+  if (knowledgeContentCoversQuery(combined, q)) return chunks;
+
+  const docIds = [...new Set(chunks.map((c) => c.documentId).filter(Boolean))] as string[];
+  if (docIds.length === 0) return chunks;
+
+  const articles = await prisma.automationKnowledgeArticle.findMany({
+    where: { organizationId, id: { in: docIds }, isActive: true, syncToAi: true },
+    select: { id: true, title: true, content: true },
+  });
+
+  const injected: T[] = [];
+  const seen = new Set(chunks.map((c) => `${c.documentId ?? ""}:${sectionSignature(c.text)}`));
+
+  for (const article of articles) {
+    const sectionText = extractMarkdownSectionForQuery(article.content, q);
+    if (!hasSubstantiveChunkBody(sectionText)) continue;
+    if (!chunkMatchesQueryTopics(sectionText, q)) continue;
+
+    const sig = `${article.id}:${sectionSignature(sectionText)}`;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+
+    const template = chunks.find((c) => c.documentId === article.id) ?? chunks[0]!;
+    injected.push({
+      ...template,
+      documentId: article.id,
+      documentName: article.title,
+      text: sectionText,
+      score: Math.min(1, (template.score ?? 0.5) + 0.3),
+    });
+  }
+
+  if (injected.length === 0) return chunks;
+  return finalizeKnowledgeChunks([...injected, ...chunks], q, { limit }) as T[];
 }
 
 /** Pós-processamento de linhas ranked (path legado OpenNexo / buscar_conhecimento). */

@@ -167,17 +167,44 @@ function excerptHasAnswerContent(text: string, minBodyChars = 30): boolean {
   return withoutHeaders.length >= minBodyChars;
 }
 
+/** Corpo com factos respondíveis (listas, pares rótulo:valor, sub-secções) — não só título. */
+function sectionBodyHasAnswerFacts(body: string): boolean {
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+  if (/^[-*•]\s+\S/m.test(trimmed)) return true;
+  if (/^\d+[.)]\s+\S/m.test(trimmed)) return true;
+  if (/\*\*[^*]+:\*\*\s*\S/.test(trimmed)) return true;
+  if (/^#{3,4}\s+\S/m.test(trimmed) && excerptHasAnswerContent(trimmed, 20)) return true;
+  return excerptHasAnswerContent(trimmed, 48);
+}
+
+/** Menção tangencial (ex.: «- Quarto» numa lista de campos de NF). */
+function isTangentialTopicMention(body: string, syn: string): boolean {
+  const synLower = syn.toLowerCase();
+  if (synLower !== "quarto" && synLower !== "quartos") return false;
+  const lines = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const hits = lines.filter((l) => l.toLowerCase().includes(synLower));
+  if (hits.length === 0) return false;
+  return hits.every((l) => /^[-*•]\s*(\*\*)?[A-Za-zÀ-ú\s]+(\*\*)?\s*$/.test(l) && l.length < 48);
+}
+
 function sectionAnswersTopic(section: MarkdownSection, topics: string[]): boolean {
   const block = `## ${section.title}\n\n${section.body}`.trim();
   if (isKnowledgeOverviewChunk(block)) return false;
   if (!excerptHasAnswerContent(block)) return false;
-  if (sectionHeaderMatchesTopics(section.title, topics)) return true;
+  if (sectionHeaderMatchesTopics(section.title, topics)) {
+    return sectionBodyHasAnswerFacts(section.body);
+  }
 
   const bodyLower = section.body.toLowerCase();
   for (const topic of topics) {
     const syns = TOPIC_SYNONYMS[topic] ?? [topic];
     for (const s of syns) {
       if (!bodyLower.includes(s.toLowerCase())) continue;
+      if (isTangentialTopicMention(section.body, s)) continue;
       const idx = bodyLower.indexOf(s.toLowerCase());
       const slice = section.body.slice(Math.max(0, idx - 10), idx + 280);
       if (excerptHasAnswerContent(slice) && !/^[^.\n]{0,120}(?:etc\.?\)?\s*$|, )/i.test(slice.trim())) {

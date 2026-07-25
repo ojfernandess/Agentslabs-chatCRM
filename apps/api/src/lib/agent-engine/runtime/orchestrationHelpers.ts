@@ -20,6 +20,7 @@ export type OrchestrationState = {
   memory: Record<string, unknown>;
   reply: string;
   toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
   supervisorApproved: boolean;
 };
@@ -54,6 +55,7 @@ export async function runOrchestratedRuntime(
     memory: {},
     reply: "",
     toolOutcomes: [],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
     retryCount: 0,
     supervisorApproved: true,
   };
@@ -72,9 +74,10 @@ export async function runOrchestratedRuntime(
 
   for (;;) {
     traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
-    const { reply, toolOutcomes = [] } = await executor(input);
+    const { reply, toolOutcomes = [], kbMeta } = await executor(input);
     state.reply = reply;
     state.toolOutcomes = toolOutcomes;
+    state.kbMeta = kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false };
     traceBuilder.endNode("execute_tool");
 
     traceBuilder.startNode("validate_result", "Validar resultado");
@@ -102,7 +105,7 @@ export async function runOrchestratedRuntime(
         userMessage: input.message.body ?? "",
         replyText: state.reply,
         toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-        kbHasUsefulExcerpts: false,
+        kbHasUsefulExcerpts: state.kbMeta.coversQuery,
         successfulToolCount: successful,
         totalToolCount: state.toolOutcomes.length,
         strictMode: input.engineConfig.strictMode,
@@ -126,7 +129,7 @@ export async function runOrchestratedRuntime(
           userMessage: input.message.body ?? "",
           replyText: state.reply,
           toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-          kbHasUsefulExcerpts: false,
+          kbHasUsefulExcerpts: state.kbMeta.coversQuery,
           successfulToolCount: state.toolOutcomes.filter((t) => t.ok).length,
           totalToolCount: state.toolOutcomes.length,
           strictMode: input.engineConfig.strictMode,

@@ -12,6 +12,7 @@ type GraphState = {
   memory: Record<string, unknown>;
   reply: string;
   toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
   traceBuilder: ExecutionTraceBuilder;
   supervisorApproved: boolean;
@@ -22,6 +23,7 @@ const GraphStateAnnotation = Annotation.Root({
   memory: Annotation<Record<string, unknown>>,
   reply: Annotation<string>,
   toolOutcomes: Annotation<Array<{ name: string; ok: boolean; preview: string }>>,
+  kbMeta: Annotation<{ hasUsefulExcerpts: boolean; coversQuery: boolean }>,
   retryCount: Annotation<number>,
   traceBuilder: Annotation<ExecutionTraceBuilder>,
   supervisorApproved: Annotation<boolean>,
@@ -56,6 +58,7 @@ export class LangGraphRuntime implements AgentRuntime {
         memory: {},
         reply: "",
         toolOutcomes: [],
+        kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
         retryCount: 0,
         traceBuilder,
         supervisorApproved: false,
@@ -121,10 +124,14 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
-      const { reply, toolOutcomes = [] } = await executor(state.input);
+      const { reply, toolOutcomes = [], kbMeta } = await executor(state.input);
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode("execute_tool");
-      return { reply, toolOutcomes };
+      return {
+        reply,
+        toolOutcomes,
+        kbMeta: kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false },
+      };
     };
 
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -159,7 +166,7 @@ export class LangGraphRuntime implements AgentRuntime {
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
         toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-        kbHasUsefulExcerpts: false,
+        kbHasUsefulExcerpts: state.kbMeta.coversQuery,
         successfulToolCount: successful,
         totalToolCount: state.toolOutcomes.length,
         strictMode: state.input.engineConfig.strictMode,
@@ -210,7 +217,7 @@ export class LangGraphRuntime implements AgentRuntime {
             userMessage: state.input.message.body ?? "",
             replyText: state.reply,
             toolSummary: "",
-            kbHasUsefulExcerpts: false,
+            kbHasUsefulExcerpts: state.kbMeta.coversQuery,
             successfulToolCount: 0,
             totalToolCount: state.toolOutcomes.length,
             strictMode: state.input.engineConfig.strictMode,

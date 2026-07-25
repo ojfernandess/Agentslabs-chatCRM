@@ -71,3 +71,20 @@ test("knowledgeContentCoversQuery true when room section has facts", () => {
     true,
   );
 });
+
+test("knowledgeContentCoversQuery false for NF field label Quarto", () => {
+  const nf =
+    "## Nota fiscal (NF)\n\nPara emitir nota fiscal:\n\n- Nome completo\n- CPF\n- Quarto\n\n---";
+  assert.equal(
+    knowledgeContentCoversQuery(nf, "quais as categorias de quartos do hotel Blue Ocean?"),
+    false,
+  );
+});
+
+test("knowledgeContentCoversQuery false for room header without body facts", () => {
+  const headerOnly = "## Categorias de quartos\n\nConsulte a recepção para mais detalhes.";
+  assert.equal(
+    knowledgeContentCoversQuery(headerOnly, "quais as categorias de quartos do hotel Blue Ocean?"),
+    false,
+  );
+});

@@ -4,9 +4,18 @@ import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 
+export type NativeAgentKbMeta = {
+  hasUsefulExcerpts: boolean;
+  coversQuery: boolean;
+};
+
 export type NativeAgentExecutor = (
   input: AgentRuntimeExecuteInput,
-) => Promise<{ reply: string; toolOutcomes?: Array<{ name: string; ok: boolean; preview: string }> }>;
+) => Promise<{
+  reply: string;
+  toolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+  kbMeta?: NativeAgentKbMeta;
+}>;
 
 /**
  * Runtime padrão — delega ao pipeline nativo existente (`generateNativeAgentReplyCore`).

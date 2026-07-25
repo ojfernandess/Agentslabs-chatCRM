@@ -83,6 +83,18 @@ const DEFAULT_TOOL_CALL_NOTIFY_MESSAGE = "Um momento, estou a consultar isso par
 /** Tempo máximo por pedido LLM do agente nativo (várias rondas de tools + HTTP externo). */
 const NATIVE_AGENT_LLM_TIMEOUT_MS = 90_000;
 
+export type NativeAgentCoreResult = {
+  reply: string;
+  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
+};
+
+const EMPTY_NATIVE_CORE_RESULT: NativeAgentCoreResult = {
+  reply: "",
+  toolOutcomes: [],
+  kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+};
+
 function nativeAgentLlmAbortSignal(): AbortSignal {
   return AbortSignal.timeout(NATIVE_AGENT_LLM_TIMEOUT_MS);
 }
@@ -1397,7 +1409,7 @@ async function generateNativeAgentReplyCore(input: {
   contactId?: string;
   /** Evita re-entrada no Agent Engine (OpenNexo / LangGraph executors). */
   skipEngineRoute?: boolean;
-}): Promise<string> {
+}): Promise<NativeAgentCoreResult> {
   const {
     organizationId,
     bot,
@@ -1408,12 +1420,12 @@ async function generateNativeAgentReplyCore(input: {
     historyOverride,
     contactId,
   } = input;
-  if (message.direction !== "INBOUND") return "";
+  if (message.direction !== "INBOUND") return EMPTY_NATIVE_CORE_RESULT;
   const userMessageRaw = (message.body ?? "").trim();
   const hasInboundMedia =
     Boolean(message.mediaUrl?.trim()) &&
     (message.type === "IMAGE" || message.type === "DOCUMENT" || message.type === "VIDEO");
-  if (!userMessageRaw && !hasInboundMedia) return "";
+  if (!userMessageRaw && !hasInboundMedia) return EMPTY_NATIVE_CORE_RESULT;
   const userMessage =
     userMessageRaw ||
     (message.type === "IMAGE"
@@ -1438,7 +1450,7 @@ async function generateNativeAgentReplyCore(input: {
         organizationId,
       });
     }
-    return "";
+    return EMPTY_NATIVE_CORE_RESULT;
   }
 
   const llm = profile.llmConfig as Record<string, unknown>;
@@ -1470,7 +1482,7 @@ async function generateNativeAgentReplyCore(input: {
         provider,
       });
     }
-    return "";
+    return EMPTY_NATIVE_CORE_RESULT;
   }
 
   const engineConfig = parseAgentEngineConfig(profile.behaviorConfig);
@@ -1478,7 +1490,7 @@ async function generateNativeAgentReplyCore(input: {
   if (!input.skipEngineRoute) {
     ensureAgentEngineExecutorRegistered();
     if (engineConfig.runtime !== "openconduit") {
-      return executeViaAgentEngine({
+      const reply = await executeViaAgentEngine({
         organizationId,
         bot,
         conversation,
@@ -1494,6 +1506,7 @@ async function generateNativeAgentReplyCore(input: {
             ? (profile.behaviorConfig as Record<string, unknown>)
             : {},
       });
+      return { ...EMPTY_NATIVE_CORE_RESULT, reply };
     }
   }
 
@@ -1752,7 +1765,7 @@ async function generateNativeAgentReplyCore(input: {
       customToolPreamble;
 
   const serverKbGuard =
-    (kbHasUsefulExcerpts
+    (proactiveCoversQuery
       ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
         "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
@@ -1760,7 +1773,11 @@ async function generateNativeAgentReplyCore(input: {
         "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do agente diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
         "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente. " +
         "Esta precedência **não** anula restrições do playbook do tipo «nunca informar X sem consultar a ferramenta» — nesse caso chame a tool indicada antes de afirmar dados."
-      : "") +
+      : kbHasUsefulExcerpts
+        ? "\n\n[OpenConduit — base de conhecimento parcial]\n" +
+          "Há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta do cliente. " +
+          "Use `buscar_conhecimento` se precisar de mais detalhe; **não invente** factos que não constem nos excertos ou no resultado da ferramenta."
+        : "") +
     (customHttpTools.length > 0
       ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
         "Existem funções com nome `oc_tool_` no catálogo: são integrações HTTP/Webhook configuradas para este agente. " +
@@ -2060,7 +2077,11 @@ async function generateNativeAgentReplyCore(input: {
             };
             if (name === "buscar_conhecimento") {
               knowledgeSearchCallsThisTurn += 1;
-              const maxKbCalls = kbHasUsefulExcerpts ? 1 : 2;
+              const priorKbOutcomes = toolRoundOutcomes.filter((t) => t.name === "buscar_conhecimento");
+              const kbSearchSatisfied =
+                proactiveCoversQuery ||
+                knowledgeToolFoundUsefulExcerpts(priorKbOutcomes, kbSearchQuery);
+              const maxKbCalls = kbSearchSatisfied ? 1 : 2;
               if (knowledgeSearchCallsThisTurn > maxKbCalls) {
                 return finishToolCall(
                   JSON.stringify({
@@ -2068,7 +2089,7 @@ async function generateNativeAgentReplyCore(input: {
                     skipped: true,
                     reason: "knowledge_search_quota_this_turn",
                     bodyPreview:
-                      kbHasUsefulExcerpts
+                      kbSearchSatisfied
                         ? "Já existem excertos úteis no contexto do sistema e uma pesquisa neste turno. Não repita buscar_conhecimento — responda agora ao cliente com os dados já obtidos."
                         : "Limite de pesquisas de conhecimento neste turno atingido. Responda ao cliente com os resultados já obtidos ou peça só o detalhe em falta.",
                   }),
@@ -2266,7 +2287,7 @@ async function generateNativeAgentReplyCore(input: {
       output: { toolsAlreadyRun: toolRoundOutcomes.length },
     });
     if (toolRoundOutcomes.length === 0) {
-      return "";
+      return EMPTY_NATIVE_CORE_RESULT;
     }
     replyText = "";
   }
@@ -2622,11 +2643,21 @@ async function generateNativeAgentReplyCore(input: {
         },
         "strict mode hard-block — reply not sent",
       );
-      return "";
+      return EMPTY_NATIVE_CORE_RESULT;
     }
   }
 
-  return replyText;
+  const kbCoversForMeta =
+    proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery);
+
+  return {
+    reply: replyText,
+    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+    kbMeta: {
+      hasUsefulExcerpts: kbHasUsefulExcerpts,
+      coversQuery: kbCoversForMeta,
+    },
+  };
 }
 
 let agentEngineExecutorRegistered = false;
@@ -2635,7 +2666,7 @@ function ensureAgentEngineExecutorRegistered(): void {
   if (agentEngineExecutorRegistered) return;
   agentEngineExecutorRegistered = true;
   AgentRuntimeFactory.registerExecutor("_default", async (runtimeInput) => {
-    const reply = await generateNativeAgentReplyCore({
+    const result = await generateNativeAgentReplyCore({
       organizationId: runtimeInput.organizationId,
       bot: runtimeInput.bot,
       conversation: runtimeInput.conversation,
@@ -2646,7 +2677,11 @@ function ensureAgentEngineExecutorRegistered(): void {
       contactId: runtimeInput.contactId,
       skipEngineRoute: true,
     });
-    return { reply };
+    return {
+      reply: result.reply,
+      toolOutcomes: result.toolOutcomes,
+      kbMeta: result.kbMeta,
+    };
   });
 }
 
@@ -2661,5 +2696,6 @@ export async function generateNativeAgentReply(input: {
   historyOverride?: PreviewChatTurn[];
   contactId?: string;
 }): Promise<string> {
-  return generateNativeAgentReplyCore(input);
+  const result = await generateNativeAgentReplyCore(input);
+  return result.reply;
 }
