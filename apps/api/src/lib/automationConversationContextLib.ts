@@ -371,10 +371,7 @@ export async function clearAutomationConversationContext(
     where: { organizationId },
     select: { agentBotId: true },
   });
-  const botId = settings?.agentBotId;
-  if (!botId) {
-    return { clearedConversationIds: conversationIds };
-  }
+  const fallbackBotId = settings?.agentBotId ?? null;
 
   const existingRows = await prisma.automationConversationContext.findMany({
     where: { organizationId, conversationId: { in: conversationIds } },
@@ -383,23 +380,18 @@ export async function clearAutomationConversationContext(
   const existingIds = new Set(existingRows.map((row) => row.conversationId));
   const missingIds = conversationIds.filter((id) => !existingIds.has(id));
 
-  if (missingIds.length > 0) {
+  if (missingIds.length > 0 && fallbackBotId) {
     await prisma.automationConversationContext.createMany({
       data: missingIds.map((id) => ({
         organizationId,
         conversationId: id,
-        botId,
+        botId: fallbackBotId,
         state: asJson({}),
         lastClearedAt: clearedAt,
       })),
       skipDuplicates: true,
     });
   }
-
-  await prisma.automationConversationContext.updateMany({
-    where: { organizationId, conversationId: { in: conversationIds } },
-    data: { state: asJson({}), lastClearedAt: clearedAt, botId },
-  });
 
   return { clearedConversationIds: conversationIds };
 }

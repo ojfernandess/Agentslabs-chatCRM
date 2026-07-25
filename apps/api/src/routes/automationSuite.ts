@@ -2934,18 +2934,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const cleared = await clearAutomationConversationContext(organizationId, conversationId, {
         scope: "contact",
       });
-      const after = await prisma.automationConversationContext.findUnique({
-        where: { conversationId },
-        select: { id: true },
-      });
-      if (!after) {
-        return reply.status(404).send({
-          error: "Not Found",
-          message:
-            "No automation context row yet and no organization agent bot (Settings). Nothing to clear; send one agent message first or configure the inbox bot.",
-          statusCode: 404,
-        });
-      }
       return {
         ok: true,
         createdContextRow: !before,

@@ -260,11 +260,9 @@ export function MemoryCenterPanel({
   const exportMemories = async () => {
     if (!data?.conversationId) return;
     try {
-      const res = await fetch(
-        `/api/automation/memory-center/by-conversation/${data.conversationId}/export`,
-        { credentials: "include" },
+      const blob = await api.fetchBlob(
+        `/automation/memory-center/by-conversation/${data.conversationId}/export`,
       );
-      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -327,6 +325,15 @@ export function MemoryCenterPanel({
     if (!text) return;
     setAiMemories((prev) => [...prev, { text, category: newMemoryCategory }]);
     setNewMemory("");
+  };
+
+  const handleClearContext = async (targetConversationId: string) => {
+    const trimmed = targetConversationId.trim();
+    if (!trimmed) return;
+    await onClearContext(trimmed);
+    if (data?.conversationId === trimmed || conversationId.trim() === trimmed) {
+      await loadByConversation(trimmed);
+    }
   };
 
   const busy = parentLoading || loadingDetail || saving;
@@ -395,7 +402,7 @@ export function MemoryCenterPanel({
         <button
           type="button"
           disabled={busy || !conversationId.trim()}
-          onClick={() => void onClearContext(conversationId)}
+          onClick={() => void handleClearContext(conversationId)}
           className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
         >
           {t("automationPage.contextClear")}
@@ -433,7 +440,7 @@ export function MemoryCenterPanel({
                   <button
                     type="button"
                     className="font-medium text-red-600"
-                    onClick={() => void onClearContext(r.conversationId)}
+                    onClick={() => void handleClearContext(r.conversationId)}
                   >
                     {t("automationPage.contextClear")}
                   </button>

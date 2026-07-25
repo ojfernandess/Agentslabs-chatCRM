@@ -14,8 +14,9 @@ import {
 } from "./memoryCenterTypes.js";
 import { fetchMem0MemoriesForCenter } from "./mem0MemoryBridge.js";
 import { isMem0Configured } from "./mem0Client.js";
-import { listScopeMemories } from "./openNexoMemoryRepository.js";
-import type { MemoryRecord } from "./memoryEngineTypes.js";
+import { listScopeMemories, saveScopeMemories } from "./openNexoMemoryRepository.js";
+import { normalizeMemoryRecord, type MemoryRecord } from "./memoryEngineTypes.js";
+import type { AgentMemoryKind } from "../types.js";
 import { createMemoryProvider } from "./MemoryProvider.js";
 
 function parseFlowSlots(raw: unknown): Record<string, string | number | boolean> {
@@ -59,6 +60,152 @@ function splitMemorySections(records: AiMemoryEntry[]) {
 function readAutomationState(state: unknown): AutomationContextState & { memoryCenter?: unknown } {
   if (!state || typeof state !== "object") return {};
   return state as AutomationContextState & { memoryCenter?: unknown };
+}
+
+function mergeAiMemoryEntries(entries: AiMemoryEntry[]): AiMemoryEntry[] {
+  const byId = new Map<string, AiMemoryEntry>();
+  for (const entry of entries) {
+    if (entry.id) byId.set(entry.id, entry);
+  }
+  return [...byId.values()];
+}
+
+async function resolveConversationMemoryContext(
+  organizationId: string,
+  conversationId: string,
+): Promise<{
+  contactId: string;
+  botId: string | null;
+  providerKind: AgentMemoryKind;
+} | null> {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: conversationId, organizationId },
+    select: { contactId: true },
+  });
+  if (!conv) return null;
+
+  const ctx = await prisma.automationConversationContext.findUnique({
+    where: { conversationId },
+    select: { botId: true },
+  });
+  let botId = ctx?.botId ?? null;
+  if (!botId) {
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { agentBotId: true },
+    });
+    botId = settings?.agentBotId ?? null;
+  }
+
+  let providerKind: AgentMemoryKind = "openconduit";
+  if (botId) {
+    const profile = await prisma.automationAgentProfile.findFirst({
+      where: { botId, organizationId },
+      select: { behaviorConfig: true },
+    });
+    providerKind = parseAgentEngineConfig(profile?.behaviorConfig).memory;
+  }
+
+  return { contactId: conv.contactId, botId, providerKind };
+}
+
+function contactScopeRef(input: {
+  organizationId: string;
+  conversationId: string;
+  contactId: string;
+  botId?: string | null;
+}) {
+  return {
+    organizationId: input.organizationId,
+    scope: "contact" as const,
+    conversationId: input.conversationId,
+    botId: input.botId,
+    contactId: input.contactId,
+  };
+}
+
+async function removeLegacyMemoryCenterEntry(
+  organizationId: string,
+  conversationId: string,
+  memoryId: string,
+): Promise<void> {
+  const ctx = await prisma.automationConversationContext.findFirst({
+    where: { conversationId, organizationId },
+    select: { state: true },
+  });
+  if (!ctx) return;
+  const prevState =
+    ctx.state && typeof ctx.state === "object" ? (ctx.state as Record<string, unknown>) : {};
+  const mc = parseMemoryCenterFromState(prevState);
+  if (!mc.aiMemories?.some((m) => m.id === memoryId)) return;
+  const nextState = mergeMemoryCenterIntoState(prevState, {
+    aiMemories: mc.aiMemories.filter((m) => m.id !== memoryId),
+  });
+  await prisma.automationConversationContext.updateMany({
+    where: { conversationId, organizationId },
+    data: { state: nextState as Prisma.InputJsonValue },
+  });
+}
+
+async function patchLegacyMemoryCenterEntry(
+  organizationId: string,
+  conversationId: string,
+  memoryId: string,
+  patch: {
+    text?: string;
+    category?: MemoryRecord["category"];
+    status?: MemoryRecord["status"];
+    score?: number;
+  },
+): Promise<boolean> {
+  const ctx = await prisma.automationConversationContext.findFirst({
+    where: { conversationId, organizationId },
+    select: { state: true },
+  });
+  if (!ctx) return false;
+  const prevState =
+    ctx.state && typeof ctx.state === "object" ? (ctx.state as Record<string, unknown>) : {};
+  const mc = parseMemoryCenterFromState(prevState);
+  if (!mc.aiMemories?.length) return false;
+  let changed = false;
+  const aiMemories = mc.aiMemories.map((entry) => {
+    if (entry.id !== memoryId) return entry;
+    changed = true;
+    return {
+      ...entry,
+      ...(patch.text ? { text: patch.text } : {}),
+      ...(patch.category ? { category: patch.category } : {}),
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(typeof patch.score === "number" ? { score: patch.score } : {}),
+    };
+  });
+  if (!changed) return false;
+  const nextState = mergeMemoryCenterIntoState(prevState, { aiMemories });
+  await prisma.automationConversationContext.updateMany({
+    where: { conversationId, organizationId },
+    data: { state: nextState as Prisma.InputJsonValue },
+  });
+  return true;
+}
+
+function aiMemoryDraftToRecord(row: {
+  text: string;
+  source?: AiMemoryEntry["source"];
+}): MemoryRecord | null {
+  const text = row.text.trim();
+  if (!filterRelevantAiMemoryText(text)) return null;
+  return normalizeMemoryRecord(
+    {
+      text,
+      category: "preferences",
+      origin: row.source === "manual" ? "manual" : "agent",
+      confidence: 0.85,
+      status: "active",
+      scope: "contact",
+      score: 0.7,
+    },
+    { scope: "contact", origin: row.source === "manual" ? "manual" : "agent" },
+  );
 }
 
 async function loadContactBundle(organizationId: string, contactId: string) {
@@ -151,9 +298,10 @@ export async function buildMemoryCenterView(input: {
       botId: ctx?.botId,
       contactId: contact.id,
     });
-    if (engineRecords.length > 0) {
-      aiMemories = engineRecords.map(recordToAiEntry);
-    }
+    aiMemories = mergeAiMemoryEntries([
+      ...aiMemories,
+      ...engineRecords.map(recordToAiEntry),
+    ]);
   }
   if (memoryProvider === "mem0" && isMem0Configured() && resolvedConversationId) {
     const remote = await fetchMem0MemoriesForCenter({
@@ -163,9 +311,7 @@ export async function buildMemoryCenterView(input: {
       contactId: contact.id,
     });
     if (remote.length > 0) {
-      const byId = new Map(aiMemories.map((m) => [m.id, m]));
-      for (const row of remote) byId.set(row.id, row);
-      aiMemories = [...byId.values()];
+      aiMemories = mergeAiMemoryEntries([...aiMemories, ...remote]);
     }
   }
 
@@ -270,29 +416,30 @@ export async function updateMemoryCenterForConversation(input: {
   const prevState =
     ctx.state && typeof ctx.state === "object" ? (ctx.state as Record<string, unknown>) : {};
   const prevMc = parseMemoryCenterFromState(prevState);
-
-  let aiMemories = prevMc.aiMemories ?? [];
-  if (input.patch.aiMemories) {
-    aiMemories = input.patch.aiMemories
-      .map((row, idx) => {
-        const text = row.text.trim();
-        if (!filterRelevantAiMemoryText(text)) return null;
-        return {
-          id: `manual_${Date.now()}_${idx}`,
-          text,
-          source: row.source ?? ("manual" as const),
-          createdAt: new Date().toISOString(),
-        };
-      })
-      .filter((x): x is AiMemoryEntry => x != null);
-  }
+  const memCtx = await resolveConversationMemoryContext(input.organizationId, conv.id);
 
   const slice: MemoryCenterStateSlice = {
     preferences: input.patch.preferences ?? prevMc.preferences,
-    aiMemories,
     score: input.patch.score !== undefined ? input.patch.score : prevMc.score,
     lastInteractionAt: new Date().toISOString(),
+    aiMemories: prevMc.aiMemories ?? [],
   };
+
+  if (input.patch.aiMemories && memCtx) {
+    const records = input.patch.aiMemories
+      .map((row) => aiMemoryDraftToRecord(row))
+      .filter((x): x is MemoryRecord => x != null);
+    await saveScopeMemories(
+      contactScopeRef({
+        organizationId: input.organizationId,
+        conversationId: conv.id,
+        contactId: memCtx.contactId,
+        botId: memCtx.botId,
+      }),
+      records,
+    );
+    slice.aiMemories = [];
+  }
 
   const nextState = mergeMemoryCenterIntoState(prevState, slice);
   await prisma.automationConversationContext.update({
@@ -317,31 +464,32 @@ export async function patchContactMemoryRecord(input: {
     status?: MemoryRecord["status"];
     score?: number;
   };
-  providerKind?: "openconduit" | "mem0";
+  providerKind?: AgentMemoryKind;
 }): Promise<MemoryCenterView | null> {
-  const conv = await prisma.conversation.findFirst({
-    where: { id: input.conversationId, organizationId: input.organizationId },
-    select: { id: true, contactId: true },
-  });
-  if (!conv) return null;
-  const ctx = await prisma.automationConversationContext.findUnique({
-    where: { conversationId: conv.id },
-    select: { botId: true },
-  });
-  const provider = createMemoryProvider(input.providerKind ?? "openconduit");
-  await provider.update({
+  const memCtx = await resolveConversationMemoryContext(input.organizationId, input.conversationId);
+  if (!memCtx) return null;
+  const provider = createMemoryProvider(input.providerKind ?? memCtx.providerKind);
+  const updated = await provider.update({
     organizationId: input.organizationId,
     scope: "contact",
-    conversationId: conv.id,
-    botId: ctx?.botId,
-    contactId: conv.contactId,
+    conversationId: input.conversationId,
+    botId: memCtx.botId,
+    contactId: memCtx.contactId,
     id: input.memoryId,
     patch: input.patch,
   });
+  if (!updated) {
+    await patchLegacyMemoryCenterEntry(
+      input.organizationId,
+      input.conversationId,
+      input.memoryId,
+      input.patch,
+    );
+  }
   return buildMemoryCenterView({
     organizationId: input.organizationId,
-    contactId: conv.contactId,
-    conversationId: conv.id,
+    contactId: memCtx.contactId,
+    conversationId: input.conversationId,
   });
 }
 
@@ -349,30 +497,24 @@ export async function deleteContactMemoryRecord(input: {
   organizationId: string;
   conversationId: string;
   memoryId: string;
-  providerKind?: "openconduit" | "mem0";
+  providerKind?: AgentMemoryKind;
 }): Promise<MemoryCenterView | null> {
-  const conv = await prisma.conversation.findFirst({
-    where: { id: input.conversationId, organizationId: input.organizationId },
-    select: { id: true, contactId: true },
-  });
-  if (!conv) return null;
-  const ctx = await prisma.automationConversationContext.findUnique({
-    where: { conversationId: conv.id },
-    select: { botId: true },
-  });
-  const provider = createMemoryProvider(input.providerKind ?? "openconduit");
+  const memCtx = await resolveConversationMemoryContext(input.organizationId, input.conversationId);
+  if (!memCtx) return null;
+  const provider = createMemoryProvider(input.providerKind ?? memCtx.providerKind);
   await provider.delete({
     organizationId: input.organizationId,
     scope: "contact",
-    conversationId: conv.id,
-    botId: ctx?.botId,
-    contactId: conv.contactId,
+    conversationId: input.conversationId,
+    botId: memCtx.botId,
+    contactId: memCtx.contactId,
     id: input.memoryId,
   });
+  await removeLegacyMemoryCenterEntry(input.organizationId, input.conversationId, input.memoryId);
   return buildMemoryCenterView({
     organizationId: input.organizationId,
-    contactId: conv.contactId,
-    conversationId: conv.id,
+    contactId: memCtx.contactId,
+    conversationId: input.conversationId,
   });
 }
 

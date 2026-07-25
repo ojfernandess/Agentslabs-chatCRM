@@ -164,6 +164,17 @@ test("mergeMemoryCenterIntoState preserves other state keys", () => {
   assert.deepEqual((next as { memoryCenter: { score: number } }).memoryCenter.score, 90);
 });
 
+test("memory center legacy slice ids are stable for delete targeting", () => {
+  const slice = parseMemoryCenterFromState({
+    memoryCenter: {
+      aiMemories: [
+        { id: "mem_engine_1", text: "Prefere quarto silencioso no andar alto", source: "agent", createdAt: "2026-07-24T12:00:00.000Z" },
+      ],
+    },
+  });
+  assert.equal(slice.aiMemories?.[0]?.id, "mem_engine_1");
+});
+
 test("filterRelevantAiMemoryText rejects greetings and short text", () => {
   assert.equal(filterRelevantAiMemoryText("oi"), false);
   assert.equal(filterRelevantAiMemoryText("bom dia"), false);
