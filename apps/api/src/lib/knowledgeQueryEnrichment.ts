@@ -102,19 +102,129 @@ export function isKnowledgeOverviewChunk(text: string): boolean {
   return false;
 }
 
-/** Evita poluir a query com histórico em respostas de menu / fluxo (ex.: «1», «sim»). */
-export function shouldEnrichKnowledgeSearchQuery(userMessage: string): boolean {
+const SHORT_CONFIRMATION_RE =
+  /^(sim|n[aã]o|nao|ok|okay|certo|correto|yes|no|obrigad[oa]|valeu|blz|beleza|confirmo|confirmado|pode ser|tudo bem|t[aá] bom|tb|tbm|tamb[eé]m|claro|perfeito|isso|isso mesmo|exato|exacto|combinado|pode|pode sim|aguardo|entendi|entendido|brasileiro|estrangeiro|male|female|masculino|feminino)\b/i;
+
+const ASSISTANT_DATA_COLLECTION_RE =
+  /\b(envie|envia|manda|mande|enviar|preciso\s+(do|da|de)|qual\s+(é|e)\s+o\s+seu|pode\s+enviar|fotografe|anexe|anexa|confirma\s+(o|a|os|as)|digite|informe|forne[cç]a|me\s+(diga|informe|envie)|cadastro|check[\s-]?in|localizador|cpf|documento|selfie|foto)\b/i;
+
+const IMAGE_TRANSCRIPTION_PREFIX = "[Transcrição de imagem]";
+
+/** Respostas curtas de menu / confirmação / fluxo — não disparam KB. */
+export function isShortConfirmationOrFlowReply(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return true;
+  if (/^\d{1,2}$/.test(t)) return true;
+  if (t.length <= 3 && !/\?/.test(t)) return true;
+  if (t.length <= 56 && SHORT_CONFIRMATION_RE.test(t)) return true;
+  return false;
+}
+
+/** Cliente a fornecer dado de cadastro / fluxo (CPF, código, imagem) — não dispara KB. */
+export function isUserDataProvisionMessage(userMessage: string): boolean {
   const t = userMessage.trim();
   if (!t) return false;
-  if (/^\d{1,2}$/.test(t)) return false;
-  if (t.length <= 3 && !/\?/.test(t)) return false;
+  if (t.includes(IMAGE_TRANSCRIPTION_PREFIX) || /^\[Imagem enviada pelo cliente\]$/i.test(t)) return true;
+  if (/^\[Documento enviado pelo cliente\]$/i.test(t)) return true;
+  const compact = t.replace(/\s+/g, "");
+  if (/^[\d.\-\/]+$/.test(compact) && compact.replace(/\D/g, "").length >= 8) return true;
+  if (/^[A-Z0-9\-_]{4,24}$/i.test(compact) && t.length <= 24) return true;
   if (
-    t.length <= 48 &&
-    /^(sim|n[aã]o|ok|okay|certo|correto|yes|no)\b/i.test(t)
+    t.length <= 64 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)
   ) {
-    return false;
+    return true;
   }
-  return true;
+  return false;
+}
+
+/** Última mensagem do agente pede recolha de dados (cadastro, check-in, documentos). */
+export function assistantMessageIsDataCollection(assistantMessage: string): boolean {
+  const t = assistantMessage.trim();
+  if (!t) return false;
+  if (ASSISTANT_DATA_COLLECTION_RE.test(t)) return true;
+  if (
+    /\?\s*$/.test(t) &&
+    t.length < 480 &&
+    /\b(cpf|cnpj|documento|nome|e-mail|email|telefone|celular|whatsapp|data|nascimento|foto|selfie|localizador|reserva|cadastro|h[oó]spede|acompanhante|passaporte|rg)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Mensagens que pedem factos da KB (endereço, Wi‑Fi, etc.) — não CPFs, localizadores ou respostas curtas de fluxo.
+ */
+export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (isUserDataProvisionMessage(t)) return false;
+  if (isShortConfirmationOrFlowReply(t)) return false;
+  if (/\?/.test(t)) return true;
+  if (
+    /\b(qual|quais|onde|como|quando|quanto|endere[cç]o|wifi|wi[\s-]?fi|senha|hor[aá]rio|pre[cç]o|estacionamento|pol[ií]tica|cancelamento|comodidade|what|where|how|when|address|password|parking|categorias?|quartos?)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (t.length >= 28 && /[\p{L}]{4,}/u.test(t)) return true;
+  return false;
+}
+
+export type KnowledgeSearchSkipReason =
+  | "short_confirmation"
+  | "data_provision"
+  | "cadastro_turn"
+  | "active_flow";
+
+export type KnowledgeSearchSkipContext = {
+  lastAssistantMessage?: string;
+  flowStep?: string;
+  hasFlowSlots?: boolean;
+  lastToolRoundHadHttpTools?: boolean;
+};
+
+/** Motivo para omitir RAG proactivo e `buscar_conhecimento` neste turno, ou null se a KB deve correr. */
+export function resolveKnowledgeSearchSkip(
+  userMessage: string,
+  ctx: KnowledgeSearchSkipContext = {},
+): KnowledgeSearchSkipReason | null {
+  if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";
+  if (isUserDataProvisionMessage(userMessage)) return "data_provision";
+
+  const lastAssistant = ctx.lastAssistantMessage?.trim() ?? "";
+  if (lastAssistant && assistantMessageIsDataCollection(lastAssistant)) {
+    if (!userMessageLooksLikeKnowledgeSeekingQuery(userMessage)) return "cadastro_turn";
+  }
+
+  const inActiveFlow = Boolean(ctx.flowStep?.trim()) || ctx.hasFlowSlots;
+  if (inActiveFlow && !userMessageLooksLikeKnowledgeSeekingQuery(userMessage)) {
+    return "active_flow";
+  }
+
+  if (ctx.lastToolRoundHadHttpTools && !userMessageLooksLikeKnowledgeSeekingQuery(userMessage)) {
+    return "cadastro_turn";
+  }
+
+  return null;
+}
+
+export function shouldSkipKnowledgeSearchForTurn(
+  userMessage: string,
+  ctx: KnowledgeSearchSkipContext = {},
+): boolean {
+  return resolveKnowledgeSearchSkip(userMessage, ctx) !== null;
+}
+
+/** Evita poluir a query com histórico em respostas de menu / fluxo (ex.: «1», «sim»). */
+export function shouldEnrichKnowledgeSearchQuery(userMessage: string): boolean {
+  if (shouldSkipKnowledgeSearchForTurn(userMessage)) return false;
+  const t = userMessage.trim();
+  return t.length > 0;
 }
 
 /** Enriquece a query curta/ambígua com contexto da conversa (estabelecimento, tópico). */

@@ -18,6 +18,10 @@ export type KnowledgeEngineFormValues = {
   chunkOverlap: number;
   autoChunk: boolean;
   useRecommendedSettings: boolean;
+  /** Omitir KB em confirmações curtas / cadastro (behaviorConfig.knowledgeSearchSkip.enabled). */
+  skipOnFlowRepliesEnabled: boolean;
+  /** Instrução quando a KB é omitida; vazio = padrão do sistema. */
+  skipOnFlowRepliesInstruction: string;
 };
 
 export const defaultKnowledgeEngineFormValues = (): KnowledgeEngineFormValues => ({
@@ -33,6 +37,8 @@ export const defaultKnowledgeEngineFormValues = (): KnowledgeEngineFormValues =>
   chunkOverlap: 120,
   autoChunk: true,
   useRecommendedSettings: false,
+  skipOnFlowRepliesEnabled: true,
+  skipOnFlowRepliesInstruction: "",
 });
 
 type RecommendationPayload = {
@@ -56,6 +62,8 @@ type Props = {
   onChange: (next: KnowledgeEngineFormValues) => void;
   t: (key: string) => string;
   botId?: string;
+  /** `nativeTools.knowledge_search` — desactiva secção quando a tool KB está off. */
+  knowledgeSearchEnabled?: boolean;
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -120,7 +128,7 @@ function KnowledgeNumericField({
   );
 }
 
-export function KnowledgeEnginePanel({ value, onChange, t, botId }: Props) {
+export function KnowledgeEnginePanel({ value, onChange, t, botId, knowledgeSearchEnabled = true }: Props) {
   const valueRef = useRef(value);
   valueRef.current = value;
   const onChangeRef = useRef(onChange);
@@ -235,6 +243,51 @@ export function KnowledgeEnginePanel({ value, onChange, t, botId }: Props) {
 
       <div className="mt-4 border-t border-sky-200/60 pt-4 dark:border-sky-900/50">
         <p className="text-[11px] text-ink-500">{t("automationPage.knowledgeEngineLegacyNote")}</p>
+      </div>
+
+      <div
+        className={clsx(
+          "mt-4 space-y-3 rounded-lg border border-sky-200/80 bg-white/70 p-3 dark:border-sky-800/60 dark:bg-ink-950/40",
+          !knowledgeSearchEnabled && "opacity-60",
+        )}
+      >
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={value.skipOnFlowRepliesEnabled}
+            disabled={!knowledgeSearchEnabled}
+            onChange={(e) => patch({ skipOnFlowRepliesEnabled: e.target.checked })}
+          />
+          <span>
+            <span className="font-semibold text-ink-800 dark:text-ink-100">
+              {t("automationPage.knowledgeSearchSkipToggle")}
+            </span>
+            <span className="mt-1 block text-[11px] leading-relaxed text-ink-500">
+              {t("automationPage.knowledgeSearchSkipHelp")}
+            </span>
+          </span>
+        </label>
+        {value.skipOnFlowRepliesEnabled && knowledgeSearchEnabled ? (
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-ink-700 dark:text-ink-300">
+              {t("automationPage.knowledgeSearchSkipInstructionLabel")}
+            </label>
+            <textarea
+              rows={3}
+              value={value.skipOnFlowRepliesInstruction}
+              onChange={(e) => patch({ skipOnFlowRepliesInstruction: e.target.value.slice(0, 2000) })}
+              placeholder={t("automationPage.knowledgeSearchSkipInstructionPlaceholder")}
+              className="w-full rounded-lg border border-ink-200 bg-white px-2.5 py-2 text-xs text-ink-900 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+            />
+            <p className="mt-1 text-[10px] text-ink-500">{t("automationPage.knowledgeSearchSkipInstructionHint")}</p>
+          </div>
+        ) : null}
+        {!knowledgeSearchEnabled ? (
+          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+            {t("automationPage.knowledgeSearchSkipRequiresKbTool")}
+          </p>
+        ) : null}
       </div>
 
       {isLlamaIndex ? (

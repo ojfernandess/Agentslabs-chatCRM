@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildKnowledgeSearchQuery,
+  isShortConfirmationOrFlowReply,
+  isUserDataProvisionMessage,
+  resolveKnowledgeSearchSkip,
+  shouldEnrichKnowledgeSearchQuery,
+  shouldSkipKnowledgeSearchForTurn,
+  userMessageLooksLikeKnowledgeSeekingQuery,
   isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
-  shouldEnrichKnowledgeSearchQuery,
 } from "./knowledgeQueryEnrichment.js";
 
 test("shouldEnrichKnowledgeSearchQuery rejects menu digit replies", () => {
@@ -86,5 +91,54 @@ test("knowledgeContentCoversQuery false for room header without body facts", () 
   assert.equal(
     knowledgeContentCoversQuery(headerOnly, "quais as categorias de quartos do hotel Blue Ocean?"),
     false,
+  );
+});
+
+test("shouldSkipKnowledgeSearchForTurn on short confirmations", () => {
+  assert.equal(isShortConfirmationOrFlowReply("sim"), true);
+  assert.equal(isShortConfirmationOrFlowReply("ok"), true);
+  assert.equal(isShortConfirmationOrFlowReply("não"), true);
+  assert.equal(shouldSkipKnowledgeSearchForTurn("sim"), true);
+  assert.equal(resolveKnowledgeSearchSkip("sim"), "short_confirmation");
+});
+
+test("shouldSkipKnowledgeSearchForTurn on CPF and localizer", () => {
+  assert.equal(isUserDataProvisionMessage("699.606.761-88"), true);
+  assert.equal(isUserDataProvisionMessage("A3FIULCZ"), true);
+  assert.equal(shouldSkipKnowledgeSearchForTurn("699.606.761-88"), true);
+  assert.equal(resolveKnowledgeSearchSkip("699.606.761-88"), "data_provision");
+});
+
+test("shouldSkipKnowledgeSearchForTurn during cadastro turn", () => {
+  const skip = resolveKnowledgeSearchSkip("João Silva", {
+    lastAssistantMessage: "Qual o seu nome completo para o cadastro?",
+  });
+  assert.equal(skip, "cadastro_turn");
+});
+
+test("shouldSkipKnowledgeSearchForTurn allows KB question during flow", () => {
+  assert.equal(
+    shouldSkipKnowledgeSearchForTurn("Qual o Wi-Fi do hotel?", {
+      flowStep: "awaiting_selfie",
+      hasFlowSlots: true,
+    }),
+    false,
+  );
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi do hotel?"), true);
+});
+
+test("shouldSkipKnowledgeSearchForTurn on active flow without KB intent", () => {
+  assert.equal(
+    resolveKnowledgeSearchSkip("123456", {
+      flowStep: "awaiting_locator",
+    }),
+    "data_provision",
+  );
+  assert.equal(
+    resolveKnowledgeSearchSkip("confirmado", {
+      hasFlowSlots: true,
+      lastToolRoundHadHttpTools: true,
+    }),
+    "short_confirmation",
   );
 });

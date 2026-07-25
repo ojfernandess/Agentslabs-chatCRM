@@ -673,6 +673,10 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     kbRaw.chunking && typeof kbRaw.chunking === "object"
       ? (kbRaw.chunking as Record<string, unknown>)
       : {};
+  const kbSkipRaw =
+    beh.knowledgeSearchSkip && typeof beh.knowledgeSearchSkip === "object"
+      ? (beh.knowledgeSearchSkip as Record<string, unknown>)
+      : {};
   const knowledgeEngine: KnowledgeEngineFormValues = {
     ...defaultKnowledgeEngineFormValues(),
     provider: kbRaw.provider === "llamaindex" ? "llamaindex" : "openconduit",
@@ -702,6 +706,9 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         : 120,
     autoChunk: chunkRaw.autoChunk !== false,
     useRecommendedSettings: kbRaw.useRecommendedSettings === true,
+    skipOnFlowRepliesEnabled: kbSkipRaw.enabled !== false,
+    skipOnFlowRepliesInstruction:
+      typeof kbSkipRaw.instruction === "string" ? kbSkipRaw.instruction : "",
   };
 
   return {
@@ -962,6 +969,10 @@ function formToPayload(
       maxMemories: form.agentEngine.memoryEngine.maxMemories,
     },
     isolateHistoryForTools: form.isolateHistoryForTools === true,
+    knowledgeSearchSkip: {
+      enabled: form.knowledgeEngine.skipOnFlowRepliesEnabled,
+      instruction: form.knowledgeEngine.skipOnFlowRepliesInstruction.trim().slice(0, 2000),
+    },
     promptBuilder: {
       userCore: promptCoreForSave,
       blocks:
@@ -3378,6 +3389,7 @@ function AgentsTab({
                 value={agentForm.knowledgeEngine}
                 onChange={(knowledgeEngine) => setAgentForm((f) => ({ ...f, knowledgeEngine }))}
                 botId={agentForm.editBotId ?? agentForm.existingBotId ?? undefined}
+                knowledgeSearchEnabled={agentForm.nativeTools.knowledge_search !== false}
                 t={t}
               />
 

@@ -510,6 +510,7 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     activeConversationIdRef.current = id;
+    setFlowError("");
   }, [id]);
 
   useEffect(() => {

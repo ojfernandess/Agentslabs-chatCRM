@@ -26,8 +26,23 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import {
   buildKnowledgeSearchQuery,
   knowledgeContentCoversQuery,
+  resolveKnowledgeSearchSkip,
+  shouldSkipKnowledgeSearchForTurn,
+  userMessageLooksLikeKnowledgeSeekingQuery,
   type KnowledgeConversationTurn,
 } from "./knowledgeQueryEnrichment.js";
+import {
+  buildKnowledgeSearchSkipHint,
+  parseKnowledgeSearchSkipFromBehavior,
+} from "./knowledgeSearchSkipConfig.js";
+
+export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
+export {
+  parseKnowledgeSearchSkipFromBehavior,
+  buildKnowledgeSearchSkipHint,
+  DEFAULT_KNOWLEDGE_SEARCH_SKIP_HINT,
+} from "./knowledgeSearchSkipConfig.js";
+export type { KnowledgeSearchSkipConfig } from "./knowledgeSearchSkipConfig.js";
 import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolveNativeAgentHistoryTurns, shouldIsolateHistoryForConnectedTools } from "./agentConversationHistory.js";
 import {
   AgentRuntimeFactory,
@@ -510,37 +525,6 @@ export function knowledgeToolFoundUsefulExcerpts(
     const plain = buscarConhecimentoPreviewToPlainText(t.preview);
     return knowledgeContentCoversQuery(plain, q);
   });
-}
-
-/**
- * Mensagens que pedem factos da KB (endereço, Wi‑Fi, etc.) — não CPFs, localizadores ou respostas curtas de fluxo.
- */
-export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): boolean {
-  const t = userMessage.trim();
-  if (!t) return false;
-  const compact = t.replace(/\s+/g, "");
-  // Documento / números (CPF, telefone, etc.)
-  if (/^[\d.\-\/]+$/.test(compact) && compact.replace(/\D/g, "").length >= 8) return false;
-  // Códigos tipo localizador (sem espaços, curtos)
-  if (/^[A-Z0-9]{5,14}$/i.test(compact) && t.length <= 14) return false;
-  // Respostas curtas de recolha de dados / confirmação
-  if (
-    t.length <= 48 &&
-    /^(sim|n[aã]o|ok|okay|certo|correto|brasileiro|estrangeiro|yes|no|male|female|masculino|feminino)\b/i.test(t)
-  ) {
-    return false;
-  }
-  if (/\?/.test(t)) return true;
-  if (
-    /\b(qual|onde|como|quando|quanto|endere[cç]o|wifi|wi[\s-]?fi|senha|hor[aá]rio|pre[cç]o|estacionamento|pol[ií]tica|cancelamento|comodidade|what|where|how|when|address|password|parking)\b/i.test(
-      t,
-    )
-  ) {
-    return true;
-  }
-  // Frase natural mais longa
-  if (t.length >= 28 && /[\p{L}]{4,}/u.test(t)) return true;
-  return false;
 }
 
 function hasNonKnowledgeToolsThisTurn(toolOutcomes: NativeToolRoundOutcome[]): boolean {
@@ -1659,6 +1643,21 @@ async function generateNativeAgentReplyCore(input: {
       .filter((m) => m.content.length > 0);
   }
   const kbSearchQuery = buildKnowledgeSearchQuery(userMessage, kbHistoryForSearch);
+  const lastAssistantMessage =
+    [...kbHistoryForSearch].reverse().find((t) => t.role === "assistant")?.content ?? "";
+  const kbSearchSkipCfg = parseKnowledgeSearchSkipFromBehavior(profile.behaviorConfig);
+  const kbSearchSkipReason = kbSearchSkipCfg.enabled
+    ? resolveKnowledgeSearchSkip(userMessage, {
+        lastAssistantMessage,
+        flowStep: automationCtx.state.flowStep,
+        hasFlowSlots: Object.keys(automationCtx.state.flowSlots ?? {}).length > 0,
+        lastToolRoundHadHttpTools: Boolean(
+          automationCtx.state.lastNativeToolRound?.tools?.some((t) => t.name !== "buscar_conhecimento"),
+        ),
+      })
+    : null;
+  const skipKbSearch = kbSearchSkipReason !== null;
+  const kbSearchActive = flags.knowledge_search && !skipKbSearch;
   const toolCallCounts: Record<string, number> = { ...(automationCtx.state.toolCallCounts ?? {}) };
 
   let kbProactiveAppendix = "";
@@ -1672,7 +1671,7 @@ async function generateNativeAgentReplyCore(input: {
   const knowledgeEngine = useKnowledgeEngine
     ? KnowledgeEngineService.fromConfig(knowledgeEngineConfig)
     : null;
-  if (flags.knowledge_search) {
+  if (kbSearchActive) {
     try {
       if (useKnowledgeEngine && knowledgeEngineConfig.enabled && knowledgeEngine) {
         const proactive = await knowledgeEngine.buildProactiveAppendix({
@@ -1712,25 +1711,28 @@ async function generateNativeAgentReplyCore(input: {
     {
       output: {
         knowledgeSearch: flags.knowledge_search,
+        kbSearchActive,
+        kbSearchSkipped: skipKbSearch,
+        kbSearchSkipReason: kbSearchSkipReason ?? undefined,
+        kbSearchSkipEnabled: kbSearchSkipCfg.enabled,
         appendixChars: kbProactiveAppendix.length,
-        hasUsefulExcerpts: flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix),
+        hasUsefulExcerpts: kbSearchActive && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix),
         proactiveCoversQuery:
-          flags.knowledge_search &&
+          kbSearchActive &&
           kbAppendixHasRetrievedExcerpts(kbProactiveAppendix) &&
           knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery),
         kbSearchQuery: kbSearchQuery.slice(0, 200),
-        buscarConhecimentoActive: flags.knowledge_search,
+        buscarConhecimentoActive: kbSearchActive,
       },
     },
   );
 
   const kbHasUsefulExcerpts =
-    flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
+    kbSearchActive && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
   const proactiveCoversQuery =
     kbHasUsefulExcerpts &&
     knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery);
-  /** `buscar_conhecimento` permanece activa quando `knowledge_search` está ligado (playbooks rígidos). */
-  const omitBuscarConhecimento = false;
+  const omitBuscarConhecimento = skipKbSearch;
 
   const toolPreamble = kbHasUsefulExcerpts
     ? proactiveCoversQuery
@@ -1805,6 +1807,8 @@ async function generateNativeAgentReplyCore(input: {
         "(templates {{attachmentBase64}} / multipart) — **não** inventes base64 nem copies o JSON da transcrição como anexo. " +
         "Quando precisares de enviar a imagem/documento a uma API, invoca a tool de upload; o runtime injecta a mídia da mensagem actual."
       : "";
+
+  const kbSkipHint = skipKbSearch ? buildKnowledgeSearchSkipHint(kbSearchSkipCfg) : "";
 
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
@@ -1883,6 +1887,7 @@ async function generateNativeAgentReplyCore(input: {
     mem0Appendix +
     toolPreamble +
     serverKbGuard +
+    kbSkipHint +
     tagToolGuard +
     audioInboundHint +
     imageInboundHint +

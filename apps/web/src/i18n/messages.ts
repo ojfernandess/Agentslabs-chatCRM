@@ -403,6 +403,16 @@ export const messages = {
       knowledgeEngineRecommendationStats: "{docs} documento(s) · ~{chunks} chunks · {chars} caracteres",
       knowledgeEngineRecommendationError: "Não foi possível calcular a recomendação. Tente novamente.",
       knowledgeEngineCompactHint: "Configuração por agente — ver secção Knowledge Engine no formulário do agente.",
+      knowledgeSearchSkipToggle: "Omitir base de conhecimento em confirmações e cadastro",
+      knowledgeSearchSkipHelp:
+        "Quando activo, respostas curtas (sim, ok, não), dados de cadastro (CPF, localizador, imagem) e turnos de recolha de fluxo não disparam busca proactiva nem `buscar_conhecimento`. Perguntas factuais durante o fluxo (ex.: Wi-Fi) continuam a consultar a KB.",
+      knowledgeSearchSkipInstructionLabel: "Instrução quando a KB é omitida",
+      knowledgeSearchSkipInstructionPlaceholder:
+        "Deixe em branco para usar a instrução padrão do sistema.",
+      knowledgeSearchSkipInstructionHint:
+        "Texto injectado no prompt do agente neste turno. Vazio = padrão OpenConduit.",
+      knowledgeSearchSkipRequiresKbTool:
+        "Active a ferramenta «buscar_conhecimento» nas ferramentas nativas para usar esta opção.",
       knowledgeAdminTitle: "Painel administrativo — Knowledge Engine",
       knowledgeAdminHelp: "Configurações globais da organização para RAG, cache e indexação.",
       knowledgeAdminLoading: "A carregar configurações de conhecimento…",
@@ -4266,6 +4276,7 @@ export const messages = {
       tagNameInvalid: "O nome deve ter entre 1 e 50 caracteres.",
       tagColorInvalid: "Use uma cor em hexadecimal (#RRGGBB).",
       tagSaveFailed: "Não foi possível guardar a etiqueta.",
+      sendFailed: "Não foi possível enviar a mensagem.",
     },
     attendance: {
       title: "Meu atendimento",
@@ -5771,6 +5782,16 @@ export const messages = {
       knowledgeEngineRecommendationStats: "{docs} document(s) · ~{chunks} chunks · {chars} characters",
       knowledgeEngineRecommendationError: "Could not compute recommendation. Please try again.",
       knowledgeEngineCompactHint: "Per-agent settings — see Knowledge Engine section in the agent form.",
+      knowledgeSearchSkipToggle: "Skip knowledge base on confirmations and data collection",
+      knowledgeSearchSkipHelp:
+        "When enabled, short replies (yes, ok, no), registration data (ID, locator, image), and flow collection turns do not trigger proactive search or `buscar_conhecimento`. Factual questions during a flow (e.g. Wi-Fi) still query the KB.",
+      knowledgeSearchSkipInstructionLabel: "Instruction when KB is skipped",
+      knowledgeSearchSkipInstructionPlaceholder:
+        "Leave blank to use the system default instruction.",
+      knowledgeSearchSkipInstructionHint:
+        "Text injected into the agent prompt for that turn. Empty = OpenConduit default.",
+      knowledgeSearchSkipRequiresKbTool:
+        "Enable the «buscar_conhecimento» native tool to use this option.",
       knowledgeAdminTitle: "Admin panel — Knowledge Engine",
       knowledgeAdminHelp: "Organization-wide RAG, cache, and indexing settings.",
       knowledgeAdminLoading: "Loading knowledge settings…",
@@ -9618,6 +9639,7 @@ export const messages = {
       tagNameInvalid: "Name must be between 1 and 50 characters.",
       tagColorInvalid: "Use a hexadecimal color (#RRGGBB).",
       tagSaveFailed: "Could not save the tag.",
+      sendFailed: "Could not send the message.",
     },
     attendance: {
       title: "My attendance",
