@@ -81,3 +81,54 @@ export function chunkKnowledgeDocumentContent(
 ): string[] {
   return chunkMarkdownSections(content, opts);
 }
+
+/** Texto útil além de cabeçalhos markdown. */
+export function hasSubstantiveChunkBody(text: string, minBodyChars = 30): boolean {
+  const body = text
+    .replace(/^#{1,6}\s+.+$/gm, "")
+    .replace(/^---+$/gm, "")
+    .trim();
+  return body.length >= minBodyChars;
+}
+
+/** Extrai secção markdown cujo título corresponde aos termos da query. */
+export function extractMarkdownSectionForQuery(content: string, query: string, maxLen = 1200): string {
+  const normalized = content.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "";
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3);
+  if (!terms.length) return normalized.slice(0, maxLen);
+
+  type Section = { title: string; body: string };
+  const sections: Section[] = [];
+  let current: Section | null = null;
+
+  for (const line of normalized.split("\n")) {
+    const m = /^(#{2,3})\s+(.+)$/.exec(line);
+    if (m) {
+      if (current) sections.push(current);
+      current = { title: m[2].trim(), body: "" };
+      continue;
+    }
+    if (current) current.body += (current.body ? "\n" : "") + line;
+  }
+  if (current) sections.push(current);
+
+  let best: Section | null = null;
+  let bestScore = 0;
+  for (const sec of sections) {
+    const hay = `${sec.title} ${sec.body}`.toLowerCase();
+    const score = terms.filter((t) => hay.includes(t)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = sec;
+    }
+  }
+  if (!best || bestScore === 0) return normalized.slice(0, maxLen);
+  const header = `## ${best.title}`;
+  const full = best.body.trim() ? `${header}\n\n${best.body.trim()}` : header;
+  return full.length <= maxLen ? full : `${full.slice(0, maxLen)}…`;
+}

@@ -22,6 +22,8 @@ export type AutomationContextState = {
     lastInboundAt: string;
     lastPreview: string;
   };
+  /** Contagem cumulativa de invocações por ferramenta nesta conversa (chave: toolId ou nome nativo). */
+  toolCallCounts?: Record<string, number>;
   /** Última ronda de ferramentas do agente nativo (auditoria e continuidade entre turnos). */
   lastNativeToolRound?: {
     at: string;
@@ -77,6 +79,7 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
     o.followUpCampaign ||
     o.nativeTurn ||
     o.lastNativeToolRound ||
+    o.toolCallCounts ||
     o.flowSlots ||
     typeof o.flowStep === "string" ||
     o.source === "follow_up_campaign" ||
@@ -125,6 +128,17 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
 
     const flowSlots = parseFlowSlots(o.flowSlots);
     if (flowSlots) state.flowSlots = flowSlots;
+
+    if (o.toolCallCounts && typeof o.toolCallCounts === "object" && !Array.isArray(o.toolCallCounts)) {
+      const counts: Record<string, number> = {};
+      for (const [k, v] of Object.entries(o.toolCallCounts as Record<string, unknown>)) {
+        const key = k.trim().slice(0, 120);
+        if (!key) continue;
+        const n = typeof v === "number" ? v : Number(v);
+        if (Number.isFinite(n) && n >= 0) counts[key] = Math.floor(n);
+      }
+      if (Object.keys(counts).length > 0) state.toolCallCounts = counts;
+    }
 
     if (typeof o.flowStep === "string" && o.flowStep.trim()) {
       state.flowStep = o.flowStep.trim().slice(0, 120);
@@ -489,12 +503,14 @@ export async function mergeNativeToolRoundAutomationContext(params: {
   toolRound: NonNullable<AutomationContextState["lastNativeToolRound"]>;
   flowSlots?: AutomationFlowSlots;
   flowStep?: string;
+  toolCallCounts?: Record<string, number>;
 }): Promise<void> {
   const existing = await loadAutomationConversationContext(params.conversationId);
   const state = mergeStatePreserve(existing.state, {
     lastNativeToolRound: params.toolRound,
     ...(params.flowSlots ? { flowSlots: params.flowSlots } : {}),
     ...(params.flowStep ? { flowStep: params.flowStep } : {}),
+    ...(params.toolCallCounts ? { toolCallCounts: params.toolCallCounts } : {}),
   });
 
   await prisma.automationConversationContext.upsert({

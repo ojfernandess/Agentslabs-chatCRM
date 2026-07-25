@@ -44,6 +44,21 @@ function extractEstablishmentFromText(text: string): string[] {
   return [...names];
 }
 
+/** Evita poluir a query com histórico em respostas de menu / fluxo (ex.: «1», «sim»). */
+export function shouldEnrichKnowledgeSearchQuery(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (/^\d{1,2}$/.test(t)) return false;
+  if (t.length <= 3 && !/\?/.test(t)) return false;
+  if (
+    t.length <= 48 &&
+    /^(sim|n[aã]o|ok|okay|certo|correto|yes|no)\b/i.test(t)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Enriquece a query curta/ambígua com contexto da conversa (estabelecimento, tópico). */
 export function buildKnowledgeSearchQuery(
   userMessage: string,
@@ -51,6 +66,7 @@ export function buildKnowledgeSearchQuery(
 ): string {
   const user = userMessage.trim();
   if (!user) return user;
+  if (!shouldEnrichKnowledgeSearchQuery(user)) return user.slice(0, 500);
 
   const parts = [user];
   const recent = history.slice(-8);
@@ -85,24 +101,34 @@ export function extractQueryTopicTerms(query: string): string[] {
   return [...terms].filter((t) => t.length >= 3);
 }
 
-/** Verifica se o texto recuperado cobre o tópico perguntado (evita falso positivo de «excertos úteis»). */
+function excerptHasAnswerContent(text: string): boolean {
+  const withoutHeaders = text
+    .replace(/^#{1,6}\s+.+$/gm, "")
+    .replace(/^---+$/gm, "")
+    .trim();
+  return withoutHeaders.length >= 40;
+}
+
+/** Observabilidade apenas — não usar para omitir buscar_conhecimento. */
 export function knowledgeContentCoversQuery(haystack: string, query: string): boolean {
   const lower = haystack.toLowerCase();
-  if (!lower.trim()) return false;
+  if (!lower.trim() || !excerptHasAnswerContent(haystack)) return false;
 
   const topics = detectQueryTopics(query.toLowerCase());
   if (topics.length > 0) {
     return topics.some((topic) => {
       const syns = TOPIC_SYNONYMS[topic] ?? [topic];
-      if (syns.some((s) => lower.includes(s))) return true;
-      const header = topic.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
-      if (lower.includes(`## ${header}`) || lower.includes(`### ${header}`)) return true;
-      return false;
+      return syns.some((s) => {
+        if (!lower.includes(s)) return false;
+        const idx = lower.indexOf(s);
+        const slice = haystack.slice(Math.max(0, idx - 20), idx + 400);
+        return excerptHasAnswerContent(slice);
+      });
     });
   }
 
   const terms = queryTerms(query.toLowerCase()).filter((t) => t.length >= 4);
-  if (terms.length === 0) return lower.length >= 80;
+  if (terms.length === 0) return excerptHasAnswerContent(haystack);
   const matched = terms.filter((t) => lower.includes(t)).length;
   return matched >= Math.min(terms.length, Math.max(1, Math.ceil(terms.length * 0.5)));
 }

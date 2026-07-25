@@ -61,6 +61,7 @@ import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 import { applyAgentPlaybookToSystemInstructions } from "./agentPlaybook.js";
 import {
   buildNativeAgentHttpToolRuntimeContext,
+  openAiFunctionNameForAutomationTool,
   openAiToolDefinitionForAutomationTool,
   parseAutomationToolIdFromOpenAiName,
   runAutomationHttpLikeTool,
@@ -257,6 +258,9 @@ function humanizeToolPreviewForCustomer(preview: string): string {
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const o = parsed as Record<string, unknown>;
+      if (Array.isArray(o.articles)) {
+        return "";
+      }
       for (const key of [
         "message",
         "mensagem",
@@ -563,6 +567,25 @@ export function shouldForceKnowledgeDelivery(input: {
 
 /** Prefixo da entrega determinística KB — usado para não auto-aprovar dumps incorrectos. */
 export const FORCED_KB_REPLY_PREFIX_RE = /^encontrei isto na nossa base de conhecimento/i;
+
+const OUTBOUND_MAX_CHARS = 4000;
+
+/** Evita enviar JSON/código bruto de tools ao contacto. */
+export function sanitizeOutboundAgentReply(text: string): string {
+  let t = text.trim();
+  if (!t) return t;
+  t = t.replace(/```[\s\S]*?```/g, "").trim();
+  if (/^\s*[\[{]/.test(t) && /"(found|articles|ok|error|tool)"\s*:/i.test(t)) {
+    return (
+      "Obrigado pela sua mensagem. Não consegui formatar a resposta automaticamente — " +
+      "pode repetir a pergunta com um pouco mais de detalhe?"
+    );
+  }
+  if (FORCED_KB_REPLY_PREFIX_RE.test(t)) {
+    t = t.replace(FORCED_KB_REPLY_PREFIX_RE, "Com base na nossa base de conhecimento:\n\n");
+  }
+  return t.length > OUTBOUND_MAX_CHARS ? `${t.slice(0, OUTBOUND_MAX_CHARS)}…` : t;
+}
 
 function extractSnippetsFromKnowledgeToolPreview(preview: string): string[] {
   const parsed = parseBuscarConhecimentoPreview(preview);
@@ -1135,6 +1158,28 @@ function parseEnabledNativeHttpCustomToolIds(behavior: unknown): string[] {
   return ids;
 }
 
+/** Limites «Máx. chamadas / conversa» das ferramentas ligadas ao agente (`connectedTools`). */
+function parseConnectedToolMaxCalls(behavior: unknown): Map<string, number> {
+  const m = new Map<string, number>();
+  if (!behavior || typeof behavior !== "object") return m;
+  const raw = (behavior as Record<string, unknown>).connectedTools;
+  if (!Array.isArray(raw)) return m;
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    if (o.enabled !== true) continue;
+    const toolId = typeof o.toolId === "string" ? o.toolId.trim() : "";
+    const max =
+      typeof o.maxCallsPerConversation === "number" && o.maxCallsPerConversation > 0
+        ? Math.floor(o.maxCallsPerConversation)
+        : null;
+    if (!toolId || max == null) continue;
+    m.set(toolId, max);
+    m.set(openAiFunctionNameForAutomationTool(toolId), max);
+  }
+  return m;
+}
+
 /** Instruções por `toolId` a partir de `behavior.connectedTools[].agentInstruction`. */
 function parseConnectedToolAgentInstructions(behavior: unknown): Map<string, string> {
   const m = new Map<string, string>();
@@ -1496,6 +1541,7 @@ async function generateNativeAgentReplyCore(input: {
   const pendingToolCallInterim: { data: PendingToolCallInterim | null } = { data: null };
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
+  const connectedToolMaxCalls = parseConnectedToolMaxCalls(profile.behaviorConfig);
   let customHttpTools: AutomationHttpToolRow[] = [];
   if (nativeHttpCustomToolIds.length > 0) {
     const rows = await prisma.automationCustomTool.findMany({
@@ -1572,6 +1618,7 @@ async function generateNativeAgentReplyCore(input: {
       .filter((m) => m.content.length > 0);
   }
   const kbSearchQuery = buildKnowledgeSearchQuery(userMessage, kbHistoryForSearch);
+  const toolCallCounts: Record<string, number> = { ...(automationCtx.state.toolCallCounts ?? {}) };
 
   let kbProactiveAppendix = "";
   const useKnowledgeEngine = shouldUseKnowledgeEngineRuntime(profile.behaviorConfig);
@@ -1631,6 +1678,7 @@ async function generateNativeAgentReplyCore(input: {
           kbAppendixHasRetrievedExcerpts(kbProactiveAppendix) &&
           knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery),
         kbSearchQuery: kbSearchQuery.slice(0, 200),
+        buscarConhecimentoActive: flags.knowledge_search,
       },
     },
   );
@@ -1640,21 +1688,10 @@ async function generateNativeAgentReplyCore(input: {
   const proactiveCoversQuery =
     kbHasUsefulExcerpts &&
     knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery);
-  /** Omite buscar_conhecimento quando o RAG proactivo já cobre o tópico (evita double-search + interim). */
-  const omitBuscarConhecimento = proactiveCoversQuery;
+  /** `buscar_conhecimento` permanece activa quando `knowledge_search` está ligado (playbooks rígidos). */
+  const omitBuscarConhecimento = false;
 
-  const toolPreamble = proactiveCoversQuery
-    ? "\n\n### Ferramentas (complemento)\n" +
-      "- **Base de conhecimento:** a secção acima **já contém** excertos sobre o que o cliente perguntou (pesquisa automática no servidor). Responda **agora** com factos concretos (SSID, senha, valores, horários, moradas, etc.).\n" +
-      "- **`buscar_conhecimento` não está disponível neste turno** — a pesquisa proactiva já cobriu o tópico.\n" +
-      "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos.\n" +
-      "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-      (allowedTagIds.length > 0
-        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
-        : "") +
-      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos forem claramente insuficientes para responder." +
-      customToolPreamble
-    : kbHasUsefulExcerpts
+  const toolPreamble = kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
       "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
@@ -1676,14 +1713,7 @@ async function generateNativeAgentReplyCore(input: {
       customToolPreamble;
 
   const serverKbGuard =
-    (proactiveCoversQuery
-      ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
-        "A secção «Base de conhecimento» acima **já responde** à pergunta do cliente sobre o tópico actual. " +
-        "Responda directamente com os dados dos excertos (rede Wi‑Fi, senha, preços, horários, etc.). " +
-        "**Não** invoque `buscar_conhecimento` — foi omitida porque a pesquisa proactiva já cobriu o tópico. " +
-        "**Não** invoque `call_human` nem `transfer_to_team` só por precaução quando os excertos contêm a resposta. " +
-        "Use `call_human` só se o cliente pedir atendente/humano **ou** se a informação nos excertos for genuinamente insuficiente."
-      : kbHasUsefulExcerpts
+    (kbHasUsefulExcerpts
       ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
         "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
@@ -2011,6 +2041,21 @@ async function generateNativeAgentReplyCore(input: {
               if (!row) {
                 return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
+              const maxCalls =
+                connectedToolMaxCalls.get(row.id) ?? connectedToolMaxCalls.get(name) ?? null;
+              const countKey = row.id;
+              if (maxCalls != null && (toolCallCounts[countKey] ?? 0) >= maxCalls) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "max_calls_per_conversation",
+                    message:
+                      "Limite de chamadas desta ferramenta nesta conversa atingido. Responda ao cliente com os dados já obtidos.",
+                  }),
+                );
+              }
+              toolCallCounts[countKey] = (toolCallCounts[countKey] ?? 0) + 1;
               let args: Record<string, unknown> = {};
               try {
                 const p = JSON.parse(argsJson || "{}");
@@ -2192,17 +2237,7 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   if (!replyText && toolRoundOutcomes.length > 0 && toolCallNotify.forceDeliveryEnabled) {
-    const scoped = scopeForceDeliveryToolOutcomes(toolRoundOutcomes, toolCallNotify.forceDeliveryTools);
-    if (scoped.length > 0) {
-      replyText = buildDeterministicReplyFromToolOutcomes(scoped);
-      if (replyText) {
-        ex?.warn(
-          { id: "llm", name: "Entrega determinística" },
-          "Resposta vazia após tools — mensagem sintetizada a partir dos resultados",
-          { output: { replyChars: replyText.length, toolCount: scoped.length } },
-        );
-      }
-    }
+    /* Entrega determinística de preview de tools desactivada — o LLM ou augmentStallWithKnowledge trata a síntese. */
   }
 
   if (
@@ -2281,66 +2316,6 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  if (
-    shouldForceKnowledgeDelivery({
-      replyText,
-      kbHasUsefulExcerpts,
-      toolOutcomes: toolRoundOutcomes,
-      configuredStallMessages,
-      userMessage,
-      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
-      forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
-    })
-  ) {
-    const kbForced = buildDeterministicReplyFromKnowledge({
-      userMessage,
-      proactiveAppendix: kbProactiveAppendix,
-      toolOutcomes: toolRoundOutcomes,
-    });
-    if (kbForced.trim()) {
-      replyText = kbForced.trim();
-      ex?.warn(
-        { id: "kb_delivery", name: "Entrega KB forçada" },
-        "Stall/deflexão com base de conhecimento disponível — resposta montada a partir dos excertos",
-        {
-          output: {
-            replyChars: replyText.length,
-            fromTool: knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes),
-            fromAppendix: kbHasUsefulExcerpts,
-          },
-        },
-      );
-    }
-  }
-
-  if (
-    shouldForceDeliveryAfterTools({
-      toolOutcomes: toolRoundOutcomes,
-      replyText,
-      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
-      forceDeliveryTools: toolCallNotify.forceDeliveryTools,
-    })
-  ) {
-    const scopedOutcomes = scopeForceDeliveryToolOutcomes(
-      toolRoundOutcomes,
-      toolCallNotify.forceDeliveryTools,
-    );
-    const forced = buildDeterministicReplyFromToolOutcomes(scopedOutcomes);
-    if (forced.trim()) {
-      replyText = forced.trim();
-      ex?.warn(
-        { id: "tool_delivery", name: "Entrega forçada" },
-        "Ainda sem resposta substantiva após tools — entrega determinística",
-        {
-          output: {
-            replyChars: replyText.length,
-            scopedToolCount: scopedOutcomes.length,
-          },
-        },
-      );
-    }
-  }
-
   if (toolRoundOutcomes.length > 0 && historyOverride == null) {
     try {
       await mergeNativeToolRoundAutomationContext({
@@ -2353,6 +2328,7 @@ async function generateNativeAgentReplyCore(input: {
           tools: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
           resultDeliveredToCustomer: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
         },
+        toolCallCounts,
         ...(Object.keys(sessionFlowSlots).length > 0 ? { flowSlots: sessionFlowSlots } : {}),
       });
     } catch (err) {
@@ -2506,16 +2482,6 @@ async function generateNativeAgentReplyCore(input: {
       ) {
         approved = false;
         summary = `${summary} [auto: stall com KB disponível — rejeitado]`.slice(0, 500);
-        const kbForced = buildDeterministicReplyFromKnowledge({
-          userMessage,
-          proactiveAppendix: kbProactiveAppendix,
-          toolOutcomes: toolRoundOutcomes,
-        });
-        if (kbForced.trim() && hasSubstantiveAgentReplyToCustomer(kbForced, configuredStallMessages)) {
-          replyText = kbForced.trim();
-          approved = true;
-          summary = `${summary} [auto: substituído por entrega KB]`.slice(0, 500);
-        }
       }
       // Override defensivo: tools OK + resposta substantiva → não marcar falso negativo por OCR
       // Não forçar aprovação se a resposta é dump de KB irrelevante ou contradiz found:false.
@@ -2544,24 +2510,8 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  // Rede final: nunca devolver stall se ainda houver KB utilizável
-  if (
-    shouldForceKnowledgeDelivery({
-      replyText,
-      kbHasUsefulExcerpts,
-      toolOutcomes: toolRoundOutcomes,
-      configuredStallMessages,
-      userMessage,
-      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
-      forceKnowledgeRescue: toolCallNotify.forceKnowledgeRescue,
-    })
-  ) {
-    const last = buildDeterministicReplyFromKnowledge({
-      userMessage,
-      proactiveAppendix: kbProactiveAppendix,
-      toolOutcomes: toolRoundOutcomes,
-    });
-    if (last.trim()) replyText = last.trim();
+  if (replyText.trim()) {
+    replyText = sanitizeOutboundAgentReply(replyText);
   }
 
   if (replyText.trim() && memoryEngineConfig.intelligentMemoryEnabled) {

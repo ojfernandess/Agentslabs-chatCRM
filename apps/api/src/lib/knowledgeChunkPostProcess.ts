@@ -1,5 +1,9 @@
 import { applyQueryEntityRankingBoost } from "./knowledgeSearchRanking.js";
 import { extractQueryTopicTerms, sectionSignature } from "./knowledgeQueryEnrichment.js";
+import {
+  extractMarkdownSectionForQuery,
+  hasSubstantiveChunkBody,
+} from "./knowledgeMarkdownChunking.js";
 
 export type ScoredKnowledgeChunk = {
   score: number;
@@ -96,7 +100,8 @@ export function finalizeKnowledgeChunks<T extends ScoredKnowledgeChunk>(
   opts: { limit: number; excerptMaxLen?: number },
 ): T[] {
   if (!chunks.length) return [];
-  let processed = applyKnowledgeTopicBoost(chunks, query);
+  const substantive = chunks.filter((c) => hasSubstantiveChunkBody(c.text));
+  let processed = applyKnowledgeTopicBoost(substantive.length > 0 ? substantive : chunks, query);
   processed = applyQueryEntityRankingBoost(processed, query.toLowerCase(), (c) =>
     `${c.documentName ?? ""} ${c.text}`,
   );
@@ -121,13 +126,20 @@ export function postProcessRankedKnowledgeRows<
   T extends { score: number; excerpt: string; article: { id: string; title: string; content: string } },
 >(ranked: T[], query: string, limit: number): T[] {
   if (!ranked.length) return [];
-  const asChunks: ScoredKnowledgeChunk[] = ranked.map((r) => ({
-    score: r.score,
-    text: r.excerpt || r.article.content,
-    documentId: r.article.id,
-    documentName: r.article.title,
-    excerpt: r.excerpt,
-  }));
+  const asChunks: ScoredKnowledgeChunk[] = ranked.map((r) => {
+    let text = r.excerpt || r.article.content;
+    if (!hasSubstantiveChunkBody(text)) {
+      const section = extractMarkdownSectionForQuery(r.article.content, query);
+      if (hasSubstantiveChunkBody(section)) text = section;
+    }
+    return {
+      score: r.score,
+      text,
+      documentId: r.article.id,
+      documentName: r.article.title,
+      excerpt: r.excerpt,
+    };
+  });
   const finalized = finalizeKnowledgeChunks(asChunks, query, { limit, excerptMaxLen: 720 });
   const byDoc = new Map(ranked.map((r) => [r.article.id, r]));
   return finalized.map((c) => {
