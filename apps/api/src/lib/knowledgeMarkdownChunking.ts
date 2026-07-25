@@ -92,6 +92,70 @@ export function hasSubstantiveChunkBody(text: string, minBodyChars = 30): boolea
   return body.length >= minBodyChars;
 }
 
+type ParsedMarkdownSection = { level: number; title: string; body: string };
+
+function parseMarkdownSectionsForExtraction(normalized: string): ParsedMarkdownSection[] {
+  const sections: ParsedMarkdownSection[] = [];
+  let current: ParsedMarkdownSection | null = null;
+
+  for (const line of normalized.split("\n")) {
+    const m = /^(#{2,3})\s+(.+)$/.exec(line);
+    if (m) {
+      if (current) sections.push(current);
+      current = { level: m[1].length, title: m[2].trim(), body: "" };
+      continue;
+    }
+    if (current) current.body += (current.body ? "\n" : "") + line;
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+/** Junta ### filhos imediatos ao ## pai (ex.: catálogo de quartos com subsecções por suíte). */
+function aggregateH2WithChildH3Sections(sections: ParsedMarkdownSection[]): ParsedMarkdownSection[] {
+  const logical: ParsedMarkdownSection[] = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const sec = sections[i];
+    if (sec.level !== 2) {
+      logical.push(sec);
+      continue;
+    }
+
+    const childBlocks: string[] = [];
+    let j = i + 1;
+    while (j < sections.length && sections[j].level === 3) {
+      const child = sections[j];
+      childBlocks.push(`### ${child.title}\n${child.body.trim()}`.trim());
+      j++;
+    }
+
+    if (childBlocks.length > 0) {
+      const parentBody = sec.body.trim();
+      logical.push({
+        level: 2,
+        title: sec.title,
+        body: [parentBody, ...childBlocks].filter(Boolean).join("\n\n"),
+      });
+      i = j - 1;
+    } else {
+      logical.push(sec);
+    }
+  }
+
+  return logical;
+}
+
+function truncateMarkdownSection(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastSub = cut.lastIndexOf("\n### ");
+  if (lastSub > maxLen * 0.35) {
+    return `${cut.slice(0, lastSub).trimEnd()}…`;
+  }
+  return `${cut.trimEnd()}…`;
+}
+
 /** Extrai secção markdown cujo título corresponde aos termos da query. */
 export function extractMarkdownSectionForQuery(content: string, query: string, maxLen = 1200): string {
   const normalized = content.replace(/\r\n/g, "\n").trim();
@@ -99,22 +163,9 @@ export function extractMarkdownSectionForQuery(content: string, query: string, m
   const terms = extractQueryTopicTerms(query);
   if (!terms.length) return normalized.slice(0, maxLen);
 
-  type Section = { title: string; body: string };
-  const sections: Section[] = [];
-  let current: Section | null = null;
+  const sections = aggregateH2WithChildH3Sections(parseMarkdownSectionsForExtraction(normalized));
 
-  for (const line of normalized.split("\n")) {
-    const m = /^(#{2,3})\s+(.+)$/.exec(line);
-    if (m) {
-      if (current) sections.push(current);
-      current = { title: m[2].trim(), body: "" };
-      continue;
-    }
-    if (current) current.body += (current.body ? "\n" : "") + line;
-  }
-  if (current) sections.push(current);
-
-  let best: Section | null = null;
+  let best: ParsedMarkdownSection | null = null;
   let bestScore = 0;
   for (const sec of sections) {
     const titleLower = sec.title.toLowerCase();
@@ -131,7 +182,11 @@ export function extractMarkdownSectionForQuery(content: string, query: string, m
     }
   }
   if (!best || bestScore === 0) return normalized.slice(0, maxLen);
+
+  const childCount = (best.body.match(/^###\s+/gm) ?? []).length;
+  const effectiveMaxLen = childCount >= 2 ? Math.max(maxLen, 3200) : maxLen;
+
   const header = `## ${best.title}`;
   const full = best.body.trim() ? `${header}\n\n${best.body.trim()}` : header;
-  return full.length <= maxLen ? full : `${full.slice(0, maxLen)}…`;
+  return truncateMarkdownSection(full, effectiveMaxLen);
 }

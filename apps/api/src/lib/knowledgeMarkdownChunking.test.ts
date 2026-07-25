@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chunkKnowledgeDocumentContent, contentHasMarkdownSections } from "./knowledgeMarkdownChunking.js";
+import {
+  chunkKnowledgeDocumentContent,
+  contentHasMarkdownSections,
+  extractMarkdownSectionForQuery,
+  hasSubstantiveChunkBody,
+} from "./knowledgeMarkdownChunking.js";
+import { knowledgeContentCoversQuery } from "./knowledgeQueryEnrichment.js";
 
 const SAMPLE = `# Hotel Test — Base de Conhecimento
 
@@ -34,4 +40,44 @@ test("chunkKnowledgeDocumentContent keeps WiFi and parking in separate chunks", 
   assert.ok(wifiChunk);
   assert.ok(wifiChunk!.toLowerCase().includes("test_net"));
   assert.ok(!wifiChunk!.toLowerCase().includes("estacionamento"));
+});
+
+const BROOKLIN_ROOMS = `# Hotel Brooklin — Base de Conhecimento
+
+Documento da unidade **Hotel Brooklin** para consulta via buscar_conhecimento.
+
+## WiFi / Internet
+- **Rede:** HOTEL BROOKLIN
+
+## Categorias de Quartos / Acomodações
+
+### Suíte Standard Individual
+- **Tamanho:** 12 m²
+- **Capacidade:** até 1 hóspede
+- **Camas:** 1 cama de solteiro
+
+### Suíte Standard Duplo Casal
+- **Tamanho:** 14 m²
+- **Capacidade:** 2 hóspedes
+- **Camas:** 1 cama de casal
+
+### Suíte Standard Quadruplo
+- **Tamanho:** 15 m²
+- **Capacidade:** 4 hóspedes
+- **Camas:** 4 camas de solteiro
+
+## Nota Fiscal (NF)
+- Quarto
+`;
+
+test("extractMarkdownSectionForQuery aggregates ### room subsections under empty ## parent", () => {
+  const q = "quais as categorias de quartos do hotel Brooklin?";
+  const section = extractMarkdownSectionForQuery(BROOKLIN_ROOMS, q);
+  assert.ok(section.includes("## Categorias de Quartos / Acomodações"));
+  assert.ok(section.includes("### Suíte Standard Individual"));
+  assert.ok(section.includes("### Suíte Standard Duplo Casal"));
+  assert.ok(section.includes("### Suíte Standard Quadruplo"));
+  assert.ok(section.includes("12 m²"));
+  assert.equal(hasSubstantiveChunkBody(section), true);
+  assert.equal(knowledgeContentCoversQuery(section, q), true);
 });
