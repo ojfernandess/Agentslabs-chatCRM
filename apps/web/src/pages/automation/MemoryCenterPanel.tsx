@@ -102,7 +102,7 @@ export function MemoryCenterPanel({
   loading: boolean;
   contextRows: ContextRow[];
   onRefreshRows: () => Promise<void>;
-  onClearContext: (conversationId: string) => Promise<void>;
+  onClearContext: (conversationId: string, options?: { clearMemory?: boolean }) => Promise<void>;
 }) {
   const [searchQ, setSearchQ] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
@@ -122,6 +122,7 @@ export function MemoryCenterPanel({
   const [newMemoryCategory, setNewMemoryCategory] = useState<string>("preferences");
   const [importing, setImporting] = useState(false);
   const [score, setScore] = useState<number | "">("");
+  const [clearMemoryWithContext, setClearMemoryWithContext] = useState(false);
 
   const loadByConversation = useCallback(async (id: string) => {
     const trimmed = id.trim();
@@ -330,9 +331,18 @@ export function MemoryCenterPanel({
   const handleClearContext = async (targetConversationId: string) => {
     const trimmed = targetConversationId.trim();
     if (!trimmed) return;
-    await onClearContext(trimmed);
+    const confirmKey = clearMemoryWithContext
+      ? "automationPage.contextClearConfirmWithMemory"
+      : "automationPage.contextClearConfirm";
+    if (!window.confirm(t(confirmKey))) return;
+    await onClearContext(trimmed, { clearMemory: clearMemoryWithContext });
     if (data?.conversationId === trimmed || conversationId.trim() === trimmed) {
       await loadByConversation(trimmed);
+      if (clearMemoryWithContext) {
+        setPreferences({});
+        setAiMemories([]);
+        setScore("");
+      }
     }
   };
 
@@ -384,7 +394,7 @@ export function MemoryCenterPanel({
         </ul>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <input
           value={conversationId}
           onChange={(e) => setConversationId(e.target.value)}
@@ -399,6 +409,15 @@ export function MemoryCenterPanel({
         >
           {t("automationPage.contextLoad")}
         </button>
+        <label className="flex items-center gap-2 text-xs text-ink-600 dark:text-ink-400">
+          <input
+            type="checkbox"
+            className="rounded border-ink-300"
+            checked={clearMemoryWithContext}
+            onChange={(e) => setClearMemoryWithContext(e.target.checked)}
+          />
+          {t("automationPage.contextClearAlsoMemory")}
+        </label>
         <button
           type="button"
           disabled={busy || !conversationId.trim()}

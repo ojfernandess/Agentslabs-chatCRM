@@ -2987,6 +2987,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
       const conversationId = request.params.conversationId;
+      const bodySchema = z.object({ clearMemory: z.boolean().optional() });
+      const parsedBody = bodySchema.safeParse(request.body ?? {});
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsedBody.error.message, statusCode: 400 });
+      }
       const conv = await prisma.conversation.findFirst({
         where: { id: conversationId, organizationId },
         select: { id: true },
@@ -3000,11 +3005,14 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       });
       const cleared = await clearAutomationConversationContext(organizationId, conversationId, {
         scope: "contact",
+        clearMemory: parsedBody.data.clearMemory === true,
       });
       return {
         ok: true,
         createdContextRow: !before,
         clearedConversationIds: cleared.clearedConversationIds.length,
+        memoriesCleared: cleared.memoriesCleared,
+        clearMemory: parsedBody.data.clearMemory === true,
       };
     },
   );

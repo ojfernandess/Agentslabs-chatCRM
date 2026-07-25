@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildContextOnlyClearedState,
   buildNativeFlowStatePromptBlock,
   extractFlowSlotsFromToolExchange,
   parseAutomationContextState,
@@ -55,4 +56,23 @@ test("buildNativeFlowStatePromptBlock includes slots and last tools", () => {
   assert.match(block, /estado do fluxo/);
   assert.match(block, /reservationIdOrLocalizer/);
   assert.match(block, /upload/);
+});
+
+test("buildContextOnlyClearedState preserves memory slices", () => {
+  const next = buildContextOnlyClearedState({
+    flowStep: "awaiting_cpf",
+    flowSlots: { cpf: "123" },
+    toolCallCounts: { upload: 1 },
+    memoryCenter: { preferences: { room: "101" }, aiMemories: [] },
+    memoryEngine: { contactMemories: [{ id: "m1", text: "Prefere suite", scope: "contact" }] },
+  });
+  assert.equal((next as { flowStep?: string }).flowStep, undefined);
+  assert.equal((next as { flowSlots?: unknown }).flowSlots, undefined);
+  assert.deepEqual((next as { memoryCenter: { preferences: Record<string, string> } }).memoryCenter.preferences, {
+    room: "101",
+  });
+  assert.equal(
+    (next as { memoryEngine: { contactMemories: unknown[] } }).memoryEngine.contactMemories.length,
+    1,
+  );
 });

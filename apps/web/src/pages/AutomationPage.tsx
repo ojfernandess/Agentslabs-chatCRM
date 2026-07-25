@@ -1500,14 +1500,18 @@ export function AutomationPage() {
     }
   };
 
-  const clearContextForConversation = async (conversationId: string) => {
+  const clearContextForConversation = async (
+    conversationId: string,
+    options?: { clearMemory?: boolean },
+  ) => {
     const id = conversationId.trim();
     if (!id) return;
-    if (!window.confirm(t("automationPage.contextClearConfirm"))) return;
     setLoading(true);
     setError("");
     try {
-      await api.post(`/automation/conversation-context/${id}/clear`, {});
+      await api.post(`/automation/conversation-context/${id}/clear`, {
+        clearMemory: options?.clearMemory === true,
+      });
       await loadContextRows();
     } catch {
       setError("load_failed");

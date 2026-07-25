@@ -12,8 +12,8 @@ import {
   type MemoryCenterStateSlice,
   type MemoryCenterView,
 } from "./memoryCenterTypes.js";
-import { fetchMem0MemoriesForCenter } from "./mem0MemoryBridge.js";
-import { isMem0Configured } from "./mem0Client.js";
+import { fetchMem0MemoriesForCenter, resolveMem0EntityContext } from "./mem0MemoryBridge.js";
+import { isMem0Configured, mem0DeleteMemory, mem0ListMemories } from "./mem0Client.js";
 import { listScopeMemories, saveScopeMemories } from "./openNexoMemoryRepository.js";
 import { normalizeMemoryRecord, type MemoryRecord } from "./memoryEngineTypes.js";
 import type { AgentMemoryKind } from "../types.js";
@@ -589,4 +589,68 @@ export async function importContactMemories(input: {
     contactId: conv.contactId,
     conversationId: conv.id,
   });
+}
+
+/** Apaga memórias IA persistidas (OpenNexo + Mem0) para o contacto das conversas indicadas. */
+export async function clearContactMemoriesForConversation(input: {
+  organizationId: string;
+  conversationId: string;
+  conversationIds?: string[];
+}): Promise<{ clearedCount: number }> {
+  const memCtx = await resolveConversationMemoryContext(input.organizationId, input.conversationId);
+  if (!memCtx) return { clearedCount: 0 };
+
+  const provider = createMemoryProvider(memCtx.providerKind);
+  const targetConversationIds =
+    input.conversationIds?.length && input.conversationIds.length > 0
+      ? input.conversationIds
+      : [input.conversationId];
+
+  let clearedCount = 0;
+  for (const convId of targetConversationIds) {
+    clearedCount += await provider.clear({
+      organizationId: input.organizationId,
+      scope: "contact",
+      conversationId: convId,
+      botId: memCtx.botId,
+      contactId: memCtx.contactId,
+    });
+    clearedCount += await provider.clear({
+      organizationId: input.organizationId,
+      scope: "temporary",
+      conversationId: convId,
+      botId: memCtx.botId,
+      contactId: memCtx.contactId,
+    });
+  }
+
+  if (isMem0Configured()) {
+    const ctx = await resolveMem0EntityContext({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      botId: memCtx.botId,
+      contactId: memCtx.contactId,
+    });
+    if (ctx) {
+      try {
+        const remote = await mem0ListMemories({
+          userId: ctx.userId,
+          agentId: ctx.agentId,
+          topK: 200,
+        });
+        for (const row of remote) {
+          try {
+            await mem0DeleteMemory(row.id);
+            clearedCount += 1;
+          } catch {
+            /* ignore single delete failure */
+          }
+        }
+      } catch {
+        /* Mem0 unavailable */
+      }
+    }
+  }
+
+  return { clearedCount };
 }

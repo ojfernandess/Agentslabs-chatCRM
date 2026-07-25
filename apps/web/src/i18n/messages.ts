@@ -1369,8 +1369,11 @@ export const messages = {
       contextConversationPlaceholder: "UUID da conversa",
       contextLoad: "Carregar estado",
       contextClear: "Limpar contexto",
+      contextClearAlsoMemory: "Também limpar memórias IA",
       contextClearConfirm:
-        "Limpar toda a memória de automação deste contacto? O histórico visível ao agente nativo em todas as conversas do contacto será reiniciado (as mensagens no chat mantêm-se, mas só contam turnos após esta limpeza).",
+        "Limpar o contexto de automação deste contacto? O histórico visível ao agente nativo em todas as conversas será reiniciado (as mensagens no chat mantêm-se, mas só contam turnos após esta limpeza). Preferências e memórias IA são preservadas.",
+      contextClearConfirmWithMemory:
+        "Limpar contexto e apagar todas as memórias IA deste contacto? O histórico do agente será reiniciado e preferências, memórias OpenNexo e Mem0 serão removidas. Esta ação não pode ser desfeita.",
       contextRecent: "Conversas com contexto guardado",
       contextEmpty: "Ainda não há registros de contexto de automação.",
       contextSnapshot: "Estado atual (JSON)",
@@ -6740,8 +6743,11 @@ export const messages = {
       contextConversationPlaceholder: "Conversation UUID",
       contextLoad: "Load state",
       contextClear: "Clear context",
+      contextClearAlsoMemory: "Also clear AI memories",
       contextClearConfirm:
-        "Clear all automation memory for this contact? The native agent history across every conversation with this contact will reset (chat messages stay in the inbox, but only turns after this clear count for the model).",
+        "Clear automation context for this contact? The native agent history across all conversations will reset (chat messages stay in the inbox, but only turns after this clear count for the model). Preferences and AI memories are kept.",
+      contextClearConfirmWithMemory:
+        "Clear context and delete all AI memories for this contact? Agent history will reset and OpenNexo preferences, memories, and Mem0 records will be removed. This cannot be undone.",
       contextRecent: "Conversations with saved context",
       contextEmpty: "No automation context records yet.",
       contextSnapshot: "Current state (JSON)",

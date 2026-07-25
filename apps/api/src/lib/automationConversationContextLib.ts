@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { clearContactMemoriesForConversation } from "./agent-engine/memory/memoryCenterService.js";
 
 export type FollowUpCampaignContextState = {
   campaignId: string;
@@ -349,20 +350,55 @@ export function buildWebhookConversationContext(
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Limpa memória do agente (estado + corte de histórico nativo). */
+const CONTEXT_ONLY_STATE_KEYS = new Set([
+  "followUpCampaign",
+  "nativeTurn",
+  "toolCallCounts",
+  "lastNativeToolRound",
+  "flowSlots",
+  "flowStep",
+  "source",
+  "campaignId",
+  "campaignName",
+  "messageType",
+  "templateId",
+  "templateName",
+  "outboundMessageId",
+  "outboundBody",
+  "sentAt",
+  "lastInboundMessageId",
+  "lastInboundAt",
+  "lastPreview",
+]);
+
+/** Repõe fluxo/turnos no estado mas preserva `memoryCenter` e `memoryEngine`. */
+export function buildContextOnlyClearedState(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const prev = raw as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(prev)) {
+    if (!CONTEXT_ONLY_STATE_KEYS.has(key)) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+/** Limpa contexto de automação (corte de histórico nativo). Opcionalmente apaga memórias IA. */
 export async function clearAutomationConversationContext(
   organizationId: string,
   conversationId: string,
-  options?: { scope?: "conversation" | "contact" },
-): Promise<{ clearedConversationIds: string[] }> {
+  options?: { scope?: "conversation" | "contact"; clearMemory?: boolean },
+): Promise<{ clearedConversationIds: string[]; memoriesCleared: number }> {
   const clearedAt = new Date();
   const scope = options?.scope ?? "conversation";
+  const clearMemory = options?.clearMemory === true;
 
   const conv = await prisma.conversation.findFirst({
     where: { id: conversationId, organizationId },
     select: { id: true, contactId: true },
   });
-  if (!conv) return { clearedConversationIds: [] };
+  if (!conv) return { clearedConversationIds: [], memoriesCleared: 0 };
 
   const conversationIds =
     scope === "contact"
@@ -374,12 +410,20 @@ export async function clearAutomationConversationContext(
         ).map((row) => row.id)
       : [conv.id];
 
-  if (conversationIds.length === 0) return { clearedConversationIds: [] };
+  if (conversationIds.length === 0) return { clearedConversationIds: [], memoriesCleared: 0 };
 
-  await prisma.automationConversationContext.updateMany({
+  const existingRows = await prisma.automationConversationContext.findMany({
     where: { organizationId, conversationId: { in: conversationIds } },
-    data: { state: asJson({}), lastClearedAt: clearedAt },
+    select: { conversationId: true, state: true },
   });
+
+  for (const row of existingRows) {
+    const nextState = clearMemory ? {} : buildContextOnlyClearedState(row.state);
+    await prisma.automationConversationContext.update({
+      where: { conversationId: row.conversationId },
+      data: { state: asJson(nextState), lastClearedAt: clearedAt },
+    });
+  }
 
   const settings = await prisma.settings.findUnique({
     where: { organizationId },
@@ -387,10 +431,6 @@ export async function clearAutomationConversationContext(
   });
   const fallbackBotId = settings?.agentBotId ?? null;
 
-  const existingRows = await prisma.automationConversationContext.findMany({
-    where: { organizationId, conversationId: { in: conversationIds } },
-    select: { conversationId: true },
-  });
   const existingIds = new Set(existingRows.map((row) => row.conversationId));
   const missingIds = conversationIds.filter((id) => !existingIds.has(id));
 
@@ -407,7 +447,17 @@ export async function clearAutomationConversationContext(
     });
   }
 
-  return { clearedConversationIds: conversationIds };
+  let memoriesCleared = 0;
+  if (clearMemory) {
+    const result = await clearContactMemoriesForConversation({
+      organizationId,
+      conversationId: conv.id,
+      conversationIds,
+    });
+    memoriesCleared = result.clearedCount;
+  }
+
+  return { clearedConversationIds: conversationIds, memoriesCleared };
 }
 
 export async function loadAutomationConversationContext(conversationId: string): Promise<{
