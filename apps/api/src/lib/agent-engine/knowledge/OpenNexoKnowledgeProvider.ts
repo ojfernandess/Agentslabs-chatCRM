@@ -140,7 +140,7 @@ export class OpenNexoKnowledgeProvider {
 
   async index(input: KnowledgeIndexInput): Promise<KnowledgeIndexResult> {
     if (input.documentId) {
-      const result = await reindexKnowledgeArticle(input.organizationId, input.documentId);
+      const result = await reindexKnowledgeArticle(input.documentId);
       if ("skipped" in result) {
         return { indexed: 0, skipped: 1, chunks: 0, errors: [result.reason] };
       }
@@ -223,7 +223,7 @@ export class OpenNexoKnowledgeProvider {
       },
       include: { _count: { select: { chunks: true } } },
     });
-    await reindexKnowledgeArticle(input.organizationId, row.id);
+    await reindexKnowledgeArticle(row.id);
     return articleToDocument(row);
   }
 
@@ -249,7 +249,7 @@ export class OpenNexoKnowledgeProvider {
       },
       include: { _count: { select: { chunks: true } } },
     });
-    if (input.patch.content) await reindexKnowledgeArticle(input.organizationId, row.id);
+    if (input.patch.content) await reindexKnowledgeArticle(row.id);
     return articleToDocument(row);
   }
 

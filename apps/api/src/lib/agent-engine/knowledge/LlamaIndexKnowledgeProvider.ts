@@ -27,6 +27,20 @@ type LlamaDocument = {
   metadata: Record<string, unknown>;
 };
 
+function extractNodeText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { text?: string; getContent?: (mode: string) => string };
+  if (typeof n.text === "string" && n.text.length > 0) return n.text;
+  if (typeof n.getContent === "function") {
+    try {
+      return n.getContent("none");
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
 /**
  * LlamaIndex Knowledge Provider — usa a biblioteca oficial internamente.
  * Indexação persiste via pipeline OpenNexo (pgvector); retrieve usa VectorStoreIndex em memória.
@@ -35,7 +49,6 @@ export class LlamaIndexKnowledgeProvider {
   readonly kind: KnowledgeProviderKind = "llamaindex";
   private readonly legacy = new OpenNexoKnowledgeProvider();
   private indexCache = new Map<string, { builtAt: number; chunkCount: number }>();
-  private static readonly INDEX_TTL_MS = 10 * 60 * 1000;
 
   async index(input: KnowledgeIndexInput): Promise<KnowledgeIndexResult> {
     const result = await this.legacy.index(input);
@@ -81,20 +94,20 @@ export class LlamaIndexKnowledgeProvider {
       const apiKey = process.env.OPENAI_API_KEY?.trim() || process.env.OPENAI_PROMPT_PREVIEW_KEY?.trim();
       if (!apiKey) return null;
 
-      const { OpenAI, OpenAIEmbedding } = await import("@llamaindex/openai");
-      Settings.llm = new OpenAI({ model: "gpt-4o-mini", apiKey });
+      const { OpenAIEmbedding } = await import("@llamaindex/openai");
+      // Evita conflito de versões @llamaindex/core entre pacotes top-level e nested.
       Settings.embedModel = new OpenAIEmbedding({
         model: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
         apiKey,
-      });
+      }) as (typeof Settings)["embedModel"];
 
       const cacheKey = `${input.organizationId}:${input.botId ?? "all"}`;
-      const docs = await this.loadDocuments(input.organizationId, input.botId);
-      if (docs.length === 0) return null;
+      const sourceDocs = await this.loadDocuments(input.organizationId, input.botId);
+      if (sourceDocs.length === 0) return null;
 
-      this.indexCache.set(cacheKey, { builtAt: Date.now(), chunkCount: docs.length });
+      this.indexCache.set(cacheKey, { builtAt: Date.now(), chunkCount: sourceDocs.length });
 
-      const documents = docs.map(
+      const llamaDocs = sourceDocs.map(
         (d) =>
           new Document({
             id_: d.id_,
@@ -102,16 +115,16 @@ export class LlamaIndexKnowledgeProvider {
             metadata: d.metadata,
           }),
       );
-      const index = await VectorStoreIndex.fromDocuments(documents);
+      const index = await VectorStoreIndex.fromDocuments(llamaDocs);
       const retriever = index.asRetriever({ similarityTopK: cfg.maxChunks });
       const nodes = await retriever.retrieve({ query: input.query });
 
       let knowledgeChunks: KnowledgeChunk[] = nodes.map((node, idx) => {
         const meta = (node.node.metadata ?? {}) as Record<string, unknown>;
         const score = typeof node.score === "number" ? node.score : 0.5;
-        const text = node.node.getContent();
+        const text = extractNodeText(node.node);
         return {
-          id: String(node.node.id_ ?? idx),
+          id: String((node.node as { id_?: string }).id_ ?? idx),
           documentId: String(meta.documentId ?? ""),
           documentName: String(meta.documentName ?? "Documento"),
           text,
@@ -143,13 +156,13 @@ export class LlamaIndexKnowledgeProvider {
           : "";
 
       const docIds = [...new Set(knowledgeChunks.map((c) => c.documentId).filter(Boolean))];
-      const documents: KnowledgeDocument[] =
+      const knowledgeDocuments: KnowledgeDocument[] =
         docIds.length > 0
           ? await this.legacy.listDocuments({ organizationId: input.organizationId, limit: docIds.length })
           : [];
 
       return {
-        documents: documents.filter((d) => docIds.includes(d.id)),
+        documents: knowledgeDocuments.filter((d) => docIds.includes(d.id)),
         chunks: knowledgeChunks,
         appendix,
         citations: cfg.citations
