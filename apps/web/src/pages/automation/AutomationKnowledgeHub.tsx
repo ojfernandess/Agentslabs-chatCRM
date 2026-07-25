@@ -522,10 +522,6 @@ export function AutomationKnowledgeHub({
   };
 
   const applyOptimizeResult = () => {
-    if (!optimizeResult?.factsPreserved && optimizeResult?.content === kbForm.content) {
-      setOptimizeModalOpen(false);
-      return;
-    }
     if (optimizeResult?.content) {
       setKbForm((f) => ({ ...f, content: optimizeResult.content }));
       setEditorPreview(false);
@@ -1786,7 +1782,15 @@ export function AutomationKnowledgeHub({
                 >
                   {t("automationPage.kbHub.optimizeForRagModalApply")}
                 </button>
-              ) : null}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => applyOptimizeResult()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                >
+                  {t("automationPage.kbHub.optimizeForRagModalApplyAnyway")}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1166,7 +1166,8 @@ export const messages = {
           "Motor {provider} · {sectionsBefore}→{sectionsAfter} secções · modelo {model}",
         optimizeForRagModalFactsOk: "Validação: todos os factos críticos preservados.",
         optimizeForRagModalFactsWarn:
-          "Validação: alguns factos não foram encontrados no texto optimizado — o original foi mantido.",
+          "Validação: alguns títulos ou formatações diferem do original — revise a pré-visualização. Pode aplicar mesmo assim se os factos (preços, senhas, URLs) estiverem correctos.",
+        optimizeForRagModalApplyAnyway: "Aplicar mesmo assim",
         optimizeForRagModalPreview: "Pré-visualização optimizada",
         optimizeForRagModalApply: "Aplicar ao documento",
         optimizeForRagModalClose: "Fechar",
@@ -6525,7 +6526,8 @@ export const messages = {
           "Engine {provider} · {sectionsBefore}→{sectionsAfter} sections · model {model}",
         optimizeForRagModalFactsOk: "Validation: all critical facts preserved.",
         optimizeForRagModalFactsWarn:
-          "Validation: some facts were missing in optimized text — original content was kept.",
+          "Validation: some headings or formatting differ from the original — review the preview. You can still apply if facts (prices, passwords, URLs) are correct.",
+        optimizeForRagModalApplyAnyway: "Apply anyway",
         optimizeForRagModalPreview: "Optimized preview",
         optimizeForRagModalApply: "Apply to document",
         optimizeForRagModalClose: "Close",

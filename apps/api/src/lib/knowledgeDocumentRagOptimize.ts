@@ -21,69 +21,154 @@ export type RagOptimizeResult = {
   model: string;
 };
 
-/** Extrai «impressões digitais» de factos para validar que nada crítico desapareceu. */
+export type FactFingerprintGroups = {
+  critical: string[];
+  soft: string[];
+};
+
+function normalizeForFactMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\*\*/g, "")
+    .replace(/[`_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function headerKeys(title: string): string[] {
+  const h = normalizeForFactMatch(title.replace(/^#{1,6}\s+/, ""));
+  const primary = h.split("/")[0]?.trim() ?? h;
+  return [...new Set([h, primary].filter((k) => k.length >= 3))];
+}
+
+/** Extrai factos críticos (URLs, emails, preços, valores) vs soft (títulos ##). */
 export function extractFactFingerprints(text: string): string[] {
-  const fingerprints = new Set<string>();
+  const groups = extractFactFingerprintGroups(text);
+  return [...groups.critical, ...groups.soft];
+}
+
+export function extractFactFingerprintGroups(text: string): FactFingerprintGroups {
+  const critical = new Set<string>();
+  const soft = new Set<string>();
   const normalized = text.replace(/\r\n/g, "\n");
 
   for (const m of normalized.matchAll(/https?:\/\/[^\s)>]+/gi)) {
-    fingerprints.add(m[0].toLowerCase());
+    critical.add(m[0].toLowerCase());
   }
   for (const m of normalized.matchAll(/[\w.+-]+@[\w.-]+\.\w+/gi)) {
-    fingerprints.add(m[0].toLowerCase());
+    critical.add(m[0].toLowerCase());
   }
   for (const m of normalized.matchAll(/R\$\s*[\d.,]+/gi)) {
-    fingerprints.add(m[0].replace(/\s+/g, " "));
-  }
-  for (const m of normalized.matchAll(/\*\*[^*]{2,48}\*\*:\s*[^\n]+/g)) {
-    fingerprints.add(m[0].trim().slice(0, 160));
-  }
-  for (const m of normalized.matchAll(/^#{2,3}\s+.+$/gm)) {
-    fingerprints.add(m[0].trim().toLowerCase());
-  }
-  for (const m of normalized.matchAll(/^-\s+.{8,220}$/gm)) {
-    fingerprints.add(m[0].trim().slice(0, 180));
+    critical.add(m[0].replace(/\s+/g, " "));
   }
 
-  return [...fingerprints].filter((f) => f.length >= 4);
+  for (const line of normalized.split("\n")) {
+    const trimmed = line.trim();
+    const kvBold = /^(?:[-*]\s+)?\*\*([^*:\n]{2,48}):\*\*\s*(.+)$/.exec(trimmed);
+    if (kvBold?.[2]?.trim()) {
+      critical.add(kvBold[2].trim().slice(0, 120));
+      continue;
+    }
+    const kv = /^(?:[-*]\s+)?\*\*([^*]{2,48})\*\*:\s*(.+)$/.exec(trimmed);
+    if (kv?.[2]?.trim()) {
+      critical.add(kv[2].trim().slice(0, 120));
+      continue;
+    }
+    const plainKv = /^(?:[-*]\s+)?([^:]+):\s*(.{3,120})$/.exec(trimmed);
+    if (plainKv?.[2]?.trim() && /\d/.test(plainKv[2])) {
+      critical.add(plainKv[2].trim().slice(0, 120));
+    }
+  }
+
+  for (const m of normalized.matchAll(/^#{2,3}\s+(.+)$/gm)) {
+    for (const key of headerKeys(m[1])) soft.add(key);
+  }
+
+  return {
+    critical: [...critical].filter((f) => f.length >= 3),
+    soft: [...soft].filter((f) => f.length >= 3),
+  };
+}
+
+function probesForFingerprint(fp: string): string[] {
+  const probes = new Set<string>();
+  const norm = normalizeForFactMatch(fp);
+  if (norm.length >= 4) probes.add(norm);
+
+  if (fp.includes(":")) {
+    const value = fp.split(":").pop()?.trim();
+    if (value && value.length >= 4) probes.add(normalizeForFactMatch(value));
+  }
+
+  for (const m of norm.matchAll(/\b[\d]+(?:[.,]\d+)?(?:\s*m2)?\b/g)) {
+    if (m[0].length >= 2) probes.add(m[0].replace(/\s+/g, ""));
+  }
+
+  return [...probes].filter((p) => p.length >= 4);
+}
+
+function afterContainsProbe(afterNorm: string, probe: string): boolean {
+  if (probe.length < 4) return false;
+  if (afterNorm.includes(probe)) return true;
+  if (probe.length >= 8) return false;
+  const escaped = probe.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[\\s,.:;()\\[\\]«»"'/\\-])${escaped}(?:$|[\\s,.:;()\\[\\]«»"'/\\-])`).test(
+    afterNorm,
+  );
+}
+
+function fingerprintPresent(fp: string, afterNorm: string, afterHeaders: string[]): boolean {
+  for (const probe of probesForFingerprint(fp)) {
+    if (afterContainsProbe(afterNorm, probe)) return true;
+  }
+
+  const fpNorm = normalizeForFactMatch(fp.replace(/^#{1,6}\s+/, ""));
+  if (fpNorm.length >= 3) {
+    const fpKey = fpNorm.split("/")[0]?.trim() ?? fpNorm;
+    if (
+      afterHeaders.some((h) => {
+        const hKey = h.split("/")[0]?.trim() ?? h;
+        return h.includes(fpKey) || fpKey.includes(hKey) || hKey.includes(fpKey);
+      })
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function validateFactPreservation(
   before: string,
   after: string,
 ): { ok: boolean; missing: string[] } {
-  const beforeF = extractFactFingerprints(before);
-  if (beforeF.length === 0) return { ok: true, missing: [] };
-  const afterNorm = after.toLowerCase();
-  const afterHeaders = [...after.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1].trim().toLowerCase());
-  const missing: string[] = [];
+  const { critical, soft } = extractFactFingerprintGroups(before);
+  if (critical.length === 0 && soft.length === 0) return { ok: true, missing: [] };
 
-  for (const fp of beforeF) {
-    const probe = fp
-      .replace(/\*\*/g, "")
-      .replace(/^#{1,6}\s+/, "")
-      .trim()
-      .toLowerCase();
-    const token = probe.slice(0, Math.min(48, probe.length));
-    if (token.length < 4) continue;
+  const afterNorm = normalizeForFactMatch(after);
+  const afterHeaders = [...after.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) =>
+    normalizeForFactMatch(m[1]),
+  );
 
-    if (/^#{1,6}\s/.test(fp.trim())) {
-      const headingKey = probe.split("/")[0]?.trim() ?? probe;
-      const headerHit =
-        headingKey.length >= 4 &&
-        afterHeaders.some((h) => h.includes(headingKey) || headingKey.includes(h.split("/")[0]?.trim() ?? h));
-      if (headerHit) continue;
-    }
+  const missingCritical: string[] = [];
+  const missingSoft: string[] = [];
 
-    const valueProbe = probe.includes(":") ? (probe.split(":").pop()?.trim() ?? probe) : probe;
-    if (valueProbe.length >= 4 && afterNorm.includes(valueProbe)) continue;
-    if (afterNorm.includes(token)) continue;
-
-    missing.push(fp.slice(0, 120));
+  for (const fp of critical) {
+    if (!fingerprintPresent(fp, afterNorm, afterHeaders)) missingCritical.push(fp.slice(0, 120));
+  }
+  for (const fp of soft) {
+    if (!fingerprintPresent(fp, afterNorm, afterHeaders)) missingSoft.push(fp.slice(0, 120));
   }
 
-  const maxMissing = Math.max(1, Math.floor(beforeF.length * 0.12));
-  return { ok: missing.length <= maxMissing, missing: missing.slice(0, 15) };
+  const maxSoftMissing = Math.max(2, Math.floor(soft.length * 0.25));
+  const ok = missingCritical.length === 0 && missingSoft.length <= maxSoftMissing;
+
+  return {
+    ok,
+    missing: [...missingCritical, ...missingSoft].slice(0, 15),
+  };
 }
 
 function countMarkdownSections(content: string): number {
@@ -210,10 +295,6 @@ export async function optimizeKnowledgeDocumentForRag(input: {
   }
 
   const validation = validateFactPreservation(content, optimized);
-  if (!validation.ok) {
-    optimized = content;
-  }
-
   const sectionsAfter = countMarkdownSections(optimized);
 
   return {
@@ -237,10 +318,11 @@ export function analyzeDocumentRagReadiness(content: string): {
   const hasSections = contentHasMarkdownSections(content);
   const sectionCount = countMarkdownSections(content);
   const estimatedChunks = chunkMarkdownSections(content, { maxChunks: 80 }).length;
+  const { critical, soft } = extractFactFingerprintGroups(content);
   return {
     hasSections,
     sectionCount,
     estimatedChunks,
-    factCount: extractFactFingerprints(content).length,
+    factCount: critical.length + soft.length,
   };
 }
