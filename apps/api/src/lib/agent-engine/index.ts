@@ -46,6 +46,30 @@ export {
   shouldRetryAfterSupervisor,
 } from "./supervisor/AgentSupervisorService.js";
 export { ExecutionTraceBuilder } from "./observability/ExecutionTrace.js";
+export {
+  createKnowledgeProvider,
+  KnowledgeEngineService,
+  type KnowledgeProvider,
+} from "./knowledge/KnowledgeProvider.js";
+export { logKnowledgeEvents } from "./knowledge/KnowledgeObservability.js";
+export {
+  parseKnowledgeEngineConfig,
+  mergeKnowledgeEngineIntoBehavior,
+  parseOrgKnowledgeStore,
+  shouldUseKnowledgeEngineRuntime,
+} from "./knowledge/parseKnowledgeEngineConfig.js";
+export type {
+  KnowledgeEngineConfig,
+  KnowledgeEngineOrgConfig,
+  KnowledgeDocument,
+  KnowledgeChunk,
+  KnowledgeInspectorTrace,
+  KnowledgeProviderKind,
+} from "./knowledge/knowledgeEngineTypes.js";
+export { DEFAULT_KNOWLEDGE_ENGINE_CONFIG } from "./knowledge/knowledgeEngineTypes.js";
+export { clearKnowledgeCache, getKnowledgeCacheStats } from "./knowledge/knowledgeCache.js";
+export { runKnowledgeInspector } from "./knowledge/knowledgeInspectorService.js";
+export { invalidateKnowledgeEngineCache } from "./knowledge/knowledgeArticleHooks.js";
 
 import type { AgentRuntimeExecuteInput } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";

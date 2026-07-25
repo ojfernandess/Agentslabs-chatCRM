@@ -304,3 +304,54 @@ test("MemoryContextBuilder merges hierarchy order", async () => {
   });
   assert.equal(ranked.length, 4);
 });
+
+test("parseKnowledgeEngineConfig defaults for legacy agents", async () => {
+  const { parseKnowledgeEngineConfig } = await import("./knowledge/parseKnowledgeEngineConfig.js");
+  const cfg = parseKnowledgeEngineConfig({ nativeTools: { knowledge_search: true } });
+  assert.equal(cfg.provider, "openconduit");
+  assert.equal(cfg.enabled, true);
+  assert.equal(cfg.maxDocuments, 10);
+  assert.equal(cfg.maxChunks, 20);
+});
+
+test("parseKnowledgeEngineConfig reads knowledgeEngine block", async () => {
+  const { parseKnowledgeEngineConfig } = await import("./knowledge/parseKnowledgeEngineConfig.js");
+  const cfg = parseKnowledgeEngineConfig({
+    nativeTools: { knowledge_search: true },
+    knowledgeEngine: {
+      provider: "llamaindex",
+      enabled: true,
+      reranking: false,
+      maxDocuments: 5,
+      maxChunks: 12,
+    },
+  });
+  assert.equal(cfg.provider, "llamaindex");
+  assert.equal(cfg.reranking, false);
+  assert.equal(cfg.maxDocuments, 5);
+  assert.equal(cfg.maxChunks, 12);
+});
+
+test("shouldUseKnowledgeEngineRuntime only for llamaindex", async () => {
+  const { shouldUseKnowledgeEngineRuntime } = await import("./knowledge/parseKnowledgeEngineConfig.js");
+  assert.equal(shouldUseKnowledgeEngineRuntime({ nativeTools: { knowledge_search: true } }), false);
+  assert.equal(
+    shouldUseKnowledgeEngineRuntime({ knowledgeEngine: { provider: "openconduit" } }),
+    false,
+  );
+  assert.equal(
+    shouldUseKnowledgeEngineRuntime({ knowledgeEngine: { provider: "llamaindex" } }),
+    true,
+  );
+});
+
+test("mergeKnowledgeEngineIntoBehavior syncs nativeTools", async () => {
+  const { mergeKnowledgeEngineIntoBehavior } = await import("./knowledge/parseKnowledgeEngineConfig.js");
+  const { DEFAULT_KNOWLEDGE_ENGINE_CONFIG } = await import("./knowledge/knowledgeEngineTypes.js");
+  const merged = mergeKnowledgeEngineIntoBehavior(
+    { nativeTools: { knowledge_search: false } },
+    { ...DEFAULT_KNOWLEDGE_ENGINE_CONFIG, enabled: false },
+  );
+  const nt = merged.nativeTools as Record<string, unknown>;
+  assert.equal(nt.knowledge_search, false);
+});

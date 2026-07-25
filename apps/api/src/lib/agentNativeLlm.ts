@@ -11,11 +11,11 @@ import {
 } from "./promptModulePreviewLlm.js";
 import { kbAppendixHasRetrievedExcerpts } from "./kbAppendix.js";
 import {
-  fetchProactiveKnowledgeSystemAppendix,
   mergeBotLinkedKnowledgeWhenRankedEmpty,
   mergePinnedKnowledgeWhenRankedEmpty,
   parseLinkedKnowledgeArticleIdsFromBehavior,
   rankedKnowledgeSearch,
+  fetchProactiveKnowledgeSystemAppendix,
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolveNativeAgentHistoryTurns, shouldIsolateHistoryForConnectedTools } from "./agentConversationHistory.js";
@@ -28,6 +28,10 @@ import {
   logMemoryEvents,
   parseAgentEngineConfig,
   parseMemoryEngineConfig,
+  parseKnowledgeEngineConfig,
+  shouldUseKnowledgeEngineRuntime,
+  KnowledgeEngineService,
+  logKnowledgeEvents,
 } from "./agent-engine/index.js";
 import {
   buildFollowUpCampaignPromptBlock,
@@ -906,6 +910,7 @@ async function executeNativeTool(input: {
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
   userMessage?: string;
+  knowledgeEngine?: KnowledgeEngineService;
 }): Promise<string> {
   const {
     name,
@@ -931,6 +936,15 @@ async function executeNativeTool(input: {
     if (name === "buscar_conhecimento" && flags.knowledge_search) {
       const query = typeof args.query === "string" ? args.query.trim() : "";
       if (!query) return JSON.stringify({ ok: false, error: "missing_query" });
+      if (input.knowledgeEngine) {
+        const { toolJson } = await input.knowledgeEngine.searchForTool({
+          organizationId,
+          botId,
+          query,
+          pinnedArticleIds,
+        });
+        return toolJson;
+      }
       const norm = query.toLowerCase().slice(0, 500);
       let ranked = (
         await rankedKnowledgeSearch({
@@ -1533,16 +1547,36 @@ async function generateNativeAgentReplyCore(input: {
   let knowledgeSearchCallsThisTurn = 0;
 
   let kbProactiveAppendix = "";
+  const useKnowledgeEngine = shouldUseKnowledgeEngineRuntime(profile.behaviorConfig);
+  const knowledgeEngineConfig = parseKnowledgeEngineConfig(profile.behaviorConfig);
+  const knowledgeEngine = useKnowledgeEngine
+    ? KnowledgeEngineService.fromConfig(knowledgeEngineConfig)
+    : null;
   if (flags.knowledge_search) {
     try {
-      kbProactiveAppendix = await fetchProactiveKnowledgeSystemAppendix({
-        organizationId,
-        botId: bot.id,
-        userMessage,
-        limit: 8,
-        pinnedArticleIds,
-        debugLog: log,
-      });
+      if (useKnowledgeEngine && knowledgeEngineConfig.enabled && knowledgeEngine) {
+        const proactive = await knowledgeEngine.buildProactiveAppendix({
+          organizationId,
+          botId: bot.id,
+          userMessage,
+          limit: knowledgeEngineConfig.maxDocuments,
+          pinnedArticleIds,
+          cacheEnabled: true,
+        });
+        kbProactiveAppendix = proactive.appendix;
+        logKnowledgeEvents(ex, [
+          knowledgeEngine.buildObservabilityEvent(proactive.result, userMessage, bot.id),
+        ]);
+      } else {
+        kbProactiveAppendix = await fetchProactiveKnowledgeSystemAppendix({
+          organizationId,
+          botId: bot.id,
+          userMessage,
+          limit: 8,
+          pinnedArticleIds,
+          debugLog: log,
+        });
+      }
     } catch (err) {
       log.warn({ err, botId: bot.id }, "proactive knowledge appendix failed");
       ex?.child("rag")?.error({ id: "proactive_kb", name: "RAG proactivo" }, "Falha ao montar appendix", {
@@ -1999,6 +2033,7 @@ async function generateNativeAgentReplyCore(input: {
                 log,
                 pinnedArticleIds,
                 userMessage,
+                knowledgeEngine: knowledgeEngine ?? undefined,
               }),
             );
           },

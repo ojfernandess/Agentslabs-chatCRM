@@ -48,6 +48,8 @@ import { registerAutomationExecutionLogRoutes } from "./automationExecutionLogRo
 import { registerAgentEngineRoutes } from "./agentEngineRoutes.js";
 import { registerMemoryCenterRoutes } from "./memoryCenterRoutes.js";
 import { registerMemoryEngineRoutes } from "./memoryEngineRoutes.js";
+import { registerKnowledgeEngineRoutes } from "./knowledgeEngineRoutes.js";
+import { invalidateKnowledgeEngineCache } from "../lib/agent-engine/knowledge/knowledgeArticleHooks.js";
 import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
@@ -556,6 +558,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     void reindexKnowledgeArticle(row.id).catch((err) => {
       request.log.warn({ err, articleId: row.id }, "knowledge reindex failed");
     });
+    invalidateKnowledgeEngineCache(organizationId);
 
     return { ...row, botIds: row.botLinks.map((l) => l.botId) };
   });
@@ -929,6 +932,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         request.log.warn({ err, articleId: row.id }, "knowledge reindex failed");
       });
     }
+    invalidateKnowledgeEngineCache(organizationId);
 
     return { ...row, botIds: row.botLinks.map((l) => l.botId) };
   });
@@ -950,6 +954,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       resourceId: request.params.id,
       ip: clientIp(request),
     });
+    invalidateKnowledgeEngineCache(organizationId);
     return reply.status(204).send();
   });
 
@@ -987,6 +992,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     }
     try {
       const result = await reindexKnowledgeArticle(article.id);
+      invalidateKnowledgeEngineCache(organizationId);
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "reindex failed";
@@ -1004,6 +1010,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     if (!organizationId) return;
     try {
       const summary = await reindexAllKnowledgeArticlesForOrg(organizationId);
+      invalidateKnowledgeEngineCache(organizationId);
       return summary;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "reindex failed";
@@ -3013,6 +3020,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   await registerAgentEngineRoutes(app);
   await registerMemoryCenterRoutes(app);
   await registerMemoryEngineRoutes(app);
+  await registerKnowledgeEngineRoutes(app);
   await registerChatbotFlowRoutes(app);
   await registerCrmFlowRoutes(app);
 }

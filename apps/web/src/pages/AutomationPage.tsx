@@ -30,6 +30,12 @@ import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHu
 import { AutomationExecutionsTab } from "@/pages/automation/AutomationExecutionsTab";
 import { MemoryCenterPanel } from "@/pages/automation/MemoryCenterPanel";
 import { MemoryAdminPanel } from "@/pages/automation/MemoryAdminPanel";
+import {
+  KnowledgeEnginePanel,
+  defaultKnowledgeEngineFormValues,
+  type KnowledgeEngineFormValues,
+} from "@/pages/automation/KnowledgeEnginePanel";
+import { KnowledgeEngineAdvancedPanel } from "@/pages/automation/KnowledgeEngineAdvancedPanel";
 import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBuilder";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
@@ -433,6 +439,7 @@ type AgentFormFields = {
   isolateHistoryForTools: boolean;
   agentSupervisorEnabled: boolean;
   agentEngine: AgentEngineFormValues;
+  knowledgeEngine: KnowledgeEngineFormValues;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -493,6 +500,7 @@ function emptyAgentForm(): AgentFormFields {
       strictMode: false,
       observability: "basic",
     },
+    knowledgeEngine: defaultKnowledgeEngineFormValues(),
   };
 }
 
@@ -657,6 +665,44 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     observability: engineRaw.observability === "full" ? "full" : "basic",
   };
 
+  const kbRaw =
+    beh.knowledgeEngine && typeof beh.knowledgeEngine === "object"
+      ? (beh.knowledgeEngine as Record<string, unknown>)
+      : {};
+  const chunkRaw =
+    kbRaw.chunking && typeof kbRaw.chunking === "object"
+      ? (kbRaw.chunking as Record<string, unknown>)
+      : {};
+  const knowledgeEngine: KnowledgeEngineFormValues = {
+    ...defaultKnowledgeEngineFormValues(),
+    provider: kbRaw.provider === "llamaindex" ? "llamaindex" : "openconduit",
+    enabled: nativeTools.knowledge_search !== false,
+    semanticSearch: kbRaw.semanticSearch !== false,
+    reranking: kbRaw.reranking !== false,
+    citations: kbRaw.citations !== false,
+    maxDocuments:
+      typeof kbRaw.maxDocuments === "number" && Number.isFinite(kbRaw.maxDocuments)
+        ? Math.min(50, Math.max(1, Math.round(kbRaw.maxDocuments)))
+        : 10,
+    maxChunks:
+      typeof kbRaw.maxChunks === "number" && Number.isFinite(kbRaw.maxChunks)
+        ? Math.min(100, Math.max(1, Math.round(kbRaw.maxChunks)))
+        : 20,
+    searchTemperature:
+      typeof kbRaw.searchTemperature === "number" && Number.isFinite(kbRaw.searchTemperature)
+        ? Math.min(1, Math.max(0, kbRaw.searchTemperature))
+        : 0,
+    chunkSize:
+      typeof chunkRaw.chunkSize === "number" && Number.isFinite(chunkRaw.chunkSize)
+        ? Math.min(4000, Math.max(200, Math.round(chunkRaw.chunkSize)))
+        : 900,
+    chunkOverlap:
+      typeof chunkRaw.chunkOverlap === "number" && Number.isFinite(chunkRaw.chunkOverlap)
+        ? Math.min(800, Math.max(0, Math.round(chunkRaw.chunkOverlap)))
+        : 120,
+    autoChunk: chunkRaw.autoChunk !== false,
+  };
+
   return {
     mode: "edit",
     createBot: false,
@@ -715,6 +761,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     isolateHistoryForTools: beh.isolateHistoryForTools === true,
     agentSupervisorEnabled: agentEngine.supervisorEnabled,
     agentEngine,
+    knowledgeEngine,
   };
 }
 
@@ -928,6 +975,27 @@ function formToPayload(
       instructionFallbacks: fallbacksResolved,
     },
   };
+  if (form.knowledgeEngine.provider === "llamaindex") {
+    behaviorConfig.knowledgeEngine = {
+      provider: "llamaindex",
+      enabled: form.nativeTools.knowledge_search,
+      semanticSearch: form.knowledgeEngine.semanticSearch,
+      reranking: form.knowledgeEngine.reranking,
+      citations: form.knowledgeEngine.citations,
+      maxDocuments: form.knowledgeEngine.maxDocuments,
+      maxChunks: form.knowledgeEngine.maxChunks,
+      searchTemperature: form.knowledgeEngine.searchTemperature,
+      minScore: 0.25,
+      minSimilarity: 0.2,
+      chunking: {
+        chunkSize: form.knowledgeEngine.chunkSize,
+        chunkOverlap: form.knowledgeEngine.chunkOverlap,
+        separator: "\n\n",
+        autoChunk: form.knowledgeEngine.autoChunk,
+        preserveHierarchy: true,
+      },
+    };
+  }
 
   return {
     llmConfig,
@@ -1577,15 +1645,23 @@ export function AutomationPage() {
               )}
             </div>
           ) : (
-            <AutomationKnowledgeHub
-              t={t}
-              loading={loading}
-              setLoading={setLoading}
-              setError={setError}
-              bots={bots}
-              articles={articles}
-              onRefresh={loadKnowledge}
-            />
+            <div className="space-y-4">
+              <AutomationKnowledgeHub
+                t={t}
+                loading={loading}
+                setLoading={setLoading}
+                setError={setError}
+                bots={bots}
+                articles={articles}
+                onRefresh={loadKnowledge}
+              />
+              {tenantAdmin ? (
+                <KnowledgeEngineAdvancedPanel
+                  t={t}
+                  bots={bots.map((b) => ({ id: b.id, name: b.name }))}
+                />
+              ) : null}
+            </div>
           )
         ) : null}
 
@@ -3293,6 +3369,12 @@ function AgentsTab({
                 promptScore={promptValidationScore}
                 onValidatePrompt={agentForm.editBotId ? validateAgentPromptScore : undefined}
                 validatingPrompt={promptValidating}
+                t={t}
+              />
+
+              <KnowledgeEnginePanel
+                value={agentForm.knowledgeEngine}
+                onChange={(knowledgeEngine) => setAgentForm((f) => ({ ...f, knowledgeEngine }))}
                 t={t}
               />
 
