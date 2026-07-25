@@ -118,7 +118,8 @@ function buildOptimizeSystemPrompt(provider: KnowledgeProviderKind, locale: stri
 6. Listas com \`-\` para dados factuais; **rótulo:** valor para pares chave-valor (Rede, Senha, Endereço…).
 7. Inclui sinónimos de busca nos títulos quando natural (ex.: «WiFi / Internet», «Quartos / Acomodações»).
 8. Remove redundância verbal, mas NUNCA apagues dados.
-9. Responde APENAS com o Markdown final — sem comentários, preâmbulo ou \`\`\` fences.`
+9. **NÃO** crie parágrafos introdutórios que apenas listem tópicos/seções («WiFi, quartos, estacionamento…») — cada facto deve estar na secção ## correspondente.
+10. Responde APENAS com o Markdown final — sem comentários, preâmbulo ou \`\`\` fences.`
       : `MANDATORY rules:
 1. Do NOT invent, omit, or change facts (prices, hours, SSIDs, passwords, addresses, policies, names, URLs, emails, capacity, m²).
 2. Keep ALL information from the source — only reorganize and clarify.
@@ -128,7 +129,8 @@ function buildOptimizeSystemPrompt(provider: KnowledgeProviderKind, locale: stri
 6. Use \`-\` lists for facts; **label:** value for key-value pairs.
 7. Include search synonyms in titles when natural (e.g. «WiFi / Internet», «Rooms / Accommodation»).
 8. Remove verbal redundancy but NEVER delete data.
-9. Reply with ONLY the final Markdown — no commentary, preamble, or \`\`\` fences.`) +
+9. Do NOT add intro paragraphs that only catalog topics/sections — every fact belongs in its ## section.
+10. Reply with ONLY the final Markdown — no commentary, preamble, or \`\`\` fences.`) +
     (provider === "llamaindex"
       ? isPt
         ? "\n\nOptimização LlamaIndex: secções de 400–1200 caracteres; evite secções gigantes; prefira um tópico por ##."

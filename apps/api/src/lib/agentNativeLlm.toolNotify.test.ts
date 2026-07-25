@@ -241,6 +241,7 @@ test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {
     shouldForceKnowledgeDelivery({
       replyText: "Só um momento por gentileza",
       kbHasUsefulExcerpts: true,
+      kbCoversQuery: true,
       toolOutcomes: [],
       userMessage: "Qual o endereço da Club Suítes?",
     }),
@@ -250,8 +251,19 @@ test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {
     shouldForceKnowledgeDelivery({
       replyText: "O Wi-Fi é @@vivapp e a rede é Club.",
       kbHasUsefulExcerpts: true,
+      kbCoversQuery: true,
       toolOutcomes: [],
       userMessage: "Qual o Wi-Fi?",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldForceKnowledgeDelivery({
+      replyText: "Só um momento por gentileza",
+      kbHasUsefulExcerpts: true,
+      kbCoversQuery: false,
+      toolOutcomes: [],
+      userMessage: "Quais categorias de quartos?",
     }),
     false,
   );
@@ -330,5 +342,24 @@ test("knowledgeToolFoundUsefulExcerpts detects found true", () => {
       },
     ]),
     true,
+  );
+});
+
+test("knowledgeToolFoundUsefulExcerpts rejects found true without answer content", () => {
+  const preview = JSON.stringify({
+    found: true,
+    articles: [
+      {
+        excerpt:
+          "## Rock Blue Ocean Suites — Base de Conhecimento\n\nDocumento da unidade para consulta via buscar_conhecimento. Seções com títulos (WiFi, categorias de quartos, etc.).",
+      },
+    ],
+  });
+  assert.equal(
+    knowledgeToolFoundUsefulExcerpts(
+      [{ name: "buscar_conhecimento", ok: true, preview, monitored: false }],
+      "quais categorias de quartos?",
+    ),
+    false,
   );
 });

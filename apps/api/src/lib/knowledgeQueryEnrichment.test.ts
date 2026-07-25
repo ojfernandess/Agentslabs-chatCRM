@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildKnowledgeSearchQuery,
+  isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
   shouldEnrichKnowledgeSearchQuery,
 } from "./knowledgeQueryEnrichment.js";
@@ -39,4 +40,34 @@ test("knowledgeContentCoversQuery true when appendix contains wifi section data"
   const appendix =
     "### Base de conhecimento\n**1. Hotel X**\n## WiFi\n- **Rede:** HOTEL X\n- **Senha:** abc123";
   assert.equal(knowledgeContentCoversQuery(appendix, "qual wifi?"), true);
+});
+
+test("isKnowledgeOverviewChunk detects catalog intro from optimized docs", () => {
+  const intro =
+    "## Rock Blue Ocean Suites — Base de Conhecimento\n\n" +
+    "Documento da unidade **Rock Blue Ocean Suites** para consulta via buscar_conhecimento. " +
+    "Seções com títulos que correspondem a possíveis buscas (WiFi, estacionamento, categorias de quartos, etc.).";
+  assert.equal(isKnowledgeOverviewChunk(intro), true);
+});
+
+test("knowledgeContentCoversQuery false when only intro mentions room categories", () => {
+  const intro =
+    "## Rock Blue Ocean Suites — Base de Conhecimento\n\n" +
+    "Documento da unidade **Rock Blue Ocean Suites** para consulta via buscar_conhecimento. " +
+    "Seções com títulos que correspondem a possíveis buscas (WiFi, estacionamento, categorias de quartos, etc.).";
+  assert.equal(
+    knowledgeContentCoversQuery(intro, "quais as categorias de quartos do hotel Blue Ocean?"),
+    false,
+  );
+});
+
+test("knowledgeContentCoversQuery true when room section has facts", () => {
+  const rooms =
+    "## Categorias de quartos / Acomodações\n\n" +
+    "- **Standard:** 12 m² · 1 hóspede\n" +
+    "- **Superior:** 18 m² · 2 hóspedes";
+  assert.equal(
+    knowledgeContentCoversQuery(rooms, "quais as categorias de quartos do hotel Blue Ocean?"),
+    true,
+  );
 });

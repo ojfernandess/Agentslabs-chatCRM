@@ -1,4 +1,5 @@
 import { extractQuerySegmentTokens, queryTerms } from "./knowledgeSearchRanking.js";
+import { stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
 
 export type KnowledgeConversationTurn = {
   role: "user" | "assistant";
@@ -23,6 +24,9 @@ const TOPIC_SYNONYMS: Record<string, string[]> = {
 const ESTABLISHMENT_DOC_RE =
   /\b([A-ZÀ-Ú][A-Za-zÀ-ú0-9\s.'-]{2,60})\s*(?:—|-)\s*Base de Conhecimento\b/g;
 
+const OVERVIEW_META_RE =
+  /se(?:c|c)ões com títulos|possíveis buscas|para consulta via buscar_conhecimento|documento da unidade/i;
+
 function detectQueryTopics(normalizedQuery: string): string[] {
   const q = normalizedQuery.toLowerCase();
   const topics = new Set<string>();
@@ -42,6 +46,60 @@ function extractEstablishmentFromText(text: string): string[] {
     if (token.length >= 4) names.add(token);
   }
   return [...names];
+}
+
+type MarkdownSection = { title: string; body: string; level: number };
+
+function parseMarkdownSections(text: string): MarkdownSection[] {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return [];
+  const sections: MarkdownSection[] = [];
+  let current: MarkdownSection | null = null;
+
+  for (const line of normalized.split("\n")) {
+    const m = /^(#{2,3})\s+(.+)$/.exec(line);
+    if (m) {
+      if (current) sections.push(current);
+      current = { level: m[1].length, title: m[2].trim(), body: "" };
+      continue;
+    }
+    if (current) current.body += (current.body ? "\n" : "") + line;
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+function sectionHeaderMatchesTopics(title: string, topics: string[]): boolean {
+  const header = title.toLowerCase();
+  for (const topic of topics) {
+    const syns = TOPIC_SYNONYMS[topic] ?? [topic];
+    for (const s of syns) {
+      const syn = s.toLowerCase();
+      const headerKey = header.split("/")[0]?.trim() ?? header;
+      if (header.includes(syn) || syn.includes(headerKey) || headerKey.includes(syn)) return true;
+    }
+  }
+  return false;
+}
+
+/** Chunk intro/overview que só cataloga tópicos — não contém factos respondíveis. */
+export function isKnowledgeOverviewChunk(text: string): boolean {
+  const t = text.replace(/\r\n/g, "\n").trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  if (OVERVIEW_META_RE.test(lower)) return true;
+
+  const header = t.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() ?? "";
+  if (/base de conhecimento$/i.test(header) && !/^-\s+/m.test(t)) {
+    const body = t.replace(/^#{1,6}\s+.+$/gm, "").trim();
+    if (body.length < 420 && !/\*\*[^*]+:\*\*\s*\S/.test(body)) return true;
+  }
+
+  const commaTopics =
+    (lower.match(/,\s*(?:wifi|estacionamento|cancelamento|check-in|localização|endereço|quartos)/gi) ?? []).length >= 2;
+  if (commaTopics && /etc\.?\)?/i.test(lower)) return true;
+
+  return false;
 }
 
 /** Evita poluir a query com histórico em respostas de menu / fluxo (ex.: «1», «sim»). */
@@ -101,34 +159,61 @@ export function extractQueryTopicTerms(query: string): string[] {
   return [...terms].filter((t) => t.length >= 3);
 }
 
-function excerptHasAnswerContent(text: string): boolean {
+function excerptHasAnswerContent(text: string, minBodyChars = 30): boolean {
   const withoutHeaders = text
     .replace(/^#{1,6}\s+.+$/gm, "")
     .replace(/^---+$/gm, "")
     .trim();
-  return withoutHeaders.length >= 40;
+  return withoutHeaders.length >= minBodyChars;
 }
 
-/** Observabilidade apenas — não usar para omitir buscar_conhecimento. */
+function sectionAnswersTopic(section: MarkdownSection, topics: string[]): boolean {
+  const block = `## ${section.title}\n\n${section.body}`.trim();
+  if (isKnowledgeOverviewChunk(block)) return false;
+  if (!excerptHasAnswerContent(block)) return false;
+  if (sectionHeaderMatchesTopics(section.title, topics)) return true;
+
+  const bodyLower = section.body.toLowerCase();
+  for (const topic of topics) {
+    const syns = TOPIC_SYNONYMS[topic] ?? [topic];
+    for (const s of syns) {
+      if (!bodyLower.includes(s.toLowerCase())) continue;
+      const idx = bodyLower.indexOf(s.toLowerCase());
+      const slice = section.body.slice(Math.max(0, idx - 10), idx + 280);
+      if (excerptHasAnswerContent(slice) && !/^[^.\n]{0,120}(?:etc\.?\)?\s*$|, )/i.test(slice.trim())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** True quando excertos contêm factos que respondem à query (não só menção em intro/catálogo). */
 export function knowledgeContentCoversQuery(haystack: string, query: string): boolean {
-  const lower = haystack.toLowerCase();
-  if (!lower.trim() || !excerptHasAnswerContent(haystack)) return false;
+  const raw = haystack.trim();
+  if (!raw) return false;
+
+  const stripped = stripProactiveKnowledgeAppendixShell(raw)
+    .replace(/^\*\*\d+\.\s+[^*]+\*\*[^\n]*\n/gm, "")
+    .trim();
+  const body = stripped || raw;
+  if (!excerptHasAnswerContent(body)) return false;
 
   const topics = detectQueryTopics(query.toLowerCase());
   if (topics.length > 0) {
-    return topics.some((topic) => {
-      const syns = TOPIC_SYNONYMS[topic] ?? [topic];
-      return syns.some((s) => {
-        if (!lower.includes(s)) return false;
-        const idx = lower.indexOf(s);
-        const slice = haystack.slice(Math.max(0, idx - 20), idx + 400);
-        return excerptHasAnswerContent(slice);
-      });
-    });
+    const sections = parseMarkdownSections(body);
+    if (sections.length > 0) {
+      return sections.some((sec) => sectionAnswersTopic(sec, topics));
+    }
+    if (isKnowledgeOverviewChunk(body)) return false;
+    return false;
   }
 
+  if (isKnowledgeOverviewChunk(body)) return false;
+
   const terms = queryTerms(query.toLowerCase()).filter((t) => t.length >= 4);
-  if (terms.length === 0) return excerptHasAnswerContent(haystack);
+  if (terms.length === 0) return excerptHasAnswerContent(body);
+  const lower = body.toLowerCase();
   const matched = terms.filter((t) => lower.includes(t)).length;
   return matched >= Math.min(terms.length, Math.max(1, Math.ceil(terms.length * 0.5)));
 }
@@ -141,4 +226,19 @@ export function sectionSignature(text: string): string {
   if (line) return line.toLowerCase();
   const docLine = text.split("\n")[0]?.trim().slice(0, 80) ?? "";
   return docLine.toLowerCase() || text.slice(0, 80).toLowerCase();
+}
+
+/** Secção relevante para a query (header ou corpo com tópico). */
+export function chunkMatchesQueryTopics(text: string, query: string): boolean {
+  const q = query.trim();
+  if (!q) return true;
+  const topics = detectQueryTopics(q.toLowerCase());
+  if (topics.length === 0) return true;
+  if (isKnowledgeOverviewChunk(text)) return false;
+
+  const header = text.match(/^#{2,3}\s+(.+)$/m)?.[1]?.trim() ?? "";
+  if (header && sectionHeaderMatchesTopics(header, topics)) return true;
+
+  const sections = parseMarkdownSections(text);
+  return sections.some((sec) => sectionAnswersTopic(sec, topics));
 }

@@ -12,6 +12,7 @@ import {
 import { kbAppendixHasRetrievedExcerpts, stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
 import {
   buscarConhecimentoPreviewHasArticles,
+  buscarConhecimentoPreviewToPlainText,
   parseBuscarConhecimentoPreview,
 } from "./knowledgeToolResult.js";
 import {
@@ -482,13 +483,20 @@ export function isNonDeliveringAgentReply(text: string, configuredStallMessages?
   return isLikelyStallOnlyReply(t, configuredStallMessages);
 }
 
-export function knowledgeToolFoundUsefulExcerpts(toolOutcomes: NativeToolRoundOutcome[]): boolean {
+export function knowledgeToolFoundUsefulExcerpts(
+  toolOutcomes: NativeToolRoundOutcome[],
+  query?: string,
+): boolean {
+  const q = query?.trim() ?? "";
   return toolOutcomes.some((t) => {
     if (t.name !== "buscar_conhecimento") return false;
-    if (buscarConhecimentoPreviewHasArticles(t.preview)) return true;
-    if (t.ok && /"found"\s*:\s*true/i.test(t.preview)) return true;
-    if (/"found"\s*:\s*true/i.test(t.preview) && !/"skipped"\s*:\s*true/i.test(t.preview)) return true;
-    return false;
+    if (!buscarConhecimentoPreviewHasArticles(t.preview)) {
+      if (!(t.ok && /"found"\s*:\s*true/i.test(t.preview))) return false;
+      if (!q) return false;
+    }
+    if (!q) return buscarConhecimentoPreviewHasArticles(t.preview);
+    const plain = buscarConhecimentoPreviewToPlainText(t.preview);
+    return knowledgeContentCoversQuery(plain, q);
   });
 }
 
@@ -534,6 +542,7 @@ function hasNonKnowledgeToolsThisTurn(toolOutcomes: NativeToolRoundOutcome[]): b
 export function shouldForceKnowledgeDelivery(input: {
   replyText: string;
   kbHasUsefulExcerpts: boolean;
+  kbCoversQuery?: boolean;
   toolOutcomes: NativeToolRoundOutcome[];
   configuredStallMessages?: string[];
   userMessage?: string;
@@ -549,17 +558,18 @@ export function shouldForceKnowledgeDelivery(input: {
   const kbDeflect = isLikelyKbDeflectionOnlyReply(input.replyText);
   if (!stallOnly && !kbDeflect) return false;
 
-  const kbToolOk = knowledgeToolFoundUsefulExcerpts(input.toolOutcomes);
+  const userQuery = input.userMessage?.trim() ?? "";
+  const kbToolOk = knowledgeToolFoundUsefulExcerpts(input.toolOutcomes, userQuery);
   const nonKb = hasNonKnowledgeToolsThisTurn(input.toolOutcomes);
-  const seeking = userMessageLooksLikeKnowledgeSeekingQuery(input.userMessage ?? "");
+  const seeking = userMessageLooksLikeKnowledgeSeekingQuery(userQuery);
 
   // Turno de automação/HTTP: «não encontrei» pode ser correcto (found:false) — não substituir por artigos da KB.
   if (nonKb) {
     return kbToolOk && stallOnly;
   }
 
-  // Só appendix proactivo: apenas se a pergunta parece de conhecimento.
-  if (input.kbHasUsefulExcerpts) {
+  // Appendix proactivo: só resgatar se os excertos realmente cobrem a pergunta.
+  if (input.kbHasUsefulExcerpts && input.kbCoversQuery) {
     return seeking || kbToolOk;
   }
   return kbToolOk;
@@ -1272,15 +1282,25 @@ async function augmentStallWithKnowledge(params: {
   signal: AbortSignal;
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
-  /** Appendix proactivo já calculado — evita segunda pesquisa e acelera a correção. */
+  /** Appendix proactivo já calculado — reutiliza só se cobrir a pergunta. */
   proactiveAppendix?: string;
 }): Promise<string> {
-  const norm = params.userMessage.trim().toLowerCase().slice(0, 500);
+  const kbHistory: KnowledgeConversationTurn[] = params.history.map((h) => ({
+    role: h.role === "assistant" ? "assistant" : "user",
+    content: h.content,
+  }));
+  const searchQuery = buildKnowledgeSearchQuery(params.userMessage, kbHistory);
+  const norm = searchQuery.toLowerCase().slice(0, 500);
   if (!norm) return "";
   try {
     let kbBlock = "";
-    if (params.proactiveAppendix && kbAppendixHasRetrievedExcerpts(params.proactiveAppendix)) {
-      kbBlock = params.proactiveAppendix;
+    const proactiveOk =
+      params.proactiveAppendix &&
+      kbAppendixHasRetrievedExcerpts(params.proactiveAppendix) &&
+      knowledgeContentCoversQuery(params.proactiveAppendix, searchQuery);
+
+    if (proactiveOk) {
+      kbBlock = params.proactiveAppendix!;
     } else {
       let ranked = (
         await rankedKnowledgeSearch({
@@ -1306,12 +1326,20 @@ async function augmentStallWithKnowledge(params: {
       ranked = ranked.slice(0, 6);
       kbBlock = formatKnowledgeToolResult(ranked);
     }
+
+    const coversQuery = knowledgeContentCoversQuery(kbBlock, searchQuery);
     const extra =
       "\n\n[OpenConduit — correção obrigatória]\n" +
-      "A tua resposta anterior era só espera («um momento» / «vou verificar») ou deflexão sem factos.\n" +
-      "Responde AGORA ao cliente com factos concretos dos excertos abaixo.\n" +
-      "PROIBIDO responder só com frases de espera («um momento», «aguarde», «vou verificar») sem dados.\n" +
-      "Se os excertos não cobrirem a pergunta, diga honestamente o que falta — sem inventar.\n\n" +
+      (coversQuery
+        ? "A tua resposta anterior era só espera («um momento» / «vou verificar») ou deflexão sem factos.\n" +
+          "Responde AGORA ao cliente com factos concretos dos excertos abaixo.\n" +
+          "PROIBIDO responder só com frases de espera («um momento», «aguarde», «vou verificar») sem dados.\n" +
+          "Se os excertos não cobrirem a pergunta, diga honestamente o que falta — sem inventar.\n\n"
+        : "A tua resposta anterior era só espera ou deflexão.\n" +
+          "Os excertos abaixo **não contêm** a informação completa pedida pelo cliente.\n" +
+          "Responda APENAS com factos que constem literalmente nos excertos.\n" +
+          "Se a informação pedida (ex.: categorias de quartos, preços, políticas) **não aparecer** nos excertos, " +
+          "diga claramente que não está disponível na base de conhecimento — **PROIBIDO inventar** nomes, valores ou categorias.\n\n") +
       kbBlock;
     const system = params.systemInstructions + extra;
     // Histórico curto: evita o modelo repetir o stall dos turnos anteriores.
@@ -1692,16 +1720,27 @@ async function generateNativeAgentReplyCore(input: {
   const omitBuscarConhecimento = false;
 
   const toolPreamble = kbHasUsefulExcerpts
-    ? "\n\n### Ferramentas (complemento)\n" +
-      "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
-      "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
-      "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
-      "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-      (allowedTagIds.length > 0
-        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
-        : "") +
-      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
-      customToolPreamble
+    ? proactiveCoversQuery
+      ? "\n\n### Ferramentas (complemento)\n" +
+        "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
+        "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
+        "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
+        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+        (allowedTagIds.length > 0
+          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
+          : "") +
+        "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
+        customToolPreamble
+      : "\n\n### Ferramentas (complemento)\n" +
+        "- **Base de conhecimento:** há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta — use `buscar_conhecimento` se precisar de mais detalhe.\n" +
+        "- **PROIBIDO** inventar factos (categorias, preços, horários, políticas) que não constem nos excertos ou no resultado da ferramenta.\n" +
+        "- **`buscar_conhecimento`:** até **duas** chamadas neste turno; depois responda só com o que a base devolver.\n" +
+        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+        (allowedTagIds.length > 0
+          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem.\n"
+          : "") +
+        "- `call_human`: se, depois de `buscar_conhecimento`, a informação continuar insuficiente." +
+        customToolPreamble
     : "\n\n### Ferramentas (complemento)\n" +
       "- Use `buscar_conhecimento` para factos da organização antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
       "- **PROIBIDO** como resposta final: frases de espera («um momento» / «vou verificar») sem dados da ferramenta.\n" +
@@ -2245,6 +2284,7 @@ async function generateNativeAgentReplyCore(input: {
     shouldForceKnowledgeDelivery({
       replyText,
       kbHasUsefulExcerpts,
+      kbCoversQuery: proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
       toolOutcomes: toolRoundOutcomes,
       configuredStallMessages,
       userMessage,
@@ -2473,6 +2513,7 @@ async function generateNativeAgentReplyCore(input: {
         shouldForceKnowledgeDelivery({
           replyText,
           kbHasUsefulExcerpts,
+          kbCoversQuery: proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
           toolOutcomes: toolRoundOutcomes,
           configuredStallMessages,
           userMessage,

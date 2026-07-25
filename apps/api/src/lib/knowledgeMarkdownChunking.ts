@@ -1,4 +1,5 @@
 import { chunkText } from "./knowledgeChunking.js";
+import { extractQueryTopicTerms } from "./knowledgeQueryEnrichment.js";
 
 export type KnowledgeChunkOptions = {
   chunkSize?: number;
@@ -95,11 +96,7 @@ export function hasSubstantiveChunkBody(text: string, minBodyChars = 30): boolea
 export function extractMarkdownSectionForQuery(content: string, query: string, maxLen = 1200): string {
   const normalized = content.replace(/\r\n/g, "\n").trim();
   if (!normalized) return "";
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3);
+  const terms = extractQueryTopicTerms(query);
   if (!terms.length) return normalized.slice(0, maxLen);
 
   type Section = { title: string; body: string };
@@ -120,8 +117,14 @@ export function extractMarkdownSectionForQuery(content: string, query: string, m
   let best: Section | null = null;
   let bestScore = 0;
   for (const sec of sections) {
-    const hay = `${sec.title} ${sec.body}`.toLowerCase();
-    const score = terms.filter((t) => hay.includes(t)).length;
+    const titleLower = sec.title.toLowerCase();
+    const bodyLower = sec.body.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      const t = term.toLowerCase();
+      if (titleLower.includes(t) || t.includes(titleLower.split("/")[0]?.trim() ?? "")) score += 3;
+      else if (bodyLower.includes(t)) score += 1;
+    }
     if (score > bestScore) {
       bestScore = score;
       best = sec;
