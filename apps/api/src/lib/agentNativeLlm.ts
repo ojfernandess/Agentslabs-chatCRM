@@ -22,6 +22,11 @@ import {
   fetchProactiveKnowledgeSystemAppendix,
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
+import {
+  buildKnowledgeSearchQuery,
+  knowledgeContentCoversQuery,
+  type KnowledgeConversationTurn,
+} from "./knowledgeQueryEnrichment.js";
 import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolveNativeAgentHistoryTurns, shouldIsolateHistoryForConnectedTools } from "./agentConversationHistory.js";
 import {
   AgentRuntimeFactory,
@@ -896,6 +901,8 @@ async function executeNativeTool(input: {
   log: FastifyBaseLogger;
   pinnedArticleIds: string[] | undefined;
   userMessage?: string;
+  kbSearchQuery?: string;
+  kbHistory?: KnowledgeConversationTurn[];
   knowledgeEngine?: KnowledgeEngineService;
 }): Promise<string> {
   const {
@@ -920,7 +927,11 @@ async function executeNativeTool(input: {
 
   try {
     if (name === "buscar_conhecimento" && flags.knowledge_search) {
-      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const rawQuery = typeof args.query === "string" ? args.query.trim() : "";
+      const query = buildKnowledgeSearchQuery(
+        rawQuery || userMessage || "",
+        input.kbHistory ?? [],
+      );
       if (!query) return JSON.stringify({ ok: false, error: "missing_query" });
       if (input.knowledgeEngine) {
         const { toolJson } = await input.knowledgeEngine.searchForTool({
@@ -1532,6 +1543,36 @@ async function generateNativeAgentReplyCore(input: {
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
   let knowledgeSearchCallsThisTurn = 0;
 
+  const automationCtx = await loadAutomationConversationContext(conversation.id);
+  const isolateForConnectedToolsEarly = shouldIsolateHistoryForConnectedTools({
+    connectedAutoHttpToolCount: customHttpTools.length,
+    isolateHistoryEnabled: parseIsolateHistoryForToolsFromBehavior(profile.behaviorConfig),
+  });
+  const isolateForConnectedTools = isolateForConnectedToolsEarly;
+
+  let kbHistoryForSearch: KnowledgeConversationTurn[] = [];
+  if (historyOverride == null && !isolateForConnectedToolsEarly) {
+    const kbHistoryRows = (
+      await prisma.message.findMany({
+        where: buildNativeAgentMessageWhere({
+          conversationId: conversation.id,
+          excludeMessageId: message.id,
+          lastClearedAt: automationCtx.lastClearedAt,
+        }),
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: { direction: true, body: true },
+      })
+    ).reverse();
+    kbHistoryForSearch = kbHistoryRows
+      .map((m) => ({
+        role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
+        content: (m.body ?? "").trim(),
+      }))
+      .filter((m) => m.content.length > 0);
+  }
+  const kbSearchQuery = buildKnowledgeSearchQuery(userMessage, kbHistoryForSearch);
+
   let kbProactiveAppendix = "";
   const useKnowledgeEngine = shouldUseKnowledgeEngineRuntime(profile.behaviorConfig);
   const knowledgeEngineConfig = useKnowledgeEngine
@@ -1549,7 +1590,7 @@ async function generateNativeAgentReplyCore(input: {
         const proactive = await knowledgeEngine.buildProactiveAppendix({
           organizationId,
           botId: bot.id,
-          userMessage,
+          userMessage: kbSearchQuery,
           limit: knowledgeEngineConfig.maxDocuments,
           pinnedArticleIds,
           cacheEnabled: true,
@@ -1562,7 +1603,7 @@ async function generateNativeAgentReplyCore(input: {
         kbProactiveAppendix = await fetchProactiveKnowledgeSystemAppendix({
           organizationId,
           botId: bot.id,
-          userMessage,
+          userMessage: kbSearchQuery,
           limit: 8,
           pinnedArticleIds,
           debugLog: log,
@@ -1585,19 +1626,35 @@ async function generateNativeAgentReplyCore(input: {
         knowledgeSearch: flags.knowledge_search,
         appendixChars: kbProactiveAppendix.length,
         hasUsefulExcerpts: flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix),
+        proactiveCoversQuery:
+          flags.knowledge_search &&
+          kbAppendixHasRetrievedExcerpts(kbProactiveAppendix) &&
+          knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery),
+        kbSearchQuery: kbSearchQuery.slice(0, 200),
       },
     },
   );
 
   const kbHasUsefulExcerpts =
     flags.knowledge_search && kbAppendixHasRetrievedExcerpts(kbProactiveAppendix);
-  /**
-   * Mantemos `buscar_conhecimento` registado quando `knowledge_search` está activo (prompts rígidos).
-   * Limite de invocações no turno evita queimar TPM com 3–4 pesquisas idênticas após o appendix proactivo.
-   */
-  const omitBuscarConhecimento = false;
+  const proactiveCoversQuery =
+    kbHasUsefulExcerpts &&
+    knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery);
+  /** Omite buscar_conhecimento quando o RAG proactivo já cobre o tópico (evita double-search + interim). */
+  const omitBuscarConhecimento = proactiveCoversQuery;
 
-  const toolPreamble = kbHasUsefulExcerpts
+  const toolPreamble = proactiveCoversQuery
+    ? "\n\n### Ferramentas (complemento)\n" +
+      "- **Base de conhecimento:** a secção acima **já contém** excertos sobre o que o cliente perguntou (pesquisa automática no servidor). Responda **agora** com factos concretos (SSID, senha, valores, horários, moradas, etc.).\n" +
+      "- **`buscar_conhecimento` não está disponível neste turno** — a pesquisa proactiva já cobriu o tópico.\n" +
+      "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos.\n" +
+      "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+      (allowedTagIds.length > 0
+        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
+        : "") +
+      "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos forem claramente insuficientes para responder." +
+      customToolPreamble
+    : kbHasUsefulExcerpts
     ? "\n\n### Ferramentas (complemento)\n" +
       "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
       "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
@@ -1619,7 +1676,14 @@ async function generateNativeAgentReplyCore(input: {
       customToolPreamble;
 
   const serverKbGuard =
-    (kbHasUsefulExcerpts
+    (proactiveCoversQuery
+      ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
+        "A secção «Base de conhecimento» acima **já responde** à pergunta do cliente sobre o tópico actual. " +
+        "Responda directamente com os dados dos excertos (rede Wi‑Fi, senha, preços, horários, etc.). " +
+        "**Não** invoque `buscar_conhecimento` — foi omitida porque a pesquisa proactiva já cobriu o tópico. " +
+        "**Não** invoque `call_human` nem `transfer_to_team` só por precaução quando os excertos contêm a resposta. " +
+        "Use `call_human` só se o cliente pedir atendente/humano **ou** se a informação nos excertos for genuinamente insuficiente."
+      : kbHasUsefulExcerpts
       ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
         "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
         "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
@@ -1656,15 +1720,10 @@ async function generateNativeAgentReplyCore(input: {
         "Quando precisares de enviar a imagem/documento a uma API, invoca a tool de upload; o runtime injecta a mídia da mensagem actual."
       : "";
 
-  const automationCtx = await loadAutomationConversationContext(conversation.id);
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
 
-  const isolateForConnectedTools = shouldIsolateHistoryForConnectedTools({
-    connectedAutoHttpToolCount: customHttpTools.length,
-    isolateHistoryEnabled: parseIsolateHistoryForToolsFromBehavior(profile.behaviorConfig),
-  });
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
   if (
@@ -2024,6 +2083,8 @@ async function generateNativeAgentReplyCore(input: {
                 log,
                 pinnedArticleIds,
                 userMessage,
+                kbSearchQuery,
+                kbHistory: kbHistoryForSearch,
                 knowledgeEngine: knowledgeEngine ?? undefined,
               }),
             );

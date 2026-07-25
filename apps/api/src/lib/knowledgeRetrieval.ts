@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { applyQueryEntityRankingBoost, extractQuerySegmentTokens, queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
+import { postProcessRankedKnowledgeRows } from "./knowledgeChunkPostProcess.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 
@@ -216,6 +217,11 @@ export async function rankedKnowledgeSearch(params: {
       ).slice(0, limit),
     };
   }
+
+  out = {
+    ...out,
+    ranked: postProcessRankedKnowledgeRows(out.ranked, norm, limit),
+  };
 
   if (isAgentKbDebugEnabled() && debugLog) {
     const syncLinks =

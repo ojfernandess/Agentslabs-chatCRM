@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
-import { chunkText } from "./knowledgeChunking.js";
+import { chunkKnowledgeDocumentContent } from "./knowledgeMarkdownChunking.js";
 import { embedTextsBatched } from "./openaiEmbeddings.js";
 import { embeddingToVectorLiteral } from "./pgvectorEmbedding.js";
 
@@ -29,7 +29,11 @@ export async function reindexKnowledgeArticle(articleId: string): Promise<{ chun
     return { chunks: 0 };
   }
 
-  const pieces = chunkText(article.content, DEFAULT_CHUNK_CHARS, DEFAULT_OVERLAP).slice(0, MAX_CHUNKS_PER_ARTICLE);
+  const pieces = chunkKnowledgeDocumentContent(article.content, {
+    chunkSize: DEFAULT_CHUNK_CHARS,
+    overlap: DEFAULT_OVERLAP,
+    maxChunks: MAX_CHUNKS_PER_ARTICLE,
+  });
   if (!pieces.length) {
     return { chunks: 0 };
   }

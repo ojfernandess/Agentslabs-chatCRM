@@ -9,6 +9,10 @@ import {
   rankedKnowledgeSearch,
 } from "../../knowledgeRetrieval.js";
 import { reindexKnowledgeArticle, reindexAllKnowledgeArticlesForOrg } from "../../knowledgeReindex.js";
+import {
+  adaptiveKnowledgeMinScore,
+  postProcessRankedKnowledgeRows,
+} from "../../knowledgeChunkPostProcess.js";
 import { prisma } from "../../../db.js";
 import type {
   KnowledgeChunk,
@@ -174,14 +178,15 @@ export class OpenNexoKnowledgeProvider {
       pinnedArticleIds: input.pinnedArticleIds,
     });
     const filtered = ranked.filter(
-      (r) => r.score >= Math.max(config.minScore, config.minSimilarity),
+      (r) => r.score >= adaptiveKnowledgeMinScore(input.query, config.minScore, config.minSimilarity),
     );
-    let chunks = mapRankedToChunks(filtered);
+    const postRanked = postProcessRankedKnowledgeRows(filtered, input.query, limit);
+    let chunks = mapRankedToChunks(postRanked);
     if (config.reranking) {
       chunks = rerankChunks({ query: input.query, chunks, topK: limit }).chunks;
     }
     const appendix = formatRankedKnowledgeForSystemPrompt(
-      filtered.slice(0, input.maxDocuments ?? config.maxDocuments),
+      postRanked.slice(0, input.maxDocuments ?? config.maxDocuments),
     );
     const docIds = new Set(chunks.map((c) => c.documentId));
     const documents: KnowledgeDocument[] = [];
@@ -196,7 +201,7 @@ export class OpenNexoKnowledgeProvider {
       documents,
       chunks,
       appendix,
-      citations: mapRankedToCitations(filtered, config.citations),
+      citations: mapRankedToCitations(postRanked, config.citations),
       latencyMs: Date.now() - started,
       provider: this.kind,
       fromCache: false,
