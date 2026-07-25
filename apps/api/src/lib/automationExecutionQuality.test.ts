@@ -7,6 +7,27 @@ import {
   detectConversationLoop,
 } from "./automationExecutionQuality.js";
 
+test("does not flag lost_context when buscar_conhecimento JSON matches markdown reply", () => {
+  const preview = JSON.stringify({
+    found: true,
+    articles: [
+      {
+        title: "Hotel Brooklin — Quartos",
+        excerpt: "Standard, Deluxe e Suite Master com vista para o mar.",
+      },
+    ],
+  });
+  const reply =
+    "As categorias de quartos do Hotel Brooklin incluem Standard, Deluxe e Suite Master com vista para o mar.";
+  const signals = analyzeLiveExecutionQuality({
+    userMessage: "Quais as categorias de quartos do hotel brooklin?",
+    replyText: reply,
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview }],
+    outboundSent: true,
+  });
+  assert.ok(!signals.some((s) => s.kind === "lost_context"));
+});
+
 test("detects lost context when tool result unused in generic reply", () => {
   const signals = analyzeLiveExecutionQuality({
     userMessage: "Quero cancelar minha reserva.",

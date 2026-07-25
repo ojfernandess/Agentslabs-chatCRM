@@ -129,6 +129,37 @@ function overlapRatio(a: string, b: string): number {
   return shared / Math.min(ta.size, tb.size);
 }
 
+/** Texto legível para comparar overlap quando o preview da tool é JSON (ex.: buscar_conhecimento). */
+function toolPreviewForOverlapComparison(toolName: string, preview: string): string {
+  const raw = preview.trim();
+  if (!raw) return preview;
+  const looksJson = raw.startsWith("{") || raw.startsWith("[");
+  if (!looksJson && toolName !== "buscar_conhecimento") return preview;
+  try {
+    const parsed = JSON.parse(raw) as {
+      bodyPreview?: string;
+      articles?: Array<{ title?: string; excerpt?: string }>;
+      excerpt?: string;
+      title?: string;
+    };
+    if (typeof parsed.bodyPreview === "string" && parsed.bodyPreview.trim()) {
+      return parsed.bodyPreview.trim();
+    }
+    if (Array.isArray(parsed.articles) && parsed.articles.length > 0) {
+      return parsed.articles
+        .slice(0, 4)
+        .map((a) => `${typeof a.title === "string" ? a.title : ""}\n${typeof a.excerpt === "string" ? a.excerpt : ""}`)
+        .join("\n")
+        .trim();
+    }
+    if (typeof parsed.excerpt === "string" && parsed.excerpt.trim()) return parsed.excerpt.trim();
+    if (typeof parsed.title === "string" && parsed.title.trim()) return parsed.title.trim();
+  } catch {
+    /* keep raw */
+  }
+  return preview;
+}
+
 function isGenericDeflectionReply(text: string): boolean {
   const t = text.trim();
   if (!t || t.length > 220) return false;
@@ -296,7 +327,7 @@ export function analyzeExecutionQualityFromLogs(entries: ExecutionLogEntryLike[]
 
   if (successfulTools.length > 0 && replyText) {
     for (const tool of successfulTools) {
-      const overlap = overlapRatio(tool.preview, replyText);
+      const overlap = overlapRatio(toolPreviewForOverlapComparison(tool.name, tool.preview), replyText);
       if (isGenericDeflectionReply(replyText) || overlap < 0.08) {
         push({
           kind: "lost_context",

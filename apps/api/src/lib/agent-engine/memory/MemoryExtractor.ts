@@ -105,6 +105,21 @@ function extractLocatorMemory(userMessage: string, combined: string): ExtractedC
   return null;
 }
 
+function isFactualKbQuestion(userMessage: string): boolean {
+  const u = userMessage.trim();
+  if (!u) return false;
+  if (/\?\s*$/.test(u)) return true;
+  return /^(quais|qual|como|onde|quando|o que|quantos|quantas|me fale|me diga|informe|gostaria de saber|preciso saber)/i.test(
+    u,
+  );
+}
+
+function statesPersonalPreference(text: string): boolean {
+  return /prefere|preferência|preferencia|gosta de|não gosta|nao gosta|sempre pede|costuma|alergia|cachorro|gato|pet|quarto térreo|quarto terreo/i.test(
+    text,
+  );
+}
+
 /** Extrai candidatos a memória persistente a partir de um turno. */
 export function extractMemoryCandidates(
   userMessage: string,
@@ -126,6 +141,13 @@ export function extractMemoryCandidates(
 
   for (const sentence of sentences.slice(0, 4)) {
     const { category, confidence } = detectCategory(sentence);
+    if (
+      isFactualKbQuestion(user) &&
+      (category === "hotel" || category === "preferences") &&
+      !statesPersonalPreference(sentence)
+    ) {
+      continue;
+    }
     out.push({ text: sentence.slice(0, 500), category, confidence });
   }
 

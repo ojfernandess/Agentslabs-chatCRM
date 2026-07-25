@@ -290,6 +290,15 @@ test("MemoryExtractor detects preference and reservation facts", async () => {
   assert.ok(rows.some((r) => r.category === "preferences" || r.category === "reservation"));
 });
 
+test("MemoryExtractor skips hotel/preferences from assistant on factual KB questions", async () => {
+  const { extractMemoryCandidates } = await import("./memory/MemoryExtractor.js");
+  const rows = extractMemoryCandidates(
+    "Quais as categorias de quartos do hotel brooklin?",
+    "O Hotel Brooklin oferece quartos Standard, Deluxe e Suite Master.",
+  );
+  assert.ok(!rows.some((r) => r.category === "hotel" || r.category === "preferences"));
+});
+
 test("MemoryContextBuilder merges hierarchy order", async () => {
   const { mergeMemoryHierarchy } = await import("./memory/MemoryContextBuilder.js");
   const { normalizeMemoryRecord } = await import("./memory/memoryEngineTypes.js");

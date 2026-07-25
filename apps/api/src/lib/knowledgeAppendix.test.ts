@@ -19,3 +19,14 @@ test("kbAppendixHasRetrievedExcerpts true when excerpts header present without n
     "\n\n### Base de conhecimento (excertos recuperados automaticamente)\n**1. Doc** (relevância 0.9)\nRua A";
   assert.equal(kbAppendixHasRetrievedExcerpts(ok), true);
 });
+
+test("kbAppendixHasRetrievedExcerpts true for LlamaIndex appendix with excerpts", () => {
+  const ok =
+    "\n\n### Base de conhecimento (LlamaIndex)\n**1. Hotel Brooklin** (LlamaIndex relevância 0.95)\nQuartos standard e deluxe.";
+  assert.equal(kbAppendixHasRetrievedExcerpts(ok), true);
+});
+
+test("kbAppendixHasRetrievedExcerpts false for empty LlamaIndex header", () => {
+  const empty = "\n\n### Base de conhecimento (LlamaIndex)\n";
+  assert.equal(kbAppendixHasRetrievedExcerpts(empty), false);
+});

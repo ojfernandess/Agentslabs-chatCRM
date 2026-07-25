@@ -7,5 +7,8 @@ export function kbAppendixHasRetrievedExcerpts(appendix: string): boolean {
   const a = appendix.trim();
   if (!a) return false;
   if (a.includes("Não foi encontrado nenhum trecho indexado relevante")) return false;
-  return a.includes("(excertos recuperados automaticamente)");
+  if (a.includes("(excertos recuperados automaticamente)")) return true;
+  // LlamaIndex usa cabeçalho distinto mas injecta excertos reais da mesma forma.
+  if (/###\s*Base de conhecimento \(LlamaIndex\)/i.test(a) && /\*\*\d+\./.test(a)) return true;
+  return false;
 }

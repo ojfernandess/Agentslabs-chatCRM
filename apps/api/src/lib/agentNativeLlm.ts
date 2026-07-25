@@ -585,7 +585,7 @@ function extractSnippetsFromKnowledgeToolPreview(preview: string): string[] {
 function extractSnippetsFromProactiveAppendix(appendix: string): string[] {
   if (!kbAppendixHasRetrievedExcerpts(appendix)) return [];
   const withoutHeader = appendix.replace(
-    /^[\s\S]*?###\s*Base de conhecimento \(excertos recuperados automaticamente\)\s*/i,
+    /^[\s\S]*?###\s*Base de conhecimento \((?:excertos recuperados automaticamente|LlamaIndex)\)\s*/i,
     "",
   );
   const withoutFooter = withoutHeader.replace(/\n\n\*\*Instruções:\*\*[\s\S]*$/i, "");

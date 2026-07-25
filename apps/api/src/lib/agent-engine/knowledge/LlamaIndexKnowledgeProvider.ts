@@ -20,6 +20,7 @@ import type {
 } from "./knowledgeEngineTypes.js";
 import { OpenNexoKnowledgeProvider } from "./OpenNexoKnowledgeProvider.js";
 import { effectiveKnowledgeSearchBotId } from "../../knowledgeRetrieval.js";
+import { applyQueryEntityRankingBoost } from "../../knowledgeSearchRanking.js";
 
 type LlamaDocument = {
   id_: string;
@@ -138,6 +139,13 @@ export class LlamaIndexKnowledgeProvider {
       knowledgeChunks = knowledgeChunks.filter(
         (c) => c.score >= Math.max(cfg.minScore, cfg.minSimilarity),
       );
+
+      const normQuery = input.query.trim().toLowerCase().slice(0, 500);
+      if (normQuery) {
+        knowledgeChunks = applyQueryEntityRankingBoost(knowledgeChunks, normQuery, (c) =>
+          `${c.documentName} ${c.text}`,
+        );
+      }
 
       if (cfg.reranking && knowledgeChunks.length > 1) {
         knowledgeChunks = (
