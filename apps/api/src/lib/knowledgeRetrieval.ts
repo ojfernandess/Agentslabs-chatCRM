@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
-import { applyQueryEntityRankingBoost, extractQueryEstablishmentTokens, queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
+import { applyQueryEntityRankingBoost, extractQuerySegmentTokens, queryTerms, rankArticles } from "./knowledgeSearchRanking.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 
@@ -208,7 +208,7 @@ export async function rankedKnowledgeSearch(params: {
     out = { ranked: merged.slice(0, limit), mode };
   }
 
-  if (extractQueryEstablishmentTokens(norm).length > 0) {
+  if (extractQuerySegmentTokens(norm).length > 0) {
     out = {
       ...out,
       ranked: applyQueryEntityRankingBoost(out.ranked, norm, (r) =>

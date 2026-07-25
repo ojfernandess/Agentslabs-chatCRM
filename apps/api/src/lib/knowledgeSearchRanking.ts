@@ -65,7 +65,7 @@ export function rankArticles<T extends RankableArticle>(
   return ranked;
 }
 
-const QUERY_ESTABLISHMENT_STOPWORDS = new Set([
+const QUERY_SEGMENT_STOPWORDS = new Set([
   "quais",
   "qual",
   "como",
@@ -76,6 +76,20 @@ const QUERY_ESTABLISHMENT_STOPWORDS = new Set([
   "quartos",
   "categoria",
   "categorias",
+  "produto",
+  "produtos",
+  "plano",
+  "planos",
+  "servico",
+  "serviço",
+  "servicos",
+  "serviços",
+  "politica",
+  "política",
+  "informacao",
+  "informação",
+  "base",
+  "conhecimento",
   "sobre",
   "para",
   "com",
@@ -97,16 +111,20 @@ const QUERY_ESTABLISHMENT_STOPWORDS = new Set([
   "sua",
   "tipo",
   "tipos",
+  "preco",
+  "preço",
+  "valor",
+  "valores",
 ]);
 
-/** Tokens de estabelecimento/propriedade na consulta (ex.: «brooklin» em «hotel brooklin»). */
-export function extractQueryEstablishmentTokens(normalizedQuery: string): string[] {
+/** Tokens de segmento/entidade na consulta (hotel, produto, plano, unidade, etc.). */
+export function extractQuerySegmentTokens(normalizedQuery: string): string[] {
   const q = normalizedQuery.trim().toLowerCase();
   if (!q) return [];
   const tokens = new Set<string>();
 
   for (const m of q.matchAll(
-    /\b(?:hotel|resort|pousada|suites?|inn|hostel)\s+([\p{L}0-9][\p{L}0-9\s-]{1,48})/giu,
+    /\b(?:hotel|resort|pousada|suites?|inn|hostel|plano|planos|produto|produtos|servi[cç]o|servi[cç]os|unidade|filial|loja|pacote|pacotes|modulo|m[oó]dulo)\s+([\p{L}0-9][\p{L}0-9\s-]{1,48})/giu,
   )) {
     const phrase = m[1]
       .trim()
@@ -114,40 +132,58 @@ export function extractQueryEstablishmentTokens(normalizedQuery: string): string
       .trim();
     if (phrase.length >= 3) {
       tokens.add(phrase);
-      for (const part of phrase.split(/\s+/).filter((p) => p.length >= 4 && !QUERY_ESTABLISHMENT_STOPWORDS.has(p))) {
+      for (const part of phrase.split(/\s+/).filter((p) => p.length >= 4 && !QUERY_SEGMENT_STOPWORDS.has(p))) {
         tokens.add(part);
       }
     }
   }
 
+  for (const m of q.matchAll(/["'«]([^"'»]{3,48})["'»]/g)) {
+    const quoted = m[1].trim().toLowerCase();
+    if (quoted.length >= 3) tokens.add(quoted);
+  }
+
   for (const term of queryTerms(q)) {
-    if (term.length >= 4 && !QUERY_ESTABLISHMENT_STOPWORDS.has(term)) tokens.add(term);
+    if (term.length >= 4 && !QUERY_SEGMENT_STOPWORDS.has(term)) tokens.add(term);
   }
 
   return [...tokens].filter((t) => t.length >= 3);
 }
 
-function extractDocumentEstablishmentNames(text: string): string[] {
+/** @deprecated Alias — use extractQuerySegmentTokens */
+export const extractQueryEstablishmentTokens = extractQuerySegmentTokens;
+
+function extractDocumentSegmentLabels(text: string): string[] {
   const names: string[] = [];
   const lower = text.toLowerCase();
+
+  for (const line of text.split("\n").slice(0, 3)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const seg = trimmed.split(/\s*(?:—|–|\||\s-\s)\s*/)[0]?.trim().toLowerCase();
+    if (seg && seg.length >= 3 && seg.length <= 80) names.push(seg);
+  }
+
   for (const m of lower.matchAll(
-    /\b(?:hotel|resort|pousada|suites?|inn|hostel)\s+([\p{L}0-9][\p{L}0-9\s-]{2,40})/giu,
+    /\b(?:hotel|resort|pousada|suites?|inn|hostel|plano|produto|servi[cç]o|unidade|filial|loja|pacote|m[oó]dulo)\s+([\p{L}0-9][\p{L}0-9\s-]{2,40})/giu,
   )) {
     names.push(m[1].trim());
   }
+
   for (const m of text.match(/\b[\p{L}][\p{L}0-9]*(?:\s+[\p{L}][\p{L}0-9]*){1,4}\s+suites?\b/giu) ?? []) {
     names.push(m.trim().toLowerCase());
   }
+
   return [...new Set(names.filter((n) => n.length >= 3))];
 }
 
-/** Boost/penalização leve quando a consulta menciona um estabelecimento concreto (multi-hotel). */
+/** Boost/penalização quando a consulta aponta a um segmento concreto da KB (multi-unidade/produto). */
 export function applyQueryEntityRankingBoost<T extends { score: number }>(
   rows: T[],
   normalizedQuery: string,
   getHaystack: (row: T) => string,
 ): T[] {
-  const queryTokens = extractQueryEstablishmentTokens(normalizedQuery);
+  const queryTokens = extractQuerySegmentTokens(normalizedQuery);
   if (queryTokens.length === 0 || rows.length === 0) return rows;
 
   const matchesQueryEntity = (hay: string): boolean => queryTokens.some((t) => hay.includes(t));
@@ -160,9 +196,9 @@ export function applyQueryEntityRankingBoost<T extends { score: number }>(
       const longest = queryTokens.reduce((a, b) => (a.length >= b.length ? a : b));
       if (longest.length >= 6 && hay.includes(longest)) delta += 0.12;
     }
-    for (const docName of extractDocumentEstablishmentNames(hay)) {
-      const docMatches = queryTokens.some((t) => docName.includes(t) || t.includes(docName));
-      if (!docMatches && docName.length >= 4) delta -= 0.35;
+    for (const docLabel of extractDocumentSegmentLabels(hay)) {
+      const docMatches = queryTokens.some((t) => docLabel.includes(t) || t.includes(docLabel));
+      if (!docMatches && docLabel.length >= 4) delta -= 0.35;
     }
     return { ...row, score: Math.min(1, Math.max(0, row.score + delta)) };
   });

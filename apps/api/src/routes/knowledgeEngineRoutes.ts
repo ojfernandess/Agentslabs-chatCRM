@@ -18,6 +18,7 @@ import {
 } from "../lib/agent-engine/knowledge/knowledgeCache.js";
 import { runKnowledgeInspector } from "../lib/agent-engine/knowledge/knowledgeInspectorService.js";
 import { parseKnowledgeEngineConfig } from "../lib/agent-engine/knowledge/parseKnowledgeEngineConfig.js";
+import { computeKnowledgeEngineRecommendations } from "../lib/agent-engine/knowledge/knowledgeEngineRecommendations.js";
 import { prisma } from "../db.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -86,6 +87,16 @@ export async function registerKnowledgeEngineRoutes(app: FastifyInstance): Promi
     }
     const removed = clearKnowledgeCache({ organizationId });
     return { data: { removed, cacheStats: getKnowledgeCacheStats() } };
+  });
+
+  app.get("/knowledge-engine/recommendations", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const q = request.query as { botId?: string };
+    const botId = typeof q.botId === "string" && q.botId.trim() ? q.botId.trim() : undefined;
+    const data = await computeKnowledgeEngineRecommendations({ organizationId, botId });
+    return { data };
   });
 
   app.get("/knowledge-engine/center", async (request, reply) => {

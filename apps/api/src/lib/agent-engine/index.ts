@@ -54,6 +54,8 @@ export {
 export { logKnowledgeEvents } from "./knowledge/KnowledgeObservability.js";
 export {
   parseKnowledgeEngineConfig,
+  parseKnowledgeEngineUseRecommendedSettings,
+  resolveKnowledgeEngineConfig,
   mergeKnowledgeEngineIntoBehavior,
   parseOrgKnowledgeStore,
   shouldUseKnowledgeEngineRuntime,

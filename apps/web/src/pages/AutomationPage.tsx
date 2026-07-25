@@ -701,6 +701,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         ? Math.min(800, Math.max(0, Math.round(chunkRaw.chunkOverlap)))
         : 120,
     autoChunk: chunkRaw.autoChunk !== false,
+    useRecommendedSettings: kbRaw.useRecommendedSettings === true,
   };
 
   return {
@@ -985,6 +986,7 @@ function formToPayload(
       maxDocuments: form.knowledgeEngine.maxDocuments,
       maxChunks: form.knowledgeEngine.maxChunks,
       searchTemperature: form.knowledgeEngine.searchTemperature,
+      useRecommendedSettings: form.knowledgeEngine.useRecommendedSettings,
       minScore: 0.25,
       minSimilarity: 0.2,
       chunking: {
@@ -3375,6 +3377,7 @@ function AgentsTab({
               <KnowledgeEnginePanel
                 value={agentForm.knowledgeEngine}
                 onChange={(knowledgeEngine) => setAgentForm((f) => ({ ...f, knowledgeEngine }))}
+                botId={agentForm.editBotId ?? agentForm.existingBotId ?? undefined}
                 t={t}
               />
 

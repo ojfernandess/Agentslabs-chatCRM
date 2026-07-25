@@ -4,8 +4,10 @@ import {
   parseKnowledgeEngineConfig,
   mergeKnowledgeEngineIntoBehavior,
   shouldUseKnowledgeEngineRuntime,
+  parseKnowledgeEngineUseRecommendedSettings,
 } from "./parseKnowledgeEngineConfig.js";
 import { DEFAULT_KNOWLEDGE_ENGINE_CONFIG } from "./knowledgeEngineTypes.js";
+import { applyKnowledgeEngineRecommendations } from "./knowledgeEngineRecommendations.js";
 import {
   buildKnowledgeQueryCacheKey,
   clearKnowledgeCache,
@@ -33,6 +35,39 @@ test("mergeKnowledgeEngineIntoBehavior syncs nativeTools", () => {
     { ...DEFAULT_KNOWLEDGE_ENGINE_CONFIG, enabled: false },
   );
   assert.equal((merged.nativeTools as Record<string, unknown>).knowledge_search, false);
+});
+
+test("parseKnowledgeEngineUseRecommendedSettings reads flag", () => {
+  assert.equal(parseKnowledgeEngineUseRecommendedSettings({}), false);
+  assert.equal(
+    parseKnowledgeEngineUseRecommendedSettings({
+      knowledgeEngine: { provider: "llamaindex", useRecommendedSettings: true },
+    }),
+    true,
+  );
+});
+
+test("applyKnowledgeEngineRecommendations overrides limits and chunking", () => {
+  const base = { ...DEFAULT_KNOWLEDGE_ENGINE_CONFIG, provider: "llamaindex" as const };
+  const applied = applyKnowledgeEngineRecommendations(base, {
+    maxDocuments: 7,
+    maxChunks: 42,
+    searchTemperature: 0,
+    chunkSize: 1200,
+    chunkOverlap: 156,
+    stats: {
+      documentCount: 7,
+      totalChars: 50000,
+      avgDocChars: 7142,
+      indexedChunkCount: 40,
+      estimatedChunkCount: 42,
+      scopedToBot: false,
+    },
+  });
+  assert.equal(applied.maxDocuments, 7);
+  assert.equal(applied.maxChunks, 42);
+  assert.equal(applied.chunking.chunkSize, 1200);
+  assert.equal(applied.chunking.chunkOverlap, 156);
 });
 
 test("knowledge query cache round-trip", () => {

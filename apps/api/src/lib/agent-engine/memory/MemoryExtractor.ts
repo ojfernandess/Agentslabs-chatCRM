@@ -109,15 +109,19 @@ function isFactualKbQuestion(userMessage: string): boolean {
   const u = userMessage.trim();
   if (!u) return false;
   if (/\?\s*$/.test(u)) return true;
-  return /^(quais|qual|como|onde|quando|o que|quantos|quantas|me fale|me diga|informe|gostaria de saber|preciso saber)/i.test(
+  return /^(quais|qual|como|onde|quando|o que|quantos|quantas|me fale|me diga|informe|gostaria de saber|preciso saber|preciso de|quero saber)/i.test(
     u,
   );
 }
 
-function statesPersonalPreference(text: string): boolean {
-  return /prefere|preferência|preferencia|gosta de|não gosta|nao gosta|sempre pede|costuma|alergia|cachorro|gato|pet|quarto térreo|quarto terreo/i.test(
+function statesPersonalFact(text: string): boolean {
+  return /prefere|preferência|preferencia|gosta de|não gosta|nao gosta|sempre pede|costuma|alergia|cachorro|gato|pet|quarto térreo|quarto terreo|localizador|reserva|meu cpf|minha conta|sou cliente|cliente desde/i.test(
     text,
   );
+}
+
+function sentenceFromAssistantOnly(user: string, assistant: string, sentence: string): boolean {
+  return assistant.includes(sentence) && !user.includes(sentence);
 }
 
 /** Extrai candidatos a memória persistente a partir de um turno. */
@@ -140,14 +144,11 @@ export function extractMemoryCandidates(
     .filter((s) => s.length >= 20 && !isCasualText(s) && !isTemporaryText(s));
 
   for (const sentence of sentences.slice(0, 4)) {
-    const { category, confidence } = detectCategory(sentence);
-    if (
-      isFactualKbQuestion(user) &&
-      (category === "hotel" || category === "preferences") &&
-      !statesPersonalPreference(sentence)
-    ) {
-      continue;
+    if (isFactualKbQuestion(user)) {
+      if (sentenceFromAssistantOnly(user, assistant, sentence)) continue;
+      if (!statesPersonalFact(sentence)) continue;
     }
+    const { category, confidence } = detectCategory(sentence);
     out.push({ text: sentence.slice(0, 500), category, confidence });
   }
 

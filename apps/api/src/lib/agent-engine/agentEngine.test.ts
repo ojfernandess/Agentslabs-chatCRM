@@ -290,6 +290,15 @@ test("MemoryExtractor detects preference and reservation facts", async () => {
   assert.ok(rows.some((r) => r.category === "preferences" || r.category === "reservation"));
 });
 
+test("MemoryExtractor skips assistant KB dump on factual questions (any category)", async () => {
+  const { extractMemoryCandidates } = await import("./memory/MemoryExtractor.js");
+  const rows = extractMemoryCandidates(
+    "Qual a política de cancelamento do plano enterprise?",
+    "O Plano Enterprise permite cancelamento com 30 dias de antecedência e reembolso proporcional.",
+  );
+  assert.equal(rows.length, 0);
+});
+
 test("MemoryExtractor skips hotel/preferences from assistant on factual KB questions", async () => {
   const { extractMemoryCandidates } = await import("./memory/MemoryExtractor.js");
   const rows = extractMemoryCandidates(

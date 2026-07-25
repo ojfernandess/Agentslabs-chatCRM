@@ -9,7 +9,11 @@ import {
   type OpenAiToolDefinition,
   type PreviewChatTurn,
 } from "./promptModulePreviewLlm.js";
-import { kbAppendixHasRetrievedExcerpts } from "./kbAppendix.js";
+import { kbAppendixHasRetrievedExcerpts, stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
+import {
+  buscarConhecimentoPreviewHasArticles,
+  parseBuscarConhecimentoPreview,
+} from "./knowledgeToolResult.js";
 import {
   mergeBotLinkedKnowledgeWhenRankedEmpty,
   mergePinnedKnowledgeWhenRankedEmpty,
@@ -29,6 +33,7 @@ import {
   parseAgentEngineConfig,
   parseMemoryEngineConfig,
   parseKnowledgeEngineConfig,
+  resolveKnowledgeEngineConfig,
   shouldUseKnowledgeEngineRuntime,
   KnowledgeEngineService,
   logKnowledgeEvents,
@@ -471,6 +476,7 @@ export function isNonDeliveringAgentReply(text: string, configuredStallMessages?
 export function knowledgeToolFoundUsefulExcerpts(toolOutcomes: NativeToolRoundOutcome[]): boolean {
   return toolOutcomes.some((t) => {
     if (t.name !== "buscar_conhecimento") return false;
+    if (buscarConhecimentoPreviewHasArticles(t.preview)) return true;
     if (t.ok && /"found"\s*:\s*true/i.test(t.preview)) return true;
     if (/"found"\s*:\s*true/i.test(t.preview) && !/"skipped"\s*:\s*true/i.test(t.preview)) return true;
     return false;
@@ -554,41 +560,21 @@ export function shouldForceKnowledgeDelivery(input: {
 export const FORCED_KB_REPLY_PREFIX_RE = /^encontrei isto na nossa base de conhecimento/i;
 
 function extractSnippetsFromKnowledgeToolPreview(preview: string): string[] {
+  const parsed = parseBuscarConhecimentoPreview(preview);
+  if (!parsed?.found || !Array.isArray(parsed.articles)) return [];
   const snippets: string[] = [];
-  const tryParse = (raw: string) => {
-    try {
-      return JSON.parse(raw) as {
-        found?: boolean;
-        articles?: Array<{ title?: string; excerpt?: string }>;
-        bodyPreview?: string;
-      };
-    } catch {
-      return null;
-    }
-  };
-  let parsed = tryParse(preview);
-  if (parsed?.bodyPreview && typeof parsed.bodyPreview === "string") {
-    const inner = tryParse(parsed.bodyPreview);
-    if (inner) parsed = inner;
-  }
-  if (parsed?.found && Array.isArray(parsed.articles)) {
-    for (const a of parsed.articles.slice(0, 2)) {
-      const title = typeof a.title === "string" ? a.title.trim() : "";
-      const excerpt = typeof a.excerpt === "string" ? a.excerpt.trim() : "";
-      if (!excerpt) continue;
-      snippets.push((title ? `${title}\n` : "") + excerpt.slice(0, 900));
-    }
+  for (const a of parsed.articles.slice(0, 2)) {
+    const title = typeof a.title === "string" ? a.title.trim() : "";
+    const excerpt = typeof a.excerpt === "string" ? a.excerpt.trim() : "";
+    if (!excerpt) continue;
+    snippets.push((title ? `${title}\n` : "") + excerpt.slice(0, 900));
   }
   return snippets;
 }
 
 function extractSnippetsFromProactiveAppendix(appendix: string): string[] {
   if (!kbAppendixHasRetrievedExcerpts(appendix)) return [];
-  const withoutHeader = appendix.replace(
-    /^[\s\S]*?###\s*Base de conhecimento \((?:excertos recuperados automaticamente|LlamaIndex)\)\s*/i,
-    "",
-  );
-  const withoutFooter = withoutHeader.replace(/\n\n\*\*Instruções:\*\*[\s\S]*$/i, "");
+  const withoutFooter = stripProactiveKnowledgeAppendixShell(appendix);
   const parts = withoutFooter.split(/\*\*\d+\.\s+/).slice(1);
   const snippets: string[] = [];
   for (const part of parts.slice(0, 2)) {
@@ -1548,7 +1534,12 @@ async function generateNativeAgentReplyCore(input: {
 
   let kbProactiveAppendix = "";
   const useKnowledgeEngine = shouldUseKnowledgeEngineRuntime(profile.behaviorConfig);
-  const knowledgeEngineConfig = parseKnowledgeEngineConfig(profile.behaviorConfig);
+  const knowledgeEngineConfig = useKnowledgeEngine
+    ? await resolveKnowledgeEngineConfig(profile.behaviorConfig, {
+        organizationId,
+        botId: bot.id,
+      })
+    : parseKnowledgeEngineConfig(profile.behaviorConfig);
   const knowledgeEngine = useKnowledgeEngine
     ? KnowledgeEngineService.fromConfig(knowledgeEngineConfig)
     : null;

@@ -1,5 +1,7 @@
 import clsx from "clsx";
-import { BookOpen, Layers, Search, Sparkles } from "lucide-react";
+import { BookOpen, Layers, Loader2, RefreshCw, Search, Sparkles, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
 
 export type KnowledgeEngineProviderOption = "openconduit" | "llamaindex";
 
@@ -15,6 +17,7 @@ export type KnowledgeEngineFormValues = {
   chunkSize: number;
   chunkOverlap: number;
   autoChunk: boolean;
+  useRecommendedSettings: boolean;
 };
 
 export const defaultKnowledgeEngineFormValues = (): KnowledgeEngineFormValues => ({
@@ -29,17 +32,168 @@ export const defaultKnowledgeEngineFormValues = (): KnowledgeEngineFormValues =>
   chunkSize: 900,
   chunkOverlap: 120,
   autoChunk: true,
+  useRecommendedSettings: false,
 });
+
+type RecommendationPayload = {
+  maxDocuments: number;
+  maxChunks: number;
+  searchTemperature: number;
+  chunkSize: number;
+  chunkOverlap: number;
+  stats: {
+    documentCount: number;
+    totalChars: number;
+    avgDocChars: number;
+    indexedChunkCount: number;
+    estimatedChunkCount: number;
+    scopedToBot: boolean;
+  };
+};
 
 type Props = {
   value: KnowledgeEngineFormValues;
   onChange: (next: KnowledgeEngineFormValues) => void;
   t: (key: string) => string;
+  botId?: string;
 };
 
-export function KnowledgeEnginePanel({ value, onChange, t }: Props) {
-  const patch = (p: Partial<KnowledgeEngineFormValues>) => onChange({ ...value, ...p });
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function KnowledgeNumericField({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  disabled,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === "" || trimmed === "-") {
+      setDraft(String(value));
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) {
+      setDraft(String(value));
+      return;
+    }
+    const clamped = clamp(step ? Math.round(n / step) * step : n, min, max);
+    onChange(clamped);
+    setDraft(String(clamped));
+  };
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      disabled={disabled}
+      className={clsx(
+        "w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950",
+        disabled && "cursor-not-allowed opacity-70",
+      )}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit(draft);
+      }}
+    />
+  );
+}
+
+export function KnowledgeEnginePanel({ value, onChange, t, botId }: Props) {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const patch = (p: Partial<KnowledgeEngineFormValues>) => onChange({ ...valueRef.current, ...p });
   const isLlamaIndex = value.provider === "llamaindex";
+  const [recLoading, setRecLoading] = useState(false);
+  const [recError, setRecError] = useState("");
+  const [recStats, setRecStats] = useState<RecommendationPayload["stats"] | null>(null);
+
+  const applyRecommendation = useCallback(async () => {
+    if (!isLlamaIndex) return;
+    setRecLoading(true);
+    setRecError("");
+    try {
+      const qs = botId ? `?botId=${encodeURIComponent(botId)}` : "";
+      const res = await api.get<{ data: RecommendationPayload }>(
+        `/automation/knowledge-engine/recommendations${qs}`,
+      );
+      const data = res.data;
+      setRecStats(data.stats);
+      onChangeRef.current({
+        ...valueRef.current,
+        maxDocuments: data.maxDocuments,
+        maxChunks: data.maxChunks,
+        searchTemperature: data.searchTemperature,
+        chunkSize: data.chunkSize,
+        chunkOverlap: data.chunkOverlap,
+      });
+    } catch {
+      setRecError(t("automationPage.knowledgeEngineRecommendationError"));
+    } finally {
+      setRecLoading(false);
+    }
+  }, [botId, isLlamaIndex, t]);
+
+  useEffect(() => {
+    if (!isLlamaIndex || !value.useRecommendedSettings) {
+      setRecStats(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setRecLoading(true);
+      setRecError("");
+      try {
+        const qs = botId ? `?botId=${encodeURIComponent(botId)}` : "";
+        const res = await api.get<{ data: RecommendationPayload }>(
+          `/automation/knowledge-engine/recommendations${qs}`,
+        );
+        if (cancelled) return;
+        const data = res.data;
+        setRecStats(data.stats);
+        onChangeRef.current({
+          ...valueRef.current,
+          maxDocuments: data.maxDocuments,
+          maxChunks: data.maxChunks,
+          searchTemperature: data.searchTemperature,
+          chunkSize: data.chunkSize,
+          chunkOverlap: data.chunkOverlap,
+        });
+      } catch {
+        if (!cancelled) setRecError(t("automationPage.knowledgeEngineRecommendationError"));
+      } finally {
+        if (!cancelled) setRecLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, isLlamaIndex, t, value.useRecommendedSettings]);
+
+  const fieldsDisabled = value.useRecommendedSettings || recLoading;
 
   return (
     <div className="rounded-xl border border-sky-200/70 bg-sky-50/30 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
@@ -105,73 +259,108 @@ export function KnowledgeEnginePanel({ value, onChange, t }: Props) {
             ))}
           </div>
 
+          <div className="mt-4 rounded-lg border border-sky-200/80 bg-white/70 p-3 dark:border-sky-800/60 dark:bg-ink-950/40">
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.useRecommendedSettings}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  patch({ useRecommendedSettings: enabled });
+                  if (enabled) void applyRecommendation();
+                }}
+              />
+              <span>
+                <span className="inline-flex items-center gap-1 font-semibold text-ink-800 dark:text-ink-100">
+                  <Wand2 className="h-3.5 w-3.5 text-sky-600" />
+                  {t("automationPage.knowledgeEngineRecommendationMode")}
+                </span>
+                <span className="mt-1 block text-[11px] leading-relaxed text-ink-500">
+                  {t("automationPage.knowledgeEngineRecommendationHelp")}
+                </span>
+              </span>
+            </label>
+            {value.useRecommendedSettings ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={recLoading}
+                  onClick={() => void applyRecommendation()}
+                  className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-60 dark:border-sky-700 dark:bg-sky-950/50 dark:text-sky-200"
+                >
+                  {recLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                  {t("automationPage.knowledgeEngineRecommendationRefresh")}
+                </button>
+                {recStats ? (
+                  <span className="text-[11px] text-ink-500">
+                    {t("automationPage.knowledgeEngineRecommendationStats")
+                      .replace("{docs}", String(recStats.documentCount))
+                      .replace("{chunks}", String(recStats.estimatedChunkCount))
+                      .replace("{chars}", String(recStats.totalChars))}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {recError ? <p className="mt-2 text-[11px] text-red-600">{recError}</p> : null}
+          </div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <label className="text-xs">
-          <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineMaxDocuments")}</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            className="w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
-            value={value.maxDocuments}
-            onChange={(e) =>
-              patch({ maxDocuments: Math.min(50, Math.max(1, Number(e.target.value) || 10)) })
-            }
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineMaxChunks")}</span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            className="w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
-            value={value.maxChunks}
-            onChange={(e) =>
-              patch({ maxChunks: Math.min(100, Math.max(1, Number(e.target.value) || 20)) })
-            }
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineSearchTemperature")}</span>
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.1}
-            className="w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
-            value={value.searchTemperature}
-            onChange={(e) =>
-              patch({ searchTemperature: Math.min(1, Math.max(0, Number(e.target.value) || 0)) })
-            }
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineChunkSize")}</span>
-          <input
-            type="number"
-            min={200}
-            max={4000}
-            className="w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
-            value={value.chunkSize}
-            onChange={(e) =>
-              patch({ chunkSize: Math.min(4000, Math.max(200, Number(e.target.value) || 900)) })
-            }
-          />
-        </label>
-        <label className="text-xs">
-          <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineChunkOverlap")}</span>
-          <input
-            type="number"
-            min={0}
-            max={800}
-            className="w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
-            value={value.chunkOverlap}
-            onChange={(e) =>
-              patch({ chunkOverlap: Math.min(800, Math.max(0, Number(e.target.value) || 120)) })
-            }
-          />
-        </label>
+            <label className="text-xs">
+              <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineMaxDocuments")}</span>
+              <KnowledgeNumericField
+                value={value.maxDocuments}
+                min={1}
+                max={50}
+                disabled={fieldsDisabled}
+                onChange={(maxDocuments) => patch({ maxDocuments })}
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineMaxChunks")}</span>
+              <KnowledgeNumericField
+                value={value.maxChunks}
+                min={1}
+                max={100}
+                disabled={fieldsDisabled}
+                onChange={(maxChunks) => patch({ maxChunks })}
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineSearchTemperature")}</span>
+              <KnowledgeNumericField
+                value={value.searchTemperature}
+                min={0}
+                max={1}
+                step={0.1}
+                disabled={fieldsDisabled}
+                onChange={(searchTemperature) => patch({ searchTemperature })}
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineChunkSize")}</span>
+              <KnowledgeNumericField
+                value={value.chunkSize}
+                min={200}
+                max={4000}
+                disabled={fieldsDisabled}
+                onChange={(chunkSize) => patch({ chunkSize })}
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block font-medium">{t("automationPage.knowledgeEngineChunkOverlap")}</span>
+              <KnowledgeNumericField
+                value={value.chunkOverlap}
+                min={0}
+                max={800}
+                disabled={fieldsDisabled}
+                onChange={(chunkOverlap) => patch({ chunkOverlap })}
+              />
+            </label>
           </div>
         </>
       ) : null}

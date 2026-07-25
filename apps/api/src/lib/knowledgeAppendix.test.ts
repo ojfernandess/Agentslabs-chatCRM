@@ -20,6 +20,12 @@ test("kbAppendixHasRetrievedExcerpts true when excerpts header present without n
   assert.equal(kbAppendixHasRetrievedExcerpts(ok), true);
 });
 
+test("kbAppendixHasRetrievedExcerpts true for generic KB header with excerpts", () => {
+  const ok =
+    "\n\n### Base de conhecimento (pesquisa automática)\n**1. Plano Enterprise** (relevância 0.9)\nPolítica de cancelamento em 30 dias.";
+  assert.equal(kbAppendixHasRetrievedExcerpts(ok), true);
+});
+
 test("kbAppendixHasRetrievedExcerpts true for LlamaIndex appendix with excerpts", () => {
   const ok =
     "\n\n### Base de conhecimento (LlamaIndex)\n**1. Hotel Brooklin** (LlamaIndex relevância 0.95)\nQuartos standard e deluxe.";

@@ -7,6 +7,10 @@ import {
   type KnowledgeEngineOrgConfig,
   type KnowledgeProviderKind,
 } from "./knowledgeEngineTypes.js";
+import {
+  applyKnowledgeEngineRecommendations,
+  computeKnowledgeEngineRecommendations,
+} from "./knowledgeEngineRecommendations.js";
 
 const PROVIDER_KINDS = new Set<KnowledgeProviderKind>(["openconduit", "llamaindex"]);
 
@@ -44,6 +48,29 @@ export function shouldUseKnowledgeEngineRuntime(behaviorConfig: unknown): boolea
   const raw = beh.knowledgeEngine;
   if (!raw || typeof raw !== "object") return false;
   return (raw as Record<string, unknown>).provider === "llamaindex";
+}
+
+export function parseKnowledgeEngineUseRecommendedSettings(behaviorConfig: unknown): boolean {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return false;
+  const raw = (behaviorConfig as Record<string, unknown>).knowledgeEngine;
+  if (!raw || typeof raw !== "object") return false;
+  return (raw as Record<string, unknown>).useRecommendedSettings === true;
+}
+
+/** Resolve config do agente; aplica recomendações dinâmicas quando activadas. */
+export async function resolveKnowledgeEngineConfig(
+  behaviorConfig: unknown,
+  ctx: { organizationId: string; botId?: string },
+): Promise<KnowledgeEngineConfig> {
+  const base = parseKnowledgeEngineConfig(behaviorConfig);
+  if (base.provider !== "llamaindex" || !parseKnowledgeEngineUseRecommendedSettings(behaviorConfig)) {
+    return base;
+  }
+  const rec = await computeKnowledgeEngineRecommendations({
+    organizationId: ctx.organizationId,
+    botId: ctx.botId,
+  });
+  return applyKnowledgeEngineRecommendations(base, rec);
 }
 
 /**
