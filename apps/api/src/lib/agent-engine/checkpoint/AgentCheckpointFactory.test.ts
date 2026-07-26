@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   clearAgentGraphCheckpointersForTests,
   getAgentGraphCheckpointer,
+  resolveAgentCheckpointMode,
 } from "./AgentCheckpointFactory.js";
 
 test("getAgentGraphCheckpointer reuses instance per scope", () => {
@@ -13,4 +14,9 @@ test("getAgentGraphCheckpointer reuses instance per scope", () => {
   assert.equal(a, b);
   assert.notEqual(a, c);
   clearAgentGraphCheckpointersForTests();
+});
+
+test("resolveAgentCheckpointMode defaults to memory", () => {
+  assert.equal(resolveAgentCheckpointMode("memory"), "memory");
+  assert.equal(resolveAgentCheckpointMode(undefined), "memory");
 });

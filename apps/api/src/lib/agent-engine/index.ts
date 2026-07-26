@@ -47,8 +47,18 @@ export {
   shouldRetryAfterSupervisor,
   shouldBlockReplyAfterSupervisor,
 } from "./supervisor/AgentSupervisorService.js";
-export { createAgentGraphCheckpointer, getAgentGraphCheckpointer, readGraphCheckpointSnapshot } from "./checkpoint/AgentCheckpointFactory.js";
-export type { GraphCheckpointSnapshot } from "./checkpoint/AgentCheckpointFactory.js";
+export {
+  createAgentGraphCheckpointer,
+  getAgentGraphCheckpointer,
+  readGraphCheckpointSnapshot,
+  isRedisStackCheckpointAvailable,
+  resolveAgentCheckpointMode,
+} from "./checkpoint/AgentCheckpointFactory.js";
+export type { GraphCheckpointSnapshot, AgentCheckpointMode } from "./checkpoint/AgentCheckpointFactory.js";
+export {
+  initRedisLangGraphCheckpointer,
+  closeRedisLangGraphCheckpointer,
+} from "./checkpoint/RedisLangGraphCheckpointer.js";
 export {
   ingestAgentTraceToLangfuse,
   isLangfuseConfigured,

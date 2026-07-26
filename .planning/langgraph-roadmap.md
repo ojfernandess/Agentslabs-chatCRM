@@ -78,7 +78,7 @@
 | `graph.getState()` para debug/resume scaffold | ✅ |
 | API `GET /agent-engine/checkpoint/:conversationId/:messageId` | ✅ |
 | Registry partilhado por org | ✅ |
-| Adapter Redis (`@langchain/langgraph-checkpoint-redis`) | ⏸️ |
+| Adapter Redis (`@langchain/langgraph-checkpoint-redis`) | ✅ ShallowRedisSaver + fallback mirror |
 | Mirror JSON em Redis (plain ioredis) | ✅ |
 
 **Risco:** Baixo com default `memory` (comportamento actual).
@@ -192,7 +192,7 @@
 | Resume via `Command` após aprovação | ✅ |
 | Approve → entrega mensagem ao cliente | ✅ |
 | Config `humanInTheLoopNativeEnabled` + UI | ✅ |
-| `@langchain/langgraph-checkpoint-redis` full | ⏸️ (requer Redis Stack) |
+| `@langchain/langgraph-checkpoint-redis` full | ✅ ShallowRedisSaver (opt-in `checkpointStore: redis` + Redis Stack) |
 
 ---
 
@@ -217,6 +217,16 @@
 | 2.4 Token SSE (Inspector) | ✅ |
 | 2.4 WhatsApp token/chunk outbound | ✅ (`clientOutboundStreamingEnabled`) |
 | 2.2 Send API POC KB parallel | ✅ (`parallelKbPrefetchEnabled`) |
+
+---
+
+## Fase 4 — Checkpoint Redis nativo ✅ concluída
+
+| Item | Status |
+|------|--------|
+| `ShallowRedisSaver` cross-worker resume | ✅ |
+| Fallback MemorySaver + mirror JSON | ✅ |
+| `GET /agent-engine/redis/status` → `redisStackCheckpoint` | ✅ |
 
 ### 2.5 Cancelamento AbortSignal no grafo
 

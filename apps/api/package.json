@@ -19,7 +19,7 @@
     "db:reset-password": "tsx prisma/reset-password.ts",
     "db:verify-password": "tsx prisma/verify-password.ts",
     "db:studio": "prisma studio",
-    "test": "node --import tsx --test src/lib/messagePayload.test.ts src/lib/agentConversationHistory.test.ts src/lib/agent-engine/agentEngine.test.ts src/lib/agent-engine/supervisor/AgentSupervisorService.test.ts src/lib/agent-engine/hitl/HumanInTheLoopStore.test.ts src/lib/agent-engine/checkpoint/AgentCheckpointFactory.test.ts src/lib/agent-engine/checkpoint/RedisCheckpointSnapshotStore.test.ts src/lib/agent-engine/queue/agentEngineQueue.test.ts src/lib/agent-engine/knowledge/parallelKbPrefetch.test.ts src/lib/agent-engine/observability/AgentGraphEventBus.test.ts src/lib/agent-engine/observability/LangfuseBridge.test.ts src/lib/knowledgeMarkdownChunking.test.ts src/lib/agentVoiceSettings.test.ts src/lib/automationHttpToolExecute.test.ts src/lib/knowledgeAppendix.test.ts src/lib/automationExecutionLog.test.ts src/lib/broadcastErrorClassifier.test.ts src/lib/broadcastAnalyticsQuery.test.ts src/lib/broadcastAnalytics.integration.test.ts src/lib/metaWebhookPayload.test.ts src/providers/meta.test.ts"
+    "test": "node --import tsx --test src/lib/messagePayload.test.ts src/lib/agentConversationHistory.test.ts src/lib/agent-engine/agentEngine.test.ts src/lib/agent-engine/supervisor/AgentSupervisorService.test.ts src/lib/agent-engine/hitl/HumanInTheLoopStore.test.ts src/lib/agent-engine/checkpoint/AgentCheckpointFactory.test.ts src/lib/agent-engine/checkpoint/RedisCheckpointSnapshotStore.test.ts src/lib/agent-engine/checkpoint/RedisLangGraphCheckpointer.test.ts src/lib/agent-engine/queue/agentEngineQueue.test.ts src/lib/agent-engine/knowledge/parallelKbPrefetch.test.ts src/lib/agent-engine/observability/AgentGraphEventBus.test.ts src/lib/agent-engine/observability/LangfuseBridge.test.ts src/lib/knowledgeMarkdownChunking.test.ts src/lib/agentVoiceSettings.test.ts src/lib/automationHttpToolExecute.test.ts src/lib/knowledgeAppendix.test.ts src/lib/automationExecutionLog.test.ts src/lib/broadcastErrorClassifier.test.ts src/lib/broadcastAnalyticsQuery.test.ts src/lib/broadcastAnalytics.integration.test.ts src/lib/metaWebhookPayload.test.ts src/providers/meta.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",
@@ -33,6 +33,8 @@
     "@fastify/websocket": "^11.2.0",
     "@langchain/core": "^1.2.3",
     "@langchain/langgraph": "^1.4.8",
+    "@langchain/langgraph-checkpoint-redis": "^1.0.10",
+    "@llamaindex/openai": "^0.1.0",
     "@openconduit/shared": "*",
     "@prisma/client": "^6.4.0",
     "bcrypt": "^5.1.1",
@@ -43,11 +45,10 @@
     "fastify": "^5.2.0",
     "imapflow": "^1.4.6",
     "ioredis": "^5.4.2",
+    "llamaindex": "^0.9.0",
     "mailparser": "^3.9.14",
     "mammoth": "^1.12.0",
     "mem0ai": "^3.1.1",
-    "llamaindex": "^0.9.0",
-    "@llamaindex/openai": "^0.1.0",
     "nodemailer": "^9.0.3",
     "pdf-parse": "^2.4.5",
     "pino": "^9.6.0",

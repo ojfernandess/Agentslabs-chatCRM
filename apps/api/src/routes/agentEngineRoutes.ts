@@ -17,6 +17,10 @@ import {
   ensureAgentEngineRedisReady,
   isAgentEngineRedisAvailable,
 } from "../lib/agent-engine/redis/agentEngineRedis.js";
+import {
+  isRedisStackCheckpointAvailable,
+  resolveAgentCheckpointMode,
+} from "../lib/agent-engine/checkpoint/AgentCheckpointFactory.js";
 import { buildExecutionInspectorView } from "../lib/agent-engine/observability/buildExecutionInspector.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -167,11 +171,19 @@ export async function registerAgentEngineRoutes(app: FastifyInstance): Promise<v
     }
     const configured = Boolean(process.env.REDIS_URL?.trim());
     const ok = configured ? await ensureAgentEngineRedisReady() : false;
+    const redisStackCheckpoint = isRedisStackCheckpointAvailable();
     return {
       data: {
         configured,
         available: isAgentEngineRedisAvailable() || ok,
-        features: ["hitl_persistence", "checkpoint_mirror", "graph_event_sse", "execution_queue"],
+        redisStackCheckpoint,
+        checkpointMode: resolveAgentCheckpointMode("redis"),
+        features: [
+          "hitl_persistence",
+          redisStackCheckpoint ? "checkpoint_redis_native" : "checkpoint_mirror",
+          "graph_event_sse",
+          "execution_queue",
+        ],
         executionQueueAvailable: isAgentEngineQueueAvailable(),
       },
     };
