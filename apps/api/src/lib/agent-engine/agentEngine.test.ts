@@ -42,6 +42,10 @@ test("parseAgentEngineConfig reads agentEngine block", () => {
       streamingEnabled: true,
       humanInTheLoopEnabled: true,
       humanInTheLoopNativeEnabled: true,
+      executionQueueEnabled: true,
+      clientTokenStreamingEnabled: true,
+      clientOutboundStreamingEnabled: true,
+      parallelKbPrefetchEnabled: true,
     },
   });
   assert.equal(cfg.runtime, "langgraph");
@@ -53,6 +57,10 @@ test("parseAgentEngineConfig reads agentEngine block", () => {
   assert.equal(cfg.streamingEnabled, true);
   assert.equal(cfg.humanInTheLoopEnabled, true);
   assert.equal(cfg.humanInTheLoopNativeEnabled, true);
+  assert.equal(cfg.executionQueueEnabled, true);
+  assert.equal(cfg.clientTokenStreamingEnabled, true);
+  assert.equal(cfg.clientOutboundStreamingEnabled, true);
+  assert.equal(cfg.parallelKbPrefetchEnabled, true);
 });
 
 test("parseAgentEngineConfig supervisorMode structural skips llm in native path", () => {

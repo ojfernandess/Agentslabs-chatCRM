@@ -59,6 +59,8 @@ import {
   KnowledgeEngineService,
   logKnowledgeEvents,
 } from "./agent-engine/index.js";
+import { publishGraphEvent } from "./agent-engine/observability/AgentGraphEventBus.js";
+import { createClientOutboundTokenStream } from "./clientOutboundTokenStream.js";
 import {
   buildFollowUpCampaignPromptBlock,
   buildIsolatedNativeFlowStatePromptBlock,
@@ -104,6 +106,8 @@ export type NativeAgentCoreResult = {
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   llmSupervisorApproved?: boolean | null;
   llmSupervisorSummary?: string;
+  /** Resposta já entregue em chunks ao contacto (streaming outbound). */
+  clientStreamDelivered?: boolean;
 };
 
 const EMPTY_NATIVE_CORE_RESULT: NativeAgentCoreResult = {
@@ -1395,6 +1399,8 @@ async function generateNativeAgentReplyCore(input: {
   contactId?: string;
   /** Evita re-entrada no Agent Engine (OpenNexo / LangGraph executors). */
   skipEngineRoute?: boolean;
+  /** Appendix KB pré-carregado pelo grafo LangGraph (parallel prefetch). */
+  kbPrefetchAppendix?: string;
 }): Promise<NativeAgentCoreResult> {
   const {
     organizationId,
@@ -1472,6 +1478,30 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const engineConfig = parseAgentEngineConfig(profile.behaviorConfig);
+  const graphThreadId = `${conversation.id}:${message.id}`;
+  const outboundStream =
+    engineConfig.clientOutboundStreamingEnabled && input.contactId
+      ? createClientOutboundTokenStream({
+          organizationId,
+          botId: bot.id,
+          conversationId: conversation.id,
+          contactId: input.contactId,
+          log,
+        })
+      : null;
+  const onTokenDelta =
+    engineConfig.clientTokenStreamingEnabled || outboundStream
+      ? (delta: string) => {
+          if (engineConfig.clientTokenStreamingEnabled) {
+            publishGraphEvent(graphThreadId, {
+              kind: "token",
+              at: new Date().toISOString(),
+              detail: delta,
+            });
+          }
+          outboundStream?.onTokenDelta(delta);
+        }
+      : undefined;
 
   if (!input.skipEngineRoute) {
     ensureAgentEngineExecutorRegistered();
@@ -1662,7 +1692,7 @@ async function generateNativeAgentReplyCore(input: {
   const kbSearchActive = flags.knowledge_search && !skipKbSearch;
   const toolCallCounts: Record<string, number> = { ...(automationCtx.state.toolCallCounts ?? {}) };
 
-  let kbProactiveAppendix = "";
+  let kbProactiveAppendix = input.kbPrefetchAppendix?.trim() ?? "";
   const useKnowledgeEngine = shouldUseKnowledgeEngineRuntime(profile.behaviorConfig);
   const knowledgeEngineConfig = useKnowledgeEngine
     ? await resolveKnowledgeEngineConfig(profile.behaviorConfig, {
@@ -1673,7 +1703,7 @@ async function generateNativeAgentReplyCore(input: {
   const knowledgeEngine = useKnowledgeEngine
     ? KnowledgeEngineService.fromConfig(knowledgeEngineConfig)
     : null;
-  if (kbSearchActive) {
+  if (kbSearchActive && !kbProactiveAppendix) {
     try {
       if (useKnowledgeEngine && knowledgeEngineConfig.enabled && knowledgeEngine) {
         const proactive = await knowledgeEngine.buildProactiveAppendix({
@@ -2016,6 +2046,7 @@ async function generateNativeAgentReplyCore(input: {
           userMessage,
           tools,
           maxToolRounds: 6,
+          onTokenDelta,
           onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
             if (
               pendingToolCallInterim.data ||
@@ -2283,6 +2314,7 @@ async function generateNativeAgentReplyCore(input: {
         history,
         userMessage,
         signal,
+        onTokenDelta,
       });
       replyText = r.text.trim();
       ex?.info({ id: "llm", name: "OpenAI chat" }, "Resposta OpenAI", { output: { replyChars: replyText.length } });
@@ -2664,6 +2696,12 @@ async function generateNativeAgentReplyCore(input: {
   const kbCoversForMeta =
     proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery);
 
+  let clientStreamDelivered = false;
+  if (outboundStream && replyText.trim()) {
+    const finished = await outboundStream.finish();
+    clientStreamDelivered = finished.chunkCount > 0;
+  }
+
   return {
     reply: replyText,
     toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
@@ -2673,6 +2711,7 @@ async function generateNativeAgentReplyCore(input: {
     },
     llmSupervisorApproved,
     llmSupervisorSummary,
+    clientStreamDelivered,
   };
 }
 
@@ -2692,6 +2731,7 @@ function ensureAgentEngineExecutorRegistered(): void {
       historyOverride: runtimeInput.historyOverride,
       contactId: runtimeInput.contactId,
       skipEngineRoute: true,
+      kbPrefetchAppendix: runtimeInput.kbPrefetchAppendix,
     });
     return {
       reply: result.reply,
@@ -2701,6 +2741,20 @@ function ensureAgentEngineExecutorRegistered(): void {
       llmSupervisorSummary: result.llmSupervisorSummary,
     };
   });
+}
+
+/** Gera resposta nativa com metadados (pipeline / fila BullMQ). */
+export async function generateNativeAgentReplyWithResult(input: {
+  organizationId: string;
+  bot: Bot;
+  conversation: Conversation;
+  message: Message;
+  log: FastifyBaseLogger;
+  executionLog?: import("./automationExecutionLog.js").AutomationExecutionLogPort | null;
+  historyOverride?: PreviewChatTurn[];
+  contactId?: string;
+}): Promise<NativeAgentCoreResult> {
+  return generateNativeAgentReplyCore(input);
 }
 
 /** Ponto de entrada público — compatível com agentes legados (OpenNexo Runtime por omissão). */

@@ -63,6 +63,7 @@ import {
 } from "./lib/automationExecutionLog.js";
 import { initBroadcastQueue, closeBroadcastQueue } from "./lib/broadcastQueue.js";
 import { initCrmFlowQueue, closeCrmFlowQueue } from "./lib/crmFlowQueue.js";
+import { initAgentEngineQueue, closeAgentEngineQueue } from "./lib/agent-engine/queue/agentEngineQueue.js";
 import { runCrmFlowNoReplyScannerTick } from "./lib/crmFlowNoReplyScanner.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
@@ -229,6 +230,7 @@ const shutdown = async () => {
   await flushAutomationLogBuffer().catch(() => {});
   await closeBroadcastQueue().catch(() => {});
   await closeCrmFlowQueue().catch(() => {});
+  await closeAgentEngineQueue().catch(() => {});
   await app.close();
   await disconnectDb();
   process.exit(0);
@@ -244,6 +246,7 @@ try {
   registerAutomationExecutionLogWorker(app.log);
   await initBroadcastQueue(app);
   await initCrmFlowQueue(app);
+  await initAgentEngineQueue(app);
   const autoResolveMs = 120_000;
   setInterval(() => {
     void runAutoResolveInactiveConversationsTick({ log: app.log });

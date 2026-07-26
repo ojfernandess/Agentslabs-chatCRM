@@ -40,6 +40,14 @@ export type AgentEngineConfig = {
   humanInTheLoopEnabled?: boolean;
   /** Usa `interrupt()` LangGraph + resume via `Command` (requer checkpoint). */
   humanInTheLoopNativeEnabled?: boolean;
+  /** Enfileira respostas inbound em BullMQ (requer REDIS_URL). */
+  executionQueueEnabled?: boolean;
+  /** Publica tokens LLM no event bus SSE (`kind: token`). */
+  clientTokenStreamingEnabled?: boolean;
+  /** Envia chunks de texto ao contacto durante geração LLM (WhatsApp). */
+  clientOutboundStreamingEnabled?: boolean;
+  /** Prefetch KB paralelo via LangGraph Send (artigos pinned). */
+  parallelKbPrefetchEnabled?: boolean;
 };
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
@@ -53,6 +61,10 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   streamingEnabled: false,
   humanInTheLoopEnabled: false,
   humanInTheLoopNativeEnabled: false,
+  executionQueueEnabled: false,
+  clientTokenStreamingEnabled: false,
+  clientOutboundStreamingEnabled: false,
+  parallelKbPrefetchEnabled: false,
 };
 
 export type AgentRuntimeExecuteInput = {
@@ -67,6 +79,8 @@ export type AgentRuntimeExecuteInput = {
   engineConfig: AgentEngineConfig;
   llmConfig: Record<string, unknown>;
   behaviorConfig: Record<string, unknown>;
+  /** Appendix KB pré-carregado pelo grafo (Send API parallel prefetch). */
+  kbPrefetchAppendix?: string;
 };
 
 export type AgentRuntimeExecuteResult = {
@@ -76,6 +90,9 @@ export type AgentRuntimeExecuteResult = {
 
 export type AgentGraphNodeId =
   | "classify_intent"
+  | "fan_out_kb"
+  | "kb_read_node"
+  | "merge_kb_results"
   | "load_memory"
   | "select_tool"
   | "execute_tool"
@@ -98,7 +115,8 @@ export type AgentGraphEventKind =
   | "retry"
   | "checkpoint"
   | "stream"
-  | "hitl";
+  | "hitl"
+  | "token";
 
 export type AgentGraphEvent = {
   kind: AgentGraphEventKind;

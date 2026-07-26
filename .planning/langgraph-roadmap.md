@@ -150,10 +150,11 @@
 
 | Tarefa | Status |
 |--------|--------|
-| Fila BullMQ/Redis para execuções longas | ⏸️ |
-| Prioridade por conversa VIP | ⏸️ |
+| Fila BullMQ/Redis para execuções longas | ✅ |
+| Prioridade por conversa VIP (URGENT/HIGH) | ✅ |
+| Fallback síncrono se Redis indisponível | ✅ |
 
-**Risco:** Médio — infra nova.
+**Risco:** Médio — opt-in via `executionQueueEnabled`; default off.
 
 ---
 
@@ -175,7 +176,8 @@
 | Estado | Notas |
 |--------|-------|
 | ⏸️ | Tool rounds paralelos exigem refactor de `generateNativeAgentReplyCore` |
-| 📋 | Avaliar `Send` API LangGraph para sub-agentes read-only |
+| ✅ | Avaliar `Send` API LangGraph — ver `.planning/langgraph-send-api-evaluation.md` |
+| 📋 | POC `parallelKbPrefetch` (Send × artigos pinned) | ✅ |
 
 ---
 
@@ -201,10 +203,20 @@
 | Backend stream logs | ✅ |
 | SSE `GET /agent-engine/events/stream/:threadId` | ✅ |
 | Redis pub/sub cross-worker | ✅ |
-| 📋 WhatsApp/Web chat token streaming | Gateway outbound (fase seguinte) |
+| 📋 WhatsApp/Web chat token streaming | ✅ chunks outbound (`clientOutboundStreamingEnabled`) |
+| ✅ Token streaming LLM → event bus SSE | `clientTokenStreamingEnabled` |
 | Inspector SSE live (execuções RUNNING) | ✅ |
 
 ---
+
+## Fase 3 — Queue + streaming cliente ✅ concluída
+
+| Item | Status |
+|------|--------|
+| 1.8 BullMQ `agent-engine-replies` | ✅ |
+| 2.4 Token SSE (Inspector) | ✅ |
+| 2.4 WhatsApp token/chunk outbound | ✅ (`clientOutboundStreamingEnabled`) |
+| 2.2 Send API POC KB parallel | ✅ (`parallelKbPrefetchEnabled`) |
 
 ### 2.5 Cancelamento AbortSignal no grafo
 

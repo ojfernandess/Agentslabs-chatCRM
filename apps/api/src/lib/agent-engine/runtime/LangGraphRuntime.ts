@@ -1,4 +1,4 @@
-import { Annotation, END, START, StateGraph, interrupt, isGraphInterrupt } from "@langchain/langgraph";
+import { Annotation, END, START, StateGraph, Send, interrupt, isGraphInterrupt } from "@langchain/langgraph";
 import type { AgentRuntime } from "./AgentRuntime.js";
 import type {
   AgentRuntimeExecuteInput,
@@ -16,6 +16,12 @@ import {
   shouldRetryAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import { parseLinkedKnowledgeArticleIdsFromBehavior } from "../../knowledgeRetrieval.js";
+import {
+  mergeKbPrefetchAppendix,
+  prefetchKnowledgeForArticle,
+  type KbPrefetchResult,
+} from "../knowledge/parallelKbPrefetch.js";
 import {
   getAgentGraphCheckpointer,
   persistGraphCheckpointSnapshot,
@@ -48,6 +54,9 @@ type GraphState = {
   intentHints: { kbQueryLikely: boolean };
   llmSupervisorApproved?: boolean | null;
   llmSupervisorSummary?: string;
+  kbPrefetchResults: KbPrefetchResult[];
+  kbPrefetchArticleId?: string;
+  kbPrefetchAppendix?: string;
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -67,6 +76,12 @@ const GraphStateAnnotation = Annotation.Root({
   intentHints: Annotation<{ kbQueryLikely: boolean }>,
   llmSupervisorApproved: Annotation<boolean | null | undefined>,
   llmSupervisorSummary: Annotation<string | undefined>,
+  kbPrefetchResults: Annotation<KbPrefetchResult[]>({
+    reducer: (left, right) => left.concat(Array.isArray(right) ? right : [right]),
+    default: () => [],
+  }),
+  kbPrefetchArticleId: Annotation<string | undefined>,
+  kbPrefetchAppendix: Annotation<string | undefined>,
 });
 
 /**
@@ -118,6 +133,7 @@ export class LangGraphRuntime implements AgentRuntime {
       validationBlockSend: false,
       blockReply: false,
       intentHints: { kbQueryLikely: false },
+      kbPrefetchResults: [],
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -338,13 +354,73 @@ export class LangGraphRuntime implements AgentRuntime {
       state.traceBuilder.startNode("classify_intent", "Classificar intenção");
       const userMessage = state.input.message.body ?? "";
       const kbQueryLikely = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
-      state.traceBuilder.setNextNode("load_memory");
+      state.traceBuilder.setNextNode("fan_out_kb");
       state.traceBuilder.endNode(
         "classify_intent",
         "ok",
         kbQueryLikely ? "consulta_kb provável" : "geral",
       );
       return { intentHints: { kbQueryLikely } };
+    };
+
+    const kbReadNode = async (state: GraphState): Promise<Partial<GraphState>> => {
+      const articleId = state.kbPrefetchArticleId;
+      if (!articleId) return {};
+      state.traceBuilder.startNode("kb_read_node", `KB prefetch ${articleId.slice(0, 8)}`);
+      const userMessage = (state.input.message.body ?? "").trim().toLowerCase().slice(0, 500);
+      const result = await prefetchKnowledgeForArticle({
+        organizationId: state.input.organizationId,
+        botId: state.input.bot.id,
+        articleId,
+        normalizedQuery: userMessage,
+        log: state.input.log,
+      });
+      state.traceBuilder.endNode(
+        "kb_read_node",
+        result ? "ok" : "skipped",
+        result ? result.title : "artigo não encontrado",
+      );
+      if (!result) return {};
+      publishGraphEvent(`${state.input.conversation.id}:${state.input.message.id}`, {
+        kind: "knowledge",
+        at: new Date().toISOString(),
+        detail: `KB prefetch: ${result.title}`,
+        metadata: { articleId: result.articleId, excerpts: result.ranked.length },
+      });
+      return { kbPrefetchResults: [result] };
+    };
+
+    const mergeKbResults = async (state: GraphState): Promise<Partial<GraphState>> => {
+      state.traceBuilder.startNode("merge_kb_results", "Agregar prefetch KB");
+      const appendix = mergeKbPrefetchAppendix(state.kbPrefetchResults);
+      state.traceBuilder.setNextNode("load_memory");
+      state.traceBuilder.endNode(
+        "merge_kb_results",
+        appendix ? "ok" : "skipped",
+        appendix ? `${state.kbPrefetchResults.length} artigo(s)` : "sem excertos",
+      );
+      state.input.executionLog?.info(
+        { id: "parallel_kb_prefetch", name: "Parallel KB Prefetch" },
+        JSON.stringify({
+          articles: state.kbPrefetchResults.length,
+          appendixChars: appendix.length,
+        }),
+      );
+      return { kbPrefetchAppendix: appendix || undefined };
+    };
+
+    const routeAfterClassify = (state: GraphState): "load_memory" | Send[] => {
+      const prefetchEnabled = state.input.engineConfig.parallelKbPrefetchEnabled === true;
+      const pinned = parseLinkedKnowledgeArticleIdsFromBehavior(state.input.behaviorConfig);
+      if (!prefetchEnabled || !state.intentHints.kbQueryLikely || pinned.length === 0) {
+        return "load_memory";
+      }
+      state.traceBuilder.emitEvent("edge", "Fan-out KB prefetch (Send API)", {
+        metadata: { articles: pinned.slice(0, 3) },
+      });
+      return pinned.slice(0, 3).map(
+        (articleId) => new Send("kb_read_node", { kbPrefetchArticleId: articleId }),
+      );
     };
 
     const loadMemory = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -379,7 +455,10 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
-      const execResult = await executor(state.input);
+      const execResult = await executor({
+        ...state.input,
+        kbPrefetchAppendix: state.kbPrefetchAppendix,
+      });
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode("execute_tool");
       return {
@@ -619,6 +698,8 @@ export class LangGraphRuntime implements AgentRuntime {
 
     return new StateGraph(GraphStateAnnotation)
       .addNode("classify_intent", classifyIntent)
+      .addNode("kb_read_node", kbReadNode)
+      .addNode("merge_kb_results", mergeKbResults)
       .addNode("load_memory", loadMemory)
       .addNode("select_tool", selectTool)
       .addNode("execute_tool", executeTool)
@@ -628,7 +709,9 @@ export class LangGraphRuntime implements AgentRuntime {
       .addNode("update_memory", updateMemory)
       .addNode("respond", respond)
       .addEdge(START, "classify_intent")
-      .addEdge("classify_intent", "load_memory")
+      .addConditionalEdges("classify_intent", routeAfterClassify, ["load_memory", "kb_read_node"])
+      .addEdge("kb_read_node", "merge_kb_results")
+      .addEdge("merge_kb_results", "load_memory")
       .addEdge("load_memory", "select_tool")
       .addEdge("select_tool", "execute_tool")
       .addEdge("execute_tool", "validate_result")

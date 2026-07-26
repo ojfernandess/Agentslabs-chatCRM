@@ -275,7 +275,12 @@ export function AgentInspectorPanel({
                   <span className="font-mono text-ink-400">{new Date(ev.at).toLocaleTimeString()}</span>{" "}
                   <span className="font-semibold text-violet-800 dark:text-violet-200">{ev.kind}</span>
                   {ev.nodeId ? <span className="text-ink-500"> · {ev.nodeId}</span> : null}
-                  {ev.detail ? <span className="block truncate text-ink-500">{ev.detail}</span> : null}
+                  {ev.detail && ev.kind !== "token" ? (
+                    <span className="block truncate text-ink-500">{ev.detail}</span>
+                  ) : null}
+                  {ev.detail && ev.kind === "token" ? (
+                    <span className="font-mono text-ink-400">{ev.detail}</span>
+                  ) : null}
                 </li>
               ))}
             </ol>

@@ -278,6 +278,43 @@ export async function startAutomationExecution(params: {
   return new AutomationExecutionLogHandle(ctx, wfKey);
 }
 
+/** Reanexa handle a execução existente (worker BullMQ / resume). */
+export async function attachAutomationExecutionLog(params: {
+  executionId: string;
+  organizationId: string;
+  log?: FastifyBaseLogger | null;
+}): Promise<AutomationExecutionLogHandle | null> {
+  const exec = await prisma.automationExecution.findFirst({
+    where: { id: params.executionId, organizationId: params.organizationId },
+    select: { id: true, workflowKey: true, status: true },
+  });
+  if (!exec) return null;
+
+  const settings = await prisma.automationExecutionLogSettings.findUnique({
+    where: { organizationId: params.organizationId },
+  });
+  const maxRow = await prisma.automationExecutionLogEntry.aggregate({
+    where: { executionId: exec.id },
+    _max: { sequence: true },
+  });
+  let seq = maxRow._max.sequence ?? 0;
+
+  const ctx: LogCtx = {
+    executionId: exec.id,
+    organizationId: params.organizationId,
+    minLevel: settings?.minPersistLevel ?? "DEBUG",
+    alertMinLevel: settings?.alertMinLevel ?? "ERROR",
+    alertWebhookUrl: settings?.alertWebhookUrl?.trim() || null,
+    alertEmail: settings?.alertEmail?.trim() || null,
+    nextSequence: () => {
+      seq += 1;
+      return seq;
+    },
+    logSink: params.log ?? null,
+  };
+  return new AutomationExecutionLogHandle(ctx, exec.workflowKey);
+}
+
 export async function purgeOldAutomationExecutionLogs(log?: FastifyBaseLogger): Promise<void> {
   const settingsRows = await prisma.automationExecutionLogSettings.findMany({
     select: { organizationId: true, retentionDays: true },

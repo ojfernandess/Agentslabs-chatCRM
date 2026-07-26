@@ -504,6 +504,10 @@ function emptyAgentForm(): AgentFormFields {
       streamingEnabled: false,
       humanInTheLoopEnabled: false,
       humanInTheLoopNativeEnabled: false,
+      executionQueueEnabled: false,
+      clientTokenStreamingEnabled: false,
+      clientOutboundStreamingEnabled: false,
+      parallelKbPrefetchEnabled: false,
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
   };
@@ -678,6 +682,10 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     streamingEnabled: engineRaw.streamingEnabled === true,
     humanInTheLoopEnabled: engineRaw.humanInTheLoopEnabled === true,
     humanInTheLoopNativeEnabled: engineRaw.humanInTheLoopNativeEnabled === true,
+    executionQueueEnabled: engineRaw.executionQueueEnabled === true,
+    clientTokenStreamingEnabled: engineRaw.clientTokenStreamingEnabled === true,
+    clientOutboundStreamingEnabled: engineRaw.clientOutboundStreamingEnabled === true,
+    parallelKbPrefetchEnabled: engineRaw.parallelKbPrefetchEnabled === true,
   };
 
   const kbRaw =
@@ -977,6 +985,10 @@ function formToPayload(
       streamingEnabled: form.agentEngine.streamingEnabled,
       humanInTheLoopEnabled: form.agentEngine.humanInTheLoopEnabled,
       humanInTheLoopNativeEnabled: form.agentEngine.humanInTheLoopNativeEnabled,
+      executionQueueEnabled: form.agentEngine.executionQueueEnabled,
+      clientTokenStreamingEnabled: form.agentEngine.clientTokenStreamingEnabled,
+      clientOutboundStreamingEnabled: form.agentEngine.clientOutboundStreamingEnabled,
+      parallelKbPrefetchEnabled: form.agentEngine.parallelKbPrefetchEnabled,
     },
     memoryEngine: {
       provider: form.agentEngine.memoryEngine.provider,

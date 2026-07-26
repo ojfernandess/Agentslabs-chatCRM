@@ -85,6 +85,10 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     streamingEnabled: o.streamingEnabled === true,
     humanInTheLoopEnabled: o.humanInTheLoopEnabled === true,
     humanInTheLoopNativeEnabled: o.humanInTheLoopNativeEnabled === true,
+    executionQueueEnabled: o.executionQueueEnabled === true,
+    clientTokenStreamingEnabled: o.clientTokenStreamingEnabled === true,
+    clientOutboundStreamingEnabled: o.clientOutboundStreamingEnabled === true,
+    parallelKbPrefetchEnabled: o.parallelKbPrefetchEnabled === true,
   };
 }
 
@@ -105,6 +109,10 @@ export function mergeAgentEngineIntoBehavior(
       streamingEnabled: engine.streamingEnabled ?? false,
       humanInTheLoopEnabled: engine.humanInTheLoopEnabled ?? false,
       humanInTheLoopNativeEnabled: engine.humanInTheLoopNativeEnabled ?? false,
+      executionQueueEnabled: engine.executionQueueEnabled ?? false,
+      clientTokenStreamingEnabled: engine.clientTokenStreamingEnabled ?? false,
+      clientOutboundStreamingEnabled: engine.clientOutboundStreamingEnabled ?? false,
+      parallelKbPrefetchEnabled: engine.parallelKbPrefetchEnabled ?? false,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

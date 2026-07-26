@@ -35,6 +35,10 @@ export type AgentEngineFormValues = {
   streamingEnabled: boolean;
   humanInTheLoopEnabled: boolean;
   humanInTheLoopNativeEnabled: boolean;
+  executionQueueEnabled: boolean;
+  clientTokenStreamingEnabled: boolean;
+  clientOutboundStreamingEnabled: boolean;
+  parallelKbPrefetchEnabled: boolean;
 };
 
 export const defaultMemoryEngineFormValues = (): MemoryEngineFormValues => ({
@@ -356,6 +360,62 @@ export function AgentEnginePanel({
                 <span className="font-medium">{t("automationPage.agentEngineHitlNative")}</span>
                 <span className="mt-0.5 block text-[11px] text-ink-500">
                   {t("automationPage.agentEngineHitlNativeHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.executionQueueEnabled}
+                onChange={(e) => patch({ executionQueueEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineExecutionQueue")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineExecutionQueueHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.clientTokenStreamingEnabled}
+                onChange={(e) => patch({ clientTokenStreamingEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineTokenStreaming")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineTokenStreamingHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.clientOutboundStreamingEnabled}
+                onChange={(e) => patch({ clientOutboundStreamingEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineOutboundStreaming")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineOutboundStreamingHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.parallelKbPrefetchEnabled}
+                onChange={(e) => patch({ parallelKbPrefetchEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineParallelKbPrefetch")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineParallelKbPrefetchHelp")}
                 </span>
               </span>
             </label>

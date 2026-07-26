@@ -11,6 +11,7 @@ import {
   LangGraphRuntime,
 } from "../lib/agent-engine/index.js";
 import { resolveHitlWithActions } from "../lib/agent-engine/hitl/HitlDeliveryService.js";
+import { isAgentEngineQueueAvailable } from "../lib/agent-engine/queue/agentEngineQueue.js";
 import { subscribeGraphEvents } from "../lib/agent-engine/observability/AgentGraphEventBus.js";
 import {
   ensureAgentEngineRedisReady,
@@ -170,7 +171,8 @@ export async function registerAgentEngineRoutes(app: FastifyInstance): Promise<v
       data: {
         configured,
         available: isAgentEngineRedisAvailable() || ok,
-        features: ["hitl_persistence", "checkpoint_mirror", "graph_event_sse"],
+        features: ["hitl_persistence", "checkpoint_mirror", "graph_event_sse", "execution_queue"],
+        executionQueueAvailable: isAgentEngineQueueAvailable(),
       },
     };
   });

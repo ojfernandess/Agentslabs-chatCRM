@@ -168,6 +168,8 @@ export async function callOpenAiCompatibleChatWithTools(params: {
   }) => Promise<void>;
   maxToolRounds?: number;
   signal?: AbortSignal;
+  /** Quando definido, emite deltas na resposta final (sem tool_calls). */
+  onTokenDelta?: (delta: string) => void;
 }): Promise<{ text: string; toolRounds: number; usage?: PreviewLlmUsage }> {
   const maxRounds = Math.max(1, Math.min(params.maxToolRounds ?? 6, 12));
   const url = `${params.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -282,7 +284,81 @@ export async function callOpenAiCompatibleChatWithTools(params: {
     }
 
     const text = choice?.content ?? "";
-    return { text: typeof text === "string" ? text : "", toolRounds, usage: totalUsage };
+    const finalText = typeof text === "string" ? text : "";
+    if (params.onTokenDelta && finalText) {
+      params.onTokenDelta(finalText);
+    }
+    return { text: finalText, toolRounds, usage: totalUsage };
+  }
+}
+
+async function readOpenAiStreamCompletion(params: {
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+  apiKey: string;
+  signal?: AbortSignal;
+  onTokenDelta?: (delta: string) => void;
+}): Promise<{ text: string; usage?: PreviewLlmUsage }> {
+  const quotaKey = llmQuotaGateKey("openai", params.apiKey);
+  const release = await acquireLlmQuotaSlot(quotaKey, {
+    signal: params.signal,
+    maxQueueWaitMs: config.nativeLlmMaxQueueWaitMs,
+  });
+  try {
+    const res = await fetch(params.url, {
+      method: "POST",
+      headers: params.headers,
+      body: JSON.stringify({ ...params.body, stream: true }),
+      signal: params.signal,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${errText.slice(0, 800)}`);
+    }
+    if (!res.body) throw new Error("OpenAI stream missing body");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let text = "";
+    let usage: PreviewLlmUsage | undefined;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n");
+      buffer = parts.pop() ?? "";
+      for (const line of parts) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const json = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+          };
+          const delta = json.choices?.[0]?.delta?.content;
+          if (typeof delta === "string" && delta) {
+            text += delta;
+            params.onTokenDelta?.(delta);
+          }
+          const u = json.usage;
+          if (u) {
+            usage = {
+              prompt: u.prompt_tokens ?? 0,
+              completion: u.completion_tokens ?? 0,
+              total: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0),
+            };
+          }
+        } catch {
+          /* ignore malformed chunk */
+        }
+      }
+    }
+    return { text, usage };
+  } finally {
+    release();
   }
 }
 
@@ -296,6 +372,7 @@ export async function callOpenAiCompatibleChat(params: {
   history: PreviewChatTurn[];
   userMessage: string;
   signal?: AbortSignal;
+  onTokenDelta?: (delta: string) => void;
 }): Promise<{ text: string; usage?: PreviewLlmUsage }> {
   const url = `${params.baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const messages: Array<{ role: string; content: string }> = [
@@ -309,6 +386,20 @@ export async function callOpenAiCompatibleChat(params: {
     messages,
   };
   applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
+
+  if (params.onTokenDelta) {
+    return readOpenAiStreamCompletion({
+      url,
+      apiKey: params.apiKey,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body,
+      signal: params.signal,
+      onTokenDelta: params.onTokenDelta,
+    });
+  }
 
   const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
     url,
