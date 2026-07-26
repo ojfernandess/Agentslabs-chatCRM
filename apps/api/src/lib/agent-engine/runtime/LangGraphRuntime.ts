@@ -7,8 +7,13 @@ import type {
   AgentSupervisorTrace,
 } from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
-import { createMemoryProvider } from "../memory/MemoryProvider.js";
+import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
+import {
+  resolveRequiredToolNamesForValidation,
+  runWorkflowGate,
+  shouldRunWorkflowGate,
+} from "../audit/applyWorkflowGate.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -32,8 +37,12 @@ import {
 import { registerHitlPending } from "../hitl/HumanInTheLoopStore.js";
 import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observability/LangfuseBridge.js";
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
-import type { AgentCheckpointStoreKind } from "../types.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
+import type { AgentCheckpointStoreKind } from "../types.js";
+
+export type LangGraphRuntimeDeps = {
+  createMemoryProvider?: typeof defaultCreateMemoryProvider;
+};
 
 const LANGGRAPH_TIMEOUT_MS = 120_000;
 
@@ -90,8 +99,14 @@ const GraphStateAnnotation = Annotation.Root({
 export class LangGraphRuntime implements AgentRuntime {
   readonly kind = "langgraph" as const;
   private state: AgentRuntimeState = { status: "idle", graphHistory: [] };
+  private readonly memoryFactory: typeof defaultCreateMemoryProvider;
 
-  constructor(private readonly executor: NativeAgentExecutor) {}
+  constructor(
+    private readonly executor: NativeAgentExecutor,
+    deps?: LangGraphRuntimeDeps,
+  ) {
+    this.memoryFactory = deps?.createMemoryProvider ?? defaultCreateMemoryProvider;
+  }
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
     this.state = { status: "running", graphHistory: [], currentNode: "classify_intent" };
@@ -425,7 +440,7 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const loadMemory = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("load_memory", "Carregar memória");
-      const provider = createMemoryProvider(state.input.engineConfig.memory);
+      const provider = this.memoryFactory(state.input.engineConfig.memory);
       const memory = await provider.load(
         state.input.conversation.id,
         state.input.organizationId,
@@ -473,10 +488,12 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
+      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig);
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         strictMode: state.input.engineConfig.strictMode,
+        requiredToolNames,
       });
       if (!validation.ok) {
         for (const a of validation.alerts) state.traceBuilder.addError(a);
@@ -643,7 +660,7 @@ export class LangGraphRuntime implements AgentRuntime {
       }
 
       state.traceBuilder.startNode("update_memory", "Atualizar memória");
-      const provider = createMemoryProvider(state.input.engineConfig.memory);
+      const provider = this.memoryFactory(state.input.engineConfig.memory);
       await provider.saveLegacy(state.input.conversation.id, state.input.organizationId, {
         userMessage: state.input.message.body ?? "",
         assistantMessage: state.reply,
@@ -671,6 +688,51 @@ export class LangGraphRuntime implements AgentRuntime {
         );
         return { reply: "" };
       }
+
+      if (shouldRunWorkflowGate(state.input.engineConfig)) {
+        const gate = runWorkflowGate({
+          engineConfig: state.input.engineConfig,
+          behaviorConfig: state.input.behaviorConfig,
+          userMessage: state.input.message.body ?? "",
+          replyText: state.reply,
+          toolOutcomes: state.toolOutcomes,
+          kbMeta: state.kbMeta,
+          memorySnapshot: state.memory,
+          supervisorTrace: state.supervisorTrace,
+          retryCount: state.retryCount,
+          previousReply: state.previousReply,
+          validationBlockSend: state.validationBlockSend,
+          llmSupervisorApproved: state.llmSupervisorApproved,
+          llmSupervisorSummary: state.llmSupervisorSummary,
+          kbQueryLikely: state.intentHints.kbQueryLikely,
+          graphNodeSequence: [
+            "classify_intent",
+            "load_memory",
+            "select_tool",
+            "execute_tool",
+            "validate_result",
+            "supervisor",
+            "update_memory",
+            "respond",
+          ],
+        });
+        if (gate.blockReply) {
+          for (const f of gate.report?.findings.filter((x) => !x.passed) ?? []) {
+            state.traceBuilder.addError(`${f.phase}/${f.id}: ${f.description}`);
+          }
+          state.traceBuilder.endNode("respond", "error", "Workflow Validator reprovou execução");
+          state.input.executionLog?.warn(
+            { id: "workflow_validator", name: "Workflow Validator" },
+            JSON.stringify({
+              approved: false,
+              criticalFailures: gate.report?.metrics.criticalFailures,
+              requiredToolNames: gate.requiredToolNames,
+            }),
+          );
+          return { reply: "", blockReply: true };
+        }
+      }
+
       state.traceBuilder.endNode("respond");
       return {};
     };

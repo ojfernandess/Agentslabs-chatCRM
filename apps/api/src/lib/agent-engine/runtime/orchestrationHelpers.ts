@@ -7,6 +7,7 @@ import type {
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
+import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -82,10 +83,12 @@ export async function runOrchestratedRuntime(
     traceBuilder.endNode("execute_tool");
 
     traceBuilder.startNode("validate_result", "Validar resultado");
+    const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig);
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,
       strictMode: input.engineConfig.strictMode,
+      requiredToolNames,
     });
     if (!validation.ok) {
       for (const alert of validation.alerts) traceBuilder.addError(alert);
@@ -166,7 +169,32 @@ export async function runOrchestratedRuntime(
   traceBuilder.endNode("update_memory");
 
   traceBuilder.startNode("respond", "Responder utilizador");
-  traceBuilder.endNode("respond");
+
+  const gate = runWorkflowGate({
+    engineConfig: input.engineConfig,
+    behaviorConfig: input.behaviorConfig,
+    userMessage: input.message.body ?? "",
+    replyText: state.reply,
+    toolOutcomes: state.toolOutcomes,
+    kbMeta: state.kbMeta,
+    memorySnapshot: state.memory,
+    retryCount: state.retryCount,
+    graphNodeSequence: plan.graphHistory,
+  });
+  if (gate.blockReply) {
+    traceBuilder.endNode("respond", "error", "Workflow Validator reprovou execução");
+    input.executionLog?.warn(
+      { id: "workflow_validator", name: "Workflow Validator" },
+      JSON.stringify({
+        approved: false,
+        criticalFailures: gate.report?.metrics.criticalFailures,
+        requiredToolNames: gate.requiredToolNames,
+      }),
+    );
+    state.reply = "";
+  } else {
+    traceBuilder.endNode("respond");
+  }
 
   const trace = traceBuilder.build();
   input.executionLog?.info(

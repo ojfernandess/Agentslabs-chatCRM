@@ -9,6 +9,25 @@ export { AutoGenRuntime } from "./runtime/AutoGenRuntime.js";
 export { MastraRuntime } from "./runtime/MastraRuntime.js";
 export { validateToolExecution } from "./validators/ToolValidator.js";
 export { validateAgentPrompt } from "./validators/PromptValidator.js";
+export { auditPromptAssembly } from "./audit/promptAssemblyAudit.js";
+export {
+  validateAgentWorkflow,
+  shouldBlockOutboundFromWorkflow,
+  type WorkflowAuditReport,
+  type WorkflowAuditFinding,
+  type WorkflowAuditMetrics,
+} from "./audit/WorkflowValidator.js";
+export {
+  runWorkflowGate,
+  shouldRunWorkflowGate,
+  resolveRequiredToolNamesForValidation,
+  type WorkflowGateInput,
+  type WorkflowGateResult,
+} from "./audit/applyWorkflowGate.js";
+export {
+  parseRequiredToolNamesFromText,
+  resolveRequiredToolNamesFromBehavior,
+} from "./validators/requiredToolNamesParser.js";
 export {
   computeReplyConfidence,
   evaluateStrictModeGate,

@@ -3,6 +3,7 @@ import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "../typ
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
+import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 
 export type NativeAgentKbMeta = {
   hasUsefulExcerpts: boolean;
@@ -49,10 +50,12 @@ export class OpenNexoRuntime implements AgentRuntime {
 
     if (toolOutcomes.length > 0) {
       traceBuilder.startNode("validate_result", "Validar ferramentas");
+      const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig);
       const validation = validateToolExecution({
         toolOutcomes,
         replyText: reply,
         strictMode: input.engineConfig.strictMode,
+        requiredToolNames,
       });
       if (!validation.ok) {
         for (const a of validation.alerts) traceBuilder.addError(a);
@@ -68,6 +71,28 @@ export class OpenNexoRuntime implements AgentRuntime {
       { id: "agent_engine", name: "Agent Engine" },
       JSON.stringify({ runtime: "openconduit", strict: input.engineConfig.strictMode }),
     );
+
+    const gate = runWorkflowGate({
+      engineConfig: input.engineConfig,
+      behaviorConfig: input.behaviorConfig,
+      userMessage: input.message.body ?? "",
+      replyText: reply,
+      toolOutcomes,
+      kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+      memorySnapshot: memSnap,
+      graphNodeSequence: ["load_memory", "respond"],
+    });
+    if (gate.blockReply) {
+      input.executionLog?.warn(
+        { id: "workflow_validator", name: "Workflow Validator" },
+        JSON.stringify({
+          approved: false,
+          criticalFailures: gate.report?.metrics.criticalFailures,
+          requiredToolNames: gate.requiredToolNames,
+        }),
+      );
+      return { reply: "", trace: traceBuilder.build() };
+    }
 
     return { reply, trace: traceBuilder.build() };
   }
