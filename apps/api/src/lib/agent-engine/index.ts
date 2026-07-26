@@ -43,8 +43,36 @@ export {
 export { formatMem0PromptAppendix, syncTurnToMem0, loadMem0MemoriesForPrompt } from "./memory/mem0MemoryBridge.js";
 export {
   buildSupervisorTrace,
+  buildSupervisorValidationInput,
   shouldRetryAfterSupervisor,
+  shouldBlockReplyAfterSupervisor,
 } from "./supervisor/AgentSupervisorService.js";
+export { createAgentGraphCheckpointer, getAgentGraphCheckpointer, readGraphCheckpointSnapshot } from "./checkpoint/AgentCheckpointFactory.js";
+export type { GraphCheckpointSnapshot } from "./checkpoint/AgentCheckpointFactory.js";
+export {
+  ingestAgentTraceToLangfuse,
+  isLangfuseConfigured,
+  readLangfuseConfig,
+} from "./observability/LangfuseBridge.js";
+export {
+  registerHitlPending,
+  getHitlPending,
+  getHitlPendingAsync,
+  listHitlPending,
+  listHitlPendingAsync,
+  resolveHitlPending,
+  type HitlPendingApproval,
+} from "./hitl/HumanInTheLoopStore.js";
+export { resolveHitlWithActions } from "./hitl/HitlDeliveryService.js";
+export { publishGraphEvent, subscribeGraphEvents } from "./observability/AgentGraphEventBus.js";
+export {
+  ensureAgentEngineRedisReady,
+  isAgentEngineRedisAvailable,
+} from "./redis/agentEngineRedis.js";
+export {
+  persistGraphCheckpointSnapshot,
+  readGraphCheckpointSnapshotWithFallback,
+} from "./checkpoint/AgentCheckpointFactory.js";
 export { ExecutionTraceBuilder } from "./observability/ExecutionTrace.js";
 export {
   createKnowledgeProvider,
@@ -73,13 +101,33 @@ export { clearKnowledgeCache, getKnowledgeCacheStats } from "./knowledge/knowled
 export { runKnowledgeInspector } from "./knowledge/knowledgeInspectorService.js";
 export { invalidateKnowledgeEngineCache } from "./knowledge/knowledgeArticleHooks.js";
 
-import type { AgentRuntimeExecuteInput } from "./types.js";
+import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";
 import { AgentRuntimeFactory } from "./runtime/AgentRuntimeFactory.js";
 
-/** Ponto de entrada único para execução via Agent Engine. */
+function logAgentEngineTrace(
+  input: AgentRuntimeExecuteInput,
+  result: AgentRuntimeExecuteResult,
+): void {
+  if (input.engineConfig.observability !== "full" || !result.trace) return;
+  input.executionLog?.info(
+    { id: "agent_engine_trace", name: "Agent Engine Trace" },
+    JSON.stringify(result.trace),
+  );
+}
+
+/** Ponto de entrada único para execução via Agent Engine (retrocompatível — devolve só reply). */
 export async function executeViaAgentEngine(input: AgentRuntimeExecuteInput): Promise<string> {
+  const result = await executeViaAgentEngineWithResult(input);
+  return result.reply;
+}
+
+/** Execução com trace completo (para inspectores e observabilidade avançada). */
+export async function executeViaAgentEngineWithResult(
+  input: AgentRuntimeExecuteInput,
+): Promise<AgentRuntimeExecuteResult> {
   const runtime = AgentRuntimeFactory.create(input.engineConfig);
   const result = await runtime.execute(input);
-  return result.reply;
+  logAgentEngineTrace(input, result);
+  return result;
 }

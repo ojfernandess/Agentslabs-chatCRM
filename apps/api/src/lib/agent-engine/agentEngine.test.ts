@@ -38,6 +38,10 @@ test("parseAgentEngineConfig reads agentEngine block", () => {
       supervisorEnabled: true,
       strictMode: true,
       observability: "full",
+      checkpointStore: "redis",
+      streamingEnabled: true,
+      humanInTheLoopEnabled: true,
+      humanInTheLoopNativeEnabled: true,
     },
   });
   assert.equal(cfg.runtime, "langgraph");
@@ -45,6 +49,17 @@ test("parseAgentEngineConfig reads agentEngine block", () => {
   assert.equal(cfg.supervisorEnabled, true);
   assert.equal(cfg.strictMode, true);
   assert.equal(cfg.observability, "full");
+  assert.equal(cfg.checkpointStore, "redis");
+  assert.equal(cfg.streamingEnabled, true);
+  assert.equal(cfg.humanInTheLoopEnabled, true);
+  assert.equal(cfg.humanInTheLoopNativeEnabled, true);
+});
+
+test("parseAgentEngineConfig supervisorMode structural skips llm in native path", () => {
+  const cfg = parseAgentEngineConfig({
+    agentEngine: { supervisorEnabled: true, supervisorMode: "structural" },
+  });
+  assert.equal(cfg.supervisorMode, "structural");
 });
 
 test("validateAgentPrompt scores filled blocks", () => {

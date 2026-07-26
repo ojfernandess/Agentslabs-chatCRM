@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ChevronRight, ClipboardCopy, Download, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
+import { subscribeAgentGraphEventStream, type AgentGraphStreamEvent } from "@/lib/agentGraphEventStream";
 import { resolveAutomationToolIdFromLogNode } from "@/pages/automation/agentPromptBuilder";
 import { ExecutionFlowView } from "@/pages/automation/ExecutionFlowView";
 import { AgentInspectorPanel, type AgentInspectorData } from "@/pages/automation/AgentInspectorPanel";
@@ -258,6 +259,8 @@ export function AutomationExecutionsTab({
   const [inspectorData, setInspectorData] = useState<AgentInspectorData | null>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
   const [inspectorError, setInspectorError] = useState(false);
+  const [liveGraphEvents, setLiveGraphEvents] = useState<AgentGraphStreamEvent[]>([]);
+  const [graphStreamActive, setGraphStreamActive] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [dismissedSignals, setDismissedSignals] = useState<Set<string>>(new Set());
 
@@ -357,6 +360,8 @@ export function AutomationExecutionsTab({
     setDismissedSignals(new Set());
     setInspectorData(null);
     setInspectorError(false);
+    setLiveGraphEvents([]);
+    setGraphStreamActive(false);
   }, [selectedId, loadDetail]);
 
   const loadInspector = useCallback(async (id: string) => {
@@ -378,6 +383,42 @@ export function AutomationExecutionsTab({
       void loadInspector(selectedId);
     }
   }, [detailSubTab, selectedId, loadInspector]);
+
+  useEffect(() => {
+    if (detailSubTab !== "inspector") {
+      setGraphStreamActive(false);
+      return;
+    }
+    const threadId = inspectorData?.checkpointThreadId;
+    const running = detail?.status === "RUNNING";
+    if (!threadId || !running || inspectorData?.engine.runtime !== "langgraph") {
+      setGraphStreamActive(false);
+      return;
+    }
+    setLiveGraphEvents([]);
+    setGraphStreamActive(true);
+    const unsub = subscribeAgentGraphEventStream(threadId, (ev) => {
+      setLiveGraphEvents((prev) => [...prev, ev].slice(-80));
+    });
+    return () => {
+      unsub();
+      setGraphStreamActive(false);
+    };
+  }, [
+    detailSubTab,
+    detail?.status,
+    inspectorData?.checkpointThreadId,
+    inspectorData?.engine.runtime,
+  ]);
+
+  useEffect(() => {
+    if (detailSubTab !== "inspector" || !selectedId) return;
+    if (detail?.status !== "RUNNING") return;
+    const poll = window.setInterval(() => {
+      void loadInspector(selectedId);
+    }, 4000);
+    return () => window.clearInterval(poll);
+  }, [detailSubTab, detail?.status, selectedId, loadInspector]);
 
   const sortedEntries = useMemo(() => {
     if (!detail?.logEntries) return [];
@@ -1057,6 +1098,8 @@ export function AutomationExecutionsTab({
                   loading={inspectorLoading}
                   error={inspectorError}
                   t={t}
+                  liveGraphEvents={liveGraphEvents}
+                  liveStreaming={graphStreamActive}
                 />
               ) : detailSubTab === "quality" ? (
                 <div className="space-y-2 p-2">

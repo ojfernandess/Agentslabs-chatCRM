@@ -70,6 +70,28 @@ Documento da unidade **Hotel Brooklin** para consulta via buscar_conhecimento.
 - Quarto
 `;
 
+test("chunkKnowledgeDocumentContent aggregates ### room subsections into parent ## chunk", () => {
+  const doc = `# Hotel
+
+## Categorias de Quartos
+
+### Suíte Standard Individual
+- **Tamanho:** 12 m²
+
+### Suíte Standard Duplo Casal
+- **Tamanho:** 14 m²
+
+## WiFi
+- **Rede:** NET
+`;
+  const chunks = chunkKnowledgeDocumentContent(doc, { chunkSize: 2000, maxChunks: 20 });
+  const roomsChunk = chunks.find((c) => c.includes("Categorias de Quartos"));
+  assert.ok(roomsChunk);
+  assert.ok(roomsChunk!.includes("### Suíte Standard Individual"));
+  assert.ok(roomsChunk!.includes("### Suíte Standard Duplo Casal"));
+  assert.ok(!chunks.some((c) => c.trim() === "### Suíte Standard Individual"));
+});
+
 test("extractMarkdownSectionForQuery aggregates ### room subsections under empty ## parent", () => {
   const q = "quais as categorias de quartos do hotel Brooklin?";
   const section = extractMarkdownSectionForQuery(BROOKLIN_ROOMS, q);

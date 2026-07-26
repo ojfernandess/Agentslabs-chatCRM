@@ -2,7 +2,20 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { parseAgentEngineConfig, validateAgentPrompt, isMem0Configured } from "../lib/agent-engine/index.js";
+import {
+  parseAgentEngineConfig,
+  validateAgentPrompt,
+  isMem0Configured,
+  getHitlPendingAsync,
+  listHitlPendingAsync,
+  LangGraphRuntime,
+} from "../lib/agent-engine/index.js";
+import { resolveHitlWithActions } from "../lib/agent-engine/hitl/HitlDeliveryService.js";
+import { subscribeGraphEvents } from "../lib/agent-engine/observability/AgentGraphEventBus.js";
+import {
+  ensureAgentEngineRedisReady,
+  isAgentEngineRedisAvailable,
+} from "../lib/agent-engine/redis/agentEngineRedis.js";
 import { buildExecutionInspectorView } from "../lib/agent-engine/observability/buildExecutionInspector.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -114,6 +127,7 @@ export async function registerAgentEngineRoutes(app: FastifyInstance): Promise<v
       startedAt: execution.startedAt,
       finishedAt: execution.finishedAt,
       triggerMessageBody,
+      triggerMessageId: execution.triggerMessageId,
       logEntries: execution.logEntries.map((e) => ({
         nodeId: e.nodeId,
         nodeName: e.nodeName,
@@ -142,5 +156,147 @@ export async function registerAgentEngineRoutes(app: FastifyInstance): Promise<v
         provider: "mem0",
       },
     };
+  });
+
+  app.get("/agent-engine/redis/status", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const configured = Boolean(process.env.REDIS_URL?.trim());
+    const ok = configured ? await ensureAgentEngineRedisReady() : false;
+    return {
+      data: {
+        configured,
+        available: isAgentEngineRedisAvailable() || ok,
+        features: ["hitl_persistence", "checkpoint_mirror", "graph_event_sse"],
+      },
+    };
+  });
+
+  app.get("/agent-engine/hitl/pending", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const q = request.query as { conversationId?: string };
+    const items = await listHitlPendingAsync(organizationId, q.conversationId);
+    return { data: items };
+  });
+
+  app.get("/agent-engine/hitl/:id", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const { id } = request.params as { id: string };
+    const row = await getHitlPendingAsync(id, organizationId);
+    if (!row || row.organizationId !== organizationId) {
+      return reply.status(404).send({ error: "Not Found", message: "HITL pending not found", statusCode: 404 });
+    }
+    return { data: row };
+  });
+
+  app.post("/agent-engine/hitl/:id/resolve", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        decision: z.enum(["approved", "rejected"]),
+        deliverOnApprove: z.boolean().optional(),
+        resumeGraph: z.boolean().optional(),
+      })
+      .parse(request.body ?? {});
+    const result = await resolveHitlWithActions({
+      id,
+      organizationId,
+      decision: body.decision,
+      deliverOnApprove: body.deliverOnApprove,
+      resumeGraph: body.resumeGraph,
+      log: request.log,
+    });
+    if (!result) {
+      return reply.status(404).send({ error: "Not Found", message: "HITL pending not found", statusCode: 404 });
+    }
+    return {
+      data: {
+        ...result.row,
+        delivered: result.delivered,
+        outboundMessageId: result.outboundMessageId,
+        graphResumed: result.graphResumed,
+      },
+    };
+  });
+
+  app.get("/agent-engine/checkpoint/:conversationId/:messageId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const { conversationId, messageId } = request.params as {
+      conversationId: string;
+      messageId: string;
+    };
+    const q = request.query as { checkpointStore?: string };
+    const threadId = `${conversationId}:${messageId}`;
+    const store = q.checkpointStore === "redis" ? "redis" : "memory";
+    const snapshot = await LangGraphRuntime.readCheckpoint(
+      organizationId,
+      threadId,
+      store,
+      async () => ({ reply: "" }),
+    );
+    if (!snapshot) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Checkpoint not found for thread",
+        statusCode: 404,
+      });
+    }
+    return { data: snapshot };
+  });
+
+  app.get("/agent-engine/events/stream/:threadId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user!)) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const { threadId } = request.params as { threadId: string };
+    if (!threadId.includes(":")) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "threadId must be conversationId:messageId",
+        statusCode: 400,
+      });
+    }
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    });
+    reply.raw.write(": connected\n\n");
+
+    const heartbeat = setInterval(() => {
+      reply.raw.write(": ping\n\n");
+    }, 25_000);
+
+    const unsubscribe = subscribeGraphEvents(threadId, (event) => {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+
+    request.raw.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 }

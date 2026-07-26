@@ -14,6 +14,12 @@ export type AgentRuntimeKind =
 /** Provedores de memória. */
 export type AgentMemoryKind = "openconduit" | "mem0";
 
+/** Store de checkpoint LangGraph. */
+export type AgentCheckpointStoreKind = "memory" | "redis";
+
+/** Modo do supervisor quando `supervisorEnabled`. */
+export type AgentSupervisorMode = "structural" | "llm" | "both";
+
 /** Nível de observabilidade. */
 export type AgentObservabilityLevel = "basic" | "full";
 
@@ -22,16 +28,31 @@ export type AgentEngineConfig = {
   runtime: AgentRuntimeKind;
   memory: AgentMemoryKind;
   supervisorEnabled: boolean;
+  /** Default `both` quando supervisor activo (retrocompatível). */
+  supervisorMode?: AgentSupervisorMode;
   strictMode: boolean;
   observability: AgentObservabilityLevel;
+  /** Checkpoint LangGraph — default `memory` (in-process). */
+  checkpointStore?: AgentCheckpointStoreKind;
+  /** Usa `graph.stream()` e emite eventos parciais no execution log. */
+  streamingEnabled?: boolean;
+  /** Pausa envio quando supervisor reprova — fila HITL via API. */
+  humanInTheLoopEnabled?: boolean;
+  /** Usa `interrupt()` LangGraph + resume via `Command` (requer checkpoint). */
+  humanInTheLoopNativeEnabled?: boolean;
 };
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   runtime: "openconduit",
   memory: "openconduit",
   supervisorEnabled: false,
+  supervisorMode: "both",
   strictMode: false,
   observability: "basic",
+  checkpointStore: "memory",
+  streamingEnabled: false,
+  humanInTheLoopEnabled: false,
+  humanInTheLoopNativeEnabled: false,
 };
 
 export type AgentRuntimeExecuteInput = {
@@ -61,7 +82,31 @@ export type AgentGraphNodeId =
   | "validate_result"
   | "supervisor"
   | "update_memory"
-  | "respond";
+  | "respond"
+  | "human_review";
+
+export type AgentGraphEventKind =
+  | "start"
+  | "end"
+  | "node"
+  | "edge"
+  | "tool"
+  | "memory"
+  | "knowledge"
+  | "supervisor"
+  | "error"
+  | "retry"
+  | "checkpoint"
+  | "stream"
+  | "hitl";
+
+export type AgentGraphEvent = {
+  kind: AgentGraphEventKind;
+  at: string;
+  nodeId?: string;
+  detail?: string;
+  metadata?: Record<string, unknown>;
+};
 
 export type AgentExecutionTrace = {
   runtime: AgentRuntimeKind;
@@ -71,8 +116,11 @@ export type AgentExecutionTrace = {
   currentNode?: AgentGraphNodeId;
   nextNode?: AgentGraphNodeId;
   nodes: AgentTraceNode[];
+  events?: AgentGraphEvent[];
   supervisor?: AgentSupervisorTrace;
   memorySnapshot?: Record<string, unknown>;
+  hitlPendingId?: string;
+  checkpointThreadId?: string;
   tokens?: { prompt?: number; completion?: number; total?: number };
   latencyMs?: number;
   errors: string[];

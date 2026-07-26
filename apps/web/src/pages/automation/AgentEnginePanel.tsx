@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { Brain, Cpu, Gauge, History, ShieldCheck } from "lucide-react";
+import { HitlPendingPanel } from "@/pages/automation/HitlPendingPanel";
 
 export type AgentEngineRuntimeOption =
   | "openconduit"
@@ -27,8 +28,13 @@ export type AgentEngineFormValues = {
   memory: AgentEngineMemoryOption;
   memoryEngine: MemoryEngineFormValues;
   supervisorEnabled: boolean;
+  supervisorMode: "structural" | "llm" | "both";
   strictMode: boolean;
   observability: AgentEngineObservabilityOption;
+  checkpointStore: "memory" | "redis";
+  streamingEnabled: boolean;
+  humanInTheLoopEnabled: boolean;
+  humanInTheLoopNativeEnabled: boolean;
 };
 
 export const defaultMemoryEngineFormValues = (): MemoryEngineFormValues => ({
@@ -256,6 +262,27 @@ export function AgentEnginePanel({
         </label>
       </div>
 
+      {value.supervisorEnabled ? (
+        <fieldset className="mt-3">
+          <legend className="text-xs font-semibold text-ink-800 dark:text-ink-200">
+            {t("automationPage.agentEngineSupervisorModeLabel")}
+          </legend>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {(["both", "structural", "llm"] as const).map((mode) => (
+              <label key={mode} className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="radio"
+                  name="agentEngineSupervisorMode"
+                  checked={value.supervisorMode === mode}
+                  onChange={() => patch({ supervisorMode: mode })}
+                />
+                {t(`automationPage.agentEngineSupervisorMode_${mode}`)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+
       <fieldset className="mt-4">
         <legend className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-800 dark:text-ink-200">
           <Gauge className="h-3.5 w-3.5" />
@@ -275,6 +302,81 @@ export function AgentEnginePanel({
           ))}
         </div>
       </fieldset>
+
+      {value.runtime === "langgraph" ? (
+        <fieldset className="mt-4 rounded-lg border border-violet-200/60 bg-white/60 p-3 dark:border-violet-900/40 dark:bg-ink-950/30">
+          <legend className="text-xs font-semibold text-violet-900 dark:text-violet-200">
+            {t("automationPage.agentEngineLangGraphAdvanced")}
+          </legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.streamingEnabled}
+                onChange={(e) => patch({ streamingEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineStreaming")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineStreamingHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={value.humanInTheLoopEnabled}
+                onChange={(e) =>
+                  patch({
+                    humanInTheLoopEnabled: e.target.checked,
+                    humanInTheLoopNativeEnabled: e.target.checked
+                      ? value.humanInTheLoopNativeEnabled
+                      : false,
+                  })
+                }
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineHitl")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineHitlHelp")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                disabled={!value.humanInTheLoopEnabled}
+                checked={value.humanInTheLoopNativeEnabled}
+                onChange={(e) => patch({ humanInTheLoopNativeEnabled: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">{t("automationPage.agentEngineHitlNative")}</span>
+                <span className="mt-0.5 block text-[11px] text-ink-500">
+                  {t("automationPage.agentEngineHitlNativeHelp")}
+                </span>
+              </span>
+            </label>
+          </div>
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium">{t("automationPage.agentEngineCheckpointStore")}</span>
+            <select
+              className="rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
+              value={value.checkpointStore}
+              onChange={(e) =>
+                patch({ checkpointStore: e.target.value === "redis" ? "redis" : "memory" })
+              }
+            >
+              <option value="memory">{t("automationPage.agentEngineCheckpoint_memory")}</option>
+              <option value="redis">{t("automationPage.agentEngineCheckpoint_redis")}</option>
+            </select>
+          </label>
+        </fieldset>
+      ) : null}
+
+      <HitlPendingPanel enabled={value.humanInTheLoopEnabled} t={t} />
     </div>
   );
 }

@@ -497,8 +497,13 @@ function emptyAgentForm(): AgentFormFields {
       memory: "openconduit",
       memoryEngine: defaultMemoryEngineFormValues(),
       supervisorEnabled: false,
+      supervisorMode: "both",
       strictMode: false,
       observability: "basic",
+      checkpointStore: "memory",
+      streamingEnabled: false,
+      humanInTheLoopEnabled: false,
+      humanInTheLoopNativeEnabled: false,
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
   };
@@ -661,8 +666,18 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     supervisorEnabled:
       engineRaw.supervisorEnabled === true ||
       (engineRaw.supervisorEnabled !== false && agentSupervisorEnabled),
+    supervisorMode:
+      engineRaw.supervisorMode === "structural" ||
+      engineRaw.supervisorMode === "llm" ||
+      engineRaw.supervisorMode === "both"
+        ? engineRaw.supervisorMode
+        : "both",
     strictMode: engineRaw.strictMode === true,
     observability: engineRaw.observability === "full" ? "full" : "basic",
+    checkpointStore: engineRaw.checkpointStore === "redis" ? "redis" : "memory",
+    streamingEnabled: engineRaw.streamingEnabled === true,
+    humanInTheLoopEnabled: engineRaw.humanInTheLoopEnabled === true,
+    humanInTheLoopNativeEnabled: engineRaw.humanInTheLoopNativeEnabled === true,
   };
 
   const kbRaw =
@@ -955,8 +970,13 @@ function formToPayload(
       runtime: form.agentEngine.runtime,
       memory: form.agentEngine.memoryEngine.provider,
       supervisorEnabled: form.agentEngine.supervisorEnabled,
+      supervisorMode: form.agentEngine.supervisorMode,
       strictMode: form.agentEngine.strictMode,
       observability: form.agentEngine.observability,
+      checkpointStore: form.agentEngine.checkpointStore,
+      streamingEnabled: form.agentEngine.streamingEnabled,
+      humanInTheLoopEnabled: form.agentEngine.humanInTheLoopEnabled,
+      humanInTheLoopNativeEnabled: form.agentEngine.humanInTheLoopNativeEnabled,
     },
     memoryEngine: {
       provider: form.agentEngine.memoryEngine.provider,

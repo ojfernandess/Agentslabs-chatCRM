@@ -34,6 +34,9 @@ export type AgentInspectorData = {
   } | null;
   memoryUsed: unknown;
   validationChecklist: Array<{ id: string; label: string; passed: boolean; detail?: string }>;
+  graphEvents?: Array<{ kind: string; at: string; nodeId?: string; detail?: string }>;
+  hitlPendingId?: string | null;
+  checkpointThreadId?: string | null;
   timeline: Array<{ id: string; name: string; level: string; message: string; at: string }>;
 };
 
@@ -68,11 +71,15 @@ export function AgentInspectorPanel({
   loading,
   error,
   t,
+  liveGraphEvents,
+  liveStreaming,
 }: {
   data: AgentInspectorData | null;
   loading: boolean;
   error: boolean;
   t: (key: string) => string;
+  liveGraphEvents?: Array<{ kind: string; at: string; nodeId?: string; detail?: string }>;
+  liveStreaming?: boolean;
 }) {
   if (loading) {
     return (
@@ -87,6 +94,12 @@ export function AgentInspectorPanel({
   }
 
   const allChecksPassed = data.validationChecklist.every((c) => c.passed);
+  const mergedGraphEvents = [
+    ...(data.graphEvents ?? []),
+    ...(liveGraphEvents ?? []),
+  ];
+  const showGraphEvents =
+    mergedGraphEvents.length > 0 || liveStreaming || data.engine.runtime === "langgraph";
 
   return (
     <div className="space-y-3 p-2">
@@ -243,6 +256,48 @@ export function AgentInspectorPanel({
           </p>
         ) : null}
       </InspectorSection>
+
+      {showGraphEvents ? (
+        <InspectorSection
+          title={t("automationPage.agentInspectorGraphEvents")}
+          icon={<Cpu className="h-4 w-4 text-violet-600" />}
+        >
+          {liveStreaming ? (
+            <p className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("automationPage.agentInspectorGraphEventsLive")}
+            </p>
+          ) : null}
+          {mergedGraphEvents.length > 0 ? (
+            <ol className="max-h-40 space-y-1 overflow-y-auto">
+              {mergedGraphEvents.map((ev, idx) => (
+                <li key={`${ev.kind}-${ev.at}-${idx}`} className="text-[10px]">
+                  <span className="font-mono text-ink-400">{new Date(ev.at).toLocaleTimeString()}</span>{" "}
+                  <span className="font-semibold text-violet-800 dark:text-violet-200">{ev.kind}</span>
+                  {ev.nodeId ? <span className="text-ink-500"> · {ev.nodeId}</span> : null}
+                  {ev.detail ? <span className="block truncate text-ink-500">{ev.detail}</span> : null}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-[10px] text-ink-500">{t("automationPage.agentInspectorGraphEventsWaiting")}</p>
+          )}
+        </InspectorSection>
+      ) : null}
+
+      {data.hitlPendingId ? (
+        <InspectorSection
+          title={t("automationPage.agentInspectorHitl")}
+          icon={<ShieldCheck className="h-4 w-4 text-amber-600" />}
+        >
+          <p className="font-mono text-[10px] text-ink-600">{data.hitlPendingId}</p>
+          {data.checkpointThreadId ? (
+            <p className="mt-1 text-[10px] text-ink-500">
+              checkpoint: {data.checkpointThreadId}
+            </p>
+          ) : null}
+        </InspectorSection>
+      ) : null}
 
       <InspectorSection
         title={t("automationPage.agentInspectorTimeline")}

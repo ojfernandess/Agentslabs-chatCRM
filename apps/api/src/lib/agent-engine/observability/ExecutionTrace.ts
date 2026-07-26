@@ -1,5 +1,7 @@
 import type {
   AgentExecutionTrace,
+  AgentGraphEvent,
+  AgentGraphEventKind,
   AgentGraphNodeId,
   AgentRuntimeKind,
   AgentMemoryKind,
@@ -23,8 +25,33 @@ export class ExecutionTraceBuilder {
       strictMode: input.strictMode,
       observability: input.observability,
       nodes: [],
+      events: [],
       errors: [],
     };
+  }
+
+  emitEvent(
+    kind: AgentGraphEventKind,
+    detail?: string,
+    opts?: { nodeId?: string; metadata?: Record<string, unknown> },
+  ): void {
+    if (!this.trace.events) this.trace.events = [];
+    const event: AgentGraphEvent = {
+      kind,
+      at: new Date().toISOString(),
+      detail,
+      nodeId: opts?.nodeId,
+      metadata: opts?.metadata,
+    };
+    this.trace.events.push(event);
+  }
+
+  setHitlPendingId(id: string): void {
+    this.trace.hitlPendingId = id;
+  }
+
+  setCheckpointThreadId(threadId: string): void {
+    this.trace.checkpointThreadId = threadId;
   }
 
   startNode(id: AgentGraphNodeId | string, name: string, detail?: string): void {

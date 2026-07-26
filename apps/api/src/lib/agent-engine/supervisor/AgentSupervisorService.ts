@@ -1,4 +1,5 @@
 import type { AgentSupervisorCheck, AgentSupervisorTrace } from "../types.js";
+import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 
 export type SupervisorValidationInput = {
   userMessage: string;
@@ -10,7 +11,60 @@ export type SupervisorValidationInput = {
   strictMode: boolean;
   llmApproved?: boolean;
   llmSummary?: string;
+  retryCount?: number;
+  previousReply?: string;
+  memorySnapshot?: Record<string, unknown>;
+  kbQueryLikely?: boolean;
+  kbToolInvoked?: boolean;
+  kbToolSucceeded?: boolean;
+  validationBlockSend?: boolean;
 };
+
+export type BuildSupervisorValidationInputOpts = {
+  userMessage: string;
+  replyText: string;
+  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
+  strictMode: boolean;
+  memorySnapshot?: Record<string, unknown>;
+  retryCount?: number;
+  previousReply?: string;
+  llmApproved?: boolean | null;
+  llmSummary?: string;
+  validationBlockSend?: boolean;
+  kbQueryLikely?: boolean;
+};
+
+function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
+  if (!snapshot || Object.keys(snapshot).length === 0) return false;
+  return JSON.stringify(snapshot).length > 80;
+}
+
+/** Constrói input unificado para o supervisor estrutural (evita duplicação entre runtimes). */
+export function buildSupervisorValidationInput(
+  opts: BuildSupervisorValidationInputOpts,
+): SupervisorValidationInput {
+  const kbTool = opts.toolOutcomes.find((t) => t.name === "buscar_conhecimento");
+  return {
+    userMessage: opts.userMessage,
+    replyText: opts.replyText,
+    toolSummary: opts.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
+    kbHasUsefulExcerpts: opts.kbMeta.coversQuery || opts.kbMeta.hasUsefulExcerpts,
+    successfulToolCount: opts.toolOutcomes.filter((t) => t.ok).length,
+    totalToolCount: opts.toolOutcomes.length,
+    strictMode: opts.strictMode,
+    memorySnapshot: opts.memorySnapshot,
+    retryCount: opts.retryCount,
+    previousReply: opts.previousReply,
+    llmApproved: opts.llmApproved ?? undefined,
+    llmSummary: opts.llmSummary,
+    validationBlockSend: opts.validationBlockSend,
+    kbQueryLikely:
+      opts.kbQueryLikely ?? userMessageLooksLikeKnowledgeSeekingQuery(opts.userMessage),
+    kbToolInvoked: !!kbTool,
+    kbToolSucceeded: kbTool?.ok ?? false,
+  };
+}
 
 const CHECK_DEFS: Array<{
   id: string;
@@ -47,6 +101,64 @@ const CHECK_DEFS: Array<{
     label: "Contexto utilizado",
     run: (i) => i.kbHasUsefulExcerpts || i.userMessage.length < 20 || i.replyText.length > 20,
   },
+  {
+    id: "knowledge_used",
+    label: "Conhecimento utilizado quando necessário",
+    run: (i) => {
+      if (!i.kbQueryLikely) return true;
+      if (i.kbHasUsefulExcerpts || i.kbToolSucceeded) return true;
+      if (!i.strictMode) return i.replyText.trim().length >= 24;
+      if (/^(só um momento|aguarde|vou verificar|um instante)/i.test(i.replyText.trim())) {
+        return false;
+      }
+      return i.replyText.trim().length >= 40;
+    },
+  },
+  {
+    id: "memory_considered",
+    label: "Memória disponível considerada",
+    run: (i) => {
+      if (!memoryHasSubstantive(i.memorySnapshot)) return true;
+      return i.replyText.trim().length >= 8;
+    },
+  },
+  {
+    id: "tools_not_ignored",
+    label: "Ferramentas não ignoradas",
+    run: (i) => {
+      if (i.totalToolCount > 0 && i.successfulToolCount === 0 && i.strictMode) return false;
+      if (
+        i.kbQueryLikely &&
+        !i.kbToolInvoked &&
+        !i.kbHasUsefulExcerpts &&
+        i.strictMode &&
+        /^(só um momento|aguarde|vou verificar)/i.test(i.replyText.trim())
+      ) {
+        return false;
+      }
+      return true;
+    },
+  },
+  {
+    id: "no_execution_loop",
+    label: "Sem loop de execução",
+    run: (i) => {
+      if ((i.retryCount ?? 0) >= 2 && !i.replyText.trim()) return false;
+      if (
+        i.previousReply &&
+        i.previousReply.trim() === i.replyText.trim() &&
+        (i.retryCount ?? 0) > 0
+      ) {
+        return !i.strictMode;
+      }
+      return true;
+    },
+  },
+  {
+    id: "validation_passed",
+    label: "Validação de ferramentas aprovada",
+    run: (i) => !i.validationBlockSend,
+  },
 ];
 
 export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSupervisorTrace {
@@ -70,9 +182,18 @@ export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSup
     approved: allPassed && (input.llmApproved !== false),
     summary: input.llmSummary ?? (allPassed ? "Validação estrutural aprovada" : "Falhas na validação"),
     checks,
-    retryCount: 0,
+    retryCount: input.retryCount ?? 0,
   };
 }
+
+const RETRYABLE_CHECK_IDS = new Set([
+  "tool_used",
+  "knowledge_used",
+  "tools_not_ignored",
+  "validation_passed",
+  "prompt_coherent",
+  "no_execution_loop",
+]);
 
 export function shouldRetryAfterSupervisor(
   trace: AgentSupervisorTrace,
@@ -81,5 +202,20 @@ export function shouldRetryAfterSupervisor(
 ): boolean {
   if (trace.approved) return false;
   if (retryCount >= 2) return false;
-  return strictMode || trace.checks.some((c) => c.id === "tool_used" && !c.passed);
+  if (strictMode && trace.checks.some((c) => !c.passed && RETRYABLE_CHECK_IDS.has(c.id))) {
+    return true;
+  }
+  return trace.checks.some((c) => c.id === "tool_used" && !c.passed);
+}
+
+/** Bloqueia envio após esgotar retries quando supervisor reprova em modo estrito. */
+export function shouldBlockReplyAfterSupervisor(
+  trace: AgentSupervisorTrace,
+  strictMode: boolean,
+  retryCount: number,
+): boolean {
+  if (trace.approved) return false;
+  if (!strictMode) return false;
+  if (retryCount < 2) return false;
+  return true;
 }

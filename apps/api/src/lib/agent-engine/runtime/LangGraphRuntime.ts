@@ -1,11 +1,35 @@
-import { Annotation, END, START, StateGraph, MemorySaver } from "@langchain/langgraph";
+import { Annotation, END, START, StateGraph, interrupt, isGraphInterrupt } from "@langchain/langgraph";
 import type { AgentRuntime } from "./AgentRuntime.js";
-import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult, AgentRuntimeState } from "../types.js";
+import type {
+  AgentRuntimeExecuteInput,
+  AgentRuntimeExecuteResult,
+  AgentRuntimeState,
+  AgentSupervisorTrace,
+} from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
-import { buildSupervisorTrace, shouldRetryAfterSupervisor } from "../supervisor/AgentSupervisorService.js";
+import {
+  buildSupervisorTrace,
+  buildSupervisorValidationInput,
+  shouldBlockReplyAfterSupervisor,
+  shouldRetryAfterSupervisor,
+} from "../supervisor/AgentSupervisorService.js";
+import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import {
+  getAgentGraphCheckpointer,
+  persistGraphCheckpointSnapshot,
+  readGraphCheckpointSnapshot,
+  readGraphCheckpointSnapshotWithFallback,
+  type GraphCheckpointSnapshot,
+} from "../checkpoint/AgentCheckpointFactory.js";
+import { registerHitlPending } from "../hitl/HumanInTheLoopStore.js";
+import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observability/LangfuseBridge.js";
+import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
+import type { AgentCheckpointStoreKind } from "../types.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
+
+const LANGGRAPH_TIMEOUT_MS = 120_000;
 
 type GraphState = {
   input: AgentRuntimeExecuteInput;
@@ -14,8 +38,16 @@ type GraphState = {
   toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
+  previousReply: string;
   traceBuilder: ExecutionTraceBuilder;
   supervisorApproved: boolean;
+  supervisorTrace?: AgentSupervisorTrace;
+  validationBlockSend: boolean;
+  blockReply: boolean;
+  hitlPendingId?: string;
+  intentHints: { kbQueryLikely: boolean };
+  llmSupervisorApproved?: boolean | null;
+  llmSupervisorSummary?: string;
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -25,8 +57,16 @@ const GraphStateAnnotation = Annotation.Root({
   toolOutcomes: Annotation<Array<{ name: string; ok: boolean; preview: string }>>,
   kbMeta: Annotation<{ hasUsefulExcerpts: boolean; coversQuery: boolean }>,
   retryCount: Annotation<number>,
+  previousReply: Annotation<string>,
   traceBuilder: Annotation<ExecutionTraceBuilder>,
   supervisorApproved: Annotation<boolean>,
+  supervisorTrace: Annotation<AgentSupervisorTrace | undefined>,
+  validationBlockSend: Annotation<boolean>,
+  blockReply: Annotation<boolean>,
+  hitlPendingId: Annotation<string | undefined>,
+  intentHints: Annotation<{ kbQueryLikely: boolean }>,
+  llmSupervisorApproved: Annotation<boolean | null | undefined>,
+  llmSupervisorSummary: Annotation<string | undefined>,
 });
 
 /**
@@ -35,7 +75,6 @@ const GraphStateAnnotation = Annotation.Root({
 export class LangGraphRuntime implements AgentRuntime {
   readonly kind = "langgraph" as const;
   private state: AgentRuntimeState = { status: "idle", graphHistory: [] };
-  private checkpointer = new MemorySaver();
 
   constructor(private readonly executor: NativeAgentExecutor) {}
 
@@ -48,58 +87,264 @@ export class LangGraphRuntime implements AgentRuntime {
       strictMode: input.engineConfig.strictMode,
       observability: input.engineConfig.observability,
     });
+    traceBuilder.emitEvent("start", "LangGraph execution started");
 
-    const graph = this.buildGraph();
+    const checkpointer = getAgentGraphCheckpointer(
+      input.engineConfig.checkpointStore ?? "memory",
+      input.organizationId,
+    );
+    const graph = this.buildGraph(checkpointer);
     const threadId = `${input.conversation.id}:${input.message.id}`;
+    traceBuilder.setCheckpointThreadId(threadId);
+    traceBuilder.emitEvent("checkpoint", "Thread checkpoint", { metadata: { threadId } });
+    publishGraphEvent(threadId, {
+      kind: "checkpoint",
+      at: new Date().toISOString(),
+      detail: "Thread checkpoint",
+      metadata: { threadId },
+    });
 
-    const result = await graph.invoke(
-      {
-        input,
-        memory: {},
-        reply: "",
-        toolOutcomes: [],
-        kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
-        retryCount: 0,
-        traceBuilder,
-        supervisorApproved: false,
-      },
-      {
-        configurable: { thread_id: threadId },
-      },
+    const checkpointStore = input.engineConfig.checkpointStore ?? "memory";
+    const initialState: GraphState = {
+      input,
+      memory: {},
+      reply: "",
+      toolOutcomes: [],
+      kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+      retryCount: 0,
+      previousReply: "",
+      traceBuilder,
+      supervisorApproved: false,
+      validationBlockSend: false,
+      blockReply: false,
+      intentHints: { kbQueryLikely: false },
+    };
+
+    const config = { configurable: { thread_id: threadId } };
+    const useStream = input.engineConfig.streamingEnabled === true;
+
+    let result: GraphState;
+    let interruptedForHitl = false;
+    try {
+      result = await Promise.race([
+        useStream
+          ? this.runGraphStream(graph, initialState, config, input, traceBuilder, threadId)
+          : graph.invoke(initialState, config),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("LangGraph execution timeout")), LANGGRAPH_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (err) {
+      if (isGraphInterrupt(err)) {
+        interruptedForHitl = true;
+        traceBuilder.emitEvent("hitl", "Grafo pausado — aguarda aprovação humana (interrupt nativo)");
+        publishGraphEvent(threadId, {
+          kind: "hitl",
+          at: new Date().toISOString(),
+          detail: "Grafo pausado — interrupt nativo",
+        });
+        const pausedSnap = (await graph.getState(config)) as {
+          values?: Partial<GraphState>;
+        };
+        result = {
+          ...initialState,
+          ...pausedSnap.values,
+          traceBuilder,
+        } as GraphState;
+      } else {
+        this.state = { status: "failed", graphHistory: [], checkpointId: threadId };
+        traceBuilder.emitEvent("error", err instanceof Error ? err.message : "LangGraph execution failed");
+        traceBuilder.addError(err instanceof Error ? err.message : "LangGraph execution failed");
+        input.executionLog?.error(
+          { id: "agent_engine", name: "LangGraph Runtime" },
+          err instanceof Error ? err.message : "LangGraph execution failed",
+        );
+        return { reply: "", trace: traceBuilder.build() };
+      }
+    }
+
+    void this.mirrorCheckpointSnapshot(
+      input.organizationId,
+      checkpointStore,
+      graph,
+      checkpointer,
+      threadId,
     );
 
+    traceBuilder.emitEvent("end", interruptedForHitl
+      ? "LangGraph pausado em HITL"
+      : "LangGraph execution completed");
+
     this.state = {
-      status: "completed",
-      graphHistory: [
-        "classify_intent",
-        "load_memory",
-        "select_tool",
-        "execute_tool",
-        "validate_result",
-        "supervisor",
-        "update_memory",
-        "respond",
-      ],
+      status: interruptedForHitl ? "paused" : "completed",
+      graphHistory: interruptedForHitl
+        ? [
+            "classify_intent",
+            "load_memory",
+            "select_tool",
+            "execute_tool",
+            "validate_result",
+            "supervisor",
+            "human_review",
+          ]
+        : [
+            "classify_intent",
+            "load_memory",
+            "select_tool",
+            "execute_tool",
+            "validate_result",
+            "supervisor",
+            "update_memory",
+            "respond",
+          ],
       checkpointId: threadId,
     };
 
     const trace = result.traceBuilder.build();
+    if (result.supervisorTrace) trace.supervisor = result.supervisorTrace;
+    if (result.hitlPendingId) trace.hitlPendingId = result.hitlPendingId;
+
     input.executionLog?.info(
       { id: "agent_engine", name: "LangGraph Runtime" },
-      JSON.stringify({ runtime: "langgraph", nodes: trace.nodes.length }),
+      JSON.stringify({
+        runtime: "langgraph",
+        nodes: trace.nodes.length,
+        supervisorApproved: result.supervisorApproved,
+        retries: result.retryCount,
+        blockReply: result.blockReply,
+      }),
     );
 
-    return { reply: result.reply, trace };
+    if (input.engineConfig.observability === "full") {
+      input.executionLog?.info(
+        { id: "agent_engine_trace", name: "LangGraph Trace" },
+        JSON.stringify(trace),
+      );
+    }
+
+    if (isLangfuseConfigured() && trace) {
+      void ingestAgentTraceToLangfuse({
+        trace,
+        organizationId: input.organizationId,
+        conversationId: input.conversation.id,
+        botId: input.bot.id,
+        messageId: input.message.id,
+        traceId: threadId,
+      }).then((r) => {
+        if (r.ok) {
+          input.executionLog?.info(
+            { id: "langfuse", name: "Langfuse" },
+            JSON.stringify({ traceId: r.traceId, exported: true }),
+          );
+        } else if (r.error && r.error !== "langfuse_not_configured") {
+          input.executionLog?.warn(
+            { id: "langfuse", name: "Langfuse" },
+            r.error,
+          );
+        }
+      });
+    }
+
+    return { reply: result.blockReply ? "" : result.reply, trace };
   }
 
-  private buildGraph() {
+  /** Lê snapshot de checkpoint LangGraph (memória + mirror Redis quando configurado). */
+  static async readCheckpoint(
+    organizationId: string,
+    threadId: string,
+    checkpointStore: AgentCheckpointStoreKind = "memory",
+    executor: NativeAgentExecutor,
+  ): Promise<GraphCheckpointSnapshot | null> {
+    const runtime = new LangGraphRuntime(executor);
+    const checkpointer = getAgentGraphCheckpointer(checkpointStore, organizationId);
+    const graph = runtime.buildGraphForResume(checkpointStore, organizationId);
+    return readGraphCheckpointSnapshotWithFallback(
+      organizationId,
+      checkpointStore,
+      checkpointer,
+      graph,
+      threadId,
+    );
+  }
+
+  /** Expõe grafo compilado para resume HITL via `Command`. */
+  buildGraphForResume(
+    checkpointStore: AgentCheckpointStoreKind = "memory",
+    organizationId = "default",
+  ): ReturnType<LangGraphRuntime["buildGraph"]> {
+    const checkpointer = getAgentGraphCheckpointer(checkpointStore, organizationId);
+    return this.buildGraph(checkpointer);
+  }
+
+  private async mirrorCheckpointSnapshot(
+    organizationId: string,
+    storeKind: AgentCheckpointStoreKind,
+    graph: ReturnType<LangGraphRuntime["buildGraph"]>,
+    checkpointer: ReturnType<typeof getAgentGraphCheckpointer>,
+    threadId: string,
+  ): Promise<void> {
+    const snap = await readGraphCheckpointSnapshot(checkpointer, graph, threadId);
+    if (snap) {
+      await persistGraphCheckpointSnapshot(organizationId, storeKind, snap);
+    }
+  }
+
+  private async runGraphStream(
+    graph: ReturnType<LangGraphRuntime["buildGraph"]>,
+    initialState: GraphState,
+    config: { configurable: { thread_id: string } },
+    input: AgentRuntimeExecuteInput,
+    traceBuilder: ExecutionTraceBuilder,
+    threadId: string,
+  ): Promise<GraphState> {
+    traceBuilder.emitEvent("stream", "LangGraph stream started");
+    publishGraphEvent(threadId, {
+      kind: "stream",
+      at: new Date().toISOString(),
+      detail: "LangGraph stream started",
+    });
+    let merged: GraphState = { ...initialState };
+    const stream = await graph.stream(initialState, config);
+    for await (const chunk of stream) {
+      for (const [nodeId, update] of Object.entries(chunk)) {
+        traceBuilder.emitEvent("node", "stream chunk", { nodeId, metadata: { streaming: true } });
+        publishGraphEvent(threadId, {
+          kind: "node",
+          at: new Date().toISOString(),
+          nodeId,
+          detail: "stream chunk",
+          metadata: { streaming: true },
+        });
+        merged = { ...merged, ...(update as Partial<GraphState>) };
+        input.executionLog?.info(
+          { id: "langgraph_stream", name: `Stream: ${nodeId}` },
+          JSON.stringify({ nodeId, threadId: config.configurable.thread_id }),
+        );
+      }
+    }
+    traceBuilder.emitEvent("stream", "LangGraph stream completed");
+    publishGraphEvent(threadId, {
+      kind: "stream",
+      at: new Date().toISOString(),
+      detail: "LangGraph stream completed",
+    });
+    return merged;
+  }
+
+  private buildGraph(checkpointer: ReturnType<typeof getAgentGraphCheckpointer>) {
     const executor = this.executor;
 
     const classifyIntent = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("classify_intent", "Classificar intenção");
+      const userMessage = state.input.message.body ?? "";
+      const kbQueryLikely = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
       state.traceBuilder.setNextNode("load_memory");
-      state.traceBuilder.endNode("classify_intent");
-      return {};
+      state.traceBuilder.endNode(
+        "classify_intent",
+        "ok",
+        kbQueryLikely ? "consulta_kb provável" : "geral",
+      );
+      return { intentHints: { kbQueryLikely } };
     };
 
     const loadMemory = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -117,20 +362,33 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const selectTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("select_tool", "Selecionar ferramenta");
+      const behavior = state.input.behaviorConfig ?? {};
+      const nativeTools =
+        behavior && typeof behavior === "object"
+          ? ((behavior as Record<string, unknown>).nativeTools as Record<string, unknown> | undefined)
+          : undefined;
+      const toolCount = nativeTools ? Object.values(nativeTools).filter(Boolean).length : 0;
       state.traceBuilder.setNextNode("execute_tool");
-      state.traceBuilder.endNode("select_tool");
+      state.traceBuilder.endNode(
+        "select_tool",
+        "ok",
+        toolCount > 0 ? `${toolCount} ferramenta(s) disponível(eis)` : "delegar ao executor nativo",
+      );
       return {};
     };
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
-      const { reply, toolOutcomes = [], kbMeta } = await executor(state.input);
+      const execResult = await executor(state.input);
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode("execute_tool");
       return {
-        reply,
-        toolOutcomes,
-        kbMeta: kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false },
+        previousReply: state.reply,
+        reply: execResult.reply,
+        toolOutcomes: execResult.toolOutcomes ?? [],
+        kbMeta: execResult.kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false },
+        llmSupervisorApproved: execResult.llmSupervisorApproved,
+        llmSupervisorSummary: execResult.llmSupervisorSummary,
       };
     };
 
@@ -153,41 +411,158 @@ export class LangGraphRuntime implements AgentRuntime {
         "validate_result",
         validation.blockSend && state.input.engineConfig.strictMode ? "error" : "ok",
       );
-      return {};
+      return { validationBlockSend: validation.blockSend };
     };
 
     const supervisor = async (state: GraphState): Promise<Partial<GraphState>> => {
       if (!state.input.engineConfig.supervisorEnabled) {
         return { supervisorApproved: true };
       }
+
+      const mode = state.input.engineConfig.supervisorMode ?? "both";
       state.traceBuilder.startNode("supervisor", "Supervisor IA");
-      const successful = state.toolOutcomes.filter((t) => t.ok).length;
-      const supTrace = buildSupervisorTrace({
+
+      if (mode === "llm") {
+        const approved = state.llmSupervisorApproved !== false;
+        const summary = state.llmSupervisorSummary ?? (approved ? "LLM supervisor aprovou" : "LLM supervisor reprovou");
+        const supTrace = {
+          approved,
+          summary,
+          checks: [{ id: "llm_supervisor", label: "Supervisor IA (LLM)", passed: approved, detail: summary }],
+          retryCount: state.retryCount,
+        };
+        state.traceBuilder.emitEvent("supervisor", summary, { metadata: { mode: "llm", approved } });
+        state.traceBuilder.setNextNode("update_memory");
+        state.traceBuilder.endNode("supervisor", approved ? "ok" : "warn", summary);
+        return { supervisorApproved: approved, supervisorTrace: supTrace };
+      }
+
+      const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
-        toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-        kbHasUsefulExcerpts: state.kbMeta.coversQuery,
-        successfulToolCount: successful,
-        totalToolCount: state.toolOutcomes.length,
+        toolOutcomes: state.toolOutcomes,
+        kbMeta: state.kbMeta,
         strictMode: state.input.engineConfig.strictMode,
+        memorySnapshot: state.memory,
+        retryCount: state.retryCount,
+        previousReply: state.previousReply,
+        llmApproved: mode === "both" ? state.llmSupervisorApproved : undefined,
+        llmSummary: mode === "both" ? state.llmSupervisorSummary : undefined,
+        validationBlockSend: state.validationBlockSend,
+        kbQueryLikely: state.intentHints.kbQueryLikely,
       });
-      const trace = state.traceBuilder.build();
-      trace.supervisor = supTrace;
+      const supTrace = buildSupervisorTrace(supInput);
 
       const retry = shouldRetryAfterSupervisor(
         supTrace,
         state.input.engineConfig.strictMode,
         state.retryCount,
       );
+      const blockReply = shouldBlockReplyAfterSupervisor(
+        supTrace,
+        state.input.engineConfig.strictMode,
+        state.retryCount,
+      );
+
+      let hitlPendingId = state.hitlPendingId;
+      const hitlEnabled = state.input.engineConfig.humanInTheLoopEnabled === true;
+      const hitlNative = state.input.engineConfig.humanInTheLoopNativeEnabled === true;
+      const checkpointStore = state.input.engineConfig.checkpointStore ?? "memory";
+      const threadId = `${state.input.conversation.id}:${state.input.message.id}`;
+      if (
+        hitlEnabled &&
+        !supTrace.approved &&
+        !retry &&
+        state.reply.trim() &&
+        (blockReply || state.input.engineConfig.strictMode)
+      ) {
+        const pending = registerHitlPending({
+          organizationId: state.input.organizationId,
+          conversationId: state.input.conversation.id,
+          messageId: state.input.message.id,
+          botId: state.input.bot.id,
+          replyPreview: state.reply,
+          supervisorSummary: supTrace.summary,
+          threadId,
+          checkpointStore,
+          humanInTheLoopNative: hitlNative,
+        });
+        hitlPendingId = pending.id;
+        state.traceBuilder.setHitlPendingId(pending.id);
+        state.traceBuilder.emitEvent("hitl", "Resposta pendente de aprovação humana", {
+          metadata: { hitlId: pending.id },
+        });
+        state.input.executionLog?.info(
+          { id: "langgraph_hitl", name: "Human-in-the-Loop" },
+          JSON.stringify({ hitlId: pending.id, conversationId: state.input.conversation.id }),
+        );
+      }
+
+      if (retry) {
+        state.traceBuilder.emitEvent("retry", "Supervisor solicitou nova execução", {
+          nodeId: "execute_tool",
+          metadata: { retryCount: state.retryCount + 1 },
+        });
+      }
+      state.traceBuilder.emitEvent("supervisor", supTrace.summary, {
+        metadata: { approved: supTrace.approved, checks: supTrace.checks.length },
+      });
+
       state.traceBuilder.setNextNode(retry ? "execute_tool" : "update_memory");
       state.traceBuilder.endNode("supervisor", supTrace.approved ? "ok" : "warn", supTrace.summary);
+
+      state.input.executionLog?.info(
+        { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
+        JSON.stringify({
+          approved: supTrace.approved,
+          retry,
+          blockReply,
+          checks: supTrace.checks.map((c) => ({ id: c.id, passed: c.passed })),
+        }),
+      );
+
       return {
         supervisorApproved: supTrace.approved,
+        supervisorTrace: supTrace,
         retryCount: retry ? state.retryCount + 1 : state.retryCount,
+        blockReply: (blockReply || state.blockReply) || !!hitlPendingId,
+        hitlPendingId,
+      };
+    };
+
+    const humanReview = async (state: GraphState): Promise<Partial<GraphState>> => {
+      state.traceBuilder.startNode("human_review", "Revisão humana (HITL nativo)");
+      const decision = interrupt({
+        hitlId: state.hitlPendingId,
+        replyPreview: state.reply.slice(0, 500),
+        supervisorSummary: state.supervisorTrace?.summary ?? "",
+      }) as string;
+      const approved = decision === "approved";
+      state.traceBuilder.emitEvent(
+        "hitl",
+        approved ? "Aprovado por operador humano" : "Rejeitado por operador humano",
+        { metadata: { hitlId: state.hitlPendingId, approved } },
+      );
+      state.traceBuilder.setNextNode("update_memory");
+      state.traceBuilder.endNode(
+        "human_review",
+        approved ? "ok" : "error",
+        approved ? "Resposta aprovada" : "Resposta rejeitada",
+      );
+      return {
+        blockReply: !approved,
+        supervisorApproved: approved || state.supervisorApproved,
       };
     };
 
     const updateMemory = async (state: GraphState): Promise<Partial<GraphState>> => {
+      if (state.blockReply) {
+        state.traceBuilder.startNode("update_memory", "Atualizar memória");
+        state.traceBuilder.endNode("update_memory", "skipped", "Resposta bloqueada pelo supervisor");
+        state.traceBuilder.setNextNode("respond");
+        return {};
+      }
+
       state.traceBuilder.startNode("update_memory", "Atualizar memória");
       const provider = createMemoryProvider(state.input.engineConfig.memory);
       await provider.saveLegacy(state.input.conversation.id, state.input.organizationId, {
@@ -205,28 +580,39 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const respond = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("respond", "Responder utilizador");
+      if (state.blockReply) {
+        state.traceBuilder.endNode("respond", "error", state.hitlPendingId
+          ? "Resposta em fila HITL — aguarda aprovação humana"
+          : "Resposta bloqueada — supervisor reprovou após retries");
+        state.input.executionLog?.warn(
+          { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
+          state.hitlPendingId
+            ? `Resposta em fila HITL (${state.hitlPendingId})`
+            : "Resposta bloqueada após esgotar retries do supervisor",
+        );
+        return { reply: "" };
+      }
       state.traceBuilder.endNode("respond");
       return {};
     };
 
     const routeAfterSupervisor = (state: GraphState): string => {
       if (
+        state.supervisorTrace &&
         !state.supervisorApproved &&
         shouldRetryAfterSupervisor(
-          buildSupervisorTrace({
-            userMessage: state.input.message.body ?? "",
-            replyText: state.reply,
-            toolSummary: "",
-            kbHasUsefulExcerpts: state.kbMeta.coversQuery,
-            successfulToolCount: 0,
-            totalToolCount: state.toolOutcomes.length,
-            strictMode: state.input.engineConfig.strictMode,
-          }),
+          state.supervisorTrace,
           state.input.engineConfig.strictMode,
           state.retryCount,
         )
       ) {
         return "execute_tool";
+      }
+      if (
+        state.hitlPendingId &&
+        state.input.engineConfig.humanInTheLoopNativeEnabled === true
+      ) {
+        return "human_review";
       }
       return "update_memory";
     };
@@ -238,6 +624,7 @@ export class LangGraphRuntime implements AgentRuntime {
       .addNode("execute_tool", executeTool)
       .addNode("validate_result", validateResult)
       .addNode("supervisor", supervisor)
+      .addNode("human_review", humanReview)
       .addNode("update_memory", updateMemory)
       .addNode("respond", respond)
       .addEdge(START, "classify_intent")
@@ -248,11 +635,13 @@ export class LangGraphRuntime implements AgentRuntime {
       .addEdge("validate_result", "supervisor")
       .addConditionalEdges("supervisor", routeAfterSupervisor, {
         execute_tool: "execute_tool",
+        human_review: "human_review",
         update_memory: "update_memory",
       })
+      .addEdge("human_review", "update_memory")
       .addEdge("update_memory", "respond")
       .addEdge("respond", END)
-      .compile({ checkpointer: this.checkpointer });
+      .compile({ checkpointer });
   }
 
   getState(): AgentRuntimeState {

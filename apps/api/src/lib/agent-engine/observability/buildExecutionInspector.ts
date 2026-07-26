@@ -1,4 +1,4 @@
-import type { AgentEngineConfig } from "../types.js";
+import type { AgentEngineConfig, AgentGraphEvent } from "../types.js";
 import { STRICT_MODE_MIN_CONFIDENCE } from "../validators/StrictModeGate.js";
 
 export type ExecutionInspectorLogEntry = {
@@ -39,6 +39,9 @@ export type ExecutionInspectorView = {
   } | null;
   memoryUsed: unknown | null;
   validationChecklist: Array<{ id: string; label: string; passed: boolean; detail?: string }>;
+  graphEvents: AgentGraphEvent[];
+  hitlPendingId: string | null;
+  checkpointThreadId: string | null;
   timeline: Array<{
     id: string;
     name: string;
@@ -107,6 +110,7 @@ export function buildExecutionInspectorView(input: {
   finishedAt: Date | null;
   logEntries: ExecutionInspectorLogEntry[];
   triggerMessageBody?: string | null;
+  triggerMessageId?: string | null;
 }): ExecutionInspectorView {
   const sorted = [...input.logEntries].sort((a, b) => a.sequence - b.sequence);
 
@@ -118,6 +122,9 @@ export function buildExecutionInspectorView(input: {
   let strictMode: ExecutionInspectorView["strictMode"] = null;
   let memoryUsed: unknown = null;
   const tools: ExecutionInspectorView["tools"] = [];
+  let graphEvents: AgentGraphEvent[] = [];
+  let hitlPendingId: string | null = null;
+  let checkpointThreadId: string | null = null;
 
   for (const e of sorted) {
     if (!userMessage && e.nodeId === "inbound") {
@@ -135,8 +142,30 @@ export function buildExecutionInspectorView(input: {
       const reply = readOutputReply(e.outputContext);
       if (reply) replySent = reply;
     }
-    if (e.nodeId === "supervisor") {
-      supervisor = parseSupervisorApproval(e.message, e.level);
+    if (e.nodeId === "agent_engine_trace") {
+      try {
+        const parsed = JSON.parse(e.message) as {
+          events?: AgentGraphEvent[];
+          hitlPendingId?: string;
+          checkpointThreadId?: string;
+        };
+        if (Array.isArray(parsed.events)) graphEvents = parsed.events;
+        if (typeof parsed.hitlPendingId === "string") hitlPendingId = parsed.hitlPendingId;
+        if (typeof parsed.checkpointThreadId === "string") checkpointThreadId = parsed.checkpointThreadId;
+      } catch {
+        /* ignore malformed trace */
+      }
+    }
+    if (e.nodeId === "langgraph_hitl") {
+      try {
+        const parsed = JSON.parse(e.message) as { hitlId?: string };
+        if (typeof parsed.hitlId === "string") hitlPendingId = parsed.hitlId;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (e.nodeId === "supervisor" || e.nodeId === "langgraph_supervisor") {
+      if (!supervisor) supervisor = parseSupervisorApproval(e.message, e.level);
     }
     if (e.nodeId === "strict_mode") {
       const output =
@@ -238,6 +267,14 @@ export function buildExecutionInspectorView(input: {
     },
   ];
 
+  if (
+    !checkpointThreadId &&
+    input.conversationId &&
+    input.triggerMessageId
+  ) {
+    checkpointThreadId = `${input.conversationId}:${input.triggerMessageId}`;
+  }
+
   return {
     executionId: input.executionId,
     workflowKey: input.workflowKey,
@@ -259,6 +296,9 @@ export function buildExecutionInspectorView(input: {
     strictMode,
     memoryUsed,
     validationChecklist,
+    graphEvents,
+    hitlPendingId,
+    checkpointThreadId,
     timeline: sorted.map((e) => ({
       id: e.nodeId,
       name: e.nodeName,

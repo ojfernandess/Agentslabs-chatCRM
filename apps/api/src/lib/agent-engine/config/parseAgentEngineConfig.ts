@@ -1,9 +1,11 @@
 import {
   DEFAULT_AGENT_ENGINE_CONFIG,
   type AgentEngineConfig,
+  type AgentCheckpointStoreKind,
   type AgentMemoryKind,
   type AgentObservabilityLevel,
   type AgentRuntimeKind,
+  type AgentSupervisorMode,
 } from "../types.js";
 
 const RUNTIME_KINDS = new Set<AgentRuntimeKind>([
@@ -34,6 +36,15 @@ function asObsLevel(v: unknown): AgentObservabilityLevel {
   return typeof v === "string" && OBS_LEVELS.has(v as AgentObservabilityLevel)
     ? (v as AgentObservabilityLevel)
     : DEFAULT_AGENT_ENGINE_CONFIG.observability;
+}
+
+function asCheckpointStore(v: unknown): AgentCheckpointStoreKind {
+  return v === "redis" ? "redis" : "memory";
+}
+
+function asSupervisorMode(v: unknown): AgentSupervisorMode {
+  if (v === "structural" || v === "llm" || v === "both") return v;
+  return DEFAULT_AGENT_ENGINE_CONFIG.supervisorMode ?? "both";
 }
 
 /**
@@ -67,8 +78,13 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     runtime: asRuntimeKind(o.runtime),
     memory: asMemoryKind(o.memory),
     supervisorEnabled,
+    supervisorMode: supervisorEnabled ? asSupervisorMode(o.supervisorMode) : "both",
     strictMode: o.strictMode === true,
     observability: asObsLevel(o.observability),
+    checkpointStore: asCheckpointStore(o.checkpointStore),
+    streamingEnabled: o.streamingEnabled === true,
+    humanInTheLoopEnabled: o.humanInTheLoopEnabled === true,
+    humanInTheLoopNativeEnabled: o.humanInTheLoopNativeEnabled === true,
   };
 }
 
@@ -82,8 +98,13 @@ export function mergeAgentEngineIntoBehavior(
       runtime: engine.runtime,
       memory: engine.memory,
       supervisorEnabled: engine.supervisorEnabled,
+      supervisorMode: engine.supervisorMode ?? "both",
       strictMode: engine.strictMode,
       observability: engine.observability,
+      checkpointStore: engine.checkpointStore ?? "memory",
+      streamingEnabled: engine.streamingEnabled ?? false,
+      humanInTheLoopEnabled: engine.humanInTheLoopEnabled ?? false,
+      humanInTheLoopNativeEnabled: engine.humanInTheLoopNativeEnabled ?? false,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

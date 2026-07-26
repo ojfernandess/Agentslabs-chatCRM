@@ -9,13 +9,17 @@ export type NativeAgentKbMeta = {
   coversQuery: boolean;
 };
 
-export type NativeAgentExecutor = (
-  input: AgentRuntimeExecuteInput,
-) => Promise<{
+export type NativeAgentExecutorResult = {
   reply: string;
   toolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
   kbMeta?: NativeAgentKbMeta;
-}>;
+  llmSupervisorApproved?: boolean | null;
+  llmSupervisorSummary?: string;
+};
+
+export type NativeAgentExecutor = (
+  input: AgentRuntimeExecuteInput,
+) => Promise<NativeAgentExecutorResult>;
 
 /**
  * Runtime padrão — delega ao pipeline nativo existente (`generateNativeAgentReplyCore`).

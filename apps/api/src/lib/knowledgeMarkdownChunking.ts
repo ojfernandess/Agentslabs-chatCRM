@@ -52,12 +52,16 @@ export function chunkMarkdownSections(
   }
   if (current) sections.push(current);
 
+  const logical = aggregateH2WithChildH3Sections(
+    sections.map((s) => ({ level: s.level, title: s.title, body: s.body })),
+  );
+
   const out: string[] = [];
   if (preamble.trim()) {
     out.push(...chunkText(preamble.trim(), chunkSize, overlap));
   }
 
-  for (const sec of sections) {
+  for (const sec of logical) {
     const header = `${"#".repeat(Math.min(3, Math.max(2, sec.level)))} ${sec.title}`;
     const body = sec.body.trim();
     const full = body ? `${header}\n\n${body}` : header;
@@ -112,7 +116,7 @@ function parseMarkdownSectionsForExtraction(normalized: string): ParsedMarkdownS
 }
 
 /** Junta ### filhos imediatos ao ## pai (ex.: catálogo de quartos com subsecções por suíte). */
-function aggregateH2WithChildH3Sections(sections: ParsedMarkdownSection[]): ParsedMarkdownSection[] {
+export function aggregateH2WithChildH3Sections(sections: ParsedMarkdownSection[]): ParsedMarkdownSection[] {
   const logical: ParsedMarkdownSection[] = [];
 
   for (let i = 0; i < sections.length; i++) {

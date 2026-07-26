@@ -9,6 +9,7 @@ import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import {
   buildSupervisorTrace,
+  buildSupervisorValidationInput,
   shouldRetryAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
@@ -100,16 +101,17 @@ export async function runOrchestratedRuntime(
 
     if (input.engineConfig.supervisorEnabled) {
       traceBuilder.startNode("supervisor", "Supervisor IA");
-      const successful = state.toolOutcomes.filter((t) => t.ok).length;
-      const supTrace = buildSupervisorTrace({
-        userMessage: input.message.body ?? "",
-        replyText: state.reply,
-        toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-        kbHasUsefulExcerpts: state.kbMeta.coversQuery,
-        successfulToolCount: successful,
-        totalToolCount: state.toolOutcomes.length,
-        strictMode: input.engineConfig.strictMode,
-      });
+      const supTrace = buildSupervisorTrace(
+        buildSupervisorValidationInput({
+          userMessage: input.message.body ?? "",
+          replyText: state.reply,
+          toolOutcomes: state.toolOutcomes,
+          kbMeta: state.kbMeta,
+          strictMode: input.engineConfig.strictMode,
+          memorySnapshot: state.memory,
+          retryCount: state.retryCount,
+        }),
+      );
       state.supervisorApproved = supTrace.approved;
       traceBuilder.endNode("supervisor", supTrace.approved ? "ok" : "warn", supTrace.summary);
     } else {
@@ -125,15 +127,17 @@ export async function runOrchestratedRuntime(
     } else if (
       !state.supervisorApproved &&
       shouldRetryAfterSupervisor(
-        buildSupervisorTrace({
-          userMessage: input.message.body ?? "",
-          replyText: state.reply,
-          toolSummary: state.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-          kbHasUsefulExcerpts: state.kbMeta.coversQuery,
-          successfulToolCount: state.toolOutcomes.filter((t) => t.ok).length,
-          totalToolCount: state.toolOutcomes.length,
-          strictMode: input.engineConfig.strictMode,
-        }),
+        buildSupervisorTrace(
+          buildSupervisorValidationInput({
+            userMessage: input.message.body ?? "",
+            replyText: state.reply,
+            toolOutcomes: state.toolOutcomes,
+            kbMeta: state.kbMeta,
+            strictMode: input.engineConfig.strictMode,
+            memorySnapshot: state.memory,
+            retryCount: state.retryCount,
+          }),
+        ),
         input.engineConfig.strictMode,
         state.retryCount,
       ) &&

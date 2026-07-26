@@ -102,6 +102,8 @@ export type NativeAgentCoreResult = {
   reply: string;
   toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
+  llmSupervisorApproved?: boolean | null;
+  llmSupervisorSummary?: string;
 };
 
 const EMPTY_NATIVE_CORE_RESULT: NativeAgentCoreResult = {
@@ -2467,8 +2469,14 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
+  const supervisorMode = engineConfig.supervisorMode ?? "both";
   let llmSupervisorApproved: boolean | null = null;
-  if (agentSupervisor.enabled && replyText.trim()) {
+  let llmSupervisorSummary: string | undefined;
+  if (
+    agentSupervisor.enabled &&
+    supervisorMode !== "structural" &&
+    replyText.trim()
+  ) {
     const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
     const toolSummary =
       toolRoundOutcomes.length > 0
@@ -2534,6 +2542,7 @@ async function generateNativeAgentReplyCore(input: {
         approved = !/\b(não|nao|incorrect|wrong|hallucin|incorret|rejeit)\b/i.test(supervisorText);
       }
       llmSupervisorApproved = approved;
+      llmSupervisorSummary = summary;
       // Stall final com KB relevante: resgatar só quando a política de KB o permitir (não em turnos HTTP/fluxo).
       if (
         shouldForceKnowledgeDelivery({
@@ -2662,6 +2671,8 @@ async function generateNativeAgentReplyCore(input: {
       hasUsefulExcerpts: kbHasUsefulExcerpts,
       coversQuery: kbCoversForMeta,
     },
+    llmSupervisorApproved,
+    llmSupervisorSummary,
   };
 }
 
@@ -2686,6 +2697,8 @@ function ensureAgentEngineExecutorRegistered(): void {
       reply: result.reply,
       toolOutcomes: result.toolOutcomes,
       kbMeta: result.kbMeta,
+      llmSupervisorApproved: result.llmSupervisorApproved,
+      llmSupervisorSummary: result.llmSupervisorSummary,
     };
   });
 }
