@@ -77,6 +77,7 @@ export type { GraphCheckpointSnapshot, AgentCheckpointMode } from "./checkpoint/
 export {
   initRedisLangGraphCheckpointer,
   closeRedisLangGraphCheckpointer,
+  probeRedisJsonModuleSupport,
 } from "./checkpoint/RedisLangGraphCheckpointer.js";
 export {
   ingestAgentTraceToLangfuse,

@@ -44,6 +44,8 @@ export type WorkflowAuditInput = {
   executionLogEntries?: ExecutionLogEntryLike[];
   graphNodeSequence?: string[];
   expectedGraphSequence?: string[];
+  /** Trace já calculado pelo runtime (evita duplicar supervisor no gate). */
+  supervisorTrace?: AgentSupervisorTrace;
 };
 
 export type WorkflowAuditMetrics = {
@@ -208,7 +210,7 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     validationBlockSend: input.validationBlockSend ?? toolValidation.blockSend,
   });
   const supervisorTrace = input.supervisorEnabled
-    ? buildSupervisorTrace(supInput)
+    ? (input.supervisorTrace ?? buildSupervisorTrace(supInput))
     : undefined;
 
   if (input.supervisorEnabled && supervisorTrace) {

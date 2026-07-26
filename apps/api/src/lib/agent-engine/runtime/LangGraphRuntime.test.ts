@@ -11,16 +11,31 @@ const stubMemoryFactory: LangGraphRuntimeDeps["createMemoryProvider"] = () => ({
   saveLegacy: async () => {},
 } as never);
 
-function stubLog() {
-  return {
+function stubLog(): AgentRuntimeExecuteInput["log"] {
+  const log = {
+    level: "info",
+    silent: () => false,
     info: () => {},
     warn: () => {},
     error: () => {},
     debug: () => {},
     trace: () => {},
     fatal: () => {},
-    child: () => stubLog(),
-  } as AgentRuntimeExecuteInput["log"];
+    child: (): AgentRuntimeExecuteInput["log"] => log,
+  };
+  return log as AgentRuntimeExecuteInput["log"];
+}
+
+function stubExecutionLog(): NonNullable<AgentRuntimeExecuteInput["executionLog"]> {
+  const port = {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+    fatal: () => {},
+    child: () => port,
+  };
+  return port;
 }
 
 function buildExecuteInput(
@@ -32,25 +47,20 @@ function buildExecuteInput(
   const now = new Date();
   return {
     organizationId: "org-test",
-    bot: { id: "bot-1", organizationId: "org-test" } as Bot,
+    bot: { id: "bot-1", organizationId: "org-test" } as unknown as Bot,
     conversation: {
       id: "conv-1",
       organizationId: "org-test",
       botId: "bot-1",
-    } as Conversation,
+    } as unknown as Conversation,
     message: {
       id: "msg-1",
       conversationId: "conv-1",
       body: overrides.messageBody ?? "Quais categorias de quartos?",
       createdAt: now,
-    } as Message,
+    } as unknown as Message,
     log: stubLog(),
-    executionLog: {
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      debug: () => {},
-    },
+    executionLog: stubExecutionLog(),
     engineConfig: {
       runtime: "langgraph",
       memory: "openconduit",
