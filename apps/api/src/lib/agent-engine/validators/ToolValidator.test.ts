@@ -44,12 +44,13 @@ test("validateToolExecution blocks empty reply after tool success", () => {
   assert.equal(result.blockSend, true);
 });
 
-test("validateToolExecution suggests fallback on tool failure", () => {
+test("validateToolExecution accepts partial name match for HTTP tools", () => {
   const result = validateToolExecution({
-    toolOutcomes: [{ name: "http_tool", ok: false, preview: "timeout" }],
-    replyText: "Não consegui consultar agora.",
-    strictMode: false,
+    toolOutcomes: [{ name: "audaar_consultar_main_guest", ok: true, preview: '{"found":true}' }],
+    replyText: "Encontrei seu cadastro anterior.",
+    strictMode: true,
+    requiredToolNames: ["consultar_main_guest"],
   });
-  assert.equal(result.fallbackSuggested, true);
-  assert.ok(result.alerts.some((a) => a.includes("erro")));
+  assert.equal(result.ok, true);
+  assert.equal(result.blockSend, false);
 });

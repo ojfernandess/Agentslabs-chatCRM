@@ -27,6 +27,10 @@ export {
 export {
   parseRequiredToolNamesFromText,
   resolveRequiredToolNamesFromBehavior,
+  resolveRequiredToolNamesForTurn,
+  toolOutcomeSatisfiesRequired,
+  parseCategoryToolMapFromPlaybook,
+  GENERIC_TURN_PATTERNS,
 } from "./validators/requiredToolNamesParser.js";
 export {
   computeReplyConfidence,

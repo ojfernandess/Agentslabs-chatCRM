@@ -107,6 +107,24 @@ test("validateAgentWorkflow flags KB gap in strict mode without tool", () => {
   assert.equal(report.approved, false);
 });
 
+test("validateAgentWorkflow rejects operational assertion without tools (anti-hallucination)", () => {
+  const report = validateAgentWorkflow({
+    userMessage: "41026299802",
+    replyText:
+      "Encontrei seu cadastro anterior. Confirme os dados do titular: Nome João.",
+    toolOutcomes: [],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    supervisorEnabled: true,
+  });
+  const gate = report.findings.find((f) => f.id === "no_operational_assertion_without_tools");
+  assert.ok(gate);
+  assert.equal(gate!.passed, false);
+  assert.equal(gate!.severity, "critical");
+  assert.equal(report.approved, false);
+  assert.equal(shouldBlockOutboundFromWorkflow(report), true);
+});
+
 test("validateAgentWorkflow stress: 100 synthetic validations complete under budget", () => {
   const start = Date.now();
   let approved = 0;

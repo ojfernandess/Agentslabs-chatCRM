@@ -50,7 +50,9 @@ export class OpenNexoRuntime implements AgentRuntime {
 
     if (toolOutcomes.length > 0) {
       traceBuilder.startNode("validate_result", "Validar ferramentas");
-      const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig);
+      const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
+        userMessage: input.message.body ?? "",
+      });
       const validation = validateToolExecution({
         toolOutcomes,
         replyText: reply,

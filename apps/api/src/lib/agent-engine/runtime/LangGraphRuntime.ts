@@ -488,7 +488,9 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
-      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig);
+      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
+        userMessage: state.input.message.body ?? "",
+      });
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,

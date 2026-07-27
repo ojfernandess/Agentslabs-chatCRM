@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   parseRequiredToolNamesFromText,
   resolveRequiredToolNamesFromBehavior,
+  resolveRequiredToolNamesForTurn,
+  toolOutcomeSatisfiesRequired,
+  parseCategoryToolMapFromPlaybook,
 } from "./requiredToolNamesParser.js";
 
 test("parseRequiredToolNamesFromText extracts mandatory buscar_conhecimento", () => {
@@ -47,7 +50,7 @@ test("resolveRequiredToolNamesFromBehavior reads promptBuilder blocks", () => {
   assert.deepEqual(names, ["buscar_conhecimento"]);
 });
 
-test("resolveRequiredToolNamesFromBehavior merges multiple blocks", () => {
+test("resolveRequiredToolNamesFromBehavior excludes escalation from static set", () => {
   const names = resolveRequiredToolNamesFromBehavior({
     promptBuilder: {
       blocks: {
@@ -57,10 +60,105 @@ test("resolveRequiredToolNamesFromBehavior merges multiple blocks", () => {
       },
     },
   });
-  assert.ok(names.includes("call_human"));
-  assert.ok(names.includes("transfer_to_team"));
+  assert.equal(names.includes("call_human"), false);
+  assert.equal(names.includes("transfer_to_team"), false);
 });
 
 test("resolveRequiredToolNamesFromBehavior returns empty for legacy config", () => {
   assert.deepEqual(resolveRequiredToolNamesFromBehavior({ nativeTools: {} }), []);
+});
+
+test("parseCategoryToolMapFromPlaybook maps C8 to HTTP tool", () => {
+  const map = parseCategoryToolMapFromPlaybook(`
+| Categoria | Detectar | Acção | Tools |
+| C8 | **CPF sozinho** | só 11 dígitos | Chame \`audaar_consultar_main_guest\` 1× | lookup |
+| **C3** | \`audaar_consultar_reserva\` | localizador |
+`);
+  assert.ok((map.get("C8") ?? []).includes("audaar_consultar_main_guest"));
+  assert.ok((map.get("C3") ?? []).includes("audaar_consultar_reserva"));
+});
+
+test("resolveRequiredToolNamesForTurn requires lookup on CPF-only message", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| Categoria | Detectar | Acção |
+| C8 | CPF · 11 dígitos · lookup main guest | Chame \`audaar_consultar_main_guest\` |
+| C7 | nacionalidade | ZERO tools |
+`,
+    },
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, { userMessage: "41026299802" });
+  assert.ok(
+    names.some((n) => n.includes("consultar_main_guest") || n === "audaar_consultar_main_guest"),
+    `expected main_guest tool, got ${JSON.stringify(names)}`,
+  );
+});
+
+test("resolveRequiredToolNamesForTurn requires reservation tool on check-in message", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C3 | check-in · localizador | Chame \`hotel_consultar_reserva\` |
+`,
+    },
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "quero fazer check-in 71CRUDTI",
+  });
+  assert.ok(names.some((n) => n.includes("consultar_reserva")));
+});
+
+test("resolveRequiredToolNamesForTurn is segment-agnostic for retail document id", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C8 | CPF · 11 dígitos · documento lookup | Sempre use \`loja_consultar_cliente\` |
+`,
+    },
+    availableToolNames: ["loja_consultar_cliente", "buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, { userMessage: "12345678901" });
+  assert.deepEqual(names.filter((n) => n.includes("consultar_cliente")), ["loja_consultar_cliente"]);
+});
+
+test("resolveRequiredToolNamesForTurn includes escalation only on complaint turn", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C13 | reclamação · irritado | Chame \`call_human\` |
+| C8 | CPF · 11 dígitos | Chame \`audaar_consultar_main_guest\` |
+`,
+    },
+  };
+  const onCpf = resolveRequiredToolNamesForTurn(behavior, { userMessage: "41026299802" });
+  assert.equal(onCpf.includes("call_human"), false);
+
+  const onComplaint = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "quero falar com um humano, péssimo atendimento",
+  });
+  assert.ok(onComplaint.includes("call_human"));
+});
+
+test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
+  assert.equal(
+    toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [
+      { name: "oc_tool_abc", preview: 'name":"audaar_consultar_main_guest"' },
+    ]),
+    true,
+  );
+  assert.equal(
+    toolOutcomeSatisfiesRequired("consultar_main_guest", [
+      { name: "audaar_consultar_main_guest", preview: "ok" },
+    ]),
+    true,
+  );
+  assert.equal(
+    toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [{ name: "buscar_conhecimento", preview: "" }]),
+    false,
+  );
 });

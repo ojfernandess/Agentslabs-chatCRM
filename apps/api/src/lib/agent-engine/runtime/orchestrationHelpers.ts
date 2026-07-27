@@ -83,7 +83,9 @@ export async function runOrchestratedRuntime(
     traceBuilder.endNode("execute_tool");
 
     traceBuilder.startNode("validate_result", "Validar resultado");
-    const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig);
+    const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
+      userMessage: input.message.body ?? "",
+    });
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,

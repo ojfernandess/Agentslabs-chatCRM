@@ -5,6 +5,7 @@ import {
   shouldBlockReplyAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import { validateToolExecution, type ToolRoundOutcome } from "../validators/ToolValidator.js";
+import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import type { PromptValidationInput } from "../validators/PromptValidator.js";
 import { auditPromptAssembly } from "./promptAssemblyAudit.js";
 import {
@@ -158,13 +159,40 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
         {
           file: "apps/api/src/lib/agent-engine/validators/ToolValidator.ts",
           suggestedFix: isRequired
-            ? "Passar requiredToolNames a validateToolExecution ou invocar ferramenta no loop LLM"
+            ? "Invocar a ferramenta obrigatória do turno (resolveRequiredToolNamesForTurn) antes de responder"
             : undefined,
         },
       ),
     );
   }
-  if (toolValidation.alerts.length === 0) {
+
+  /**
+   * Gate anti-alucinação operacional (genérico, multi-segmento):
+   * resposta afirma factos de sistema/cadastro/reserva/saldo sem qualquer tool neste turno.
+   */
+  const operationalAssertionWithoutTools =
+    input.toolOutcomes.length === 0 &&
+    input.replyText.trim().length > 0 &&
+    /encontrei (seu|o|a|um)|cadastro anterior|confirme os dados|seu saldo [ée]|reserva (encontrada|confirmada|localizada)|check-in (conclu[ií]do|realizado)|pedido (confirmado|enviado)|dados do titular/i.test(
+      input.replyText,
+    );
+  findings.push(
+    finding(
+      "F3",
+      "no_operational_assertion_without_tools",
+      input.strictMode ? "critical" : "high",
+      !operationalAssertionWithoutTools,
+      operationalAssertionWithoutTools
+        ? "Resposta afirma factos operacionais sem invocar ferramenta neste turno"
+        : "Sem afirmação operacional órfã de ferramenta",
+      {
+        file: "apps/api/src/lib/agent-engine/audit/WorkflowValidator.ts",
+        suggestedFix: "Invocar a tool HTTP/API da categoria activa antes de espelhar/confirmar dados",
+      },
+    ),
+  );
+
+  if (toolValidation.alerts.length === 0 && !operationalAssertionWithoutTools) {
     findings.push(finding("F3", "tool_coherence", "info", true, "Coerência ferramentas ↔ resposta OK"));
   }
 
@@ -307,9 +335,10 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   const failed = findings.filter((f) => !f.passed);
   const approved = criticalFailures === 0 && (input.strictMode ? highFailures === 0 : criticalFailures === 0);
 
-  const requiredMissing = input.requiredToolNames?.filter(
-    (n) => !input.toolOutcomes.some((t) => t.name === n),
-  ).length ?? 0;
+  const required = input.requiredToolNames ?? [];
+  const requiredMissing = required.filter(
+    (n) => !toolOutcomeSatisfiesRequired(n, input.toolOutcomes),
+  ).length;
 
   return {
     approved,

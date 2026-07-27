@@ -5,8 +5,12 @@ import {
   type WorkflowAuditReport,
 } from "./WorkflowValidator.js";
 import type { ToolRoundOutcome } from "../validators/ToolValidator.js";
-import { resolveRequiredToolNamesFromBehavior } from "../validators/requiredToolNamesParser.js";
+import {
+  resolveRequiredToolNamesFromBehavior,
+  resolveRequiredToolNamesForTurn,
+} from "../validators/requiredToolNamesParser.js";
 import { parsePromptBlocks, buildAgentPlaybookFromBlocks } from "../../agentPlaybook.js";
+
 export type WorkflowGateInput = {
   engineConfig: AgentEngineConfig;
   behaviorConfig: Record<string, unknown>;
@@ -23,6 +27,7 @@ export type WorkflowGateInput = {
   llmSupervisorSummary?: string;
   graphNodeSequence?: string[];
   kbQueryLikely?: boolean;
+  availableToolNames?: string[];
 };
 
 export type WorkflowGateResult = {
@@ -50,7 +55,10 @@ function resolveSystemPromptPreview(behaviorConfig: Record<string, unknown>): st
 
 /** Executa Workflow Validator e decide bloqueio de outbound. */
 export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
-  const requiredToolNames = resolveRequiredToolNamesFromBehavior(input.behaviorConfig);
+  const requiredToolNames = resolveRequiredToolNamesForTurn(input.behaviorConfig, {
+    userMessage: input.userMessage,
+    availableToolNames: input.availableToolNames,
+  });
 
   if (!shouldRunWorkflowGate(input.engineConfig)) {
     return { blockReply: false, requiredToolNames };
@@ -82,9 +90,21 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
   };
 }
 
-/** Resolve requiredToolNames para validateToolExecution nos runtimes. */
+export type ResolveRequiredToolsForValidationOptions = {
+  userMessage?: string;
+  availableToolNames?: string[];
+};
+
+/**
+ * Resolve requiredToolNames para validateToolExecution nos runtimes.
+ * Preferir turno actual (mensagem) — genérico para todos os segmentos.
+ */
 export function resolveRequiredToolNamesForValidation(
   behaviorConfig: Record<string, unknown>,
+  options: ResolveRequiredToolsForValidationOptions = {},
 ): string[] {
+  if (options.userMessage?.trim()) {
+    return resolveRequiredToolNamesForTurn(behaviorConfig, options);
+  }
   return resolveRequiredToolNamesFromBehavior(behaviorConfig);
 }

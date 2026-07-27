@@ -1,4 +1,5 @@
 import type { ToolValidationResult } from "../types.js";
+import { toolOutcomeSatisfiesRequired } from "./requiredToolNamesParser.js";
 
 export type ToolRoundOutcome = {
   name: string;
@@ -16,6 +17,7 @@ export type ToolValidatorInput = {
 
 /**
  * Valida coerência entre ferramentas executadas e resposta enviada.
+ * Match de required tools é genérico (nome exacto, parcial ou alias em preview).
  */
 export function validateToolExecution(input: ToolValidatorInput): ToolValidationResult {
   const alerts: string[] = [];
@@ -27,9 +29,8 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
   const required = input.requiredToolNames ?? [];
 
   if (required.length > 0) {
-    const invoked = new Set(input.toolOutcomes.map((t) => t.name));
     for (const name of required) {
-      if (!invoked.has(name)) {
+      if (!toolOutcomeSatisfiesRequired(name, input.toolOutcomes)) {
         alerts.push(`Ferramenta obrigatória não utilizada: ${name}`);
         blockSend = input.strictMode;
       }

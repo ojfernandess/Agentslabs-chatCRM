@@ -11,28 +11,123 @@ export const KNOWN_NATIVE_TOOL_NAMES = [
   "atribuir_etiquetas",
 ] as const;
 
-const NATIVE_TOOL_NAME_RE = new RegExp(
-  `\\b(?:${KNOWN_NATIVE_TOOL_NAMES.join("|")}|oc_tool_[a-f0-9]{32})\\b`,
-  "gi",
-);
+/** Tools de escalonamento — só obrigatórias em turnos de reclamação/humano. */
+const ESCALATION_TOOL_NAMES = new Set(["call_human", "transfer_to_team", "listar_equipas"]);
+
+/** Identificador de tool genérico: nativo, HTTP snake_case ou oc_tool_<hex>. */
+const GENERIC_TOOL_NAME_RE = /\b(?:oc_tool_[a-f0-9]{32}|[a-z][a-z0-9_]{2,80})\b/gi;
+const BACKTICK_TOOL_RE = /`([a-z][a-z0-9_]{2,80}|oc_tool_[a-f0-9]{32})`/gi;
 
 /** Contexto linguístico que indica obrigatoriedade explícita de ferramenta. */
 const MANDATORY_CONTEXT_RE =
-  /(?:obrigat[oó]ri[oa]s?|sempre\s+(?:use|usa|utiliz\w*|invoc\w*|cham\w*|consult\w*)|deve\s+(?:usar|utilizar|invocar|chamar|consultar)|must\s+(?:use|call|invoke)|always\s+(?:use|call)|antes\s+de\s+responder|nunca\s+responda\s+sem)/i;
+  /(?:obrigat[oó]ri[oa]s?|sempre\s+(?:use|usa|utiliz\w*|invoc\w*|cham\w*|consult\w*)|deve\s+(?:usar|utilizar|invocar|chamar|consultar)|must\s+(?:use|call|invoke)|always\s+(?:use|call)|antes\s+de\s+responder|nunca\s+responda\s+sem|toolRounds\s*[≥>=]+\s*1|chame\s+`)/i;
 
-const BACKTICK_TOOL_RE = /`([a-z_][a-z0-9_]*)`/gi;
+/** Tokens demasiado genéricos para serem nomes de tool. */
+const TOOL_NAME_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "this",
+  "that",
+  "quando",
+  "antes",
+  "depois",
+  "sempre",
+  "nunca",
+  "obrigatorio",
+  "obrigatória",
+  "obrigatorio",
+  "obrigatoria",
+  "zero",
+  "pare",
+  "tools",
+  "tool",
+  "http",
+  "api",
+  "json",
+  "true",
+  "false",
+  "null",
+  "modo",
+  "estrito",
+  "fluxo",
+  "fluxo",
+  "turno",
+  "prompt",
+  "agente",
+  "cliente",
+  "hospede",
+  "hóspede",
+]);
+
+export type TurnToolPattern = {
+  id: string;
+  /** Detecta o tipo de turno a partir da mensagem do utilizador. */
+  test: (userMessage: string) => boolean;
+  /** Pistas no playbook (coluna Detectar / categoria / tools). */
+  playbookHints: RegExp;
+};
+
+/**
+ * Padrões de turno genéricos — independentes de vertical (hotel, retail, etc.).
+ * Cada segmento mapeia tools via tabela do próprio playbook.
+ */
+export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
+  {
+    id: "document_id",
+    test: (m) => /^\d{11}$/.test(m.trim()),
+    playbookHints: /cpf|d[ií]gitos|documento|tax.?id|document.?id|lookup|main.?guest|cadastro/i,
+  },
+  {
+    id: "checkin_or_reservation",
+    test: (m) =>
+      /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(da\s+)?reserva/i.test(m) &&
+      /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")),
+    playbookHints: /check[- ]?in|localizador|reserva|consultar.?reserva|verificar/i,
+  },
+  {
+    id: "availability_quote",
+    test: (m) =>
+      /\b(disponibilidade|cota[cç][aã]o|pre[cç]o|di[aá]ria)\b/i.test(m) &&
+      /\d{1,2}[\/.\-]\d{1,2}/.test(m),
+    playbookHints: /cota[cç][aã]o|disponibilidade|datas|pessoas/i,
+  },
+  {
+    id: "image_upload",
+    test: (m) => /\[Transcri[cç][aã]o de imagem\]/i.test(m),
+    playbookHints: /imagem|selfie|documento|upload|foto|transcri/i,
+  },
+  {
+    id: "escalation",
+    test: (m) =>
+      /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(m),
+    playbookHints: /reclama[cç][aã]o|humano|escalon|irritad|call_human|transfer/i,
+  },
+];
+
+function isPlausibleToolName(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  if (!t || t.length < 3 || t.length > 96) return false;
+  if (TOOL_NAME_STOPWORDS.has(t)) return false;
+  if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return true;
+  if ((KNOWN_NATIVE_TOOL_NAMES as readonly string[]).includes(t)) return true;
+  // HTTP / custom: snake_case com pelo menos um underscore, ou kebab raro
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(t)) return true;
+  return false;
+}
 
 function normalizeToolToken(raw: string): string | null {
   const t = raw.trim();
-  if (!t) return null;
+  if (!t || !isPlausibleToolName(t)) return null;
   if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return t.toLowerCase();
-  if (KNOWN_NATIVE_TOOL_NAMES.includes(t as (typeof KNOWN_NATIVE_TOOL_NAMES)[number])) return t;
-  return null;
+  return t;
 }
 
 function extractToolNamesFromText(text: string): string[] {
   const found = new Set<string>();
-  for (const match of text.matchAll(NATIVE_TOOL_NAME_RE)) {
+  for (const match of text.matchAll(GENERIC_TOOL_NAME_RE)) {
     const norm = normalizeToolToken(match[0]);
     if (norm) found.add(norm);
   }
@@ -61,6 +156,53 @@ export function parseRequiredToolNamesFromText(text: string): string[] {
   return [...required];
 }
 
+/**
+ * Parse tabelas markdown do playbook: categoria → tools mencionadas na mesma linha / bloco.
+ * Formato típico: `| C8 | … | … | lookup |` ou `| **C8** | \`tool_name\` |`.
+ */
+export function parseCategoryToolMapFromPlaybook(text: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (!text.trim()) return map;
+
+  for (const line of text.split(/\n+/)) {
+    if (!/\|/.test(line)) continue;
+    const categoryMatch = line.match(/\|\s*\*{0,2}(C\d+|S\d+|Passo\s*\d+)\*{0,2}\s*\|/i);
+    if (!categoryMatch) continue;
+    const category = categoryMatch[1]!.replace(/\s+/g, " ").toUpperCase().replace(/^PASSO\s+/i, "PASSO ");
+    const tools = extractToolNamesFromText(line).filter((n) => !ESCALATION_TOOL_NAMES.has(n) || /C13|reclama/i.test(line));
+    if (tools.length === 0) continue;
+    const prev = map.get(category) ?? [];
+    map.set(category, [...new Set([...prev, ...tools])]);
+  }
+
+  // Linhas tipo `| **C8** | \`audaar_consultar_main_guest\` |`
+  for (const line of text.split(/\n+/)) {
+    const m = line.match(/\|\s*\*{0,2}(C\d+|S\d+)\*{0,2}\s*\|\s*`([^`]+)`/i);
+    if (!m) continue;
+    const category = m[1]!.toUpperCase();
+    const tool = normalizeToolToken(m[2] ?? "");
+    if (!tool) continue;
+    const prev = map.get(category) ?? [];
+    map.set(category, [...new Set([...prev, tool])]);
+  }
+
+  return map;
+}
+
+/** Encontra categorias do playbook cuja coluna de detecção casa com o padrão do turno. */
+export function findCategoriesForTurnPattern(playbookText: string, pattern: TurnToolPattern): string[] {
+  const categories = new Set<string>();
+  for (const line of playbookText.split(/\n+/)) {
+    if (!/\|/.test(line)) continue;
+    if (!pattern.playbookHints.test(line)) continue;
+    const categoryMatch = line.match(/\|\s*\*{0,2}(C\d+|S\d+|Passo\s*\d+)\*{0,2}\s*\|/i);
+    if (categoryMatch) {
+      categories.add(categoryMatch[1]!.replace(/\s+/g, " ").toUpperCase().replace(/^PASSO\s+/i, "PASSO "));
+    }
+  }
+  return [...categories];
+}
+
 function readPromptBlocksFromBehavior(behaviorConfig: Record<string, unknown>): PromptBlocks {
   const pb = behaviorConfig.promptBuilder;
   if (!pb || typeof pb !== "object") return parsePromptBlocks(null);
@@ -68,9 +210,60 @@ function readPromptBlocksFromBehavior(behaviorConfig: Record<string, unknown>): 
   return parsePromptBlocks(blocksRaw);
 }
 
+function playbookTextFromBehavior(behaviorConfig: Record<string, unknown>): string {
+  const pb = behaviorConfig.promptBuilder;
+  if (pb && typeof pb === "object") {
+    const raw = pb as Record<string, unknown>;
+    if (raw.useFullPrompt === true && typeof raw.userCore === "string" && raw.userCore.trim()) {
+      return raw.userCore.trim();
+    }
+  }
+  const blocks = readPromptBlocksFromBehavior(behaviorConfig);
+  return [blocks.restrictions, blocks.tools, blocks.flows, blocks.objective, blocks.examples]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function listAvailableToolNames(behaviorConfig: Record<string, unknown>): string[] {
+  const fromConfig: string[] = [];
+  const candidates = [
+    behaviorConfig.availableToolNames,
+    behaviorConfig.linkedToolNames,
+    behaviorConfig.toolNames,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) {
+      for (const item of c) {
+        if (typeof item === "string") {
+          const n = normalizeToolToken(item);
+          if (n) fromConfig.push(n);
+        }
+      }
+    }
+  }
+  // Fallback: todos os nomes de tool mencionados no playbook (universo candidato)
+  const fromPlaybook = extractToolNamesFromText(playbookTextFromBehavior(behaviorConfig));
+  return [...new Set([...fromConfig, ...fromPlaybook, ...KNOWN_NATIVE_TOOL_NAMES])];
+}
+
+function filterAgainstAvailable(required: string[], available: string[]): string[] {
+  if (available.length === 0) return required;
+  const avail = new Set(available.map((a) => a.toLowerCase()));
+  return required.filter((r) => {
+    const lower = r.toLowerCase();
+    if (avail.has(lower)) return true;
+    // Match parcial: playbook `consultar_reserva` vs tool `audaar_consultar_reserva`
+    for (const a of avail) {
+      if (a.includes(lower) || lower.includes(a)) return true;
+    }
+    return false;
+  });
+}
+
 /**
  * Resolve ferramentas obrigatórias a partir de `behaviorConfig.promptBuilder.blocks`
  * (restrições, ferramentas, fluxos) quando há linguagem explícita de obrigatoriedade.
+ * Escalonamento (call_human / transfer) é excluído do conjunto estático global.
  */
 export function resolveRequiredToolNamesFromBehavior(
   behaviorConfig: Record<string, unknown> | null | undefined,
@@ -82,9 +275,85 @@ export function resolveRequiredToolNamesFromBehavior(
 
   for (const block of [blocks.restrictions, blocks.tools, blocks.flows]) {
     for (const name of parseRequiredToolNamesFromText(block)) {
+      if (ESCALATION_TOOL_NAMES.has(name)) continue;
       merged.add(name);
     }
   }
 
-  return [...merged];
+  return filterAgainstAvailable([...merged], listAvailableToolNames(behaviorConfig));
+}
+
+export type ResolveRequiredToolsOptions = {
+  userMessage?: string;
+  availableToolNames?: string[];
+};
+
+/**
+ * Resolve tools obrigatórias para o turno actual (genérico, multi-segmento).
+ * Combina: (1) obrigatoriedade estática do playbook sem escalonamento
+ *          (2) tools da categoria detectada pela mensagem + tabela do playbook
+ */
+export function resolveRequiredToolNamesForTurn(
+  behaviorConfig: Record<string, unknown> | null | undefined,
+  options: ResolveRequiredToolsOptions = {},
+): string[] {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return [];
+
+  const available = [
+    ...listAvailableToolNames(behaviorConfig),
+    ...(options.availableToolNames ?? []).map((n) => normalizeToolToken(n)).filter(Boolean) as string[],
+  ];
+  const playbook = playbookTextFromBehavior(behaviorConfig);
+  const categoryMap = parseCategoryToolMapFromPlaybook(playbook);
+  const required = new Set<string>();
+
+  const userMessage = (options.userMessage ?? "").trim();
+  if (userMessage) {
+    for (const pattern of GENERIC_TURN_PATTERNS) {
+      if (!pattern.test(userMessage)) continue;
+      const categories = findCategoriesForTurnPattern(playbook, pattern);
+      for (const cat of categories) {
+        for (const tool of categoryMap.get(cat) ?? []) {
+          if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
+          required.add(tool);
+        }
+      }
+      // Se o playbook não tiver tabela C*, extrai tools das linhas que casam com hints
+      if (categories.length === 0) {
+        for (const line of playbook.split(/\n+/)) {
+          if (!pattern.playbookHints.test(line)) continue;
+          for (const tool of extractToolNamesFromText(line)) {
+            if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
+            required.add(tool);
+          }
+        }
+      }
+    }
+  }
+
+  // Obrigatoriedade estática (ex.: buscar_conhecimento em FAQ) — sem escalonamento
+  for (const name of resolveRequiredToolNamesFromBehavior(behaviorConfig)) {
+    required.add(name);
+  }
+
+  return filterAgainstAvailable([...required], available);
+}
+
+/**
+ * Verifica se uma tool invocadasatisfaz um nome obrigatório (match exacto ou parcial).
+ * Cobre `audaar_consultar_main_guest` vs `oc_tool_<uuid>` quando o alias está na preview.
+ */
+export function toolOutcomeSatisfiesRequired(
+  requiredName: string,
+  outcomes: Array<{ name: string; preview?: string }>,
+): boolean {
+  const req = requiredName.toLowerCase();
+  for (const o of outcomes) {
+    const name = (o.name ?? "").toLowerCase();
+    if (name === req) return true;
+    if (name.includes(req) || req.includes(name)) return true;
+    const preview = (o.preview ?? "").toLowerCase();
+    if (preview.includes(`"name":"${req}"`) || preview.includes(req)) return true;
+  }
+  return false;
 }
