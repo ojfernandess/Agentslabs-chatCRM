@@ -14,6 +14,8 @@ import {
   runWorkflowGate,
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
+import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
+import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -470,16 +472,42 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
+      const replyOnly =
+        state.retryCount > 0 &&
+        shouldUseReplyOnlyRetry({
+          toolOutcomes: state.toolOutcomes,
+          supervisorChecks: state.supervisorTrace?.checks,
+        });
+      const priorOk = state.toolOutcomes.filter((t) => t.ok);
       const execResult = await executor({
         ...state.input,
         kbPrefetchAppendix: state.kbPrefetchAppendix,
+        executionHints: replyOnly
+          ? {
+              replyOnlyRetry: true,
+              priorSuccessfulToolOutcomes: priorOk,
+            }
+          : state.input.executionHints,
       });
       state.traceBuilder.setNextNode("validate_result");
-      state.traceBuilder.endNode("execute_tool");
+      state.traceBuilder.endNode(
+        "execute_tool",
+        "ok",
+        replyOnly ? "reply-only retry (sem reexecutar tools mutáveis)" : undefined,
+      );
+      const nextOutcomes =
+        replyOnly && priorOk.length > 0
+          ? [
+              ...priorOk,
+              ...(execResult.toolOutcomes ?? []).filter(
+                (t) => !priorOk.some((p) => p.name === t.name && p.ok),
+              ),
+            ]
+          : (execResult.toolOutcomes ?? []);
       return {
         previousReply: state.reply,
         reply: execResult.reply,
-        toolOutcomes: execResult.toolOutcomes ?? [],
+        toolOutcomes: nextOutcomes,
         kbMeta: execResult.kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false },
         llmSupervisorApproved: execResult.llmSupervisorApproved,
         llmSupervisorSummary: execResult.llmSupervisorSummary,
@@ -488,14 +516,19 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
+      const userMessage = state.input.message.body ?? "";
       const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
-        userMessage: state.input.message.body ?? "",
+        userMessage,
       });
+      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         strictMode: state.input.engineConfig.strictMode,
         requiredToolNames,
+        turnPolicy,
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage,
       });
       if (!validation.ok) {
         for (const a of validation.alerts) state.traceBuilder.addError(a);

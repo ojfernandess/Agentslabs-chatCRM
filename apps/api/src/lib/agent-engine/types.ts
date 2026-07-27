@@ -81,6 +81,16 @@ export type AgentRuntimeExecuteInput = {
   behaviorConfig: Record<string, unknown>;
   /** Appendix KB pré-carregado pelo grafo (Send API parallel prefetch). */
   kbPrefetchAppendix?: string;
+  /**
+   * Hints de execução do Agent Engine (retry reply-only, reuso de tools).
+   * Genérico — não específico de segmento/agente.
+   */
+  executionHints?: {
+    /** Regenerar só a resposta — não reexecutar tools HTTP já bem-sucedidas. */
+    replyOnlyRetry?: boolean;
+    /** Outcomes do turno anterior (mesmo user message) a reutilizar. */
+    priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+  };
 };
 
 export type AgentRuntimeExecuteResult = {

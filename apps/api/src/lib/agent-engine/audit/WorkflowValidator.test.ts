@@ -125,6 +125,33 @@ test("validateAgentWorkflow rejects operational assertion without tools (anti-ha
   assert.equal(shouldBlockOutboundFromWorkflow(report), true);
 });
 
+test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook", () => {
+  const report = validateAgentWorkflow({
+    userMessage: "sim",
+    replyText: "Seu check-in foi concluído com sucesso!",
+    toolOutcomes: [
+      { name: "embratur-reference", ok: true, preview: "{}" },
+      { name: "audaar_check_in", ok: true, preview: '{"ok":true}' },
+    ],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    supervisorEnabled: true,
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore:
+          "**Proibido** `embratur-reference` + `audaar_check_in` no mesmo turno\nN=1 → S9 só `embratur-reference`",
+      },
+    },
+  });
+  assert.equal(report.approved, false);
+  assert.ok(
+    report.findings.some(
+      (f) => !f.passed && /proibid|fora da categoria|conclusão/i.test(f.description),
+    ),
+  );
+});
+
 test("validateAgentWorkflow stress: 100 synthetic validations complete under budget", () => {
   const start = Date.now();
   let approved = 0;

@@ -6,6 +6,11 @@ import {
 } from "../supervisor/AgentSupervisorService.js";
 import { validateToolExecution, type ToolRoundOutcome } from "../validators/ToolValidator.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
+import {
+  resolveTurnPolicy,
+  validateToolOutcomesAgainstTurnPolicy,
+  type TurnPolicy,
+} from "../validators/turnPolicyParser.js";
 import type { PromptValidationInput } from "../validators/PromptValidator.js";
 import { auditPromptAssembly } from "./promptAssemblyAudit.js";
 import {
@@ -39,6 +44,9 @@ export type WorkflowAuditInput = {
   llmSummary?: string;
   validationBlockSend?: boolean;
   requiredToolNames?: string[];
+  /** Política de turno do playbook (pares proibidos, exclusividade). */
+  turnPolicy?: TurnPolicy;
+  behaviorConfig?: Record<string, unknown>;
   promptValidation?: PromptValidationInput;
   systemPromptPreview?: string;
   executionTrace?: AgentExecutionTrace;
@@ -141,29 +149,53 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   );
 
   // Fase 3 — Ferramentas
+  const turnPolicy =
+    input.turnPolicy ??
+    (input.behaviorConfig
+      ? resolveTurnPolicy(input.behaviorConfig, { userMessage: input.userMessage })
+      : undefined);
   const toolValidation = validateToolExecution({
     toolOutcomes: input.toolOutcomes,
     replyText: input.replyText,
     strictMode: input.strictMode,
     requiredToolNames: input.requiredToolNames,
+    turnPolicy,
+    behaviorConfig: input.behaviorConfig,
+    userMessage: input.userMessage,
   });
   for (const alert of toolValidation.alerts) {
     const isRequired = alert.includes("obrigatória");
+    const isPolicy = /proibid|fora da categoria/i.test(alert);
     findings.push(
       finding(
         "F3",
         `tool_${alert.slice(0, 32)}`,
-        isRequired ? "critical" : input.strictMode ? "high" : "medium",
+        isRequired || isPolicy ? "critical" : input.strictMode ? "high" : "medium",
         false,
         alert,
         {
           file: "apps/api/src/lib/agent-engine/validators/ToolValidator.ts",
-          suggestedFix: isRequired
-            ? "Invocar a ferramenta obrigatória do turno (resolveRequiredToolNamesForTurn) antes de responder"
-            : undefined,
+          suggestedFix: isPolicy
+            ? "Cumprir política de turno do playbook (uma categoria; sem misturar tools proibidas)"
+            : isRequired
+              ? "Invocar a ferramenta obrigatória do turno (resolveRequiredToolNamesForTurn) antes de responder"
+              : undefined,
         },
       ),
     );
+  }
+
+  // Política explícita (mesmo se ToolValidator não recebeu policy)
+  if (turnPolicy) {
+    for (const alert of validateToolOutcomesAgainstTurnPolicy(input.toolOutcomes, turnPolicy)) {
+      if (toolValidation.alerts.includes(alert)) continue;
+      findings.push(
+        finding("F3", "turn_policy_violation", "critical", false, alert, {
+          file: "apps/api/src/lib/agent-engine/validators/turnPolicyParser.ts",
+          suggestedFix: "Separar acções em turnos distintos conforme o playbook",
+        }),
+      );
+    }
   }
 
   /**
@@ -192,7 +224,37 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     ),
   );
 
-  if (toolValidation.alerts.length === 0 && !operationalAssertionWithoutTools) {
+  /** Passo 8 / conclusão sem tool de conclusão neste turno. */
+  const claimsCompletion = /check-in (foi )?conclu[ií]d|pedido (foi )?confirmado|reserva (foi )?confirmada/i.test(
+    input.replyText,
+  );
+  const hasCompletionTool = input.toolOutcomes.some(
+    (t) =>
+      t.ok &&
+      (turnPolicy?.completionToolHints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
+        /check[_-]?in|submit|confirm|concluir|finalize/i.test(t.name)),
+  );
+  if (claimsCompletion && !hasCompletionTool) {
+    findings.push(
+      finding(
+        "F3",
+        "no_completion_claim_without_tool",
+        "critical",
+        false,
+        "Resposta afirma conclusão sem ferramenta de conclusão neste turno",
+        {
+          file: "apps/api/src/lib/agent-engine/audit/WorkflowValidator.ts",
+          suggestedFix: "Só afirmar conclusão após HTTP 200 da tool de conclusão da categoria",
+        },
+      ),
+    );
+  }
+
+  if (
+    toolValidation.alerts.length === 0 &&
+    !operationalAssertionWithoutTools &&
+    !(claimsCompletion && !hasCompletionTool)
+  ) {
     findings.push(finding("F3", "tool_coherence", "info", true, "Coerência ferramentas ↔ resposta OK"));
   }
 

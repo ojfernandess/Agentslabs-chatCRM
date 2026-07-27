@@ -8,6 +8,7 @@ import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
+import { resolveTurnPolicy, shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -75,22 +76,44 @@ export async function runOrchestratedRuntime(
   traceBuilder.endNode("load_memory");
 
   for (;;) {
+    const replyOnly =
+      state.retryCount > 0 &&
+      shouldUseReplyOnlyRetry({
+        toolOutcomes: state.toolOutcomes,
+      });
+    const priorOk = state.toolOutcomes.filter((t) => t.ok);
     traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
-    const { reply, toolOutcomes = [], kbMeta } = await executor(input);
+    const { reply, toolOutcomes = [], kbMeta } = await executor({
+      ...input,
+      executionHints: replyOnly
+        ? { replyOnlyRetry: true, priorSuccessfulToolOutcomes: priorOk }
+        : input.executionHints,
+    });
     state.reply = reply;
-    state.toolOutcomes = toolOutcomes;
+    state.toolOutcomes =
+      replyOnly && priorOk.length > 0
+        ? [
+            ...priorOk,
+            ...toolOutcomes.filter((t) => !priorOk.some((p) => p.name === t.name && p.ok)),
+          ]
+        : toolOutcomes;
     state.kbMeta = kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false };
-    traceBuilder.endNode("execute_tool");
+    traceBuilder.endNode("execute_tool", "ok", replyOnly ? "reply-only retry" : undefined);
 
     traceBuilder.startNode("validate_result", "Validar resultado");
+    const userMessage = input.message.body ?? "";
     const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
-      userMessage: input.message.body ?? "",
+      userMessage,
     });
+    const turnPolicy = resolveTurnPolicy(input.behaviorConfig, { userMessage });
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,
       strictMode: input.engineConfig.strictMode,
       requiredToolNames,
+      turnPolicy,
+      behaviorConfig: input.behaviorConfig,
+      userMessage,
     });
     if (!validation.ok) {
       for (const alert of validation.alerts) traceBuilder.addError(alert);

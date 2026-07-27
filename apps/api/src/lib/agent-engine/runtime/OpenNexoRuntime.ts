@@ -4,6 +4,7 @@ import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
+import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 
 export type NativeAgentKbMeta = {
   hasUsefulExcerpts: boolean;
@@ -53,11 +54,17 @@ export class OpenNexoRuntime implements AgentRuntime {
       const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
         userMessage: input.message.body ?? "",
       });
+      const turnPolicy = resolveTurnPolicy(input.behaviorConfig, {
+        userMessage: input.message.body ?? "",
+      });
       const validation = validateToolExecution({
         toolOutcomes,
         replyText: reply,
         strictMode: input.engineConfig.strictMode,
         requiredToolNames,
+        turnPolicy,
+        behaviorConfig: input.behaviorConfig,
+        userMessage: input.message.body ?? "",
       });
       if (!validation.ok) {
         for (const a of validation.alerts) traceBuilder.addError(a);

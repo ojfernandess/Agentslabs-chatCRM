@@ -35,6 +35,14 @@ import {
   buildKnowledgeSearchSkipHint,
   parseKnowledgeSearchSkipFromBehavior,
 } from "./knowledgeSearchSkipConfig.js";
+import {
+  findForbiddenPairViolation,
+  isLikelyMutableOrCompletionTool,
+  resolveTurnPolicy,
+  toolsMatchAlias,
+} from "./agent-engine/validators/turnPolicyParser.js";
+import { toolOutcomeSatisfiesRequired } from "./agent-engine/validators/requiredToolNamesParser.js";
+import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
 export {
@@ -1401,6 +1409,8 @@ async function generateNativeAgentReplyCore(input: {
   skipEngineRoute?: boolean;
   /** Appendix KB pré-carregado pelo grafo LangGraph (parallel prefetch). */
   kbPrefetchAppendix?: string;
+  /** Hints do Agent Engine (reply-only retry, etc.). */
+  executionHints?: AgentRuntimeExecuteInput["executionHints"];
 }): Promise<NativeAgentCoreResult> {
   const {
     organizationId,
@@ -1599,6 +1609,12 @@ async function generateNativeAgentReplyCore(input: {
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(profile.behaviorConfig);
   const connectedToolMaxCalls = parseConnectedToolMaxCalls(profile.behaviorConfig);
+  const behaviorConfigObj =
+    profile.behaviorConfig && typeof profile.behaviorConfig === "object"
+      ? (profile.behaviorConfig as Record<string, unknown>)
+      : {};
+  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage });
+  const executionHints = input.executionHints;
   let customHttpTools: AutomationHttpToolRow[] = [];
   if (nativeHttpCustomToolIds.length > 0) {
     const rows = await prisma.automationCustomTool.findMany({
@@ -2139,6 +2155,75 @@ async function generateNativeAgentReplyCore(input: {
               if (!row) {
                 return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
+
+              // Reply-only retry: reutilizar tools OK; bloquear mutáveis novas
+              if (executionHints?.replyOnlyRetry) {
+                const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find(
+                  (t) => toolsMatchAlias(t.name, row.name) || toolsMatchAlias(t.name, name),
+                );
+                if (prior) {
+                  return finishToolCall(
+                    JSON.stringify({
+                      ok: true,
+                      skipped: true,
+                      reason: "reply_only_retry_reuse",
+                      bodyPreview: prior.preview.slice(0, 1500),
+                      message:
+                        "Resultado já obtido neste turno. Não volte a chamar a ferramenta — responda ao cliente com base neste resultado.",
+                    }),
+                  );
+                }
+                if (isLikelyMutableOrCompletionTool(row.name, turnPolicy.completionToolHints)) {
+                  return finishToolCall(
+                    JSON.stringify({
+                      ok: false,
+                      skipped: true,
+                      reason: "reply_only_retry_block_mutable",
+                      message:
+                        "Retry de qualidade: proibido reexecutar ferramentas mutáveis. Escreva apenas a resposta ao cliente.",
+                    }),
+                  );
+                }
+              }
+
+              // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
+              const proposedNames = [
+                ...toolRoundOutcomes.map((t) => t.name),
+                row.name,
+                name,
+              ];
+              if (turnPolicy.exclusiveAllowedTools && turnPolicy.exclusiveAllowedTools.length > 0) {
+                const allowed = turnPolicy.exclusiveAllowedTools.some(
+                  (a) =>
+                    toolOutcomeSatisfiesRequired(a, [{ name: row.name, preview: "" }]) ||
+                    toolOutcomeSatisfiesRequired(a, [{ name, preview: "" }]),
+                );
+                if (!allowed) {
+                  return finishToolCall(
+                    JSON.stringify({
+                      ok: false,
+                      skipped: true,
+                      reason: "turn_policy_exclusive",
+                      message: `Ferramenta ${row.name} fora da categoria deste turno. Use apenas: ${turnPolicy.exclusiveAllowedTools.join(", ")}. PARE e responda.`,
+                    }),
+                  );
+                }
+              }
+              const pairHit = findForbiddenPairViolation(
+                proposedNames,
+                turnPolicy.forbiddenSameTurnPairs,
+              );
+              if (pairHit) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "forbidden_same_turn_pair",
+                    message: `PROIBIDO no mesmo turno: ${pairHit.a} + ${pairHit.b}. PARE agora e responda só com a acção da categoria actual (sem misturar etapas).`,
+                  }),
+                );
+              }
+
               const maxCalls =
                 connectedToolMaxCalls.get(row.id) ?? connectedToolMaxCalls.get(name) ?? null;
               const countKey = row.id;
@@ -2592,14 +2677,23 @@ async function generateNativeAgentReplyCore(input: {
         summary = `${summary} [auto: stall com KB disponível — rejeitado]`.slice(0, 500);
       }
       // Override defensivo: tools OK + resposta substantiva → não marcar falso negativo por OCR
-      // Não forçar aprovação se a resposta é dump de KB irrelevante ou contradiz found:false.
+      // NÃO forçar aprovação se o próprio supervisor LLM apontou invenção, ou se violou política de turno.
       const toolReportsNotFound = toolRoundOutcomes.some((t) => /"found"\s*:\s*false/i.test(t.preview));
       const isForcedKbDump = FORCED_KB_REPLY_PREFIX_RE.test(replyText);
+      const llmFlagsInvention = /invent|alucin|não podem ser validados|nao podem ser validados|não suportad|nao suportad/i.test(
+        summary,
+      );
+      const policyAlerts = (() => {
+        const names = toolRoundOutcomes.map((t) => t.name);
+        return findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
+      })();
       if (
         !approved &&
         successfulTools.length > 0 &&
         hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages) &&
-        !(isForcedKbDump && (toolReportsNotFound || hasNonKnowledgeToolsThisTurn(toolRoundOutcomes)))
+        !(isForcedKbDump && (toolReportsNotFound || hasNonKnowledgeToolsThisTurn(toolRoundOutcomes))) &&
+        !llmFlagsInvention &&
+        !policyAlerts
       ) {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);
@@ -2732,6 +2826,7 @@ function ensureAgentEngineExecutorRegistered(): void {
       contactId: runtimeInput.contactId,
       skipEngineRoute: true,
       kbPrefetchAppendix: runtimeInput.kbPrefetchAppendix,
+      executionHints: runtimeInput.executionHints,
     });
     return {
       reply: result.reply,

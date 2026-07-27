@@ -1,5 +1,10 @@
 import type { ToolValidationResult } from "../types.js";
 import { toolOutcomeSatisfiesRequired } from "./requiredToolNamesParser.js";
+import {
+  resolveTurnPolicy,
+  validateToolOutcomesAgainstTurnPolicy,
+  type TurnPolicy,
+} from "./turnPolicyParser.js";
 
 export type ToolRoundOutcome = {
   name: string;
@@ -13,11 +18,15 @@ export type ToolValidatorInput = {
   replyText: string;
   strictMode: boolean;
   requiredToolNames?: string[];
+  /** Política de turno (playbook). Se omitida e behaviorConfig presente, resolve-se. */
+  turnPolicy?: TurnPolicy;
+  behaviorConfig?: Record<string, unknown>;
+  userMessage?: string;
 };
 
 /**
  * Valida coerência entre ferramentas executadas e resposta enviada.
- * Match de required tools é genérico (nome exacto, parcial ou alias em preview).
+ * Inclui políticas genéricas do playbook (pares proibidos, exclusividade de turno).
  */
 export function validateToolExecution(input: ToolValidatorInput): ToolValidationResult {
   const alerts: string[] = [];
@@ -37,10 +46,25 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
     }
   }
 
+  const policy =
+    input.turnPolicy ??
+    (input.behaviorConfig
+      ? resolveTurnPolicy(input.behaviorConfig, { userMessage: input.userMessage })
+      : null);
+  if (policy) {
+    for (const alert of validateToolOutcomesAgainstTurnPolicy(input.toolOutcomes, policy)) {
+      alerts.push(alert);
+      blockSend = true;
+    }
+  }
+
   if (failed.length > 0) {
-    alerts.push(`Ferramenta retornou erro: ${failed.map((f) => f.name).join(", ")}`);
-    fallbackSuggested = true;
-    if (input.strictMode) blockSend = true;
+    const realFailures = failed.filter((f) => !/"skipped"\s*:\s*true/i.test(f.preview));
+    if (realFailures.length > 0) {
+      alerts.push(`Ferramenta retornou erro: ${realFailures.map((f) => f.name).join(", ")}`);
+      fallbackSuggested = true;
+      if (input.strictMode) blockSend = true;
+    }
   }
 
   if (successful.length > 0 && !input.replyText.trim()) {

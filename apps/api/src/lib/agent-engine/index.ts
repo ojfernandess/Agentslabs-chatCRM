@@ -33,6 +33,15 @@ export {
   GENERIC_TURN_PATTERNS,
 } from "./validators/requiredToolNamesParser.js";
 export {
+  resolveTurnPolicy,
+  parseForbiddenSameTurnPairsFromPlaybook,
+  validateToolOutcomesAgainstTurnPolicy,
+  shouldUseReplyOnlyRetry,
+  isLikelyMutableOrCompletionTool,
+  type TurnPolicy,
+  type ForbiddenToolPair,
+} from "./validators/turnPolicyParser.js";
+export {
   computeReplyConfidence,
   evaluateStrictModeGate,
   STRICT_MODE_MIN_CONFIDENCE,

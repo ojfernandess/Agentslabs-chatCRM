@@ -14,9 +14,9 @@ export const KNOWN_NATIVE_TOOL_NAMES = [
 /** Tools de escalonamento — só obrigatórias em turnos de reclamação/humano. */
 const ESCALATION_TOOL_NAMES = new Set(["call_human", "transfer_to_team", "listar_equipas"]);
 
-/** Identificador de tool genérico: nativo, HTTP snake_case ou oc_tool_<hex>. */
-const GENERIC_TOOL_NAME_RE = /\b(?:oc_tool_[a-f0-9]{32}|[a-z][a-z0-9_]{2,80})\b/gi;
-const BACKTICK_TOOL_RE = /`([a-z][a-z0-9_]{2,80}|oc_tool_[a-f0-9]{32})`/gi;
+/** Identificador de tool genérico: nativo, HTTP snake_case/kebab ou oc_tool_<hex>. */
+const GENERIC_TOOL_NAME_RE = /\b(?:oc_tool_[a-f0-9]{32}|[a-z][a-z0-9_]{2,80}|[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+)\b/gi;
+const BACKTICK_TOOL_RE = /`([a-z][a-z0-9_-]{2,80}|oc_tool_[a-f0-9]{32})`/gi;
 
 /** Contexto linguístico que indica obrigatoriedade explícita de ferramenta. */
 const MANDATORY_CONTEXT_RE =
@@ -113,8 +113,8 @@ function isPlausibleToolName(raw: string): boolean {
   if (TOOL_NAME_STOPWORDS.has(t)) return false;
   if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return true;
   if ((KNOWN_NATIVE_TOOL_NAMES as readonly string[]).includes(t)) return true;
-  // HTTP / custom: snake_case com pelo menos um underscore, ou kebab raro
-  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(t)) return true;
+  // HTTP / custom: snake_case ou kebab-case com pelo menos um separador
+  if (/^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+$/.test(t)) return true;
   return false;
 }
 
@@ -122,10 +122,11 @@ function normalizeToolToken(raw: string): string | null {
   const t = raw.trim();
   if (!t || !isPlausibleToolName(t)) return null;
   if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return t.toLowerCase();
-  return t;
+  return t.toLowerCase();
 }
 
-function extractToolNamesFromText(text: string): string[] {
+/** Extrai nomes de tools plausíveis de texto livre / tabelas markdown. */
+export function extractToolNamesFromText(text: string): string[] {
   const found = new Set<string>();
   for (const match of text.matchAll(GENERIC_TOOL_NAME_RE)) {
     const norm = normalizeToolToken(match[0]);
@@ -210,7 +211,8 @@ function readPromptBlocksFromBehavior(behaviorConfig: Record<string, unknown>): 
   return parsePromptBlocks(blocksRaw);
 }
 
-function playbookTextFromBehavior(behaviorConfig: Record<string, unknown>): string {
+/** Texto do playbook a partir de behaviorConfig (userCore ou blocos). */
+export function playbookTextFromBehavior(behaviorConfig: Record<string, unknown>): string {
   const pb = behaviorConfig.promptBuilder;
   if (pb && typeof pb === "object") {
     const raw = pb as Record<string, unknown>;

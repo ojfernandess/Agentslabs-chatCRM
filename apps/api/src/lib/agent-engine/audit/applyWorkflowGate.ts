@@ -9,6 +9,7 @@ import {
   resolveRequiredToolNamesFromBehavior,
   resolveRequiredToolNamesForTurn,
 } from "../validators/requiredToolNamesParser.js";
+import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
 import { parsePromptBlocks, buildAgentPlaybookFromBlocks } from "../../agentPlaybook.js";
 
 export type WorkflowGateInput = {
@@ -34,6 +35,7 @@ export type WorkflowGateResult = {
   blockReply: boolean;
   report?: WorkflowAuditReport;
   requiredToolNames: string[];
+  turnPolicy: TurnPolicy;
 };
 
 /** Activa gate unificado apenas em modo estrito com supervisor (QA Fase 2). */
@@ -59,9 +61,12 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     userMessage: input.userMessage,
     availableToolNames: input.availableToolNames,
   });
+  const turnPolicy = resolveTurnPolicy(input.behaviorConfig, {
+    userMessage: input.userMessage,
+  });
 
   if (!shouldRunWorkflowGate(input.engineConfig)) {
-    return { blockReply: false, requiredToolNames };
+    return { blockReply: false, requiredToolNames, turnPolicy };
   }
 
   const report = validateAgentWorkflow({
@@ -78,6 +83,8 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     llmApproved: input.llmSupervisorApproved,
     llmSummary: input.llmSupervisorSummary,
     requiredToolNames,
+    turnPolicy,
+    behaviorConfig: input.behaviorConfig,
     systemPromptPreview: resolveSystemPromptPreview(input.behaviorConfig),
     graphNodeSequence: input.graphNodeSequence,
     supervisorTrace: input.supervisorTrace,
@@ -87,6 +94,7 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     blockReply: shouldBlockOutboundFromWorkflow(report),
     report,
     requiredToolNames,
+    turnPolicy,
   };
 }
 
