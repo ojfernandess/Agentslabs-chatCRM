@@ -58,6 +58,40 @@ test("validateAgentWorkflow rejects missing required tool (critical)", () => {
   assert.equal(report.approved, false);
 });
 
+test("validateAgentWorkflow approves strict C8 lookup without KB (operational tool)", () => {
+  const report = validateAgentWorkflow({
+    userMessage: "41026299802",
+    replyText:
+      "Encontrei seu cadastro anterior. Confira se os dados do titular estão corretos… Confirme os dados do TITULAR.",
+    toolOutcomes: [
+      {
+        name: "oc_tool_3d80de96c5b541bfac7cd46d8ef490ff",
+        ok: true,
+        preview: '{"data":{"found":true}}',
+      },
+    ],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    supervisorEnabled: true,
+    graphNodeSequence: GOLDEN_GRAPH,
+    executionTrace: {
+      runtime: "langgraph",
+      memory: "openconduit",
+      strictMode: true,
+      observability: "full",
+      checkpointThreadId: "thread-c8",
+      nodes: [],
+      events: [],
+      errors: [],
+    },
+  });
+  const kbCheck = report.findings.find((f) => f.id === "kb_search_or_appendix");
+  assert.ok(kbCheck);
+  assert.equal(kbCheck!.passed, true);
+  assert.equal(report.approved, true);
+  assert.equal(shouldBlockOutboundFromWorkflow(report), false);
+});
+
 test("validateAgentWorkflow flags KB gap in strict mode without tool", () => {
   const report = validateAgentWorkflow({
     userMessage: "Quais as categorias de quartos do hotel?",

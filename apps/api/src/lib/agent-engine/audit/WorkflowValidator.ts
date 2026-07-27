@@ -178,13 +178,22 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   // Fase 5 — KB / RAG
   const kbQuery = input.kbMeta.hasUsefulExcerpts || input.kbMeta.coversQuery;
   const kbTool = input.toolOutcomes.find((t) => t.name === "buscar_conhecimento");
+  const hasSuccessfulOperationalTool = input.toolOutcomes.some(
+    (t) => t.ok && t.name !== "buscar_conhecimento",
+  );
+  /** Strict: KB ou turno sem tools (C7/C9) ou ferramenta operacional HTTP OK (C3/C8/S10). */
+  const kbRequirementSatisfied =
+    kbQuery ||
+    kbTool?.ok === true ||
+    input.toolOutcomes.length === 0 ||
+    hasSuccessfulOperationalTool;
   findings.push(
     finding(
       "F5",
       "kb_search_or_appendix",
       input.strictMode ? "high" : "medium",
-      !input.strictMode || kbQuery || kbTool?.ok === true || input.toolOutcomes.length === 0,
-      "KB consultada ou appendix proactivo quando strict",
+      !input.strictMode || kbRequirementSatisfied,
+      "KB consultada ou ferramenta operacional válida em strict",
       { file: "apps/api/src/lib/knowledgeRetrieval.ts" },
     ),
     finding("F5", "kb_tool_result_used", "medium", !kbTool || kbTool.ok === false || input.replyText.trim().length > 0, "Resultado KB não ignorado silenciosamente"),
