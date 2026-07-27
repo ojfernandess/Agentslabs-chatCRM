@@ -91,16 +91,18 @@ export class OpenNexoRuntime implements AgentRuntime {
       memorySnapshot: memSnap,
       graphNodeSequence: ["load_memory", "respond"],
     });
-    if (gate.blockReply) {
+    if (gate.advisoryFailures > 0 || (gate.report && !gate.report.approved)) {
       input.executionLog?.warn(
         { id: "workflow_validator", name: "Workflow Validator" },
         JSON.stringify({
-          approved: false,
+          approved: gate.report?.approved ?? false,
+          advisory: true,
+          blockReply: false,
           criticalFailures: gate.report?.metrics.criticalFailures,
           requiredToolNames: gate.requiredToolNames,
+          advisoryFailures: gate.advisoryFailures,
         }),
       );
-      return { reply: "", trace: traceBuilder.build() };
     }
 
     return { reply, trace: traceBuilder.build() };

@@ -212,25 +212,26 @@ export async function runOrchestratedRuntime(
     retryCount: state.retryCount,
     graphNodeSequence: plan.graphHistory,
   });
-  if (gate.blockReply || state.blockReply) {
-    traceBuilder.endNode(
-      "respond",
-      "error",
-      gate.blockReply
-        ? "Workflow Validator reprovou execução"
-        : "Tool Validator bloqueou envio (modo estrito)",
-    );
-    if (gate.blockReply) {
-      input.executionLog?.warn(
-        { id: "workflow_validator", name: "Workflow Validator" },
-        JSON.stringify({
-          approved: false,
-          criticalFailures: gate.report?.metrics.criticalFailures,
-          requiredToolNames: gate.requiredToolNames,
-        }),
-      );
-    }
+  // WF diagnóstico: não limpa reply. Bloqueio só via Supervisor / Tool Validator.
+  if (state.blockReply) {
+    traceBuilder.endNode("respond", "error", "Tool Validator / Supervisor bloqueou envio (modo estrito)");
     state.reply = "";
+  } else if (gate.advisoryFailures > 0 || (gate.report && !gate.report.approved)) {
+    input.executionLog?.warn(
+      { id: "workflow_validator", name: "Workflow Validator" },
+      JSON.stringify({
+        approved: gate.report?.approved ?? false,
+        advisory: true,
+        blockReply: false,
+        criticalFailures: gate.report?.metrics.criticalFailures,
+        requiredToolNames: gate.requiredToolNames,
+        advisoryFailures: gate.advisoryFailures,
+      }),
+    );
+    for (const f of gate.report?.findings.filter((x) => !x.passed) ?? []) {
+      traceBuilder.addError(`${f.phase}/${f.id}: ${f.description}`);
+    }
+    traceBuilder.endNode("respond");
   } else {
     traceBuilder.endNode("respond");
   }

@@ -25,6 +25,10 @@ export {
   type WorkflowGateResult,
 } from "./audit/applyWorkflowGate.js";
 export {
+  buildExecutionTurnPlan,
+  type ExecutionTurnPlan,
+} from "./planner/ExecutionTurnPlan.js";
+export {
   parseRequiredToolNamesFromText,
   resolveRequiredToolNamesFromBehavior,
   resolveRequiredToolNamesForTurn,

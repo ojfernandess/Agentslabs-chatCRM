@@ -758,20 +758,23 @@ export class LangGraphRuntime implements AgentRuntime {
             "respond",
           ],
         });
-        if (gate.blockReply) {
+        // WF é diagnóstico: regista findings, NÃO limpa a reply.
+        // Bloqueio de outbound cabe só ao Supervisor (state.blockReply acima).
+        if (gate.advisoryFailures > 0 || (gate.report && !gate.report.approved)) {
           for (const f of gate.report?.findings.filter((x) => !x.passed) ?? []) {
             state.traceBuilder.addError(`${f.phase}/${f.id}: ${f.description}`);
           }
-          state.traceBuilder.endNode("respond", "error", "Workflow Validator reprovou execução");
           state.input.executionLog?.warn(
             { id: "workflow_validator", name: "Workflow Validator" },
             JSON.stringify({
-              approved: false,
+              approved: gate.report?.approved ?? false,
+              advisory: true,
+              blockReply: false,
               criticalFailures: gate.report?.metrics.criticalFailures,
               requiredToolNames: gate.requiredToolNames,
+              advisoryFailures: gate.advisoryFailures,
             }),
           );
-          return { reply: "", blockReply: true };
         }
       }
 

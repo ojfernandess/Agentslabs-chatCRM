@@ -122,7 +122,8 @@ test("validateAgentWorkflow rejects operational assertion without tools (anti-ha
   assert.equal(gate!.passed, false);
   assert.equal(gate!.severity, "critical");
   assert.equal(report.approved, false);
-  assert.equal(shouldBlockOutboundFromWorkflow(report), true);
+  // WF é diagnóstico — nunca bloqueia outbound por si só
+  assert.equal(shouldBlockOutboundFromWorkflow(report), false);
 });
 
 test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook", () => {

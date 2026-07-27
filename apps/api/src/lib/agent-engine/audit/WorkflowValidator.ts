@@ -419,7 +419,13 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   };
 }
 
-/** Indica se a execução deve ser bloqueada antes de enviar ao cliente. */
-export function shouldBlockOutboundFromWorkflow(report: WorkflowAuditReport): boolean {
-  return !report.approved;
+/** Indica se a execução deve ser bloqueada antes de enviar ao cliente.
+ *
+ * Arquitectura (Fase Planner): o Workflow Validator é **diagnóstico**.
+ * Nunca toma a decisão final de outbound — isso cabe exclusivamente ao
+ * Execution Supervisor (`shouldBlockReplyAfterSupervisor`) + Tool Validator
+ * mid-turn / `validationBlockSend` quando o Supervisor está desligado.
+ */
+export function shouldBlockOutboundFromWorkflow(_report: WorkflowAuditReport): boolean {
+  return false;
 }

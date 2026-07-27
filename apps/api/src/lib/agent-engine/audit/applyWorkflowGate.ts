@@ -9,7 +9,8 @@ import {
   resolveRequiredToolNamesFromBehavior,
   resolveRequiredToolNamesForTurn,
 } from "../validators/requiredToolNamesParser.js";
-import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
+import type { TurnPolicy } from "../validators/turnPolicyParser.js";
+import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import { parsePromptBlocks, buildAgentPlaybookFromBlocks } from "../../agentPlaybook.js";
 
 export type WorkflowGateInput = {
@@ -29,16 +30,25 @@ export type WorkflowGateInput = {
   graphNodeSequence?: string[];
   kbQueryLikely?: boolean;
   availableToolNames?: string[];
+  /** Plano de turno pré-calculado (evita re-parse divergente). */
+  turnPlan?: ExecutionTurnPlan;
 };
 
 export type WorkflowGateResult = {
+  /**
+   * Sempre false — WF é diagnóstico. Mantido por compatibilidade de API;
+   * o runtime NÃO deve limpar a reply com base neste flag.
+   */
   blockReply: boolean;
   report?: WorkflowAuditReport;
   requiredToolNames: string[];
   turnPolicy: TurnPolicy;
+  turnPlan: ExecutionTurnPlan;
+  /** Findings falhados para logging / observabilidade. */
+  advisoryFailures: number;
 };
 
-/** Activa gate unificado apenas em modo estrito com supervisor (QA Fase 2). */
+/** Activa auditoria unificada apenas em modo estrito com supervisor. */
 export function shouldRunWorkflowGate(engineConfig: AgentEngineConfig): boolean {
   return engineConfig.strictMode === true && engineConfig.supervisorEnabled === true;
 }
@@ -55,18 +65,28 @@ function resolveSystemPromptPreview(behaviorConfig: Record<string, unknown>): st
   return playbook || undefined;
 }
 
-/** Executa Workflow Validator e decide bloqueio de outbound. */
+/**
+ * Executa Workflow Validator em modo diagnóstico.
+ * Nunca bloqueia outbound — o Supervisor é o único decisor final.
+ */
 export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
-  const requiredToolNames = resolveRequiredToolNamesForTurn(input.behaviorConfig, {
-    userMessage: input.userMessage,
-    availableToolNames: input.availableToolNames,
-  });
-  const turnPolicy = resolveTurnPolicy(input.behaviorConfig, {
-    userMessage: input.userMessage,
-  });
+  const turnPlan =
+    input.turnPlan ??
+    buildExecutionTurnPlan({
+      behaviorConfig: input.behaviorConfig,
+      userMessage: input.userMessage,
+      availableToolNames: input.availableToolNames,
+    });
+  const { requiredToolNames, turnPolicy } = turnPlan;
 
   if (!shouldRunWorkflowGate(input.engineConfig)) {
-    return { blockReply: false, requiredToolNames, turnPolicy };
+    return {
+      blockReply: false,
+      requiredToolNames,
+      turnPolicy,
+      turnPlan,
+      advisoryFailures: 0,
+    };
   }
 
   const report = validateAgentWorkflow({
@@ -90,11 +110,15 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     supervisorTrace: input.supervisorTrace,
   });
 
+  const advisoryFailures = report.findings.filter((f) => !f.passed).length;
+
   return {
     blockReply: shouldBlockOutboundFromWorkflow(report),
     report,
     requiredToolNames,
     turnPolicy,
+    turnPlan,
+    advisoryFailures,
   };
 }
 
