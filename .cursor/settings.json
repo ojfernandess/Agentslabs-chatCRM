@@ -1,0 +1,8 @@
+{
+  "cursor.mcp.legacyMcpMode": true,
+  "plugins": {
+    "postman": {
+      "enabled": false
+    }
+  }
+}

@@ -47,28 +47,28 @@ export async function handleMcpHttpRequest(
   }
 
   if (!sessionId && parsedBody && isInitializeRequest(parsedBody)) {
+    let activeSessionId: string | undefined;
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid) => {
+        activeSessionId = sid;
+        sessions.set(sid, {
+          transport,
+          auth,
+          createdAt: Date.now(),
+        });
+      },
     });
-    const newSessionId = transport.sessionId;
-    if (!newSessionId) {
-      res.statusCode = 500;
-      res.end(JSON.stringify({ error: "Failed to create MCP session" }));
-      return;
-    }
 
     transport.onclose = () => {
-      sessions.delete(newSessionId);
+      if (activeSessionId) {
+        sessions.delete(activeSessionId);
+      }
     };
 
     const server = createOpenNexoMcpServer(auth);
     await server.connect(transport);
-
-    sessions.set(newSessionId, {
-      transport,
-      auth,
-      createdAt: Date.now(),
-    });
 
     await transport.handleRequest(req, res, parsedBody);
     return;
