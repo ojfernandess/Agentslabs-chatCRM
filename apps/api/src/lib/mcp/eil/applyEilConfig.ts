@@ -1,4 +1,4 @@
-import { prisma } from "../../db.js";
+import { prisma } from "../../../db.js";
 import type { Prisma } from "@prisma/client";
 
 /** Default policy bundle for additional-party constraint (segment-agnostic action id). */
