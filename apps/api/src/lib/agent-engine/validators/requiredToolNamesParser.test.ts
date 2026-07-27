@@ -84,8 +84,9 @@ test("resolveRequiredToolNamesForTurn requires lookup on CPF-only message", () =
       useFullPrompt: true,
       userCore: `
 | Categoria | Detectar | Acção |
-| C8 | CPF · 11 dígitos · lookup main guest | Chame \`audaar_consultar_main_guest\` |
+| C8 | CPF sozinho · 11 dígitos · lookup main guest | Chame \`audaar_consultar_main_guest\` |
 | C7 | nacionalidade | ZERO tools |
+| C3 | check-in · localizador | Chame \`audaar_consultar_reserva\` |
 `,
     },
   };
@@ -94,6 +95,7 @@ test("resolveRequiredToolNamesForTurn requires lookup on CPF-only message", () =
     names.some((n) => n.includes("consultar_main_guest") || n === "audaar_consultar_main_guest"),
     `expected main_guest tool, got ${JSON.stringify(names)}`,
   );
+  assert.equal(names.some((n) => n.includes("consultar_reserva")), false);
 });
 
 test("resolveRequiredToolNamesForTurn requires reservation tool on check-in message", () => {
@@ -102,6 +104,8 @@ test("resolveRequiredToolNamesForTurn requires reservation tool on check-in mess
       useFullPrompt: true,
       userCore: `
 | C3 | check-in · localizador | Chame \`hotel_consultar_reserva\` |
+| C8 | CPF · 11 dígitos | Chame \`hotel_consultar_main_guest\` |
+| S10 | check-in concluído | Chame \`hotel_check_in\` |
 `,
     },
   };
@@ -109,6 +113,32 @@ test("resolveRequiredToolNamesForTurn requires reservation tool on check-in mess
     userMessage: "quero fazer check-in 71CRUDTI",
   });
   assert.ok(names.some((n) => n.includes("consultar_reserva")));
+  assert.equal(names.some((n) => /check_in$/i.test(n) && !/consultar/.test(n)), false);
+  assert.equal(names.some((n) => n.includes("main_guest")), false);
+});
+
+test("resolveRequiredToolNamesForTurn does not require all playbook tools on check-in", () => {
+  const playbook = `
+| C3 | check-in · localizador | Chame \`audaar_consultar_reserva\` |
+| C8 | CPF sozinho · 11 dígitos | Chame \`audaar_consultar_main_guest\` |
+| C10 | selfie | Chame \`checkin_upload_selfie\` |
+| S9 | embratur | Chame \`embratur-reference\` |
+| S10 | Passo 8 | Chame \`audaar_check_in\` |
+Sempre use buscar_conhecimento antes de responder sobre Wi-Fi.
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "fazer check-in na reserva 71CRUDTI" },
+  );
+  assert.deepEqual(
+    names.filter((n) => n.includes("consultar_reserva") || n === "audaar_consultar_reserva"),
+    names.length === 1 ? names : names.filter((n) => /consultar_reserva/i.test(n)),
+  );
+  assert.ok(names.length <= 2, `expected ≤2 required tools, got ${JSON.stringify(names)}`);
+  assert.equal(names.includes("buscar_conhecimento"), false);
+  assert.equal(names.some((n) => n.includes("selfie")), false);
+  assert.equal(names.some((n) => n.includes("embratur")), false);
+  assert.equal(names.some((n) => /audaar_check_in/i.test(n)), false);
 });
 
 test("resolveRequiredToolNamesForTurn is segment-agnostic for retail document id", () => {
@@ -116,7 +146,7 @@ test("resolveRequiredToolNamesForTurn is segment-agnostic for retail document id
     promptBuilder: {
       useFullPrompt: true,
       userCore: `
-| C8 | CPF · 11 dígitos · documento lookup | Sempre use \`loja_consultar_cliente\` |
+| C8 | CPF sozinho · 11 dígitos · documento lookup | Sempre use \`loja_consultar_cliente\` |
 `,
     },
     availableToolNames: ["loja_consultar_cliente", "buscar_conhecimento"],

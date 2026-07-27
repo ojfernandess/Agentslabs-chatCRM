@@ -2783,7 +2783,19 @@ async function generateNativeAgentReplyCore(input: {
         },
         "strict mode hard-block — reply not sent",
       );
-      return EMPTY_NATIVE_CORE_RESULT;
+      // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
+      // Só limpa a reply para não enviar texto reprovado ao contacto.
+      return {
+        reply: "",
+        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+        kbMeta: {
+          hasUsefulExcerpts: kbHasUsefulExcerpts,
+          coversQuery:
+            proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
+        },
+        llmSupervisorApproved,
+        llmSupervisorSummary,
+      };
     }
   }
 

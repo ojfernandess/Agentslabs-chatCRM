@@ -60,6 +60,13 @@ const TOOL_NAME_STOPWORDS = new Set([
   "cliente",
   "hospede",
   "hóspede",
+  "wifi",
+  "wi-fi",
+  "e-mail",
+  "email",
+  "whatsapp",
+  "http",
+  "https",
 ]);
 
 export type TurnToolPattern = {
@@ -73,37 +80,39 @@ export type TurnToolPattern = {
 /**
  * Padrões de turno genéricos — independentes de vertical (hotel, retail, etc.).
  * Cada segmento mapeia tools via tabela do próprio playbook.
+ * Hints são deliberadamente estreitos para não marcar todas as categorias do playbook.
  */
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
     id: "document_id",
     test: (m) => /^\d{11}$/.test(m.trim()),
-    playbookHints: /cpf|d[ií]gitos|documento|tax.?id|document.?id|lookup|main.?guest|cadastro/i,
+    playbookHints: /\b(C8|cpf\s*sozinho|11\s*d[ií]gitos|main.?guest|consultar_main_guest)\b/i,
   },
   {
     id: "checkin_or_reservation",
     test: (m) =>
       /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(da\s+)?reserva/i.test(m) &&
       /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")),
-    playbookHints: /check[- ]?in|localizador|reserva|consultar.?reserva|verificar/i,
+    // Só linhas de detecção C3 / check-in+localizador — não qualquer menção a "reserva"
+    playbookHints: /\b(C3|check[- ]?in\b.*localizador|localizador.*check[- ]?in|consultar_reserva)\b/i,
   },
   {
     id: "availability_quote",
     test: (m) =>
       /\b(disponibilidade|cota[cç][aã]o|pre[cç]o|di[aá]ria)\b/i.test(m) &&
       /\d{1,2}[\/.\-]\d{1,2}/.test(m),
-    playbookHints: /cota[cç][aã]o|disponibilidade|datas|pessoas/i,
+    playbookHints: /\b(C5|C6|cota[cç][aã]o|disponibilidade|consultar_disponibilidade)\b/i,
   },
   {
     id: "image_upload",
     test: (m) => /\[Transcri[cç][aã]o de imagem\]/i.test(m),
-    playbookHints: /imagem|selfie|documento|upload|foto|transcri/i,
+    playbookHints: /\b(C10|selfie|upload_foto|upload_documento|transcri)\b/i,
   },
   {
     id: "escalation",
     test: (m) =>
       /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(m),
-    playbookHints: /reclama[cç][aã]o|humano|escalon|irritad|call_human|transfer/i,
+    playbookHints: /\b(C13|reclama[cç][aã]o|call_human|transfer_to_team)\b/i,
   },
 ];
 
@@ -190,18 +199,93 @@ export function parseCategoryToolMapFromPlaybook(text: string): Map<string, stri
   return map;
 }
 
-/** Encontra categorias do playbook cuja coluna de detecção casa com o padrão do turno. */
-export function findCategoriesForTurnPattern(playbookText: string, pattern: TurnToolPattern): string[] {
-  const categories = new Set<string>();
+/** Encontra a melhor categoria do playbook para o padrão do turno (não todas as menções). */
+export function findCategoriesForTurnPattern(
+  playbookText: string,
+  pattern: TurnToolPattern,
+  userMessage = "",
+): string[] {
+  return findBestTurnMatches(playbookText, pattern, userMessage).map((m) => m.category);
+}
+
+type TurnMatch = { category: string; score: number; line: string; tools: string[] };
+
+function scoreTurnLine(
+  line: string,
+  pattern: TurnToolPattern,
+  userMessage: string,
+  category: string,
+): number {
+  let score = 1;
+  if (pattern.id === "checkin_or_reservation") {
+    if (/\bC3\b/i.test(category) || /\bC3\b/i.test(line)) score += 6;
+    if (/check[- ]?in/i.test(line) && /check[- ]?in/i.test(userMessage)) score += 4;
+    if (/localizador/i.test(line)) score += 2;
+    if (/consultar_reserva/i.test(line)) score += 3;
+    if (/\b(C8|C9|C10|S9|S10|selfie|embratur|main_guest)\b/i.test(line) && !/\bC3\b/i.test(line)) {
+      score -= 8;
+    }
+    // Linhas C3 que só listam FAQ/KB não são o detector principal
+    if (/buscar_conhecimento/i.test(line) && !/consultar_reserva/i.test(line)) score -= 5;
+  } else if (pattern.id === "document_id") {
+    if (/\bC8\b/i.test(category) || /\bC8\b/i.test(line)) score += 6;
+    if (/main_guest|consultar_main_guest|cpf\s*sozinho/i.test(line)) score += 4;
+    if (/\b(C3|S10|check_in|selfie)\b/i.test(line) && !/\bC8\b/i.test(line)) score -= 8;
+  } else if (pattern.id === "escalation") {
+    if (/\bC13\b/i.test(line)) score += 5;
+  }
+  return score;
+}
+
+function findBestTurnMatches(
+  playbookText: string,
+  pattern: TurnToolPattern,
+  userMessage = "",
+): TurnMatch[] {
+  const scored: TurnMatch[] = [];
   for (const line of playbookText.split(/\n+/)) {
     if (!/\|/.test(line)) continue;
     if (!pattern.playbookHints.test(line)) continue;
     const categoryMatch = line.match(/\|\s*\*{0,2}(C\d+|S\d+|Passo\s*\d+)\*{0,2}\s*\|/i);
-    if (categoryMatch) {
-      categories.add(categoryMatch[1]!.replace(/\s+/g, " ").toUpperCase().replace(/^PASSO\s+/i, "PASSO "));
-    }
+    if (!categoryMatch) continue;
+    const category = categoryMatch[1]!.replace(/\s+/g, " ").toUpperCase().replace(/^PASSO\s+/i, "PASSO ");
+    const tools = extractPositiveToolNamesFromLine(line).filter(
+      (n) => pattern.id === "escalation" || !ESCALATION_TOOL_NAMES.has(n),
+    );
+    if (tools.length === 0) continue;
+    const score = scoreTurnLine(line, pattern, userMessage, category);
+    scored.push({ category, score, line, tools });
   }
-  return [...categories];
+  if (scored.length === 0) return [];
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0]!.score;
+  return scored.filter((s) => s.score === best && s.score > 0);
+}
+
+/**
+ * Extrai tools "positivas" de uma linha de tabela (ignora menções após PROIBIDO/never).
+ * Evita exigir `buscar_conhecimento` quando a linha diz PROIBIDO buscar_conhecimento.
+ */
+export function extractPositiveToolNamesFromLine(line: string): string[] {
+  const cleaned = line
+    .replace(/\*{0,2}proibid[oa]\*{0,2}[^.|]*?(?=·|\||$)/gi, " ")
+    .replace(/\b(?:never\s+use|do\s+not\s+(?:use|call)|n[aã]o\s+(?:use|chame|invogue))\b[^.|]*?(?=·|\||$)/gi, " ");
+  return extractToolNamesFromText(cleaned);
+}
+
+/** Remove aliases curtos quando já existe o nome completo (ex.: consultar_reserva ⊂ audaar_…). */
+export function dedupeRequiredToolAliases(names: string[]): string[] {
+  const sorted = [...new Set(names)].sort((a, b) => b.length - a.length);
+  const kept: string[] = [];
+  for (const name of sorted) {
+    const lower = name.toLowerCase().replace(/-/g, "_");
+    const covered = kept.some((k) => {
+      const kl = k.toLowerCase().replace(/-/g, "_");
+      return kl === lower || kl.includes(lower) || lower.includes(kl);
+    });
+    if (!covered) kept.push(name);
+  }
+  return kept;
 }
 
 function readPromptBlocksFromBehavior(behaviorConfig: Record<string, unknown>): PromptBlocks {
@@ -292,8 +376,9 @@ export type ResolveRequiredToolsOptions = {
 
 /**
  * Resolve tools obrigatórias para o turno actual (genérico, multi-segmento).
- * Combina: (1) obrigatoriedade estática do playbook sem escalonamento
- *          (2) tools da categoria detectada pela mensagem + tabela do playbook
+ * Preferência: tools da(s) melhor(es) categoria(s) do padrão do turno.
+ * Não funde o conjunto estático global do playbook quando o turno já tem categoria
+ * (evita exigir selfie/Embratur/check_in num C3).
  */
 export function resolveRequiredToolNamesForTurn(
   behaviorConfig: Record<string, unknown> | null | undefined,
@@ -306,39 +391,42 @@ export function resolveRequiredToolNamesForTurn(
     ...(options.availableToolNames ?? []).map((n) => normalizeToolToken(n)).filter(Boolean) as string[],
   ];
   const playbook = playbookTextFromBehavior(behaviorConfig);
-  const categoryMap = parseCategoryToolMapFromPlaybook(playbook);
   const required = new Set<string>();
+  let matchedTurnPattern = false;
 
   const userMessage = (options.userMessage ?? "").trim();
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
-      const categories = findCategoriesForTurnPattern(playbook, pattern);
-      for (const cat of categories) {
-        for (const tool of categoryMap.get(cat) ?? []) {
-          if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
+      matchedTurnPattern = true;
+      const matches = findBestTurnMatches(playbook, pattern, userMessage);
+      for (const match of matches) {
+        for (const tool of match.tools) {
           required.add(tool);
         }
       }
-      // Se o playbook não tiver tabela C*, extrai tools das linhas que casam com hints
-      if (categories.length === 0) {
+      // Fallback: 1ª linha do playbook que casa com hints (não todas)
+      if (matches.length === 0) {
         for (const line of playbook.split(/\n+/)) {
           if (!pattern.playbookHints.test(line)) continue;
           for (const tool of extractToolNamesFromText(line)) {
             if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
             required.add(tool);
           }
+          if (required.size > 0) break;
         }
       }
     }
   }
 
-  // Obrigatoriedade estática (ex.: buscar_conhecimento em FAQ) — sem escalonamento
-  for (const name of resolveRequiredToolNamesFromBehavior(behaviorConfig)) {
-    required.add(name);
+  // Só aplicar obrigatórios estáticos quando não há padrão de turno (ex.: FAQ genérico)
+  if (!matchedTurnPattern) {
+    for (const name of resolveRequiredToolNamesFromBehavior(behaviorConfig)) {
+      required.add(name);
+    }
   }
 
-  return filterAgainstAvailable([...required], available);
+  return dedupeRequiredToolAliases(filterAgainstAvailable([...required], available));
 }
 
 /**
