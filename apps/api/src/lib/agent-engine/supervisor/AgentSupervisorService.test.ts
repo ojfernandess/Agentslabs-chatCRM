@@ -90,7 +90,7 @@ test("EIL constraints fail supervisor when violations present", () => {
     eilPlan: {
       userMessage: "Sim",
       requiredToolNames: [],
-      turnPolicy: { forbiddenSameTurnPairs: [], exclusiveAllowedTools: null, completionToolHints: [] },
+      turnPolicy: { forbiddenSameTurnPairs: [], exclusiveAllowedTools: null, completionToolHints: [], blockEscalation: false },
       knowledgeSeeking: false,
       matchedPatternIds: [],
       requiredFacts: [],

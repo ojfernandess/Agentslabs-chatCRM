@@ -7,6 +7,7 @@ import {
   validateToolOutcomesAgainstTurnPolicy,
   shouldUseReplyOnlyRetry,
   findForbiddenPairViolation,
+  turnPolicyPreExecBlockReason,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 
@@ -48,6 +49,41 @@ test("parseExclusiveToolsForConfirmationTurn excludes completion tools", () => {
     exclusive.some((t) => /check_in/i.test(t)),
     false,
   );
+});
+
+test("parseExclusiveToolsForConfirmationTurn never includes escalation tools", () => {
+  const playbook = `
+| **C11 titular OK · N=1 → S9** | só \`embratur-reference\` | \`audaar_check_in\` · \`consultar_reserva\` · \`call_human\` · \`transfer_to_team\` · \`set_conversation_status\` |
+**Certo N=1:** titular → \`sim\` → **só** \`embratur-reference\` + template 6.
+**PROIBIDO:** \`call_human\` · \`transfer_to_team\`
+`;
+  const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
+  assert.ok(exclusive.some((t) => /embratur|reference/i.test(t)));
+  assert.equal(exclusive.some((t) => /call_human|transfer_to_team|set_conversation/i.test(t)), false);
+  assert.equal(exclusive.some((t) => /consultar_reserva/i.test(t)), false);
+});
+
+test("turnPolicyPreExecBlockReason blocks transfer on sim", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.equal(policy.blockEscalation, true);
+  assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
+  assert.ok(turnPolicyPreExecBlockReason("call_human", policy));
+  assert.ok(turnPolicyPreExecBlockReason("set_conversation_status", policy));
+  assert.equal(turnPolicyPreExecBlockReason("embratur-reference", policy), null);
+  // Ficha→sim→check_in não é hard-block por exclusividade S9
+  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
+});
+
+test("blockEscalation alone blocks transfer even without exclusive tools", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: "Sem regras de só tool." } },
+    { userMessage: "Sim" },
+  );
+  assert.equal(policy.blockEscalation, true);
+  assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
 test("resolveTurnPolicy applies exclusive on sim", () => {

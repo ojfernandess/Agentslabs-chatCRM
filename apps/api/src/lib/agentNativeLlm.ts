@@ -40,8 +40,8 @@ import {
   isLikelyMutableOrCompletionTool,
   resolveTurnPolicy,
   toolsMatchAlias,
+  turnPolicyPreExecBlockReason,
 } from "./agent-engine/validators/turnPolicyParser.js";
-import { toolOutcomeSatisfiesRequired } from "./agent-engine/validators/requiredToolNamesParser.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
@@ -2229,22 +2229,18 @@ async function generateNativeAgentReplyCore(input: {
                 row.name,
                 name,
               ];
-              if (turnPolicy.exclusiveAllowedTools && turnPolicy.exclusiveAllowedTools.length > 0) {
-                const allowed = turnPolicy.exclusiveAllowedTools.some(
-                  (a) =>
-                    toolOutcomeSatisfiesRequired(a, [{ name: row.name, preview: "" }]) ||
-                    toolOutcomeSatisfiesRequired(a, [{ name, preview: "" }]),
+              const httpExclusiveBlock =
+                turnPolicyPreExecBlockReason(row.name, turnPolicy) ??
+                turnPolicyPreExecBlockReason(name, turnPolicy);
+              if (httpExclusiveBlock) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "turn_policy_exclusive",
+                    message: httpExclusiveBlock,
+                  }),
                 );
-                if (!allowed) {
-                  return finishToolCall(
-                    JSON.stringify({
-                      ok: false,
-                      skipped: true,
-                      reason: "turn_policy_exclusive",
-                      message: `Ferramenta ${row.name} fora da categoria deste turno. Use apenas: ${turnPolicy.exclusiveAllowedTools.join(", ")}. PARE e responda.`,
-                    }),
-                  );
-                }
               }
               const pairHit = findForbiddenPairViolation(
                 proposedNames,
@@ -2333,6 +2329,18 @@ async function generateNativeAgentReplyCore(input: {
                   ...(exec.autoFilledFields?.length
                     ? { autoFilledFields: exec.autoFilledFields.slice(0, 20) }
                     : {}),
+                }),
+              );
+            }
+            // C11 / confirmação: bloquear transfer/call_human/status ANTES do side-effect
+            const nativeBlock = turnPolicyPreExecBlockReason(name, turnPolicy);
+            if (nativeBlock) {
+              return finishToolCall(
+                JSON.stringify({
+                  ok: false,
+                  skipped: true,
+                  reason: "turn_policy_exclusive",
+                  message: nativeBlock,
                 }),
               );
             }

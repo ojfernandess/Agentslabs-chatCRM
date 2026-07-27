@@ -1,4 +1,5 @@
 import {
+  extractPositiveToolNamesFromLine,
   extractToolNamesFromText,
   playbookTextFromBehavior,
   toolOutcomeSatisfiesRequired,
@@ -16,13 +17,35 @@ export type TurnPolicy = {
   /**
    * Se não-null, apenas estas tools (ou aliases parciais) são permitidas neste turno.
    * null = sem restrição exclusiva.
+   * Nota: tools de conclusão (check-in) não são hard-blockadas por exclusividade
+   * (ex.: Ficha→sim→audaar_check_in).
    */
   exclusiveAllowedTools: string[] | null;
   /** Nomes que o playbook trata como conclusão / mutação (check-in, submit, etc.). */
   completionToolHints: string[];
+  /** true em turnos sim/ok/não — bloqueia transfer/call_human/status. */
+  blockEscalation: boolean;
 };
 
 const CONFIRMATION_MSG_RE = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|não|nao|no)$/i;
+
+/** Escalonamento / handoff — nunca entram no allowlist de confirmação (C11). */
+const ESCALATION_TOOL_NAMES = new Set([
+  "call_human",
+  "transfer_to_team",
+  "assign_team_to_conversation",
+  "listar_equipas",
+  "set_conversation_status",
+]);
+
+export function isEscalationToolName(name: string): boolean {
+  const n = name.toLowerCase().replace(/-/g, "_");
+  if (ESCALATION_TOOL_NAMES.has(n)) return true;
+  for (const e of ESCALATION_TOOL_NAMES) {
+    if (n.includes(e) || e.includes(n)) return true;
+  }
+  return false;
+}
 
 const FORBIDDEN_PAIR_LINE_RE =
   /proibid[oa]|n[aã]o\s+mistur|mesmo\s+turno|same\s*turn|must\s+not\s+(?:call|combine|mix)|never\s+(?:call|combine|mix)/i;
@@ -85,34 +108,81 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
 
 /**
  * Em turnos de confirmação curta (sim/ok), extrai tools exclusivas de linhas
- * com "só/somente" + tool, ou da categoria de confirmação na tabela.
- * Nunca inclui tools de conclusão/mutação (essas pertencem a outro passo).
+ * com "só/somente" + tool, ou da coluna "Tool neste turno" da tabela C11/N=1.
+ * Nunca inclui conclusão/mutação nem escalonamento (call_human / transfer / status).
  */
 export function parseExclusiveToolsForConfirmationTurn(playbookText: string): string[] {
   const exclusive = new Set<string>();
   if (!playbookText.trim()) return [];
 
-  const addNonCompletion = (tools: string[]) => {
+  const addAllowed = (tools: string[]) => {
     for (const t of tools) {
-      if (!MUTABLE_OR_COMPLETION_RE.test(t)) exclusive.add(t);
+      if (MUTABLE_OR_COMPLETION_RE.test(t)) continue;
+      if (isEscalationToolName(t)) continue;
+      exclusive.add(t);
     }
   };
 
   for (const line of playbookText.split(/\n+/)) {
+    // Evitar `\bok\b` solto — casa com "já ok" (C8) e polui o allowlist.
     const isConfirmContext =
-      /\b(sim|ok|C11|titular OK|após TITULAR|N\s*=\s*1\s*→\s*S9|N=1 → S9)\b/i.test(line) ||
+      /\b(C11|titular OK|após TITULAR|N\s*=\s*1\s*→\s*S9|N=1 → S9)\b/i.test(line) ||
+      /`(?:sim|ok|okay|certo|não|nao)`/i.test(line) ||
+      (/\bsim\b/i.test(line) && /\b(?:titular|S9|S4c|Portão|C11|espelho)\b/i.test(line)) ||
       (/\bN\s*=\s*1\b/.test(line) && /S9|reference/i.test(line));
     if (!isConfirmContext) continue;
-    if (!/\bs[oó]\s+|somente\s+|apenas\s+|only\s+|`[^`]+`/.test(line)) continue;
-    if (/\bs[oó]\s+|somente\s+|apenas\s+|only\s+/i.test(line) || /N\s*=\s*1/i.test(line)) {
-      addNonCompletion(extractToolNamesFromText(line));
+
+    // Linha só de PROIBIDO (sem "só/somente") — não alimenta allowlist
+    if (/proibid/i.test(line) && !/\bs[oó]\s+|somente\s+|apenas\s+|only\s+/i.test(line)) {
+      continue;
+    }
+
+    // Tabela de categorias (GATE / C11): | categoria | tool permitida | proibido |
+    // Não usar linhas do Portão cujo 1.º campo é "Espelho TITULAR" (coluna do meio ≠ tools).
+    const cols = line
+      .split("|")
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+    if (cols.length >= 3 && /\b(?:C11\b|titular OK|N\s*=\s*1\s*→\s*S9)\b/i.test(cols[0]!)) {
+      // Coluna "tool neste turno" — só positivas (só `x` / backticks sem never)
+      const soMid = [
+        ...cols[1]!.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+      ];
+      if (soMid.length > 0) {
+        addAllowed(soMid.map((m) => m[1]!.toLowerCase()));
+      } else if (!/proibid|nunca|zero/i.test(cols[1]!)) {
+        addAllowed(extractPositiveToolNamesFromLine(cols[1]!));
+      }
+      // Última coluna (tabela 5 cols): só se tiver "só `tool`"
+      if (cols.length >= 4) {
+        const last = cols[cols.length - 1]!;
+        const soLast = [
+          ...last.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+        ];
+        addAllowed(soLast.map((m) => m[1]!.toLowerCase()));
+      }
+      continue;
+    }
+
+    // "só `embratur-reference`" — captura positiva após só/somente/apenas/only
+    const soMatches = [
+      ...line.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+    ];
+    if (soMatches.length > 0) {
+      addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
     }
   }
 
   if (exclusive.size === 0) {
     for (const line of playbookText.split(/\n+/)) {
       if (!/N\s*=\s*1/i.test(line) || !/S9|reference/i.test(line)) continue;
-      addNonCompletion(extractToolNamesFromText(line));
+      if (/proibid/i.test(line) && !/\bs[oó]\s+|somente|apenas|only/i.test(line)) continue;
+      const soMatches = [
+        ...line.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+      ];
+      if (soMatches.length > 0) {
+        addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
+      }
     }
   }
 
@@ -182,8 +252,14 @@ export function resolveTurnPolicy(
   behaviorConfig: Record<string, unknown> | null | undefined,
   options: { userMessage?: string } = {},
 ): TurnPolicy {
+  const empty: TurnPolicy = {
+    forbiddenSameTurnPairs: [],
+    exclusiveAllowedTools: null,
+    completionToolHints: [],
+    blockEscalation: false,
+  };
   if (!behaviorConfig || typeof behaviorConfig !== "object") {
-    return { forbiddenSameTurnPairs: [], exclusiveAllowedTools: null, completionToolHints: [] };
+    return empty;
   }
 
   const playbook = playbookTextFromBehavior(behaviorConfig);
@@ -191,13 +267,19 @@ export function resolveTurnPolicy(
   const completionToolHints = parseCompletionToolHintsFromPlaybook(playbook);
 
   const userMessage = (options.userMessage ?? "").trim();
+  const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
   let exclusiveAllowedTools: string[] | null = null;
-  if (userMessage && CONFIRMATION_MSG_RE.test(userMessage)) {
+  if (isConfirmation) {
     const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
     if (exclusive.length > 0) exclusiveAllowedTools = exclusive;
   }
 
-  return { forbiddenSameTurnPairs, exclusiveAllowedTools, completionToolHints };
+  return {
+    forbiddenSameTurnPairs,
+    exclusiveAllowedTools,
+    completionToolHints,
+    blockEscalation: isConfirmation,
+  };
 }
 
 /** Valida outcomes do turno contra a política (genérico multi-segmento). */
@@ -216,12 +298,22 @@ export function validateToolOutcomesAgainstTurnPolicy(
     );
   }
 
+  if (policy.blockEscalation) {
+    for (const name of names) {
+      if (isEscalationToolName(name)) {
+        alerts.push(`Ferramenta fora da categoria do turno: ${name}`);
+      }
+    }
+  }
+
   if (policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0) {
     for (const name of names) {
+      if (isEscalationToolName(name)) continue;
+      // Ficha→sim→check_in: conclusão não é hard-block por exclusividade C11/S9
+      if (isLikelyMutableOrCompletionTool(name, policy.completionToolHints)) continue;
       const allowed = policy.exclusiveAllowedTools.some(
         (a) => toolOutcomeSatisfiesRequired(a, [{ name, preview: "" }]),
       );
-      // Escalation tools always blocked on confirmation unless exclusive lists them
       if (!allowed) {
         alerts.push(`Ferramenta fora da categoria do turno: ${name}`);
       }
@@ -229,6 +321,36 @@ export function validateToolOutcomesAgainstTurnPolicy(
   }
 
   return alerts;
+}
+
+/**
+ * Motivo para bloquear execução *antes* do side-effect (transfer/status).
+ * null = permitido.
+ */
+export function turnPolicyPreExecBlockReason(
+  toolName: string,
+  policy: TurnPolicy,
+): string | null {
+  if (policy.blockEscalation && isEscalationToolName(toolName)) {
+    const hint =
+      policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0
+        ? ` Continue o check-in — use apenas: ${policy.exclusiveAllowedTools.join(", ")}.`
+        : " Continue o check-in sem transferir.";
+    return `Ferramenta de escalonamento ${toolName} bloqueada em turno de confirmação (C11).${hint}`;
+  }
+  if (!policy.exclusiveAllowedTools || policy.exclusiveAllowedTools.length === 0) {
+    return null;
+  }
+  if (isLikelyMutableOrCompletionTool(toolName, policy.completionToolHints)) {
+    return null;
+  }
+  const allowed = policy.exclusiveAllowedTools.some((a) =>
+    toolOutcomeSatisfiesRequired(a, [{ name: toolName, preview: "" }]),
+  );
+  if (!allowed) {
+    return `Ferramenta ${toolName} fora da categoria deste turno. Use apenas: ${policy.exclusiveAllowedTools.join(", ")}. PARE e responda.`;
+  }
+  return null;
 }
 
 /**
