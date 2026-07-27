@@ -23,6 +23,12 @@ import { api } from "@/lib/api";
 import type { AutomationCustomToolRow, AutomationToolsTranslate, ToolPresetMeta } from "./automationToolTypes";
 import { LucideIconPickerField, UiAccentColorPickerField } from "./ToolUiAppearanceFields";
 import { ToolExecutionDetailPanel, type ToolExecutionRow } from "./ToolExecutionDetailPanel";
+import {
+  ToolEilConfigSection,
+  extractToolEil,
+  parseToolEilJson,
+  toolHasEilConfig,
+} from "./ToolEilConfigSection";
 
 const FAV_KEY = "oc_automation_tool_favorites_v1";
 
@@ -252,12 +258,15 @@ export function AutomationToolsHub({
   const [editIcon, setEditIcon] = useState("Globe");
   const [editColor, setEditColor] = useState("cyan");
   const [editParamsJson, setEditParamsJson] = useState("{}");
+  const [editEilEnabled, setEditEilEnabled] = useState(false);
+  const [editEilJson, setEditEilJson] = useState("{}");
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState("");
 
   const openEditTool = (tool: AutomationCustomToolRow) => {
     const c = (tool.config ?? {}) as Record<string, unknown>;
     const ui = (c.ui ?? {}) as Record<string, unknown>;
+    const eil = extractToolEil(c);
     setEditTool(tool);
     setEditErr("");
     setEditName(tool.name ?? "");
@@ -267,6 +276,8 @@ export function AutomationToolsHub({
     setEditIcon(String(ui.icon ?? "Globe"));
     setEditColor(String(ui.accent ?? "cyan"));
     setEditParamsJson(JSON.stringify(tool.parametersSchema ?? {}, null, 2));
+    setEditEilEnabled(eil != null);
+    setEditEilJson(eil ? JSON.stringify(eil, null, 2) : "{}");
   };
 
   const saveToolEdits = async () => {
@@ -283,6 +294,25 @@ export function AutomationToolsHub({
       setEditErr(t("automationPage.toolsCreateParamsInvalid"));
       return;
     }
+
+    let eilPatch: Record<string, unknown> | null = null;
+    if (editEilEnabled) {
+      const eilParsed = parseToolEilJson(editEilJson);
+      if (!eilParsed.ok) {
+        const map: Record<string, string> = {
+          json: t("automationPage.toolEilInvalidJson"),
+          object: t("automationPage.toolEilMustBeObject"),
+          produces: t("automationPage.toolEilInvalidProduces"),
+          requiresFacts: t("automationPage.toolEilInvalidRequires"),
+          capabilities: t("automationPage.toolEilInvalidCapabilities"),
+          factPaths: t("automationPage.toolEilInvalidFactPaths"),
+        };
+        setEditErr(map[eilParsed.error] ?? t("automationPage.toolEilInvalidJson"));
+        return;
+      }
+      eilPatch = eilParsed.value as Record<string, unknown>;
+    }
+
     const tagsArr = editTags
       .split(",")
       .map((x) => x.trim())
@@ -302,6 +332,8 @@ export function AutomationToolsHub({
             icon: editIcon,
             accent: editColor,
           },
+          // null clears optional EIL metadata server-side (mergeToolConfig).
+          eil: eilPatch,
         },
       });
       await onToolsUpdated();
@@ -734,6 +766,14 @@ export function AutomationToolsHub({
                           >
                             {tool.isActive ? t("automationPage.toolsOnline") : t("automationPage.toolsOffline")}
                           </span>
+                          {toolHasEilConfig(tool.config) ? (
+                            <span
+                              className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-800 dark:text-sky-200"
+                              title={t("automationPage.toolEilBadgeTitle")}
+                            >
+                              {t("automationPage.toolEilBadge")}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="mt-1 text-xs text-ink-500">{tool.toolType}</p>
                       </div>
@@ -1140,7 +1180,7 @@ export function AutomationToolsHub({
 
       {editTool ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
+          <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-2xl dark:border-ink-800 dark:bg-ink-950">
             <div className="flex items-center justify-between border-b border-ink-200 px-5 py-4 dark:border-ink-800">
               <div>
                 <p className="text-xs font-semibold uppercase text-ink-500">{editTool.toolType}</p>
@@ -1233,6 +1273,14 @@ export function AutomationToolsHub({
                 rows={10}
                 className="w-full rounded-lg border border-ink-200 bg-ink-950/90 p-2 font-mono text-xs text-ink-100 dark:border-ink-700"
                 spellCheck={false}
+              />
+
+              <ToolEilConfigSection
+                enabled={editEilEnabled}
+                onEnabledChange={setEditEilEnabled}
+                json={editEilJson}
+                onJsonChange={setEditEilJson}
+                t={t}
               />
             </div>
 

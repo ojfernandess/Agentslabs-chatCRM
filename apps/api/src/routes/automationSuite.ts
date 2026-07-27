@@ -424,7 +424,12 @@ function mergeToolConfig(existing: unknown, incoming: unknown): Record<string, u
     if (v === "***") delete i[k];
     if (typeof v === "string" && !v.trim() && TOOL_CONFIG_SECRET_KEYS.has(k)) delete i[k];
   }
-  return { ...e, ...i };
+  const out: Record<string, unknown> = { ...e, ...i };
+  // `null` removes a top-level config key (e.g. clear optional `eil`).
+  for (const [k, v] of Object.entries(i)) {
+    if (v === null) delete out[k];
+  }
+  return out;
 }
 
 const interactionCreateSchema = z.object({
