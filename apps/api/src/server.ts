@@ -222,7 +222,7 @@ await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
 await app.register(botRoutes, { prefix: "/api/v1/bots" });
   await app.register(automationRoutes, { prefix: "/api/v1/automations" });
   await app.register(automationSuiteRoutes, { prefix: "/api/v1/automation" });
-await app.register(mcpRoutes, { prefix: "/api/v1/mcp" });
+await app.register(mcpRoutes, { prefix: "/api/v1/super/mcp" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check

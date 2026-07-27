@@ -27,6 +27,15 @@ export type McpTokenRecord = {
   debugMode: boolean;
 };
 
+async function assertSuperAdminUser(userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return user?.role === "SUPER_ADMIN";
+}
+
 export async function verifyMcpToken(raw: string): Promise<McpTokenRecord | null> {
   if (!raw.startsWith(MCP_TOKEN_PREFIX) || raw.length < MCP_TOKEN_PREFIX.length + 16) {
     return null;
@@ -53,6 +62,9 @@ export async function verifyMcpToken(raw: string): Promise<McpTokenRecord | null
     if (c.expiresAt && c.expiresAt < new Date()) continue;
     const ok = await bcrypt.compare(raw, c.tokenHash);
     if (!ok) continue;
+
+    const creatorIsSuperAdmin = await assertSuperAdminUser(c.userId);
+    if (!creatorIsSuperAdmin) continue;
 
     await prisma.mcpAccessToken.update({
       where: { id: c.id },
@@ -86,29 +98,34 @@ export async function verifyMcpToken(raw: string): Promise<McpTokenRecord | null
 
 export async function createMcpAccessToken(input: {
   organizationId: string;
-  userId?: string | null;
+  userId: string;
   name: string;
-  role: McpRole;
+  role?: McpRole;
   permissions?: string[];
   allowedBotIds?: string[];
   environment?: string;
   debugMode?: boolean;
   expiresAt?: Date | null;
 }): Promise<{ token: string; id: string; prefix: string }> {
+  const creatorOk = await assertSuperAdminUser(input.userId);
+  if (!creatorOk) {
+    throw new Error("Only super admin users can create MCP tokens");
+  }
+
   const { token, prefix } = generateMcpTokenParts();
   const hash = await hashMcpToken(token);
   const row = await prisma.mcpAccessToken.create({
     data: {
       organizationId: input.organizationId,
-      userId: input.userId ?? null,
+      userId: input.userId,
       name: input.name,
       tokenPrefix: prefix,
       tokenHash: hash,
-      role: input.role,
+      role: input.role ?? "admin",
       permissions: input.permissions?.length ? input.permissions : undefined,
       allowedBotIds: input.allowedBotIds?.length ? input.allowedBotIds : undefined,
       environment: input.environment ?? null,
-      debugMode: input.debugMode ?? false,
+      debugMode: input.debugMode ?? true,
       expiresAt: input.expiresAt ?? null,
     },
     select: { id: true },
@@ -116,10 +133,45 @@ export async function createMcpAccessToken(input: {
   return { token, id: row.id, prefix };
 }
 
-export async function revokeMcpAccessToken(id: string, organizationId: string): Promise<boolean> {
+/** Revoga token MCP (super admin — qualquer organização). */
+export async function revokeMcpAccessTokenById(id: string): Promise<boolean> {
   const r = await prisma.mcpAccessToken.updateMany({
-    where: { id, organizationId, revokedAt: null },
+    where: { id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
   return r.count > 0;
+}
+
+export async function listMcpAccessTokensForSuperAdmin(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    tokenPrefix: string;
+    role: string;
+    environment: string | null;
+    debugMode: boolean;
+    expiresAt: Date | null;
+    lastUsedAt: Date | null;
+    createdAt: Date;
+    organization: { id: string; name: string; slug: string };
+    user: { id: string; email: string; name: string } | null;
+  }>
+> {
+  return prisma.mcpAccessToken.findMany({
+    where: { revokedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      tokenPrefix: true,
+      role: true,
+      environment: true,
+      debugMode: true,
+      expiresAt: true,
+      lastUsedAt: true,
+      createdAt: true,
+      organization: { select: { id: true, name: true, slug: true } },
+      user: { select: { id: true, email: true, name: true } },
+    },
+  });
 }

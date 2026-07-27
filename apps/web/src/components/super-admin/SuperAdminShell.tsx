@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageCircle,
+  Plug,
   QrCode,
   ScrollText,
   Settings2,
@@ -32,7 +33,8 @@ export type SuperSection =
   | "platformApps"
   | "auditLog"
   | "conversationMedia"
-  | "featureFlags";
+  | "featureFlags"
+  | "mcpServer";
 
 type NavItem = { id: SuperSection; labelKey: string; icon: typeof LayoutDashboard };
 
@@ -65,6 +67,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
       { id: "monitoring", labelKey: "superAdmin.monitoring", icon: Activity },
       { id: "conversationMedia", labelKey: "superAdmin.conversationMedia.nav", icon: HardDrive },
       { id: "platformApps", labelKey: "superAdmin.platformApps", icon: Box },
+      { id: "mcpServer", labelKey: "superAdmin.mcp.nav", icon: Plug },
       { id: "auditLog", labelKey: "superAdmin.auditLog", icon: ScrollText },
     ],
   },
@@ -91,6 +94,7 @@ const SECTION_TITLE_KEYS: Record<SuperSection, string> = {
   auditLog: "superAdmin.auditLog",
   conversationMedia: "superAdmin.conversationMedia.nav",
   featureFlags: "superAdmin.featureFlags",
+  mcpServer: "superAdmin.mcp.title",
 };
 
 const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
@@ -103,6 +107,7 @@ const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
   auditLog: "superAdmin.auditSubtitle",
   conversationMedia: "superAdmin.conversationMedia.subtitle",
   featureFlags: "superAdmin.flagsSubtitle",
+  mcpServer: "superAdmin.mcp.subtitle",
 };
 
 type SuperAdminShellProps = {

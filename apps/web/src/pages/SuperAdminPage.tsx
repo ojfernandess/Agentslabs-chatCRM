@@ -27,6 +27,7 @@ import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSetting
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
+import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 
 interface OrgRow {
@@ -2645,6 +2646,13 @@ export function SuperAdminPage() {
           )}
 
           {section === "conversationMedia" && <SuperAdminConversationMediaSection />}
+
+          {section === "mcpServer" && (
+            <SuperAdminMcpSection
+              organizations={orgs.map((o) => ({ id: o.id, name: o.name, slug: o.slug }))}
+              onError={setError}
+            />
+          )}
 
           {section === "featureFlags" && (
             <div className="mx-auto max-w-3xl space-y-6">

@@ -55,9 +55,9 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
       version: "1.0.0",
     },
     {
-      instructions: `OpenNexo MCP Server — plataforma de agentes inteligentes do OpenNexo CRM.
+      instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
 Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse e decisões do Supervisor.
-Todos os dados são isolados por organização (tenant). Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
+Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
         tools: {},

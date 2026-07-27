@@ -14,8 +14,9 @@ export { createOpenNexoMcpServer } from "./server/createMcpServer.js";
 export { resolveMcpAuth } from "./auth/resolveMcpAuth.js";
 export {
   createMcpAccessToken,
-  revokeMcpAccessToken,
+  revokeMcpAccessTokenById,
   verifyMcpToken,
+  listMcpAccessTokensForSuperAdmin,
   MCP_TOKEN_PREFIX,
 } from "./auth/mcpTokenService.js";
 export { logMcpAudit, listMcpAuditLogs } from "./audit/McpAuditLogger.js";

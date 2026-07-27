@@ -96,15 +96,18 @@ apps/api/src/mcp-stdio.ts        # Entrada stdio para clientes locais
 
 ---
 
-## Autenticação
+## Autenticação (Super Admin exclusivo)
 
-| Método | Prefixo / Formato | Uso |
-|--------|---------------------|-----|
-| **Token MCP dedicado** | `ocm_...` | Recomendado para clientes MCP |
-| **User API Token** | `ocu_...` | Integrações existentes |
-| **JWT Bearer** | Session token | UI web / admin |
+| Método | Formato | Uso |
+|--------|---------|-----|
+| **Token MCP dedicado** | `ocm_...` | Criado no painel **Super Admin → MCP Server** |
+| **JWT Bearer** | Sessão SUPER_ADMIN | Requer header `organization-id` se não estiver a impersonar um tenant |
 
-**Gestão de tokens:** `POST/GET/DELETE /api/v1/mcp/tokens` (requer admin)
+**Gestão de tokens:** `POST/GET/DELETE /api/v1/super/mcp/tokens` (requer **SUPER_ADMIN**)
+
+**Endpoint MCP:** `POST/GET/DELETE /api/v1/super/mcp`
+
+Administradores de tenant (ADMIN/AGENT) e tokens `ocu_` **não têm acesso** ao MCP Server.
 
 **Campos por token:**
 - Role (admin, developer, support, audit, read_only, custom)
@@ -169,7 +172,7 @@ Quando `debugMode: true` no token MCP:
 {
   "mcpServers": {
     "opennexo": {
-      "url": "https://seu-dominio.com/api/v1/mcp",
+      "url": "https://seu-dominio.com/api/v1/super/mcp",
       "headers": {
         "Authorization": "Bearer ocm_SEU_TOKEN"
       }

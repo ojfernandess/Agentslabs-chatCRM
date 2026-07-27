@@ -1,9 +1,8 @@
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { authenticateUserApiToken } from "../../../middleware/userApiTokenAuth.js";
 import type { JwtPayload } from "../../../middleware/auth.js";
-import type { McpAuthContext, McpRole } from "../types.js";
-import { resolvePermissions } from "../access/permissions.js";
+import type { McpAuthContext } from "../types.js";
+import { MCP_ROLE_PERMISSIONS, resolvePermissions } from "../access/permissions.js";
 import { verifyMcpToken } from "./mcpTokenService.js";
 
 function bearerRawToken(request: FastifyRequest): string | null {
@@ -48,41 +47,45 @@ function clientNameFromRequest(request: FastifyRequest): string | null {
   );
 }
 
-function userRoleToMcpRole(role: string): McpRole {
-  if (role === "SUPER_ADMIN" || role === "ADMIN") return "admin";
-  if (role === "AGENT") return "support";
-  return "read_only";
-}
-
-function jwtToAuthContext(user: JwtPayload, ip: string | null): McpAuthContext {
-  const orgId = user.actingOrganizationId ?? user.organizationId;
-  if (!orgId) {
-    throw new Error("JWT without organization context");
+/** Contexto MCP exclusivo para super admin da plataforma. */
+function superAdminJwtToAuthContext(
+  user: JwtPayload,
+  ip: string | null,
+  orgHeader: string | null,
+): McpAuthContext {
+  const organizationId = user.actingOrganizationId ?? orgHeader;
+  if (!organizationId) {
+    throw new Error(
+      "Super admin MCP requires tenant context: enter an organization in the console or send organization-id header",
+    );
   }
-  const mcpRole = userRoleToMcpRole(user.role);
   return {
-    organizationId: orgId,
+    organizationId,
     userId: user.id,
     tokenId: null,
-    role: mcpRole,
-    permissions: resolvePermissions(mcpRole),
+    role: "admin",
+    permissions: new Set(MCP_ROLE_PERMISSIONS.admin),
     allowedBotIds: null,
     environment: null,
-    debugMode: mcpRole === "admin" || mcpRole === "developer",
+    debugMode: true,
     authMethod: "jwt",
     clientName: null,
     ipAddress: ip,
   };
 }
 
-/** Resolve autenticação MCP: ocm_ token, ocu_ token, ou JWT Bearer. */
+/**
+ * Resolve autenticação MCP — apenas SUPER_ADMIN.
+ * Aceita token dedicado ocm_ (criado no painel super admin) ou JWT de sessão super admin.
+ */
 export async function resolveMcpAuth(request: FastifyRequest): Promise<McpAuthContext | null> {
   const ip = request.ip ?? null;
   const clientName = clientNameFromRequest(request);
   const bearer = bearerRawToken(request);
   const apiAccess = headerValueAsString(request.headers["api_access_token"]);
+  const orgHeader = actingOrganizationIdFromRequest(request);
 
-  // 1. Token MCP dedicado (ocm_)
+  // 1. Token MCP dedicado (ocm_) — só tokens criados por super admin
   const mcpRaw = bearer?.startsWith("ocm_") ? bearer : apiAccess?.startsWith("ocm_") ? apiAccess : null;
   if (mcpRaw) {
     const record = await verifyMcpToken(mcpRaw);
@@ -92,7 +95,7 @@ export async function resolveMcpAuth(request: FastifyRequest): Promise<McpAuthCo
       userId: record.userId,
       tokenId: record.id,
       role: record.role,
-      permissions: record.permissions as McpAuthContext["permissions"],
+      permissions: record.permissions,
       allowedBotIds: record.allowedBotIds,
       environment: record.environment,
       debugMode: record.debugMode,
@@ -102,44 +105,15 @@ export async function resolveMcpAuth(request: FastifyRequest): Promise<McpAuthCo
     };
   }
 
-  // 2. User API token (ocu_) — reutiliza middleware existente
-  if (bearer?.startsWith("ocu_") || apiAccess?.startsWith("ocu_")) {
-    const fakeReply = {
-      status: () => fakeReply,
-      send: () => fakeReply,
-    } as never;
-    const user = await authenticateUserApiToken(request, fakeReply);
-    if (!user) return null;
-    const orgHeader = actingOrganizationIdFromRequest(request);
-    const orgId =
-      user.role === "SUPER_ADMIN"
-        ? orgHeader ?? user.actingOrganizationId ?? user.organizationId
-        : user.organizationId;
-    if (!orgId) return null;
-    const mcpRole = userRoleToMcpRole(user.role);
-    return {
-      organizationId: orgId,
-      userId: user.id,
-      tokenId: null,
-      role: mcpRole,
-      permissions: resolvePermissions(mcpRole),
-      allowedBotIds: null,
-      environment: null,
-      debugMode: mcpRole === "admin" || mcpRole === "developer",
-      authMethod: "user_api_token",
-      clientName,
-      ipAddress: ip,
-    };
-  }
-
-  // 3. JWT session (web UI / integrações)
-  if (bearer && !bearer.startsWith("ocb_")) {
+  // 2. JWT — apenas SUPER_ADMIN
+  if (bearer && !bearer.startsWith("ocb_") && !bearer.startsWith("ocu_")) {
     try {
       const decoded = await request.server.jwt.verify<JwtPayload>(bearer);
-      const ctx = jwtToAuthContext(decoded, ip);
+      if (decoded.role !== "SUPER_ADMIN") return null;
+      const ctx = superAdminJwtToAuthContext(decoded, ip, orgHeader);
       return { ...ctx, clientName };
     } catch {
-      // não é JWT válido
+      return null;
     }
   }
 
