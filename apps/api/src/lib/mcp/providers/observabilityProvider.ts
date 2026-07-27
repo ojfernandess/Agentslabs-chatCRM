@@ -1,9 +1,20 @@
 import { config } from "../../../config.js";
 import { prisma } from "../../../db.js";
+import { isLangfuseConfigured, readLangfuseConfig } from "../../agent-engine/observability/LangfuseBridge.js";
 import { requirePermission } from "../access/permissions.js";
 import { sanitizeForMcp } from "../security/sanitize.js";
 import type { McpAuthContext, McpProviderSearchParams, McpResourceDescriptor } from "../types.js";
 import type { McpProvider } from "./ProviderRegistry.js";
+
+function langfuseTraceIdFromLogMessage(message: string): string | null {
+  try {
+    const parsed = JSON.parse(message) as { traceId?: unknown; exported?: unknown };
+    if (typeof parsed.traceId === "string" && parsed.exported === true) return parsed.traceId;
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 export const observabilityProvider: McpProvider = {
   domain: "observability",
@@ -53,13 +64,17 @@ export const observabilityProvider: McpProvider = {
       (e) => e.nodeId.startsWith("oc_tool_") || /^Tool:/i.test(e.nodeName),
     );
 
+    const langfuseEntry = execution.logEntries.find((e) => e.nodeId === "langfuse");
+    const langfuseTraceId = langfuseEntry
+      ? langfuseTraceIdFromLogMessage(langfuseEntry.message)
+      : null;
+
     return sanitizeForMcp({
       executionId,
       botName: execution.bot.name,
-      langfuseConfigured: Boolean(
-        process.env.LANGFUSE_PUBLIC_KEY?.trim() && process.env.LANGFUSE_SECRET_KEY?.trim(),
-      ),
-      langfuseHost: process.env.LANGFUSE_HOST ?? "https://cloud.langfuse.com",
+      langfuseConfigured: isLangfuseConfigured(),
+      langfuseHost: readLangfuseConfig()?.baseUrl ?? "https://cloud.langfuse.com",
+      langfuseTraceId,
       trace: {
         id: executionId,
         status: execution.status,
@@ -79,12 +94,38 @@ export const observabilityProvider: McpProvider = {
 
   async search(ctx, params): Promise<unknown> {
     requirePermission(ctx, "observability:read");
+    const executionId = params.executionId?.trim();
+    let langfuseTraceId: string | null = null;
+    let langfuseExportError: string | null = null;
+
+    if (executionId) {
+      const entries = await prisma.automationExecutionLogEntry.findMany({
+        where: {
+          executionId,
+          execution: { organizationId: ctx.organizationId },
+          nodeId: "langfuse",
+        },
+        orderBy: { sequence: "desc" },
+        take: 1,
+        select: { message: true, level: true },
+      });
+      const entry = entries[0];
+      if (entry) {
+        if (entry.level === "WARN") {
+          langfuseExportError = entry.message;
+        } else {
+          langfuseTraceId = langfuseTraceIdFromLogMessage(entry.message);
+        }
+      }
+    }
+
     return {
-      langfuseConfigured: Boolean(
-        process.env.LANGFUSE_PUBLIC_KEY?.trim() && process.env.LANGFUSE_SECRET_KEY?.trim(),
-      ),
+      langfuseConfigured: isLangfuseConfigured(),
+      langfuseHost: readLangfuseConfig()?.baseUrl ?? "https://cloud.langfuse.com",
       publicUrl: config.publicUrl,
-      executionId: params.executionId ?? null,
+      executionId: executionId ?? null,
+      langfuseTraceId,
+      langfuseExportError,
     };
   },
 };
@@ -254,9 +295,7 @@ export const configProvider: McpProvider = {
       featureFlags: flags,
       integrations: {
         mem0: Boolean(process.env.MEM0_API_KEY?.trim()),
-        langfuse: Boolean(
-          process.env.LANGFUSE_PUBLIC_KEY?.trim() && process.env.LANGFUSE_SECRET_KEY?.trim(),
-        ),
+        langfuse: isLangfuseConfigured(),
         openai: Boolean(process.env.OPENAI_API_KEY?.trim()),
         vectorBackend: "pgvector",
         qdrant: false,

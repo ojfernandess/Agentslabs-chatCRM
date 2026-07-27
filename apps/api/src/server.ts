@@ -81,6 +81,7 @@ import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
 import { runInboxEmailSyncTick } from "./lib/inboxEmailSyncJob.js";
 import { runNvoipTokenRefreshTick } from "./lib/nvoipTokenRefreshJob.js";
 import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
+import { isLangfuseConfigured, readLangfuseConfig } from "./lib/agent-engine/observability/LangfuseBridge.js";
 
 const app = Fastify({
   logger: {
@@ -93,6 +94,10 @@ app.log.warn(
     agentKbDebug: config.agentKbDebug,
     /** Se false em Docker, confirme que o serviço `api` recebe `AGENT_KB_DEBUG` (env_file / environment). */
     agentKbDebugEnvPresent: Boolean(process.env.AGENT_KB_DEBUG?.trim()),
+    langfuseConfigured: isLangfuseConfigured(),
+    langfusePublicKeyPresent: Boolean(process.env.LANGFUSE_PUBLIC_KEY?.trim()),
+    langfuseSecretKeyPresent: Boolean(process.env.LANGFUSE_SECRET_KEY?.trim()),
+    langfuseBaseUrl: readLangfuseConfig()?.baseUrl ?? null,
   },
   "startup_flags",
 );

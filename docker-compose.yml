@@ -94,6 +94,10 @@ services:
       # Mem0 Platform (Agent Engine — provider mem0). Sem MEM0_API_KEY no contentor, Mem0 fica desactivado.
       MEM0_API_KEY: ${MEM0_API_KEY:-}
       MEM0_API_BASE_URL: ${MEM0_API_BASE_URL:-https://api.mem0.ai}
+      # Langfuse — export de traces LangGraph (requer restart do serviço api após definir no .env)
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
       # Logs `agent_kb_debug` / startup_flags (ver apps/api).
       AGENT_KB_DEBUG: ${AGENT_KB_DEBUG:-}
       # Áudio/mídia enviada: ficheiros neste diretório; expostos como ${PUBLIC_URL}/api/v1/messages/media/…

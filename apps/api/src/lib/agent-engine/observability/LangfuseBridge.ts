@@ -11,7 +11,11 @@ export function readLangfuseConfig(): LangfuseConfig | null {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY?.trim();
   const secretKey = process.env.LANGFUSE_SECRET_KEY?.trim();
   if (!publicKey || !secretKey) return null;
-  const baseUrl = (process.env.LANGFUSE_BASE_URL ?? "https://cloud.langfuse.com").replace(/\/+$/, "");
+  const baseUrl = (
+    process.env.LANGFUSE_BASE_URL ??
+    process.env.LANGFUSE_HOST ??
+    "https://cloud.langfuse.com"
+  ).replace(/\/+$/, "");
   return { publicKey, secretKey, baseUrl };
 }
 
@@ -139,10 +143,24 @@ export async function ingestAgentTraceToLangfuse(input: {
       },
       body: JSON.stringify({ batch }),
     });
+    const text = await res.text().catch(() => "");
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       return { ok: false, traceId, error: `langfuse_http_${res.status}:${text.slice(0, 200)}` };
     }
+
+    try {
+      const body = text ? (JSON.parse(text) as { errors?: unknown[] }) : null;
+      if (body?.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+        return {
+          ok: false,
+          traceId,
+          error: `langfuse_batch_errors:${JSON.stringify(body.errors).slice(0, 300)}`,
+        };
+      }
+    } catch {
+      // Resposta não-JSON (ex.: proxy) — HTTP 2xx tratamos como sucesso.
+    }
+
     return { ok: true, traceId };
   } catch (err) {
     return {
