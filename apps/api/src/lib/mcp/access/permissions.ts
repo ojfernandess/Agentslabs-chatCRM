@@ -25,6 +25,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "workflow_validator:read",
     "supervisor:read",
     "eil:read",
+    "eil:write",
     "config:read",
     "audit:read",
   ],
@@ -51,6 +52,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "workflow_validator:read",
     "supervisor:read",
     "eil:read",
+    "eil:write",
     "config:read",
   ],
   support: [

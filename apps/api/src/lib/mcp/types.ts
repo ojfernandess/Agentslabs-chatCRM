@@ -49,6 +49,7 @@ export type McpPermission =
   | "workflow_validator:read"
   | "supervisor:read"
   | "eil:read"
+  | "eil:write"
   | "config:read"
   | "audit:read";
 

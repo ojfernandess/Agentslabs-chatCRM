@@ -6,6 +6,9 @@ import { getMcpProvider, listAllMcpResources, readMcpResourceByUri } from "../pr
 import { getAgentPromptAssembly } from "../providers/promptsProvider.js";
 import { getAgentKnowledgeConfig } from "../providers/knowledgeProvider.js";
 import { listMcpAuditLogs } from "../audit/McpAuditLogger.js";
+import { applyEilConfigToAgent } from "../eil/applyEilConfig.js";
+import { assertBotAccess } from "../auth/resolveMcpAuth.js";
+import { requirePermission } from "../access/permissions.js";
 
 function textResult(data: unknown, isError = false): McpToolResult {
   return {
@@ -224,6 +227,38 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
       textResult(
         await withAudit(ctx, "tool:get_eil_snapshot", () =>
           getMcpProvider("eil")!.readResource(ctx, `opennexo://eil/${executionId}`),
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "apply_eil_policy",
+    {
+      description:
+        "Apply declarative EIL policies to an agent (behaviorConfig.eil) and reservation-lookup tool produces metadata (tool.config.eil). Preserves existing config keys.",
+      inputSchema: {
+        botId: z.string().uuid().describe("Agent/bot ID"),
+        eil: z.record(z.unknown()).optional().describe("Optional EIL bundle override"),
+        toolEil: z.record(z.unknown()).optional().describe("Optional tool.config.eil override for reservation tools"),
+      },
+    },
+    async ({ botId, eil, toolEil }) =>
+      textResult(
+        await withAudit(
+          ctx,
+          "tool:apply_eil_policy",
+          async () => {
+            requirePermission(ctx, "eil:write");
+            assertBotAccess(ctx, botId);
+            return applyEilConfigToAgent({
+              organizationId: ctx.organizationId,
+              botId,
+              eil: eil as Record<string, unknown> | undefined,
+              toolEil: toolEil as Record<string, unknown> | undefined,
+            });
+          },
+          "agents",
+          botId,
         ),
       ),
   );
