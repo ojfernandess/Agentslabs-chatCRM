@@ -71,9 +71,11 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
     }
   }
 
-  // Dedup
+  // Dedup + descartar pares alias de si mesmos (ex.: audaar_consultar_reserva + consultar_reserva
+  // extraídos da mesma linha C3 com coluna "Tools | consultar_reserva").
   const seen = new Set<string>();
   return pairs.filter((p) => {
+    if (toolsMatchAlias(p.a, p.b)) return false;
     const key = [p.a, p.b].map((x) => x.toLowerCase()).sort().join("|");
     if (seen.has(key)) return false;
     seen.add(key);
@@ -149,15 +151,29 @@ export function toolsMatchAlias(a: string, b: string): boolean {
   return x === y || x.includes(y) || y.includes(x);
 }
 
-/** Verifica se o conjunto de nomes viola algum par proibido. */
+/**
+ * Verifica se o conjunto de nomes viola algum par proibido.
+ * Exige duas invocações distintas (índices diferentes) — um único
+ * `audaar_consultar_reserva` NÃO pode satisfazer ambos os lados via alias.
+ */
 export function findForbiddenPairViolation(
   toolNames: string[],
   pairs: ForbiddenToolPair[],
 ): ForbiddenToolPair | null {
   for (const pair of pairs) {
-    const hasA = toolNames.some((n) => toolsMatchAlias(n, pair.a));
-    const hasB = toolNames.some((n) => toolsMatchAlias(n, pair.b));
-    if (hasA && hasB) return pair;
+    if (toolsMatchAlias(pair.a, pair.b)) continue;
+    const indicesA: number[] = [];
+    const indicesB: number[] = [];
+    for (let i = 0; i < toolNames.length; i++) {
+      const n = toolNames[i]!;
+      if (toolsMatchAlias(n, pair.a)) indicesA.push(i);
+      if (toolsMatchAlias(n, pair.b)) indicesB.push(i);
+    }
+    for (const i of indicesA) {
+      for (const j of indicesB) {
+        if (i !== j) return pair;
+      }
+    }
   }
   return null;
 }

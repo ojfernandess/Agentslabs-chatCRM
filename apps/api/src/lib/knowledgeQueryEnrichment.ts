@@ -163,6 +163,13 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   if (!t) return false;
   if (isUserDataProvisionMessage(t)) return false;
   if (isShortConfirmationOrFlowReply(t)) return false;
+  // Pedidos operacionais (check-in / verificar reserva + localizador) → API HTTP, não KB.
+  if (
+    /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(t) &&
+    /[A-Za-z0-9]{5,}/.test(t.replace(/\s+/g, ""))
+  ) {
+    return false;
+  }
   if (/\?/.test(t)) return true;
   if (
     /\b(qual|quais|onde|como|quando|quanto|endere[cç]o|wifi|wi[\s-]?fi|senha|hor[aá]rio|pre[cç]o|estacionamento|pol[ií]tica|cancelamento|comodidade|what|where|how|when|address|password|parking|categorias?|quartos?)\b/i.test(

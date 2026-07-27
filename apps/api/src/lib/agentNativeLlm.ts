@@ -2698,6 +2698,9 @@ async function generateNativeAgentReplyCore(input: {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);
       }
+      // Manter flags exportadas alinhadas com o override (strict mode lê llmSupervisorApproved).
+      llmSupervisorApproved = approved;
+      llmSupervisorSummary = summary;
       const supLog = approved ? ex?.info.bind(ex) : ex?.warn.bind(ex);
       supLog?.(
         { id: "supervisor", name: "Agente supervisor" },

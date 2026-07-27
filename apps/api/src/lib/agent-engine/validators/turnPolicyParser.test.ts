@@ -128,3 +128,41 @@ N=1 → S9 só \`crm_ask_preferences\`
   );
   assert.ok(alerts.some((a) => /proibid/i.test(a)));
 });
+
+test("self-alias pair from C3 table does not block single consultar_reserva", () => {
+  const playbook = `
+| C3 | **Check-in explícito** | \`fazer check-in\` + localizador | Chame \`audaar_consultar_reserva\` · **PROIBIDO** \`buscar_conhecimento\` · PARE | consultar_reserva |
+**Proibido** \`embratur-reference\` + \`audaar_check_in\` no mesmo turno
+`;
+  const pairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
+  assert.equal(
+    findForbiddenPairViolation(["audaar_consultar_reserva"], pairs),
+    null,
+    `single reservation tool must not self-block, pairs=${JSON.stringify(pairs)}`,
+  );
+  assert.ok(
+    findForbiddenPairViolation(["audaar_consultar_reserva", "buscar_conhecimento"], pairs) ||
+      pairs.some((p) => /buscar_conhecimento|consultar_reserva|audaar/.test(p.a + p.b)),
+  );
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "fazer check-in na reserva QP7ZVTOG" },
+  );
+  const alerts = validateToolOutcomesAgainstTurnPolicy(
+    [{ name: "audaar_consultar_reserva", ok: true }],
+    policy,
+  );
+  assert.equal(alerts.length, 0, `unexpected alerts: ${JSON.stringify(alerts)}`);
+  assert.ok(
+    findForbiddenPairViolation(["embratur-reference", "audaar_check_in"], policy.forbiddenSameTurnPairs),
+  );
+});
+
+test("findForbiddenPairViolation requires two distinct tool invocations", () => {
+  const pairs = [{ a: "foo_lookup", b: "lookup", source: "test" }];
+  // Alias-of-self pair is ignored
+  assert.equal(findForbiddenPairViolation(["foo_lookup"], pairs), null);
+  const real = [{ a: "foo_lookup", b: "foo_submit", source: "test" }];
+  assert.ok(findForbiddenPairViolation(["foo_lookup", "foo_submit"], real));
+  assert.equal(findForbiddenPairViolation(["foo_lookup"], real), null);
+});

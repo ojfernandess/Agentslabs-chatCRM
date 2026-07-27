@@ -127,6 +127,18 @@ test("shouldSkipKnowledgeSearchForTurn allows KB question during flow", () => {
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi do hotel?"), true);
 });
 
+test("check-in with locator is not a knowledge-seeking query", () => {
+  assert.equal(
+    userMessageLooksLikeKnowledgeSeekingQuery("fazer check-in na reserva QP7ZVTOG"),
+    false,
+  );
+  assert.equal(
+    userMessageLooksLikeKnowledgeSeekingQuery("quero fazer check-in 71CRUDTI"),
+    false,
+  );
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi da suíte?"), true);
+});
+
 test("shouldSkipKnowledgeSearchForTurn on active flow without KB intent", () => {
   assert.equal(
     resolveKnowledgeSearchSkip("123456", {
