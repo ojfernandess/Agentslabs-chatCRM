@@ -53,6 +53,7 @@ import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
+import { mcpRoutes } from "./routes/mcp.js";
 import { publicChatbotFlowRoutes } from "./routes/publicChatbotFlowRoutes.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { publicTurnstileRoutes } from "./routes/publicTurnstile.js";
@@ -63,7 +64,8 @@ import {
 } from "./lib/automationExecutionLog.js";
 import { initBroadcastQueue, closeBroadcastQueue } from "./lib/broadcastQueue.js";
 import { initCrmFlowQueue, closeCrmFlowQueue } from "./lib/crmFlowQueue.js";
-import { initAgentEngineQueue, closeAgentEngineQueue } from "./lib/agent-engine/queue/agentEngineQueue.js";
+import { closeAgentEngineQueue, initAgentEngineQueue } from "./lib/agent-engine/queue/agentEngineQueue.js";
+import { closeAllMcpSessions } from "./lib/mcp/index.js";
 import {
   initRedisLangGraphCheckpointer,
   closeRedisLangGraphCheckpointer,
@@ -220,6 +222,7 @@ await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
 await app.register(botRoutes, { prefix: "/api/v1/bots" });
   await app.register(automationRoutes, { prefix: "/api/v1/automations" });
   await app.register(automationSuiteRoutes, { prefix: "/api/v1/automation" });
+await app.register(mcpRoutes, { prefix: "/api/v1/mcp" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check
@@ -235,6 +238,7 @@ const shutdown = async () => {
   await closeBroadcastQueue().catch(() => {});
   await closeCrmFlowQueue().catch(() => {});
   await closeAgentEngineQueue().catch(() => {});
+  await closeAllMcpSessions().catch(() => {});
   await closeRedisLangGraphCheckpointer().catch(() => {});
   await app.close();
   await disconnectDb();

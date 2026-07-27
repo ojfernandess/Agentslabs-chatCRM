@@ -226,6 +226,8 @@ model Organization {
   nvoipSipUsers                  NvoipSipUser[]
   nvoipOtpChallenges             NvoipOtpChallenge[]
   nvoipTrunks                    NvoipTrunk[]
+  mcpAccessTokens                McpAccessToken[]
+  mcpAuditLogs                   McpAuditLog[]
 
   @@map("organizations")
 }
@@ -528,6 +530,8 @@ model User {
   nvoipCallsInitiated          NvoipCallLog[]                @relation("NvoipCallInitiator")
   nvoipOtpChallenges           NvoipOtpChallenge[]
   sipCredentials               UserSipCredentials?
+  mcpAccessTokens              McpAccessToken[]
+  mcpAuditLogs                 McpAuditLog[]
 
   @@index([organizationId])
   @@map("users")
@@ -2450,4 +2454,61 @@ model NvoipScheduledTorpedo {
 
   @@index([organizationId])
   @@map("nvoip_scheduled_torpedos")
+}
+
+/// Tokens de acesso dedicados ao OpenNexo MCP Server (prefixo ocm_).
+model McpAccessToken {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?      @map("user_id") @db.Uuid
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name           String       @db.VarChar(200)
+  tokenPrefix    String       @map("token_prefix") @db.VarChar(16)
+  tokenHash      String       @map("token_hash") @db.Text
+  /// admin | developer | support | audit | read_only | custom
+  role           String       @default("developer") @db.VarChar(32)
+  /// Permissões customizadas quando role=custom
+  permissions    Json?
+  /// Escopo opcional a bots/agentes específicos (array de UUID)
+  allowedBotIds  Json?        @map("allowed_bot_ids")
+  /// Ambiente: production | staging | development
+  environment    String?      @db.VarChar(32)
+  debugMode      Boolean      @default(false) @map("debug_mode")
+  expiresAt      DateTime?    @map("expires_at")
+  revokedAt      DateTime?    @map("revoked_at")
+  lastUsedAt     DateTime?    @map("last_used_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  auditLogs McpAuditLog[]
+
+  @@index([organizationId])
+  @@index([tokenPrefix])
+  @@map("mcp_access_tokens")
+}
+
+/// Auditoria de acesso via MCP (ferramentas, recursos, clientes).
+model McpAuditLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?         @map("user_id") @db.Uuid
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tokenId        String?         @map("token_id") @db.Uuid
+  token          McpAccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  clientName     String?         @map("client_name") @db.VarChar(120)
+  action         String          @db.VarChar(64)
+  resourceType   String?         @map("resource_type") @db.VarChar(64)
+  resourceId     String?         @map("resource_id") @db.VarChar(120)
+  ipAddress      String?         @map("ip_address") @db.VarChar(64)
+  durationMs     Int?            @map("duration_ms")
+  ok             Boolean         @default(true)
+  errorMessage   String?         @map("error_message") @db.Text
+  metadata       Json?
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([tokenId, createdAt(sort: Desc)])
+  @@map("mcp_audit_logs")
 }

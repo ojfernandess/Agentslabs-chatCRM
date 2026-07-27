@@ -36,6 +36,7 @@
     "@langchain/langgraph": "^1.4.8",
     "@langchain/langgraph-checkpoint-redis": "^1.0.10",
     "@llamaindex/openai": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@openconduit/shared": "*",
     "@prisma/client": "^6.4.0",
     "bcrypt": "^5.1.1",
