@@ -141,6 +141,36 @@ Sempre use buscar_conhecimento antes de responder sobre Wi-Fi.
   assert.equal(names.some((n) => /audaar_check_in/i.test(n)), false);
 });
 
+test("resolveRequiredToolNamesForTurn requires reservation tool on consultar reserva message", () => {
+  const playbook = `
+| C2 | Verificar reserva | verificar/consultar + localizador | Chame \`audaar_consultar_reserva\` | consultar_reserva |
+| C3 | Check-in explícito | fazer check-in + localizador | Chame \`audaar_consultar_reserva\` | consultar_reserva |
+| C8 | CPF | 11 dígitos | Chame \`audaar_consultar_main_guest\` | lookup |
+Sempre use buscar_conhecimento. Chame \`embratur-reference\`. Chame \`audaar_check_in\`.
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "pode consultar essa reserva QP7ZVTOG" },
+  );
+  assert.ok(names.some((n) => /consultar_reserva/i.test(n)), `got ${JSON.stringify(names)}`);
+  assert.ok(names.length <= 2, `expected ≤2 tools, got ${JSON.stringify(names)}`);
+  assert.equal(names.some((n) => /check_in$/i.test(n) && !/consultar/.test(n)), false);
+  assert.equal(names.includes("buscar_conhecimento"), false);
+});
+
+test("resolveRequiredToolNamesForTurn does not fall back to all static tools on nationality", () => {
+  const playbook = `
+| C7 | Nacionalidade | brasileiro | ZERO |
+| C8 | CPF | 11 dígitos | Chame \`audaar_consultar_main_guest\` |
+Sempre use buscar_conhecimento. Chame \`audaar_check_in\`. Chame \`embratur-reference\`.
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "brasileiro" },
+  );
+  assert.deepEqual(names, []);
+});
+
 test("resolveRequiredToolNamesForTurn is segment-agnostic for retail document id", () => {
   const behavior = {
     promptBuilder: {

@@ -26,6 +26,7 @@ export type OrchestrationState = {
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
   supervisorApproved: boolean;
+  blockReply?: boolean;
 };
 
 export type OrchestrationHook = (state: OrchestrationState) => Promise<void>;
@@ -138,12 +139,17 @@ export async function runOrchestratedRuntime(
           strictMode: input.engineConfig.strictMode,
           memorySnapshot: state.memory,
           retryCount: state.retryCount,
+          validationBlockSend: validation.blockSend,
         }),
       );
       state.supervisorApproved = supTrace.approved;
       traceBuilder.endNode("supervisor", supTrace.approved ? "ok" : "warn", supTrace.summary);
     } else {
-      state.supervisorApproved = true;
+      // Sem Supervisor: respeitar Tool Validator no modo estrito
+      const block =
+        input.engineConfig.strictMode && validation.blockSend === true;
+      state.supervisorApproved = !block;
+      if (block) state.blockReply = true;
     }
 
     if (plan.postExecute) {
@@ -206,16 +212,24 @@ export async function runOrchestratedRuntime(
     retryCount: state.retryCount,
     graphNodeSequence: plan.graphHistory,
   });
-  if (gate.blockReply) {
-    traceBuilder.endNode("respond", "error", "Workflow Validator reprovou execução");
-    input.executionLog?.warn(
-      { id: "workflow_validator", name: "Workflow Validator" },
-      JSON.stringify({
-        approved: false,
-        criticalFailures: gate.report?.metrics.criticalFailures,
-        requiredToolNames: gate.requiredToolNames,
-      }),
+  if (gate.blockReply || state.blockReply) {
+    traceBuilder.endNode(
+      "respond",
+      "error",
+      gate.blockReply
+        ? "Workflow Validator reprovou execução"
+        : "Tool Validator bloqueou envio (modo estrito)",
     );
+    if (gate.blockReply) {
+      input.executionLog?.warn(
+        { id: "workflow_validator", name: "Workflow Validator" },
+        JSON.stringify({
+          approved: false,
+          criticalFailures: gate.report?.metrics.criticalFailures,
+          requiredToolNames: gate.requiredToolNames,
+        }),
+      );
+    }
     state.reply = "";
   } else {
     traceBuilder.endNode("respond");

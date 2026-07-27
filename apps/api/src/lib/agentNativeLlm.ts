@@ -2122,7 +2122,10 @@ async function generateNativeAgentReplyCore(input: {
             });
             const finishToolCall = (out: string) => {
               logToolResult(out);
-              const parsed = parseToolCallOutcomeFromJson(name, out);
+              // Preferir nome estável da tool HTTP (audaar_…) sobre oc_tool_<uuid>
+              // para o Tool/Workflow Validator reconhecer ferramentas obrigatórias.
+              const outcomeName = customRow?.name?.trim() || name;
+              const parsed = parseToolCallOutcomeFromJson(outcomeName, out);
               toolRoundOutcomes.push({
                 ...parsed,
                 monitored: shouldNotifyBeforeToolCall(name, toolCallNotify),

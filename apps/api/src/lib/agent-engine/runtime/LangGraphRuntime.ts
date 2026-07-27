@@ -547,7 +547,14 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const supervisor = async (state: GraphState): Promise<Partial<GraphState>> => {
       if (!state.input.engineConfig.supervisorEnabled) {
-        return { supervisorApproved: true };
+        // Sem Supervisor: ainda assim respeitar Tool Validator no modo estrito
+        // (ex.: CPF sem audaar_consultar_main_guest → não enviar reply inventada).
+        const blockReply =
+          state.input.engineConfig.strictMode && state.validationBlockSend === true;
+        return {
+          supervisorApproved: !blockReply,
+          blockReply: blockReply || state.blockReply,
+        };
       }
 
       const mode = state.input.engineConfig.supervisorMode ?? "both";

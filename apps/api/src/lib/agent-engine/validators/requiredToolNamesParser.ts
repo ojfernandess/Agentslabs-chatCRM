@@ -91,10 +91,12 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
     id: "checkin_or_reservation",
     test: (m) =>
-      /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(da\s+)?reserva/i.test(m) &&
-      /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")),
-    // Só linhas de detecção C3 / check-in+localizador — não qualquer menção a "reserva"
-    playbookHints: /\b(C3|check[- ]?in\b.*localizador|localizador.*check[- ]?in|consultar_reserva)\b/i,
+      /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(da\s+)?reserva/i.test(
+        m,
+      ) && /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")),
+    // C2/C3 / localizador — não qualquer menção genérica a "reserva"
+    playbookHints:
+      /\b(C3|C2|check[- ]?in\b.*localizador|localizador.*check[- ]?in|consultar_reserva|verificar\s+reserva)\b/i,
   },
   {
     id: "availability_quote",
@@ -218,11 +220,19 @@ function scoreTurnLine(
 ): number {
   let score = 1;
   if (pattern.id === "checkin_or_reservation") {
-    if (/\bC3\b/i.test(category) || /\bC3\b/i.test(line)) score += 6;
-    if (/check[- ]?in/i.test(line) && /check[- ]?in/i.test(userMessage)) score += 4;
+    const wantsCheckin = /check[- ]?in/i.test(userMessage);
+    const wantsVerify =
+      /verificar|consultar|status|pode\s+consultar/i.test(userMessage) && !wantsCheckin;
+    if (wantsCheckin && (/\bC3\b/i.test(category) || /\bC3\b/i.test(line))) score += 6;
+    if (wantsVerify && (/\bC2\b/i.test(category) || /\bC2\b/i.test(line))) score += 6;
+    if (wantsCheckin && /check[- ]?in/i.test(line)) score += 4;
+    if (wantsVerify && /verificar|consultar/i.test(line)) score += 4;
     if (/localizador/i.test(line)) score += 2;
     if (/consultar_reserva/i.test(line)) score += 3;
-    if (/\b(C8|C9|C10|S9|S10|selfie|embratur|main_guest)\b/i.test(line) && !/\bC3\b/i.test(line)) {
+    if (
+      /\b(C8|C9|C10|S9|S10|selfie|embratur|main_guest)\b/i.test(line) &&
+      !/\bC[23]\b/i.test(line)
+    ) {
       score -= 8;
     }
     // Linhas C3 que só listam FAQ/KB não são o detector principal
@@ -392,13 +402,11 @@ export function resolveRequiredToolNamesForTurn(
   ];
   const playbook = playbookTextFromBehavior(behaviorConfig);
   const required = new Set<string>();
-  let matchedTurnPattern = false;
 
   const userMessage = (options.userMessage ?? "").trim();
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
-      matchedTurnPattern = true;
       const matches = findBestTurnMatches(playbook, pattern, userMessage);
       for (const match of matches) {
         for (const tool of match.tools) {
@@ -409,7 +417,7 @@ export function resolveRequiredToolNamesForTurn(
       if (matches.length === 0) {
         for (const line of playbook.split(/\n+/)) {
           if (!pattern.playbookHints.test(line)) continue;
-          for (const tool of extractToolNamesFromText(line)) {
+          for (const tool of extractPositiveToolNamesFromLine(line)) {
             if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
             required.add(tool);
           }
@@ -419,12 +427,9 @@ export function resolveRequiredToolNamesForTurn(
     }
   }
 
-  // Só aplicar obrigatórios estáticos quando não há padrão de turno (ex.: FAQ genérico)
-  if (!matchedTurnPattern) {
-    for (const name of resolveRequiredToolNamesFromBehavior(behaviorConfig)) {
-      required.add(name);
-    }
-  }
+  // Obrigatórios vêm só do padrão de turno. O conjunto estático global do playbook
+  // (todas as linhas "Chame `tool`") NÃO é fundido — isso bloqueava o contacto no
+  // modo estrito ao exigir selfie+Embratur+check_in+KB no mesmo turno.
 
   return dedupeRequiredToolAliases(filterAgainstAvailable([...required], available));
 }
