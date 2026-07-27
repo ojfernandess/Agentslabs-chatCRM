@@ -56,7 +56,7 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
     },
     {
       instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
-Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse e decisões do Supervisor.
+Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor e snapshots EIL (facts/policies/constraints).
 Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
@@ -199,6 +199,31 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
       textResult(
         await withAudit(ctx, "tool:search_supervisor", () =>
           getMcpProvider("supervisor")!.readResource(ctx, `opennexo://supervisor/${executionId}`),
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "search_eil",
+    {
+      description:
+        "Search Execution Intelligence Layer snapshots (facts, plan, policies, constraint violations)",
+      inputSchema: searchSchema,
+    },
+    async (args) =>
+      textResult(await withAudit(ctx, "tool:search_eil", () => getMcpProvider("eil")!.search!(ctx, args))),
+  );
+
+  server.registerTool(
+    "get_eil_snapshot",
+    {
+      description: "Get EIL snapshot (plan, facts, policies, violations) for an execution",
+      inputSchema: { executionId: z.string().uuid().describe("Execution ID") },
+    },
+    async ({ executionId }) =>
+      textResult(
+        await withAudit(ctx, "tool:get_eil_snapshot", () =>
+          getMcpProvider("eil")!.readResource(ctx, `opennexo://eil/${executionId}`),
         ),
       ),
   );

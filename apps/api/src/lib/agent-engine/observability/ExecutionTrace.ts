@@ -93,6 +93,30 @@ export class ExecutionTraceBuilder {
     }
   }
 
+  setEilSnapshot(snapshot: {
+    enabled: boolean;
+    plan?: unknown;
+    facts: Record<string, unknown>;
+    capabilitiesUsed: string[];
+    policiesApplied: string[];
+    violations: unknown[];
+    toolsCalled: string[];
+    toolsPending: string[];
+    replyActions?: string[];
+  }): void {
+    this.trace.eil = {
+      enabled: snapshot.enabled,
+      plan: snapshot.plan,
+      facts: snapshot.facts,
+      capabilitiesUsed: snapshot.capabilitiesUsed,
+      policiesApplied: snapshot.policiesApplied,
+      violations: snapshot.violations,
+      toolsCalled: snapshot.toolsCalled,
+      toolsPending: snapshot.toolsPending,
+      replyActions: snapshot.replyActions,
+    };
+  }
+
   setTokens(tokens: { prompt?: number; completion?: number; total?: number }): void {
     this.trace.tokens = tokens;
   }

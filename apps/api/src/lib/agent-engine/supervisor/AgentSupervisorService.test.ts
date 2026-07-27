@@ -78,3 +78,62 @@ test("buildSupervisorTrace includes llm supervisor when provided", () => {
   assert.equal(trace.approved, false);
   assert.ok(trace.checks.some((c) => c.id === "llm_supervisor" && !c.passed));
 });
+
+test("EIL constraints fail supervisor when violations present", () => {
+  const input = buildSupervisorValidationInput({
+    userMessage: "Sim",
+    replyText: "Me envie os dados do acompanhante",
+    toolOutcomes: [{ name: "consultar_reserva", ok: true, preview: '{"guestsQuantity":1}' }],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    eilEnabled: true,
+    eilPlan: {
+      userMessage: "Sim",
+      requiredToolNames: [],
+      turnPolicy: { forbiddenSameTurnPairs: [], exclusiveAllowedTools: null, completionToolHints: [] },
+      knowledgeSeeking: false,
+      matchedPatternIds: [],
+      requiredFacts: [],
+      knownFactKeys: ["guestsQuantity"],
+      pendingFacts: [],
+      pendingTools: [],
+      pendingCapabilities: [],
+      forbiddenActions: ["request_additional_party"],
+      policyIds: ["party_requires_n_gt_1"],
+      eilEnabled: true,
+    },
+    eilViolations: [
+      {
+        policyId: "party_requires_n_gt_1",
+        action: "request_additional_party",
+        reason: "unmet",
+        predicates: [{ fact: "guestsQuantity", op: "gt", value: 1 }],
+      },
+    ],
+  });
+  const trace = buildSupervisorTrace(input);
+  assert.equal(trace.checks.find((c) => c.id === "eil_constraints")?.passed, false);
+  assert.equal(trace.approved, false);
+  assert.equal(shouldRetryAfterSupervisor(trace, true, 0), true);
+});
+
+test("EIL checks are no-op when eilEnabled is false", () => {
+  const input = buildSupervisorValidationInput({
+    userMessage: "Sim",
+    replyText: "Me envie os dados do acompanhante",
+    toolOutcomes: [],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    eilEnabled: false,
+    eilViolations: [
+      {
+        policyId: "x",
+        action: "request_additional_party",
+        reason: "unmet",
+        predicates: [],
+      },
+    ],
+  });
+  const trace = buildSupervisorTrace(input);
+  assert.equal(trace.checks.find((c) => c.id === "eil_constraints")?.passed, true);
+});

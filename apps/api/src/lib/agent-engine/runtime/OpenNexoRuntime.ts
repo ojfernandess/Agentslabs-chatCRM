@@ -5,6 +5,8 @@ import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
+import { resolveEilTurn } from "../eil/runtimeBridge.js";
+import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
 
 export type NativeAgentKbMeta = {
   hasUsefulExcerpts: boolean;
@@ -13,7 +15,7 @@ export type NativeAgentKbMeta = {
 
 export type NativeAgentExecutorResult = {
   reply: string;
-  toolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+  toolOutcomes?: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>;
   kbMeta?: NativeAgentKbMeta;
   llmSupervisorApproved?: boolean | null;
   llmSupervisorSummary?: string;
@@ -49,6 +51,29 @@ export class OpenNexoRuntime implements AgentRuntime {
     const { reply, toolOutcomes = [] } = await this.executor(input);
     traceBuilder.endNode("respond");
 
+    const eil = resolveEilTurn({
+      behaviorConfig: input.behaviorConfig,
+      userMessage: input.message.body ?? "",
+      memory: memSnap,
+      toolOutcomes,
+      replyText: reply,
+    });
+    if (eil.enabled) {
+      traceBuilder.setEilSnapshot(eil.snapshot);
+      if (Object.keys(eil.flowSlotsPatch).length > 0) {
+        try {
+          await mergeFlowSlotsAutomationContext({
+            organizationId: input.organizationId,
+            conversationId: input.conversation.id,
+            botId: input.bot.id,
+            flowSlots: eil.flowSlotsPatch,
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+
     if (toolOutcomes.length > 0) {
       traceBuilder.startNode("validate_result", "Validar ferramentas");
       const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
@@ -78,7 +103,7 @@ export class OpenNexoRuntime implements AgentRuntime {
 
     input.executionLog?.info(
       { id: "agent_engine", name: "Agent Engine" },
-      JSON.stringify({ runtime: "openconduit", strict: input.engineConfig.strictMode }),
+      JSON.stringify({ runtime: "openconduit", strict: input.engineConfig.strictMode, eil: eil.enabled }),
     );
 
     const gate = runWorkflowGate({
@@ -90,6 +115,7 @@ export class OpenNexoRuntime implements AgentRuntime {
       kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
       memorySnapshot: memSnap,
       graphNodeSequence: ["load_memory", "respond"],
+      eilSnapshot: eil.snapshot,
     });
     if (gate.advisoryFailures > 0 || (gate.report && !gate.report.approved)) {
       input.executionLog?.warn(

@@ -55,6 +55,8 @@ export type WorkflowAuditInput = {
   expectedGraphSequence?: string[];
   /** Trace já calculado pelo runtime (evita duplicar supervisor no gate). */
   supervisorTrace?: AgentSupervisorTrace;
+  /** Snapshot EIL (opcional — findings F-EIL). */
+  eilSnapshot?: import("../eil/types.js").EilSnapshot;
 };
 
 export type WorkflowAuditMetrics = {
@@ -391,6 +393,55 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     finding("F16", "reply_after_tools", "high", !(input.toolOutcomes.some((t) => t.ok) && !input.replyText.trim()), "Resposta após tools com sucesso"),
   ];
   findings.push(...checklist);
+
+  // Fase EIL — Execution Intelligence Layer (advisory)
+  const eil = input.eilSnapshot;
+  if (eil?.enabled) {
+    const pendingTools = eil.toolsPending ?? eil.plan?.pendingTools ?? [];
+    const missingFacts = eil.plan?.pendingFacts ?? [];
+    findings.push(
+      finding(
+        "F-EIL",
+        "eil_plan_vs_tools",
+        pendingTools.length ? "high" : "info",
+        pendingTools.length === 0,
+        pendingTools.length
+          ? `Tools pendentes no plano: ${pendingTools.join(", ")}`
+          : "Plano EIL: tools obrigatórias satisfeitas ou inexistentes",
+        { file: "apps/api/src/lib/agent-engine/eil/ExecutionPlanner.ts" },
+      ),
+      finding(
+        "F-EIL",
+        "eil_facts_present",
+        missingFacts.length ? "medium" : "info",
+        missingFacts.length === 0,
+        missingFacts.length
+          ? `Facts obrigatórios em falta: ${missingFacts.join(", ")}`
+          : `Facts conhecidos: ${Object.keys(eil.facts).length}`,
+      ),
+      finding(
+        "F-EIL",
+        "eil_constraints",
+        eil.violations.length ? "critical" : "info",
+        eil.violations.length === 0,
+        eil.violations.length
+          ? `Constraints violadas: ${eil.violations.map((v) => v.policyId).join(", ")}`
+          : "Sem violações de constraints EIL",
+        { file: "apps/api/src/lib/agent-engine/eil/PolicyEngine.ts" },
+      ),
+      finding(
+        "F-EIL",
+        "eil_capabilities",
+        "info",
+        true,
+        `Capabilities usadas: ${(eil.capabilitiesUsed ?? []).join(", ") || "(nenhuma)"} · policies: ${(eil.policiesApplied ?? []).join(", ") || "(nenhuma)"}`,
+      ),
+    );
+  } else {
+    findings.push(
+      finding("F-EIL", "eil_skipped", "info", true, "EIL desactivado ou ausente — skip"),
+    );
+  }
 
   const criticalFailures = findings.filter((f) => !f.passed && f.severity === "critical").length;
   const highFailures = findings.filter((f) => !f.passed && f.severity === "high").length;

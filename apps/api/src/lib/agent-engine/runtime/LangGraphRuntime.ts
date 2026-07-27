@@ -41,6 +41,9 @@ import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observabili
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
+import { resolveEilTurn } from "../eil/runtimeBridge.js";
+import type { EilSnapshot, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
+import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
 
 export type LangGraphRuntimeDeps = {
   createMemoryProvider?: typeof defaultCreateMemoryProvider;
@@ -52,7 +55,7 @@ type GraphState = {
   input: AgentRuntimeExecuteInput;
   memory: Record<string, unknown>;
   reply: string;
-  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  toolOutcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>;
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
   previousReply: string;
@@ -68,13 +71,16 @@ type GraphState = {
   kbPrefetchResults: KbPrefetchResult[];
   kbPrefetchArticleId?: string;
   kbPrefetchAppendix?: string;
+  eilPlan?: ExecutionIntelligencePlan;
+  eilFacts: FactStore;
+  eilSnapshot?: EilSnapshot;
 };
 
 const GraphStateAnnotation = Annotation.Root({
   input: Annotation<AgentRuntimeExecuteInput>,
   memory: Annotation<Record<string, unknown>>,
   reply: Annotation<string>,
-  toolOutcomes: Annotation<Array<{ name: string; ok: boolean; preview: string }>>,
+  toolOutcomes: Annotation<Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>>,
   kbMeta: Annotation<{ hasUsefulExcerpts: boolean; coversQuery: boolean }>,
   retryCount: Annotation<number>,
   previousReply: Annotation<string>,
@@ -93,6 +99,9 @@ const GraphStateAnnotation = Annotation.Root({
   }),
   kbPrefetchArticleId: Annotation<string | undefined>,
   kbPrefetchAppendix: Annotation<string | undefined>,
+  eilPlan: Annotation<ExecutionIntelligencePlan | undefined>,
+  eilFacts: Annotation<FactStore>,
+  eilSnapshot: Annotation<EilSnapshot | undefined>,
 });
 
 /**
@@ -151,6 +160,7 @@ export class LangGraphRuntime implements AgentRuntime {
       blockReply: false,
       intentHints: { kbQueryLikely: false },
       kbPrefetchResults: [],
+      eilFacts: {},
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -448,9 +458,19 @@ export class LangGraphRuntime implements AgentRuntime {
         state.input.organizationId,
       );
       state.traceBuilder.setMemorySnapshot(memory);
+      const eilBoot = resolveEilTurn({
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage: state.input.message.body ?? "",
+        memory,
+      });
       state.traceBuilder.setNextNode("select_tool");
       state.traceBuilder.endNode("load_memory");
-      return { memory };
+      return {
+        memory,
+        eilFacts: eilBoot.facts,
+        eilPlan: eilBoot.plan,
+        eilSnapshot: eilBoot.snapshot,
+      };
     };
 
     const selectTool = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -461,13 +481,25 @@ export class LangGraphRuntime implements AgentRuntime {
           ? ((behavior as Record<string, unknown>).nativeTools as Record<string, unknown> | undefined)
           : undefined;
       const toolCount = nativeTools ? Object.values(nativeTools).filter(Boolean).length : 0;
+      const eil = resolveEilTurn({
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage: state.input.message.body ?? "",
+        memory: state.memory,
+        priorFacts: state.eilFacts,
+      });
       state.traceBuilder.setNextNode("execute_tool");
       state.traceBuilder.endNode(
         "select_tool",
         "ok",
-        toolCount > 0 ? `${toolCount} ferramenta(s) disponível(eis)` : "delegar ao executor nativo",
+        toolCount > 0
+          ? `${toolCount} ferramenta(s) disponível(eis)${eil.enabled ? " · EIL" : ""}`
+          : "delegar ao executor nativo",
       );
-      return {};
+      return {
+        eilPlan: eil.plan,
+        eilFacts: eil.facts,
+        eilSnapshot: eil.snapshot,
+      };
     };
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -504,6 +536,14 @@ export class LangGraphRuntime implements AgentRuntime {
               ),
             ]
           : (execResult.toolOutcomes ?? []);
+      const eil = resolveEilTurn({
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage: state.input.message.body ?? "",
+        memory: state.memory,
+        toolOutcomes: nextOutcomes,
+        replyText: execResult.reply,
+        priorFacts: state.eilFacts,
+      });
       return {
         previousReply: state.reply,
         reply: execResult.reply,
@@ -511,6 +551,9 @@ export class LangGraphRuntime implements AgentRuntime {
         kbMeta: execResult.kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false },
         llmSupervisorApproved: execResult.llmSupervisorApproved,
         llmSupervisorSummary: execResult.llmSupervisorSummary,
+        eilPlan: eil.plan,
+        eilFacts: eil.facts,
+        eilSnapshot: eil.snapshot,
       };
     };
 
@@ -537,12 +580,25 @@ export class LangGraphRuntime implements AgentRuntime {
           validation.alerts.join("; "),
         );
       }
+      const eil = resolveEilTurn({
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage,
+        memory: state.memory,
+        toolOutcomes: state.toolOutcomes,
+        replyText: state.reply,
+        priorFacts: state.eilFacts,
+      });
       state.traceBuilder.setNextNode("supervisor");
       state.traceBuilder.endNode(
         "validate_result",
         validation.blockSend && state.input.engineConfig.strictMode ? "error" : "ok",
       );
-      return { validationBlockSend: validation.blockSend };
+      return {
+        validationBlockSend: validation.blockSend,
+        eilPlan: eil.plan,
+        eilFacts: eil.facts,
+        eilSnapshot: eil.snapshot,
+      };
     };
 
     const supervisor = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -588,6 +644,10 @@ export class LangGraphRuntime implements AgentRuntime {
         llmSummary: mode === "both" ? state.llmSupervisorSummary : undefined,
         validationBlockSend: state.validationBlockSend,
         kbQueryLikely: state.intentHints.kbQueryLikely,
+        eilEnabled: state.eilSnapshot?.enabled === true,
+        eilPlan: state.eilPlan,
+        eilViolations: state.eilSnapshot?.violations,
+        eilRequiredFactsMissing: state.eilPlan?.pendingFacts,
       });
       const supTrace = buildSupervisorTrace(supInput);
 
@@ -711,6 +771,28 @@ export class LangGraphRuntime implements AgentRuntime {
         botId: state.input.bot.id,
         contactId: state.input.contactId ?? null,
       });
+      // Espelhar facts EIL em flowSlots (session facts)
+      if (state.eilSnapshot?.enabled && Object.keys(state.eilFacts).length > 0) {
+        const slots: Record<string, string | number | boolean> = {};
+        for (const [k, f] of Object.entries(state.eilFacts)) {
+          if (f.value !== null && f.value !== undefined) slots[k] = f.value as string | number | boolean;
+        }
+        if (Object.keys(slots).length > 0) {
+          try {
+            await mergeFlowSlotsAutomationContext({
+              organizationId: state.input.organizationId,
+              conversationId: state.input.conversation.id,
+              botId: state.input.bot.id,
+              flowSlots: slots,
+            });
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
+      if (state.eilSnapshot) {
+        state.traceBuilder.setEilSnapshot(state.eilSnapshot);
+      }
       state.traceBuilder.setNextNode("respond");
       state.traceBuilder.endNode("update_memory");
       return {};
@@ -719,6 +801,9 @@ export class LangGraphRuntime implements AgentRuntime {
     const respond = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("respond", "Responder utilizador");
       if (state.blockReply) {
+        if (state.eilSnapshot) {
+          state.traceBuilder.setEilSnapshot(state.eilSnapshot);
+        }
         state.traceBuilder.endNode("respond", "error", state.hitlPendingId
           ? "Resposta em fila HITL — aguarda aprovação humana"
           : "Resposta bloqueada — supervisor reprovou após retries");
@@ -729,6 +814,10 @@ export class LangGraphRuntime implements AgentRuntime {
             : "Resposta bloqueada após esgotar retries do supervisor",
         );
         return { reply: "" };
+      }
+
+      if (state.eilSnapshot) {
+        state.traceBuilder.setEilSnapshot(state.eilSnapshot);
       }
 
       if (shouldRunWorkflowGate(state.input.engineConfig)) {
@@ -757,6 +846,7 @@ export class LangGraphRuntime implements AgentRuntime {
             "update_memory",
             "respond",
           ],
+          eilSnapshot: state.eilSnapshot,
         });
         // WF é diagnóstico: regista findings, NÃO limpa a reply.
         // Bloqueio de outbound cabe só ao Supervisor (state.blockReply acima).

@@ -24,6 +24,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "observability:traces",
     "workflow_validator:read",
     "supervisor:read",
+    "eil:read",
     "config:read",
     "audit:read",
   ],
@@ -49,6 +50,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "observability:traces",
     "workflow_validator:read",
     "supervisor:read",
+    "eil:read",
     "config:read",
   ],
   support: [
@@ -64,6 +66,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "knowledge:read",
     "observability:read",
     "supervisor:read",
+    "eil:read",
   ],
   audit: [
     "agents:read",
@@ -75,6 +78,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "observability:read",
     "workflow_validator:read",
     "supervisor:read",
+    "eil:read",
     "audit:read",
   ],
   read_only: [

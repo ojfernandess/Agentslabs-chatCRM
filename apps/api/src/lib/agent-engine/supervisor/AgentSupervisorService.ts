@@ -1,5 +1,7 @@
 import type { AgentSupervisorCheck, AgentSupervisorTrace } from "../types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/types.js";
+import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 
 export type SupervisorValidationInput = {
   userMessage: string;
@@ -18,6 +20,12 @@ export type SupervisorValidationInput = {
   kbToolInvoked?: boolean;
   kbToolSucceeded?: boolean;
   validationBlockSend?: boolean;
+  /** EIL — quando ausente/desactivado, checks EIL passam (no-op). */
+  eilEnabled?: boolean;
+  eilPlan?: ExecutionIntelligencePlan;
+  eilViolations?: ConstraintViolation[];
+  eilRequiredFactsMissing?: string[];
+  toolOutcomes?: Array<{ name: string; ok: boolean; preview?: string }>;
 };
 
 export type BuildSupervisorValidationInputOpts = {
@@ -33,6 +41,10 @@ export type BuildSupervisorValidationInputOpts = {
   llmSummary?: string;
   validationBlockSend?: boolean;
   kbQueryLikely?: boolean;
+  eilEnabled?: boolean;
+  eilPlan?: ExecutionIntelligencePlan;
+  eilViolations?: ConstraintViolation[];
+  eilRequiredFactsMissing?: string[];
 };
 
 function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
@@ -63,6 +75,11 @@ export function buildSupervisorValidationInput(
       opts.kbQueryLikely ?? userMessageLooksLikeKnowledgeSeekingQuery(opts.userMessage),
     kbToolInvoked: !!kbTool,
     kbToolSucceeded: kbTool?.ok ?? false,
+    eilEnabled: opts.eilEnabled,
+    eilPlan: opts.eilPlan,
+    eilViolations: opts.eilViolations,
+    eilRequiredFactsMissing: opts.eilRequiredFactsMissing,
+    toolOutcomes: opts.toolOutcomes,
   };
 }
 
@@ -159,6 +176,47 @@ const CHECK_DEFS: Array<{
     label: "Validação de ferramentas aprovada",
     run: (i) => !i.validationBlockSend,
   },
+  {
+    id: "eil_plan_followed",
+    label: "Plano EIL seguido (tools obrigatórias)",
+    run: (i) => {
+      if (!i.eilEnabled || !i.eilPlan) return true;
+      const required = i.eilPlan.requiredToolNames ?? [];
+      if (required.length === 0) return true;
+      const outcomes = i.toolOutcomes ?? [];
+      return required.every((name) => toolOutcomeSatisfiesRequired(name, outcomes));
+    },
+  },
+  {
+    id: "eil_required_facts",
+    label: "Facts EIL obrigatórios presentes",
+    run: (i) => {
+      if (!i.eilEnabled) return true;
+      return !(i.eilRequiredFactsMissing && i.eilRequiredFactsMissing.length > 0);
+    },
+  },
+  {
+    id: "eil_constraints",
+    label: "Constraints EIL sem violação",
+    run: (i) => {
+      if (!i.eilEnabled) return true;
+      return !(i.eilViolations && i.eilViolations.length > 0);
+    },
+  },
+  {
+    id: "eil_forbidden_action",
+    label: "Acção proibida pelo plano EIL",
+    run: (i) => {
+      if (!i.eilEnabled || !i.eilPlan) return true;
+      const forbidden = new Set(i.eilPlan.forbiddenActions ?? []);
+      if (forbidden.size === 0) return true;
+      // Se há violations com action em forbidden, já capturado em eil_constraints;
+      // aqui falha se replyActions implícitas estão em forbidden via violations.
+      return !(i.eilViolations ?? []).some(
+        (v) => v.action && forbidden.has(v.action),
+      );
+    },
+  },
 ];
 
 export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSupervisorTrace {
@@ -193,6 +251,10 @@ const RETRYABLE_CHECK_IDS = new Set([
   "validation_passed",
   "prompt_coherent",
   "no_execution_loop",
+  "eil_plan_followed",
+  "eil_required_facts",
+  "eil_constraints",
+  "eil_forbidden_action",
 ]);
 
 export function shouldRetryAfterSupervisor(

@@ -110,7 +110,13 @@ const NATIVE_AGENT_LLM_TIMEOUT_MS = 90_000;
 
 export type NativeAgentCoreResult = {
   reply: string;
-  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  toolOutcomes: Array<{
+    name: string;
+    ok: boolean;
+    preview: string;
+    /** Payload estruturado para Facts Engine (EIL). */
+    structuredPayload?: unknown;
+  }>;
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   llmSupervisorApproved?: boolean | null;
   llmSupervisorSummary?: string;
@@ -222,7 +228,34 @@ export type NativeToolRoundOutcome = {
   ok: boolean;
   preview: string;
   monitored: boolean;
+  /** JSON estruturado do resultado (para EIL Facts Engine). */
+  structuredPayload?: unknown;
 };
+
+function extractStructuredPayloadFromToolOut(parsed: Record<string, unknown>, out: string): unknown {
+  const bodyPreview = parsed.bodyPreview;
+  if (typeof bodyPreview === "string" && bodyPreview.trim()) {
+    const t = bodyPreview.trim();
+    if (t.startsWith("{") || t.startsWith("[")) {
+      try {
+        return JSON.parse(t);
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  for (const key of ["data", "result", "body", "payload", "response"]) {
+    if (parsed[key] != null && typeof parsed[key] === "object") return parsed[key];
+  }
+  // Drop meta keys; keep rest as payload when useful
+  const { ok: _ok, found: _f, skipped: _s, error: _e, bodyPreview: _bp, ...rest } = parsed;
+  if (Object.keys(rest).length > 0) return rest;
+  try {
+    return JSON.parse(out);
+  } catch {
+    return undefined;
+  }
+}
 
 export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<NativeToolRoundOutcome, "monitored"> {
   try {
@@ -232,7 +265,7 @@ export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<Na
       skipped?: boolean;
       bodyPreview?: string;
       error?: string | null;
-    };
+    } & Record<string, unknown>;
     const preview =
       (typeof parsed.bodyPreview === "string" && parsed.bodyPreview.trim()) ||
       (typeof parsed.error === "string" && parsed.error.trim()) ||
@@ -241,7 +274,8 @@ export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<Na
       parsed.ok === true ||
       parsed.found === true ||
       (parsed.skipped === true && parsed.ok !== false);
-    return { name, ok, preview: preview.slice(0, 500) };
+    const structuredPayload = extractStructuredPayloadFromToolOut(parsed, out);
+    return { name, ok, preview: preview.slice(0, 500), structuredPayload };
   } catch {
     return { name, ok: out.trim().length > 0 && !/error|failed|falhou/i.test(out), preview: out.slice(0, 500) };
   }
@@ -2555,7 +2589,12 @@ async function generateNativeAgentReplyCore(input: {
   const qualitySignals = analyzeLiveExecutionQuality({
     userMessage,
     replyText,
-    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
     outboundSent: false,
     priorAgentReplies,
   });
@@ -2602,6 +2641,34 @@ async function generateNativeAgentReplyCore(input: {
       toolRoundOutcomes.length > 0
         ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 200)}`).join("\n")
         : "(nenhuma ferramenta invocada)";
+    // EIL: resumo compacto de facts (sem playbook / regras de domínio)
+    let eilFactsSummary = "";
+    try {
+      const { isEilEnabled, resolveEilTurn } = await import("./agent-engine/eil/index.js");
+      if (isEilEnabled(profile.behaviorConfig as Record<string, unknown>)) {
+        const eil = resolveEilTurn({
+          behaviorConfig: profile.behaviorConfig as Record<string, unknown>,
+          userMessage,
+          toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+            name,
+            ok,
+            preview,
+            structuredPayload,
+          })),
+          replyText,
+        });
+        const factEntries = Object.entries(eil.snapshot.facts).slice(0, 24);
+        eilFactsSummary =
+          factEntries.length > 0
+            ? `Facts (EIL):\n${factEntries.map(([k, v]) => `- ${k}=${JSON.stringify(v)}`).join("\n")}\n` +
+              (eil.snapshot.violations.length
+                ? `Constraint violations: ${eil.snapshot.violations.map((v) => v.policyId).join(", ")}\n`
+                : "")
+            : "";
+      }
+    } catch {
+      /* EIL opcional — não bloqueia supervisor LLM */
+    }
     const supervisorPrompt =
       "És um supervisor de qualidade de atendimento. Responde em JSON com approved (boolean) e summary (string).\n" +
       "Critérios:\n" +
@@ -2613,12 +2680,14 @@ async function generateNativeAgentReplyCore(input: {
       "- approved=false se a resposta for só espera («Só um momento», «Aguarde», «vou verificar») sem factos, " +
       "especialmente quando a base de conhecimento já tinha excertos ou buscar_conhecimento devolveu found=true.\n" +
       "- approved=false se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
+      "- Se houver Constraint violations (EIL), approved=false.\n" +
       "- Turnos de recolha de dados (perguntas do agente, pedidos de documento) sem tool necessária: approved=true se a pergunta for adequada.";
     const supervisorUser =
       `Cliente: ${userMessage.slice(0, 1500)}\n\n` +
       `KB proactiva com excertos úteis: ${kbHasUsefulExcerpts ? "sim" : "não"}\n` +
       `Tools com sucesso nesta ronda: ${successfulTools.length}/${toolRoundOutcomes.length}\n` +
       `Ferramentas:\n${toolSummary}\n\n` +
+      (eilFactsSummary ? `${eilFactsSummary}\n` : "") +
       `Resposta proposta:\n${replyText.slice(0, 2500)}`;
     try {
       let supervisorText = "";
@@ -2755,7 +2824,12 @@ async function generateNativeAgentReplyCore(input: {
       strictMode: true,
       replyText,
       userMessage,
-      toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+      toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
       kbHasUsefulExcerpts,
       llmSupervisorApproved,
       hasSubstantiveReply: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
@@ -2793,7 +2867,12 @@ async function generateNativeAgentReplyCore(input: {
       // Só limpa a reply para não enviar texto reprovado ao contacto.
       return {
         reply: "",
-        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
         kbMeta: {
           hasUsefulExcerpts: kbHasUsefulExcerpts,
           coversQuery:
@@ -2816,7 +2895,12 @@ async function generateNativeAgentReplyCore(input: {
 
   return {
     reply: replyText,
-    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
     kbMeta: {
       hasUsefulExcerpts: kbHasUsefulExcerpts,
       coversQuery: kbCoversForMeta,

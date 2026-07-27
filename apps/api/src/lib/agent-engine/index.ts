@@ -28,6 +28,7 @@ export {
   buildExecutionTurnPlan,
   type ExecutionTurnPlan,
 } from "./planner/ExecutionTurnPlan.js";
+export * from "./eil/index.js";
 export {
   parseRequiredToolNamesFromText,
   resolveRequiredToolNamesFromBehavior,

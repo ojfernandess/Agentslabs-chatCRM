@@ -22,6 +22,7 @@ export type McpResourceDomain =
   | "observability"
   | "workflow_validator"
   | "supervisor"
+  | "eil"
   | "config";
 
 /** Permissões granulares por recurso. */
@@ -47,6 +48,7 @@ export type McpPermission =
   | "observability:traces"
   | "workflow_validator:read"
   | "supervisor:read"
+  | "eil:read"
   | "config:read"
   | "audit:read";
 

@@ -152,6 +152,18 @@ export type AgentExecutionTrace = {
   tokens?: { prompt?: number; completion?: number; total?: number };
   latencyMs?: number;
   errors: string[];
+  /** Execution Intelligence Layer snapshot (auditoria / MCP). */
+  eil?: {
+    enabled: boolean;
+    plan?: unknown;
+    facts: Record<string, unknown>;
+    capabilitiesUsed: string[];
+    policiesApplied: string[];
+    violations: unknown[];
+    toolsCalled: string[];
+    toolsPending: string[];
+    replyActions?: string[];
+  };
 };
 
 export type AgentTraceNode = {

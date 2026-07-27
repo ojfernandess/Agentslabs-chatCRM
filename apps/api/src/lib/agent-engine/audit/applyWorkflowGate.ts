@@ -32,6 +32,8 @@ export type WorkflowGateInput = {
   availableToolNames?: string[];
   /** Plano de turno pré-calculado (evita re-parse divergente). */
   turnPlan?: ExecutionTurnPlan;
+  /** Snapshot EIL para findings F-EIL. */
+  eilSnapshot?: import("../eil/types.js").EilSnapshot;
 };
 
 export type WorkflowGateResult = {
@@ -108,6 +110,7 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     systemPromptPreview: resolveSystemPromptPreview(input.behaviorConfig),
     graphNodeSequence: input.graphNodeSequence,
     supervisorTrace: input.supervisorTrace,
+    eilSnapshot: input.eilSnapshot,
   });
 
   const advisoryFailures = report.findings.filter((f) => !f.passed).length;

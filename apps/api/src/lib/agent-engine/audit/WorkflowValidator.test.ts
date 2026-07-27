@@ -188,3 +188,36 @@ test("validateAgentWorkflow security: prompt injection in user message still val
   assert.ok(report.findings.length > 0);
   assert.equal(report.metrics.promptReady, true);
 });
+
+test("validateAgentWorkflow F-EIL findings when snapshot has constraint violations", () => {
+  const report = validateAgentWorkflow({
+    userMessage: "Sim",
+    replyText: "Envie os dados do acompanhante",
+    toolOutcomes: [{ name: "consultar_reserva", ok: true, preview: "{}" }],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    supervisorEnabled: true,
+    eilSnapshot: {
+      enabled: true,
+      facts: { guestsQuantity: 1 },
+      factDetails: {},
+      capabilitiesUsed: [],
+      policiesApplied: ["party_requires_n_gt_1"],
+      violations: [
+        {
+          policyId: "party_requires_n_gt_1",
+          action: "request_additional_party",
+          reason: "unmet",
+          predicates: [{ fact: "guestsQuantity", op: "gt", value: 1 }],
+        },
+      ],
+      toolsCalled: ["consultar_reserva"],
+      toolsPending: [],
+      replyActions: ["request_additional_party"],
+    },
+  });
+  const eilConstraint = report.findings.find((f) => f.id === "eil_constraints");
+  assert.ok(eilConstraint);
+  assert.equal(eilConstraint!.passed, false);
+  assert.equal(shouldBlockOutboundFromWorkflow(report), false);
+});

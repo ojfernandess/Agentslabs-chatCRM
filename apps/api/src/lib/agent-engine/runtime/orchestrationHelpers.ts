@@ -15,6 +15,9 @@ import {
   shouldRetryAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
+import { resolveEilTurn } from "../eil/runtimeBridge.js";
+import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
+import type { EilSnapshot, FactStore } from "../eil/types.js";
 
 export type OrchestrationState = {
   input: AgentRuntimeExecuteInput;
@@ -22,11 +25,13 @@ export type OrchestrationState = {
   traceBuilder: ExecutionTraceBuilder;
   memory: Record<string, unknown>;
   reply: string;
-  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  toolOutcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>;
   kbMeta: { hasUsefulExcerpts: boolean; coversQuery: boolean };
   retryCount: number;
   supervisorApproved: boolean;
   blockReply?: boolean;
+  eilFacts?: FactStore;
+  eilSnapshot?: EilSnapshot;
 };
 
 export type OrchestrationHook = (state: OrchestrationState) => Promise<void>;
@@ -99,6 +104,16 @@ export async function runOrchestratedRuntime(
           ]
         : toolOutcomes;
     state.kbMeta = kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false };
+    const eil = resolveEilTurn({
+      behaviorConfig: input.behaviorConfig,
+      userMessage: input.message.body ?? "",
+      memory: state.memory,
+      toolOutcomes: state.toolOutcomes,
+      replyText: state.reply,
+      priorFacts: state.eilFacts,
+    });
+    state.eilFacts = eil.facts;
+    state.eilSnapshot = eil.snapshot;
     traceBuilder.endNode("execute_tool", "ok", replyOnly ? "reply-only retry" : undefined);
 
     traceBuilder.startNode("validate_result", "Validar resultado");
@@ -130,6 +145,16 @@ export async function runOrchestratedRuntime(
 
     if (input.engineConfig.supervisorEnabled) {
       traceBuilder.startNode("supervisor", "Supervisor IA");
+      const eilRefresh = resolveEilTurn({
+        behaviorConfig: input.behaviorConfig,
+        userMessage,
+        memory: state.memory,
+        toolOutcomes: state.toolOutcomes,
+        replyText: state.reply,
+        priorFacts: state.eilFacts,
+      });
+      state.eilSnapshot = eilRefresh.snapshot;
+      state.eilFacts = eilRefresh.facts;
       const supTrace = buildSupervisorTrace(
         buildSupervisorValidationInput({
           userMessage: input.message.body ?? "",
@@ -140,6 +165,10 @@ export async function runOrchestratedRuntime(
           memorySnapshot: state.memory,
           retryCount: state.retryCount,
           validationBlockSend: validation.blockSend,
+          eilEnabled: eilRefresh.enabled,
+          eilPlan: eilRefresh.plan,
+          eilViolations: eilRefresh.snapshot.violations,
+          eilRequiredFactsMissing: eilRefresh.plan.pendingFacts,
         }),
       );
       state.supervisorApproved = supTrace.approved;
@@ -197,6 +226,27 @@ export async function runOrchestratedRuntime(
     botId: input.bot.id,
     contactId: input.contactId ?? null,
   });
+  if (state.eilSnapshot?.enabled && state.eilFacts && Object.keys(state.eilFacts).length > 0) {
+    const slots: Record<string, string | number | boolean> = {};
+    for (const [k, f] of Object.entries(state.eilFacts)) {
+      if (f.value !== null && f.value !== undefined) slots[k] = f.value as string | number | boolean;
+    }
+    if (Object.keys(slots).length > 0) {
+      try {
+        await mergeFlowSlotsAutomationContext({
+          organizationId: input.organizationId,
+          conversationId: input.conversation.id,
+          botId: input.bot.id,
+          flowSlots: slots,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  if (state.eilSnapshot) {
+    traceBuilder.setEilSnapshot(state.eilSnapshot);
+  }
   traceBuilder.endNode("update_memory");
 
   traceBuilder.startNode("respond", "Responder utilizador");
@@ -211,6 +261,7 @@ export async function runOrchestratedRuntime(
     memorySnapshot: state.memory,
     retryCount: state.retryCount,
     graphNodeSequence: plan.graphHistory,
+    eilSnapshot: state.eilSnapshot,
   });
   // WF diagnóstico: não limpa reply. Bloqueio só via Supervisor / Tool Validator.
   if (state.blockReply) {
