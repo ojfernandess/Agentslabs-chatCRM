@@ -268,15 +268,14 @@ export function resolveTurnPolicy(
 
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
-  let exclusiveAllowedTools: string[] | null = null;
-  if (isConfirmation) {
-    const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
-    if (exclusive.length > 0) exclusiveAllowedTools = exclusive;
-  }
 
+  // Confirmação (sim/ok/não): bloquear só escalonamento.
+  // NÃO aplicar exclusiveAllowedTools=[embratur-reference] a todo "sim":
+  // isso quebra Ficha DE VIAGEM → S10 (`audaar_check_in`) — HJ2XQZXO-FICHA.
+  // Pares proibidos + prompt cobrem titular→S9 vs ficha→S10.
   return {
     forbiddenSameTurnPairs,
-    exclusiveAllowedTools,
+    exclusiveAllowedTools: null,
     completionToolHints,
     blockEscalation: isConfirmation,
   };
@@ -365,9 +364,12 @@ export function shouldUseReplyOnlyRetry(opts: {
   if (!hasSuccess) return false;
   const failed = (opts.supervisorChecks ?? []).filter((c) => !c.passed).map((c) => c.id);
   if (failed.length === 0) return true;
-  const toolFailure = failed.some((id) =>
-    /tool_used|tools_not_ignored|validation_passed|required/i.test(id),
+  // Tools em falta → precisa de retry completo com ferramentas
+  const missingTools = failed.some((id) =>
+    /^(tool_used|tools_not_ignored)$/i.test(id) || /required/i.test(id),
   );
-  // Se a falha é sobretudo resposta/memória/coerência → reply-only
-  return !toolFailure || failed.some((id) => /prompt_coherent|memory|hallucin|strict/i.test(id));
+  if (missingTools) return false;
+  // validation_passed / qualidade / coerência: tools já correram (mesmo ilegais) —
+  // NÃO reexecutar HTTP (evita embratur×2 + side-effects). Só regenerar reply.
+  return true;
 }

@@ -122,6 +122,8 @@ export function buildExecutionInspectorView(input: {
   let strictMode: ExecutionInspectorView["strictMode"] = null;
   let memoryUsed: unknown = null;
   const tools: ExecutionInspectorView["tools"] = [];
+  /** Dedup call+result: key = nodeId da tool. */
+  const toolsByNodeId = new Map<string, ExecutionInspectorView["tools"][number]>();
   let graphEvents: AgentGraphEvent[] = [];
   let hitlPendingId: string | null = null;
   let checkpointThreadId: string | null = null;
@@ -168,14 +170,23 @@ export function buildExecutionInspectorView(input: {
       if (!supervisor) supervisor = parseSupervisorApproval(e.message, e.level);
     }
     if (e.nodeId === "strict_mode") {
-      const output =
-        e.outputContext &&
-        typeof e.outputContext === "object" &&
-        typeof (e.outputContext as Record<string, unknown>).output === "object"
-          ? ((e.outputContext as Record<string, unknown>).output as Record<string, unknown>)
+      // automationExecutionLog guarda extra.output directamente em outputContext (sem wrapper).
+      const raw =
+        e.outputContext && typeof e.outputContext === "object"
+          ? (e.outputContext as Record<string, unknown>)
           : null;
-      const confidence = typeof output?.confidence === "number" ? output.confidence : null;
-      const blockSend = output?.blockSend === true;
+      const nested =
+        raw && typeof raw.output === "object" && raw.output
+          ? (raw.output as Record<string, unknown>)
+          : null;
+      const output = nested ?? raw;
+      let confidence = typeof output?.confidence === "number" ? output.confidence : null;
+      if (confidence == null) {
+        const m = e.message.match(/Confiança\s+(\d+)\s*%/i);
+        if (m) confidence = Number(m[1]);
+      }
+      const blockSend =
+        output?.blockSend === true || /hard-block|bloqueado|Envio bloqueado/i.test(e.message);
       const reasons = Array.isArray(output?.reasons)
         ? (output!.reasons as unknown[]).filter((r): r is string => typeof r === "string")
         : [];
@@ -185,17 +196,20 @@ export function buildExecutionInspectorView(input: {
           typeof output?.minConfidence === "number"
             ? output.minConfidence
             : STRICT_MODE_MIN_CONFIDENCE,
-        blocked: blockSend || /hard-block|bloqueado/i.test(e.message),
+        blocked: blockSend,
         reasons,
       };
     }
     if (e.nodeId === "outbound") {
-      const chars =
-        e.outputContext &&
-        typeof e.outputContext === "object" &&
-        typeof (e.outputContext as Record<string, unknown>).output === "object"
-          ? ((e.outputContext as Record<string, unknown>).output as Record<string, unknown>).chars
+      const ctx =
+        e.outputContext && typeof e.outputContext === "object"
+          ? (e.outputContext as Record<string, unknown>)
           : null;
+      const nested =
+        ctx && typeof ctx.output === "object" && ctx.output
+          ? (ctx.output as Record<string, unknown>)
+          : null;
+      const chars = typeof (nested ?? ctx)?.chars === "number" ? ((nested ?? ctx)!.chars as number) : null;
       if (!replySent && typeof chars === "number" && userMessage) {
         replySent = `(resposta enviada — ${chars} caracteres)`;
       }
@@ -209,14 +223,28 @@ export function buildExecutionInspectorView(input: {
             : e.level === "INFO" || e.level === "DEBUG"
               ? true
               : null;
-      tools.push({
-        name: e.nodeName.replace(/^Tool:\s*/i, "").trim() || e.nodeId,
-        ok,
-        preview: e.message.slice(0, 400),
-        at: e.createdAt,
-      });
+      const name = e.nodeName.replace(/^Tool:\s*/i, "").trim() || e.nodeId;
+      const isResult = /Resultado da ferramenta/i.test(e.message);
+      const prev = toolsByNodeId.get(e.nodeId);
+      if (prev) {
+        toolsByNodeId.set(e.nodeId, {
+          name,
+          ok: ok === false ? false : prev.ok,
+          preview: isResult ? e.message.slice(0, 400) : prev.preview,
+          at: e.createdAt,
+        });
+      } else {
+        toolsByNodeId.set(e.nodeId, {
+          name,
+          ok,
+          preview: e.message.slice(0, 400),
+          at: e.createdAt,
+        });
+      }
     }
   }
+
+  tools.push(...toolsByNodeId.values());
 
   const durationMs =
     input.finishedAt != null

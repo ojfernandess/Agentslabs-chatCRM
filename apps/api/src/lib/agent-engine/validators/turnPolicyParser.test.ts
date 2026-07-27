@@ -86,13 +86,17 @@ test("blockEscalation alone blocks transfer even without exclusive tools", () =>
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
-test("resolveTurnPolicy applies exclusive on sim", () => {
+test("resolveTurnPolicy on sim blocks escalation but does not exclusive-lock embratur-only", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
     { userMessage: "sim" },
   );
   assert.ok(policy.forbiddenSameTurnPairs.length >= 1);
-  assert.ok(policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length >= 1);
+  assert.equal(policy.blockEscalation, true);
+  // Ficha→S10 precisa de audaar_check_in; exclusive S9 não pode aplicar a todo "sim"
+  assert.equal(policy.exclusiveAllowedTools, null);
+  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
+  assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
 test("validateToolOutcomesAgainstTurnPolicy blocks reference+check_in", () => {
@@ -141,6 +145,31 @@ test("shouldUseReplyOnlyRetry when tools succeeded and reply quality failed", ()
     shouldUseReplyOnlyRetry({
       toolOutcomes: [],
       supervisorChecks: [{ id: "prompt_coherent", passed: false }],
+    }),
+    false,
+  );
+});
+
+test("shouldUseReplyOnlyRetry on validation_passed failure does not re-run tools", () => {
+  // HJ2XQZXO 17:33: transfer ilegal já executado → retry deve ser reply-only
+  assert.equal(
+    shouldUseReplyOnlyRetry({
+      toolOutcomes: [
+        { name: "embratur-reference", ok: true },
+        { name: "transfer_to_team", ok: true },
+      ],
+      supervisorChecks: [
+        { id: "validation_passed", passed: false },
+        { id: "tool_used", passed: true },
+        { id: "llm_supervisor", passed: true },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldUseReplyOnlyRetry({
+      toolOutcomes: [{ name: "embratur-reference", ok: true }],
+      supervisorChecks: [{ id: "tool_used", passed: false }],
     }),
     false,
   );

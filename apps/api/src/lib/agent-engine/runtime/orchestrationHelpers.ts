@@ -32,6 +32,8 @@ export type OrchestrationState = {
   blockReply?: boolean;
   eilFacts?: FactStore;
   eilSnapshot?: EilSnapshot;
+  /** Checks do último Supervisor — usados no reply-only retry. */
+  lastSupervisorChecks?: Array<{ id: string; passed: boolean }>;
 };
 
 export type OrchestrationHook = (state: OrchestrationState) => Promise<void>;
@@ -86,6 +88,7 @@ export async function runOrchestratedRuntime(
       state.retryCount > 0 &&
       shouldUseReplyOnlyRetry({
         toolOutcomes: state.toolOutcomes,
+        supervisorChecks: state.lastSupervisorChecks,
       });
     const priorOk = state.toolOutcomes.filter((t) => t.ok);
     traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
@@ -172,6 +175,7 @@ export async function runOrchestratedRuntime(
         }),
       );
       state.supervisorApproved = supTrace.approved;
+      state.lastSupervisorChecks = supTrace.checks.map((c) => ({ id: c.id, passed: c.passed }));
       traceBuilder.endNode("supervisor", supTrace.approved ? "ok" : "warn", supTrace.summary);
     } else {
       // Sem Supervisor: respeitar Tool Validator no modo estrito
