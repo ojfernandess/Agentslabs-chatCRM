@@ -94,9 +94,17 @@ export async function applyEilConfigToAgent(opts: {
   botId: string;
   eil?: Record<string, unknown>;
   toolEilBindings?: ToolEilBinding[];
+  /** Merge opcional em cada binding (ex.: MCP `toolEil` override). */
+  toolEil?: Record<string, unknown>;
 }): Promise<ApplyEilConfigResult> {
   const eilBundle = opts.eil ?? { ...DEFAULT_ADDITIONAL_PARTY_EIL };
-  const bindings = opts.toolEilBindings ?? DEFAULT_TOOL_EIL_BINDINGS;
+  const baseBindings = opts.toolEilBindings ?? DEFAULT_TOOL_EIL_BINDINGS;
+  const bindings: ToolEilBinding[] = opts.toolEil
+    ? baseBindings.map((b) => ({
+        pattern: b.pattern,
+        eil: { ...b.eil, ...opts.toolEil },
+      }))
+    : baseBindings;
 
   const profile = await prisma.automationAgentProfile.findFirst({
     where: { botId: opts.botId, organizationId: opts.organizationId },
