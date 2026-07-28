@@ -236,7 +236,7 @@ export function buildGenericReplyOnlyRetryPromptBlock(opts: {
   }
   if (turnPlan.matchedPatternIds.includes("confirmation_travel_form")) {
     lines.push(
-      "- Formulário já confirmado: avance só com a tool de conclusão já refletida nos factos — **PROIBIDO** reabrir titular ou pedir o formulário outra vez.",
+      "- Formulário já confirmado: se a tool de conclusão OK → mensagem humana de sucesso (ou Passo 8 com factos de consulta/KB). **PROIBIDO** dumps `data.campo` · reabrir titular.",
     );
   }
   if (turnPlan.turnPolicy.forbiddenSameTurnPairs.length > 0) {

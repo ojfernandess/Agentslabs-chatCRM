@@ -61,6 +61,8 @@ export {
   isSkippedToolOutcome,
   replyReasksSameConfirmationGate,
   buildAdvanceAskFromReferenceCatalog,
+  primaryFinalizeToolHints,
+  isPostCompletionDeliveryTool,
   type TurnPolicy,
   type ForbiddenToolPair,
   type ConfirmationGateKind,

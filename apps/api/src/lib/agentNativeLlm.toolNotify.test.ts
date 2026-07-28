@@ -4,6 +4,7 @@ import {
   buildDeterministicReplyFromKnowledge,
   buildDeterministicReplyFromToolOutcomes,
   buildGroundedConfirmationFromToolOutcomes,
+  buildCompletionSuccessAck,
   collectScalarFactsFromPayload,
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -355,6 +356,35 @@ test("buildGroundedConfirmationFromToolOutcomes uses structuredPayload scalars o
   assert.doesNotMatch(text!, /undefined/);
   assert.doesNotMatch(text!, /secret|nope/i);
   assert.match(text!, /Confirma\?/);
+});
+
+test("buildCompletionSuccessAck never dumps JSON paths", () => {
+  const ack = buildCompletionSuccessAck([
+    {
+      name: "audaar_check_in",
+      ok: true,
+      preview: JSON.stringify({
+        ok: true,
+        statusCode: 200,
+        data: { reservation: { reservationId: 279256, localizer: "7SAFR8UC" } },
+      }),
+    },
+  ]);
+  assert.ok(ack);
+  assert.match(ack!, /check-in foi concluído/i);
+  assert.doesNotMatch(ack!, /data\.|reservationId|Confirma\?/);
+});
+
+test("buildGroundedConfirmationFromToolOutcomes skips completion tools", () => {
+  const text = buildGroundedConfirmationFromToolOutcomes([
+    {
+      name: "audaar_check_in",
+      ok: true,
+      preview: '{"ok":true}',
+      structuredPayload: { data: { reservation: { reservationId: 1 } } },
+    },
+  ]);
+  assert.equal(text, null);
 });
 
 test("collectScalarFactsFromPayload skips empty and sensitive keys", () => {

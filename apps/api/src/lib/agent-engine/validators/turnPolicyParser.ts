@@ -395,6 +395,26 @@ export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
   return [...hints];
 }
 
+/**
+ * Só a tool de finalização (ex.: audaar_check_in) — exclui uploads/selfies
+ * que aparecem no playbook junto a S10 mas NÃO são o passo de confirmação da ficha.
+ */
+export function primaryFinalizeToolHints(hints: string[]): string[] {
+  const primary = hints.filter(
+    (h) =>
+      /check[_-]?in|submit|finalize|concluir|gravar|salvar|enviar|book|reservar/i.test(h) &&
+      !/upload|selfie|documento|document|photo|foto/i.test(h),
+  );
+  return primary.length > 0 ? primary : hints;
+}
+
+/** Após conclusão OK: tools de entrega (KB / consulta) no mesmo turno — evita depender de continuação proactiva. */
+export function isPostCompletionDeliveryTool(name: string): boolean {
+  if (isEscalationToolName(name)) return false;
+  if (isLikelyMutableOrCompletionTool(name, [])) return false;
+  return /buscar_conhecimento|knowledge|consultar_|lookup|disponib/i.test(name);
+}
+
 export function isLikelyMutableOrCompletionTool(
   name: string,
   completionHints: string[] = [],
@@ -471,8 +491,9 @@ export function resolveTurnPolicy(
       const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
       exclusiveAllowedTools = exclusive.length > 0 ? exclusive : null;
     } else if (gate === "travel_form_mirror") {
-      // Ficha confirmada → S10: só tools de conclusão
-      exclusiveAllowedTools = completionToolHints.length > 0 ? completionToolHints : null;
+      // Ficha confirmada → S10: só tools de finalização (não uploads)
+      const primary = primaryFinalizeToolHints(completionToolHints);
+      exclusiveAllowedTools = primary.length > 0 ? primary : null;
     }
     // data_collection / unknown: sem exclusive (pares + blockEscalation bastam)
   }
@@ -519,8 +540,15 @@ export function validateToolOutcomesAgainstTurnPolicy(
 
   if (policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0) {
     const exemptCompletion = exclusiveExemptsCompletionTools(policy);
+    const completionOk = effective.some(
+      (t) =>
+        t.ok !== false &&
+        isLikelyMutableOrCompletionTool(t.name, policy.completionToolHints),
+    );
     for (const name of names) {
       if (isEscalationToolName(name)) continue;
+      // Pós-conclusão no mesmo turno: KB/consulta permitidos (Passo 8)
+      if (completionOk && isPostCompletionDeliveryTool(name)) continue;
       // Ficha→sim→check_in: conclusão só isenta quando o allowlist é de S10
       if (
         exemptCompletion &&
@@ -628,12 +656,14 @@ export function formatTurnPolicyForSupervisor(policy: TurnPolicy): string {
 
 /**
  * Bloqueio pre-exec unificado: escalonamento, exclusividade e pares proibidos.
+ * @param opts.completionAlreadySucceeded — após mutação OK, permite KB/consulta no mesmo turno.
  */
 export function turnPolicyPreExecBlockReasonForTurn(
   toolName: string,
   existingToolNames: string[],
   policy: TurnPolicy,
   requiredToolNames: string[] = [],
+  opts?: { completionAlreadySucceeded?: boolean },
 ): string | null {
   const requiredToolsBlock = requiredToolsPreExecBlockReason({
     toolName,
@@ -641,10 +671,33 @@ export function turnPolicyPreExecBlockReasonForTurn(
     requiredToolNames,
   });
   if (requiredToolsBlock) return requiredToolsBlock;
-  const exclusive = turnPolicyPreExecBlockReason(toolName, policy);
-  if (exclusive) return exclusive;
+
+  // Pós-conclusão: permitir tools de entrega antes do exclusive lock
+  const deliveryOk =
+    opts?.completionAlreadySucceeded === true && isPostCompletionDeliveryTool(toolName);
+
+  if (!deliveryOk) {
+    const exclusive = turnPolicyPreExecBlockReason(toolName, policy);
+    if (exclusive) return exclusive;
+  } else if (policy.blockEscalation && isEscalationToolName(toolName)) {
+    return turnPolicyPreExecBlockReason(toolName, policy);
+  }
+
   const proposed = [...existingToolNames, toolName];
-  const pairHit = findForbiddenPairViolation(proposed, policy.forbiddenSameTurnPairs);
+  // Pares com tool de conclusão já OK + delivery: não bloquear consultar/KB após check_in
+  const pairsToCheck =
+    opts?.completionAlreadySucceeded && isPostCompletionDeliveryTool(toolName)
+      ? policy.forbiddenSameTurnPairs.filter(
+          (p) =>
+            !(
+              (isLikelyMutableOrCompletionTool(p.a, policy.completionToolHints) &&
+                isPostCompletionDeliveryTool(p.b)) ||
+              (isLikelyMutableOrCompletionTool(p.b, policy.completionToolHints) &&
+                isPostCompletionDeliveryTool(p.a))
+            ),
+        )
+      : policy.forbiddenSameTurnPairs;
+  const pairHit = findForbiddenPairViolation(proposed, pairsToCheck);
   if (pairHit) {
     return `PROIBIDO no mesmo turno: ${pairHit.a} + ${pairHit.b}. PARE e responda só com a acção da categoria actual.`;
   }

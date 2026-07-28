@@ -13,6 +13,8 @@ import {
   classifyConfirmationGate,
   buildAdvanceAskFromReferenceCatalog,
   replyReasksSameConfirmationGate,
+  primaryFinalizeToolHints,
+  isPostCompletionDeliveryTool,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
@@ -145,6 +147,11 @@ test("resolveTurnPolicy on sim after travel form mirror allows check_in only", (
     },
   );
   assert.ok(policy.exclusiveAllowedTools?.some((t) => /check_in/i.test(t)));
+  assert.equal(
+    policy.exclusiveAllowedTools?.some((t) => /upload|selfie|documento/i.test(t)),
+    false,
+    "uploads must not be exclusive/required on ficha→S10",
+  );
   assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
   assert.ok(
     turnPolicyPreExecBlockReason("embratur-reference", policy),
@@ -462,4 +469,43 @@ test("buildExecutionTurnPlan requires embratur on sim after titular mirror", () 
   assert.ok(plan.matchedPatternIds.includes("confirmation_titular"));
   assert.ok(plan.requiredToolNames.some((n) => /embratur|reference/i.test(n)));
   assert.ok(plan.turnPolicy.exclusiveAllowedTools?.some((n) => /embratur|reference/i.test(n)));
+});
+
+test("primaryFinalizeToolHints drops upload tools", () => {
+  const primary = primaryFinalizeToolHints([
+    "audaar_check_in",
+    "checkin_upload_selfie",
+    "checkin_upload_documento",
+    "s-check-in",
+  ]);
+  assert.deepEqual(primary.sort(), ["audaar_check_in", "s-check-in"].sort());
+});
+
+test("after check_in OK, KB is allowed same turn (Passo 8)", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: "Confirme a FICHA DE VIAGEM. Está tudo certo?",
+    },
+  );
+  assert.ok(isPostCompletionDeliveryTool("buscar_conhecimento"));
+  assert.equal(
+    turnPolicyPreExecBlockReasonForTurn(
+      "buscar_conhecimento",
+      ["audaar_check_in"],
+      policy,
+      ["audaar_check_in"],
+      { completionAlreadySucceeded: true },
+    ),
+    null,
+  );
+  const alerts = validateToolOutcomesAgainstTurnPolicy(
+    [
+      { name: "audaar_check_in", ok: true, preview: '{"ok":true,"statusCode":200}' },
+      { name: "buscar_conhecimento", ok: true, preview: '{"found":true}' },
+    ],
+    policy,
+  );
+  assert.equal(alerts.length, 0, alerts.join("; "));
 });

@@ -499,6 +499,7 @@ export function collectScalarFactsFromPayload(
 /**
  * Confirmação grounded só com campos presentes no payload das tools.
  * Usado quando o LLM inventa campos (RG, profissão, …) e o strict mode bloquearia o envio.
+ * NÃO usar após tools de conclusão (check_in) — ver buildCompletionSuccessAck.
  */
 export function buildGroundedConfirmationFromToolOutcomes(
   toolOutcomes: Array<{
@@ -509,9 +510,15 @@ export function buildGroundedConfirmationFromToolOutcomes(
   }>,
 ): string | null {
   const preferred = [
-    ...toolOutcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento"),
-    ...toolOutcomes.filter((t) => t.ok),
-  ];
+    ...toolOutcomes.filter(
+      (t) =>
+        t.ok &&
+        t.name !== "buscar_conhecimento" &&
+        !isLikelyMutableOrCompletionTool(t.name, []) &&
+        !isSkippedToolOutcome(t.preview),
+    ),
+    ...toolOutcomes.filter((t) => t.ok && !isSkippedToolOutcome(t.preview)),
+  ].filter((t) => !isLikelyMutableOrCompletionTool(t.name, []));
   const seen = new Set<string>();
   const facts: Array<{ key: string; value: string }> = [];
 
@@ -541,6 +548,30 @@ export function buildGroundedConfirmationFromToolOutcomes(
     lines.join("\n") +
     "\n\nConfirma?"
   ).slice(0, 3500);
+}
+
+/**
+ * Ack humano após tool de conclusão OK.
+ * Nunca envia paths JSON (`data.reservation…`) ao cliente — padrão dos melhores agent engines:
+ * mutação → mensagem curta de sucesso; entrega detalhada via tools de KB/consulta no mesmo turno.
+ */
+export function buildCompletionSuccessAck(
+  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>,
+): string | null {
+  const hit = toolOutcomes.find(
+    (t) =>
+      t.ok &&
+      !isSkippedToolOutcome(t.preview) &&
+      isLikelyMutableOrCompletionTool(t.name, []),
+  );
+  if (!hit) return null;
+  if (/check[_-]?in/i.test(hit.name)) {
+    return (
+      "Seu check-in foi concluído com sucesso! " +
+      "Em seguida envio os detalhes da sua estadia."
+    );
+  }
+  return "Operação concluída com sucesso.";
 }
 
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
@@ -2126,7 +2157,9 @@ async function generateNativeAgentReplyCore(input: {
             "Após a tool de referência/catálogo: peça os campos do formulário (com opções do JSON). **PROIBIDO** declarar check-in/conclusão sem tool de conclusão OK.\n"
           : "") +
         (turnPlan.matchedPatternIds.includes("confirmation_travel_form")
-          ? "Última msg SUA pedia confirmação de formulário preenchido + hóspede confirmou → use só a tool de conclusão. **PROIBIDO** reabrir etapas anteriores.\n"
+          ? "Última msg SUA pedia confirmação de formulário preenchido + hóspede confirmou → use a tool de conclusão.\n" +
+            "Após HTTP 200 da conclusão **neste turno**: pode chamar consulta/KB e enviar a mensagem completa de entrega (Passo 8) — **sem** continuação proactiva.\n" +
+            "**PROIBIDO** inventar Wi-Fi/endereço/senha · enviar paths JSON (`data.*`) ao hóspede · reabrir etapas anteriores.\n"
           : "")
       : "";
 
@@ -2465,11 +2498,18 @@ async function generateNativeAgentReplyCore(input: {
               const existingNames = toolRoundOutcomes
                 .filter((t) => !isSkippedToolOutcome(t.preview))
                 .map((t) => t.name);
+              const completionAlreadySucceeded = toolRoundOutcomes.some(
+                (t) =>
+                  t.ok &&
+                  !isSkippedToolOutcome(t.preview) &&
+                  isLikelyMutableOrCompletionTool(t.name, turnPolicy.completionToolHints),
+              );
               const httpPolicyBlock = turnPolicyPreExecBlockReasonForTurn(
                 row.name,
                 existingNames,
                 turnPolicy,
                 requiredToolNamesForTurn,
+                { completionAlreadySucceeded },
               );
               if (httpPolicyBlock) {
                 return finishToolCall(
@@ -2587,13 +2627,19 @@ async function generateNativeAgentReplyCore(input: {
             const nativeExisting = toolRoundOutcomes
               .filter((t) => !isSkippedToolOutcome(t.preview))
               .map((t) => t.name);
-            const nativeBlock =
-              turnPolicyPreExecBlockReasonForTurn(
-                name,
-                nativeExisting,
-                turnPolicy,
-                requiredToolNamesForTurn,
-              );
+            const completionAlreadySucceeded = toolRoundOutcomes.some(
+              (t) =>
+                t.ok &&
+                !isSkippedToolOutcome(t.preview) &&
+                isLikelyMutableOrCompletionTool(t.name, turnPolicy.completionToolHints),
+            );
+            const nativeBlock = turnPolicyPreExecBlockReasonForTurn(
+              name,
+              nativeExisting,
+              turnPolicy,
+              requiredToolNamesForTurn,
+              { completionAlreadySucceeded },
+            );
             if (nativeBlock) {
               return finishToolCall(
                 JSON.stringify({
@@ -3093,7 +3139,7 @@ async function generateNativeAgentReplyCore(input: {
         approved = false;
         summary = `${summary} [turn policy: ${turnPolicyAlerts.join("; ")}]`.slice(0, 500);
       }
-      // Invenção após tools OK: substituir pela confirmação grounded (só campos do payload).
+      // Invenção após tools OK: conclusão → ack humano; lookup → confirmação grounded.
       if (
         !approved &&
         llmFlagsInvention &&
@@ -3101,11 +3147,16 @@ async function generateNativeAgentReplyCore(input: {
         policyAlerts.length === 0 &&
         turnPolicyAlerts.length === 0
       ) {
-        const grounded = buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
+        const completionAck = buildCompletionSuccessAck(toolRoundOutcomes);
+        const grounded =
+          completionAck ?? buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
         if (grounded) {
           replyText = grounded;
           approved = true;
-          summary = `${summary} [auto: reply grounded a partir do payload da tool]`.slice(0, 500);
+          summary = `${summary} [auto: reply ${completionAck ? "completion ack" : "grounded"} a partir do payload da tool]`.slice(
+            0,
+            500,
+          );
         }
       }
       if (
@@ -3214,25 +3265,32 @@ async function generateNativeAgentReplyCore(input: {
         "strict mode hard-block — reply not sent",
       );
 
-      // Última linha: tools OK → enviar confirmação grounded / avanço de formulário em vez de silêncio.
+      // Última linha: tools OK → ack de conclusão / avanço de formulário / grounded — nunca dump JSON.
       const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
       if (successfulTools.length > 0) {
-        const advanceAsk = turnPlan.matchedPatternIds.includes("confirmation_titular")
-          ? buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes)
-          : null;
+        const completionAck = buildCompletionSuccessAck(toolRoundOutcomes);
+        const advanceAsk =
+          !completionAck && turnPlan.matchedPatternIds.includes("confirmation_titular")
+            ? buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes)
+            : null;
         const grounded =
-          advanceAsk ?? buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
+          completionAck ??
+          advanceAsk ??
+          buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
         if (grounded) {
           replyText = grounded;
           llmSupervisorApproved = true;
-          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${advanceAsk ? "advance form ask" : "grounded tool payload"}]`
+          const rescueKind = completionAck
+            ? "completion ack"
+            : advanceAsk
+              ? "advance form ask"
+              : "grounded tool payload";
+          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${rescueKind}]`
             .trim()
             .slice(0, 500);
           ex?.info(
             { id: "strict_mode", name: "Modo estrito" },
-            advanceAsk
-              ? "Hard-block contornado — pedido do formulário seguinte a partir do catálogo"
-              : "Hard-block contornado — reply grounded a partir do payload da tool",
+            `Hard-block contornado — ${rescueKind}`,
             { output: { replyPreview: replyText.slice(0, 500) } },
           );
         } else {
