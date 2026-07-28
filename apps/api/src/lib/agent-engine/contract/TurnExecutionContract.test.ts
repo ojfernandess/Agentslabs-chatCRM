@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildGenericReplyOnlyRetryPromptBlock,
+  formatPriorToolFactsForReplyOnly,
   pendingRequiredToolNames,
   shouldAllowPlainChatFallback,
   shouldUseReplyOnlyRetryForTurn,
@@ -116,4 +117,37 @@ test("buildGenericReplyOnlyRetryPromptBlock is segment-agnostic", () => {
   assert.match(block, /PROIBIDO.*invocar ferramentas/i);
   assert.match(block, /Confirmação detectada/i);
   assert.doesNotMatch(block, /Embratur|CPF|audaar_consultar_reserva/);
+});
+
+test("buildGenericReplyOnlyRetryPromptBlock injects prior tool facts", () => {
+  const turnPlan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: checkinPlaybook } },
+    userMessage: "41026299802",
+    availableToolNames: ["audaar_consultar_main_guest"],
+  });
+  const block = buildGenericReplyOnlyRetryPromptBlock({
+    turnPlan,
+    userMessage: "41026299802",
+    priorSuccessfulToolOutcomes: [
+      {
+        name: "audaar_consultar_main_guest",
+        ok: true,
+        preview: JSON.stringify({ found: true, name: "Odair", documentNumber: "41026299802" }),
+      },
+    ],
+  });
+  assert.match(block, /factos das ferramentas/i);
+  assert.match(block, /audaar_consultar_main_guest/);
+  assert.match(block, /Odair/);
+  assert.match(block, /undefined/);
+  assert.match(block, /PROIBIDO.*flowSlots/i);
+});
+
+test("formatPriorToolFactsForReplyOnly skips failed tools", () => {
+  const facts = formatPriorToolFactsForReplyOnly([
+    { name: "ok_tool", ok: true, preview: '{"a":1}' },
+    { name: "fail_tool", ok: false, preview: "error" },
+  ]);
+  assert.match(facts, /ok_tool/);
+  assert.doesNotMatch(facts, /fail_tool/);
 });

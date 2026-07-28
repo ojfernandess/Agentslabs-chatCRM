@@ -34,6 +34,7 @@ export {
   shouldAllowPlainChatFallback,
   shouldUseReplyOnlyRetryForTurn,
   buildGenericReplyOnlyRetryPromptBlock,
+  formatPriorToolFactsForReplyOnly,
   buildRetryExecutionHints,
   ensureTurnPlanInInput,
   pendingRequiredToolNames,

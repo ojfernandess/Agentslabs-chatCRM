@@ -135,16 +135,40 @@ export function shouldUseReplyOnlyRetryForTurn(opts: {
   });
 }
 
+/** Compacta previews de tools OK para grounding do retry reply-only (genérico). */
+export function formatPriorToolFactsForReplyOnly(
+  prior: Array<{ name: string; ok: boolean; preview: string }> | undefined,
+  maxChars = 3500,
+): string {
+  const ok = (prior ?? []).filter((t) => t.ok && t.preview.trim());
+  if (ok.length === 0) return "";
+  const blocks: string[] = [];
+  let used = 0;
+  for (const t of ok) {
+    const preview = t.preview.trim().slice(0, 1200);
+    const block = `### ${t.name}\n${preview}`;
+    if (used + block.length > maxChars) break;
+    blocks.push(block);
+    used += block.length;
+  }
+  return blocks.join("\n\n");
+}
+
 /** Prompt genérico para retry reply-only — derivado do turnPlan, não hardcoded por segmento. */
 export function buildGenericReplyOnlyRetryPromptBlock(opts: {
   turnPlan: ExecutionTurnPlan;
   userMessage: string;
+  priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
 }): string {
   const { turnPlan, userMessage } = opts;
   const msg = userMessage.trim();
   const lines = [
     "\n\n[OpenConduit — retry reply-only]",
     "O Supervisor pediu regenerar **apenas a resposta** — **PROIBIDO** invocar ferramentas neste retry.",
+    "- Use **somente** factos das ferramentas já executadas neste turno (bloco abaixo, se existir).",
+    "- **PROIBIDO** inventar campos ausentes no JSON das tools (RG, profissão, endereço, etc.).",
+    "- **PROIBIDO** escrever o literal `undefined`/`null` — omita o campo se não existir no resultado.",
+    "- **PROIBIDO** reutilizar flowSlots/memória para preencher campos que a tool não devolveu.",
   ];
 
   if (turnPlan.turnPolicy.blockEscalation) {
@@ -180,6 +204,11 @@ export function buildGenericReplyOnlyRetryPromptBlock(opts: {
   }
   if (turnPlan.turnPolicy.forbiddenSameTurnPairs.length > 0) {
     lines.push("- **PROIBIDO** combinar ferramentas de categorias diferentes no mesmo turno.");
+  }
+
+  const toolFacts = formatPriorToolFactsForReplyOnly(opts.priorSuccessfulToolOutcomes);
+  if (toolFacts) {
+    lines.push("", "[OpenConduit — factos das ferramentas deste turno]", toolFacts);
   }
 
   return `${lines.join("\n")}\n`;

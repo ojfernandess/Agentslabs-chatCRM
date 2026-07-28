@@ -636,9 +636,27 @@ export const FORCED_KB_REPLY_PREFIX_RE = /^encontrei isto na nossa base de conhe
 
 const OUTBOUND_MAX_CHARS = 4000;
 
+/**
+ * Remove artefactos de espelhamento JS (`undefined`/`null` literais) que o modelo
+ * injeta ao montar templates com campos ausentes no JSON da tool.
+ */
+export function scrubLiteralUndefinedArtifacts(text: string): string {
+  let t = text;
+  if (!t) return t;
+  // "Campo: undefined" / "Campo — null"
+  t = t.replace(/([:\-–—]\s*)(undefined|null)\b/gi, "$1");
+  // Literais soltos
+  t = t.replace(/\b(undefined|null)\b/gi, "");
+  // Linhas de campo vazias após scrub ("RG:" / "- Profissão:")
+  t = t.replace(/^[ \t]*[-•*]?\s*[^:\n]{1,60}:\s*$/gm, "");
+  t = t.replace(/[ \t]{2,}/g, " ");
+  t = t.replace(/\n{3,}/g, "\n\n");
+  return t.trim();
+}
+
 /** Evita enviar JSON/código bruto de tools ao contacto. */
 export function sanitizeOutboundAgentReply(text: string): string {
-  let t = text.trim();
+  let t = scrubLiteralUndefinedArtifacts(text.trim());
   if (!t) return t;
   t = t.replace(/```[\s\S]*?```/g, "").trim();
   if (/^\s*[\[{]/.test(t) && /"(found|articles|ok|error|tool)"\s*:/i.test(t)) {
@@ -1716,6 +1734,19 @@ async function generateNativeAgentReplyCore(input: {
         "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com frases de espera.\n"
       : "";
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
+  // Reply-only: semear tools OK do turno anterior para o supervisor/EIL verem 1/N
+  // (sem isto o retry aparece como 0/0 e rejeita confirmações grounded).
+  if (executionHints?.replyOnlyRetry) {
+    for (const t of executionHints.priorSuccessfulToolOutcomes ?? []) {
+      if (!t.ok || !t.name.trim()) continue;
+      toolRoundOutcomes.push({
+        name: t.name,
+        ok: true,
+        preview: t.preview,
+        monitored: false,
+      });
+    }
+  }
   let knowledgeSearchCallsThisTurn = 0;
 
   const automationCtx = await loadAutomationConversationContext(conversation.id);
@@ -1923,7 +1954,11 @@ async function generateNativeAgentReplyCore(input: {
     : "";
 
   const replyOnlyRetryPrompt = executionHints?.replyOnlyRetry
-    ? buildGenericReplyOnlyRetryPromptBlock({ turnPlan, userMessage: userMessageRaw })
+    ? buildGenericReplyOnlyRetryPromptBlock({
+        turnPlan,
+        userMessage: userMessageRaw,
+        priorSuccessfulToolOutcomes: executionHints.priorSuccessfulToolOutcomes,
+      })
     : "";
 
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
@@ -2705,6 +2740,11 @@ async function generateNativeAgentReplyCore(input: {
         },
       );
     }
+  }
+
+  // Remover literais `undefined`/`null` antes do supervisor (espelho JS de campos ausentes).
+  if (replyText.trim()) {
+    replyText = scrubLiteralUndefinedArtifacts(replyText);
   }
 
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
