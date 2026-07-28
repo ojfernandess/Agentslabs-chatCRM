@@ -86,6 +86,119 @@ export function exclusiveExemptsCompletionTools(policy: TurnPolicy): boolean {
   return ex.some((a) => isLikelyMutableOrCompletionTool(a, policy.completionToolHints));
 }
 
+/** True se a reply volta a pedir a mesma confirmação que a última msg outbound. */
+export function replyReasksSameConfirmationGate(
+  replyText: string,
+  lastAssistantMessage: string,
+): boolean {
+  const prior = classifyConfirmationGate(lastAssistantMessage);
+  if (prior !== "titular_mirror" && prior !== "travel_form_mirror") return false;
+  return classifyConfirmationGate(replyText) === prior;
+}
+
+type CatalogItem = { id?: number | string; name?: string };
+
+function extractNamedCatalog(
+  payload: unknown,
+  keys: string[],
+): CatalogItem[] {
+  if (!payload || typeof payload !== "object") return [];
+  const root = payload as Record<string, unknown>;
+  const data =
+    root.data && typeof root.data === "object"
+      ? (root.data as Record<string, unknown>)
+      : root;
+  for (const key of keys) {
+    const arr = data[key];
+    if (!Array.isArray(arr) || arr.length === 0) continue;
+    const items: CatalogItem[] = [];
+    for (const el of arr.slice(0, 9)) {
+      if (!el || typeof el !== "object") continue;
+      const o = el as Record<string, unknown>;
+      const name = typeof o.name === "string" ? o.name.split(" - ")[0]!.trim() : undefined;
+      if (!name) continue;
+      items.push({
+        id: typeof o.id === "number" || typeof o.id === "string" ? o.id : undefined,
+        name,
+      });
+    }
+    if (items.length > 0) return items;
+  }
+  return [];
+}
+
+/**
+ * Após confirmação de identidade + tool de catálogo/referência OK: pedir formulário seguinte.
+ * Genérico — usa listas `reasons`/`transports` (ou equivalentes) do JSON da tool.
+ */
+export function buildAdvanceAskFromReferenceCatalog(
+  toolOutcomes: Array<{
+    name: string;
+    ok: boolean;
+    preview: string;
+    structuredPayload?: unknown;
+  }>,
+): string | null {
+  const okTools = toolOutcomes.filter(
+    (t) => t.ok && !isSkippedToolOutcome(t.preview) && !/check[_-]?in/i.test(t.name),
+  );
+  for (const t of okTools) {
+    let payload: unknown = t.structuredPayload;
+    if (payload == null) {
+      try {
+        payload = JSON.parse(t.preview);
+      } catch {
+        continue;
+      }
+    }
+    // bodyPreview aninhado (HTTP wrapper)
+    if (payload && typeof payload === "object") {
+      const p = payload as Record<string, unknown>;
+      if (typeof p.bodyPreview === "string") {
+        try {
+          payload = JSON.parse(p.bodyPreview);
+        } catch {
+          /* keep wrapper */
+        }
+      }
+    }
+    const reasons = extractNamedCatalog(payload, ["reasons", "motivos", "travelReasons"]);
+    const transports = extractNamedCatalog(payload, [
+      "transports",
+      "transportes",
+      "transportTypes",
+    ]);
+    if (reasons.length === 0 && transports.length === 0) continue;
+
+    const reasonHint = reasons
+      .slice(0, 4)
+      .map((r) => r.name)
+      .filter(Boolean)
+      .join(", ");
+    const transportHint = transports
+      .slice(0, 4)
+      .map((r) => r.name)
+      .filter(Boolean)
+      .join(", ");
+
+    const lines = [
+      "Obrigado pela confirmação. Para avançarmos, informe:",
+      reasonHint
+        ? `• Motivo da viagem (ex.: ${reasonHint})`
+        : "• Motivo da viagem",
+      transportHint
+        ? `• Meio de transporte (ex.: ${transportHint})`
+        : "• Meio de transporte",
+      "• País de residência",
+      "• País de destino",
+      "• Cidade de procedência",
+      "• Cidade de destino",
+    ];
+    return lines.join("\n");
+  }
+  return null;
+}
+
 /** Escalonamento / handoff — nunca entram no allowlist de confirmação (C11). */
 const ESCALATION_TOOL_NAMES = new Set([
   "call_human",
@@ -372,15 +485,23 @@ export function resolveTurnPolicy(
   };
 }
 
+/** Tool pré-bloqueada pela política (exclusive/pair) — não conta como execução real. */
+export function isSkippedToolOutcome(preview: string | undefined): boolean {
+  return /"skipped"\s*:\s*true/i.test(preview ?? "");
+}
+
 /** Valida outcomes do turno contra a política (genérico multi-segmento). */
 export function validateToolOutcomesAgainstTurnPolicy(
   toolOutcomes: Array<{ name: string; ok?: boolean; preview?: string }>,
   policy: TurnPolicy,
 ): string[] {
   const alerts: string[] = [];
-  if (toolOutcomes.length === 0) return alerts;
+  // Skip/block pre-exec (exclusive) NÃO é violação — a política já impediu o side-effect.
+  // Contá-los gerava falso alerta (ex.: reference OK + check_in skipped) → reply-only → loop.
+  const effective = toolOutcomes.filter((t) => !isSkippedToolOutcome(t.preview));
+  if (effective.length === 0) return alerts;
 
-  const names = toolOutcomes.map((t) => t.name);
+  const names = effective.map((t) => t.name);
   const violation = findForbiddenPairViolation(names, policy.forbiddenSameTurnPairs);
   if (violation) {
     alerts.push(

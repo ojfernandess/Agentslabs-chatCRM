@@ -119,6 +119,17 @@ test("buildGenericReplyOnlyRetryPromptBlock is segment-agnostic", () => {
   assert.doesNotMatch(block, /Embratur|CPF|audaar_consultar_reserva/);
 });
 
+test("buildGenericReplyOnlyRetryPromptBlock blocks titular re-ask on confirmation_titular", () => {
+  const turnPlan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: checkinPlaybook } },
+    userMessage: "sim",
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+    lastAssistantMessage: "Confirme os dados do TITULAR. Está tudo certo?",
+  });
+  const block = buildGenericReplyOnlyRetryPromptBlock({ turnPlan, userMessage: "sim" });
+  assert.match(block, /PROIBIDO.*reenviar espelho|mesma confirmação|Portão identidade/i);
+});
+
 test("buildGenericReplyOnlyRetryPromptBlock injects prior tool facts", () => {
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: checkinPlaybook } },

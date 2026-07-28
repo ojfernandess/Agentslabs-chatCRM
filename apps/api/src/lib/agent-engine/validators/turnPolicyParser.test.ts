@@ -11,6 +11,8 @@ import {
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
   classifyConfirmationGate,
+  buildAdvanceAskFromReferenceCatalog,
+  replyReasksSameConfirmationGate,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
@@ -366,6 +368,70 @@ test("findForbiddenPairViolation requires two distinct tool invocations", () => 
   const real = [{ a: "foo_lookup", b: "foo_submit", source: "test" }];
   assert.ok(findForbiddenPairViolation(["foo_lookup", "foo_submit"], real));
   assert.equal(findForbiddenPairViolation(["foo_lookup"], real), null);
+});
+
+test("validateToolOutcomesAgainstTurnPolicy ignores skipped exclusive blocks", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: "Confirme os dados do TITULAR. Confirma?",
+    },
+  );
+  assert.ok(policy.exclusiveAllowedTools?.length);
+  const alerts = validateToolOutcomesAgainstTurnPolicy(
+    [
+      { name: "embratur-reference", ok: true, preview: '{"ok":true}' },
+      {
+        name: "audaar_check_in",
+        ok: false,
+        preview:
+          '{"ok":false,"skipped":true,"reason":"turn_policy_exclusive","message":"fora"}',
+      },
+    ],
+    policy,
+  );
+  assert.equal(alerts.length, 0, `skipped check_in must not alert: ${alerts.join("; ")}`);
+});
+
+test("buildAdvanceAskFromReferenceCatalog uses reasons/transports", () => {
+  const ask = buildAdvanceAskFromReferenceCatalog([
+    {
+      name: "embratur-reference",
+      ok: true,
+      preview: JSON.stringify({
+        ok: true,
+        bodyPreview: JSON.stringify({
+          data: {
+            reasons: [{ id: 1, name: "Lazer/Férias - Leisure" }],
+            transports: [{ id: 2, name: "Automóvel - Car" }],
+          },
+        }),
+      }),
+    },
+  ]);
+  assert.ok(ask);
+  assert.match(ask!, /Motivo da viagem/i);
+  assert.match(ask!, /Lazer/i);
+  assert.match(ask!, /Automóvel/i);
+  assert.doesNotMatch(ask!, /TITULAR|Confirme os dados/i);
+});
+
+test("replyReasksSameConfirmationGate detects titular loop", () => {
+  assert.equal(
+    replyReasksSameConfirmationGate(
+      "Confirme os dados do TITULAR. Responda sim.",
+      "Encontrei cadastro. Confirme os dados do TITULAR.",
+    ),
+    true,
+  );
+  assert.equal(
+    replyReasksSameConfirmationGate(
+      "Informe motivo da viagem e transporte:",
+      "Confirme os dados do TITULAR.",
+    ),
+    false,
+  );
 });
 
 test("classifyConfirmationGate detects titular vs travel form", () => {

@@ -226,6 +226,19 @@ export function buildGenericReplyOnlyRetryPromptBlock(opts: {
       "- **PROIBIDO** misturar ferramentas de categorias diferentes · reiniciar o fluxo · pedir documentos já obtidos.",
     );
   }
+  if (turnPlan.matchedPatternIds.includes("confirmation_titular")) {
+    lines.push(
+      "- Portão identidade já confirmado neste turno: **PROIBIDO** reenviar espelho/confirmação de titular/cadastro.",
+    );
+    lines.push(
+      "- Com tool de referência/catálogo já executada: peça os **campos do formulário seguinte** (use opções do JSON da tool). **PROIBIDO** declarar conclusão/check-in sem tool de conclusão OK.",
+    );
+  }
+  if (turnPlan.matchedPatternIds.includes("confirmation_travel_form")) {
+    lines.push(
+      "- Formulário já confirmado: avance só com a tool de conclusão já refletida nos factos — **PROIBIDO** reabrir titular ou pedir o formulário outra vez.",
+    );
+  }
   if (turnPlan.turnPolicy.forbiddenSameTurnPairs.length > 0) {
     lines.push("- **PROIBIDO** combinar ferramentas de categorias diferentes no mesmo turno.");
   }

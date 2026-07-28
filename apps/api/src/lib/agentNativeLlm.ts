@@ -39,11 +39,14 @@ import {
   findForbiddenPairViolation,
   isConfirmationUserMessage,
   isLikelyMutableOrCompletionTool,
+  isSkippedToolOutcome,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
   validateToolOutcomesAgainstTurnPolicy,
+  replyReasksSameConfirmationGate,
+  buildAdvanceAskFromReferenceCatalog,
 } from "./agent-engine/validators/turnPolicyParser.js";
 import {
   buildGenericReplyOnlyRetryPromptBlock,
@@ -2119,7 +2122,8 @@ async function generateNativeAgentReplyCore(input: {
       ? "\n\n[OpenConduit — Portão de confirmação]\n" +
         `Neste turno use **somente**: ${turnPlan.turnPolicy.exclusiveAllowedTools.join(", ")}.\n` +
         (turnPlan.matchedPatternIds.includes("confirmation_titular")
-          ? "Última msg SUA pedia confirmação de cadastro/identidade + hóspede confirmou → avance para o próximo formulário do playbook. **PROIBIDO** ferramentas de conclusão neste turno · pedir a mesma confirmação outra vez.\n"
+          ? "Última msg SUA pedia confirmação de cadastro/identidade + hóspede confirmou → avance para o próximo formulário do playbook. **PROIBIDO** ferramentas de conclusão neste turno · pedir a mesma confirmação outra vez.\n" +
+            "Após a tool de referência/catálogo: peça os campos do formulário (com opções do JSON). **PROIBIDO** declarar check-in/conclusão sem tool de conclusão OK.\n"
           : "") +
         (turnPlan.matchedPatternIds.includes("confirmation_travel_form")
           ? "Última msg SUA pedia confirmação de formulário preenchido + hóspede confirmou → use só a tool de conclusão. **PROIBIDO** reabrir etapas anteriores.\n"
@@ -2458,7 +2462,9 @@ async function generateNativeAgentReplyCore(input: {
               // Nunca fazer `canonical ?? oc_tool_<uuid>` — `null` (permitido) + `??` cascata
               // para o UUID, que não satisfaz requiredToolNames e bloqueia a tool obrigatória
               // (ex.: C3 check-in → audaar_consultar_reserva bloqueada → reply vazia → strict 52%).
-              const existingNames = toolRoundOutcomes.map((t) => t.name);
+              const existingNames = toolRoundOutcomes
+                .filter((t) => !isSkippedToolOutcome(t.preview))
+                .map((t) => t.name);
               const httpPolicyBlock = turnPolicyPreExecBlockReasonForTurn(
                 row.name,
                 existingNames,
@@ -2578,7 +2584,9 @@ async function generateNativeAgentReplyCore(input: {
               );
             }
             // Política de turno: bloquear side-effects mutáveis ANTES de executeNativeTool
-            const nativeExisting = toolRoundOutcomes.map((t) => t.name);
+            const nativeExisting = toolRoundOutcomes
+              .filter((t) => !isSkippedToolOutcome(t.preview))
+              .map((t) => t.name);
             const nativeBlock =
               turnPolicyPreExecBlockReasonForTurn(
                 name,
@@ -2913,6 +2921,23 @@ async function generateNativeAgentReplyCore(input: {
     replyText = scrubLiteralUndefinedArtifacts(replyText);
   }
 
+  // Portão C11: reply-only / LLM por vezes re-pede o mesmo espelho após tool de catálogo OK.
+  if (
+    replyText.trim() &&
+    turnPlan.matchedPatternIds.includes("confirmation_titular") &&
+    replyReasksSameConfirmationGate(replyText, lastAssistantMessage)
+  ) {
+    const advance = buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes);
+    if (advance) {
+      replyText = advance;
+      ex?.info(
+        { id: "confirmation_gate", name: "Portão de confirmação" },
+        "Reply re-pedia a mesma confirmação — substituída por pedido do formulário seguinte",
+        { output: { replyPreview: replyText.slice(0, 400) } },
+      );
+    }
+  }
+
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
   const supervisorMode = engineConfig.supervisorMode ?? "both";
   let llmSupervisorApproved: boolean | null = null;
@@ -3054,7 +3079,9 @@ async function generateNativeAgentReplyCore(input: {
           summary,
         );
       const policyAlerts = (() => {
-        const names = toolRoundOutcomes.map((t) => t.name);
+        const names = toolRoundOutcomes
+          .filter((t) => !isSkippedToolOutcome(t.preview))
+          .map((t) => t.name);
         const pair = findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
         const turnAlerts = validateToolOutcomesAgainstTurnPolicy(
           toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
@@ -3187,19 +3214,25 @@ async function generateNativeAgentReplyCore(input: {
         "strict mode hard-block — reply not sent",
       );
 
-      // Última linha: tools OK → enviar confirmação grounded em vez de silêncio.
+      // Última linha: tools OK → enviar confirmação grounded / avanço de formulário em vez de silêncio.
       const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
       if (successfulTools.length > 0) {
-        const grounded = buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
+        const advanceAsk = turnPlan.matchedPatternIds.includes("confirmation_titular")
+          ? buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes)
+          : null;
+        const grounded =
+          advanceAsk ?? buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
         if (grounded) {
           replyText = grounded;
           llmSupervisorApproved = true;
-          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — grounded tool payload]`
+          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${advanceAsk ? "advance form ask" : "grounded tool payload"}]`
             .trim()
             .slice(0, 500);
           ex?.info(
             { id: "strict_mode", name: "Modo estrito" },
-            "Hard-block contornado — reply grounded a partir do payload da tool",
+            advanceAsk
+              ? "Hard-block contornado — pedido do formulário seguinte a partir do catálogo"
+              : "Hard-block contornado — reply grounded a partir do payload da tool",
             { output: { replyPreview: replyText.slice(0, 500) } },
           );
         } else {
