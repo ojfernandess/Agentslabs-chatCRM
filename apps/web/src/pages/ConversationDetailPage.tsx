@@ -1148,7 +1148,11 @@ export function ConversationDetailPage() {
       });
       setVoicePreview(null);
       if (!isEmailLayout) stickToBottomRef.current = true;
-      await loadConversation();
+      try {
+        await loadConversation();
+      } catch {
+        /* ignore refresh errors after successful send */
+      }
     } catch {
       setFlowError(t("conversationDetail.voiceSendFailed"));
     } finally {
@@ -1237,9 +1241,13 @@ export function ConversationDetailPage() {
       });
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
-      await loadConversation();
-      void emailOutlet?.refreshThreads?.();
-      void conversationsOutlet?.refreshList?.();
+      try {
+        await loadConversation();
+        void emailOutlet?.refreshThreads?.();
+        void conversationsOutlet?.refreshList?.();
+      } catch {
+        /* ignore refresh errors after successful send */
+      }
     } catch {
       setFlowError(
         conversation.inbox?.channelType === "EMAIL" || isEmailLayout
@@ -1288,9 +1296,14 @@ export function ConversationDetailPage() {
       });
       setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
-      await loadConversation();
-      void emailOutlet?.refreshThreads();
-      void conversationsOutlet?.refreshList?.();
+      // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
+      try {
+        await loadConversation();
+        void emailOutlet?.refreshThreads();
+        void conversationsOutlet?.refreshList?.();
+      } catch {
+        /* realtime/WS costuma actualizar; evita toast "não foi possível enviar" falso */
+      }
     } catch (err) {
       setFlowError(
         err instanceof ApiError

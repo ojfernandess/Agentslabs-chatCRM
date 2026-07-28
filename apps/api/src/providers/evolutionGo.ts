@@ -67,15 +67,52 @@ function mapReceiptState(state: string): StatusUpdate["status"] | null {
   return null;
 }
 
-function extractSendMessageId(payload: unknown): string | null {
+function coerceId(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "number" && Number.isFinite(v)) return String(Math.trunc(v));
+  return null;
+}
+
+/** Extrai ID do POST /send/* — formatos variam entre versões do Evolution Go. */
+export function extractEvolutionGoSendMessageId(payload: unknown): string | null {
   const root = asRecord(payload);
   if (!root) return null;
-  const direct = typeof root.messageId === "string" ? root.messageId.trim() : "";
-  if (direct) return direct;
-  const data = asRecord(root.data);
-  const info = asRecord(data?.Info ?? data?.info);
-  const id = typeof info?.ID === "string" ? info.ID.trim() : typeof info?.id === "string" ? info.id.trim() : "";
-  return id || null;
+
+  for (const k of ["messageId", "whatsappMessageId", "id", "ID"] as const) {
+    const direct = coerceId(root[k]);
+    if (direct) return direct;
+  }
+
+  const data = asRecord(root.data) ?? root;
+  const info = asRecord(data.Info ?? data.info);
+  if (info) {
+    const fromInfo = coerceId(info.ID) ?? coerceId(info.id) ?? coerceId(info.Id);
+    if (fromInfo) return fromInfo;
+  }
+
+  const key = asRecord(data.key ?? root.key);
+  if (key) {
+    const fromKey = coerceId(key.id) ?? coerceId(key.ID);
+    if (fromKey) return fromKey;
+  }
+
+  const nestedMsg = asRecord(data.message ?? root.message);
+  if (nestedMsg) {
+    const nestedKey = asRecord(nestedMsg.key);
+    const fromNested = coerceId(nestedKey?.id) ?? coerceId(nestedKey?.ID);
+    if (fromNested) return fromNested;
+  }
+
+  return null;
+}
+
+function extractSendMessageId(payload: unknown): string | null {
+  return extractEvolutionGoSendMessageId(payload);
+}
+
+/** HTTP 200 no Evolution Go sem ID reconhecível — não falhar o CRM (mensagem já foi enviada). */
+function resolveSendMessageIdOrFallback(payload: unknown): string {
+  return extractSendMessageId(payload) ?? `evo-go-${crypto.randomUUID()}`;
 }
 
 export class EvolutionGoProvider implements WhatsAppProviderInterface {
@@ -118,10 +155,13 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
         const err = await response.text();
         throw new Error(`Evolution Go error: ${response.status} ${err}`);
       }
-      const data = (await response.json()) as unknown;
-      const id = extractSendMessageId(data);
-      if (!id) throw new Error("Evolution Go: missing message id in response");
-      return id;
+      let data: unknown = null;
+      try {
+        data = await response.json();
+      } catch {
+        /* corpo vazio / não-JSON — mensagem já foi aceite pelo provider */
+      }
+      return resolveSendMessageIdOrFallback(data);
     }
 
     if (!params.mediaUrl) {
@@ -155,10 +195,13 @@ export class EvolutionGoProvider implements WhatsAppProviderInterface {
       const err = await response.text();
       throw new Error(`Evolution Go error: ${response.status} ${err}`);
     }
-    const data = (await response.json()) as unknown;
-    const id = extractSendMessageId(data);
-    if (!id) throw new Error("Evolution Go: missing message id in response");
-    return id;
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch {
+      /* corpo vazio / não-JSON — mensagem já foi aceite pelo provider */
+    }
+    return resolveSendMessageIdOrFallback(data);
   }
 
   parseWebhook(_headers: Record<string, string | undefined>, body: unknown) {
