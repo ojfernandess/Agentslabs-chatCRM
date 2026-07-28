@@ -352,6 +352,23 @@ export function turnPolicyPreExecBlockReason(
   return null;
 }
 
+export function requiredToolsPreExecBlockReason(input: {
+  toolName: string;
+  existingToolNames: string[];
+  requiredToolNames?: string[];
+}): string | null {
+  if (!isEscalationToolName(input.toolName)) return null;
+  const required = [...new Set((input.requiredToolNames ?? []).filter((n) => n.trim().length > 0))];
+  if (required.length === 0) return null;
+  const priorOutcomes = input.existingToolNames.map((name) => ({ name, preview: "" }));
+  const missing = required.filter((name) => !toolOutcomeSatisfiesRequired(name, priorOutcomes));
+  if (missing.length === 0) return null;
+  return (
+    `Ferramenta de escalonamento ${input.toolName} bloqueada: ainda faltam ferramentas ` +
+    `obrigatórias deste turno (${missing.join(", ")}). Execute a categoria actual primeiro e só escale se o playbook mandar.`
+  );
+}
+
 /** Resumo compacto da política de turno para Supervisor LLM / logs. */
 export function formatTurnPolicyForSupervisor(policy: TurnPolicy): string {
   const lines: string[] = [];
@@ -382,7 +399,14 @@ export function turnPolicyPreExecBlockReasonForTurn(
   toolName: string,
   existingToolNames: string[],
   policy: TurnPolicy,
+  requiredToolNames: string[] = [],
 ): string | null {
+  const requiredToolsBlock = requiredToolsPreExecBlockReason({
+    toolName,
+    existingToolNames,
+    requiredToolNames,
+  });
+  if (requiredToolsBlock) return requiredToolsBlock;
   const exclusive = turnPolicyPreExecBlockReason(toolName, policy);
   if (exclusive) return exclusive;
   const proposed = [...existingToolNames, toolName];

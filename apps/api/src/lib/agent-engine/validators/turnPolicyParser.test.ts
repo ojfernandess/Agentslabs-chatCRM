@@ -239,6 +239,35 @@ test("turnPolicyPreExecBlockReasonForTurn blocks forbidden pair before second to
   assert.ok(blocked && /proibid/i.test(blocked));
 });
 
+test("turnPolicyPreExecBlockReasonForTurn blocks escalation while required turn tool is pending", () => {
+  const playbook = `
+| C8 | CPF sozinho · 11 dígitos · lookup main guest | Chame \`audaar_consultar_main_guest\` |
+| C13 | reclamação · irritado | Chame \`call_human\` |
+**Proibido** \`call_human\` / \`transfer_to_team\` no meio do check-in pendente.
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "41026299802" },
+  );
+  const blocked = turnPolicyPreExecBlockReasonForTurn(
+    "call_human",
+    [],
+    policy,
+    ["audaar_consultar_main_guest"],
+  );
+  assert.ok(blocked && /ferramentas obrigatórias deste turno/i.test(blocked));
+  assert.match(blocked ?? "", /audaar_consultar_main_guest/i);
+  assert.equal(
+    turnPolicyPreExecBlockReasonForTurn(
+      "call_human",
+      ["audaar_consultar_main_guest"],
+      policy,
+      ["audaar_consultar_main_guest"],
+    ),
+    null,
+  );
+});
+
 test("formatTurnPolicyForSupervisor summarizes blockEscalation and pairs", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },

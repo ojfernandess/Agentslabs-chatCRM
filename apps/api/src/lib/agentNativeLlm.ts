@@ -46,6 +46,7 @@ import {
   validateToolOutcomesAgainstTurnPolicy,
   buildReplyOnlyRetryPromptBlock,
 } from "./agent-engine/validators/turnPolicyParser.js";
+import { resolveRequiredToolNamesForTurn } from "./agent-engine/validators/requiredToolNamesParser.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
@@ -1680,6 +1681,10 @@ async function generateNativeAgentReplyCore(input: {
       .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
+  const requiredToolNamesForTurn = resolveRequiredToolNamesForTurn(behaviorConfigObj, {
+    userMessage,
+    availableToolNames: customHttpTools.map((t) => t.name),
+  });
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
   const allowedTagIds = flags.assign_contact_tags
     ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
@@ -2246,8 +2251,18 @@ async function generateNativeAgentReplyCore(input: {
               // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
               const existingNames = toolRoundOutcomes.map((t) => t.name);
               const httpPolicyBlock =
-                turnPolicyPreExecBlockReasonForTurn(row.name, existingNames, turnPolicy) ??
-                turnPolicyPreExecBlockReasonForTurn(name, existingNames, turnPolicy);
+                turnPolicyPreExecBlockReasonForTurn(
+                  row.name,
+                  existingNames,
+                  turnPolicy,
+                  requiredToolNamesForTurn,
+                ) ??
+                turnPolicyPreExecBlockReasonForTurn(
+                  name,
+                  existingNames,
+                  turnPolicy,
+                  requiredToolNamesForTurn,
+                );
               if (httpPolicyBlock) {
                 return finishToolCall(
                   JSON.stringify({
@@ -2363,7 +2378,12 @@ async function generateNativeAgentReplyCore(input: {
             // Política de turno: bloquear side-effects mutáveis ANTES de executeNativeTool
             const nativeExisting = toolRoundOutcomes.map((t) => t.name);
             const nativeBlock =
-              turnPolicyPreExecBlockReasonForTurn(name, nativeExisting, turnPolicy);
+              turnPolicyPreExecBlockReasonForTurn(
+                name,
+                nativeExisting,
+                turnPolicy,
+                requiredToolNamesForTurn,
+              );
             if (nativeBlock) {
               return finishToolCall(
                 JSON.stringify({
