@@ -53,6 +53,21 @@ import {
   resolveTurnExecutionContext,
   shouldAllowPlainChatFallback,
 } from "./agent-engine/contract/TurnExecutionContract.js";
+import {
+  assertToolAllowedByRuntimeV2,
+  applyRecoveryToLlmConfig,
+  buildKbToolPreamble,
+  buildSchedulerPromptBlock,
+  buildServerKbGuardBlock,
+  evaluateSmartFallback,
+  filterToolsByOrchestrator,
+  initializeRuntimeV2,
+  refreshRuntimeV2Orchestrator,
+  runDeterministicToolPhase,
+  scheduleNextAction,
+  shouldRunDeterministicToolPhase,
+  type RuntimeV2Session,
+} from "./agent-engine/v2/index.js";
 import { buildExecutionTurnPlan } from "./agent-engine/planner/ExecutionTurnPlan.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
@@ -1716,8 +1731,19 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const llm = profile.llmConfig as Record<string, unknown>;
-  const provider = llmString(llm, "provider") || "openai";
-  const model = llmString(llm, "model") || "gpt-4o-mini";
+  let provider = llmString(llm, "provider") || "openai";
+  let model = llmString(llm, "model") || "gpt-4o-mini";
+  const recoveryHints = input.executionHints?.recovery;
+  if (recoveryHints?.switchProvider || recoveryHints?.switchModel) {
+    const recovered = applyRecoveryToLlmConfig(provider, model, recoveryHints);
+    provider = recovered.provider;
+    model = recovered.model;
+    ex?.info(
+      { id: "tool_recovery", name: "Tool Recovery" },
+      recoveryHints.recoveryAction?.reason ?? "Provider/model switch no retry",
+      { output: { provider, model } },
+    );
+  }
   const storedKey = llmString(llm, "apiKey");
   /** Mesma ordem que embeddings/playground: chave no perfil ou `OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY` no servidor. */
   const apiKey =
@@ -2091,58 +2117,18 @@ async function generateNativeAgentReplyCore(input: {
     knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery);
   const omitBuscarConhecimento = skipKbSearch;
 
-  const toolPreamble = kbHasUsefulExcerpts
-    ? proactiveCoversQuery
-      ? "\n\n### Ferramentas (complemento)\n" +
-        "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
-        "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
-        "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
-        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-        (allowedTagIds.length > 0
-          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
-          : "") +
-        "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
-        customToolPreamble
-      : "\n\n### Ferramentas (complemento)\n" +
-        "- **Base de conhecimento:** há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta — use `buscar_conhecimento` se precisar de mais detalhe.\n" +
-        "- **PROIBIDO** inventar factos (categorias, preços, horários, políticas) que não constem nos excertos ou no resultado da ferramenta.\n" +
-        "- **`buscar_conhecimento`:** até **duas** chamadas neste turno; depois responda só com o que a base devolver.\n" +
-        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
-        (allowedTagIds.length > 0
-          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem.\n"
-          : "") +
-        "- `call_human`: se, depois de `buscar_conhecimento`, a informação continuar insuficiente." +
-        customToolPreamble
-    : "\n\n### Ferramentas (complemento)\n" +
-      "- Use `buscar_conhecimento` para factos da organização antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
-      "- **PROIBIDO** como resposta final: frases de espera («um momento» / «vou verificar») sem dados da ferramenta.\n" +
-      "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
-      (allowedTagIds.length > 0
-        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
-        : "") +
-      "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre." +
-      customToolPreamble;
+  const toolPreamble = buildKbToolPreamble({
+    kbHasUsefulExcerpts,
+    proactiveCoversQuery,
+    allowedTagIds,
+    customToolPreamble,
+  });
 
-  const serverKbGuard =
-    (proactiveCoversQuery
-      ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
-        "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
-        "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
-        "A função `buscar_conhecimento` pode ser usada no máximo uma vez neste turno se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
-        "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do agente diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
-        "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente. " +
-        "Esta precedência **não** anula restrições do playbook do tipo «nunca informar X sem consultar a ferramenta» — nesse caso chame a tool indicada antes de afirmar dados."
-      : kbHasUsefulExcerpts
-        ? "\n\n[OpenConduit — base de conhecimento parcial]\n" +
-          "Há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta do cliente. " +
-          "Use `buscar_conhecimento` se precisar de mais detalhe; **não invente** factos que não constem nos excertos ou no resultado da ferramenta."
-        : "") +
-    (customHttpTools.length > 0
-      ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
-        "Existem funções com nome `oc_tool_` no catálogo: são integrações HTTP/Webhook configuradas para este agente. " +
-        "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente. " +
-        "Respeite sempre as restrições e fluxos do playbook do agente ao decidir quando e como usar estas ferramentas."
-      : "");
+  const serverKbGuard = buildServerKbGuardBlock({
+    proactiveCoversQuery,
+    kbHasUsefulExcerpts,
+    customHttpToolCount: customHttpTools.length,
+  });
 
   const audioInboundHint =
     message.type === "AUDIO" || userMessage.includes(AUDIO_TRANSCRIPTION_PREFIX)
@@ -2321,7 +2307,52 @@ async function generateNativeAgentReplyCore(input: {
       openAiToolDefinitionForAutomationTool(row, { agentInstruction: agentInstructionByToolId.get(row.id) }),
     ),
   ];
-  const useTools = provider !== "google_gemini" && tools.length > 0;
+
+  // Execution Runtime V2 — orquestração determinística (allowlist + mandatoryNextTool)
+  const availableToolNames = [
+    ...tools.map((t) => t.function.name),
+    ...customHttpTools.map((t) => t.name),
+  ];
+  let runtimeV2Session = initializeRuntimeV2({
+    behaviorConfig: behaviorConfigObj,
+    userMessage,
+    availableToolNames,
+    lastAssistantMessage,
+    flowSlots: sessionFlowSlots,
+    existingTurnPlan: turnPlan,
+    systemPrompt: systemInstructions,
+  });
+  if (executionHints?.runtimeV2) {
+    runtimeV2Session = {
+      ...runtimeV2Session,
+      orchestrator: executionHints.runtimeV2.orchestrator,
+      orchestratorPromptBlock: executionHints.runtimeV2.orchestratorPromptBlock,
+    };
+  }
+  const orchestratedTools = filterToolsByOrchestrator(tools, runtimeV2Session.orchestrator);
+  let systemForLlm = systemBase + runtimeV2Session.orchestratorPromptBlock;
+  const replyOnlyRetry = executionHints?.replyOnlyRetry === true;
+  const initialSchedule = scheduleNextAction({
+    session: runtimeV2Session,
+    allTools: tools,
+    toolOutcomes: toolRoundOutcomes,
+    replyOnlyRetry,
+  });
+  systemForLlm += buildSchedulerPromptBlock(initialSchedule);
+  ex?.info(
+    { id: "runtime_v2", name: "Execution Runtime V2" },
+    runtimeV2Session.orchestrator.reason,
+    {
+      output: {
+        contractId: runtimeV2Session.contract.contractId,
+        mandatoryNextTool: runtimeV2Session.orchestrator.mandatoryNextTool,
+        allowed: runtimeV2Session.orchestrator.allowedToolNames.length,
+        forbidden: runtimeV2Session.orchestrator.forbiddenToolNames.length,
+      },
+    },
+  );
+
+  const useTools = provider !== "google_gemini" && orchestratedTools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;
   if (customHttpTools.length > 0 && historyOverride == null) {
@@ -2367,7 +2398,7 @@ async function generateNativeAgentReplyCore(input: {
       useTools,
       omitBuscarConhecimento,
       kbHasUsefulExcerpts,
-      openAiToolCount: tools.length,
+      openAiToolCount: orchestratedTools.length,
       lastClearedAt: lastClearedAt?.toISOString() ?? null,
       historyTurns: history.length,
       historyIsolated,
@@ -2389,65 +2420,11 @@ async function generateNativeAgentReplyCore(input: {
         ex?.info(
           { id: "llm", name: "Modelo + tools" },
           "Início da geração com ferramentas nativas",
-          { input: { provider, model, toolCount: tools.length, historyTurns: history.length } },
+          { input: { provider, model, toolCount: orchestratedTools.length, historyTurns: history.length } },
         );
-        const r = await callOpenAiCompatibleChatWithTools({
-          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-          apiKey,
-          model,
-          temperature,
-          maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemBase,
-          history,
-          userMessage,
-          tools,
-          maxToolRounds: 6,
-          onTokenDelta,
-          onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
-            if (
-              pendingToolCallInterim.data ||
-              sandboxReply ||
-              !effectiveContactId ||
-              !toolCallNotify.enabled
-            ) {
-              return;
-            }
-            const matchesSelected = toolNames.some((name) =>
-              shouldNotifyBeforeToolCall(name, toolCallNotify),
-            );
-            if (!matchesSelected) return;
+        let activeSchedule = initialSchedule;
 
-            const assistantTrim = (assistantContent ?? "").trim();
-            const body = resolveToolCallNotifyBody({
-              assistantContent,
-              toolNames,
-              defaultMessage: toolCallNotify.message,
-              toolMessages: toolCallNotify.toolMessages,
-            });
-            const usedAgentStallText = Boolean(assistantTrim);
-            pendingToolCallInterim.data = {
-              body,
-              toolNames,
-              round,
-              usedAgentStallText,
-              sent: false,
-            };
-
-            await sendToolCallInterimNotify({
-              organizationId,
-              botId: bot.id,
-              conversationId: conversation.id,
-              contactId: effectiveContactId,
-              body,
-              log,
-              executionLog: ex,
-              toolNames,
-              round,
-              usedAgentStallText,
-            });
-            pendingToolCallInterim.data.sent = true;
-          },
-          onToolCall: async (name, argsJson) => {
+        const handleNativeToolCall = async (name: string, argsJson: string): Promise<string> => {
             const tlog = ex?.child("tools");
             const customId = parseAutomationToolIdFromOpenAiName(name);
             const customRow = customId ? customHttpTools.find((t) => t.id === customId) : undefined;
@@ -2534,6 +2511,21 @@ async function generateNativeAgentReplyCore(input: {
               const existingNames = toolRoundOutcomes
                 .filter((t) => !isSkippedToolOutcome(t.preview))
                 .map((t) => t.name);
+              const runtimeV2Block = assertToolAllowedByRuntimeV2(
+                runtimeV2Session,
+                row.name,
+                existingNames,
+              );
+              if (runtimeV2Block) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "runtime_v2_orchestrator",
+                    message: runtimeV2Block,
+                  }),
+                );
+              }
               const completionAlreadySucceeded = toolRoundOutcomes.some(
                 (t) =>
                   t.ok &&
@@ -2663,6 +2655,21 @@ async function generateNativeAgentReplyCore(input: {
             const nativeExisting = toolRoundOutcomes
               .filter((t) => !isSkippedToolOutcome(t.preview))
               .map((t) => t.name);
+            const runtimeV2NativeBlock = assertToolAllowedByRuntimeV2(
+              runtimeV2Session,
+              name,
+              nativeExisting,
+            );
+            if (runtimeV2NativeBlock) {
+              return finishToolCall(
+                JSON.stringify({
+                  ok: false,
+                  skipped: true,
+                  reason: "runtime_v2_orchestrator",
+                  message: runtimeV2NativeBlock,
+                }),
+              );
+            }
             const completionAlreadySucceeded = toolRoundOutcomes.some(
               (t) =>
                 t.ok &&
@@ -2703,7 +2710,145 @@ async function generateNativeAgentReplyCore(input: {
                 knowledgeEngine: knowledgeEngine ?? undefined,
               }),
             );
+          };
+
+        if (!replyOnlyRetry && shouldRunDeterministicToolPhase(initialSchedule)) {
+          const det = await runDeterministicToolPhase({
+            session: runtimeV2Session,
+            allTools: tools,
+            toolOutcomes: toolRoundOutcomes,
+            availableToolNames,
+            replyOnlyRetry,
+            argsContextAppend: flowStatePrompt,
+            baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+            apiKey,
+            model,
+            temperature,
+            maxTokens,
+            history,
+            userMessage,
+            onToolCall: handleNativeToolCall,
+            signal,
+            onRound: ({ decision, round }) => {
+              ex?.info(
+                { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
+                decision.reason,
+                { output: { round, scheduledTool: decision.scheduledTool } },
+              );
+            },
+          });
+          runtimeV2Session = refreshRuntimeV2Orchestrator(
+            runtimeV2Session,
+            availableToolNames,
+            toolRoundOutcomes,
+          );
+          activeSchedule = scheduleNextAction({
+            session: runtimeV2Session,
+            allTools: tools,
+            toolOutcomes: toolRoundOutcomes,
+            replyOnlyRetry,
+          });
+          systemForLlm =
+            systemBase +
+            runtimeV2Session.orchestratorPromptBlock +
+            buildSchedulerPromptBlock(activeSchedule);
+          ex?.info(
+            { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
+            `Fase determinística concluída — ${det.toolsInvoked} tool(s)`,
+            { output: { phase: activeSchedule.phase } },
+          );
+        }
+
+        const r = await callOpenAiCompatibleChatWithTools({
+          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+          apiKey,
+          model,
+          temperature,
+          maxTokens: Math.max(16, Math.min(8192, maxTokens)),
+          system: systemForLlm,
+          history,
+          userMessage,
+          tools: orchestratedTools,
+          maxToolRounds: 6,
+          toolChoice: activeSchedule.toolChoice,
+          onBeforeRound: async () => {
+            runtimeV2Session = refreshRuntimeV2Orchestrator(
+              runtimeV2Session,
+              availableToolNames,
+              toolRoundOutcomes,
+            );
+            const decision = scheduleNextAction({
+              session: runtimeV2Session,
+              allTools: tools,
+              toolOutcomes: toolRoundOutcomes,
+              replyOnlyRetry,
+            });
+            activeSchedule = decision;
+            ex?.info(
+              { id: "tool_scheduler", name: "Tool Scheduler" },
+              decision.reason,
+              {
+                output: {
+                  phase: decision.phase,
+                  scheduledTool: decision.scheduledTool,
+                  blockTextReply: decision.blockTextReply,
+                },
+              },
+            );
+            return {
+              tools: decision.activeTools,
+              toolChoice: decision.toolChoice,
+              systemAppend:
+                runtimeV2Session.orchestratorPromptBlock +
+                buildSchedulerPromptBlock(decision),
+            };
           },
+          onTokenDelta,
+          onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
+            if (
+              pendingToolCallInterim.data ||
+              sandboxReply ||
+              !effectiveContactId ||
+              !toolCallNotify.enabled
+            ) {
+              return;
+            }
+            const matchesSelected = toolNames.some((name) =>
+              shouldNotifyBeforeToolCall(name, toolCallNotify),
+            );
+            if (!matchesSelected) return;
+
+            const assistantTrim = (assistantContent ?? "").trim();
+            const body = resolveToolCallNotifyBody({
+              assistantContent,
+              toolNames,
+              defaultMessage: toolCallNotify.message,
+              toolMessages: toolCallNotify.toolMessages,
+            });
+            const usedAgentStallText = Boolean(assistantTrim);
+            pendingToolCallInterim.data = {
+              body,
+              toolNames,
+              round,
+              usedAgentStallText,
+              sent: false,
+            };
+
+            await sendToolCallInterimNotify({
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              contactId: effectiveContactId,
+              body,
+              log,
+              executionLog: ex,
+              toolNames,
+              round,
+              usedAgentStallText,
+            });
+            pendingToolCallInterim.data.sent = true;
+          },
+          onToolCall: handleNativeToolCall,
           signal,
         });
         replyText = r.text.trim();
@@ -2728,10 +2873,18 @@ async function generateNativeAgentReplyCore(input: {
             rateLimitLikely: err instanceof Error && /HTTP 429|rate.?limit/i.test(err.message),
           },
         });
-        const allowPlainFallback = shouldAllowPlainChatFallback({
-          turnPlan,
-          toolsAlreadyRun: toolRoundOutcomes,
+        const fallbackDecision = evaluateSmartFallback({
+          contract: runtimeV2Session.contract,
+          toolOutcomes: toolRoundOutcomes,
+          errorKind: timedOut ? "llm_timeout" : "llm_error",
+          errorMessage: err instanceof Error ? err.message : String(err),
         });
+        const allowPlainFallback =
+          fallbackDecision.allowPlainChat &&
+          shouldAllowPlainChatFallback({
+            turnPlan,
+            toolsAlreadyRun: toolRoundOutcomes,
+          });
         if (!allowPlainFallback) {
           log.warn(
             {
@@ -2755,7 +2908,7 @@ async function generateNativeAgentReplyCore(input: {
             model,
             temperature,
             maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-            system: systemBase,
+            system: systemForLlm,
             history,
             userMessage,
             signal: nativeAgentLlmAbortSignal(),
@@ -2788,7 +2941,7 @@ async function generateNativeAgentReplyCore(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemBase,
+        system: systemForLlm,
         history,
         userMessage,
         signal,
@@ -2803,7 +2956,7 @@ async function generateNativeAgentReplyCore(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemBase,
+        system: systemForLlm,
         history,
         userMessage,
         signal,

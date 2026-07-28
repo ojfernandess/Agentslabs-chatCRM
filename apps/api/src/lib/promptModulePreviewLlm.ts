@@ -170,6 +170,17 @@ export async function callOpenAiCompatibleChatWithTools(params: {
   signal?: AbortSignal;
   /** Quando definido, emite deltas na resposta final (sem tool_calls). */
   onTokenDelta?: (delta: string) => void;
+  /** tool_choice inicial — overridden por onBeforeRound. */
+  toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+  /** Hook antes de cada ronda LLM — Runtime V2 Tool Scheduler. */
+  onBeforeRound?: (input: {
+    round: number;
+    toolRoundsCompleted: number;
+  }) => Promise<{
+    tools?: OpenAiToolDefinition[];
+    toolChoice?: "auto" | "none" | { type: "function"; function: { name: string } };
+    systemAppend?: string;
+  } | void>;
 }): Promise<{ text: string; toolRounds: number; usage?: PreviewLlmUsage }> {
   const maxRounds = Math.max(1, Math.min(params.maxToolRounds ?? 6, 12));
   const url = `${params.baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -181,14 +192,26 @@ export async function callOpenAiCompatibleChatWithTools(params: {
 
   let toolRounds = 0;
   let totalUsage: PreviewLlmUsage | undefined;
+  let activeTools = params.tools;
+  let activeToolChoice: "auto" | "none" | { type: "function"; function: { name: string } } =
+    params.toolChoice ?? "auto";
+  let systemContent = params.system;
 
   for (;;) {
+    if (params.onBeforeRound) {
+      const sched = await params.onBeforeRound({ round: toolRounds, toolRoundsCompleted: toolRounds });
+      if (sched?.tools) activeTools = sched.tools;
+      if (sched?.toolChoice !== undefined) activeToolChoice = sched.toolChoice;
+      if (sched?.systemAppend) systemContent = params.system + sched.systemAppend;
+    }
+    messages[0] = { role: "system", content: systemContent };
+
     const body: Record<string, unknown> = {
       model: params.model,
       temperature: params.temperature,
       messages,
-      tools: params.tools,
-      tool_choice: "auto",
+      tools: activeTools,
+      tool_choice: activeTools.length > 0 ? activeToolChoice : "none",
     };
     applyOpenAiMaxTokensToBody(body, params.model, params.maxTokens);
 

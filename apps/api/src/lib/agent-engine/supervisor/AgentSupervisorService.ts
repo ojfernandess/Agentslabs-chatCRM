@@ -4,6 +4,11 @@ import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/type
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
 import { formatTurnPolicyForSupervisor } from "../validators/turnPolicyParser.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
+import {
+  buildContractSupervisorChecks,
+  mergeContractChecks,
+} from "../v2/ContractSupervisor.js";
+import type { ExecutionContract } from "../v2/types.js";
 
 export type SupervisorValidationInput = {
   userMessage: string;
@@ -30,6 +35,8 @@ export type SupervisorValidationInput = {
   toolOutcomes?: Array<{ name: string; ok: boolean; preview?: string }>;
   /** Política de turno parseada — reforço do check validation_passed. */
   turnPolicy?: TurnPolicy | null;
+  executionContract?: ExecutionContract | null;
+  consistencyDivergences?: Array<{ kind: string; detail: string; severity: string }>;
 };
 
 export type BuildSupervisorValidationInputOpts = {
@@ -50,6 +57,8 @@ export type BuildSupervisorValidationInputOpts = {
   eilViolations?: ConstraintViolation[];
   eilRequiredFactsMissing?: string[];
   turnPolicy?: TurnPolicy | null;
+  executionContract?: ExecutionContract | null;
+  consistencyDivergences?: Array<{ kind: string; detail: string; severity: string }>;
 };
 
 function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
@@ -86,6 +95,8 @@ export function buildSupervisorValidationInput(
     eilRequiredFactsMissing: opts.eilRequiredFactsMissing,
     toolOutcomes: opts.toolOutcomes,
     turnPolicy: opts.turnPolicy ?? null,
+    executionContract: opts.executionContract ?? null,
+    consistencyDivergences: opts.consistencyDivergences,
   };
 }
 
@@ -226,11 +237,22 @@ const CHECK_DEFS: Array<{
 ];
 
 export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSupervisorTrace {
-  const checks: AgentSupervisorCheck[] = CHECK_DEFS.map((c) => ({
+  let checks: AgentSupervisorCheck[] = CHECK_DEFS.map((c) => ({
     id: c.id,
     label: c.label,
     passed: c.run(input),
   }));
+
+  if (input.executionContract) {
+    const contractChecks = buildContractSupervisorChecks({
+      contract: input.executionContract,
+      toolOutcomes: input.toolOutcomes ?? [],
+      replyText: input.replyText,
+      validationBlockSend: input.validationBlockSend,
+      consistencyDivergences: input.consistencyDivergences,
+    });
+    checks = mergeContractChecks(checks, contractChecks);
+  }
 
   if (input.llmApproved != null) {
     checks.push({
@@ -272,6 +294,10 @@ const RETRYABLE_CHECK_IDS = new Set([
   "eil_required_facts",
   "eil_constraints",
   "eil_forbidden_action",
+  "contract_required_tools",
+  "contract_phase",
+  "contract_consistency",
+  "contract_validation_passed",
 ]);
 
 export function shouldRetryAfterSupervisor(

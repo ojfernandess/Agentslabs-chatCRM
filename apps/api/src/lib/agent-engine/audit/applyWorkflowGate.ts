@@ -34,6 +34,8 @@ export type WorkflowGateInput = {
   turnPlan?: ExecutionTurnPlan;
   /** Snapshot EIL para findings F-EIL. */
   eilSnapshot?: import("../eil/types.js").EilSnapshot;
+  /** Execution Contract V2 para findings F-V2. */
+  executionContract?: import("../v2/types.js").ExecutionContract | null;
 };
 
 export type WorkflowGateResult = {
@@ -111,6 +113,7 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     graphNodeSequence: input.graphNodeSequence,
     supervisorTrace: input.supervisorTrace,
     eilSnapshot: input.eilSnapshot,
+    executionContract: input.executionContract,
   });
 
   const advisoryFailures = report.findings.filter((f) => !f.passed).length;

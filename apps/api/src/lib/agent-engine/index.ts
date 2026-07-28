@@ -169,6 +169,7 @@ export { DEFAULT_KNOWLEDGE_ENGINE_CONFIG } from "./knowledge/knowledgeEngineType
 export { clearKnowledgeCache, getKnowledgeCacheStats } from "./knowledge/knowledgeCache.js";
 export { runKnowledgeInspector } from "./knowledge/knowledgeInspectorService.js";
 export { invalidateKnowledgeEngineCache } from "./knowledge/knowledgeArticleHooks.js";
+export * from "./v2/index.js";
 
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";

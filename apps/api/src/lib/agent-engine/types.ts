@@ -97,6 +97,18 @@ export type AgentRuntimeExecuteInput = {
       preview: string;
       structuredPayload?: unknown;
     }>;
+    /** Execution Runtime V2 — orquestração determinística (LangGraph → executor). */
+    runtimeV2?: {
+      contractId: string;
+      orchestratorPromptBlock: string;
+      orchestrator: import("./v2/types.js").ToolOrchestratorDecision;
+    };
+    /** Tool Recovery — provider/model switch no retry (Fase 3). */
+    recovery?: {
+      switchProvider: string | null;
+      switchModel: string | null;
+      recoveryAction?: import("./v2/types.js").ToolRecoveryAction;
+    };
   };
 };
 
@@ -170,6 +182,16 @@ export type AgentExecutionTrace = {
     toolsCalled: string[];
     toolsPending: string[];
     replyActions?: string[];
+  };
+  /** Execution Runtime V2 snapshot (auditoria / MCP). */
+  runtimeV2?: {
+    contractId: string;
+    intent?: string;
+    phase?: string;
+    mandatoryNextTool?: string | null;
+    pendingRequired?: string[];
+    orchestratorReason?: string;
+    auditRootCause?: string | null;
   };
 };
 
