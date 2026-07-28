@@ -27,6 +27,7 @@ export type ResolveTurnExecutionContextOpts = {
   availableToolNames?: string[];
   /** Plano já calculado pelo runtime — evita re-parse divergente. */
   existingTurnPlan?: ExecutionTurnPlan;
+  lastAssistantMessage?: string;
 };
 
 /** Resolve o plano de turno uma vez por execução (fonte única de verdade). */
@@ -39,6 +40,7 @@ export function resolveTurnExecutionContext(
       behaviorConfig: opts.behaviorConfig,
       userMessage: opts.userMessage,
       availableToolNames: opts.availableToolNames,
+      lastAssistantMessage: opts.lastAssistantMessage,
     });
   return { turnPlan };
 }
@@ -214,6 +216,15 @@ export function buildGenericReplyOnlyRetryPromptBlock(opts: {
       "- Confirmação detectada: avance para o **próximo passo** do playbook sem repetir perguntas já feitas.",
     );
     lines.push("- Leia a **última mensagem SUA** no histórico para saber o que foi confirmado.");
+    lines.push(
+      "- Se a última msg SUA pedia confirmação de dados de identidade/cadastro: avance o fluxo (formulário seguinte). **PROIBIDO** pedir a mesma confirmação outra vez.",
+    );
+    lines.push(
+      "- Se a última msg SUA pedia confirmação de um formulário já preenchido: avance para a conclusão do fluxo. **PROIBIDO** reabrir etapas anteriores.",
+    );
+    lines.push(
+      "- **PROIBIDO** misturar ferramentas de categorias diferentes · reiniciar o fluxo · pedir documentos já obtidos.",
+    );
   }
   if (turnPlan.turnPolicy.forbiddenSameTurnPairs.length > 0) {
     lines.push("- **PROIBIDO** combinar ferramentas de categorias diferentes no mesmo turno.");

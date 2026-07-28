@@ -1,7 +1,12 @@
 import {
   resolveRequiredToolNamesForTurn,
 } from "../validators/requiredToolNamesParser.js";
-import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
+import {
+  classifyConfirmationGate,
+  isConfirmationUserMessage,
+  resolveTurnPolicy,
+  type TurnPolicy,
+} from "../validators/turnPolicyParser.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import { isContinuationSyntheticMessage } from "../continuation/constants.js";
 
@@ -23,6 +28,8 @@ export type BuildExecutionTurnPlanOpts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
   availableToolNames?: string[];
+  /** Última mensagem outbound do agente — desambigua sim titular→S9 vs ficha→S10. */
+  lastAssistantMessage?: string;
 };
 
 /**
@@ -31,11 +38,15 @@ export type BuildExecutionTurnPlanOpts = {
  */
 export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): ExecutionTurnPlan {
   const userMessage = (opts.userMessage ?? "").trim();
-  const requiredToolNames = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
+  const lastAssistantMessage = (opts.lastAssistantMessage ?? "").trim();
+  let requiredToolNames = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
-  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, { userMessage });
+  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
+    userMessage,
+    lastAssistantMessage,
+  });
   const knowledgeSeeking = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
 
   // Infer pattern ids from required tools / message (leve — sem re-export circular)
@@ -57,6 +68,26 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     matchedPatternIds.push("escalation");
   }
   if (isContinuation) matchedPatternIds.push("proactive_continuation");
+
+  // Confirmação curta: exigir a tool exclusiva do Portão (titular→S9 / ficha→S10)
+  if (!isContinuation && isConfirmationUserMessage(userMessage)) {
+    const gate = classifyConfirmationGate(lastAssistantMessage);
+    if (gate === "titular_mirror") {
+      matchedPatternIds.push("confirmation_titular");
+      if (turnPolicy.exclusiveAllowedTools?.length) {
+        const merged = new Set([...requiredToolNames, ...turnPolicy.exclusiveAllowedTools]);
+        requiredToolNames = [...merged];
+      }
+    } else if (gate === "travel_form_mirror") {
+      matchedPatternIds.push("confirmation_travel_form");
+      if (turnPolicy.exclusiveAllowedTools?.length) {
+        const merged = new Set([...requiredToolNames, ...turnPolicy.exclusiveAllowedTools]);
+        requiredToolNames = [...merged];
+      }
+    } else if (gate === "data_collection") {
+      matchedPatternIds.push("confirmation_data_collection");
+    }
+  }
 
   return {
     userMessage,

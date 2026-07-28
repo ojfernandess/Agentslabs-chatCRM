@@ -10,8 +10,10 @@ import {
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
+  classifyConfirmationGate,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
+import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 
 const SAMPLE_PLAYBOOK = `
 ## Regras
@@ -100,17 +102,52 @@ test("blockEscalation alone blocks transfer even without exclusive tools", () =>
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
-test("resolveTurnPolicy on sim blocks escalation but does not exclusive-lock embratur-only", () => {
+test("resolveTurnPolicy on sim without lastAssistant does not exclusive-lock embratur-only", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
     { userMessage: "sim" },
   );
   assert.ok(policy.forbiddenSameTurnPairs.length >= 1);
   assert.equal(policy.blockEscalation, true);
-  // Ficha→S10 precisa de audaar_check_in; exclusive S9 não pode aplicar a todo "sim"
+  // Sem última msg: não assumir S9 (ficha→S10 precisa de check_in)
   assert.equal(policy.exclusiveAllowedTools, null);
   assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
+});
+
+test("resolveTurnPolicy on sim after titular mirror exclusive-locks embratur and blocks check_in", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage:
+        "Encontrei o cadastro. Confirme os dados do TITULAR:\nNome: Odair\nConfirma?",
+    },
+  );
+  assert.equal(policy.blockEscalation, true);
+  assert.ok(policy.exclusiveAllowedTools?.some((t) => /embratur|reference/i.test(t)));
+  assert.ok(
+    turnPolicyPreExecBlockReason("audaar_check_in", policy),
+    "check_in must be blocked on titular→S9 gate",
+  );
+  assert.equal(turnPolicyPreExecBlockReason("embratur-reference", policy), null);
+});
+
+test("resolveTurnPolicy on sim after travel form mirror allows check_in only", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage:
+        "Confirme os dados da FICHA DE VIAGEM:\nMotivo: lazer\nTransporte: carro\nEstá tudo certo?",
+    },
+  );
+  assert.ok(policy.exclusiveAllowedTools?.some((t) => /check_in/i.test(t)));
+  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
+  assert.ok(
+    turnPolicyPreExecBlockReason("embratur-reference", policy),
+    "embratur must be blocked on ficha→S10 gate",
+  );
 });
 
 test("validateToolOutcomesAgainstTurnPolicy blocks reference+check_in", () => {
@@ -329,4 +366,34 @@ test("findForbiddenPairViolation requires two distinct tool invocations", () => 
   const real = [{ a: "foo_lookup", b: "foo_submit", source: "test" }];
   assert.ok(findForbiddenPairViolation(["foo_lookup", "foo_submit"], real));
   assert.equal(findForbiddenPairViolation(["foo_lookup"], real), null);
+});
+
+test("classifyConfirmationGate detects titular vs travel form", () => {
+  assert.equal(
+    classifyConfirmationGate("Confirme os dados do TITULAR:\nNome João\nConfirma?"),
+    "titular_mirror",
+  );
+  assert.equal(
+    classifyConfirmationGate(
+      "Confirme os dados da FICHA DE VIAGEM:\nMotivo: lazer\nTransporte: carro",
+    ),
+    "travel_form_mirror",
+  );
+  assert.equal(
+    classifyConfirmationGate("Informe motivo da viagem e meio de transporte:"),
+    "data_collection",
+  );
+  assert.equal(classifyConfirmationGate("Olá!"), "unknown");
+});
+
+test("buildExecutionTurnPlan requires embratur on sim after titular mirror", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "sim",
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+    lastAssistantMessage: "Confirme os dados do TITULAR. Confirma?",
+  });
+  assert.ok(plan.matchedPatternIds.includes("confirmation_titular"));
+  assert.ok(plan.requiredToolNames.some((n) => /embratur|reference/i.test(n)));
+  assert.ok(plan.turnPolicy.exclusiveAllowedTools?.some((n) => /embratur|reference/i.test(n)));
 });

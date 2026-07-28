@@ -21,6 +21,7 @@ import {
   shouldUseReplyOnlyRetryForTurn,
 } from "../contract/TurnExecutionContract.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
+import { prisma } from "../../../db.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -156,11 +157,27 @@ export class LangGraphRuntime implements AgentRuntime {
     });
 
     const checkpointStore = input.engineConfig.checkpointStore ?? "memory";
+    let lastAssistantMessage = "";
+    try {
+      const lastOut = await prisma.message.findFirst({
+        where: {
+          conversationId: input.conversation.id,
+          direction: "OUTBOUND",
+          id: { not: input.message.id },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { body: true },
+      });
+      lastAssistantMessage = (lastOut?.body ?? "").trim();
+    } catch {
+      /* histórico opcional para Portão C11 */
+    }
     const turnPlan =
       input.executionHints?.turnPlan ??
       buildExecutionTurnPlan({
         behaviorConfig: input.behaviorConfig,
         userMessage: input.message.body ?? "",
+        lastAssistantMessage,
       });
     const inputWithTurnPlan: AgentRuntimeExecuteInput = {
       ...input,

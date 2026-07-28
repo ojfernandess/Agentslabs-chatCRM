@@ -29,6 +29,63 @@ export type TurnPolicy = {
 
 const CONFIRMATION_MSG_RE = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|não|nao|no)$/i;
 
+export function isConfirmationUserMessage(msg: string): boolean {
+  return CONFIRMATION_MSG_RE.test(msg.trim());
+}
+
+/**
+ * Classifica o Portão C11 a partir da última resposta do agente (genérico).
+ * titular_mirror → S9 (só reference/embratur); travel_form_mirror → S10 (só check_in).
+ */
+export type ConfirmationGateKind =
+  | "titular_mirror"
+  | "travel_form_mirror"
+  | "data_collection"
+  | "unknown";
+
+export function classifyConfirmationGate(lastAssistantMessage: string): ConfirmationGateKind {
+  const t = lastAssistantMessage.trim();
+  if (!t) return "unknown";
+
+  // Ficha / S9b — antes de titular (mais específico)
+  if (
+    /ficha\s+de\s+viagem|confirme\s+(?:os\s+dados\s+(?:da\s+)?)?ficha|dados\s+da\s+(?:sua\s+)?viagem/i.test(
+      t,
+    ) ||
+    (/motivo\s+(?:da\s+)?viagem/i.test(t) &&
+      /transporte|pa[ií]ses?/i.test(t) &&
+      /confirm/i.test(t))
+  ) {
+    return "travel_form_mirror";
+  }
+
+  if (
+    /confirme\s+os\s+dados\s+do\s+titular|dados\s+do\s+titular|espelho\s+(?:do\s+)?titular|cadastro\s+(?:anterior|encontrado).*titular|\bTITULAR\b/i.test(
+      t,
+    )
+  ) {
+    return "titular_mirror";
+  }
+
+  // Template S9 a pedir os 6 campos (ainda sem espelho ficha)
+  if (
+    /motivo\s+(?:da\s+)?viagem|meio\s+de\s+transporte|pa[ií]ses?\s+visitad|cidades?\s+visitad/i.test(
+      t,
+    )
+  ) {
+    return "data_collection";
+  }
+
+  return "unknown";
+}
+
+/** Exclusive lock só isenta tools de conclusão quando o allowlist já é de conclusão (S10). */
+export function exclusiveExemptsCompletionTools(policy: TurnPolicy): boolean {
+  const ex = policy.exclusiveAllowedTools;
+  if (!ex || ex.length === 0) return true;
+  return ex.some((a) => isLikelyMutableOrCompletionTool(a, policy.completionToolHints));
+}
+
 /** Escalonamento / handoff — nunca entram no allowlist de confirmação (C11). */
 const ESCALATION_TOOL_NAMES = new Set([
   "call_human",
@@ -274,7 +331,7 @@ export function findForbiddenPairViolation(
 
 export function resolveTurnPolicy(
   behaviorConfig: Record<string, unknown> | null | undefined,
-  options: { userMessage?: string } = {},
+  options: { userMessage?: string; lastAssistantMessage?: string } = {},
 ): TurnPolicy {
   const empty: TurnPolicy = {
     forbiddenSameTurnPairs: [],
@@ -293,13 +350,23 @@ export function resolveTurnPolicy(
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
 
-  // Confirmação (sim/ok/não): bloquear só escalonamento.
-  // NÃO aplicar exclusiveAllowedTools=[embratur-reference] a todo "sim":
-  // isso quebra Ficha DE VIAGEM → S10 (`audaar_check_in`) — HJ2XQZXO-FICHA.
-  // Pares proibidos + prompt cobrem titular→S9 vs ficha→S10.
+  let exclusiveAllowedTools: string[] | null = null;
+  if (isConfirmation) {
+    const gate = classifyConfirmationGate(options.lastAssistantMessage ?? "");
+    if (gate === "titular_mirror") {
+      // N=1 titular → S9: só embratur/reference — NÃO isentar check_in
+      const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
+      exclusiveAllowedTools = exclusive.length > 0 ? exclusive : null;
+    } else if (gate === "travel_form_mirror") {
+      // Ficha confirmada → S10: só tools de conclusão
+      exclusiveAllowedTools = completionToolHints.length > 0 ? completionToolHints : null;
+    }
+    // data_collection / unknown: sem exclusive (pares + blockEscalation bastam)
+  }
+
   return {
     forbiddenSameTurnPairs,
-    exclusiveAllowedTools: null,
+    exclusiveAllowedTools,
     completionToolHints,
     blockEscalation: isConfirmation,
   };
@@ -330,10 +397,16 @@ export function validateToolOutcomesAgainstTurnPolicy(
   }
 
   if (policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0) {
+    const exemptCompletion = exclusiveExemptsCompletionTools(policy);
     for (const name of names) {
       if (isEscalationToolName(name)) continue;
-      // Ficha→sim→check_in: conclusão não é hard-block por exclusividade C11/S9
-      if (isLikelyMutableOrCompletionTool(name, policy.completionToolHints)) continue;
+      // Ficha→sim→check_in: conclusão só isenta quando o allowlist é de S10
+      if (
+        exemptCompletion &&
+        isLikelyMutableOrCompletionTool(name, policy.completionToolHints)
+      ) {
+        continue;
+      }
       const allowed = policy.exclusiveAllowedTools.some(
         (a) => toolOutcomeSatisfiesRequired(a, [{ name, preview: "" }]),
       );
@@ -364,7 +437,10 @@ export function turnPolicyPreExecBlockReason(
   if (!policy.exclusiveAllowedTools || policy.exclusiveAllowedTools.length === 0) {
     return null;
   }
-  if (isLikelyMutableOrCompletionTool(toolName, policy.completionToolHints)) {
+  if (
+    exclusiveExemptsCompletionTools(policy) &&
+    isLikelyMutableOrCompletionTool(toolName, policy.completionToolHints)
+  ) {
     return null;
   }
   const allowed = policy.exclusiveAllowedTools.some((a) =>

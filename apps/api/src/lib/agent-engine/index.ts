@@ -55,8 +55,12 @@ export {
   validateToolOutcomesAgainstTurnPolicy,
   shouldUseReplyOnlyRetry,
   isLikelyMutableOrCompletionTool,
+  isConfirmationUserMessage,
+  classifyConfirmationGate,
+  exclusiveExemptsCompletionTools,
   type TurnPolicy,
   type ForbiddenToolPair,
+  type ConfirmationGateKind,
 } from "./validators/turnPolicyParser.js";
 export {
   computeReplyConfidence,

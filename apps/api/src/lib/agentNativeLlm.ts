@@ -37,6 +37,7 @@ import {
 } from "./knowledgeSearchSkipConfig.js";
 import {
   findForbiddenPairViolation,
+  isConfirmationUserMessage,
   isLikelyMutableOrCompletionTool,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
@@ -49,6 +50,7 @@ import {
   resolveTurnExecutionContext,
   shouldAllowPlainChatFallback,
 } from "./agent-engine/contract/TurnExecutionContract.js";
+import { buildExecutionTurnPlan } from "./agent-engine/planner/ExecutionTurnPlan.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
@@ -1821,14 +1823,15 @@ async function generateNativeAgentReplyCore(input: {
       .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
-  const { turnPlan } = resolveTurnExecutionContext({
+  const { turnPlan: initialTurnPlan } = resolveTurnExecutionContext({
     behaviorConfig: behaviorConfigObj,
     userMessage,
     availableToolNames: customHttpTools.map((t) => t.name),
     existingTurnPlan: executionHints?.turnPlan,
   });
-  const turnPolicy = turnPlan.turnPolicy;
-  const requiredToolNamesForTurn = turnPlan.requiredToolNames;
+  let turnPlan = initialTurnPlan;
+  let turnPolicy = turnPlan.turnPolicy;
+  let requiredToolNamesForTurn = turnPlan.requiredToolNames;
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
   const allowedTagIds = flags.assign_contact_tags
     ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
@@ -1900,8 +1903,35 @@ async function generateNativeAgentReplyCore(input: {
       .filter((m) => m.content.length > 0);
   }
   const kbSearchQuery = buildKnowledgeSearchQuery(userMessage, kbHistoryForSearch);
-  const lastAssistantMessage =
+  let lastAssistantMessage =
     [...kbHistoryForSearch].reverse().find((t) => t.role === "assistant")?.content ?? "";
+  // Portão C11: re-resolver plano com última msg SUA (titular→S9 vs ficha→S10)
+  if (isConfirmationUserMessage(userMessageRaw || userMessage)) {
+    if (!lastAssistantMessage) {
+      try {
+        const lastOut = await prisma.message.findFirst({
+          where: {
+            conversationId: conversation.id,
+            direction: "OUTBOUND",
+            id: { not: message.id },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { body: true },
+        });
+        lastAssistantMessage = (lastOut?.body ?? "").trim();
+      } catch {
+        /* histórico opcional */
+      }
+    }
+    turnPlan = buildExecutionTurnPlan({
+      behaviorConfig: behaviorConfigObj,
+      userMessage,
+      availableToolNames: customHttpTools.map((t) => t.name),
+      lastAssistantMessage,
+    });
+    turnPolicy = turnPlan.turnPolicy;
+    requiredToolNamesForTurn = turnPlan.requiredToolNames;
+  }
   const kbSearchSkipCfg = parseKnowledgeSearchSkipFromBehavior(profile.behaviorConfig);
   const kbSearchSkipReason = kbSearchSkipCfg.enabled
     ? resolveKnowledgeSearchSkip(userMessage, {
@@ -2083,6 +2113,19 @@ async function generateNativeAgentReplyCore(input: {
       })
     : "";
 
+  const confirmationGatePrompt =
+    isConfirmationUserMessage(userMessageRaw || userMessage) &&
+    turnPlan.turnPolicy.exclusiveAllowedTools?.length
+      ? "\n\n[OpenConduit — Portão de confirmação]\n" +
+        `Neste turno use **somente**: ${turnPlan.turnPolicy.exclusiveAllowedTools.join(", ")}.\n` +
+        (turnPlan.matchedPatternIds.includes("confirmation_titular")
+          ? "Última msg SUA pedia confirmação de cadastro/identidade + hóspede confirmou → avance para o próximo formulário do playbook. **PROIBIDO** ferramentas de conclusão neste turno · pedir a mesma confirmação outra vez.\n"
+          : "") +
+        (turnPlan.matchedPatternIds.includes("confirmation_travel_form")
+          ? "Última msg SUA pedia confirmação de formulário preenchido + hóspede confirmou → use só a tool de conclusão. **PROIBIDO** reabrir etapas anteriores.\n"
+          : "")
+      : "";
+
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
   if (
@@ -2163,6 +2206,7 @@ async function generateNativeAgentReplyCore(input: {
     followUpPrompt +
     continuationPrompt +
     replyOnlyRetryPrompt +
+    confirmationGatePrompt +
     flowStatePrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
