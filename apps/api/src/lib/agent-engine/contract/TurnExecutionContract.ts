@@ -48,10 +48,14 @@ export function pendingRequiredToolNames(
   turnPlan: ExecutionTurnPlan,
   toolOutcomes: ToolOutcomeLite[],
 ): string[] {
-  const prior = toolOutcomes.map((t) => ({ name: t.name, preview: t.preview ?? "" }));
-  return turnPlan.requiredToolNames.filter(
-    (name) => !toolOutcomeSatisfiesRequired(name, prior),
-  );
+  return turnPlan.requiredToolNames.filter((name) => {
+    const hit = toolOutcomes.find(
+      (t) =>
+        t.ok !== false &&
+        toolOutcomeSatisfiesRequired(name, [{ name: t.name, preview: t.preview ?? "" }]),
+    );
+    return !hit;
+  });
 }
 
 /**

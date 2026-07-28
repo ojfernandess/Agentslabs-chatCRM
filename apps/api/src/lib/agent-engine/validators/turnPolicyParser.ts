@@ -54,6 +54,29 @@ const FORBIDDEN_PAIR_LINE_RE =
 const MUTABLE_OR_COMPLETION_RE =
   /(?:^|_)(?:check[_-]?in|checkin|submit|create|update|delete|cancel|confirm|finalize|concluir|gravar|salvar|enviar|post|put|patch|write|book|reservar)(?:_|$)/i;
 
+/** Tokens de prosa em exemplos do playbook (ex.: "lookup + Embratur") — não são tools. */
+const PROSE_CATEGORY_TOKENS = new Set([
+  "lookup",
+  "embratur",
+  "modelo",
+  "verificar",
+  "category",
+  "tool",
+  "tools",
+  "passo",
+  "modelo_s1",
+]);
+
+/** Nome parece identificador de ferramenta (não categoria de prosa). */
+function looksLikeToolIdentifier(token: string): boolean {
+  const raw = token.toLowerCase().trim();
+  const norm = raw.replace(/-/g, "_");
+  if (PROSE_CATEGORY_TOKENS.has(norm) || PROSE_CATEGORY_TOKENS.has(raw)) return false;
+  if (raw.includes("_") || raw.includes("-")) return true;
+  // Aliases curtos legítimos (ex.: reference) — só se ≥ 8 e sem ser prosa conhecida
+  return raw.length >= 8;
+}
+
 /**
  * Parse pares proibidos no mesmo turno a partir do playbook.
  * Exemplos: `Proibido \`foo\` + \`bar\` no mesmo turno` · `reference + check-in`.
@@ -76,7 +99,9 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
       continue;
     }
 
-    // Padrão sem backticks: "reference + check-in" / "lookup + Embratur"
+    // Padrão sem backticks: "reference + check-in".
+    // Ignorar exemplos de prosa curtos (ex.: "lookup + Embratur") — só tokens
+    // que parecem nomes de tool (underscore, hífen composto, ou ≥12 chars).
     const plusMatch = line.match(
       /([a-z][a-z0-9_-]{2,40})\s*\+\s*([a-z][a-z0-9_-]{2,40})/gi,
     );
@@ -84,11 +109,10 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
       for (const m of plusMatch) {
         const parts = m.split(/\s*\+\s*/);
         if (parts.length === 2 && parts[0] && parts[1]) {
-          pairs.push({
-            a: parts[0].toLowerCase(),
-            b: parts[1].toLowerCase(),
-            source: line.trim().slice(0, 160),
-          });
+          const a = parts[0].toLowerCase();
+          const b = parts[1].toLowerCase();
+          if (!looksLikeToolIdentifier(a) || !looksLikeToolIdentifier(b)) continue;
+          pairs.push({ a, b, source: line.trim().slice(0, 160) });
         }
       }
     }

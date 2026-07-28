@@ -2253,21 +2253,17 @@ async function generateNativeAgentReplyCore(input: {
                 );
               }
 
-              // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
+              // Política de turno: usar SEMPRE o nome estável da tool HTTP (`row.name`).
+              // Nunca fazer `canonical ?? oc_tool_<uuid>` — `null` (permitido) + `??` cascata
+              // para o UUID, que não satisfaz requiredToolNames e bloqueia a tool obrigatória
+              // (ex.: C3 check-in → audaar_consultar_reserva bloqueada → reply vazia → strict 52%).
               const existingNames = toolRoundOutcomes.map((t) => t.name);
-              const httpPolicyBlock =
-                turnPolicyPreExecBlockReasonForTurn(
-                  row.name,
-                  existingNames,
-                  turnPolicy,
-                  requiredToolNamesForTurn,
-                ) ??
-                turnPolicyPreExecBlockReasonForTurn(
-                  name,
-                  existingNames,
-                  turnPolicy,
-                  requiredToolNamesForTurn,
-                );
+              const httpPolicyBlock = turnPolicyPreExecBlockReasonForTurn(
+                row.name,
+                existingNames,
+                turnPolicy,
+                requiredToolNamesForTurn,
+              );
               if (httpPolicyBlock) {
                 return finishToolCall(
                   JSON.stringify({

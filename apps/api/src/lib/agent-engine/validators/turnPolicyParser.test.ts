@@ -38,10 +38,22 @@ test("parseForbiddenSameTurnPairsFromPlaybook extracts backtick pairs", () => {
 
 test("parseForbiddenSameTurnPairsFromPlaybook extracts plus shorthand", () => {
   const pairs = parseForbiddenSameTurnPairsFromPlaybook(
-    "Proibido misturar reference + check-in no mesmo turno",
+    "Proibido misturar embratur-reference + audaar_check_in no mesmo turno",
   );
   assert.ok(pairs.length >= 1);
   assert.ok(findForbiddenPairViolation(["embratur-reference", "audaar_check_in"], pairs));
+});
+
+test("parseForbiddenSameTurnPairsFromPlaybook ignores prose category examples", () => {
+  const pairs = parseForbiddenSameTurnPairsFromPlaybook(
+    "**Proibido** misturar categorias no mesmo turno (ex.: lookup + Embratur · verificar + Modelo S1).",
+  );
+  assert.equal(
+    findForbiddenPairViolation(["lookup", "embratur"], pairs),
+    null,
+    `prose examples must not become pairs: ${JSON.stringify(pairs)}`,
+  );
+  assert.equal(findForbiddenPairViolation(["verificar", "modelo"], pairs), null);
 });
 
 test("parseExclusiveToolsForConfirmationTurn excludes completion tools", () => {

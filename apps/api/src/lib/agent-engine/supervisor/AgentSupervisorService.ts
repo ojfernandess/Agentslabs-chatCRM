@@ -189,7 +189,7 @@ const CHECK_DEFS: Array<{
       if (!i.eilEnabled || !i.eilPlan) return true;
       const required = i.eilPlan.requiredToolNames ?? [];
       if (required.length === 0) return true;
-      const outcomes = i.toolOutcomes ?? [];
+      const outcomes = (i.toolOutcomes ?? []).filter((t) => t.ok);
       return required.every((name) => toolOutcomeSatisfiesRequired(name, outcomes));
     },
   },
