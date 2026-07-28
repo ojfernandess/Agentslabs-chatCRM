@@ -68,6 +68,13 @@ export {
   type ConfirmationGateKind,
 } from "./validators/turnPolicyParser.js";
 export {
+  formatScalarFactLabel,
+  isInternalScalarLeaf,
+  assistantAskedForConfirmation,
+  shouldOfferGroundedConfirmationRescue,
+  resolveStrictModeRescueReply,
+} from "./validators/StrictModeRescue.js";
+export {
   computeReplyConfidence,
   evaluateStrictModeGate,
   STRICT_MODE_MIN_CONFIDENCE,

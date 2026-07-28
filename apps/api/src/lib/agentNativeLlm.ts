@@ -49,6 +49,11 @@ import {
   buildAdvanceAskFromReferenceCatalog,
 } from "./agent-engine/validators/turnPolicyParser.js";
 import {
+  formatScalarFactLabel,
+  isInternalScalarLeaf,
+  resolveStrictModeRescueReply,
+} from "./agent-engine/validators/StrictModeRescue.js";
+import {
   buildGenericReplyOnlyRetryPromptBlock,
   resolveTurnExecutionContext,
   shouldAllowPlainChatFallback,
@@ -485,9 +490,10 @@ export function collectScalarFactsFromPayload(
       if (!s || s === "undefined" || s === "null") return;
       if (s.length > 180) return;
       if (/^[A-Za-z0-9+/=]{80,}$/.test(s)) return; // base64-ish
-      const key = prefix || "value";
-      if (GROUNDED_SKIP_KEYS.has(key.toLowerCase().replace(/[^a-z0-9]/g, ""))) return;
-      out.push({ key, value: s });
+      const leaf = prefix.includes(".") ? prefix.split(".").pop()! : prefix || "value";
+      if (GROUNDED_SKIP_KEYS.has(leaf.toLowerCase().replace(/[^a-z0-9]/g, ""))) return;
+      if (isInternalScalarLeaf(leaf)) return;
+      out.push({ key: formatScalarFactLabel(prefix || leaf), value: s });
       return;
     }
     if (Array.isArray(node)) {
@@ -3403,13 +3409,25 @@ async function generateNativeAgentReplyCore(input: {
         policyAlerts.length === 0 &&
         turnPolicyAlerts.length === 0
       ) {
-        const completionAck = buildCompletionSuccessAck(toolRoundOutcomes);
-        const grounded =
-          completionAck ?? buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
-        if (grounded) {
-          replyText = grounded;
+        const inventionRescue = resolveStrictModeRescueReply({
+          originalReply: replyText,
+          userMessage,
+          lastAssistantMessage,
+          llmSupervisorApproved: false,
+          toolOutcomes: toolRoundOutcomes,
+          hasSubstantiveReply: (t) =>
+            hasSubstantiveAgentReplyToCustomer(t, configuredStallMessages),
+          matchedPatternIds: turnPlan.matchedPatternIds,
+          buildCompletionSuccessAck: buildCompletionSuccessAck,
+          buildAdvanceAskFromReferenceCatalog: buildAdvanceAskFromReferenceCatalog,
+          buildGroundedConfirmation: buildGroundedConfirmationFromToolOutcomes,
+          buildDeterministicReply: (outcomes) =>
+            buildDeterministicReplyFromToolOutcomes(outcomes as NativeToolRoundOutcome[]),
+        });
+        if (inventionRescue.reply) {
+          replyText = inventionRescue.reply;
           approved = true;
-          summary = `${summary} [auto: reply ${completionAck ? "completion ack" : "grounded"} a partir do payload da tool]`.slice(
+          summary = `${summary} [auto: reply ${inventionRescue.kind ?? "rescue"} a partir do payload da tool]`.slice(
             0,
             500,
           );
@@ -3540,32 +3558,32 @@ async function generateNativeAgentReplyCore(input: {
           { output: { replyPreview: replyText.slice(0, 500) } },
         );
       } else {
-      // Última linha: tools OK → ack de conclusão / avanço de formulário / grounded — nunca dump JSON.
       const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
       if (successfulTools.length > 0) {
-        const completionAck = buildCompletionSuccessAck(toolRoundOutcomes);
-        const advanceAsk =
-          !completionAck && turnPlan.matchedPatternIds.includes("confirmation_titular")
-            ? buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes)
-            : null;
-        const grounded =
-          completionAck ??
-          advanceAsk ??
-          buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
-        if (grounded) {
-          replyText = grounded;
+        const rescue = resolveStrictModeRescueReply({
+          originalReply: replyText,
+          userMessage,
+          lastAssistantMessage,
+          llmSupervisorApproved,
+          toolOutcomes: toolRoundOutcomes,
+          hasSubstantiveReply: (t) =>
+            hasSubstantiveAgentReplyToCustomer(t, configuredStallMessages),
+          matchedPatternIds: turnPlan.matchedPatternIds,
+          buildCompletionSuccessAck: buildCompletionSuccessAck,
+          buildAdvanceAskFromReferenceCatalog: buildAdvanceAskFromReferenceCatalog,
+          buildGroundedConfirmation: buildGroundedConfirmationFromToolOutcomes,
+          buildDeterministicReply: (outcomes) =>
+            buildDeterministicReplyFromToolOutcomes(outcomes as NativeToolRoundOutcome[]),
+        });
+        if (rescue.reply) {
+          replyText = rescue.reply;
           llmSupervisorApproved = true;
-          const rescueKind = completionAck
-            ? "completion ack"
-            : advanceAsk
-              ? "advance form ask"
-              : "grounded tool payload";
-          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${rescueKind}]`
+          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${rescue.kind ?? "fallback"}]`
             .trim()
             .slice(0, 500);
           ex?.info(
             { id: "strict_mode", name: "Modo estrito" },
-            `Hard-block contornado — ${rescueKind}`,
+            `Hard-block contornado — ${rescue.kind ?? "fallback"}`,
             { output: { replyPreview: replyText.slice(0, 500) } },
           );
         } else {

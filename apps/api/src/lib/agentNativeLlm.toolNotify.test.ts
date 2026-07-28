@@ -352,7 +352,8 @@ test("buildGroundedConfirmationFromToolOutcomes uses structuredPayload scalars o
   assert.ok(text);
   assert.match(text!, /Odair/);
   assert.match(text!, /41026299802/);
-  assert.match(text!, /a@b\.com/);
+  assert.match(text!, /Email/);
+  assert.doesNotMatch(text!, /data\.guest|documentNumber:/);
   assert.doesNotMatch(text!, /undefined/);
   assert.doesNotMatch(text!, /secret|nope/i);
   assert.match(text!, /Confirma\?/);
@@ -396,8 +397,23 @@ test("collectScalarFactsFromPayload skips empty and sensitive keys", () => {
   });
   assert.deepEqual(
     facts.map((f) => f.key),
-    ["name"],
+    ["Name"],
   );
+});
+
+test("collectScalarFactsFromPayload humanizes nested paths", () => {
+  const facts = collectScalarFactsFromPayload({
+    data: {
+      reservation: { localizer: "HVW4V2D5", reservationId: 279264 },
+      guest: { name: "Odair", documentNumber: "41026299802" },
+    },
+  });
+  const keys = facts.map((f) => f.key);
+  assert.ok(keys.includes("Localizer"));
+  assert.ok(keys.includes("Name"));
+  assert.ok(keys.includes("Document Number"));
+  assert.ok(!keys.some((k) => k.includes("data.")));
+  assert.ok(!keys.includes("Reservation Id"));
 });
 
 test("knowledgeToolFoundUsefulExcerpts detects found true", () => {
