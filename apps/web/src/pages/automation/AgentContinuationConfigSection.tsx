@@ -18,10 +18,9 @@ export const DEFAULT_AGENT_CONTINUATION_RULES = [
     maxPerConversation: 1,
     turnHint:
       "[Continuação automática — Passo 8] O check-in foi concluído com sucesso no turno anterior. " +
-      "Execute Passo 8 do playbook: (A) audaar_consultar_reserva com o mesmo localizador; " +
-      "(B) até 4× buscar_conhecimento (endereço, entrada, wifi, políticas); " +
-      "(C) envie a mensagem completa de conclusão ao hóspede. " +
-      "NÃO chame audaar_check_in novamente neste turno. NÃO transfira para humano.",
+      "Use os dados da reserva já presentes no contexto (flowSlots / memória — localizador, datas, hóspede). " +
+      "Execute Passo 8: até 4× buscar_conhecimento (endereço, entrada, wifi, políticas) e envie a mensagem completa de conclusão ao hóspede. " +
+      "NÃO chame audaar_consultar_reserva nem audaar_check_in neste turno. NÃO transfira para humano.",
   },
 ] as const;
 

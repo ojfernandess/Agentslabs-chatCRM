@@ -12,9 +12,9 @@ import {
 import { buildContinuationSyntheticBody } from "./constants.js";
 import type { PendingAgentContinuation } from "./types.js";
 import {
-  incrementContinuationCountAutomationContext,
   clearPendingContinuationAutomationContext,
   loadAutomationConversationContext,
+  tryClaimPendingContinuationAutomationContext,
 } from "../../automationConversationContextLib.js";
 
 async function runContinuationTurn(input: {
@@ -92,17 +92,6 @@ async function runContinuationTurn(input: {
       resolveAgentEngineQueuePriority(conversation.priority),
     );
     if (enqueued) {
-      await incrementContinuationCountAutomationContext({
-        organizationId,
-        conversationId: conversation.id,
-        botId: bot.id,
-        ruleId: pending.ruleId,
-      });
-      await clearPendingContinuationAutomationContext({
-        organizationId,
-        conversationId: conversation.id,
-        botId: bot.id,
-      });
       return;
     }
   }
@@ -117,18 +106,6 @@ async function runContinuationTurn(input: {
     exLog,
     skipContinuationSchedule: true,
   });
-
-  await incrementContinuationCountAutomationContext({
-    organizationId,
-    conversationId: conversation.id,
-    botId: bot.id,
-    ruleId: pending.ruleId,
-  });
-  await clearPendingContinuationAutomationContext({
-    organizationId,
-    conversationId: conversation.id,
-    botId: bot.id,
-  });
 }
 
 export async function dispatchProactiveAgentContinuation(input: {
@@ -138,8 +115,44 @@ export async function dispatchProactiveAgentContinuation(input: {
   contactId: string;
   pending: PendingAgentContinuation;
   log: FastifyBaseLogger;
+  /** Máximo de disparos por conversa (default 1). */
+  maxPerConversation?: number;
+  /** Origem BullMQ — dedup mesmo sem pending no contexto. */
+  forceFromQueue?: boolean;
 }): Promise<void> {
-  const { organizationId, botId, conversationId, contactId, pending, log } = input;
+  const {
+    organizationId,
+    botId,
+    conversationId,
+    contactId,
+    pending,
+    log,
+    maxPerConversation,
+    forceFromQueue,
+  } = input;
+
+  const claimed = await tryClaimPendingContinuationAutomationContext({
+    organizationId,
+    conversationId,
+    botId,
+    ruleId: pending.ruleId,
+    maxPerConversation,
+    forceFromQueue,
+  });
+  if (!claimed) {
+    log.debug(
+      { conversationId, ruleId: pending.ruleId },
+      "continuation already claimed or not due — skipping dispatch",
+    );
+    return;
+  }
+
+  const effectivePending: PendingAgentContinuation = {
+    ...claimed,
+    turnHint: pending.turnHint || claimed.turnHint,
+    ruleName: pending.ruleName ?? claimed.ruleName,
+    sourceExecutionId: pending.sourceExecutionId ?? claimed.sourceExecutionId,
+  };
 
   const [bot, conversation, contact] = await Promise.all([
     prisma.bot.findFirst({ where: { id: botId, organizationId } }),
@@ -165,7 +178,7 @@ export async function dispatchProactiveAgentContinuation(input: {
     bot,
     conversation,
     contact,
-    pending,
+    pending: effectivePending,
     log,
   });
 }
@@ -194,48 +207,21 @@ export async function runProactiveContinuationFromQueue(
     return;
   }
 
-  const pending: PendingAgentContinuation = {
-    ruleId,
-    ruleName: data.continuationRuleName,
-    scheduledAt: new Date().toISOString(),
-    turnHint,
-    sourceExecutionId: data.sourceExecutionId,
-    attempts: 0,
-  };
-
-  const [bot, conversation, contact] = await Promise.all([
-    prisma.bot.findFirst({ where: { id: data.botId, organizationId: data.organizationId } }),
-    prisma.conversation.findFirst({
-      where: { id: data.conversationId, organizationId: data.organizationId },
-    }),
-    prisma.contact.findFirst({ where: { id: data.contactId, organizationId: data.organizationId } }),
-  ]);
-
-  if (!bot?.isActive || !conversation || !contact) {
-    await clearPendingContinuationAutomationContext({
-      organizationId: data.organizationId,
-      conversationId: data.conversationId,
-      botId: data.botId,
-    });
-    return;
-  }
-  if (conversation.awaitingHumanHandoff || conversation.status !== "PENDING" || conversation.assignedToId != null) {
-    await clearPendingContinuationAutomationContext({
-      organizationId: data.organizationId,
-      conversationId: data.conversationId,
-      botId: data.botId,
-    });
-    return;
-  }
-
-  await runContinuationTurn({
+  await dispatchProactiveAgentContinuation({
     organizationId: data.organizationId,
-    bot,
-    conversation,
-    contact,
-    pending,
+    botId: data.botId,
+    conversationId: data.conversationId,
+    contactId: data.contactId,
+    pending: {
+      ruleId,
+      ruleName: data.continuationRuleName,
+      scheduledAt: new Date(0).toISOString(),
+      turnHint,
+      sourceExecutionId: data.sourceExecutionId,
+      attempts: 0,
+    },
     log,
-    existingExecutionId: data.executionId.startsWith("continuation:") ? undefined : data.executionId,
+    forceFromQueue: true,
   });
 }
 

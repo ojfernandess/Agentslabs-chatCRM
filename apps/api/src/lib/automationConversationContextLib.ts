@@ -742,6 +742,69 @@ export async function mergePendingContinuationAutomationContext(params: {
   });
 }
 
+/**
+ * Reclama atomicamente um turno proactivo pendente (evita duplo dispatch BullMQ + scheduler).
+ * Incrementa continuationCounts e remove pendingContinuation num único upsert.
+ */
+export async function tryClaimPendingContinuationAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  ruleId: string;
+  maxPerConversation?: number;
+  /** Job BullMQ — reclama mesmo sem pending no contexto (dedup por count). */
+  forceFromQueue?: boolean;
+}): Promise<PendingAgentContinuation | null> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const pending = existing.state.pendingContinuation;
+
+  const max = Math.max(1, params.maxPerConversation ?? 1);
+  const prevCount = existing.state.continuationCounts?.[params.ruleId] ?? 0;
+  if (prevCount >= max) {
+    if (pending?.ruleId === params.ruleId) {
+      await clearPendingContinuationAutomationContext(params);
+    }
+    return null;
+  }
+
+  if (!params.forceFromQueue) {
+    if (!pending?.ruleId || pending.ruleId !== params.ruleId) return null;
+    if (!pending.turnHint?.trim() || !pending.scheduledAt) return null;
+    if (new Date(pending.scheduledAt).getTime() > Date.now()) return null;
+  }
+
+  const state: AutomationContextState = { ...existing.state };
+  delete state.pendingContinuation;
+  state.continuationCounts = {
+    ...(state.continuationCounts ?? {}),
+    [params.ruleId]: prevCount + 1,
+  };
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+
+  return pending?.ruleId === params.ruleId
+    ? pending
+    : {
+        ruleId: params.ruleId,
+        scheduledAt: new Date().toISOString(),
+        turnHint: "",
+        attempts: 0,
+      };
+}
+
 export async function clearPendingContinuationAutomationContext(params: {
   organizationId: string;
   conversationId: string;
@@ -801,7 +864,9 @@ export function buildContinuationTurnPromptBlock(ruleId: string, turnHint: strin
     "\n\n[OpenConduit — turno proactivo / continuação automática]\n" +
     `Regra: ${ruleId}\n` +
     "Este turno foi iniciado pela plataforma (sem nova mensagem do cliente). " +
-    "Execute a instrução abaixo como prioridade máxima e envie resposta substantiva ao cliente.\n\n" +
+    "Execute a instrução abaixo como prioridade máxima e envie resposta substantiva ao cliente.\n" +
+    "Turnos de continuação Passo 8: use flowSlots/memória para dados da reserva — " +
+    "somente buscar_conhecimento neste turno (sem audaar_consultar_reserva).\n\n" +
     turnHint.trim().slice(0, 4000)
   );
 }

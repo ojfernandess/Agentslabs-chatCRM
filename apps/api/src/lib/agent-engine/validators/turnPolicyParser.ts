@@ -414,3 +414,18 @@ export function shouldUseReplyOnlyRetry(opts: {
   // NÃO reexecutar HTTP (evita embratur×2 + side-effects). Só regenerar reply.
   return true;
 }
+
+/** Instrução injectada no retry reply-only para manter o passo Portão (C11). */
+export function buildReplyOnlyRetryPromptBlock(userMessage: string): string {
+  const msg = userMessage.trim();
+  if (!msg || !CONFIRMATION_MSG_RE.test(msg)) return "";
+
+  return (
+    "\n\n[OpenConduit — retry reply-only / confirmação C11]\n" +
+    "O Supervisor pediu regenerar **apenas a resposta** — **PROIBIDO** invocar ferramentas neste retry.\n" +
+    "Leia a **última mensagem SUA** no histórico:\n" +
+    "- Se era espelho **TITULAR** + hóspede confirmou (`sim`/`ok`): avance para **S9** — template dos 6 campos Embratur. **Não** peça confirmação de novo.\n" +
+    "- Se era espelho **FICHA DE VIAGEM** + hóspede confirmou: avance para **S10** — mensagem curta de check-in concluído (sem re-confirmar ficha).\n" +
+    "- **PROIBIDO** reiniciar S1 · pedir CPF/nacionalidade · `audaar_consultar_reserva` · combinar `embratur-reference` + `audaar_check_in`.\n"
+  );
+}

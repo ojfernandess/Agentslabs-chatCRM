@@ -44,6 +44,7 @@ import {
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
   validateToolOutcomesAgainstTurnPolicy,
+  buildReplyOnlyRetryPromptBlock,
 } from "./agent-engine/validators/turnPolicyParser.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
@@ -1911,6 +1912,10 @@ async function generateNativeAgentReplyCore(input: {
     ? buildContinuationTurnPromptBlock(continuationParsed.ruleId, continuationParsed.turnHint)
     : "";
 
+  const replyOnlyRetryPrompt = executionHints?.replyOnlyRetry
+    ? buildReplyOnlyRetryPromptBlock(userMessageRaw)
+    : "";
+
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
   if (
@@ -1990,6 +1995,7 @@ async function generateNativeAgentReplyCore(input: {
     imageInboundHint +
     followUpPrompt +
     continuationPrompt +
+    replyOnlyRetryPrompt +
     flowStatePrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
@@ -2209,7 +2215,7 @@ async function generateNativeAgentReplyCore(input: {
                 return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
 
-              // Reply-only retry: reutilizar tools OK; bloquear mutáveis novas
+              // Reply-only retry: reutilizar tools OK; bloquear qualquer nova invocação
               if (executionHints?.replyOnlyRetry) {
                 const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find(
                   (t) => toolsMatchAlias(t.name, row.name) || toolsMatchAlias(t.name, name),
@@ -2226,17 +2232,15 @@ async function generateNativeAgentReplyCore(input: {
                     }),
                   );
                 }
-                if (isLikelyMutableOrCompletionTool(row.name, turnPolicy.completionToolHints)) {
-                  return finishToolCall(
-                    JSON.stringify({
-                      ok: false,
-                      skipped: true,
-                      reason: "reply_only_retry_block_mutable",
-                      message:
-                        "Retry de qualidade: proibido reexecutar ferramentas mutáveis. Escreva apenas a resposta ao cliente.",
-                    }),
-                  );
-                }
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "reply_only_retry_no_tools",
+                    message:
+                      "Retry de qualidade: proibido invocar ferramentas. Escreva apenas a resposta ao cliente.",
+                  }),
+                );
               }
 
               // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
@@ -2327,6 +2331,32 @@ async function generateNativeAgentReplyCore(input: {
                   ...(exec.autoFilledFields?.length
                     ? { autoFilledFields: exec.autoFilledFields.slice(0, 20) }
                     : {}),
+                }),
+              );
+            }
+            if (executionHints?.replyOnlyRetry) {
+              const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find((t) =>
+                toolsMatchAlias(t.name, name),
+              );
+              if (prior) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: true,
+                    skipped: true,
+                    reason: "reply_only_retry_reuse",
+                    bodyPreview: prior.preview.slice(0, 1500),
+                    message:
+                      "Resultado já obtido neste turno. Não volte a chamar a ferramenta — responda ao cliente com base neste resultado.",
+                  }),
+                );
+              }
+              return finishToolCall(
+                JSON.stringify({
+                  ok: false,
+                  skipped: true,
+                  reason: "reply_only_retry_no_tools",
+                  message:
+                    "Retry de qualidade: proibido invocar ferramentas. Escreva apenas a resposta ao cliente.",
                 }),
               );
             }
