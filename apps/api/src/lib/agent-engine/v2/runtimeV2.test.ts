@@ -193,6 +193,112 @@ test("applyRecoveryToLlmConfig overrides provider and model", () => {
   assert.equal(applied.model, "gemini-2.0-flash");
 });
 
+test("filterToolsByOrchestrator with empty allowlist returns pending mandatory tools only", () => {
+  const decision = {
+    allowedToolNames: [],
+    forbiddenToolNames: ["buscar_conhecimento", "call_human"],
+    mandatoryNextTool: null,
+    reason: "test",
+    pendingRequired: ["embratur-reference"],
+  };
+  const filtered = filterToolsByOrchestrator(
+    [
+      { function: { name: "embratur-reference" } },
+      { function: { name: "buscar_conhecimento" } },
+      { function: { name: "audaar_check_in" } },
+    ],
+    decision,
+  );
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0]!.function.name, "embratur-reference");
+});
+
+test("orchestrateTools resolves mandatory from catalog when exclusive allowlist is empty", () => {
+  const contract = buildExecutionContract({
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `
+| C11 | titular OK · N=1 → S9 | \`sim\` após TITULAR | só \`embratur-reference\` | proibido check_in |
+`,
+      },
+    },
+    userMessage: "sim",
+    availableToolNames: ["oc_tool_embratur", "buscar_conhecimento", "audaar_check_in"],
+    lastAssistantMessage: "Confirme os dados do TITULAR. Nome: João. Confirma?",
+  });
+  const decision = orchestrateTools({
+    contract,
+    availableToolNames: ["oc_tool_embratur", "buscar_conhecimento", "audaar_check_in"],
+    toolsAlreadyCalled: [],
+  });
+  assert.ok(decision.pendingRequired.some((t) => /embratur|reference/i.test(t)));
+  assert.ok(
+    decision.mandatoryNextTool != null || decision.pendingRequired.length > 0,
+    "expected mandatory or pending embratur",
+  );
+  if (decision.mandatoryNextTool) {
+    assert.match(decision.mandatoryNextTool, /embratur|oc_tool/i);
+  }
+});
+
+test("orchestrateTools forbids unscheduled tools after required tools satisfied", () => {
+  const contract = buildExecutionContract({
+    behaviorConfig: {
+      promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK },
+    },
+    userMessage: "quero fazer check-in ABC12345",
+    availableToolNames: [
+      "audaar_consultar_reserva",
+      "audaar_consultar_main_guest",
+      "buscar_conhecimento",
+    ],
+  });
+  const decision = orchestrateTools({
+    contract,
+    availableToolNames: [
+      "audaar_consultar_reserva",
+      "audaar_consultar_main_guest",
+      "buscar_conhecimento",
+    ],
+    toolsAlreadyCalled: ["audaar_consultar_reserva"],
+    toolOutcomes: [{ name: "audaar_consultar_reserva", ok: true, preview: '{"ok":true}' }],
+  });
+  assert.equal(decision.pendingRequired.length, 0);
+  assert.ok(
+    decision.forbiddenToolNames.some((n) => /main_guest/i.test(n)),
+    `expected main_guest forbidden, got ${decision.forbiddenToolNames.join(",")}`,
+  );
+});
+
+test("ToolScheduler forces required tool_choice when pendingRequired set", () => {
+  const session = initializeRuntimeV2({
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `
+| C11 | titular OK | sim | só \`embratur-reference\` | zero |
+`,
+      },
+    },
+    userMessage: "sim",
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+    lastAssistantMessage: "Confirme os dados do TITULAR. Confirma?",
+  });
+  const allTools = [
+    { function: { name: "embratur-reference", description: "ref", parameters: {} } },
+    { function: { name: "audaar_check_in", description: "check in", parameters: {} } },
+  ];
+  const decision = scheduleNextAction({ session, allTools, toolOutcomes: [] });
+  if (session.orchestrator.pendingRequired.length > 0) {
+    assert.equal(decision.phase, "invoke_tool");
+    assert.equal(decision.blockTextReply, true);
+    assert.ok(
+      typeof decision.toolChoice === "object" && decision.toolChoice.function.name === "embratur-reference",
+    );
+  }
+});
+
 test("shouldRunDeterministicToolPhase true for mandatory invoke_tool", () => {
   assert.equal(
     shouldRunDeterministicToolPhase({
@@ -215,6 +321,17 @@ test("shouldRunDeterministicToolPhase true for mandatory invoke_tool", () => {
       blockTextReply: false,
     }),
     false,
+  );
+  assert.equal(
+    shouldRunDeterministicToolPhase({
+      phase: "invoke_tool",
+      scheduledTool: "embratur-reference",
+      toolChoice: "auto",
+      activeTools: [],
+      reason: "test",
+      blockTextReply: true,
+    }),
+    true,
   );
 });
 

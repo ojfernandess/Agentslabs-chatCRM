@@ -4,6 +4,7 @@
  */
 
 import type { OpenAiToolDefinition } from "../../promptModulePreviewLlm.js";
+import { toolNamesMatch } from "../validators/requiredToolNamesParser.js";
 import { filterToolsByOrchestrator } from "./ToolOrchestrator.js";
 import type { RuntimeV2Session } from "./RuntimeV2Bridge.js";
 import type { ToolOrchestratorDecision } from "./types.js";
@@ -30,19 +31,49 @@ export type ScheduleToolsOpts = {
   replyOnlyRetry?: boolean;
 };
 
+function toolDefinitionMatchesName(tool: OpenAiToolDefinition, target: string): boolean {
+  return toolNamesMatch(target, tool.function.name);
+}
+
 /** Resolve nome OpenAI function a partir do scheduled tool (canonical ou oc_tool_). */
 export function resolveOpenAiFunctionName(
   scheduledTool: string,
   allTools: OpenAiToolDefinition[],
 ): string | null {
-  const target = scheduledTool.toLowerCase().replace(/-/g, "_");
   for (const t of allTools) {
-    const fn = t.function.name.toLowerCase();
-    if (fn === target || fn.includes(target) || target.includes(fn)) {
+    if (toolNamesMatch(scheduledTool, t.function.name)) {
       return t.function.name;
     }
   }
-  return allTools.find((t) => t.function.name.toLowerCase() === target)?.function.name ?? null;
+  return null;
+}
+
+function buildMandatoryInvokeDecision(
+  scheduledTool: string,
+  allTools: OpenAiToolDefinition[],
+  allowed: OpenAiToolDefinition[],
+  reason: string,
+): ToolSchedulerDecision {
+  const fnName = resolveOpenAiFunctionName(scheduledTool, allTools);
+  const singleTool = fnName
+    ? allTools.filter((t) => t.function.name === fnName)
+    : allTools.filter((t) => toolDefinitionMatchesName(t, scheduledTool));
+
+  const activeTools = singleTool.length > 0 ? singleTool : allowed.length > 0 ? allowed : allTools.filter(
+    (t) => toolDefinitionMatchesName(t, scheduledTool),
+  );
+  const forcedFn = singleTool[0]?.function.name ?? fnName ?? activeTools[0]?.function.name;
+
+  return {
+    phase: "invoke_tool",
+    scheduledTool,
+    toolChoice: forcedFn
+      ? { type: "function", function: { name: forcedFn } }
+      : "auto",
+    activeTools: activeTools.length > 0 ? activeTools : allowed,
+    reason,
+    blockTextReply: true,
+  };
 }
 
 /**
@@ -64,43 +95,16 @@ export function scheduleNextAction(opts: ScheduleToolsOpts): ToolSchedulerDecisi
     };
   }
 
-  const mandatory = orchestrator.mandatoryNextTool;
   const pending = orchestrator.pendingRequired;
+  const scheduledTool = orchestrator.mandatoryNextTool ?? pending[0] ?? null;
 
-  if (mandatory && pending.length > 0) {
-    const fnName = resolveOpenAiFunctionName(mandatory, allTools);
-    const singleTool = fnName
-      ? allowed.filter((t) => t.function.name === fnName)
-      : allowed.filter((t) => {
-          const fn = t.function.name.toLowerCase();
-          const m = mandatory.toLowerCase();
-          return fn === m || fn.includes(m) || m.includes(fn);
-        });
-
-    const activeTools = singleTool.length > 0 ? singleTool : allowed;
-    const forcedFn = singleTool[0]?.function.name ?? fnName;
-
-    return {
-      phase: "invoke_tool",
-      scheduledTool: mandatory,
-      toolChoice: forcedFn
-        ? { type: "function", function: { name: forcedFn } }
-        : "auto",
-      activeTools,
-      reason: `Scheduler: invocar \`${mandatory}\` antes de responder`,
-      blockTextReply: true,
-    };
-  }
-
-  if (pending.length > 0 && session.contract.plan.phase === "tools") {
-    return {
-      phase: "invoke_tool",
-      scheduledTool: pending[0] ?? null,
-      toolChoice: "auto",
-      activeTools: allowed,
-      reason: `Scheduler: tools pendentes (${pending.join(", ")})`,
-      blockTextReply: true,
-    };
+  if (scheduledTool && pending.length > 0) {
+    return buildMandatoryInvokeDecision(
+      scheduledTool,
+      allTools,
+      allowed,
+      `Scheduler: invocar \`${scheduledTool}\` antes de responder`,
+    );
   }
 
   return {
@@ -131,7 +135,7 @@ export function schedulerFromOrchestrator(
 ): Pick<ToolSchedulerDecision, "phase" | "scheduledTool" | "reason" | "blockTextReply"> {
   return {
     phase,
-    scheduledTool: orchestrator.mandatoryNextTool,
+    scheduledTool: orchestrator.mandatoryNextTool ?? orchestrator.pendingRequired[0] ?? null,
     reason: orchestrator.reason,
     blockTextReply: phase === "invoke_tool" && orchestrator.pendingRequired.length > 0,
   };

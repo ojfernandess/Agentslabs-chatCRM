@@ -55,6 +55,7 @@ import {
 } from "./agent-engine/validators/StrictModeRescue.js";
 import {
   buildGenericReplyOnlyRetryPromptBlock,
+  pendingRequiredToolNames,
   resolveTurnExecutionContext,
   shouldAllowPlainChatFallback,
 } from "./agent-engine/contract/TurnExecutionContract.js";
@@ -2923,7 +2924,17 @@ async function generateNativeAgentReplyCore(input: {
               { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
               `LLM respondeu sem invocar ${postSchedule.scheduledTool} — reply descartada`,
             );
-            replyText = "";
+            const advanceFallback = buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes);
+            const toolFallback = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+            replyText =
+              advanceFallback ??
+              (toolFallback && !/^Tentei consultar/i.test(toolFallback) ? toolFallback : "") ??
+              "Recebi a sua confirmação. Estou a concluir o registo — um momento, por favor.";
+            ex?.info(
+              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
+              "Fallback textual após falha de recovery de tool obrigatória",
+              { output: { replyPreview: replyText.slice(0, 300) } },
+            );
           }
         }
         ex?.info(
@@ -3052,6 +3063,35 @@ async function generateNativeAgentReplyCore(input: {
 
   if (toolRoundOutcomes.length > 0) {
     completedToolRounds = Math.max(completedToolRounds, 1);
+  }
+
+  if (
+    !replyText.trim() &&
+    toolRoundOutcomes.some((t) => t.ok) &&
+    !replyOnlyRetry
+  ) {
+    const emptyFallback = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+    if (emptyFallback.trim()) {
+      replyText = emptyFallback;
+      ex?.info(
+        { id: "llm", name: "Modelo + tools" },
+        "Fallback determinístico — evitar resposta vazia após tools OK",
+        { output: { replyPreview: replyText.slice(0, 300) } },
+      );
+    }
+  }
+
+  if (!replyText.trim() && !replyOnlyRetry) {
+    const pendingAfterTurn = pendingRequiredToolNames(turnPlan, toolRoundOutcomes);
+    if (pendingAfterTurn.length > 0) {
+      replyText =
+        "Recebi a sua mensagem. Estou a processar a etapa seguinte — um momento, por favor.";
+      ex?.info(
+        { id: "llm", name: "Modelo + tools" },
+        "Fallback mínimo — tools obrigatórias ainda pendentes",
+        { output: { pending: pendingAfterTurn.slice(0, 4) } },
+      );
+    }
   }
 
   if (!replyText && toolRoundOutcomes.length > 0 && toolCallNotify.forceDeliveryEnabled) {

@@ -12,6 +12,7 @@ import { isContinuationSyntheticMessage } from "../continuation/constants.js";
 import {
   availableToolSatisfiesRequired,
   playbookTextFromBehavior,
+  toolNamesMatch,
   type ToolCatalogEntry,
 } from "../validators/requiredToolNamesParser.js";
 import { compilePromptContract } from "./PromptCompiler.js";
@@ -103,8 +104,8 @@ function deriveForbiddenTools(
 
   if (turnPlan.turnPolicy.exclusiveAllowedTools?.length) {
     for (const name of availableToolNames) {
-      const allowed = turnPlan.turnPolicy.exclusiveAllowedTools.some(
-        (a) => a.toLowerCase() === name.toLowerCase() || name.toLowerCase().includes(a.toLowerCase()),
+      const allowed = turnPlan.turnPolicy.exclusiveAllowedTools.some((a) =>
+        toolNamesMatch(a, name),
       );
       if (!allowed) forbidden.add(name);
     }

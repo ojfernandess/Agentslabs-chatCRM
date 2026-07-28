@@ -6,6 +6,7 @@
 import { buildOrchestratorPromptBlock, buildExecutionContract } from "./ExecutionContractBuilder.js";
 import { validateBeforeExecution } from "./PreExecutionValidator.js";
 import { orchestrateTools, filterToolsByOrchestrator } from "./ToolOrchestrator.js";
+import { toolNamesMatch } from "../validators/requiredToolNamesParser.js";
 import { checkExecutionConsistency } from "./ExecutionConsistency.js";
 import { evaluateSmartFallback } from "./SmartFallback.js";
 import { buildExecutionAuditReport } from "./ExecutionAuditReport.js";
@@ -94,33 +95,30 @@ export function assertToolAllowedByRuntimeV2(
   toolName: string,
   existingToolNames: string[],
 ): string | null {
+  const matchesPendingRequired = session.orchestrator.pendingRequired.some((req) =>
+    toolNamesMatch(req, toolName),
+  );
+  if (matchesPendingRequired) {
+    return null;
+  }
+
   const forbidden = session.orchestrator.forbiddenToolNames.some(
-    (f) => f.toLowerCase() === toolName.toLowerCase(),
+    (f) => toolNamesMatch(f, toolName),
   );
   if (forbidden) {
     return `Runtime V2: ferramenta ${toolName} proibida neste turno`;
   }
-  const allowed = session.orchestrator.allowedToolNames.some(
-    (a) =>
-      a.toLowerCase() === toolName.toLowerCase() ||
-      toolName.toLowerCase().includes(a.toLowerCase()),
-  );
+  const allowed = session.orchestrator.allowedToolNames.some((a) => toolNamesMatch(a, toolName));
   if (session.orchestrator.allowedToolNames.length > 0 && !allowed) {
     return `Runtime V2: ferramenta ${toolName} fora do allowlist (${session.orchestrator.allowedToolNames.slice(0, 6).join(", ")})`;
   }
-  if (
-    session.orchestrator.mandatoryNextTool &&
-    session.orchestrator.pendingRequired.length > 0
-  ) {
-    const mandatory = session.orchestrator.mandatoryNextTool.toLowerCase();
-    const isMandatory =
-      toolName.toLowerCase() === mandatory ||
-      toolName.toLowerCase().includes(mandatory);
-    const mandatoryAlreadyCalled = existingToolNames.some(
-      (n) => n.toLowerCase() === mandatory || n.toLowerCase().includes(mandatory),
-    );
+  const mandatory =
+    session.orchestrator.mandatoryNextTool ?? session.orchestrator.pendingRequired[0] ?? null;
+  if (mandatory && session.orchestrator.pendingRequired.length > 0) {
+    const isMandatory = toolNamesMatch(mandatory, toolName);
+    const mandatoryAlreadyCalled = existingToolNames.some((n) => toolNamesMatch(mandatory, n));
     if (!isMandatory && !mandatoryAlreadyCalled) {
-      return `Runtime V2: invoque primeiro \`${session.orchestrator.mandatoryNextTool}\` antes de ${toolName}`;
+      return `Runtime V2: invoque primeiro \`${mandatory}\` antes de ${toolName}`;
     }
   }
   return null;

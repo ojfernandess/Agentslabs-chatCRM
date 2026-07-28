@@ -56,15 +56,18 @@ const ARGS_ONLY_SYSTEM =
 const RETRY_SYSTEM_APPEND =
   "\n\n**RETRY:** A ronda anterior não invocou a ferramenta. Invoca **obrigatoriamente** a function indicada — sem texto ao cliente.\n";
 
-/** True quando o scheduler agenda tool obrigatória com tool_choice forçado. */
+/** True quando o scheduler agenda tool obrigatória pendente. */
 export function shouldRunDeterministicToolPhase(decision: ToolSchedulerDecision): boolean {
   return (
     decision.phase === "invoke_tool" &&
     Boolean(decision.scheduledTool) &&
-    decision.blockTextReply &&
-    decision.toolChoice !== "auto" &&
-    decision.toolChoice !== "none"
+    decision.blockTextReply
   );
+}
+
+/** True quando há tool pendente que precisa de recovery pós-LLM. */
+export function shouldRecoverMandatoryTool(decision: ToolSchedulerDecision): boolean {
+  return shouldRunDeterministicToolPhase(decision);
 }
 
 function mandatoryToolSatisfied(
@@ -128,10 +131,17 @@ export async function runDeterministicToolPhase(
         : resolveOpenAiFunctionName(scheduledTool, opts.allTools);
 
     const singleTool = fnName
-      ? decision.activeTools.filter((t) => t.function.name === fnName)
-      : decision.activeTools.slice(0, 1);
+      ? opts.allTools.filter((t) => t.function.name === fnName)
+      : opts.allTools.filter((t) => {
+          const fn = t.function.name.toLowerCase();
+          const m = scheduledTool.toLowerCase().replace(/-/g, "_");
+          return fn === m || fn.includes(m) || m.includes(fn);
+        });
 
-    if (singleTool.length === 0) break;
+    if (singleTool.length === 0) {
+      missedMandatory.push(scheduledTool);
+      break;
+    }
 
     const outcomeBefore = opts.toolOutcomes.length;
     let satisfied = false;
@@ -202,7 +212,7 @@ export async function recoverMissedMandatoryTool(opts: {
     toolOutcomes: opts.toolOutcomes,
     replyOnlyRetry: opts.replyOnlyRetry,
   });
-  if (!shouldRunDeterministicToolPhase(decision) || !decision.scheduledTool) {
+  if (!shouldRecoverMandatoryTool(decision) || !decision.scheduledTool) {
     return { recovered: false, scheduledTool: null };
   }
   const before = opts.toolOutcomes.length;

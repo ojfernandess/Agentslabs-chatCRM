@@ -1,5 +1,6 @@
 import {
   resolveRequiredToolNamesForTurn,
+  toolNamesMatch,
 } from "../validators/requiredToolNamesParser.js";
 import {
   classifyConfirmationGate,
@@ -76,12 +77,7 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     const filterAvailable = (names: string[]) => {
       if (available.length === 0) return names;
       const kept = names.filter((n) =>
-        available.some(
-          (a) =>
-            a === n.toLowerCase() ||
-            a.includes(n.toLowerCase().replace(/-/g, "_")) ||
-            n.toLowerCase().replace(/-/g, "_").includes(a),
-        ),
+        available.some((a) => toolNamesMatch(n, a)),
       );
       return kept.length > 0 ? kept : names;
     };
