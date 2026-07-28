@@ -43,6 +43,19 @@ import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
 import { resolveEilTurn } from "../eil/runtimeBridge.js";
+import { buildTurnContext } from "../core/buildTurnContext.js";
+import {
+  blockReasonFromTurnContract,
+  shouldBlockOutboundFromTurnContract,
+} from "../core/executionContractGate.js";
+import type { TurnContext } from "../core/types.js";
+import { invokeScheduledTools } from "../scheduler/invokeScheduledTools.js";
+import { planScheduledToolInvocations, shouldRunToolScheduler } from "../scheduler/TurnToolScheduler.js";
+import {
+  decideResilienceAction,
+  parseResilienceConfig,
+  type ResilienceActionKind,
+} from "../resilience/TurnResilience.js";
 import type { EilSnapshot, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
 
@@ -75,6 +88,14 @@ type GraphState = {
   eilPlan?: ExecutionIntelligencePlan;
   eilFacts: FactStore;
   eilSnapshot?: EilSnapshot;
+  turnContext?: TurnContext;
+  scheduledToolOutcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>;
+  /** Contador de recovers determinísticos neste turno (Fase 4). */
+  recoveryCount: number;
+  /** Força schedule_tools a invocar pending mesmo sem schedulerEnabled. */
+  forceMandatoryRecovery: boolean;
+  /** Próximo destino após supervisor (resilience). */
+  resilienceRoute?: "schedule_tools" | "execute_tool" | "update_memory" | "human_review";
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -103,6 +124,13 @@ const GraphStateAnnotation = Annotation.Root({
   eilPlan: Annotation<ExecutionIntelligencePlan | undefined>,
   eilFacts: Annotation<FactStore>,
   eilSnapshot: Annotation<EilSnapshot | undefined>,
+  turnContext: Annotation<TurnContext | undefined>,
+  scheduledToolOutcomes: Annotation<
+    Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>
+  >,
+  recoveryCount: Annotation<number>,
+  forceMandatoryRecovery: Annotation<boolean>,
+  resilienceRoute: Annotation<"schedule_tools" | "execute_tool" | "update_memory" | "human_review" | undefined>,
 });
 
 /**
@@ -162,6 +190,9 @@ export class LangGraphRuntime implements AgentRuntime {
       intentHints: { kbQueryLikely: false },
       kbPrefetchResults: [],
       eilFacts: {},
+      scheduledToolOutcomes: [],
+      recoveryCount: 0,
+      forceMandatoryRecovery: false,
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -225,7 +256,7 @@ export class LangGraphRuntime implements AgentRuntime {
         ? [
             "classify_intent",
             "load_memory",
-            "select_tool",
+            "schedule_tools",
             "execute_tool",
             "validate_result",
             "supervisor",
@@ -234,7 +265,7 @@ export class LangGraphRuntime implements AgentRuntime {
         : [
             "classify_intent",
             "load_memory",
-            "select_tool",
+            "schedule_tools",
             "execute_tool",
             "validate_result",
             "supervisor",
@@ -243,6 +274,27 @@ export class LangGraphRuntime implements AgentRuntime {
           ],
       checkpointId: threadId,
     };
+
+    if (result.turnContext) {
+      const tc = result.turnContext;
+      const ec = tc.executionContract;
+      result.traceBuilder.setTurnSnapshot({
+        version: tc.version,
+        userMessage: tc.userMessage,
+        intentKind: tc.intent.kind,
+        intentConfidence: tc.intent.confidence,
+        promptHash: tc.promptContract.promptHash,
+        objective: tc.promptContract.objective || ec.objective,
+        requiredToolNames: ec.requiredToolNames,
+        pendingToolNames: ec.pendingToolNames,
+        satisfiedToolNames: ec.satisfiedToolNames,
+        forbiddenToolNames: ec.forbiddenToolNames,
+        planPhase: ec.planPhase,
+        contractValid: ec.valid,
+        violations: ec.violations,
+        eilEnabled: tc.eilEnabled,
+      });
+    }
 
     const trace = result.traceBuilder.build();
     if (result.supervisorTrace) trace.supervisor = result.supervisorTrace;
@@ -256,8 +308,23 @@ export class LangGraphRuntime implements AgentRuntime {
         supervisorApproved: result.supervisorApproved,
         retries: result.retryCount,
         blockReply: result.blockReply,
+        turn: trace.turn
+          ? {
+              intent: trace.turn.intentKind,
+              contractValid: trace.turn.contractValid,
+              pending: trace.turn.pendingToolNames,
+            }
+          : undefined,
       }),
     );
+
+    // Sempre registar turn/contract para MCP (mesmo sem observability full)
+    if (trace.turn) {
+      input.executionLog?.info(
+        { id: "turn_context", name: "Turn Context" },
+        JSON.stringify({ turn: trace.turn }),
+      );
+    }
 
     if (input.engineConfig.observability === "full") {
       input.executionLog?.info(
@@ -464,42 +531,132 @@ export class LangGraphRuntime implements AgentRuntime {
         userMessage: state.input.message.body ?? "",
         memory,
       });
-      state.traceBuilder.setNextNode("select_tool");
+      const turnId = `${state.input.conversation.id}:${state.input.message.id}`;
+      const turnContext = buildTurnContext({
+        turnId,
+        behaviorConfig: state.input.behaviorConfig,
+        userMessage: state.input.message.body ?? "",
+        memory,
+        eilResolve: eilBoot,
+      });
+      state.traceBuilder.emitEvent("turn_context", "TurnContext compilado", {
+        metadata: {
+          intent: turnContext.intent.kind,
+          requiredTools: turnContext.executionContract.requiredToolNames,
+          contractValid: turnContext.executionContract.valid,
+          promptHash: turnContext.promptContract.promptHash,
+        },
+      });
+      state.traceBuilder.setNextNode("schedule_tools");
       state.traceBuilder.endNode("load_memory");
       return {
         memory,
         eilFacts: eilBoot.facts,
         eilPlan: eilBoot.plan,
         eilSnapshot: eilBoot.snapshot,
+        turnContext,
+        intentHints: { kbQueryLikely: turnContext.intent.kind === "knowledge_query" },
       };
     };
 
-    const selectTool = async (state: GraphState): Promise<Partial<GraphState>> => {
-      state.traceBuilder.startNode("select_tool", "Selecionar ferramenta");
-      const behavior = state.input.behaviorConfig ?? {};
-      const nativeTools =
-        behavior && typeof behavior === "object"
-          ? ((behavior as Record<string, unknown>).nativeTools as Record<string, unknown> | undefined)
-          : undefined;
-      const toolCount = nativeTools ? Object.values(nativeTools).filter(Boolean).length : 0;
+    const scheduleTools = async (state: GraphState): Promise<Partial<GraphState>> => {
+      state.traceBuilder.startNode("schedule_tools", "Tool Scheduler");
+      const userMessage = state.input.message.body ?? "";
+      let turnContext = state.turnContext;
+      let scheduledToolOutcomes = state.scheduledToolOutcomes ?? [];
+      let toolOutcomes = state.toolOutcomes;
+      const forceRecovery = state.forceMandatoryRecovery === true;
+      let recoveryCount = state.recoveryCount ?? 0;
+
+      const canSchedule =
+        forceRecovery ||
+        shouldRunToolScheduler(state.input.engineConfig, state.input.executionHints);
+
+      if (canSchedule && turnContext) {
+        const plan = planScheduledToolInvocations(turnContext, toolOutcomes);
+        if (plan.length > 0) {
+          const scheduled = await invokeScheduledTools({
+            organizationId: state.input.organizationId,
+            bot: state.input.bot,
+            conversation: state.input.conversation,
+            message: state.input.message,
+            log: state.input.log,
+            behaviorConfig: state.input.behaviorConfig,
+            turnContext,
+            existingOutcomes: toolOutcomes,
+            userMessage,
+            kbPrefetchAppendix: state.kbPrefetchAppendix,
+          });
+          scheduledToolOutcomes = scheduled.outcomes.map(({ name, ok, preview, structuredPayload }) => ({
+            name,
+            ok,
+            preview,
+            structuredPayload,
+          }));
+          toolOutcomes = [
+            ...toolOutcomes,
+            ...scheduledToolOutcomes.filter(
+              (t) => !toolOutcomes.some((p) => p.name === t.name && p.ok),
+            ),
+          ];
+          turnContext = buildTurnContext({
+            turnId: `${state.input.conversation.id}:${state.input.message.id}`,
+            behaviorConfig: state.input.behaviorConfig,
+            userMessage,
+            memory: state.memory,
+            toolOutcomes,
+            priorFacts: state.eilFacts,
+          });
+          if (forceRecovery) recoveryCount += 1;
+          state.traceBuilder.emitEvent(
+            "turn_context",
+            forceRecovery
+              ? "Mandatory tool recovery executou tools"
+              : "Tool Scheduler executou tools obrigatórias",
+            {
+              metadata: {
+                scheduled: scheduled.invocations.map((i) => i.toolName),
+                outcomes: scheduledToolOutcomes.map((o) => ({ name: o.name, ok: o.ok })),
+                forceRecovery,
+                recoveryCount,
+              },
+            },
+          );
+          state.input.executionLog?.info(
+            { id: forceRecovery ? "tool_recovery" : "tool_scheduler", name: forceRecovery ? "Tool Recovery" : "Tool Scheduler" },
+            JSON.stringify({
+              planned: plan.map((p) => p.toolName),
+              executed: scheduledToolOutcomes.map((o) => o.name),
+              recoveryCount,
+            }),
+          );
+        }
+      }
+
       const eil = resolveEilTurn({
         behaviorConfig: state.input.behaviorConfig,
-        userMessage: state.input.message.body ?? "",
+        userMessage,
         memory: state.memory,
+        toolOutcomes,
         priorFacts: state.eilFacts,
       });
       state.traceBuilder.setNextNode("execute_tool");
       state.traceBuilder.endNode(
-        "select_tool",
+        "schedule_tools",
         "ok",
-        toolCount > 0
-          ? `${toolCount} ferramenta(s) disponível(eis)${eil.enabled ? " · EIL" : ""}`
-          : "delegar ao executor nativo",
+        scheduledToolOutcomes.length > 0
+          ? `${scheduledToolOutcomes.length} tool(s) pré-executada(s)${forceRecovery ? " · recovery" : ""}`
+          : "nenhuma tool obrigatória pendente",
       );
       return {
+        turnContext,
+        toolOutcomes,
+        scheduledToolOutcomes,
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,
+        recoveryCount,
+        forceMandatoryRecovery: false,
       };
     };
 
@@ -512,6 +669,7 @@ export class LangGraphRuntime implements AgentRuntime {
           supervisorChecks: state.supervisorTrace?.checks,
         });
       const priorOk = state.toolOutcomes.filter((t) => t.ok);
+      const preScheduled = state.scheduledToolOutcomes ?? [];
       const execResult = await executor({
         ...state.input,
         kbPrefetchAppendix: state.kbPrefetchAppendix,
@@ -520,7 +678,16 @@ export class LangGraphRuntime implements AgentRuntime {
               replyOnlyRetry: true,
               priorSuccessfulToolOutcomes: priorOk,
             }
-          : state.input.executionHints,
+          : preScheduled.length > 0
+            ? {
+                ...state.input.executionHints,
+                preScheduledToolOutcomes: preScheduled.map(({ name, ok, preview }) => ({
+                  name,
+                  ok,
+                  preview,
+                })),
+              }
+            : state.input.executionHints,
       });
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode(
@@ -536,7 +703,12 @@ export class LangGraphRuntime implements AgentRuntime {
                 (t) => !priorOk.some((p) => p.name === t.name && p.ok),
               ),
             ]
-          : (execResult.toolOutcomes ?? []);
+          : [
+              ...state.toolOutcomes,
+              ...(execResult.toolOutcomes ?? []).filter(
+                (t) => !state.toolOutcomes.some((p) => p.name === t.name && p.ok),
+              ),
+            ];
       const eil = resolveEilTurn({
         behaviorConfig: state.input.behaviorConfig,
         userMessage: state.input.message.body ?? "",
@@ -561,17 +733,20 @@ export class LangGraphRuntime implements AgentRuntime {
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
       const userMessage = state.input.message.body ?? "";
-      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
-        userMessage,
-      });
-      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
+      const contract = state.turnContext?.executionContract;
+      const requiredToolNames =
+        contract?.requiredToolNames ??
+        resolveRequiredToolNamesForValidation(state.input.behaviorConfig, { userMessage });
+      const turnPolicy =
+        state.turnContext?.promptContract.turnPolicy ??
+        resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         strictMode: state.input.engineConfig.strictMode,
         requiredToolNames,
         turnPolicy,
-        behaviorConfig: state.input.behaviorConfig,
+        behaviorConfig: contract ? undefined : state.input.behaviorConfig,
         userMessage,
       });
       if (!validation.ok) {
@@ -616,18 +791,39 @@ export class LangGraphRuntime implements AgentRuntime {
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,
+        turnContext: buildTurnContext({
+          turnId: `${state.input.conversation.id}:${state.input.message.id}`,
+          behaviorConfig: state.input.behaviorConfig,
+          userMessage,
+          memory: state.memory,
+          toolOutcomes: state.toolOutcomes,
+          priorFacts: state.eilFacts,
+          eilResolve: eil,
+        }),
       };
     };
 
+    const outboundContractGate = (
+      state: GraphState,
+      opts: { canRetry: boolean; supervisorTrace?: AgentSupervisorTrace },
+    ): boolean =>
+      shouldBlockOutboundFromTurnContract({
+        strictMode: state.input.engineConfig.strictMode,
+        validationBlockSend: state.validationBlockSend,
+        supervisorTrace: opts.supervisorTrace ?? state.supervisorTrace,
+        retryCount: state.retryCount,
+        canRetry: opts.canRetry,
+        executionContract: state.turnContext?.executionContract,
+        toolOutcomes: state.toolOutcomes,
+      });
+
     const supervisor = async (state: GraphState): Promise<Partial<GraphState>> => {
       if (!state.input.engineConfig.supervisorEnabled) {
-        // Sem Supervisor: ainda assim respeitar Tool Validator no modo estrito
-        // (ex.: CPF sem audaar_consultar_main_guest → não enviar reply inventada).
         const blockReply =
-          state.input.engineConfig.strictMode && state.validationBlockSend === true;
+          outboundContractGate(state, { canRetry: false }) || state.blockReply;
         return {
           supervisorApproved: !blockReply,
-          blockReply: blockReply || state.blockReply,
+          blockReply,
         };
       }
 
@@ -643,15 +839,20 @@ export class LangGraphRuntime implements AgentRuntime {
           checks: [{ id: "llm_supervisor", label: "Supervisor IA (LLM)", passed: approved, detail: summary }],
           retryCount: state.retryCount,
         };
+        const blockReply =
+          outboundContractGate(state, { canRetry: false, supervisorTrace: supTrace }) ||
+          state.blockReply;
         state.traceBuilder.emitEvent("supervisor", summary, { metadata: { mode: "llm", approved } });
         state.traceBuilder.setNextNode("update_memory");
         state.traceBuilder.endNode("supervisor", approved ? "ok" : "warn", summary);
-        return { supervisorApproved: approved, supervisorTrace: supTrace };
+        return { supervisorApproved: approved && !blockReply, supervisorTrace: supTrace, blockReply };
       }
 
-      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, {
-        userMessage: state.input.message.body ?? "",
-      });
+      const turnPolicy =
+        state.turnContext?.promptContract.turnPolicy ??
+        resolveTurnPolicy(state.input.behaviorConfig, {
+          userMessage: state.input.message.body ?? "",
+        });
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
@@ -670,6 +871,7 @@ export class LangGraphRuntime implements AgentRuntime {
         eilViolations: state.eilSnapshot?.violations,
         eilRequiredFactsMissing: state.eilPlan?.pendingFacts,
         turnPolicy,
+        executionContract: state.turnContext?.executionContract ?? null,
       });
       const supTrace = buildSupervisorTrace(supInput);
 
@@ -678,30 +880,111 @@ export class LangGraphRuntime implements AgentRuntime {
         state.input.engineConfig.strictMode,
         state.retryCount,
       );
-      const blockReply = shouldBlockReplyAfterSupervisor(
-        supTrace,
-        state.input.engineConfig.strictMode,
-        state.retryCount,
+
+      const resilienceCfg = parseResilienceConfig(
+        state.input.engineConfig,
+        state.input.behaviorConfig,
       );
+      const resilience = decideResilienceAction({
+        config: resilienceCfg,
+        strictMode: state.input.engineConfig.strictMode,
+        supervisorTrace: supTrace,
+        executionContract: state.turnContext?.executionContract ?? null,
+        retryCount: state.retryCount,
+        recoveryCount: state.recoveryCount ?? 0,
+        previousReply: state.previousReply,
+        replyText: state.reply,
+        toolOutcomes: state.toolOutcomes,
+      });
+
+      let resilienceRoute: GraphState["resilienceRoute"] = undefined;
+      let forceMandatoryRecovery = false;
+      let nextReply = state.reply;
+      let nextBlockReply =
+        outboundContractGate(state, { canRetry: retry, supervisorTrace: supTrace }) ||
+        shouldBlockReplyAfterSupervisor(
+          supTrace,
+          state.input.engineConfig.strictMode,
+          state.retryCount,
+        ) ||
+        state.blockReply;
+      let nextRetryCount = state.retryCount;
+      let nextSupervisorApproved = supTrace.approved;
+
+      if (resilienceCfg.enabled && !supTrace.approved) {
+        const action: ResilienceActionKind = resilience.action;
+        if (action === "recover_mandatory_tools") {
+          resilienceRoute = "schedule_tools";
+          forceMandatoryRecovery = true;
+          nextBlockReply = false;
+          nextRetryCount = state.retryCount + 1;
+          state.traceBuilder.emitEvent("retry", "Mandatory tool recovery", {
+            nodeId: "schedule_tools",
+            metadata: {
+              pending: resilience.pendingToolNames,
+              reason: resilience.reason,
+            },
+          });
+        } else if (action === "reply_only_retry") {
+          resilienceRoute = "execute_tool";
+          nextBlockReply = false;
+          nextRetryCount = state.retryCount + 1;
+          state.traceBuilder.emitEvent("retry", "Reply-only resilience retry", {
+            nodeId: "execute_tool",
+            metadata: { reason: resilience.reason },
+          });
+        } else if (action === "apply_fallback") {
+          resilienceRoute = "update_memory";
+          nextReply = resilience.fallbackMessage ?? resilienceCfg.blockedFallbackMessage;
+          nextBlockReply = false;
+          nextSupervisorApproved = true;
+          state.traceBuilder.emitEvent("supervisor", "Smart fallback aplicado", {
+            metadata: { reason: resilience.reason },
+          });
+        } else if (action === "block") {
+          resilienceRoute = "update_memory";
+          nextBlockReply = true;
+        } else if (retry) {
+          resilienceRoute = "execute_tool";
+          nextRetryCount = state.retryCount + 1;
+          nextBlockReply = false;
+          state.traceBuilder.emitEvent("retry", "Supervisor solicitou nova execução", {
+            nodeId: "execute_tool",
+            metadata: { retryCount: nextRetryCount },
+          });
+        } else {
+          resilienceRoute = "update_memory";
+        }
+      } else if (retry) {
+        resilienceRoute = "execute_tool";
+        nextRetryCount = state.retryCount + 1;
+        nextBlockReply = false;
+        state.traceBuilder.emitEvent("retry", "Supervisor solicitou nova execução", {
+          nodeId: "execute_tool",
+          metadata: { retryCount: nextRetryCount },
+        });
+      }
 
       let hitlPendingId = state.hitlPendingId;
       const hitlEnabled = state.input.engineConfig.humanInTheLoopEnabled === true;
       const hitlNative = state.input.engineConfig.humanInTheLoopNativeEnabled === true;
       const checkpointStore = state.input.engineConfig.checkpointStore ?? "memory";
       const threadId = `${state.input.conversation.id}:${state.input.message.id}`;
+      const isResilienceRetry =
+        resilienceRoute === "schedule_tools" || resilienceRoute === "execute_tool";
       if (
         hitlEnabled &&
-        !supTrace.approved &&
-        !retry &&
-        state.reply.trim() &&
-        (blockReply || state.input.engineConfig.strictMode)
+        !nextSupervisorApproved &&
+        !isResilienceRetry &&
+        nextReply.trim() &&
+        (nextBlockReply || state.input.engineConfig.strictMode)
       ) {
         const pending = registerHitlPending({
           organizationId: state.input.organizationId,
           conversationId: state.input.conversation.id,
           messageId: state.input.message.id,
           botId: state.input.bot.id,
-          replyPreview: state.reply,
+          replyPreview: nextReply,
           supervisorSummary: supTrace.summary,
           threadId,
           checkpointStore,
@@ -718,35 +1001,51 @@ export class LangGraphRuntime implements AgentRuntime {
         );
       }
 
-      if (retry) {
-        state.traceBuilder.emitEvent("retry", "Supervisor solicitou nova execução", {
-          nodeId: "execute_tool",
-          metadata: { retryCount: state.retryCount + 1 },
-        });
-      }
       state.traceBuilder.emitEvent("supervisor", supTrace.summary, {
-        metadata: { approved: supTrace.approved, checks: supTrace.checks.length },
+        metadata: {
+          approved: nextSupervisorApproved,
+          checks: supTrace.checks.length,
+          resilience: resilience.action,
+          resilienceReason: resilience.reason,
+        },
       });
 
-      state.traceBuilder.setNextNode(retry ? "execute_tool" : "update_memory");
-      state.traceBuilder.endNode("supervisor", supTrace.approved ? "ok" : "warn", supTrace.summary);
+      const nextNode =
+        resilienceRoute === "schedule_tools"
+          ? "schedule_tools"
+          : resilienceRoute === "execute_tool"
+            ? "execute_tool"
+            : "update_memory";
+      state.traceBuilder.setNextNode(nextNode);
+      state.traceBuilder.endNode(
+        "supervisor",
+        nextSupervisorApproved ? "ok" : "warn",
+        resilienceCfg.enabled ? `${supTrace.summary} · ${resilience.action}` : supTrace.summary,
+      );
 
       state.input.executionLog?.info(
         { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
         JSON.stringify({
-          approved: supTrace.approved,
-          retry,
-          blockReply,
+          approved: nextSupervisorApproved,
+          retry: resilienceRoute === "execute_tool" || resilienceRoute === "schedule_tools",
+          blockReply: nextBlockReply || !!hitlPendingId,
+          resilience: resilience.action,
           checks: supTrace.checks.map((c) => ({ id: c.id, passed: c.passed })),
         }),
       );
 
       return {
-        supervisorApproved: supTrace.approved,
-        supervisorTrace: supTrace,
-        retryCount: retry ? state.retryCount + 1 : state.retryCount,
-        blockReply: (blockReply || state.blockReply) || !!hitlPendingId,
+        reply: nextReply,
+        supervisorApproved: nextSupervisorApproved,
+        supervisorTrace: { ...supTrace, approved: nextSupervisorApproved },
+        retryCount: nextRetryCount,
+        blockReply: (nextBlockReply || state.blockReply) || !!hitlPendingId,
         hitlPendingId,
+        forceMandatoryRecovery,
+        resilienceRoute,
+        // Fallback seguro: não bloquear por contract gate antigo
+        validationBlockSend:
+          resilience.action === "apply_fallback" ? false : state.validationBlockSend,
       };
     };
 
@@ -822,18 +1121,28 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const respond = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("respond", "Responder utilizador");
-      if (state.blockReply) {
+      const contractBlock = outboundContractGate(state, { canRetry: false });
+      if (state.blockReply || contractBlock) {
+        const reason = blockReasonFromTurnContract({
+          strictMode: state.input.engineConfig.strictMode,
+          validationBlockSend: state.validationBlockSend,
+          supervisorTrace: state.supervisorTrace,
+          retryCount: state.retryCount,
+          canRetry: false,
+          executionContract: state.turnContext?.executionContract,
+          toolOutcomes: state.toolOutcomes,
+        });
         if (state.eilSnapshot) {
           state.traceBuilder.setEilSnapshot(state.eilSnapshot);
         }
         state.traceBuilder.endNode("respond", "error", state.hitlPendingId
           ? "Resposta em fila HITL — aguarda aprovação humana"
-          : "Resposta bloqueada — supervisor reprovou após retries");
+          : `Resposta bloqueada — ${reason}`);
         state.input.executionLog?.warn(
           { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
           state.hitlPendingId
             ? `Resposta em fila HITL (${state.hitlPendingId})`
-            : "Resposta bloqueada após esgotar retries do supervisor",
+            : `Resposta bloqueada: ${reason}`,
         );
         return { reply: "" };
       }
@@ -861,7 +1170,7 @@ export class LangGraphRuntime implements AgentRuntime {
           graphNodeSequence: [
             "classify_intent",
             "load_memory",
-            "select_tool",
+            "schedule_tools",
             "execute_tool",
             "validate_result",
             "supervisor",
@@ -869,6 +1178,8 @@ export class LangGraphRuntime implements AgentRuntime {
             "respond",
           ],
           eilSnapshot: state.eilSnapshot,
+          executionContract: state.turnContext?.executionContract,
+          turnPlan: state.turnContext?.turnPlan,
         });
         // WF é diagnóstico: regista findings, NÃO limpa a reply.
         // Bloqueio de outbound cabe só ao Supervisor (state.blockReply acima).
@@ -895,6 +1206,11 @@ export class LangGraphRuntime implements AgentRuntime {
     };
 
     const routeAfterSupervisor = (state: GraphState): string => {
+      if (state.resilienceRoute === "schedule_tools") return "schedule_tools";
+      if (state.resilienceRoute === "execute_tool") return "execute_tool";
+      if (state.resilienceRoute === "human_review") return "human_review";
+      if (state.resilienceRoute === "update_memory") return "update_memory";
+
       if (
         state.supervisorTrace &&
         !state.supervisorApproved &&
@@ -920,7 +1236,7 @@ export class LangGraphRuntime implements AgentRuntime {
       .addNode("kb_read_node", kbReadNode)
       .addNode("merge_kb_results", mergeKbResults)
       .addNode("load_memory", loadMemory)
-      .addNode("select_tool", selectTool)
+      .addNode("schedule_tools", scheduleTools)
       .addNode("execute_tool", executeTool)
       .addNode("validate_result", validateResult)
       .addNode("supervisor", supervisor)
@@ -931,11 +1247,12 @@ export class LangGraphRuntime implements AgentRuntime {
       .addConditionalEdges("classify_intent", routeAfterClassify, ["load_memory", "kb_read_node"])
       .addEdge("kb_read_node", "merge_kb_results")
       .addEdge("merge_kb_results", "load_memory")
-      .addEdge("load_memory", "select_tool")
-      .addEdge("select_tool", "execute_tool")
+      .addEdge("load_memory", "schedule_tools")
+      .addEdge("schedule_tools", "execute_tool")
       .addEdge("execute_tool", "validate_result")
       .addEdge("validate_result", "supervisor")
       .addConditionalEdges("supervisor", routeAfterSupervisor, {
+        schedule_tools: "schedule_tools",
         execute_tool: "execute_tool",
         human_review: "human_review",
         update_memory: "update_memory",

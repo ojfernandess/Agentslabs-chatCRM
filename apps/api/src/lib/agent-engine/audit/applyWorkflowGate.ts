@@ -11,6 +11,7 @@ import {
 } from "../validators/requiredToolNamesParser.js";
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
 import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
+import type { ExecutionContract } from "../core/types.js";
 import { parsePromptBlocks, buildAgentPlaybookFromBlocks } from "../../agentPlaybook.js";
 
 export type WorkflowGateInput = {
@@ -34,6 +35,8 @@ export type WorkflowGateInput = {
   turnPlan?: ExecutionTurnPlan;
   /** Snapshot EIL para findings F-EIL. */
   eilSnapshot?: import("../eil/types.js").EilSnapshot;
+  /** Contrato de execução compilado (Fase 3). */
+  executionContract?: ExecutionContract;
 };
 
 export type WorkflowGateResult = {
@@ -79,13 +82,15 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
       userMessage: input.userMessage,
       availableToolNames: input.availableToolNames,
     });
-  const { requiredToolNames, turnPolicy } = turnPlan;
+  const { requiredToolNames: planRequired, turnPolicy: planPolicy } = turnPlan;
+  const requiredToolNames = input.executionContract?.requiredToolNames ?? planRequired;
+  const turnPolicyForValidation = input.executionContract != null ? undefined : planPolicy;
 
   if (!shouldRunWorkflowGate(input.engineConfig)) {
     return {
       blockReply: false,
       requiredToolNames,
-      turnPolicy,
+      turnPolicy: planPolicy,
       turnPlan,
       advisoryFailures: 0,
     };
@@ -105,12 +110,13 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     llmApproved: input.llmSupervisorApproved,
     llmSummary: input.llmSupervisorSummary,
     requiredToolNames,
-    turnPolicy,
-    behaviorConfig: input.behaviorConfig,
+    turnPolicy: turnPolicyForValidation,
+    behaviorConfig: input.executionContract != null ? undefined : input.behaviorConfig,
     systemPromptPreview: resolveSystemPromptPreview(input.behaviorConfig),
     graphNodeSequence: input.graphNodeSequence,
     supervisorTrace: input.supervisorTrace,
     eilSnapshot: input.eilSnapshot,
+    executionContract: input.executionContract,
   });
 
   const advisoryFailures = report.findings.filter((f) => !f.passed).length;
@@ -119,7 +125,7 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
     blockReply: shouldBlockOutboundFromWorkflow(report),
     report,
     requiredToolNames,
-    turnPolicy,
+    turnPolicy: planPolicy,
     turnPlan,
     advisoryFailures,
   };

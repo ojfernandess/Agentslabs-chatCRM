@@ -23,6 +23,8 @@ export type McpResourceDomain =
   | "workflow_validator"
   | "supervisor"
   | "eil"
+  | "turn"
+  | "contract"
   | "config";
 
 /** Permissões granulares por recurso. */
@@ -50,6 +52,8 @@ export type McpPermission =
   | "supervisor:read"
   | "eil:read"
   | "eil:write"
+  | "turn:read"
+  | "contract:read"
   | "config:read"
   | "audit:read";
 

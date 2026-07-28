@@ -48,6 +48,10 @@ export type AgentEngineConfig = {
   clientOutboundStreamingEnabled?: boolean;
   /** Prefetch KB paralelo via LangGraph Send (artigos pinned). */
   parallelKbPrefetchEnabled?: boolean;
+  /** Invoca tools obrigatórias antes do LLM (Tool Scheduler — Fase 2). */
+  schedulerEnabled?: boolean;
+  /** Recovery de tools + fallback + self-healing (Fase 4). */
+  resilienceEnabled?: boolean;
 };
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
@@ -65,6 +69,8 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   clientTokenStreamingEnabled: false,
   clientOutboundStreamingEnabled: false,
   parallelKbPrefetchEnabled: false,
+  schedulerEnabled: false,
+  resilienceEnabled: false,
 };
 
 export type AgentRuntimeExecuteInput = {
@@ -90,6 +96,8 @@ export type AgentRuntimeExecuteInput = {
     replyOnlyRetry?: boolean;
     /** Outcomes do turno anterior (mesmo user message) a reutilizar. */
     priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+    /** Tools já invocadas pelo Tool Scheduler neste turno — LLM não deve repetir. */
+    preScheduledToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
   };
 };
 
@@ -104,6 +112,7 @@ export type AgentGraphNodeId =
   | "kb_read_node"
   | "merge_kb_results"
   | "load_memory"
+  | "schedule_tools"
   | "select_tool"
   | "execute_tool"
   | "validate_result"
@@ -126,7 +135,8 @@ export type AgentGraphEventKind =
   | "checkpoint"
   | "stream"
   | "hitl"
-  | "token";
+  | "token"
+  | "turn_context";
 
 export type AgentGraphEvent = {
   kind: AgentGraphEventKind;
@@ -163,6 +173,23 @@ export type AgentExecutionTrace = {
     toolsCalled: string[];
     toolsPending: string[];
     replyActions?: string[];
+  };
+  /** TurnContext / ExecutionContract (Fase 5 — MCP turn/contract). */
+  turn?: {
+    version: number;
+    userMessage: string;
+    intentKind?: string;
+    intentConfidence?: number;
+    promptHash?: string;
+    objective?: string;
+    requiredToolNames: string[];
+    pendingToolNames: string[];
+    satisfiedToolNames: string[];
+    forbiddenToolNames: string[];
+    planPhase?: string;
+    contractValid: boolean;
+    violations: string[];
+    eilEnabled?: boolean;
   };
 };
 

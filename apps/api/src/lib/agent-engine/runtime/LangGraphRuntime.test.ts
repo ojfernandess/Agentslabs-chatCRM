@@ -116,7 +116,7 @@ test("LangGraphRuntime blocks when mandatory buscar_conhecimento missing", async
   );
 
   assert.equal(result.reply, "");
-  assert.ok(result.trace?.errors.some((e) => /obrigatória|Workflow Validator/i.test(e)));
+  assert.equal(result.trace?.supervisor?.approved, false);
 });
 
 test("LangGraphRuntime blocks stall reply without KB in strict mode", async () => {

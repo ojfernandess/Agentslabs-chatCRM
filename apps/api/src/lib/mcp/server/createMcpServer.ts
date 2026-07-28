@@ -59,7 +59,7 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
     },
     {
       instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
-Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor e snapshots EIL (facts/policies/constraints).
+Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL e contratos de turno (opennexo://turn|contract).
 Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
@@ -87,6 +87,30 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
     { description: "Agent execution inspector", mimeType: "application/json" },
     async (uri) => {
       const data = await withAudit(ctx, "resource:read", () => readMcpResourceByUri(ctx, uri.href), "executions", uri.href);
+      return {
+        contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  server.registerResource(
+    "turn",
+    "opennexo://turn/{executionId}",
+    { description: "TurnContext snapshot (intent, prompt hash, required tools)", mimeType: "application/json" },
+    async (uri) => {
+      const data = await withAudit(ctx, "resource:read", () => readMcpResourceByUri(ctx, uri.href), "turn", uri.href);
+      return {
+        contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  server.registerResource(
+    "contract",
+    "opennexo://contract/{executionId}",
+    { description: "ExecutionContract (pending/satisfied tools, violations)", mimeType: "application/json" },
+    async (uri) => {
+      const data = await withAudit(ctx, "resource:read", () => readMcpResourceByUri(ctx, uri.href), "contract", uri.href);
       return {
         contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
       };
@@ -215,6 +239,30 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
     },
     async (args) =>
       textResult(await withAudit(ctx, "tool:search_eil", () => getMcpProvider("eil")!.search!(ctx, args))),
+  );
+
+  server.registerTool(
+    "search_turn",
+    {
+      description:
+        "Get TurnContext for an execution (intent, prompt hash, required/pending tools)",
+      inputSchema: searchSchema,
+    },
+    async (args) =>
+      textResult(await withAudit(ctx, "tool:search_turn", () => getMcpProvider("turn")!.search!(ctx, args))),
+  );
+
+  server.registerTool(
+    "search_contract",
+    {
+      description:
+        "Get ExecutionContract for an execution (valid, violations, satisfied/pending tools)",
+      inputSchema: searchSchema,
+    },
+    async (args) =>
+      textResult(
+        await withAudit(ctx, "tool:search_contract", () => getMcpProvider("contract")!.search!(ctx, args)),
+      ),
   );
 
   server.registerTool(

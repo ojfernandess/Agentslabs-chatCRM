@@ -42,10 +42,15 @@ import {
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
-  formatTurnPolicyForSupervisor,
   validateToolOutcomesAgainstTurnPolicy,
 } from "./agent-engine/validators/turnPolicyParser.js";
+import {
+  formatExecutionContractForSupervisor,
+  executionContractViolationAlerts,
+} from "./agent-engine/core/executionContractFormat.js";
+import { buildTurnContext } from "./agent-engine/core/buildTurnContext.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
+import { formatScheduledToolsSystemAppendix } from "./agent-engine/scheduler/TurnToolScheduler.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
 export {
@@ -1197,6 +1202,110 @@ async function executeNativeTool(input: {
   return JSON.stringify({ ok: false, error: "unknown_or_disabled_tool", tool: name });
 }
 
+/** Invocação determinística de uma tool (Tool Scheduler — Fase 2). */
+export async function invokeSingleNativeAgentTool(input: {
+  organizationId: string;
+  bot: Bot;
+  conversation: Conversation;
+  message: Message;
+  log: FastifyBaseLogger;
+  behaviorConfig: Record<string, unknown>;
+  toolName: string;
+  args: Record<string, unknown>;
+  userMessage: string;
+  kbPrefetchAppendix?: string;
+}): Promise<{ rawJson: string; outcomeName: string }> {
+  const {
+    organizationId,
+    bot,
+    conversation,
+    message,
+    log,
+    behaviorConfig,
+    toolName,
+    args,
+    userMessage,
+  } = input;
+  const argsJson = JSON.stringify(args);
+  const flags = parseNativeToolsFromBehavior(behaviorConfig);
+  const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(behaviorConfig);
+
+  const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(behaviorConfig);
+  let customHttpTools: AutomationHttpToolRow[] = [];
+  if (nativeHttpCustomToolIds.length > 0) {
+    const rows = await prisma.automationCustomTool.findMany({
+      where: { organizationId, id: { in: nativeHttpCustomToolIds }, isActive: true },
+      select: {
+        id: true,
+        organizationId: true,
+        name: true,
+        description: true,
+        toolType: true,
+        config: true,
+        parametersSchema: true,
+      },
+    });
+    const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
+    customHttpTools = rows
+      .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  }
+
+  const httpRow = customHttpTools.find((r) => r.name.trim().toLowerCase() === toolName.trim().toLowerCase());
+  if (httpRow) {
+    const automationCtx = await loadAutomationConversationContext(conversation.id);
+    const contactRow = conversation.contactId
+      ? await prisma.contact.findFirst({
+          where: { id: conversation.contactId, organizationId },
+          select: { id: true, name: true, phone: true },
+        })
+      : null;
+    const httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
+      organizationId,
+      conversationId: conversation.id,
+      lastClearedAt: automationCtx.lastClearedAt,
+      message,
+      contact: contactRow,
+    });
+    const exec = await runAutomationHttpLikeTool({
+      tool: httpRow,
+      llmArgs: args,
+      organizationId,
+      botId: bot.id,
+      conversationId: conversation.id,
+      executionSource: "native_agent",
+      runtimeSampleContext: httpToolRuntimeContext,
+    });
+    return {
+      rawJson: JSON.stringify({
+        ok: exec.ok,
+        statusCode: exec.statusCode,
+        bodyPreview: exec.responseText.slice(0, 12_000),
+        error: exec.error,
+        scheduled: true,
+        ...(exec.autoFilledFields?.length
+          ? { autoFilledFields: exec.autoFilledFields.slice(0, 20) }
+          : {}),
+      }),
+      outcomeName: httpRow.name.trim(),
+    };
+  }
+
+  const rawJson = await executeNativeTool({
+    name: toolName,
+    argsJson,
+    organizationId,
+    botId: bot.id,
+    conversationId: conversation.id,
+    flags,
+    allowedTagIds: [],
+    log,
+    pinnedArticleIds,
+    userMessage,
+  });
+  return { rawJson, outcomeName: toolName };
+}
+
 /** Ferramentas HTTP/WEBHOOK ligadas ao agente com `runMode` ≠ manual — expostas ao modelo nativo. */
 function parseEnabledNativeHttpCustomToolIds(behavior: unknown): string[] {
   if (!behavior || typeof behavior !== "object") return [];
@@ -1697,7 +1806,15 @@ async function generateNativeAgentReplyCore(input: {
         "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com frases de espera.\n"
       : "";
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
-  let knowledgeSearchCallsThisTurn = 0;
+  for (const t of executionHints?.preScheduledToolOutcomes ?? []) {
+    toolRoundOutcomes.push({
+      name: t.name,
+      ok: t.ok,
+      preview: t.preview,
+      monitored: false,
+    });
+  }
+  let knowledgeSearchCallsThisTurn = toolRoundOutcomes.filter((t) => t.name === "buscar_conhecimento").length;
 
   const automationCtx = await loadAutomationConversationContext(conversation.id);
   const isolateForConnectedToolsEarly = shouldIsolateHistoryForConnectedTools({
@@ -1966,6 +2083,10 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
+  const schedulerAppendix = formatScheduledToolsSystemAppendix(
+    executionHints?.preScheduledToolOutcomes ?? [],
+  );
+
   const systemBase =
     systemInstructions +
     kbProactiveAppendix +
@@ -1977,7 +2098,8 @@ async function generateNativeAgentReplyCore(input: {
     audioInboundHint +
     imageInboundHint +
     followUpPrompt +
-    flowStatePrompt;
+    flowStatePrompt +
+    schedulerAppendix;
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
@@ -2169,6 +2291,23 @@ async function generateNativeAgentReplyCore(input: {
               });
               return out;
             };
+            const preScheduledReuse = (executionHints?.preScheduledToolOutcomes ?? []).find(
+              (t) =>
+                toolsMatchAlias(t.name, name) ||
+                (customRow?.name ? toolsMatchAlias(t.name, customRow.name) : false),
+            );
+            if (preScheduledReuse) {
+              return finishToolCall(
+                JSON.stringify({
+                  ok: preScheduledReuse.ok,
+                  skipped: true,
+                  reason: "scheduler_pre_executed",
+                  bodyPreview: preScheduledReuse.preview.slice(0, 1500),
+                  message:
+                    "Ferramenta já executada pelo Tool Scheduler. Responda ao cliente com o resultado obtido.",
+                }),
+              );
+            }
             if (name === "buscar_conhecimento") {
               knowledgeSearchCallsThisTurn += 1;
               const priorKbOutcomes = toolRoundOutcomes.filter((t) => t.name === "buscar_conhecimento");
@@ -2664,31 +2803,39 @@ async function generateNativeAgentReplyCore(input: {
     } catch {
       /* EIL opcional — não bloqueia supervisor LLM */
     }
-    const turnPolicySummary = formatTurnPolicyForSupervisor(turnPolicy);
-    const turnPolicyAlerts = validateToolOutcomesAgainstTurnPolicy(
-      toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
-      turnPolicy,
-    );
+    const turnContext = buildTurnContext({
+      turnId: `${conversation.id}:${message.id}`,
+      behaviorConfig: profile.behaviorConfig as Record<string, unknown>,
+      userMessage,
+      toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+        name,
+        ok,
+        preview,
+        structuredPayload,
+      })),
+    });
+    const contractSummary = formatExecutionContractForSupervisor(turnContext.executionContract);
+    const contractAlerts = executionContractViolationAlerts(turnContext.executionContract);
     const supervisorPrompt =
       "És um supervisor de qualidade de atendimento. Responde em JSON com approved (boolean) e summary (string).\n" +
       "Critérios:\n" +
       "- Avalia coerência da resposta com o **resultado das ferramentas** (ok/fail e dados), não com a literalidade do texto OCR/transcrição.\n" +
-      "- **Política de turno (playbook parseado):** approved=false se alguma ferramenta violou a política abaixo (escalonamento proibido, par proibido, tool fora da categoria).\n" +
+      "- **Contrato de execução (estruturado):** approved=false se o contrato abaixo tiver violações ou tools obrigatórias pendentes.\n" +
       "- Se uma ou mais tools HTTP devolveram sucesso (ok/2xx) e a resposta do agente confirma o próximo passo natural do fluxo " +
-      "(pedir próximo documento, confirmar envio, avançar etapa), approved=true **desde que** respeite a política de turno.\n" +
+      "(pedir próximo documento, confirmar envio, avançar etapa), approved=true **desde que** o contrato de execução esteja satisfeito.\n" +
       "- Não rejeites só porque a mensagem do cliente é uma transcrição de imagem/[Transcrição de imagem] ou porque a descrição visual " +
       "não «parece» o tipo de ficheiro esperado, quando a tool de upload/processamento já correu com sucesso.\n" +
       "- approved=false se a resposta for só espera («Só um momento», «Aguarde», «vou verificar») sem factos, " +
       "especialmente quando a base de conhecimento já tinha excertos ou buscar_conhecimento devolveu found=true.\n" +
       "- approved=false se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
-      "- approved=false se transfer_to_team/call_human/set_conversation_status correu mas a política de turno proíbe escalonamento neste turno.\n" +
+      "- approved=false se transfer_to_team/call_human/set_conversation_status correu mas o contrato proíbe escalonamento neste turno.\n" +
       "- Se houver Constraint violations (EIL), approved=false.\n" +
       "- Turnos de recolha de dados (perguntas do agente, pedidos de documento) sem tool necessária: approved=true se a pergunta for adequada.";
     const supervisorUser =
       `Cliente: ${userMessage.slice(0, 1500)}\n\n` +
-      `Política de turno:\n${turnPolicySummary}\n` +
-      (turnPolicyAlerts.length > 0
-        ? `Alertas política (se persistirem → approved=false): ${turnPolicyAlerts.join("; ")}\n\n`
+      `Contrato de execução:\n${contractSummary}\n` +
+      (contractAlerts.length > 0
+        ? `Alertas do contrato (se persistirem → approved=false): ${contractAlerts.join("; ")}\n\n`
         : "") +
       `KB proactiva com excertos úteis: ${kbHasUsefulExcerpts ? "sim" : "não"}\n` +
       `Tools com sucesso nesta ronda: ${successfulTools.length}/${toolRoundOutcomes.length}\n` +
@@ -2762,17 +2909,19 @@ async function generateNativeAgentReplyCore(input: {
         summary,
       );
       const policyAlerts = (() => {
+        if (contractAlerts.length > 0) return contractAlerts;
         const names = toolRoundOutcomes.map((t) => t.name);
-        const pair = findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
+        const compiledPolicy = turnContext.promptContract.turnPolicy;
+        const pair = findForbiddenPairViolation(names, compiledPolicy.forbiddenSameTurnPairs);
         const turnAlerts = validateToolOutcomesAgainstTurnPolicy(
           toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
-          turnPolicy,
+          compiledPolicy,
         );
         return pair ? [`${pair.a}+${pair.b}`] : turnAlerts;
       })();
-      if (turnPolicyAlerts.length > 0) {
+      if (contractAlerts.length > 0) {
         approved = false;
-        summary = `${summary} [turn policy: ${turnPolicyAlerts.join("; ")}]`.slice(0, 500);
+        summary = `${summary} [contrato: ${contractAlerts.join("; ")}]`.slice(0, 500);
       }
       if (
         !approved &&
@@ -2781,7 +2930,7 @@ async function generateNativeAgentReplyCore(input: {
         !(isForcedKbDump && (toolReportsNotFound || hasNonKnowledgeToolsThisTurn(toolRoundOutcomes))) &&
         !llmFlagsInvention &&
         policyAlerts.length === 0 &&
-        turnPolicyAlerts.length === 0
+        contractAlerts.length === 0
       ) {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);

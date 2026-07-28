@@ -4,6 +4,8 @@ import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/type
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
 import { formatTurnPolicyForSupervisor } from "../validators/turnPolicyParser.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
+import type { ExecutionContract } from "../core/types.js";
+import { formatExecutionContractForSupervisor } from "../core/executionContractFormat.js";
 
 export type SupervisorValidationInput = {
   userMessage: string;
@@ -28,8 +30,10 @@ export type SupervisorValidationInput = {
   eilViolations?: ConstraintViolation[];
   eilRequiredFactsMissing?: string[];
   toolOutcomes?: Array<{ name: string; ok: boolean; preview?: string }>;
-  /** Política de turno parseada — reforço do check validation_passed. */
+  /** Política de turno parseada — fallback quando não há ExecutionContract. */
   turnPolicy?: TurnPolicy | null;
+  /** Contrato de execução compilado (Fase 3 — fonte preferida). */
+  executionContract?: ExecutionContract | null;
 };
 
 export type BuildSupervisorValidationInputOpts = {
@@ -50,6 +54,7 @@ export type BuildSupervisorValidationInputOpts = {
   eilViolations?: ConstraintViolation[];
   eilRequiredFactsMissing?: string[];
   turnPolicy?: TurnPolicy | null;
+  executionContract?: ExecutionContract | null;
 };
 
 function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
@@ -86,6 +91,7 @@ export function buildSupervisorValidationInput(
     eilRequiredFactsMissing: opts.eilRequiredFactsMissing,
     toolOutcomes: opts.toolOutcomes,
     turnPolicy: opts.turnPolicy ?? null,
+    executionContract: opts.executionContract ?? null,
   };
 }
 
@@ -183,6 +189,27 @@ const CHECK_DEFS: Array<{
     run: (i) => !i.validationBlockSend,
   },
   {
+    id: "execution_contract_valid",
+    label: "Contrato de execução válido",
+    run: (i) => !i.executionContract || i.executionContract.valid,
+  },
+  {
+    id: "required_tools_contract",
+    label: "Tools obrigatórias do contrato satisfeitas",
+    run: (i) => {
+      if (!i.executionContract) return true;
+      return i.executionContract.pendingToolNames.length === 0;
+    },
+  },
+  {
+    id: "forbidden_tools_contract",
+    label: "Sem tools proibidas pelo contrato",
+    run: (i) => {
+      if (!i.executionContract) return true;
+      return !i.executionContract.violations.some((v) => v.startsWith("forbidden_tool_used:"));
+    },
+  },
+  {
     id: "eil_plan_followed",
     label: "Plano EIL seguido (tools obrigatórias)",
     run: (i) => {
@@ -242,8 +269,15 @@ export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSup
   }
 
   const allPassed = checks.every((c) => c.passed);
+  const contractNote =
+    input.executionContract && !allPassed
+      ? formatExecutionContractForSupervisor(input.executionContract).slice(0, 220)
+      : null;
   const turnPolicyNote =
-    input.turnPolicy && !allPassed && input.validationBlockSend
+    !contractNote &&
+    input.turnPolicy &&
+    !allPassed &&
+    input.validationBlockSend
       ? formatTurnPolicyForSupervisor(input.turnPolicy)
       : null;
   const structuralSummary = allPassed
@@ -252,7 +286,11 @@ export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSup
         .filter((c) => !c.passed)
         .map((c) => c.detail ?? c.label)
         .join("; ") ||
-      (turnPolicyNote ? `Política de turno: ${turnPolicyNote.slice(0, 180)}` : "Falhas na validação");
+      (contractNote
+        ? `Contrato: ${contractNote.slice(0, 180)}`
+        : turnPolicyNote
+          ? `Política de turno: ${turnPolicyNote.slice(0, 180)}`
+          : "Falhas na validação");
   return {
     approved: allPassed && (input.llmApproved !== false),
     summary: input.llmSummary ?? structuralSummary,
@@ -266,6 +304,9 @@ const RETRYABLE_CHECK_IDS = new Set([
   "knowledge_used",
   "tools_not_ignored",
   "validation_passed",
+  "execution_contract_valid",
+  "required_tools_contract",
+  "forbidden_tools_contract",
   "prompt_coherent",
   "no_execution_loop",
   "eil_plan_followed",

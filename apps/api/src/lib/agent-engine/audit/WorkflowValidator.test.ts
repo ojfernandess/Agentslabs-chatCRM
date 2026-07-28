@@ -8,7 +8,7 @@ import {
 const GOLDEN_GRAPH = [
   "classify_intent",
   "load_memory",
-  "select_tool",
+  "schedule_tools",
   "execute_tool",
   "validate_result",
   "supervisor",

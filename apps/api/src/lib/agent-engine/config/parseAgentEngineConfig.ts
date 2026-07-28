@@ -89,6 +89,8 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     clientTokenStreamingEnabled: o.clientTokenStreamingEnabled === true,
     clientOutboundStreamingEnabled: o.clientOutboundStreamingEnabled === true,
     parallelKbPrefetchEnabled: o.parallelKbPrefetchEnabled === true,
+    schedulerEnabled: o.schedulerEnabled === true,
+    resilienceEnabled: o.resilienceEnabled === true,
   };
 }
 
@@ -113,6 +115,8 @@ export function mergeAgentEngineIntoBehavior(
       clientTokenStreamingEnabled: engine.clientTokenStreamingEnabled ?? false,
       clientOutboundStreamingEnabled: engine.clientOutboundStreamingEnabled ?? false,
       parallelKbPrefetchEnabled: engine.parallelKbPrefetchEnabled ?? false,
+      schedulerEnabled: engine.schedulerEnabled ?? false,
+      resilienceEnabled: engine.resilienceEnabled ?? false,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

@@ -117,6 +117,41 @@ export class ExecutionTraceBuilder {
     };
   }
 
+  /** Persiste resumo do TurnContext para MCP `opennexo://turn|contract`. */
+  setTurnSnapshot(input: {
+    version: number;
+    userMessage: string;
+    intentKind?: string;
+    intentConfidence?: number;
+    promptHash?: string;
+    objective?: string;
+    requiredToolNames: string[];
+    pendingToolNames: string[];
+    satisfiedToolNames: string[];
+    forbiddenToolNames: string[];
+    planPhase?: string;
+    contractValid: boolean;
+    violations: string[];
+    eilEnabled?: boolean;
+  }): void {
+    this.trace.turn = {
+      version: input.version,
+      userMessage: input.userMessage.slice(0, 2000),
+      intentKind: input.intentKind,
+      intentConfidence: input.intentConfidence,
+      promptHash: input.promptHash,
+      objective: input.objective?.slice(0, 500),
+      requiredToolNames: input.requiredToolNames.slice(0, 32),
+      pendingToolNames: input.pendingToolNames.slice(0, 32),
+      satisfiedToolNames: input.satisfiedToolNames.slice(0, 32),
+      forbiddenToolNames: input.forbiddenToolNames.slice(0, 32),
+      planPhase: input.planPhase,
+      contractValid: input.contractValid,
+      violations: input.violations.slice(0, 24),
+      eilEnabled: input.eilEnabled,
+    };
+  }
+
   setTokens(tokens: { prompt?: number; completion?: number; total?: number }): void {
     this.trace.tokens = tokens;
   }

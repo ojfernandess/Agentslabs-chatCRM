@@ -79,6 +79,37 @@ test("buildSupervisorTrace includes llm supervisor when provided", () => {
   assert.ok(trace.checks.some((c) => c.id === "llm_supervisor" && !c.passed));
 });
 
+test("buildSupervisorTrace fails when execution contract has pending required tools", () => {
+  const input = buildSupervisorValidationInput({
+    userMessage: "check-in ABC12345",
+    replyText: "A sua reserva está confirmada.",
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "ok" }],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    executionContract: {
+      version: 1,
+      turnId: "t1",
+      userMessage: "check-in ABC12345",
+      objective: "consultar reserva",
+      planPhase: "tooling",
+      requiredToolNames: ["audaar_consultar_reserva"],
+      forbiddenToolNames: [],
+      pendingToolNames: ["audaar_consultar_reserva"],
+      satisfiedToolNames: [],
+      requiredFacts: [],
+      existingFacts: [],
+      constraints: [],
+      completionCriteria: [],
+      valid: false,
+      violations: ["required_tool_missing:audaar_consultar_reserva"],
+    },
+  });
+  const trace = buildSupervisorTrace(input);
+  assert.equal(trace.checks.find((c) => c.id === "execution_contract_valid")?.passed, false);
+  assert.equal(trace.checks.find((c) => c.id === "required_tools_contract")?.passed, false);
+  assert.equal(trace.approved, false);
+});
+
 test("EIL constraints fail supervisor when violations present", () => {
   const input = buildSupervisorValidationInput({
     userMessage: "Sim",

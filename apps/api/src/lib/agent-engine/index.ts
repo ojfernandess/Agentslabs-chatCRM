@@ -101,7 +101,10 @@ export {
   ingestAgentTraceToLangfuse,
   isLangfuseConfigured,
   readLangfuseConfig,
+  resolveRuntimeLayer,
+  buildLayerSpans,
 } from "./observability/LangfuseBridge.js";
+export type { RuntimeLayerId } from "./observability/LangfuseBridge.js";
 export {
   registerHitlPending,
   getHitlPending,
@@ -148,6 +151,49 @@ export { DEFAULT_KNOWLEDGE_ENGINE_CONFIG } from "./knowledge/knowledgeEngineType
 export { clearKnowledgeCache, getKnowledgeCacheStats } from "./knowledge/knowledgeCache.js";
 export { runKnowledgeInspector } from "./knowledge/knowledgeInspectorService.js";
 export { invalidateKnowledgeEngineCache } from "./knowledge/knowledgeArticleHooks.js";
+export { buildTurnContext, analyzeIntent, buildExecutionContract } from "./core/buildTurnContext.js";
+export { compilePromptContract } from "./compiler/PromptCompiler.js";
+export {
+  shouldBlockOutboundFromTurnContract,
+  blockReasonFromTurnContract,
+} from "./core/executionContractGate.js";
+export {
+  formatExecutionContractForSupervisor,
+  executionContractViolationAlerts,
+  executionContractRequiresBlock,
+} from "./core/executionContractFormat.js";
+export type {
+  TurnContext,
+  PromptContract,
+  ExecutionContract,
+  IntentAnalysis,
+  IntentKind,
+} from "./core/types.js";
+export {
+  planScheduledToolInvocations,
+  buildScheduledToolArgs,
+  shouldRunToolScheduler,
+  formatScheduledToolsSystemAppendix,
+} from "./scheduler/TurnToolScheduler.js";
+export { invokeScheduledTools } from "./scheduler/invokeScheduledTools.js";
+export type {
+  ScheduledToolInvocation,
+} from "./scheduler/TurnToolScheduler.js";
+export type {
+  ScheduledToolOutcome,
+  InvokeScheduledToolsInput,
+  InvokeScheduledToolsResult,
+} from "./scheduler/invokeScheduledTools.js";
+export {
+  decideResilienceAction,
+  parseResilienceConfig,
+  DEFAULT_RESILIENCE_CONFIG,
+} from "./resilience/TurnResilience.js";
+export type {
+  ResilienceActionKind,
+  ResilienceConfig,
+  ResilienceDecision,
+} from "./resilience/TurnResilience.js";
 
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";

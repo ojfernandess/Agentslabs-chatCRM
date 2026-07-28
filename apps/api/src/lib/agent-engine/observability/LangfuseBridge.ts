@@ -1,11 +1,55 @@
 import { randomUUID } from "node:crypto";
-import type { AgentExecutionTrace, AgentGraphEvent } from "../types.js";
+import type { AgentExecutionTrace, AgentGraphEvent, AgentTraceNode } from "../types.js";
 
 export type LangfuseConfig = {
   publicKey: string;
   secretKey: string;
   baseUrl: string;
 };
+
+/** Camadas do Runtime OpenNexo — spans Langfuse (Fase 5). */
+export type RuntimeLayerId =
+  | "intent"
+  | "prompt_compiler"
+  | "memory"
+  | "scheduler"
+  | "runtime"
+  | "contract"
+  | "supervisor"
+  | "resilience"
+  | "outbound"
+  | "observability";
+
+const NODE_LAYER: Record<string, RuntimeLayerId> = {
+  classify_intent: "intent",
+  load_memory: "memory",
+  schedule_tools: "scheduler",
+  select_tool: "scheduler",
+  execute_tool: "runtime",
+  validate_result: "contract",
+  supervisor: "supervisor",
+  human_review: "supervisor",
+  update_memory: "memory",
+  respond: "outbound",
+  kb_read_node: "runtime",
+  merge_kb_results: "runtime",
+};
+
+const EVENT_LAYER: Partial<Record<string, RuntimeLayerId>> = {
+  turn_context: "prompt_compiler",
+  retry: "resilience",
+  supervisor: "supervisor",
+  hitl: "supervisor",
+  memory: "memory",
+  knowledge: "runtime",
+  tool: "runtime",
+  error: "observability",
+  checkpoint: "observability",
+};
+
+export function resolveRuntimeLayer(nodeIdOrEventKind: string): RuntimeLayerId {
+  return NODE_LAYER[nodeIdOrEventKind] ?? EVENT_LAYER[nodeIdOrEventKind] ?? "observability";
+}
 
 export function readLangfuseConfig(): LangfuseConfig | null {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY?.trim();
@@ -35,6 +79,90 @@ type IngestionEvent = {
   body: Record<string, unknown>;
 };
 
+function layerSpan(
+  traceId: string,
+  layer: RuntimeLayerId,
+  startedAt: string,
+  endedAt: string | undefined,
+  metadata: Record<string, unknown>,
+): IngestionEvent {
+  return {
+    id: randomUUID(),
+    type: "span-create",
+    timestamp: startedAt,
+    body: {
+      traceId,
+      id: `${traceId}:layer:${layer}`,
+      name: `layer/${layer}`,
+      startTime: startedAt,
+      endTime: endedAt,
+      metadata: { layer, ...metadata },
+    },
+  };
+}
+
+/** Agrega nós do grafo em spans de camada (1 span por layer com min/max tempo). */
+export function buildLayerSpans(
+  traceId: string,
+  nodes: AgentTraceNode[],
+  events: AgentGraphEvent[] = [],
+  turn?: AgentExecutionTrace["turn"],
+): IngestionEvent[] {
+  const byLayer = new Map<
+    RuntimeLayerId,
+    { startedAt: string; endedAt?: string; nodeIds: string[]; details: string[] }
+  >();
+
+  for (const node of nodes) {
+    const layer = resolveRuntimeLayer(String(node.id));
+    const cur = byLayer.get(layer);
+    if (!cur) {
+      byLayer.set(layer, {
+        startedAt: node.startedAt,
+        endedAt: node.endedAt,
+        nodeIds: [String(node.id)],
+        details: node.detail ? [node.detail] : [],
+      });
+    } else {
+      if (node.startedAt < cur.startedAt) cur.startedAt = node.startedAt;
+      if (node.endedAt && (!cur.endedAt || node.endedAt > cur.endedAt)) cur.endedAt = node.endedAt;
+      cur.nodeIds.push(String(node.id));
+      if (node.detail) cur.details.push(node.detail);
+    }
+  }
+
+  for (const ev of events) {
+    const layer = resolveRuntimeLayer(ev.kind);
+    if (!byLayer.has(layer) && (ev.kind === "turn_context" || ev.kind === "retry")) {
+      byLayer.set(layer, {
+        startedAt: ev.at,
+        endedAt: ev.at,
+        nodeIds: [ev.kind],
+        details: ev.detail ? [ev.detail] : [],
+      });
+    }
+  }
+
+  const spans: IngestionEvent[] = [];
+  for (const [layer, agg] of byLayer) {
+    spans.push(
+      layerSpan(traceId, layer, agg.startedAt, agg.endedAt, {
+        nodeIds: agg.nodeIds,
+        detailPreview: agg.details.slice(0, 3).join(" · ").slice(0, 400),
+        ...(layer === "prompt_compiler" || layer === "contract"
+          ? {
+              contractValid: turn?.contractValid,
+              pendingTools: turn?.pendingToolNames,
+              intent: turn?.intentKind,
+              promptHash: turn?.promptHash,
+            }
+          : {}),
+      }),
+    );
+  }
+  return spans;
+}
+
 function buildLangfuseBatch(input: {
   traceId: string;
   trace: AgentExecutionTrace;
@@ -59,23 +187,41 @@ function buildLangfuseBatch(input: {
           messageId: input.messageId,
           strictMode: input.trace.strictMode,
           memory: input.trace.memory,
+          turn: input.trace.turn
+            ? {
+                intent: input.trace.turn.intentKind,
+                contractValid: input.trace.turn.contractValid,
+                pending: input.trace.turn.pendingToolNames,
+              }
+            : undefined,
         },
       },
     },
   ];
 
+  // Spans por camada (Fase 5)
+  batch.push(
+    ...buildLayerSpans(
+      input.traceId,
+      input.trace.nodes,
+      input.trace.events ?? [],
+      input.trace.turn,
+    ),
+  );
+
   for (const node of input.trace.nodes) {
+    const layer = resolveRuntimeLayer(String(node.id));
     batch.push({
       id: randomUUID(),
       type: "span-create",
       timestamp: node.startedAt,
       body: {
         traceId: input.traceId,
-        id: `${input.traceId}:${node.id}`,
+        id: `${input.traceId}:node:${node.id}`,
         name: node.name,
         startTime: node.startedAt,
         endTime: node.endedAt,
-        metadata: { status: node.status, detail: node.detail },
+        metadata: { status: node.status, detail: node.detail, layer },
       },
     });
   }
@@ -94,9 +240,27 @@ function buildLangfuseBatch(input: {
         id: `${input.traceId}:supervisor`,
         name: "supervisor",
         metadata: {
+          layer: "supervisor",
           approved: input.trace.supervisor.approved,
           summary: input.trace.supervisor.summary,
           checks: input.trace.supervisor.checks,
+        },
+      },
+    });
+  }
+
+  if (input.trace.turn) {
+    batch.push({
+      id: randomUUID(),
+      type: "span-create",
+      timestamp: now,
+      body: {
+        traceId: input.traceId,
+        id: `${input.traceId}:contract`,
+        name: "execution_contract",
+        metadata: {
+          layer: "contract",
+          ...input.trace.turn,
         },
       },
     });
@@ -106,6 +270,7 @@ function buildLangfuseBatch(input: {
 }
 
 function spanFromGraphEvent(traceId: string, ev: AgentGraphEvent): IngestionEvent {
+  const layer = resolveRuntimeLayer(ev.kind);
   return {
     id: randomUUID(),
     type: "span-create",
@@ -114,7 +279,7 @@ function spanFromGraphEvent(traceId: string, ev: AgentGraphEvent): IngestionEven
       traceId,
       id: `${traceId}:event:${ev.kind}:${ev.at}`,
       name: ev.kind,
-      metadata: { nodeId: ev.nodeId, detail: ev.detail, ...ev.metadata },
+      metadata: { layer, nodeId: ev.nodeId, detail: ev.detail, ...ev.metadata },
     },
   };
 }

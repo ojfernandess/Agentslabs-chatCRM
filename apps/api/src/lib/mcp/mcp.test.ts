@@ -68,4 +68,21 @@ describe("MCP provider registry URI", () => {
     assert.equal(parsed?.domain, "agents");
     assert.ok(parsed?.id.startsWith("550e8400"));
   });
+
+  it("parses turn and contract URIs", async () => {
+    const { parseMcpUri } = await import("./providers/ProviderRegistry.js");
+    assert.equal(parseMcpUri("opennexo://turn/abc-123")?.domain, "turn");
+    assert.equal(parseMcpUri("opennexo://contract/abc-123")?.domain, "contract");
+  });
+});
+
+describe("MCP turn/contract permissions", () => {
+  it("admin and read_only can read turn/contract", () => {
+    const admin = new Set(MCP_ROLE_PERMISSIONS.admin);
+    const ro = new Set(MCP_ROLE_PERMISSIONS.read_only);
+    assert.ok(hasPermission({ permissions: admin }, "turn:read"));
+    assert.ok(hasPermission({ permissions: admin }, "contract:read"));
+    assert.ok(hasPermission({ permissions: ro }, "turn:read"));
+    assert.ok(hasPermission({ permissions: ro }, "contract:read"));
+  });
 });

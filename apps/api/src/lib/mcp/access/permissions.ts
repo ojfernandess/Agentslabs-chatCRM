@@ -26,6 +26,8 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "supervisor:read",
     "eil:read",
     "eil:write",
+    "turn:read",
+    "contract:read",
     "config:read",
     "audit:read",
   ],
@@ -53,6 +55,8 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "supervisor:read",
     "eil:read",
     "eil:write",
+    "turn:read",
+    "contract:read",
     "config:read",
   ],
   support: [
@@ -69,6 +73,8 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "observability:read",
     "supervisor:read",
     "eil:read",
+    "turn:read",
+    "contract:read",
   ],
   audit: [
     "agents:read",
@@ -81,6 +87,8 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "workflow_validator:read",
     "supervisor:read",
     "eil:read",
+    "turn:read",
+    "contract:read",
     "audit:read",
   ],
   read_only: [
@@ -93,6 +101,8 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "memory:read",
     "knowledge:read",
     "observability:read",
+    "turn:read",
+    "contract:read",
     "config:read",
   ],
 };

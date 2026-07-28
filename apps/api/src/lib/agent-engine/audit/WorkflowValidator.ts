@@ -13,6 +13,8 @@ import {
 } from "../validators/turnPolicyParser.js";
 import type { PromptValidationInput } from "../validators/PromptValidator.js";
 import { auditPromptAssembly } from "./promptAssemblyAudit.js";
+import type { ExecutionContract } from "../core/types.js";
+import { executionContractViolationAlerts } from "../core/executionContractFormat.js";
 import {
   analyzeExecutionQualityFromLogs,
   type ExecutionLogEntryLike,
@@ -44,7 +46,9 @@ export type WorkflowAuditInput = {
   llmSummary?: string;
   validationBlockSend?: boolean;
   requiredToolNames?: string[];
-  /** Política de turno do playbook (pares proibidos, exclusividade). */
+  /** Contrato compilado — Fase 3: evita re-parse do playbook em F3/F7. */
+  executionContract?: ExecutionContract;
+  /** Política de turno do playbook (pares proibidos, exclusividade). Fallback sem contrato. */
   turnPolicy?: TurnPolicy;
   behaviorConfig?: Record<string, unknown>;
   promptValidation?: PromptValidationInput;
@@ -80,7 +84,7 @@ export type WorkflowAuditReport = {
 const LANGGRAPH_EXPECTED_DEFAULT = [
   "classify_intent",
   "load_memory",
-  "select_tool",
+  "schedule_tools",
   "execute_tool",
   "validate_result",
   "supervisor",
@@ -150,21 +154,41 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     ),
   );
 
-  // Fase 3 — Ferramentas
+  // Fase 3 — Ferramentas (preferir ExecutionContract quando disponível)
+  const contract = input.executionContract;
+  const requiredToolNames =
+    contract?.requiredToolNames ??
+    input.requiredToolNames ??
+    [];
   const turnPolicy =
-    input.turnPolicy ??
-    (input.behaviorConfig
-      ? resolveTurnPolicy(input.behaviorConfig, { userMessage: input.userMessage })
-      : undefined);
+    contract != null
+      ? undefined
+      : input.turnPolicy ??
+        (input.behaviorConfig
+          ? resolveTurnPolicy(input.behaviorConfig, { userMessage: input.userMessage })
+          : undefined);
   const toolValidation = validateToolExecution({
     toolOutcomes: input.toolOutcomes,
     replyText: input.replyText,
     strictMode: input.strictMode,
-    requiredToolNames: input.requiredToolNames,
+    requiredToolNames,
     turnPolicy,
-    behaviorConfig: input.behaviorConfig,
+    behaviorConfig: contract != null ? undefined : input.behaviorConfig,
     userMessage: input.userMessage,
   });
+
+  if (contract) {
+    for (const alert of executionContractViolationAlerts(contract)) {
+      if (toolValidation.alerts.includes(alert)) continue;
+      findings.push(
+        finding("F3", `contract_${alert.slice(0, 28)}`, "critical", false, alert, {
+          file: "apps/api/src/lib/agent-engine/core/executionContractFormat.ts",
+          suggestedFix: "Cumprir ExecutionContract compilado (tools obrigatórias / proibidas)",
+        }),
+      );
+    }
+  }
+
   for (const alert of toolValidation.alerts) {
     const isRequired = alert.includes("obrigatória");
     const isPolicy = /proibid|fora da categoria/i.test(alert);
@@ -187,8 +211,8 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     );
   }
 
-  // Política explícita (mesmo se ToolValidator não recebeu policy)
-  if (turnPolicy) {
+  // Política explícita — só quando não há contrato compilado
+  if (turnPolicy && !contract) {
     for (const alert of validateToolOutcomesAgainstTurnPolicy(input.toolOutcomes, turnPolicy)) {
       if (toolValidation.alerts.includes(alert)) continue;
       findings.push(
@@ -310,6 +334,7 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     llmSummary: input.llmSummary,
     validationBlockSend: input.validationBlockSend ?? toolValidation.blockSend,
     turnPolicy,
+    executionContract: contract ?? null,
   });
   const supervisorTrace = input.supervisorEnabled
     ? (input.supervisorTrace ?? buildSupervisorTrace(supInput))
