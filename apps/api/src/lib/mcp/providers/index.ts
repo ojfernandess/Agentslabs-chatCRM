@@ -17,7 +17,6 @@ import {
 import { logsProvider } from "./logsProvider.js";
 import { memoryProvider } from "./memoryProvider.js";
 import { eilProvider } from "./eilProvider.js";
-import { runtimeV2Provider } from "./runtimeV2Provider.js";
 
 let initialized = false;
 
@@ -38,7 +37,6 @@ export function initMcpProviders(): void {
   registerMcpProvider(workflowValidatorProvider);
   registerMcpProvider(supervisorProvider);
   registerMcpProvider(eilProvider);
-  registerMcpProvider(runtimeV2Provider);
   registerMcpProvider(configProvider);
   initialized = true;
 }

@@ -14,27 +14,9 @@ import {
   runWorkflowGate,
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
-import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
-import {
-  buildRetryExecutionHints,
-  shouldUseReplyOnlyRetryForTurn,
-} from "../contract/TurnExecutionContract.js";
+import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
+import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
-import { prisma } from "../../../db.js";
-import {
-  buildCompletionSuccessAck,
-  buildPostCheckinDeliveryFallback,
-} from "../../agentNativeLlm.js";
-import { isContinuationSyntheticMessage } from "../continuation/constants.js";
-import { flowSlotsFromMemory, resolveEilTurn } from "../eil/runtimeBridge.js";
-import {
-  buildExecutionAuditReport,
-  checkExecutionConsistency,
-  extractAvailableToolNamesFromBehavior,
-  initializeRuntimeV2,
-  refreshRuntimeV2Orchestrator,
-  type RuntimeV2Session,
-} from "../v2/index.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -60,6 +42,7 @@ import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observabili
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
+import { resolveEilTurn } from "../eil/runtimeBridge.js";
 import type { EilSnapshot, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
 
@@ -92,11 +75,6 @@ type GraphState = {
   eilPlan?: ExecutionIntelligencePlan;
   eilFacts: FactStore;
   eilSnapshot?: EilSnapshot;
-  /** Alertas do último Tool Validator — reply-only retry. */
-  lastValidationAlerts: string[];
-  turnPlan: ExecutionTurnPlan;
-  lastAssistantMessage: string;
-  runtimeV2Session?: RuntimeV2Session;
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -125,10 +103,6 @@ const GraphStateAnnotation = Annotation.Root({
   eilPlan: Annotation<ExecutionIntelligencePlan | undefined>,
   eilFacts: Annotation<FactStore>,
   eilSnapshot: Annotation<EilSnapshot | undefined>,
-  lastValidationAlerts: Annotation<string[]>,
-  turnPlan: Annotation<ExecutionTurnPlan>,
-  lastAssistantMessage: Annotation<string>,
-  runtimeV2Session: Annotation<RuntimeV2Session | undefined>,
 });
 
 /**
@@ -173,34 +147,8 @@ export class LangGraphRuntime implements AgentRuntime {
     });
 
     const checkpointStore = input.engineConfig.checkpointStore ?? "memory";
-    let lastAssistantMessage = "";
-    try {
-      const lastOut = await prisma.message.findFirst({
-        where: {
-          conversationId: input.conversation.id,
-          direction: "OUTBOUND",
-          id: { not: input.message.id },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { body: true },
-      });
-      lastAssistantMessage = (lastOut?.body ?? "").trim();
-    } catch {
-      /* histórico opcional para Portão C11 */
-    }
-    const turnPlan =
-      input.executionHints?.turnPlan ??
-      buildExecutionTurnPlan({
-        behaviorConfig: input.behaviorConfig,
-        userMessage: input.message.body ?? "",
-        lastAssistantMessage,
-      });
-    const inputWithTurnPlan: AgentRuntimeExecuteInput = {
-      ...input,
-      executionHints: { ...input.executionHints, turnPlan },
-    };
     const initialState: GraphState = {
-      input: inputWithTurnPlan,
+      input,
       memory: {},
       reply: "",
       toolOutcomes: [],
@@ -214,9 +162,6 @@ export class LangGraphRuntime implements AgentRuntime {
       intentHints: { kbQueryLikely: false },
       kbPrefetchResults: [],
       eilFacts: {},
-      lastValidationAlerts: [],
-      turnPlan,
-      lastAssistantMessage,
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -302,36 +247,6 @@ export class LangGraphRuntime implements AgentRuntime {
     const trace = result.traceBuilder.build();
     if (result.supervisorTrace) trace.supervisor = result.supervisorTrace;
     if (result.hitlPendingId) trace.hitlPendingId = result.hitlPendingId;
-    if (result.runtimeV2Session) {
-      const audit = buildExecutionAuditReport({
-        contract: result.runtimeV2Session.contract,
-        startedAt: result.runtimeV2Session.startedAt,
-        finishedAt: new Date().toISOString(),
-        executedTools: result.toolOutcomes.filter((t) => t.ok).map((t) => t.name),
-        toolOutcomes: result.toolOutcomes,
-        factsProduced: Object.keys(result.eilFacts ?? {}),
-        divergences: checkExecutionConsistency({
-          contract: result.runtimeV2Session.contract,
-          toolOutcomes: result.toolOutcomes,
-        }).divergences,
-        recoveries: result.runtimeV2Session.recoveries,
-        blocks: result.runtimeV2Session.blocks,
-        decisions: {
-          orchestrator: result.runtimeV2Session.orchestrator,
-          preExecution: result.runtimeV2Session.preValidation,
-        },
-        supervisorRetries: result.retryCount,
-      });
-      trace.runtimeV2 = {
-        contractId: result.runtimeV2Session.contract.contractId,
-        intent: result.runtimeV2Session.contract.intent.label,
-        phase: result.runtimeV2Session.contract.plan.phase,
-        mandatoryNextTool: result.runtimeV2Session.orchestrator.mandatoryNextTool,
-        pendingRequired: result.runtimeV2Session.orchestrator.pendingRequired,
-        orchestratorReason: result.runtimeV2Session.orchestrator.reason,
-        auditRootCause: audit.rootCause,
-      };
-    }
 
     input.executionLog?.info(
       { id: "agent_engine", name: "LangGraph Runtime" },
@@ -548,8 +463,6 @@ export class LangGraphRuntime implements AgentRuntime {
         behaviorConfig: state.input.behaviorConfig,
         userMessage: state.input.message.body ?? "",
         memory,
-        lastAssistantMessage: state.lastAssistantMessage,
-        existingTurnPlan: state.turnPlan,
       });
       state.traceBuilder.setNextNode("select_tool");
       state.traceBuilder.endNode("load_memory");
@@ -574,33 +487,19 @@ export class LangGraphRuntime implements AgentRuntime {
         userMessage: state.input.message.body ?? "",
         memory: state.memory,
         priorFacts: state.eilFacts,
-        lastAssistantMessage: state.lastAssistantMessage,
-        existingTurnPlan: state.turnPlan,
       });
-      const availableToolNames = extractAvailableToolNamesFromBehavior(state.input.behaviorConfig);
-      const runtimeV2Session =
-        state.runtimeV2Session ??
-        initializeRuntimeV2({
-          behaviorConfig: state.input.behaviorConfig,
-          userMessage: state.input.message.body ?? "",
-          availableToolNames,
-          lastAssistantMessage: state.lastAssistantMessage,
-          flowSlots: flowSlotsFromMemory(state.memory),
-          existingTurnPlan: state.turnPlan,
-        });
       state.traceBuilder.setNextNode("execute_tool");
       state.traceBuilder.endNode(
         "select_tool",
         "ok",
         toolCount > 0
-          ? `${toolCount} ferramenta(s) · Runtime V2 · ${runtimeV2Session.orchestrator.reason}`
-          : `Runtime V2 · ${runtimeV2Session.orchestrator.reason}`,
+          ? `${toolCount} ferramenta(s) disponível(eis)${eil.enabled ? " · EIL" : ""}`
+          : "delegar ao executor nativo",
       );
       return {
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,
-        runtimeV2Session,
       };
     };
 
@@ -608,30 +507,20 @@ export class LangGraphRuntime implements AgentRuntime {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
       const replyOnly =
         state.retryCount > 0 &&
-        shouldUseReplyOnlyRetryForTurn({
-          turnPlan: state.turnPlan,
+        shouldUseReplyOnlyRetry({
           toolOutcomes: state.toolOutcomes,
           supervisorChecks: state.supervisorTrace?.checks,
-          validationAlerts: state.lastValidationAlerts,
         });
       const priorOk = state.toolOutcomes.filter((t) => t.ok);
       const execResult = await executor({
         ...state.input,
         kbPrefetchAppendix: state.kbPrefetchAppendix,
-        executionHints: {
-          ...buildRetryExecutionHints({
-            turnPlan: state.turnPlan,
-            replyOnly,
-            priorSuccessfulToolOutcomes: priorOk,
-          }),
-          runtimeV2: state.runtimeV2Session
-            ? {
-                contractId: state.runtimeV2Session.contract.contractId,
-                orchestratorPromptBlock: state.runtimeV2Session.orchestratorPromptBlock,
-                orchestrator: state.runtimeV2Session.orchestrator,
-              }
-            : undefined,
-        },
+        executionHints: replyOnly
+          ? {
+              replyOnlyRetry: true,
+              priorSuccessfulToolOutcomes: priorOk,
+            }
+          : state.input.executionHints,
       });
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode(
@@ -655,31 +544,7 @@ export class LangGraphRuntime implements AgentRuntime {
         toolOutcomes: nextOutcomes,
         replyText: execResult.reply,
         priorFacts: state.eilFacts,
-        lastAssistantMessage: state.lastAssistantMessage,
-        existingTurnPlan: state.turnPlan,
       });
-      let runtimeV2Session = state.runtimeV2Session;
-      if (runtimeV2Session) {
-        const availableToolNames = extractAvailableToolNamesFromBehavior(state.input.behaviorConfig);
-        runtimeV2Session = refreshRuntimeV2Orchestrator(
-          runtimeV2Session,
-          availableToolNames,
-          nextOutcomes,
-        );
-        const consistency = checkExecutionConsistency({
-          contract: runtimeV2Session.contract,
-          toolOutcomes: nextOutcomes,
-        });
-        if (!consistency.consistent) {
-          state.input.executionLog?.warn(
-            { id: "runtime_v2", name: "Execution Runtime V2" },
-            JSON.stringify({
-              divergences: consistency.divergences.slice(0, 5).map((d) => d.detail),
-              pendingTools: consistency.pendingTools,
-            }),
-          );
-        }
-      }
       return {
         previousReply: state.reply,
         reply: execResult.reply,
@@ -690,19 +555,16 @@ export class LangGraphRuntime implements AgentRuntime {
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,
-        runtimeV2Session,
       };
     };
 
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
       const userMessage = state.input.message.body ?? "";
-      const requiredToolNames = state.turnPlan.requiredToolNames.length
-        ? state.turnPlan.requiredToolNames
-        : resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
-            userMessage,
-          });
-      const turnPolicy = state.turnPlan.turnPolicy;
+      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
+        userMessage,
+      });
+      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
@@ -743,8 +605,6 @@ export class LangGraphRuntime implements AgentRuntime {
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         priorFacts: state.eilFacts,
-        lastAssistantMessage: state.lastAssistantMessage,
-        existingTurnPlan: state.turnPlan,
       });
       state.traceBuilder.setNextNode("supervisor");
       state.traceBuilder.endNode(
@@ -753,7 +613,6 @@ export class LangGraphRuntime implements AgentRuntime {
       );
       return {
         validationBlockSend: validation.blockSend,
-        lastValidationAlerts: validation.alerts,
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,
@@ -790,13 +649,9 @@ export class LangGraphRuntime implements AgentRuntime {
         return { supervisorApproved: approved, supervisorTrace: supTrace };
       }
 
-      const turnPolicy = state.turnPlan.turnPolicy;
-      const consistency = state.runtimeV2Session
-        ? checkExecutionConsistency({
-            contract: state.runtimeV2Session.contract,
-            toolOutcomes: state.toolOutcomes,
-          })
-        : null;
+      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, {
+        userMessage: state.input.message.body ?? "",
+      });
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
@@ -815,8 +670,6 @@ export class LangGraphRuntime implements AgentRuntime {
         eilViolations: state.eilSnapshot?.violations,
         eilRequiredFactsMissing: state.eilPlan?.pendingFacts,
         turnPolicy,
-        executionContract: state.runtimeV2Session?.contract ?? null,
-        consistencyDivergences: consistency?.divergences,
       });
       const supTrace = buildSupervisorTrace(supInput);
 
@@ -970,27 +823,6 @@ export class LangGraphRuntime implements AgentRuntime {
     const respond = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("respond", "Responder utilizador");
       if (state.blockReply) {
-        // Nunca silenciar pós-conclusão / continuação Passo 8 — fallback humano (playbook).
-        const completionAck = buildCompletionSuccessAck(state.toolOutcomes);
-        const isCont = isContinuationSyntheticMessage(state.input.message.body);
-        const fallback =
-          completionAck ??
-          (isCont
-            ? buildPostCheckinDeliveryFallback(flowSlotsFromMemory(state.memory))
-            : null);
-        if (fallback) {
-          if (state.eilSnapshot) state.traceBuilder.setEilSnapshot(state.eilSnapshot);
-          state.traceBuilder.endNode(
-            "respond",
-            "warn",
-            "blockReply contornado — fallback pós-check-in / conclusão",
-          );
-          state.input.executionLog?.warn(
-            { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
-            "blockReply após retries — enviado fallback de conclusão ao hóspede",
-          );
-          return { reply: fallback, blockReply: false };
-        }
         if (state.eilSnapshot) {
           state.traceBuilder.setEilSnapshot(state.eilSnapshot);
         }
@@ -1004,16 +836,6 @@ export class LangGraphRuntime implements AgentRuntime {
             : "Resposta bloqueada após esgotar retries do supervisor",
         );
         return { reply: "" };
-      }
-
-      // Continuação Passo 8 com reply vazia (strict engoliu) → template mínimo
-      if (
-        !state.reply.trim() &&
-        isContinuationSyntheticMessage(state.input.message.body)
-      ) {
-        const fallback = buildPostCheckinDeliveryFallback(flowSlotsFromMemory(state.memory));
-        state.traceBuilder.endNode("respond", "warn", "reply vazia na continuação — Passo 8 fallback");
-        return { reply: fallback };
       }
 
       if (state.eilSnapshot) {

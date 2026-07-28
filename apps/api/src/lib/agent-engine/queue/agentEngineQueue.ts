@@ -5,7 +5,6 @@ import type { ConversationPriority } from "@prisma/client";
 import { prisma } from "../../../db.js";
 import { attachAutomationExecutionLog } from "../../automationExecutionLog.js";
 import { runNativeAgentReplyAndDeliver } from "../../agentBotNativeReplyPipeline.js";
-import { runProactiveContinuationFromQueue } from "../continuation/dispatchProactiveContinuation.js";
 
 const QUEUE_NAME = "agent-engine-replies";
 
@@ -14,20 +13,13 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 let redisQueueOperational = false;
 
-export type AgentEngineQueueJobKind = "native_reply" | "proactive_continuation";
-
 export type AgentEngineQueueJobData = {
-  kind: AgentEngineQueueJobKind;
   organizationId: string;
   botId: string;
   conversationId: string;
+  messageId: string;
   contactId: string;
   executionId: string;
-  messageId?: string;
-  continuationRuleId?: string;
-  continuationTurnHint?: string;
-  continuationRuleName?: string;
-  sourceExecutionId?: string;
 };
 
 function getRedisUrl(): string | null {
@@ -83,24 +75,20 @@ function getQueue(): Queue {
 }
 
 export async function enqueueAgentEngineReplyJob(
-  data: Omit<AgentEngineQueueJobData, "kind"> & { messageId: string },
+  data: AgentEngineQueueJobData,
   priority = 5,
 ): Promise<boolean> {
   if (!redisQueueOperational) return false;
   try {
     const q = getQueue();
-    await q.add(
-      "native-reply",
-      { ...data, kind: "native_reply" as const },
-      {
-        priority,
-        removeOnComplete: 2000,
-        removeOnFail: 5000,
-        attempts: 2,
-        backoff: { type: "exponential", delay: 2000 },
-        jobId: `${data.executionId}:reply`,
-      },
-    );
+    await q.add("native-reply", data, {
+      priority,
+      removeOnComplete: 2000,
+      removeOnFail: 5000,
+      attempts: 2,
+      backoff: { type: "exponential", delay: 2000 },
+      jobId: `${data.executionId}:reply`,
+    });
     return true;
   } catch (err) {
     markRedisDown();
@@ -112,50 +100,10 @@ export async function enqueueAgentEngineReplyJob(
   }
 }
 
-export async function enqueueAgentContinuationJob(
-  data: Omit<AgentEngineQueueJobData, "kind" | "messageId"> & {
-    continuationRuleId: string;
-    continuationTurnHint: string;
-    continuationRuleName?: string;
-    sourceExecutionId?: string;
-  },
-  priority = 3,
-  delayMs = 0,
-): Promise<boolean> {
-  if (!redisQueueOperational) return false;
-  try {
-    const q = getQueue();
-    const jobId = `continuation:${data.conversationId}:${data.continuationRuleId}`;
-    await q.add(
-      "proactive-continuation",
-      { ...data, kind: "proactive_continuation" as const },
-      {
-        priority,
-        delay: Math.max(0, delayMs),
-        removeOnComplete: 2000,
-        removeOnFail: 5000,
-        attempts: 2,
-        backoff: { type: "exponential", delay: 2000 },
-        jobId,
-      },
-    );
-    return true;
-  } catch (err) {
-    markRedisDown();
-    console.error(
-      "[agent-engine-queue] continuation enqueue failed",
-      err instanceof Error ? err.message : err,
-    );
-    return false;
-  }
-}
-
-async function processNativeReplyJob(
+async function processAgentEngineJob(
   data: AgentEngineQueueJobData,
   log: FastifyBaseLogger,
 ): Promise<void> {
-  if (!data.messageId) throw new Error("agent_engine_queue_missing_message_id");
-
   const exLog = await attachAutomationExecutionLog({
     executionId: data.executionId,
     organizationId: data.organizationId,
@@ -193,17 +141,6 @@ async function processNativeReplyJob(
     log,
     exLog,
   });
-}
-
-async function processAgentEngineJob(
-  data: AgentEngineQueueJobData,
-  log: FastifyBaseLogger,
-): Promise<void> {
-  if (data.kind === "proactive_continuation") {
-    await runProactiveContinuationFromQueue(data, log);
-    return;
-  }
-  await processNativeReplyJob(data, log);
 }
 
 function registerWorker(app: FastifyInstance): void {
@@ -269,12 +206,4 @@ export async function closeAgentEngineQueue(): Promise<void> {
   worker = null;
   queue = null;
   connection = null;
-}
-
-/** @internal tests */
-export async function __processAgentEngineJobForTest(
-  data: AgentEngineQueueJobData,
-  log: FastifyBaseLogger,
-): Promise<void> {
-  await processAgentEngineJob(data, log);
 }

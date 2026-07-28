@@ -10,14 +10,8 @@ import {
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
-  classifyConfirmationGate,
-  buildAdvanceAskFromReferenceCatalog,
-  replyReasksSameConfirmationGate,
-  primaryFinalizeToolHints,
-  isPostCompletionDeliveryTool,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
-import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 
 const SAMPLE_PLAYBOOK = `
 ## Regras
@@ -44,22 +38,10 @@ test("parseForbiddenSameTurnPairsFromPlaybook extracts backtick pairs", () => {
 
 test("parseForbiddenSameTurnPairsFromPlaybook extracts plus shorthand", () => {
   const pairs = parseForbiddenSameTurnPairsFromPlaybook(
-    "Proibido misturar embratur-reference + audaar_check_in no mesmo turno",
+    "Proibido misturar reference + check-in no mesmo turno",
   );
   assert.ok(pairs.length >= 1);
   assert.ok(findForbiddenPairViolation(["embratur-reference", "audaar_check_in"], pairs));
-});
-
-test("parseForbiddenSameTurnPairsFromPlaybook ignores prose category examples", () => {
-  const pairs = parseForbiddenSameTurnPairsFromPlaybook(
-    "**Proibido** misturar categorias no mesmo turno (ex.: lookup + Embratur · verificar + Modelo S1).",
-  );
-  assert.equal(
-    findForbiddenPairViolation(["lookup", "embratur"], pairs),
-    null,
-    `prose examples must not become pairs: ${JSON.stringify(pairs)}`,
-  );
-  assert.equal(findForbiddenPairViolation(["verificar", "modelo"], pairs), null);
 });
 
 test("parseExclusiveToolsForConfirmationTurn excludes completion tools", () => {
@@ -106,57 +88,17 @@ test("blockEscalation alone blocks transfer even without exclusive tools", () =>
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
-test("resolveTurnPolicy on sim without lastAssistant does not exclusive-lock embratur-only", () => {
+test("resolveTurnPolicy on sim blocks escalation but does not exclusive-lock embratur-only", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
     { userMessage: "sim" },
   );
   assert.ok(policy.forbiddenSameTurnPairs.length >= 1);
   assert.equal(policy.blockEscalation, true);
-  // Sem última msg: não assumir S9 (ficha→S10 precisa de check_in)
+  // Ficha→S10 precisa de audaar_check_in; exclusive S9 não pode aplicar a todo "sim"
   assert.equal(policy.exclusiveAllowedTools, null);
   assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
-});
-
-test("resolveTurnPolicy on sim after titular mirror exclusive-locks embratur and blocks check_in", () => {
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
-    {
-      userMessage: "sim",
-      lastAssistantMessage:
-        "Encontrei o cadastro. Confirme os dados do TITULAR:\nNome: Odair\nConfirma?",
-    },
-  );
-  assert.equal(policy.blockEscalation, true);
-  assert.ok(policy.exclusiveAllowedTools?.some((t) => /embratur|reference/i.test(t)));
-  assert.ok(
-    turnPolicyPreExecBlockReason("audaar_check_in", policy),
-    "check_in must be blocked on titular→S9 gate",
-  );
-  assert.equal(turnPolicyPreExecBlockReason("embratur-reference", policy), null);
-});
-
-test("resolveTurnPolicy on sim after travel form mirror allows check_in only", () => {
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
-    {
-      userMessage: "sim",
-      lastAssistantMessage:
-        "Confirme os dados da FICHA DE VIAGEM:\nMotivo: lazer\nTransporte: carro\nEstá tudo certo?",
-    },
-  );
-  assert.ok(policy.exclusiveAllowedTools?.some((t) => /check_in/i.test(t)));
-  assert.equal(
-    policy.exclusiveAllowedTools?.some((t) => /upload|selfie|documento/i.test(t)),
-    false,
-    "uploads must not be exclusive/required on ficha→S10",
-  );
-  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
-  assert.ok(
-    turnPolicyPreExecBlockReason("embratur-reference", policy),
-    "embratur must be blocked on ficha→S10 gate",
-  );
 });
 
 test("validateToolOutcomesAgainstTurnPolicy blocks reference+check_in", () => {
@@ -297,67 +239,6 @@ test("turnPolicyPreExecBlockReasonForTurn blocks forbidden pair before second to
   assert.ok(blocked && /proibid/i.test(blocked));
 });
 
-test("turnPolicyPreExecBlockReasonForTurn blocks escalation while required turn tool is pending", () => {
-  const playbook = `
-| C8 | CPF sozinho · 11 dígitos · lookup main guest | Chame \`audaar_consultar_main_guest\` |
-| C13 | reclamação · irritado | Chame \`call_human\` |
-**Proibido** \`call_human\` / \`transfer_to_team\` no meio do check-in pendente.
-`;
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
-    { userMessage: "41026299802" },
-  );
-  const blocked = turnPolicyPreExecBlockReasonForTurn(
-    "call_human",
-    [],
-    policy,
-    ["audaar_consultar_main_guest"],
-  );
-  assert.ok(
-    blocked &&
-      (/ferramentas obrigatórias deste turno/i.test(blocked) ||
-        /deve começar com a ferramenta obrigatória/i.test(blocked)),
-  );
-  assert.match(blocked ?? "", /audaar_consultar_main_guest/i);
-  assert.equal(
-    turnPolicyPreExecBlockReasonForTurn(
-      "call_human",
-      ["audaar_consultar_main_guest"],
-      policy,
-      ["audaar_consultar_main_guest"],
-    ),
-    null,
-  );
-});
-
-test("turnPolicyPreExecBlockReasonForTurn blocks non-required tool before required C3 tool", () => {
-  const playbook = `
-| C3 | Check-in explícito | fazer check-in + localizador | Chame \`audaar_consultar_reserva\` · **PROIBIDO** \`buscar_conhecimento\` |
-| C5 | FAQ unidade | Chame \`buscar_conhecimento\` |
-`;
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
-    { userMessage: "fazer check-in na reserva FRJA2DBZ" },
-  );
-  const blocked = turnPolicyPreExecBlockReasonForTurn(
-    "buscar_conhecimento",
-    [],
-    policy,
-    ["audaar_consultar_reserva"],
-  );
-  assert.ok(blocked && /deve começar com a ferramenta obrigatória/i.test(blocked));
-  assert.match(blocked ?? "", /audaar_consultar_reserva/i);
-  assert.equal(
-    turnPolicyPreExecBlockReasonForTurn(
-      "audaar_consultar_reserva",
-      [],
-      policy,
-      ["audaar_consultar_reserva"],
-    ),
-    null,
-  );
-});
-
 test("formatTurnPolicyForSupervisor summarizes blockEscalation and pairs", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
@@ -375,137 +256,4 @@ test("findForbiddenPairViolation requires two distinct tool invocations", () => 
   const real = [{ a: "foo_lookup", b: "foo_submit", source: "test" }];
   assert.ok(findForbiddenPairViolation(["foo_lookup", "foo_submit"], real));
   assert.equal(findForbiddenPairViolation(["foo_lookup"], real), null);
-});
-
-test("validateToolOutcomesAgainstTurnPolicy ignores skipped exclusive blocks", () => {
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
-    {
-      userMessage: "sim",
-      lastAssistantMessage: "Confirme os dados do TITULAR. Confirma?",
-    },
-  );
-  assert.ok(policy.exclusiveAllowedTools?.length);
-  const alerts = validateToolOutcomesAgainstTurnPolicy(
-    [
-      { name: "embratur-reference", ok: true, preview: '{"ok":true}' },
-      {
-        name: "audaar_check_in",
-        ok: false,
-        preview:
-          '{"ok":false,"skipped":true,"reason":"turn_policy_exclusive","message":"fora"}',
-      },
-    ],
-    policy,
-  );
-  assert.equal(alerts.length, 0, `skipped check_in must not alert: ${alerts.join("; ")}`);
-});
-
-test("buildAdvanceAskFromReferenceCatalog uses reasons/transports", () => {
-  const ask = buildAdvanceAskFromReferenceCatalog([
-    {
-      name: "embratur-reference",
-      ok: true,
-      preview: JSON.stringify({
-        ok: true,
-        bodyPreview: JSON.stringify({
-          data: {
-            reasons: [{ id: 1, name: "Lazer/Férias - Leisure" }],
-            transports: [{ id: 2, name: "Automóvel - Car" }],
-          },
-        }),
-      }),
-    },
-  ]);
-  assert.ok(ask);
-  assert.match(ask!, /Motivo da viagem/i);
-  assert.match(ask!, /Lazer/i);
-  assert.match(ask!, /Automóvel/i);
-  assert.doesNotMatch(ask!, /TITULAR|Confirme os dados/i);
-});
-
-test("replyReasksSameConfirmationGate detects titular loop", () => {
-  assert.equal(
-    replyReasksSameConfirmationGate(
-      "Confirme os dados do TITULAR. Responda sim.",
-      "Encontrei cadastro. Confirme os dados do TITULAR.",
-    ),
-    true,
-  );
-  assert.equal(
-    replyReasksSameConfirmationGate(
-      "Informe motivo da viagem e transporte:",
-      "Confirme os dados do TITULAR.",
-    ),
-    false,
-  );
-});
-
-test("classifyConfirmationGate detects titular vs travel form", () => {
-  assert.equal(
-    classifyConfirmationGate("Confirme os dados do TITULAR:\nNome João\nConfirma?"),
-    "titular_mirror",
-  );
-  assert.equal(
-    classifyConfirmationGate(
-      "Confirme os dados da FICHA DE VIAGEM:\nMotivo: lazer\nTransporte: carro",
-    ),
-    "travel_form_mirror",
-  );
-  assert.equal(
-    classifyConfirmationGate("Informe motivo da viagem e meio de transporte:"),
-    "data_collection",
-  );
-  assert.equal(classifyConfirmationGate("Olá!"), "unknown");
-});
-
-test("buildExecutionTurnPlan requires embratur on sim after titular mirror", () => {
-  const plan = buildExecutionTurnPlan({
-    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
-    userMessage: "sim",
-    availableToolNames: ["embratur-reference", "audaar_check_in"],
-    lastAssistantMessage: "Confirme os dados do TITULAR. Confirma?",
-  });
-  assert.ok(plan.matchedPatternIds.includes("confirmation_titular"));
-  assert.ok(plan.requiredToolNames.some((n) => /embratur|reference/i.test(n)));
-  assert.ok(plan.turnPolicy.exclusiveAllowedTools?.some((n) => /embratur|reference/i.test(n)));
-});
-
-test("primaryFinalizeToolHints drops upload tools and prose s-check-in", () => {
-  const primary = primaryFinalizeToolHints([
-    "audaar_check_in",
-    "checkin_upload_selfie",
-    "checkin_upload_documento",
-    "s-check-in",
-  ]);
-  assert.deepEqual(primary, ["audaar_check_in"]);
-});
-
-test("after check_in OK, KB is allowed same turn (Passo 8)", () => {
-  const policy = resolveTurnPolicy(
-    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
-    {
-      userMessage: "sim",
-      lastAssistantMessage: "Confirme a FICHA DE VIAGEM. Está tudo certo?",
-    },
-  );
-  assert.ok(isPostCompletionDeliveryTool("buscar_conhecimento"));
-  assert.equal(
-    turnPolicyPreExecBlockReasonForTurn(
-      "buscar_conhecimento",
-      ["audaar_check_in"],
-      policy,
-      ["audaar_check_in"],
-      { completionAlreadySucceeded: true },
-    ),
-    null,
-  );
-  const alerts = validateToolOutcomesAgainstTurnPolicy(
-    [
-      { name: "audaar_check_in", ok: true, preview: '{"ok":true,"statusCode":200}' },
-      { name: "buscar_conhecimento", ok: true, preview: '{"found":true}' },
-    ],
-    policy,
-  );
-  assert.equal(alerts.length, 0, alerts.join("; "));
 });

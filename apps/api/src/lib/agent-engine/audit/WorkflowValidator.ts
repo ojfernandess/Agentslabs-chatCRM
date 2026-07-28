@@ -17,7 +17,6 @@ import {
   analyzeExecutionQualityFromLogs,
   type ExecutionLogEntryLike,
 } from "../../automationExecutionQuality.js";
-import { buildContractWorkflowFindings } from "./WorkflowContractValidator.js";
 
 export type WorkflowAuditSeverity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -58,9 +57,6 @@ export type WorkflowAuditInput = {
   supervisorTrace?: AgentSupervisorTrace;
   /** Snapshot EIL (opcional — findings F-EIL). */
   eilSnapshot?: import("../eil/types.js").EilSnapshot;
-  /** Execution Contract V2 — findings F-V2 (substitui checks textuais equivalentes). */
-  executionContract?: import("../v2/types.js").ExecutionContract | null;
-  consistencyDivergences?: Array<{ kind: string; detail: string; severity: string }>;
 };
 
 export type WorkflowAuditMetrics = {
@@ -447,17 +443,6 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
       finding("F-EIL", "eil_skipped", "info", true, "EIL desactivado ou ausente — skip"),
     );
   }
-
-  // Fase V2 — Execution Contract (diagnóstico estrutural, sem parsing textual legacy)
-  findings.push(
-    ...buildContractWorkflowFindings({
-      executionContract: input.executionContract,
-      toolOutcomes: input.toolOutcomes,
-      replyText: input.replyText,
-      validationBlockSend: input.validationBlockSend,
-      consistencyDivergences: input.consistencyDivergences,
-    }),
-  );
 
   const criticalFailures = findings.filter((f) => !f.passed && f.severity === "critical").length;
   const highFailures = findings.filter((f) => !f.passed && f.severity === "high").length;

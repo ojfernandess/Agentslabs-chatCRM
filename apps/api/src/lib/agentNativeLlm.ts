@@ -37,46 +37,14 @@ import {
 } from "./knowledgeSearchSkipConfig.js";
 import {
   findForbiddenPairViolation,
-  isConfirmationUserMessage,
   isLikelyMutableOrCompletionTool,
-  isSkippedToolOutcome,
+  resolveTurnPolicy,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
   validateToolOutcomesAgainstTurnPolicy,
-  replyReasksSameConfirmationGate,
-  buildAdvanceAskFromReferenceCatalog,
 } from "./agent-engine/validators/turnPolicyParser.js";
-import {
-  formatScalarFactLabel,
-  isInternalScalarLeaf,
-  resolveStrictModeRescueReply,
-} from "./agent-engine/validators/StrictModeRescue.js";
-import {
-  buildGenericReplyOnlyRetryPromptBlock,
-  pendingRequiredToolNames,
-  resolveTurnExecutionContext,
-  shouldAllowPlainChatFallback,
-} from "./agent-engine/contract/TurnExecutionContract.js";
-import {
-  assertToolAllowedByRuntimeV2,
-  applyRecoveryToLlmConfig,
-  buildKbToolPreamble,
-  buildSchedulerPromptBlock,
-  buildServerKbGuardBlock,
-  checkExecutionConsistency,
-  evaluateSmartFallback,
-  filterToolsByOrchestrator,
-  initializeRuntimeV2,
-  recoverMissedMandatoryTool,
-  refreshRuntimeV2Orchestrator,
-  runDeterministicToolPhase,
-  scheduleNextAction,
-  shouldRunDeterministicToolPhase,
-  type RuntimeV2Session,
-} from "./agent-engine/v2/index.js";
-import { buildExecutionTurnPlan } from "./agent-engine/planner/ExecutionTurnPlan.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
@@ -105,7 +73,6 @@ import {
 import { publishGraphEvent } from "./agent-engine/observability/AgentGraphEventBus.js";
 import { createClientOutboundTokenStream } from "./clientOutboundTokenStream.js";
 import {
-  buildContinuationTurnPromptBlock,
   buildFollowUpCampaignPromptBlock,
   buildIsolatedNativeFlowStatePromptBlock,
   buildNativeFlowStatePromptBlock,
@@ -116,10 +83,6 @@ import {
   replaceFlowSlotsAutomationContext,
   type AutomationFlowSlots,
 } from "./automationConversationContextLib.js";
-import {
-  isContinuationSyntheticMessage,
-  parseContinuationSyntheticBody,
-} from "./agent-engine/continuation/constants.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
@@ -315,7 +278,7 @@ export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<Na
       parsed.found === true ||
       (parsed.skipped === true && parsed.ok !== false);
     const structuredPayload = extractStructuredPayloadFromToolOut(parsed, out);
-    return { name, ok, preview: preview.slice(0, 2500), structuredPayload };
+    return { name, ok, preview: preview.slice(0, 500), structuredPayload };
   } catch {
     return { name, ok: out.trim().length > 0 && !/error|failed|falhou/i.test(out), preview: out.slice(0, 500) };
   }
@@ -443,195 +406,6 @@ export function buildDeterministicReplyFromToolOutcomes(
     return "Já consultei o sistema com base no seu pedido. Pode confirmar o próximo passo ou partilhar mais algum detalhe para eu avançar?";
   }
   return "Tentei consultar o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido ou partilhar mais um detalhe (por exemplo código ou nome)?";
-}
-
-const GROUNDED_SKIP_KEYS = new Set([
-  "ok",
-  "found",
-  "skipped",
-  "error",
-  "bodypreview",
-  "reason",
-  "message",
-  "statuscode",
-  "headers",
-  "raw",
-  "html",
-  "base64",
-  "token",
-  "password",
-  "secret",
-  "apikey",
-  "authorization",
-]);
-
-function tryParseJsonObject(raw: string): unknown {
-  const t = raw.trim();
-  if (!t.startsWith("{") && !t.startsWith("[")) return undefined;
-  try {
-    return JSON.parse(t);
-  } catch {
-    return undefined;
-  }
-}
-
-/** Flatten scalar leaves from tool JSON (segment-agnostic). */
-export function collectScalarFactsFromPayload(
-  value: unknown,
-  opts?: { maxEntries?: number; maxDepth?: number },
-): Array<{ key: string; value: string }> {
-  const maxEntries = opts?.maxEntries ?? 18;
-  const maxDepth = opts?.maxDepth ?? 4;
-  const out: Array<{ key: string; value: string }> = [];
-
-  const walk = (node: unknown, prefix: string, depth: number) => {
-    if (out.length >= maxEntries || depth > maxDepth || node == null) return;
-    if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
-      const s = String(node).trim();
-      if (!s || s === "undefined" || s === "null") return;
-      if (s.length > 180) return;
-      if (/^[A-Za-z0-9+/=]{80,}$/.test(s)) return; // base64-ish
-      const leaf = prefix.includes(".") ? prefix.split(".").pop()! : prefix || "value";
-      if (GROUNDED_SKIP_KEYS.has(leaf.toLowerCase().replace(/[^a-z0-9]/g, ""))) return;
-      if (isInternalScalarLeaf(leaf)) return;
-      out.push({ key: formatScalarFactLabel(prefix || leaf), value: s });
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (let i = 0; i < Math.min(node.length, 6); i++) {
-        walk(node[i], prefix ? `${prefix}[${i}]` : `[${i}]`, depth + 1);
-        if (out.length >= maxEntries) return;
-      }
-      return;
-    }
-    if (typeof node === "object") {
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        const kl = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-        if (GROUNDED_SKIP_KEYS.has(kl)) continue;
-        if (/password|secret|token|base64|authorization/.test(kl)) continue;
-        const next = prefix ? `${prefix}.${k}` : k;
-        walk(v, next, depth + 1);
-        if (out.length >= maxEntries) return;
-      }
-    }
-  };
-
-  walk(value, "", 0);
-  return out;
-}
-
-/**
- * Confirmação grounded só com campos presentes no payload das tools.
- * Usado quando o LLM inventa campos (RG, profissão, …) e o strict mode bloquearia o envio.
- * NÃO usar após tools de conclusão (check_in) — ver buildCompletionSuccessAck.
- */
-export function buildGroundedConfirmationFromToolOutcomes(
-  toolOutcomes: Array<{
-    name: string;
-    ok: boolean;
-    preview: string;
-    structuredPayload?: unknown;
-  }>,
-): string | null {
-  const preferred = [
-    ...toolOutcomes.filter(
-      (t) =>
-        t.ok &&
-        t.name !== "buscar_conhecimento" &&
-        !isLikelyMutableOrCompletionTool(t.name, []) &&
-        !isSkippedToolOutcome(t.preview),
-    ),
-    ...toolOutcomes.filter((t) => t.ok && !isSkippedToolOutcome(t.preview)),
-  ].filter((t) => !isLikelyMutableOrCompletionTool(t.name, []));
-  const seen = new Set<string>();
-  const facts: Array<{ key: string; value: string }> = [];
-
-  for (const t of preferred) {
-    if (seen.has(t.name)) continue;
-    seen.add(t.name);
-    if (t.name === "buscar_conhecimento") continue;
-    const payload =
-      t.structuredPayload !== undefined && t.structuredPayload !== null
-        ? t.structuredPayload
-        : tryParseJsonObject(t.preview);
-    if (payload === undefined) continue;
-    for (const f of collectScalarFactsFromPayload(payload)) {
-      const dedupe = `${f.key}=${f.value}`.toLowerCase();
-      if (facts.some((x) => `${x.key}=${x.value}`.toLowerCase() === dedupe)) continue;
-      facts.push(f);
-      if (facts.length >= 16) break;
-    }
-    if (facts.length >= 16) break;
-  }
-
-  if (facts.length === 0) return null;
-
-  const lines = facts.map((f) => `- ${f.key}: ${f.value}`);
-  return (
-    "Encontrei estes dados no sistema. Por favor confirme se estão correctos:\n\n" +
-    lines.join("\n") +
-    "\n\nConfirma?"
-  ).slice(0, 3500);
-}
-
-/**
- * Ack humano após tool de conclusão OK.
- * Nunca envia paths JSON (`data.reservation…`) ao cliente — padrão dos melhores agent engines:
- * mutação → mensagem curta de sucesso; entrega detalhada via tools de KB/consulta no mesmo turno.
- */
-export function buildCompletionSuccessAck(
-  toolOutcomes: Array<{ name: string; ok: boolean; preview: string }>,
-): string | null {
-  const hit = toolOutcomes.find(
-    (t) =>
-      t.ok &&
-      !isSkippedToolOutcome(t.preview) &&
-      isLikelyMutableOrCompletionTool(t.name, []),
-  );
-  if (!hit) return null;
-  if (/check[_-]?in/i.test(hit.name)) {
-    return (
-      "Seu check-in foi concluído com sucesso! " +
-      "Em seguida envio os detalhes da sua estadia."
-    );
-  }
-  return "Operação concluída com sucesso.";
-}
-
-/**
- * Fallback Passo 8 quando continuação/strict falha sem KB —
- * usa flowSlots e placeholders "será confirmado em breve" (playbook SYZIYAJG).
- */
-export function buildPostCheckinDeliveryFallback(
-  slots: Record<string, unknown> | null | undefined,
-): string {
-  const s = slots ?? {};
-  const localizer = String(
-    s.localizadorOuReservationId ?? s.localizer ?? s.reservationId ?? "",
-  ).trim();
-  const checkin = String(s.checkinDate ?? "").trim();
-  const checkout = String(s.checkoutDate ?? "").trim();
-  const period =
-    checkin || checkout
-      ? `${checkin || "…"} a ${checkout || "…"}`
-      : "será confirmado em breve";
-  return (
-    "Seu check-in foi concluído com sucesso! Veja abaixo os dados da sua reserva e todas as informações necessárias para sua estadia:\n\n" +
-    "—\n" +
-    `🔢 Número da reserva: ${localizer || "será confirmado em breve"}\n` +
-    `📅 Período: ${period}\n` +
-    "⏰ Check-in: será confirmado em breve\n" +
-    "⏰ Checkout: será confirmado em breve\n" +
-    "🔑 Senha da porta: será confirmado em breve\n" +
-    "—\n\n" +
-    "Endereço da hospedagem:\nserá confirmado em breve\n\n" +
-    "—\n" +
-    "Procedimento de entrada:\nserá confirmado em breve\n\n" +
-    "—\n" +
-    "Wi-Fi:\nRede: será confirmado em breve\nSenha: será confirmado em breve\n\n" +
-    "—\n" +
-    "Importante:\nserá confirmado em breve"
-  );
 }
 
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
@@ -853,27 +627,9 @@ export const FORCED_KB_REPLY_PREFIX_RE = /^encontrei isto na nossa base de conhe
 
 const OUTBOUND_MAX_CHARS = 4000;
 
-/**
- * Remove artefactos de espelhamento JS (`undefined`/`null` literais) que o modelo
- * injeta ao montar templates com campos ausentes no JSON da tool.
- */
-export function scrubLiteralUndefinedArtifacts(text: string): string {
-  let t = text;
-  if (!t) return t;
-  // "Campo: undefined" / "Campo — null"
-  t = t.replace(/([:\-–—]\s*)(undefined|null)\b/gi, "$1");
-  // Literais soltos
-  t = t.replace(/\b(undefined|null)\b/gi, "");
-  // Linhas de campo vazias após scrub ("RG:" / "- Profissão:")
-  t = t.replace(/^[ \t]*[-•*]?\s*[^:\n]{1,60}:\s*$/gm, "");
-  t = t.replace(/[ \t]{2,}/g, " ");
-  t = t.replace(/\n{3,}/g, "\n\n");
-  return t.trim();
-}
-
 /** Evita enviar JSON/código bruto de tools ao contacto. */
 export function sanitizeOutboundAgentReply(text: string): string {
-  let t = scrubLiteralUndefinedArtifacts(text.trim());
+  let t = text.trim();
   if (!t) return t;
   t = t.replace(/```[\s\S]*?```/g, "").trim();
   if (/^\s*[\[{]/.test(t) && /"(found|articles|ok|error|tool)"\s*:/i.test(t)) {
@@ -1705,20 +1461,17 @@ async function generateNativeAgentReplyCore(input: {
   } = input;
   if (message.direction !== "INBOUND") return EMPTY_NATIVE_CORE_RESULT;
   const userMessageRaw = (message.body ?? "").trim();
-  const continuationParsed = parseContinuationSyntheticBody(userMessageRaw);
   const hasInboundMedia =
-    !continuationParsed &&
     Boolean(message.mediaUrl?.trim()) &&
     (message.type === "IMAGE" || message.type === "DOCUMENT" || message.type === "VIDEO");
   if (!userMessageRaw && !hasInboundMedia) return EMPTY_NATIVE_CORE_RESULT;
   const userMessage =
-    continuationParsed?.turnHint ??
-    (userMessageRaw ||
-      (message.type === "IMAGE"
-        ? "[Imagem enviada pelo cliente]"
-        : message.type === "DOCUMENT"
-          ? "[Documento enviado pelo cliente]"
-          : "[Ficheiro enviado pelo cliente]"));
+    userMessageRaw ||
+    (message.type === "IMAGE"
+      ? "[Imagem enviada pelo cliente]"
+      : message.type === "DOCUMENT"
+        ? "[Documento enviado pelo cliente]"
+        : "[Ficheiro enviado pelo cliente]");
 
   const profile = await prisma.automationAgentProfile.findUnique({
     where: { botId: bot.id },
@@ -1740,19 +1493,8 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const llm = profile.llmConfig as Record<string, unknown>;
-  let provider = llmString(llm, "provider") || "openai";
-  let model = llmString(llm, "model") || "gpt-4o-mini";
-  const recoveryHints = input.executionHints?.recovery;
-  if (recoveryHints?.switchProvider || recoveryHints?.switchModel) {
-    const recovered = applyRecoveryToLlmConfig(provider, model, recoveryHints);
-    provider = recovered.provider;
-    model = recovered.model;
-    ex?.info(
-      { id: "tool_recovery", name: "Tool Recovery" },
-      recoveryHints.recoveryAction?.reason ?? "Provider/model switch no retry",
-      { output: { provider, model } },
-    );
-  }
+  const provider = llmString(llm, "provider") || "openai";
+  const model = llmString(llm, "model") || "gpt-4o-mini";
   const storedKey = llmString(llm, "apiKey");
   /** Mesma ordem que embeddings/playground: chave no perfil ou `OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY` no servidor. */
   const apiKey =
@@ -1908,6 +1650,7 @@ async function generateNativeAgentReplyCore(input: {
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"
       ? (profile.behaviorConfig as Record<string, unknown>)
       : {};
+  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage });
   const executionHints = input.executionHints;
   let customHttpTools: AutomationHttpToolRow[] = [];
   if (nativeHttpCustomToolIds.length > 0) {
@@ -1928,15 +1671,6 @@ async function generateNativeAgentReplyCore(input: {
       .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
-  const { turnPlan: initialTurnPlan } = resolveTurnExecutionContext({
-    behaviorConfig: behaviorConfigObj,
-    userMessage,
-    availableToolNames: customHttpTools.map((t) => t.name),
-    existingTurnPlan: executionHints?.turnPlan,
-  });
-  let turnPlan = initialTurnPlan;
-  let turnPolicy = turnPlan.turnPolicy;
-  let requiredToolNamesForTurn = turnPlan.requiredToolNames;
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
   const allowedTagIds = flags.assign_contact_tags
     ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
@@ -1963,20 +1697,6 @@ async function generateNativeAgentReplyCore(input: {
         "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com frases de espera.\n"
       : "";
   const toolRoundOutcomes: NativeToolRoundOutcome[] = [];
-  // Reply-only: semear tools OK do turno anterior para o supervisor/EIL verem 1/N
-  // (sem isto o retry aparece como 0/0 e rejeita confirmações grounded).
-  if (executionHints?.replyOnlyRetry) {
-    for (const t of executionHints.priorSuccessfulToolOutcomes ?? []) {
-      if (!t.ok || !t.name.trim()) continue;
-      toolRoundOutcomes.push({
-        name: t.name,
-        ok: true,
-        preview: t.preview,
-        monitored: false,
-        structuredPayload: t.structuredPayload,
-      });
-    }
-  }
   let knowledgeSearchCallsThisTurn = 0;
 
   const automationCtx = await loadAutomationConversationContext(conversation.id);
@@ -2008,35 +1728,8 @@ async function generateNativeAgentReplyCore(input: {
       .filter((m) => m.content.length > 0);
   }
   const kbSearchQuery = buildKnowledgeSearchQuery(userMessage, kbHistoryForSearch);
-  let lastAssistantMessage =
+  const lastAssistantMessage =
     [...kbHistoryForSearch].reverse().find((t) => t.role === "assistant")?.content ?? "";
-  // Portão C11: re-resolver plano com última msg SUA (titular→S9 vs ficha→S10)
-  if (isConfirmationUserMessage(userMessageRaw || userMessage)) {
-    if (!lastAssistantMessage) {
-      try {
-        const lastOut = await prisma.message.findFirst({
-          where: {
-            conversationId: conversation.id,
-            direction: "OUTBOUND",
-            id: { not: message.id },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { body: true },
-        });
-        lastAssistantMessage = (lastOut?.body ?? "").trim();
-      } catch {
-        /* histórico opcional */
-      }
-    }
-    turnPlan = buildExecutionTurnPlan({
-      behaviorConfig: behaviorConfigObj,
-      userMessage,
-      availableToolNames: customHttpTools.map((t) => t.name),
-      lastAssistantMessage,
-    });
-    turnPolicy = turnPlan.turnPolicy;
-    requiredToolNamesForTurn = turnPlan.requiredToolNames;
-  }
   const kbSearchSkipCfg = parseKnowledgeSearchSkipFromBehavior(profile.behaviorConfig);
   const kbSearchSkipReason = kbSearchSkipCfg.enabled
     ? resolveKnowledgeSearchSkip(userMessage, {
@@ -2126,18 +1819,58 @@ async function generateNativeAgentReplyCore(input: {
     knowledgeContentCoversQuery(kbProactiveAppendix, kbSearchQuery);
   const omitBuscarConhecimento = skipKbSearch;
 
-  const toolPreamble = buildKbToolPreamble({
-    kbHasUsefulExcerpts,
-    proactiveCoversQuery,
-    allowedTagIds,
-    customToolPreamble,
-  });
+  const toolPreamble = kbHasUsefulExcerpts
+    ? proactiveCoversQuery
+      ? "\n\n### Ferramentas (complemento)\n" +
+        "- **Base de conhecimento:** a secção acima **já contém excertos** recuperados para a última mensagem do cliente (pesquisa automática no servidor). Responda com factos concretos quando constarem aí.\n" +
+        "- **PROIBIDO** como resposta final: frases de espera («um momento», «aguarde», «vou verificar») sem factos. Isso só pode ser aviso intermédio do sistema — a mensagem final tem de trazer a informação.\n" +
+        "- **`buscar_conhecimento`:** no máximo **uma** chamada neste turno se o prompt exigir invocação explícita; depois responda ao cliente com os excertos (não repita a pesquisa).\n" +
+        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+        (allowedTagIds.length > 0
+          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem; use só UUIDs permitidos.\n"
+          : "") +
+        "- `call_human`: apenas se o cliente pedir humano/atendente **ou** se os excertos / resultado da busca forem claramente insuficientes." +
+        customToolPreamble
+      : "\n\n### Ferramentas (complemento)\n" +
+        "- **Base de conhecimento:** há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta — use `buscar_conhecimento` se precisar de mais detalhe.\n" +
+        "- **PROIBIDO** inventar factos (categorias, preços, horários, políticas) que não constem nos excertos ou no resultado da ferramenta.\n" +
+        "- **`buscar_conhecimento`:** até **duas** chamadas neste turno; depois responda só com o que a base devolver.\n" +
+        "- `transfer_to_team` / `listar_equipas`: apenas com UUID real de equipa.\n" +
+        (allowedTagIds.length > 0
+          ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando os critérios do prompt se aplicarem.\n"
+          : "") +
+        "- `call_human`: se, depois de `buscar_conhecimento`, a informação continuar insuficiente." +
+        customToolPreamble
+    : "\n\n### Ferramentas (complemento)\n" +
+      "- Use `buscar_conhecimento` para factos da organização antes de dizer que vai verificar — no máximo **duas** chamadas neste turno; depois responda.\n" +
+      "- **PROIBIDO** como resposta final: frases de espera («um momento» / «vou verificar») sem dados da ferramenta.\n" +
+      "- `transfer_to_team` / `listar_equipas`: use UUID real de equipa.\n" +
+      (allowedTagIds.length > 0
+        ? "- `listar_etiquetas` / `atribuir_etiquetas`: atribua etiquetas ao contacto quando as regras do agente o indicarem.\n"
+        : "") +
+      "- `call_human`: **apenas** se o cliente pedir humano/atendente **ou** se, depois de `buscar_conhecimento`, não for possível responder com verdade — **não** use para perguntas factuais que a base já cobre." +
+      customToolPreamble;
 
-  const serverKbGuard = buildServerKbGuardBlock({
-    proactiveCoversQuery,
-    kbHasUsefulExcerpts,
-    customHttpToolCount: customHttpTools.length,
-  });
+  const serverKbGuard =
+    (proactiveCoversQuery
+      ? "\n\n[OpenConduit — precedência sobre instruções conflituantes no prompt do agente]\n" +
+        "A secção «Base de conhecimento» acima contém o resultado da pesquisa automática para a última mensagem do cliente. " +
+        "Se os excertos contiverem dados sobre o que foi perguntado, responda com esses dados de forma directa. " +
+        "A função `buscar_conhecimento` pode ser usada no máximo uma vez neste turno se as suas regras exigirem chamada explícita; isso **não** significa que a primeira pesquisa «falhou». " +
+        "**Não** invoque `call_human` nem `transfer_to_team` só porque o prompt do agente diz «se buscar_conhecimento falhar» quando já há excertos ou JSON útil com a resposta. " +
+        "Use `call_human` só se o cliente pedir atendente/humano **ou** se, depois de usar excertos e/ou `buscar_conhecimento`, a informação continuar insuficiente. " +
+        "Esta precedência **não** anula restrições do playbook do tipo «nunca informar X sem consultar a ferramenta» — nesse caso chame a tool indicada antes de afirmar dados."
+      : kbHasUsefulExcerpts
+        ? "\n\n[OpenConduit — base de conhecimento parcial]\n" +
+          "Há excertos proactivos acima, mas **podem não cobrir** totalmente a pergunta do cliente. " +
+          "Use `buscar_conhecimento` se precisar de mais detalhe; **não invente** factos que não constem nos excertos ou no resultado da ferramenta."
+        : "") +
+    (customHttpTools.length > 0
+      ? "\n\n[OpenConduit — ferramentas HTTP da organização]\n" +
+        "Existem funções com nome `oc_tool_` no catálogo: são integrações HTTP/Webhook configuradas para este agente. " +
+        "Para consultas de reserva, estado de booking ou outros dados expostos por essas APIs, **chame primeiro** a função adequada com os argumentos do schema; só depois use `call_human` se a API falhar ou a resposta for insuficiente. " +
+        "Respeite sempre as restrições e fluxos do playbook do agente ao decidir quando e como usar estas ferramentas."
+      : "");
 
   const audioInboundHint =
     message.type === "AUDIO" || userMessage.includes(AUDIO_TRANSCRIPTION_PREFIX)
@@ -2165,34 +1898,6 @@ async function generateNativeAgentReplyCore(input: {
   const followUpPrompt = automationCtx.state.followUpCampaign
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
-
-  const continuationPrompt = continuationParsed
-    ? buildContinuationTurnPromptBlock(continuationParsed.ruleId, continuationParsed.turnHint)
-    : "";
-
-  const replyOnlyRetryPrompt = executionHints?.replyOnlyRetry
-    ? buildGenericReplyOnlyRetryPromptBlock({
-        turnPlan,
-        userMessage: userMessageRaw,
-        priorSuccessfulToolOutcomes: executionHints.priorSuccessfulToolOutcomes,
-      })
-    : "";
-
-  const confirmationGatePrompt =
-    isConfirmationUserMessage(userMessageRaw || userMessage) &&
-    turnPlan.turnPolicy.exclusiveAllowedTools?.length
-      ? "\n\n[OpenConduit — Portão de confirmação]\n" +
-        `Neste turno use **somente**: ${turnPlan.turnPolicy.exclusiveAllowedTools.join(", ")}.\n` +
-        (turnPlan.matchedPatternIds.includes("confirmation_titular")
-          ? "Última msg SUA pedia confirmação de cadastro/identidade + hóspede confirmou → avance para o próximo formulário do playbook. **PROIBIDO** ferramentas de conclusão neste turno · pedir a mesma confirmação outra vez.\n" +
-            "Após a tool de referência/catálogo: peça os campos do formulário (com opções do JSON). **PROIBIDO** declarar check-in/conclusão sem tool de conclusão OK.\n"
-          : "") +
-        (turnPlan.matchedPatternIds.includes("confirmation_travel_form")
-          ? "Última msg SUA pedia confirmação de formulário preenchido + hóspede confirmou → use a tool de conclusão.\n" +
-            "Após HTTP 200 da conclusão **neste turno**: pode chamar consulta/KB e enviar a mensagem completa de entrega (Passo 8) — **sem** continuação proactiva.\n" +
-            "**PROIBIDO** inventar Wi-Fi/endereço/senha · enviar paths JSON (`data.*`) ao hóspede · reabrir etapas anteriores.\n"
-          : "")
-      : "";
 
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
@@ -2272,9 +1977,6 @@ async function generateNativeAgentReplyCore(input: {
     audioInboundHint +
     imageInboundHint +
     followUpPrompt +
-    continuationPrompt +
-    replyOnlyRetryPrompt +
-    confirmationGatePrompt +
     flowStatePrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
@@ -2298,7 +2000,7 @@ async function generateNativeAgentReplyCore(input: {
         role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
         content: (m.body ?? "").trim(),
       }))
-      .filter((m): m is PreviewChatTurn => Boolean(m.content) && !isContinuationSyntheticMessage(m.content));
+      .filter((m): m is PreviewChatTurn => Boolean(m.content));
   }
 
   const { history, isolated: historyIsolated } = resolveNativeAgentHistoryTurns({
@@ -2316,63 +2018,7 @@ async function generateNativeAgentReplyCore(input: {
       openAiToolDefinitionForAutomationTool(row, { agentInstruction: agentInstructionByToolId.get(row.id) }),
     ),
   ];
-
-  // Execution Runtime V2 — orquestração determinística (allowlist + mandatoryNextTool)
-  const availableToolCatalog = [
-    ...tools.map((t) => ({
-      name: t.function.name,
-      description: t.function.description ?? "",
-    })),
-    ...customHttpTools.map((row) => ({
-      name: row.name,
-      description: (row.description ?? "").trim(),
-    })),
-  ];
-  const availableToolNames = [
-    ...tools.map((t) => t.function.name),
-    ...customHttpTools.map((t) => t.name),
-  ];
-  let runtimeV2Session = initializeRuntimeV2({
-    behaviorConfig: behaviorConfigObj,
-    userMessage,
-    availableToolNames,
-    availableToolCatalog,
-    lastAssistantMessage,
-    flowSlots: sessionFlowSlots,
-    existingTurnPlan: turnPlan,
-    systemPrompt: systemInstructions,
-  });
-  if (executionHints?.runtimeV2) {
-    runtimeV2Session = {
-      ...runtimeV2Session,
-      orchestrator: executionHints.runtimeV2.orchestrator,
-      orchestratorPromptBlock: executionHints.runtimeV2.orchestratorPromptBlock,
-    };
-  }
-  const orchestratedTools = filterToolsByOrchestrator(tools, runtimeV2Session.orchestrator);
-  let systemForLlm = systemBase + runtimeV2Session.orchestratorPromptBlock;
-  const replyOnlyRetry = executionHints?.replyOnlyRetry === true;
-  const initialSchedule = scheduleNextAction({
-    session: runtimeV2Session,
-    allTools: tools,
-    toolOutcomes: toolRoundOutcomes,
-    replyOnlyRetry,
-  });
-  systemForLlm += buildSchedulerPromptBlock(initialSchedule);
-  ex?.info(
-    { id: "runtime_v2", name: "Execution Runtime V2" },
-    runtimeV2Session.orchestrator.reason,
-    {
-      output: {
-        contractId: runtimeV2Session.contract.contractId,
-        mandatoryNextTool: runtimeV2Session.orchestrator.mandatoryNextTool,
-        allowed: runtimeV2Session.orchestrator.allowedToolNames.length,
-        forbidden: runtimeV2Session.orchestrator.forbiddenToolNames.length,
-      },
-    },
-  );
-
-  const useTools = provider !== "google_gemini" && orchestratedTools.length > 0;
+  const useTools = provider !== "google_gemini" && tools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;
   if (customHttpTools.length > 0 && historyOverride == null) {
@@ -2418,7 +2064,7 @@ async function generateNativeAgentReplyCore(input: {
       useTools,
       omitBuscarConhecimento,
       kbHasUsefulExcerpts,
-      openAiToolCount: orchestratedTools.length,
+      openAiToolCount: tools.length,
       lastClearedAt: lastClearedAt?.toISOString() ?? null,
       historyTurns: history.length,
       historyIsolated,
@@ -2440,11 +2086,65 @@ async function generateNativeAgentReplyCore(input: {
         ex?.info(
           { id: "llm", name: "Modelo + tools" },
           "Início da geração com ferramentas nativas",
-          { input: { provider, model, toolCount: orchestratedTools.length, historyTurns: history.length } },
+          { input: { provider, model, toolCount: tools.length, historyTurns: history.length } },
         );
-        let activeSchedule = initialSchedule;
+        const r = await callOpenAiCompatibleChatWithTools({
+          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+          apiKey,
+          model,
+          temperature,
+          maxTokens: Math.max(16, Math.min(8192, maxTokens)),
+          system: systemBase,
+          history,
+          userMessage,
+          tools,
+          maxToolRounds: 6,
+          onTokenDelta,
+          onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
+            if (
+              pendingToolCallInterim.data ||
+              sandboxReply ||
+              !effectiveContactId ||
+              !toolCallNotify.enabled
+            ) {
+              return;
+            }
+            const matchesSelected = toolNames.some((name) =>
+              shouldNotifyBeforeToolCall(name, toolCallNotify),
+            );
+            if (!matchesSelected) return;
 
-        const handleNativeToolCall = async (name: string, argsJson: string): Promise<string> => {
+            const assistantTrim = (assistantContent ?? "").trim();
+            const body = resolveToolCallNotifyBody({
+              assistantContent,
+              toolNames,
+              defaultMessage: toolCallNotify.message,
+              toolMessages: toolCallNotify.toolMessages,
+            });
+            const usedAgentStallText = Boolean(assistantTrim);
+            pendingToolCallInterim.data = {
+              body,
+              toolNames,
+              round,
+              usedAgentStallText,
+              sent: false,
+            };
+
+            await sendToolCallInterimNotify({
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              contactId: effectiveContactId,
+              body,
+              log,
+              executionLog: ex,
+              toolNames,
+              round,
+              usedAgentStallText,
+            });
+            pendingToolCallInterim.data.sent = true;
+          },
+          onToolCall: async (name, argsJson) => {
             const tlog = ex?.child("tools");
             const customId = parseAutomationToolIdFromOpenAiName(name);
             const customRow = customId ? customHttpTools.find((t) => t.id === customId) : undefined;
@@ -2496,7 +2196,7 @@ async function generateNativeAgentReplyCore(input: {
                 return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
 
-              // Reply-only retry: reutilizar tools OK; bloquear qualquer nova invocação
+              // Reply-only retry: reutilizar tools OK; bloquear mutáveis novas
               if (executionHints?.replyOnlyRetry) {
                 const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find(
                   (t) => toolsMatchAlias(t.name, row.name) || toolsMatchAlias(t.name, name),
@@ -2513,52 +2213,24 @@ async function generateNativeAgentReplyCore(input: {
                     }),
                   );
                 }
-                return finishToolCall(
-                  JSON.stringify({
-                    ok: false,
-                    skipped: true,
-                    reason: "reply_only_retry_no_tools",
-                    message:
-                      "Retry de qualidade: proibido invocar ferramentas. Escreva apenas a resposta ao cliente.",
-                  }),
-                );
+                if (isLikelyMutableOrCompletionTool(row.name, turnPolicy.completionToolHints)) {
+                  return finishToolCall(
+                    JSON.stringify({
+                      ok: false,
+                      skipped: true,
+                      reason: "reply_only_retry_block_mutable",
+                      message:
+                        "Retry de qualidade: proibido reexecutar ferramentas mutáveis. Escreva apenas a resposta ao cliente.",
+                    }),
+                  );
+                }
               }
 
-              // Política de turno: usar SEMPRE o nome estável da tool HTTP (`row.name`).
-              // Nunca fazer `canonical ?? oc_tool_<uuid>` — `null` (permitido) + `??` cascata
-              // para o UUID, que não satisfaz requiredToolNames e bloqueia a tool obrigatória
-              // (ex.: C3 check-in → audaar_consultar_reserva bloqueada → reply vazia → strict 52%).
-              const existingNames = toolRoundOutcomes
-                .filter((t) => !isSkippedToolOutcome(t.preview))
-                .map((t) => t.name);
-              const runtimeV2Block = assertToolAllowedByRuntimeV2(
-                runtimeV2Session,
-                row.name,
-                existingNames,
-              );
-              if (runtimeV2Block) {
-                return finishToolCall(
-                  JSON.stringify({
-                    ok: false,
-                    skipped: true,
-                    reason: "runtime_v2_orchestrator",
-                    message: runtimeV2Block,
-                  }),
-                );
-              }
-              const completionAlreadySucceeded = toolRoundOutcomes.some(
-                (t) =>
-                  t.ok &&
-                  !isSkippedToolOutcome(t.preview) &&
-                  isLikelyMutableOrCompletionTool(t.name, turnPolicy.completionToolHints),
-              );
-              const httpPolicyBlock = turnPolicyPreExecBlockReasonForTurn(
-                row.name,
-                existingNames,
-                turnPolicy,
-                requiredToolNamesForTurn,
-                { completionAlreadySucceeded },
-              );
+              // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
+              const existingNames = toolRoundOutcomes.map((t) => t.name);
+              const httpPolicyBlock =
+                turnPolicyPreExecBlockReasonForTurn(row.name, existingNames, turnPolicy) ??
+                turnPolicyPreExecBlockReasonForTurn(name, existingNames, turnPolicy);
               if (httpPolicyBlock) {
                 return finishToolCall(
                   JSON.stringify({
@@ -2645,64 +2317,10 @@ async function generateNativeAgentReplyCore(input: {
                 }),
               );
             }
-            if (executionHints?.replyOnlyRetry) {
-              const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find((t) =>
-                toolsMatchAlias(t.name, name),
-              );
-              if (prior) {
-                return finishToolCall(
-                  JSON.stringify({
-                    ok: true,
-                    skipped: true,
-                    reason: "reply_only_retry_reuse",
-                    bodyPreview: prior.preview.slice(0, 1500),
-                    message:
-                      "Resultado já obtido neste turno. Não volte a chamar a ferramenta — responda ao cliente com base neste resultado.",
-                  }),
-                );
-              }
-              return finishToolCall(
-                JSON.stringify({
-                  ok: false,
-                  skipped: true,
-                  reason: "reply_only_retry_no_tools",
-                  message:
-                    "Retry de qualidade: proibido invocar ferramentas. Escreva apenas a resposta ao cliente.",
-                }),
-              );
-            }
             // Política de turno: bloquear side-effects mutáveis ANTES de executeNativeTool
-            const nativeExisting = toolRoundOutcomes
-              .filter((t) => !isSkippedToolOutcome(t.preview))
-              .map((t) => t.name);
-            const runtimeV2NativeBlock = assertToolAllowedByRuntimeV2(
-              runtimeV2Session,
-              name,
-              nativeExisting,
-            );
-            if (runtimeV2NativeBlock) {
-              return finishToolCall(
-                JSON.stringify({
-                  ok: false,
-                  skipped: true,
-                  reason: "runtime_v2_orchestrator",
-                  message: runtimeV2NativeBlock,
-                }),
-              );
-            }
-            const completionAlreadySucceeded = toolRoundOutcomes.some(
-              (t) =>
-                t.ok &&
-                !isSkippedToolOutcome(t.preview) &&
-                isLikelyMutableOrCompletionTool(t.name, turnPolicy.completionToolHints),
-            );
-            const nativeBlock = turnPolicyPreExecBlockReasonForTurn(
-              name,
-              nativeExisting,
-              turnPolicy,
-              requiredToolNamesForTurn,
-              { completionAlreadySucceeded },
-            );
+            const nativeExisting = toolRoundOutcomes.map((t) => t.name);
+            const nativeBlock =
+              turnPolicyPreExecBlockReasonForTurn(name, nativeExisting, turnPolicy);
             if (nativeBlock) {
               return finishToolCall(
                 JSON.stringify({
@@ -2730,213 +2348,11 @@ async function generateNativeAgentReplyCore(input: {
                 knowledgeEngine: knowledgeEngine ?? undefined,
               }),
             );
-          };
-
-        if (!replyOnlyRetry && shouldRunDeterministicToolPhase(initialSchedule)) {
-          const det = await runDeterministicToolPhase({
-            session: runtimeV2Session,
-            allTools: tools,
-            toolOutcomes: toolRoundOutcomes,
-            availableToolNames,
-            replyOnlyRetry,
-            argsContextAppend: flowStatePrompt,
-            baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-            apiKey,
-            model,
-            temperature,
-            maxTokens,
-            history,
-            userMessage,
-            onToolCall: handleNativeToolCall,
-            signal,
-            onRound: ({ decision, round }) => {
-              ex?.info(
-                { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
-                decision.reason,
-                { output: { round, scheduledTool: decision.scheduledTool } },
-              );
-            },
-          });
-          runtimeV2Session = refreshRuntimeV2Orchestrator(
-            runtimeV2Session,
-            availableToolNames,
-            toolRoundOutcomes,
-          );
-          activeSchedule = scheduleNextAction({
-            session: runtimeV2Session,
-            allTools: tools,
-            toolOutcomes: toolRoundOutcomes,
-            replyOnlyRetry,
-          });
-          systemForLlm =
-            systemBase +
-            runtimeV2Session.orchestratorPromptBlock +
-            buildSchedulerPromptBlock(activeSchedule);
-          ex?.info(
-            { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
-            `Fase determinística concluída — ${det.toolsInvoked} tool(s)`,
-            {
-              output: {
-                phase: activeSchedule.phase,
-                missedMandatory: det.missedMandatory,
-              },
-            },
-          );
-          if (det.missedMandatory.length > 0) {
-            ex?.warn(
-              { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
-              `Tools obrigatórias não invocadas pelo LLM: ${det.missedMandatory.join(", ")}`,
-            );
-          }
-        }
-
-        const r = await callOpenAiCompatibleChatWithTools({
-          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-          apiKey,
-          model,
-          temperature,
-          maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemForLlm,
-          history,
-          userMessage,
-          tools: orchestratedTools,
-          maxToolRounds: 6,
-          toolChoice: activeSchedule.toolChoice,
-          onBeforeRound: async () => {
-            runtimeV2Session = refreshRuntimeV2Orchestrator(
-              runtimeV2Session,
-              availableToolNames,
-              toolRoundOutcomes,
-            );
-            const decision = scheduleNextAction({
-              session: runtimeV2Session,
-              allTools: tools,
-              toolOutcomes: toolRoundOutcomes,
-              replyOnlyRetry,
-            });
-            activeSchedule = decision;
-            ex?.info(
-              { id: "tool_scheduler", name: "Tool Scheduler" },
-              decision.reason,
-              {
-                output: {
-                  phase: decision.phase,
-                  scheduledTool: decision.scheduledTool,
-                  blockTextReply: decision.blockTextReply,
-                },
-              },
-            );
-            return {
-              tools: decision.activeTools,
-              toolChoice: decision.toolChoice,
-              systemAppend:
-                runtimeV2Session.orchestratorPromptBlock +
-                buildSchedulerPromptBlock(decision),
-            };
           },
-          onTokenDelta,
-          onAssistantToolRound: async ({ assistantContent, toolNames, round }) => {
-            if (
-              pendingToolCallInterim.data ||
-              sandboxReply ||
-              !effectiveContactId ||
-              !toolCallNotify.enabled
-            ) {
-              return;
-            }
-            const matchesSelected = toolNames.some((name) =>
-              shouldNotifyBeforeToolCall(name, toolCallNotify),
-            );
-            if (!matchesSelected) return;
-
-            const assistantTrim = (assistantContent ?? "").trim();
-            const body = resolveToolCallNotifyBody({
-              assistantContent,
-              toolNames,
-              defaultMessage: toolCallNotify.message,
-              toolMessages: toolCallNotify.toolMessages,
-            });
-            const usedAgentStallText = Boolean(assistantTrim);
-            pendingToolCallInterim.data = {
-              body,
-              toolNames,
-              round,
-              usedAgentStallText,
-              sent: false,
-            };
-
-            await sendToolCallInterimNotify({
-              organizationId,
-              botId: bot.id,
-              conversationId: conversation.id,
-              contactId: effectiveContactId,
-              body,
-              log,
-              executionLog: ex,
-              toolNames,
-              round,
-              usedAgentStallText,
-            });
-            pendingToolCallInterim.data.sent = true;
-          },
-          onToolCall: handleNativeToolCall,
           signal,
         });
         replyText = r.text.trim();
         completedToolRounds = r.toolRounds;
-        runtimeV2Session = refreshRuntimeV2Orchestrator(
-          runtimeV2Session,
-          availableToolNames,
-          toolRoundOutcomes,
-        );
-        const postSchedule = scheduleNextAction({
-          session: runtimeV2Session,
-          allTools: tools,
-          toolOutcomes: toolRoundOutcomes,
-          replyOnlyRetry,
-        });
-        if (
-          !replyOnlyRetry &&
-          postSchedule.blockTextReply &&
-          postSchedule.scheduledTool &&
-          replyText.trim()
-        ) {
-          const recovery = await recoverMissedMandatoryTool({
-            session: runtimeV2Session,
-            allTools: tools,
-            toolOutcomes: toolRoundOutcomes,
-            availableToolNames,
-            replyOnlyRetry,
-            onToolCall: handleNativeToolCall,
-          });
-          if (recovery.recovered) {
-            runtimeV2Session = refreshRuntimeV2Orchestrator(
-              runtimeV2Session,
-              availableToolNames,
-              toolRoundOutcomes,
-            );
-            ex?.info(
-              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
-              `Tool obrigatória recuperada: ${recovery.scheduledTool}`,
-            );
-          } else {
-            ex?.warn(
-              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
-              `LLM respondeu sem invocar ${postSchedule.scheduledTool} — reply descartada`,
-            );
-            const advanceFallback = buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes);
-            const toolFallback = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
-            replyText =
-              advanceFallback ??
-              (toolFallback && !/^Tentei consultar/i.test(toolFallback) ? toolFallback : "") ??
-              "Recebi a sua confirmação. Estou a concluir o registo — um momento, por favor.";
-            ex?.info(
-              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
-              "Fallback textual após falha de recovery de tool obrigatória",
-              { output: { replyPreview: replyText.slice(0, 300) } },
-            );
-          }
-        }
         ex?.info(
           { id: "llm", name: "Modelo + tools" },
           "Geração com ferramentas concluída",
@@ -2957,34 +2373,6 @@ async function generateNativeAgentReplyCore(input: {
             rateLimitLikely: err instanceof Error && /HTTP 429|rate.?limit/i.test(err.message),
           },
         });
-        const fallbackDecision = evaluateSmartFallback({
-          contract: runtimeV2Session.contract,
-          toolOutcomes: toolRoundOutcomes,
-          errorKind: timedOut ? "llm_timeout" : "llm_error",
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
-        const allowPlainFallback =
-          fallbackDecision.allowPlainChat &&
-          shouldAllowPlainChatFallback({
-            turnPlan,
-            toolsAlreadyRun: toolRoundOutcomes,
-          });
-        if (!allowPlainFallback) {
-          log.warn(
-            {
-              botId: bot.id,
-              pendingRequired: requiredToolNamesForTurn,
-              toolsAlreadyRun: toolRoundOutcomes.map((t) => t.name),
-            },
-            "Plain chat fallback blocked: required tools still pending for this turn",
-          );
-          ex?.warn(
-            { id: "llm", name: "Modelo (fallback)" },
-            "Fallback plain-chat bloqueado — ferramentas obrigatórias pendentes",
-            { output: { pendingRequired: requiredToolNamesForTurn } },
-          );
-          replyText = "";
-        } else {
         try {
           const r = await callOpenAiCompatibleChat({
             baseUrl: apiBaseUrl.replace(/\/+$/, ""),
@@ -2992,7 +2380,7 @@ async function generateNativeAgentReplyCore(input: {
             model,
             temperature,
             maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-            system: systemForLlm,
+            system: systemBase,
             history,
             userMessage,
             signal: nativeAgentLlmAbortSignal(),
@@ -3016,7 +2404,6 @@ async function generateNativeAgentReplyCore(input: {
           );
           replyText = "";
         }
-        }
       }
     } else if (provider === "google_gemini") {
       ex?.info({ id: "llm", name: "Gemini" }, "Geração sem tools (Gemini)");
@@ -3025,7 +2412,7 @@ async function generateNativeAgentReplyCore(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemForLlm,
+        system: systemBase,
         history,
         userMessage,
         signal,
@@ -3040,7 +2427,7 @@ async function generateNativeAgentReplyCore(input: {
         model,
         temperature,
         maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemForLlm,
+        system: systemBase,
         history,
         userMessage,
         signal,
@@ -3063,35 +2450,6 @@ async function generateNativeAgentReplyCore(input: {
 
   if (toolRoundOutcomes.length > 0) {
     completedToolRounds = Math.max(completedToolRounds, 1);
-  }
-
-  if (
-    !replyText.trim() &&
-    toolRoundOutcomes.some((t) => t.ok) &&
-    !replyOnlyRetry
-  ) {
-    const emptyFallback = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
-    if (emptyFallback.trim()) {
-      replyText = emptyFallback;
-      ex?.info(
-        { id: "llm", name: "Modelo + tools" },
-        "Fallback determinístico — evitar resposta vazia após tools OK",
-        { output: { replyPreview: replyText.slice(0, 300) } },
-      );
-    }
-  }
-
-  if (!replyText.trim() && !replyOnlyRetry) {
-    const pendingAfterTurn = pendingRequiredToolNames(turnPlan, toolRoundOutcomes);
-    if (pendingAfterTurn.length > 0) {
-      replyText =
-        "Recebi a sua mensagem. Estou a processar a etapa seguinte — um momento, por favor.";
-      ex?.info(
-        { id: "llm", name: "Modelo + tools" },
-        "Fallback mínimo — tools obrigatórias ainda pendentes",
-        { output: { pending: pendingAfterTurn.slice(0, 4) } },
-      );
-    }
   }
 
   if (!replyText && toolRoundOutcomes.length > 0 && toolCallNotify.forceDeliveryEnabled) {
@@ -3264,28 +2622,6 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  // Remover literais `undefined`/`null` antes do supervisor (espelho JS de campos ausentes).
-  if (replyText.trim()) {
-    replyText = scrubLiteralUndefinedArtifacts(replyText);
-  }
-
-  // Portão C11: reply-only / LLM por vezes re-pede o mesmo espelho após tool de catálogo OK.
-  if (
-    replyText.trim() &&
-    turnPlan.matchedPatternIds.includes("confirmation_titular") &&
-    replyReasksSameConfirmationGate(replyText, lastAssistantMessage)
-  ) {
-    const advance = buildAdvanceAskFromReferenceCatalog(toolRoundOutcomes);
-    if (advance) {
-      replyText = advance;
-      ex?.info(
-        { id: "confirmation_gate", name: "Portão de confirmação" },
-        "Reply re-pedia a mesma confirmação — substituída por pedido do formulário seguinte",
-        { output: { replyPreview: replyText.slice(0, 400) } },
-      );
-    }
-  }
-
   const agentSupervisor = parseAgentSupervisorFromBehavior(profile.behaviorConfig);
   const supervisorMode = engineConfig.supervisorMode ?? "both";
   let llmSupervisorApproved: boolean | null = null;
@@ -3298,7 +2634,7 @@ async function generateNativeAgentReplyCore(input: {
     const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
     const toolSummary =
       toolRoundOutcomes.length > 0
-        ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 600)}`).join("\n")
+        ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 200)}`).join("\n")
         : "(nenhuma ferramenta invocada)";
     // EIL: resumo compacto de facts (sem playbook / regras de domínio)
     let eilFactsSummary = "";
@@ -3422,14 +2758,11 @@ async function generateNativeAgentReplyCore(input: {
       // NÃO forçar aprovação se o próprio supervisor LLM apontou invenção, ou se violou política de turno.
       const toolReportsNotFound = toolRoundOutcomes.some((t) => /"found"\s*:\s*false/i.test(t.preview));
       const isForcedKbDump = FORCED_KB_REPLY_PREFIX_RE.test(replyText);
-      const llmFlagsInvention =
-        /invent|alucin|não podem ser validados|nao podem ser validados|não suportad|nao suportad|não aparecem|nao aparecem|expande\s+v[aá]rios/i.test(
-          summary,
-        );
+      const llmFlagsInvention = /invent|alucin|não podem ser validados|nao podem ser validados|não suportad|nao suportad/i.test(
+        summary,
+      );
       const policyAlerts = (() => {
-        const names = toolRoundOutcomes
-          .filter((t) => !isSkippedToolOutcome(t.preview))
-          .map((t) => t.name);
+        const names = toolRoundOutcomes.map((t) => t.name);
         const pair = findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
         const turnAlerts = validateToolOutcomesAgainstTurnPolicy(
           toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
@@ -3440,38 +2773,6 @@ async function generateNativeAgentReplyCore(input: {
       if (turnPolicyAlerts.length > 0) {
         approved = false;
         summary = `${summary} [turn policy: ${turnPolicyAlerts.join("; ")}]`.slice(0, 500);
-      }
-      // Invenção após tools OK: conclusão → ack humano; lookup → confirmação grounded.
-      if (
-        !approved &&
-        llmFlagsInvention &&
-        successfulTools.length > 0 &&
-        policyAlerts.length === 0 &&
-        turnPolicyAlerts.length === 0
-      ) {
-        const inventionRescue = resolveStrictModeRescueReply({
-          originalReply: replyText,
-          userMessage,
-          lastAssistantMessage,
-          llmSupervisorApproved: false,
-          toolOutcomes: toolRoundOutcomes,
-          hasSubstantiveReply: (t) =>
-            hasSubstantiveAgentReplyToCustomer(t, configuredStallMessages),
-          matchedPatternIds: turnPlan.matchedPatternIds,
-          buildCompletionSuccessAck: buildCompletionSuccessAck,
-          buildAdvanceAskFromReferenceCatalog: buildAdvanceAskFromReferenceCatalog,
-          buildGroundedConfirmation: buildGroundedConfirmationFromToolOutcomes,
-          buildDeterministicReply: (outcomes) =>
-            buildDeterministicReplyFromToolOutcomes(outcomes as NativeToolRoundOutcome[]),
-        });
-        if (inventionRescue.reply) {
-          replyText = inventionRescue.reply;
-          approved = true;
-          summary = `${summary} [auto: reply ${inventionRescue.kind ?? "rescue"} a partir do payload da tool]`.slice(
-            0,
-            500,
-          );
-        }
       }
       if (
         !approved &&
@@ -3535,10 +2836,6 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   if (engineConfig.strictMode && replyText.trim()) {
-    const consistency = checkExecutionConsistency({
-      contract: runtimeV2Session.contract,
-      toolOutcomes: toolRoundOutcomes,
-    });
     const strictEval = evaluateStrictModeGate({
       strictMode: true,
       replyText,
@@ -3552,8 +2849,6 @@ async function generateNativeAgentReplyCore(input: {
       kbHasUsefulExcerpts,
       llmSupervisorApproved,
       hasSubstantiveReply: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
-      executionContract: runtimeV2Session.contract,
-      consistencyDivergences: consistency.divergences,
     });
     ex?.info(
       { id: "strict_mode", name: "Modo estrito" },
@@ -3584,88 +2879,24 @@ async function generateNativeAgentReplyCore(input: {
         },
         "strict mode hard-block — reply not sent",
       );
-
-      // Continuação Passo 8: nunca silenciar — template playbook com flowSlots.
-      if (isContinuationSyntheticMessage(userMessage)) {
-        replyText = buildPostCheckinDeliveryFallback(sessionFlowSlots);
-        llmSupervisorApproved = true;
-        llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — post_checkin Passo 8 fallback]`
-          .trim()
-          .slice(0, 500);
-        ex?.info(
-          { id: "strict_mode", name: "Modo estrito" },
-          "Hard-block contornado — Passo 8 fallback (continuação)",
-          { output: { replyPreview: replyText.slice(0, 500) } },
-        );
-      } else {
-      const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
-      if (successfulTools.length > 0) {
-        const rescue = resolveStrictModeRescueReply({
-          originalReply: replyText,
-          userMessage,
-          lastAssistantMessage,
-          llmSupervisorApproved,
-          toolOutcomes: toolRoundOutcomes,
-          hasSubstantiveReply: (t) =>
-            hasSubstantiveAgentReplyToCustomer(t, configuredStallMessages),
-          matchedPatternIds: turnPlan.matchedPatternIds,
-          buildCompletionSuccessAck: buildCompletionSuccessAck,
-          buildAdvanceAskFromReferenceCatalog: buildAdvanceAskFromReferenceCatalog,
-          buildGroundedConfirmation: buildGroundedConfirmationFromToolOutcomes,
-          buildDeterministicReply: (outcomes) =>
-            buildDeterministicReplyFromToolOutcomes(outcomes as NativeToolRoundOutcome[]),
-        });
-        if (rescue.reply) {
-          replyText = rescue.reply;
-          llmSupervisorApproved = true;
-          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — ${rescue.kind ?? "fallback"}]`
-            .trim()
-            .slice(0, 500);
-          ex?.info(
-            { id: "strict_mode", name: "Modo estrito" },
-            `Hard-block contornado — ${rescue.kind ?? "fallback"}`,
-            { output: { replyPreview: replyText.slice(0, 500) } },
-          );
-        } else {
-          return {
-            reply: "",
-            toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
-              name,
-              ok,
-              preview,
-              structuredPayload,
-            })),
-            kbMeta: {
-              hasUsefulExcerpts: kbHasUsefulExcerpts,
-              coversQuery:
-                proactiveCoversQuery ||
-                knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
-            },
-            llmSupervisorApproved,
-            llmSupervisorSummary,
-          };
-        }
-      } else {
-        // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
-        // Só limpa a reply para não enviar texto reprovado ao contacto.
-        return {
-          reply: "",
-          toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
-            name,
-            ok,
-            preview,
-            structuredPayload,
-          })),
-          kbMeta: {
-            hasUsefulExcerpts: kbHasUsefulExcerpts,
-            coversQuery:
-              proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
-          },
-          llmSupervisorApproved,
-          llmSupervisorSummary,
-        };
-      }
-      }
+      // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
+      // Só limpa a reply para não enviar texto reprovado ao contacto.
+      return {
+        reply: "",
+        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
+        kbMeta: {
+          hasUsefulExcerpts: kbHasUsefulExcerpts,
+          coversQuery:
+            proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
+        },
+        llmSupervisorApproved,
+        llmSupervisorSummary,
+      };
     }
   }
 

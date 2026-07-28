@@ -5,8 +5,6 @@ import {
   resolveRequiredToolNamesFromBehavior,
   resolveRequiredToolNamesForTurn,
   toolOutcomeSatisfiesRequired,
-  availableToolSatisfiesRequired,
-  toolNamesMatch,
   parseCategoryToolMapFromPlaybook,
 } from "./requiredToolNamesParser.js";
 
@@ -221,80 +219,6 @@ test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   );
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [{ name: "buscar_conhecimento", preview: "" }]),
-    false,
-  );
-});
-
-test("toolOutcomeSatisfiesRequired: audaar_check_in satisfies playbook hint s-check-in", () => {
-  assert.equal(
-    toolOutcomeSatisfiesRequired("s-check-in", [
-      { name: "audaar_check_in", preview: '{"ok":true}' },
-    ]),
-    true,
-  );
-  assert.equal(
-    toolOutcomeSatisfiesRequired("check_in", [
-      { name: "audaar_check_in", preview: "" },
-    ]),
-    true,
-  );
-  assert.equal(
-    toolOutcomeSatisfiesRequired("s-check-in", [
-      { name: "checkin_upload_selfie", preview: "" },
-    ]),
-    false,
-  );
-});
-
-test("continuation Passo 8 hint does not require consultar_reserva", () => {
-  const playbook = `
-| C3 | **Check-in explícito** | \`fazer check-in\` + localizador | Chame \`audaar_consultar_reserva\` · **PROIBIDO** \`buscar_conhecimento\` | consultar_reserva |
-`;
-  const body =
-    "[__oc_continuation__:post_checkin_passo8]\n" +
-    "[Continuação automática — Passo 8] O check-in foi concluído com sucesso no turno anterior. " +
-    "Execute Passo 8: até 4× buscar_conhecimento (endereço, entrada, wifi, políticas) e envie a mensagem completa. " +
-    "NÃO chame audaar_consultar_reserva nem audaar_check_in neste turno.";
-  const required = resolveRequiredToolNamesForTurn(
-    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
-    {
-      userMessage: body,
-      availableToolNames: ["audaar_consultar_reserva", "audaar_check_in", "buscar_conhecimento"],
-    },
-  );
-  assert.ok(
-    !required.includes("audaar_consultar_reserva"),
-    `must not require C3 tool on continuation, got ${JSON.stringify(required)}`,
-  );
-  assert.ok(
-    !required.includes("audaar_check_in"),
-    `must not require check_in on continuation, got ${JSON.stringify(required)}`,
-  );
-  assert.ok(
-    required.includes("buscar_conhecimento"),
-    `should mandate KB tool from hint, got ${JSON.stringify(required)}`,
-  );
-});
-
-test("toolNamesMatch normalizes hyphen vs underscore", () => {
-  assert.equal(toolNamesMatch("embratur-reference", "audaar_embratur_reference"), true);
-  assert.equal(toolNamesMatch("audaar_check_in", "oc_tool_abc"), false);
-});
-
-test("availableToolSatisfiesRequired resolves oc_tool via description alias", () => {
-  assert.equal(
-    availableToolSatisfiesRequired("audaar_check_in", [
-      {
-        name: "oc_tool_93546189e980494bb825185fa44676af",
-        description: "Ferramenta HTTP «audaar_check_in» — concluir check-in",
-      },
-    ]),
-    true,
-  );
-  assert.equal(
-    availableToolSatisfiesRequired("audaar_check_in", [
-      { name: "oc_tool_93546189e980494bb825185fa44676af", description: "Generic API" },
-    ]),
     false,
   );
 });

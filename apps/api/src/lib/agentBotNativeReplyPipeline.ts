@@ -7,12 +7,7 @@ import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { withConversationAgentReplyLock } from "./llmSharedQuotaGate.js";
 import type { AutomationExecutionLogHandle } from "./automationExecutionLog.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
-import {
-  mergeNativeTurnAutomationContext,
-  loadAutomationConversationContext,
-} from "./automationConversationContextLib.js";
-import { isContinuationSyntheticMessage } from "./agent-engine/continuation/constants.js";
-import { maybeScheduleAgentContinuation } from "./agent-engine/continuation/scheduleAgentContinuation.js";
+import { mergeNativeTurnAutomationContext } from "./automationConversationContextLib.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -46,10 +41,8 @@ export async function runNativeAgentReplyAndDeliver(input: {
   message: Message;
   log: FastifyBaseLogger;
   exLog: AutomationExecutionLogHandle;
-  /** Evita re-agendar continuação quando este turno já é proactivo. */
-  skipContinuationSchedule?: boolean;
 }): Promise<void> {
-  const { organizationId, bot, conversation, contact, message, log, exLog, skipContinuationSchedule } = input;
+  const { organizationId, bot, conversation, contact, message, log, exLog } = input;
   const userMessage = (message.body ?? "").trim();
 
   if (isAgentKbDebugEnabled()) {
@@ -218,47 +211,6 @@ export async function runNativeAgentReplyAndDeliver(input: {
         },
       })
       .catch(() => {});
-
-    if (!skipContinuationSchedule && !isContinuationSyntheticMessage(message.body)) {
-      try {
-        const profile = await prisma.automationAgentProfile.findUnique({
-          where: { botId: bot.id },
-          select: { behaviorConfig: true },
-        });
-        const ctxRow = await loadAutomationConversationContext(conversation.id);
-        const toolRound = ctxRow.state.lastNativeToolRound;
-        const scheduled = await maybeScheduleAgentContinuation({
-          organizationId,
-          botId: bot.id,
-          conversationId: conversation.id,
-          contactId: contact.id,
-          executionId: exLog.getExecutionId(),
-          behaviorConfig: profile?.behaviorConfig,
-          turnCtx: {
-            userMessage,
-            replyText,
-            toolRound: toolRound
-              ? {
-                  tools: toolRound.tools,
-                  resultDeliveredToCustomer: toolRound.resultDeliveredToCustomer,
-                }
-              : undefined,
-            flowStep: ctxRow.state.flowStep,
-            flowSlots: ctxRow.state.flowSlots,
-          },
-          log,
-        });
-        if (scheduled.scheduled) {
-          exLog.info(
-            { id: "continuation", name: "Continuação proactiva" },
-            "Regra(s) de continuação agendada(s) para turno seguinte",
-            { output: { ruleIds: scheduled.ruleIds } },
-          );
-        }
-      } catch (err) {
-        log.warn({ err, conversationId: conversation.id }, "agent continuation schedule failed");
-      }
-    }
 
     await exLog.completeSuccess();
   } catch (err) {

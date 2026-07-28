@@ -3,9 +3,6 @@ import test from "node:test";
 import {
   buildDeterministicReplyFromKnowledge,
   buildDeterministicReplyFromToolOutcomes,
-  buildGroundedConfirmationFromToolOutcomes,
-  buildCompletionSuccessAck,
-  collectScalarFactsFromPayload,
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
   knowledgeToolFoundUsefulExcerpts,
@@ -332,88 +329,6 @@ test("buildDeterministicReplyFromToolOutcomes uses tool preview when LLM fails",
   ]);
   assert.match(text, /Reserva confirmada/);
   assert.equal(hasSubstantiveAgentReplyToCustomer(text), true);
-});
-
-test("buildGroundedConfirmationFromToolOutcomes uses structuredPayload scalars only", () => {
-  const text = buildGroundedConfirmationFromToolOutcomes([
-    {
-      name: "audaar_consultar_main_guest",
-      ok: true,
-      preview: '{"ok":true}',
-      structuredPayload: {
-        found: true,
-        name: "Odair",
-        documentNumber: "41026299802",
-        rg: undefined,
-        nested: { email: "a@b.com", secret: "nope" },
-      },
-    },
-  ]);
-  assert.ok(text);
-  assert.match(text!, /Odair/);
-  assert.match(text!, /41026299802/);
-  assert.match(text!, /Email/);
-  assert.doesNotMatch(text!, /data\.guest|documentNumber:/);
-  assert.doesNotMatch(text!, /undefined/);
-  assert.doesNotMatch(text!, /secret|nope/i);
-  assert.match(text!, /Confirma\?/);
-});
-
-test("buildCompletionSuccessAck never dumps JSON paths", () => {
-  const ack = buildCompletionSuccessAck([
-    {
-      name: "audaar_check_in",
-      ok: true,
-      preview: JSON.stringify({
-        ok: true,
-        statusCode: 200,
-        data: { reservation: { reservationId: 279256, localizer: "7SAFR8UC" } },
-      }),
-    },
-  ]);
-  assert.ok(ack);
-  assert.match(ack!, /check-in foi concluído/i);
-  assert.doesNotMatch(ack!, /data\.|reservationId|Confirma\?/);
-});
-
-test("buildGroundedConfirmationFromToolOutcomes skips completion tools", () => {
-  const text = buildGroundedConfirmationFromToolOutcomes([
-    {
-      name: "audaar_check_in",
-      ok: true,
-      preview: '{"ok":true}',
-      structuredPayload: { data: { reservation: { reservationId: 1 } } },
-    },
-  ]);
-  assert.equal(text, null);
-});
-
-test("collectScalarFactsFromPayload skips empty and sensitive keys", () => {
-  const facts = collectScalarFactsFromPayload({
-    name: "Ana",
-    password: "x",
-    empty: "",
-    token: "abc",
-  });
-  assert.deepEqual(
-    facts.map((f) => f.key),
-    ["Name"],
-  );
-});
-
-test("collectScalarFactsFromPayload humanizes nested paths", () => {
-  const facts = collectScalarFactsFromPayload({
-    data: {
-      reservation: { localizer: "HVW4V2D5", reservationId: 279264 },
-      guest: { name: "Odair", documentNumber: "41026299802" },
-    },
-  });
-  const keys = facts.map((f) => f.key);
-  assert.ok(keys.includes("Localizer"));
-  assert.ok(keys.includes("Name"));
-  assert.ok(keys.includes("Document Number"));
-  assert.ok(!keys.some((k) => k.includes("data.")));
-  assert.ok(!keys.includes("Reservation Id"));
 });
 
 test("knowledgeToolFoundUsefulExcerpts detects found true", () => {

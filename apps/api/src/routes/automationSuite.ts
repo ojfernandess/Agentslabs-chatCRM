@@ -39,7 +39,6 @@ import {
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
 import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
 import { applyEilConfigToAgent } from "../lib/mcp/eil/applyEilConfig.js";
-import { applyAgentContinuationTemplateToAgent } from "../lib/agent-engine/continuation/applyContinuationConfig.js";
 import {
   analyzeDocumentRagReadiness,
   optimizeKnowledgeDocumentForRag,
@@ -2501,52 +2500,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           botId: bot.id,
           policyIds: result.policyIds,
           toolsUpdated: result.toolsUpdated.map((t) => t.name),
-        },
-        ip: clientIp(request),
-      });
-
-      return result;
-    },
-  );
-
-  app.post<{ Params: { botId: string } }>(
-    "/agent-profiles/:botId/apply-continuation-template",
-    { preHandler: [requireAdmin] },
-    async (request, reply) => {
-      const organizationId = await resolveTenantOrganizationId(request, reply);
-      if (!organizationId) return;
-
-      const bot = await prisma.bot.findFirst({
-        where: { id: request.params.botId, organizationId },
-      });
-      if (!bot) {
-        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
-      }
-
-      const body = (request.body ?? {}) as Record<string, unknown>;
-      const templateId =
-        typeof body.templateId === "string" && body.templateId.trim()
-          ? body.templateId.trim()
-          : "auda_post_checkin_passo8";
-      const merge = body.merge !== false;
-
-      const result = await applyAgentContinuationTemplateToAgent({
-        organizationId,
-        botId: bot.id,
-        templateId: templateId as "auda_post_checkin_passo8",
-        merge,
-      });
-
-      await recordAuditLog({
-        actorUserId: request.user.id,
-        organizationId,
-        action: "automation.agent.apply_continuation_template",
-        resourceType: "automation_agent_profile",
-        resourceId: result.profileId,
-        metadata: {
-          botId: bot.id,
-          templateId: result.templateId,
-          ruleIds: result.ruleIds,
         },
         ip: clientIp(request),
       });

@@ -86,29 +86,10 @@ export type AgentRuntimeExecuteInput = {
    * Genérico — não específico de segmento/agente.
    */
   executionHints?: {
-    /** Plano de turno calculado uma vez pelo runtime — fonte única de verdade. */
-    turnPlan?: import("./planner/ExecutionTurnPlan.js").ExecutionTurnPlan;
     /** Regenerar só a resposta — não reexecutar tools HTTP já bem-sucedidas. */
     replyOnlyRetry?: boolean;
     /** Outcomes do turno anterior (mesmo user message) a reutilizar. */
-    priorSuccessfulToolOutcomes?: Array<{
-      name: string;
-      ok: boolean;
-      preview: string;
-      structuredPayload?: unknown;
-    }>;
-    /** Execution Runtime V2 — orquestração determinística (LangGraph → executor). */
-    runtimeV2?: {
-      contractId: string;
-      orchestratorPromptBlock: string;
-      orchestrator: import("./v2/types.js").ToolOrchestratorDecision;
-    };
-    /** Tool Recovery — provider/model switch no retry (Fase 3). */
-    recovery?: {
-      switchProvider: string | null;
-      switchModel: string | null;
-      recoveryAction?: import("./v2/types.js").ToolRecoveryAction;
-    };
+    priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
   };
 };
 
@@ -182,16 +163,6 @@ export type AgentExecutionTrace = {
     toolsCalled: string[];
     toolsPending: string[];
     replyActions?: string[];
-  };
-  /** Execution Runtime V2 snapshot (auditoria / MCP). */
-  runtimeV2?: {
-    contractId: string;
-    intent?: string;
-    phase?: string;
-    mandatoryNextTool?: string | null;
-    pendingRequired?: string[];
-    orchestratorReason?: string;
-    auditRootCause?: string | null;
   };
 };
 

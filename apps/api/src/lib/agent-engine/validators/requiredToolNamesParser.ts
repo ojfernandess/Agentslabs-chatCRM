@@ -1,8 +1,4 @@
 import { parsePromptBlocks, type PromptBlocks } from "../../agentPlaybook.js";
-import {
-  isContinuationSyntheticMessage,
-  parseContinuationSyntheticBody,
-} from "../continuation/constants.js";
 
 /** Nomes nativos estáveis expostos ao LLM (OpenAI function calling). */
 export const KNOWN_NATIVE_TOOL_NAMES = [
@@ -346,45 +342,18 @@ function listAvailableToolNames(behaviorConfig: Record<string, unknown>): string
   return [...new Set([...fromConfig, ...fromPlaybook, ...KNOWN_NATIVE_TOOL_NAMES])];
 }
 
-export type ToolCatalogEntry = { name: string; description?: string };
-
-/** Normaliza token de tool para comparação (hífen ↔ underscore). */
-export function normalizeToolNameToken(s: string): string {
-  return s.toLowerCase().replace(/-/g, "_");
-}
-
-/** Match genérico entre nome canónico e nome disponível (incl. oc_tool_). */
-export function toolNamesMatch(required: string, available: string): boolean {
-  const req = normalizeToolNameToken(required);
-  const avail = normalizeToolNameToken(available);
-  if (req === avail || avail.includes(req) || req.includes(avail)) return true;
-  const reqIsCheckIn =
-    /check_?in/.test(req) && !/upload|selfie|documento|document|photo|foto/.test(req);
-  const outIsCheckIn =
-    /check_?in/.test(avail) && !/upload|selfie|documento|document|photo|foto/.test(avail);
-  if (reqIsCheckIn && outIsCheckIn) return true;
-  return false;
-}
-
-/**
- * Verifica se alguma tool do catálogo satisfaz um nome obrigatório do playbook.
- * Cobre `audaar_check_in` vs `oc_tool_<uuid>` quando a descrição contém o alias.
- */
-export function availableToolSatisfiesRequired(
-  requiredName: string,
-  catalog: ToolCatalogEntry[],
-): boolean {
-  return catalog.some((entry) =>
-    toolOutcomeSatisfiesRequired(requiredName, [
-      { name: entry.name, preview: entry.description ?? "" },
-    ]),
-  );
-}
-
 function filterAgainstAvailable(required: string[], available: string[]): string[] {
   if (available.length === 0) return required;
-  const catalog = available.map((name) => ({ name, description: "" }));
-  return required.filter((r) => availableToolSatisfiesRequired(r, catalog));
+  const avail = new Set(available.map((a) => a.toLowerCase()));
+  return required.filter((r) => {
+    const lower = r.toLowerCase();
+    if (avail.has(lower)) return true;
+    // Match parcial: playbook `consultar_reserva` vs tool `audaar_consultar_reserva`
+    for (const a of avail) {
+      if (a.includes(lower) || lower.includes(a)) return true;
+    }
+    return false;
+  });
 }
 
 /**
@@ -416,34 +385,6 @@ export type ResolveRequiredToolsOptions = {
 };
 
 /**
- * Turnos de continuação proactiva: o corpo sintético menciona "check-in"/"reserva"
- * no histórico do passo anterior — NÃO deve disparar padrões C3 (consultar_reserva).
- * Extrai só tools positivamente mandadas no turnHint, excluindo as de "NÃO chame".
- */
-export function resolveRequiredToolNamesForContinuationHint(turnHint: string): string[] {
-  const hint = turnHint.trim();
-  if (!hint) return [];
-
-  const forbidden = new Set<string>();
-  for (const m of hint.matchAll(
-    /(?:n[aã]o\s+chame|proibid[oa]|must\s+not\s+call|do\s+not\s+call)\s+([^.!?\n]+)/gi,
-  )) {
-    for (const t of extractToolNamesFromText(m[1] ?? "")) forbidden.add(t);
-  }
-
-  const mandated = new Set<string>();
-  // "Execute Passo 8: até 4× buscar_conhecimento" / "Chame `foo`" / "use only bar"
-  for (const m of hint.matchAll(
-    /(?:execute|chame|use|utiliz\w*|invoc\w*|at[eé]\s+\d+\s*[×x])\s+([^.\n]+)/gi,
-  )) {
-    for (const t of extractToolNamesFromText(m[1] ?? "")) {
-      if (!forbidden.has(t) && !ESCALATION_TOOL_NAMES.has(t)) mandated.add(t);
-    }
-  }
-  return [...mandated];
-}
-
-/**
  * Resolve tools obrigatórias para o turno actual (genérico, multi-segmento).
  * Preferência: tools da(s) melhor(es) categoria(s) do padrão do turno.
  * Não funde o conjunto estático global do playbook quando o turno já tem categoria
@@ -463,12 +404,6 @@ export function resolveRequiredToolNamesForTurn(
   const required = new Set<string>();
 
   const userMessage = (options.userMessage ?? "").trim();
-  if (userMessage && isContinuationSyntheticMessage(userMessage)) {
-    const parsed = parseContinuationSyntheticBody(userMessage);
-    const fromHint = resolveRequiredToolNamesForContinuationHint(parsed?.turnHint ?? userMessage);
-    return dedupeRequiredToolAliases(filterAgainstAvailable(fromHint, available));
-  }
-
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
@@ -507,22 +442,13 @@ export function toolOutcomeSatisfiesRequired(
   requiredName: string,
   outcomes: Array<{ name: string; preview?: string }>,
 ): boolean {
-  const norm = (s: string) => s.toLowerCase().replace(/-/g, "_");
-  const req = norm(requiredName);
+  const req = requiredName.toLowerCase();
   for (const o of outcomes) {
-    const name = norm(o.name ?? "");
+    const name = (o.name ?? "").toLowerCase();
     if (name === req) return true;
     if (name.includes(req) || req.includes(name)) return true;
-    // Família check_in: audaar_check_in satisfaz s-check-in / check_in (não uploads)
-    const reqIsCheckIn =
-      /check_?in/.test(req) && !/upload|selfie|documento|document|photo|foto/.test(req);
-    const outIsCheckIn =
-      /check_?in/.test(name) && !/upload|selfie|documento|document|photo|foto/.test(name);
-    if (reqIsCheckIn && outIsCheckIn) return true;
     const preview = (o.preview ?? "").toLowerCase();
-    if (preview.includes(`"name":"${req}"`) || preview.includes(requiredName.toLowerCase())) {
-      return true;
-    }
+    if (preview.includes(`"name":"${req}"`) || preview.includes(req)) return true;
   }
   return false;
 }

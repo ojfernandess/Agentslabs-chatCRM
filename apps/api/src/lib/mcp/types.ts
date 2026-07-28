@@ -23,7 +23,6 @@ export type McpResourceDomain =
   | "workflow_validator"
   | "supervisor"
   | "eil"
-  | "runtime_v2"
   | "config";
 
 /** Permissões granulares por recurso. */

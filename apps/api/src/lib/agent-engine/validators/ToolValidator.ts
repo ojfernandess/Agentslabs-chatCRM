@@ -39,8 +39,7 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
 
   if (required.length > 0) {
     for (const name of required) {
-      // Só outcomes OK contam — skip/block pre-exec (ok:false) não satisfaz a obrigação.
-      if (!toolOutcomeSatisfiesRequired(name, successful)) {
+      if (!toolOutcomeSatisfiesRequired(name, input.toolOutcomes)) {
         alerts.push(`Ferramenta obrigatória não utilizada: ${name}`);
         blockSend = input.strictMode;
       }
