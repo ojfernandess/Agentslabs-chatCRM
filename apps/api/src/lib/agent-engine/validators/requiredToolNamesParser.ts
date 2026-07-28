@@ -1,4 +1,8 @@
 import { parsePromptBlocks, type PromptBlocks } from "../../agentPlaybook.js";
+import {
+  isContinuationSyntheticMessage,
+  parseContinuationSyntheticBody,
+} from "../continuation/constants.js";
 
 /** Nomes nativos estáveis expostos ao LLM (OpenAI function calling). */
 export const KNOWN_NATIVE_TOOL_NAMES = [
@@ -385,6 +389,34 @@ export type ResolveRequiredToolsOptions = {
 };
 
 /**
+ * Turnos de continuação proactiva: o corpo sintético menciona "check-in"/"reserva"
+ * no histórico do passo anterior — NÃO deve disparar padrões C3 (consultar_reserva).
+ * Extrai só tools positivamente mandadas no turnHint, excluindo as de "NÃO chame".
+ */
+export function resolveRequiredToolNamesForContinuationHint(turnHint: string): string[] {
+  const hint = turnHint.trim();
+  if (!hint) return [];
+
+  const forbidden = new Set<string>();
+  for (const m of hint.matchAll(
+    /(?:n[aã]o\s+chame|proibid[oa]|must\s+not\s+call|do\s+not\s+call)\s+([^.!?\n]+)/gi,
+  )) {
+    for (const t of extractToolNamesFromText(m[1] ?? "")) forbidden.add(t);
+  }
+
+  const mandated = new Set<string>();
+  // "Execute Passo 8: até 4× buscar_conhecimento" / "Chame `foo`" / "use only bar"
+  for (const m of hint.matchAll(
+    /(?:execute|chame|use|utiliz\w*|invoc\w*|at[eé]\s+\d+\s*[×x])\s+([^.\n]+)/gi,
+  )) {
+    for (const t of extractToolNamesFromText(m[1] ?? "")) {
+      if (!forbidden.has(t) && !ESCALATION_TOOL_NAMES.has(t)) mandated.add(t);
+    }
+  }
+  return [...mandated];
+}
+
+/**
  * Resolve tools obrigatórias para o turno actual (genérico, multi-segmento).
  * Preferência: tools da(s) melhor(es) categoria(s) do padrão do turno.
  * Não funde o conjunto estático global do playbook quando o turno já tem categoria
@@ -404,6 +436,12 @@ export function resolveRequiredToolNamesForTurn(
   const required = new Set<string>();
 
   const userMessage = (options.userMessage ?? "").trim();
+  if (userMessage && isContinuationSyntheticMessage(userMessage)) {
+    const parsed = parseContinuationSyntheticBody(userMessage);
+    const fromHint = resolveRequiredToolNamesForContinuationHint(parsed?.turnHint ?? userMessage);
+    return dedupeRequiredToolAliases(filterAgainstAvailable(fromHint, available));
+  }
+
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;

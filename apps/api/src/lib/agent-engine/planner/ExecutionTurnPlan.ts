@@ -3,6 +3,7 @@ import {
 } from "../validators/requiredToolNamesParser.js";
 import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import { isContinuationSyntheticMessage } from "../continuation/constants.js";
 
 /**
  * Plano de turno — fonte única de verdade para tools obrigatórias e política.
@@ -39,17 +40,23 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
 
   // Infer pattern ids from required tools / message (leve — sem re-export circular)
   const matchedPatternIds: string[] = [];
-  if (/^\d{11}$/.test(userMessage)) matchedPatternIds.push("document_id");
+  const isContinuation = isContinuationSyntheticMessage(userMessage);
+  if (!isContinuation && /^\d{11}$/.test(userMessage)) matchedPatternIds.push("document_id");
   if (
+    !isContinuation &&
     /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(da\s+)?reserva/i.test(
       userMessage,
     )
   ) {
     matchedPatternIds.push("checkin_or_reservation");
   }
-  if (/reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(userMessage)) {
+  if (
+    !isContinuation &&
+    /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(userMessage)
+  ) {
     matchedPatternIds.push("escalation");
   }
+  if (isContinuation) matchedPatternIds.push("proactive_continuation");
 
   return {
     userMessage,
