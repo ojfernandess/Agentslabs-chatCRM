@@ -255,7 +255,11 @@ test("turnPolicyPreExecBlockReasonForTurn blocks escalation while required turn 
     policy,
     ["audaar_consultar_main_guest"],
   );
-  assert.ok(blocked && /ferramentas obrigatórias deste turno/i.test(blocked));
+  assert.ok(
+    blocked &&
+      (/ferramentas obrigatórias deste turno/i.test(blocked) ||
+        /deve começar com a ferramenta obrigatória/i.test(blocked)),
+  );
   assert.match(blocked ?? "", /audaar_consultar_main_guest/i);
   assert.equal(
     turnPolicyPreExecBlockReasonForTurn(
@@ -263,6 +267,34 @@ test("turnPolicyPreExecBlockReasonForTurn blocks escalation while required turn 
       ["audaar_consultar_main_guest"],
       policy,
       ["audaar_consultar_main_guest"],
+    ),
+    null,
+  );
+});
+
+test("turnPolicyPreExecBlockReasonForTurn blocks non-required tool before required C3 tool", () => {
+  const playbook = `
+| C3 | Check-in explícito | fazer check-in + localizador | Chame \`audaar_consultar_reserva\` · **PROIBIDO** \`buscar_conhecimento\` |
+| C5 | FAQ unidade | Chame \`buscar_conhecimento\` |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "fazer check-in na reserva FRJA2DBZ" },
+  );
+  const blocked = turnPolicyPreExecBlockReasonForTurn(
+    "buscar_conhecimento",
+    [],
+    policy,
+    ["audaar_consultar_reserva"],
+  );
+  assert.ok(blocked && /deve começar com a ferramenta obrigatória/i.test(blocked));
+  assert.match(blocked ?? "", /audaar_consultar_reserva/i);
+  assert.equal(
+    turnPolicyPreExecBlockReasonForTurn(
+      "audaar_consultar_reserva",
+      [],
+      policy,
+      ["audaar_consultar_reserva"],
     ),
     null,
   );
