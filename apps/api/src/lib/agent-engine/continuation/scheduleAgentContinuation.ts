@@ -99,8 +99,8 @@ export async function maybeScheduleAgentContinuation(input: {
 export async function runAgentContinuationSchedulerTick(input: {
   log: FastifyBaseLogger;
 }): Promise<void> {
-  // Fallback só quando BullMQ indisponível — evita corrida com jobs enfileirados.
-  if (isAgentEngineQueueAvailable()) return;
+  // Fallback sempre activo: se o job BullMQ não for consumido,
+  // o claim atómico no dispatch impede execução duplicada.
 
   const now = Date.now();
   const rows = await prisma.automationConversationContext.findMany({
