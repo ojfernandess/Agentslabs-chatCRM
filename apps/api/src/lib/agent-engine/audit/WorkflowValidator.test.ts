@@ -153,6 +153,64 @@ test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook"
   );
 });
 
+test("validateAgentWorkflow F15 quality signals are advisory only", () => {
+  const richPreview = JSON.stringify({
+    data: {
+      guestName: "Maria Silva",
+      reservationId: "HJ2XQZXO",
+      hotel: "Resort Paradise",
+      checkIn: "2026-08-01",
+    },
+  });
+  const report = validateAgentWorkflow({
+    userMessage: "41026299802",
+    replyText: "Como posso ajudar?",
+    toolOutcomes: [{ name: "audaar_consultar_reserva", ok: true, preview: richPreview }],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    supervisorEnabled: true,
+    executionLogEntries: [
+      {
+        id: "1",
+        sequence: 1,
+        level: "INFO",
+        nodeId: "inbound",
+        nodeName: "Webhook inbound",
+        nodePath: "native_agent/inbound",
+        message: "Mensagem recebida",
+        inputContext: { userMessage: "41026299802" },
+      },
+      {
+        id: "2",
+        sequence: 2,
+        level: "INFO",
+        nodeId: "audaar_consultar_reserva",
+        nodeName: "Tool: audaar_consultar_reserva",
+        nodePath: "native_agent/agent_llm/tools/reserva",
+        message: "Resultado da ferramenta",
+        outputContext: { ok: true, preview: richPreview },
+      },
+      {
+        id: "3",
+        sequence: 3,
+        level: "INFO",
+        nodeId: "quality",
+        nodeName: "Qualidade",
+        nodePath: "native_agent/quality",
+        message: "Preview",
+        outputContext: { replyPreview: "Como posso ajudar?" },
+      },
+    ],
+  });
+  const qualityFinding = report.findings.find((f) => f.id === "quality_lost_context");
+  assert.ok(qualityFinding, "expected lost_context advisory");
+  assert.equal(qualityFinding!.passed, true);
+  assert.equal(qualityFinding!.severity, "info");
+  assert.match(qualityFinding!.description, /\[advisory\]/);
+  assert.ok(report.metrics.qualitySignalCount >= 1);
+  assert.equal(shouldBlockOutboundFromWorkflow(report), false);
+});
+
 test("validateAgentWorkflow stress: 100 synthetic validations complete under budget", () => {
   const start = Date.now();
   let approved = 0;

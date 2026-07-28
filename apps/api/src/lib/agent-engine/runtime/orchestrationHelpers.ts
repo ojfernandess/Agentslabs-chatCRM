@@ -17,6 +17,7 @@ import {
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import { resolveEilTurn } from "../eil/runtimeBridge.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
+import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import type { EilSnapshot, FactStore } from "../eil/types.js";
 
 export type OrchestrationState = {
@@ -140,6 +141,23 @@ export async function runOrchestratedRuntime(
         { id: "tool_validator", name: "Tool Validator" },
         validation.alerts.join("; "),
       );
+      try {
+        const reverted = await maybeRevertIllegalHandoffAfterValidation({
+          organizationId: input.organizationId,
+          conversationId: input.conversation.id,
+          toolOutcomes: state.toolOutcomes,
+          validationAlerts: validation.alerts,
+          turnPolicy,
+        });
+        if (reverted) {
+          input.executionLog?.info(
+            { id: "handoff_revert", name: "Handoff revert" },
+            "Handoff ilegal revertido após validação de turno",
+          );
+        }
+      } catch {
+        /* best-effort — não bloquear turno */
+      }
     }
     traceBuilder.endNode(
       "validate_result",
@@ -172,6 +190,7 @@ export async function runOrchestratedRuntime(
           eilPlan: eilRefresh.plan,
           eilViolations: eilRefresh.snapshot.violations,
           eilRequiredFactsMissing: eilRefresh.plan.pendingFacts,
+          turnPolicy,
         }),
       );
       state.supervisorApproved = supTrace.approved;
@@ -203,6 +222,8 @@ export async function runOrchestratedRuntime(
             strictMode: input.engineConfig.strictMode,
             memorySnapshot: state.memory,
             retryCount: state.retryCount,
+            validationBlockSend: validation.blockSend,
+            turnPolicy,
           }),
         ),
         input.engineConfig.strictMode,

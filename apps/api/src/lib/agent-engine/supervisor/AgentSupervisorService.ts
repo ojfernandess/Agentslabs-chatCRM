@@ -1,6 +1,8 @@
 import type { AgentSupervisorCheck, AgentSupervisorTrace } from "../types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/types.js";
+import type { TurnPolicy } from "../validators/turnPolicyParser.js";
+import { formatTurnPolicyForSupervisor } from "../validators/turnPolicyParser.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 
 export type SupervisorValidationInput = {
@@ -26,6 +28,8 @@ export type SupervisorValidationInput = {
   eilViolations?: ConstraintViolation[];
   eilRequiredFactsMissing?: string[];
   toolOutcomes?: Array<{ name: string; ok: boolean; preview?: string }>;
+  /** Política de turno parseada — reforço do check validation_passed. */
+  turnPolicy?: TurnPolicy | null;
 };
 
 export type BuildSupervisorValidationInputOpts = {
@@ -45,6 +49,7 @@ export type BuildSupervisorValidationInputOpts = {
   eilPlan?: ExecutionIntelligencePlan;
   eilViolations?: ConstraintViolation[];
   eilRequiredFactsMissing?: string[];
+  turnPolicy?: TurnPolicy | null;
 };
 
 function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
@@ -80,6 +85,7 @@ export function buildSupervisorValidationInput(
     eilViolations: opts.eilViolations,
     eilRequiredFactsMissing: opts.eilRequiredFactsMissing,
     toolOutcomes: opts.toolOutcomes,
+    turnPolicy: opts.turnPolicy ?? null,
   };
 }
 
@@ -236,9 +242,20 @@ export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSup
   }
 
   const allPassed = checks.every((c) => c.passed);
+  const turnPolicyNote =
+    input.turnPolicy && !allPassed && input.validationBlockSend
+      ? formatTurnPolicyForSupervisor(input.turnPolicy)
+      : null;
+  const structuralSummary = allPassed
+    ? "Validação estrutural aprovada"
+    : checks
+        .filter((c) => !c.passed)
+        .map((c) => c.detail ?? c.label)
+        .join("; ") ||
+      (turnPolicyNote ? `Política de turno: ${turnPolicyNote.slice(0, 180)}` : "Falhas na validação");
   return {
     approved: allPassed && (input.llmApproved !== false),
-    summary: input.llmSummary ?? (allPassed ? "Validação estrutural aprovada" : "Falhas na validação"),
+    summary: input.llmSummary ?? structuralSummary,
     checks,
     retryCount: input.retryCount ?? 0,
   };

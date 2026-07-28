@@ -309,6 +309,7 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     llmApproved: input.llmApproved,
     llmSummary: input.llmSummary,
     validationBlockSend: input.validationBlockSend ?? toolValidation.blockSend,
+    turnPolicy,
   });
   const supervisorTrace = input.supervisorEnabled
     ? (input.supervisorTrace ?? buildSupervisorTrace(supInput))
@@ -366,7 +367,7 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     ),
   );
 
-  // Fase 14–15 — Qualidade pós-execução
+  // Fase 14–15 — Qualidade pós-execução (sempre advisory — nunca bloqueia strict/outbound)
   if (input.executionLogEntries?.length) {
     const qualitySignals = analyzeExecutionQualityFromLogs(input.executionLogEntries);
     for (const sig of qualitySignals) {
@@ -374,9 +375,9 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
         finding(
           "F15",
           `quality_${sig.kind}`,
-          sig.severity === "error" ? "critical" : "high",
-          false,
-          `${sig.title}: ${sig.detail}`,
+          "info",
+          true,
+          `[advisory] ${sig.title}: ${sig.detail}`,
           { file: "apps/api/src/lib/automationExecutionQuality.ts" },
         ),
       );
@@ -465,7 +466,9 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
       toolsRequiredMissing: requiredMissing,
       supervisorApproved: supervisorTrace?.approved ?? true,
       promptReady: hasPromptData ? promptAudit.ready : true,
-      qualitySignalCount: failed.filter((f) => f.phase === "F15").length,
+      qualitySignalCount: findings.filter(
+        (f) => f.phase === "F15" && f.id.startsWith("quality_") && f.id !== "quality_signals",
+      ).length,
     },
   };
 }

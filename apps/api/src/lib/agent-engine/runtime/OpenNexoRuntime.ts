@@ -3,6 +3,7 @@ import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "../typ
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
+import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 import { resolveEilTurn } from "../eil/runtimeBridge.js";
@@ -97,6 +98,23 @@ export class OpenNexoRuntime implements AgentRuntime {
           { id: "tool_validator", name: "Tool Validator" },
           validation.alerts.join("; "),
         );
+        try {
+          const reverted = await maybeRevertIllegalHandoffAfterValidation({
+            organizationId: input.organizationId,
+            conversationId: input.conversation.id,
+            toolOutcomes,
+            validationAlerts: validation.alerts,
+            turnPolicy,
+          });
+          if (reverted) {
+            input.executionLog?.info(
+              { id: "handoff_revert", name: "Handoff revert" },
+              "Handoff ilegal revertido após validação de turno",
+            );
+          }
+        } catch {
+          /* best-effort */
+        }
       }
       traceBuilder.endNode("validate_result", validation.ok ? "ok" : "warn", validation.alerts.join("; "));
     }

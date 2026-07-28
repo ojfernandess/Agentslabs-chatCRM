@@ -352,6 +352,47 @@ export function turnPolicyPreExecBlockReason(
   return null;
 }
 
+/** Resumo compacto da política de turno para Supervisor LLM / logs. */
+export function formatTurnPolicyForSupervisor(policy: TurnPolicy): string {
+  const lines: string[] = [];
+  if (policy.blockEscalation) {
+    lines.push(
+      "- Escalonamento BLOQUEADO neste turno (sim/ok/não): proibido transfer_to_team, call_human, set_conversation_status.",
+    );
+  }
+  if (policy.exclusiveAllowedTools?.length) {
+    lines.push(`- Ferramentas permitidas neste turno: ${policy.exclusiveAllowedTools.join(", ")}.`);
+  }
+  if (policy.forbiddenSameTurnPairs.length > 0) {
+    const sample = policy.forbiddenSameTurnPairs.slice(0, 6).map((p) => `${p.a}+${p.b}`);
+    lines.push(`- Pares proibidos no mesmo turno (ex.): ${sample.join(" · ")}.`);
+  }
+  if (policy.completionToolHints.length > 0) {
+    lines.push(
+      `- Tools de conclusão (S10) quando aplicável: ${policy.completionToolHints.slice(0, 4).join(", ")}.`,
+    );
+  }
+  return lines.length > 0 ? lines.join("\n") : "(sem restrições de turno parseadas)";
+}
+
+/**
+ * Bloqueio pre-exec unificado: escalonamento, exclusividade e pares proibidos.
+ */
+export function turnPolicyPreExecBlockReasonForTurn(
+  toolName: string,
+  existingToolNames: string[],
+  policy: TurnPolicy,
+): string | null {
+  const exclusive = turnPolicyPreExecBlockReason(toolName, policy);
+  if (exclusive) return exclusive;
+  const proposed = [...existingToolNames, toolName];
+  const pairHit = findForbiddenPairViolation(proposed, policy.forbiddenSameTurnPairs);
+  if (pairHit) {
+    return `PROIBIDO no mesmo turno: ${pairHit.a} + ${pairHit.b}. PARE e responda só com a acção da categoria actual.`;
+  }
+  return null;
+}
+
 /**
  * Decide se um retry do supervisor deve ser reply-only
  * (há tools OK e a falha é de qualidade de resposta, não de tool em falta).

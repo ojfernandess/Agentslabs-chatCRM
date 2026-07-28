@@ -41,6 +41,9 @@ import {
   resolveTurnPolicy,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
+  turnPolicyPreExecBlockReasonForTurn,
+  formatTurnPolicyForSupervisor,
+  validateToolOutcomesAgainstTurnPolicy,
 } from "./agent-engine/validators/turnPolicyParser.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
@@ -2224,35 +2227,17 @@ async function generateNativeAgentReplyCore(input: {
               }
 
               // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
-              const proposedNames = [
-                ...toolRoundOutcomes.map((t) => t.name),
-                row.name,
-                name,
-              ];
-              const httpExclusiveBlock =
-                turnPolicyPreExecBlockReason(row.name, turnPolicy) ??
-                turnPolicyPreExecBlockReason(name, turnPolicy);
-              if (httpExclusiveBlock) {
+              const existingNames = toolRoundOutcomes.map((t) => t.name);
+              const httpPolicyBlock =
+                turnPolicyPreExecBlockReasonForTurn(row.name, existingNames, turnPolicy) ??
+                turnPolicyPreExecBlockReasonForTurn(name, existingNames, turnPolicy);
+              if (httpPolicyBlock) {
                 return finishToolCall(
                   JSON.stringify({
                     ok: false,
                     skipped: true,
                     reason: "turn_policy_exclusive",
-                    message: httpExclusiveBlock,
-                  }),
-                );
-              }
-              const pairHit = findForbiddenPairViolation(
-                proposedNames,
-                turnPolicy.forbiddenSameTurnPairs,
-              );
-              if (pairHit) {
-                return finishToolCall(
-                  JSON.stringify({
-                    ok: false,
-                    skipped: true,
-                    reason: "forbidden_same_turn_pair",
-                    message: `PROIBIDO no mesmo turno: ${pairHit.a} + ${pairHit.b}. PARE agora e responda só com a acção da categoria actual (sem misturar etapas).`,
+                    message: httpPolicyBlock,
                   }),
                 );
               }
@@ -2332,8 +2317,10 @@ async function generateNativeAgentReplyCore(input: {
                 }),
               );
             }
-            // C11 / confirmação: bloquear transfer/call_human/status ANTES do side-effect
-            const nativeBlock = turnPolicyPreExecBlockReason(name, turnPolicy);
+            // Política de turno: bloquear side-effects mutáveis ANTES de executeNativeTool
+            const nativeExisting = toolRoundOutcomes.map((t) => t.name);
+            const nativeBlock =
+              turnPolicyPreExecBlockReasonForTurn(name, nativeExisting, turnPolicy);
             if (nativeBlock) {
               return finishToolCall(
                 JSON.stringify({
@@ -2677,21 +2664,32 @@ async function generateNativeAgentReplyCore(input: {
     } catch {
       /* EIL opcional — não bloqueia supervisor LLM */
     }
+    const turnPolicySummary = formatTurnPolicyForSupervisor(turnPolicy);
+    const turnPolicyAlerts = validateToolOutcomesAgainstTurnPolicy(
+      toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+      turnPolicy,
+    );
     const supervisorPrompt =
       "És um supervisor de qualidade de atendimento. Responde em JSON com approved (boolean) e summary (string).\n" +
       "Critérios:\n" +
       "- Avalia coerência da resposta com o **resultado das ferramentas** (ok/fail e dados), não com a literalidade do texto OCR/transcrição.\n" +
+      "- **Política de turno (playbook parseado):** approved=false se alguma ferramenta violou a política abaixo (escalonamento proibido, par proibido, tool fora da categoria).\n" +
       "- Se uma ou mais tools HTTP devolveram sucesso (ok/2xx) e a resposta do agente confirma o próximo passo natural do fluxo " +
-      "(pedir próximo documento, confirmar envio, avançar etapa), approved=true.\n" +
+      "(pedir próximo documento, confirmar envio, avançar etapa), approved=true **desde que** respeite a política de turno.\n" +
       "- Não rejeites só porque a mensagem do cliente é uma transcrição de imagem/[Transcrição de imagem] ou porque a descrição visual " +
       "não «parece» o tipo de ficheiro esperado, quando a tool de upload/processamento já correu com sucesso.\n" +
       "- approved=false se a resposta for só espera («Só um momento», «Aguarde», «vou verificar») sem factos, " +
       "especialmente quando a base de conhecimento já tinha excertos ou buscar_conhecimento devolveu found=true.\n" +
       "- approved=false se a resposta contradisser factos das tools, inventar dados, ou for claramente insegura/incorrecta.\n" +
+      "- approved=false se transfer_to_team/call_human/set_conversation_status correu mas a política de turno proíbe escalonamento neste turno.\n" +
       "- Se houver Constraint violations (EIL), approved=false.\n" +
       "- Turnos de recolha de dados (perguntas do agente, pedidos de documento) sem tool necessária: approved=true se a pergunta for adequada.";
     const supervisorUser =
       `Cliente: ${userMessage.slice(0, 1500)}\n\n` +
+      `Política de turno:\n${turnPolicySummary}\n` +
+      (turnPolicyAlerts.length > 0
+        ? `Alertas política (se persistirem → approved=false): ${turnPolicyAlerts.join("; ")}\n\n`
+        : "") +
       `KB proactiva com excertos úteis: ${kbHasUsefulExcerpts ? "sim" : "não"}\n` +
       `Tools com sucesso nesta ronda: ${successfulTools.length}/${toolRoundOutcomes.length}\n` +
       `Ferramentas:\n${toolSummary}\n\n` +
@@ -2765,15 +2763,25 @@ async function generateNativeAgentReplyCore(input: {
       );
       const policyAlerts = (() => {
         const names = toolRoundOutcomes.map((t) => t.name);
-        return findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
+        const pair = findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
+        const turnAlerts = validateToolOutcomesAgainstTurnPolicy(
+          toolRoundOutcomes.map(({ name, ok, preview }) => ({ name, ok, preview })),
+          turnPolicy,
+        );
+        return pair ? [`${pair.a}+${pair.b}`] : turnAlerts;
       })();
+      if (turnPolicyAlerts.length > 0) {
+        approved = false;
+        summary = `${summary} [turn policy: ${turnPolicyAlerts.join("; ")}]`.slice(0, 500);
+      }
       if (
         !approved &&
         successfulTools.length > 0 &&
         hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages) &&
         !(isForcedKbDump && (toolReportsNotFound || hasNonKnowledgeToolsThisTurn(toolRoundOutcomes))) &&
         !llmFlagsInvention &&
-        !policyAlerts
+        policyAlerts.length === 0 &&
+        turnPolicyAlerts.length === 0
       ) {
         approved = true;
         summary = `${summary} [auto: tools OK — aprovado por coerência com resultado da ferramenta]`.slice(0, 500);

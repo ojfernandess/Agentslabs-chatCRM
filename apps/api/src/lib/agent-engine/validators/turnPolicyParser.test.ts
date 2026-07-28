@@ -8,6 +8,8 @@ import {
   shouldUseReplyOnlyRetry,
   findForbiddenPairViolation,
   turnPolicyPreExecBlockReason,
+  turnPolicyPreExecBlockReasonForTurn,
+  formatTurnPolicyForSupervisor,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 
@@ -221,6 +223,30 @@ test("self-alias pair from C3 table does not block single consultar_reserva", ()
   assert.ok(
     findForbiddenPairViolation(["embratur-reference", "audaar_check_in"], policy.forbiddenSameTurnPairs),
   );
+});
+
+test("turnPolicyPreExecBlockReasonForTurn blocks forbidden pair before second tool runs", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.equal(turnPolicyPreExecBlockReasonForTurn("embratur-reference", [], policy), null);
+  const blocked = turnPolicyPreExecBlockReasonForTurn(
+    "audaar_check_in",
+    ["embratur-reference"],
+    policy,
+  );
+  assert.ok(blocked && /proibid/i.test(blocked));
+});
+
+test("formatTurnPolicyForSupervisor summarizes blockEscalation and pairs", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  const summary = formatTurnPolicyForSupervisor(policy);
+  assert.match(summary, /Escalonamento BLOQUEADO/i);
+  assert.match(summary, /Pares proibidos/i);
 });
 
 test("findForbiddenPairViolation requires two distinct tool invocations", () => {

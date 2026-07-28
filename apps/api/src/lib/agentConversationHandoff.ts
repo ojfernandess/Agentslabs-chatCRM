@@ -8,6 +8,13 @@ import {
 import { buildNativeAgentTranscriptWhere } from "./agentConversationHistory.js";
 import { loadAutomationConversationContext } from "./automationConversationContextLib.js";
 import { broadcastToOrganization } from "./workspaceHub.js";
+import {
+  shouldRevertHandoffAfterValidation,
+  type ToolOutcomeLike,
+} from "./agent-engine/validators/handoffRevert.js";
+import type { TurnPolicy } from "./agent-engine/validators/turnPolicyParser.js";
+
+export { shouldRevertHandoffAfterValidation, type ToolOutcomeLike };
 
 export type NativeHandoffToolName = "transfer_to_team" | "assign_team_to_conversation" | "call_human";
 
@@ -89,5 +96,72 @@ export async function recordNativeAgentTransferHandoff(input: {
     type: "conversation.updated",
     conversationId: input.conversationId,
     awaitingHumanHandoff: true,
+  });
+}
+
+/**
+ * Reverte handoff quando transfer/status correu mas a validação de turno reprovou.
+ * Evita outbound de escalonamento após retry ou strict block.
+ */
+export async function revertNativeAgentIllegalHandoff(input: {
+  organizationId: string;
+  conversationId: string;
+  reason: string;
+}): Promise<boolean> {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: input.conversationId, organizationId: input.organizationId },
+    select: { id: true, awaitingHumanHandoff: true },
+  });
+  if (!conv?.awaitingHumanHandoff) return false;
+
+  const note = `[Sistema] Handoff automático revertido — ${input.reason}`.slice(0, 4000);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.conversation.update({
+      where: { id: input.conversationId },
+      data: { awaitingHumanHandoff: false, updatedAt: new Date() },
+    });
+    await tx.message.create({
+      data: {
+        conversationId: input.conversationId,
+        direction: "OUTBOUND",
+        type: "TEXT",
+        body: note,
+        isPrivate: true,
+        status: "SENT",
+      },
+    });
+  });
+
+  broadcastToOrganization(input.organizationId, {
+    type: "conversation.updated",
+    conversationId: input.conversationId,
+    awaitingHumanHandoff: false,
+  });
+  return true;
+}
+
+/** Reverte handoff se validação detectou escalonamento ilegal neste turno. */
+export async function maybeRevertIllegalHandoffAfterValidation(input: {
+  organizationId: string;
+  conversationId: string;
+  toolOutcomes: ToolOutcomeLike[];
+  validationAlerts: string[];
+  turnPolicy?: TurnPolicy | null;
+}): Promise<boolean> {
+  if (
+    !shouldRevertHandoffAfterValidation(
+      input.toolOutcomes,
+      input.validationAlerts,
+      input.turnPolicy,
+    )
+  ) {
+    return false;
+  }
+  const summary = input.validationAlerts.slice(0, 2).join("; ") || "política de turno";
+  return revertNativeAgentIllegalHandoff({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    reason: summary,
   });
 }

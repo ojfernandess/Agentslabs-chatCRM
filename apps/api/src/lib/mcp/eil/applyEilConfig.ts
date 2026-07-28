@@ -14,15 +14,68 @@ export const DEFAULT_ADDITIONAL_PARTY_EIL = {
 } as const;
 
 export const DEFAULT_RESERVATION_LOOKUP_TOOL_EIL = {
-  produces: ["guestsQuantity", "reservationStatus", "checkinStatus", "localizadorOuReservationId"],
+  produces: [
+    "guestsQuantity",
+    "reservationStatus",
+    "checkinStatus",
+    "localizadorOuReservationId",
+    "reservationId",
+  ],
   capabilities: ["lookup_reservation"],
   factPaths: {
     guestsQuantity: "stay.guestsQuantity",
     reservationStatus: "stay.status",
     checkinStatus: "stay.checkinStatus",
     localizadorOuReservationId: "stay.localizer",
+    reservationId: "stay.reservationId",
   },
 } as const;
+
+export const DEFAULT_MAIN_GUEST_TOOL_EIL = {
+  produces: [
+    "mainGuestId",
+    "documentNumber",
+    "email",
+    "birthDate",
+    "profilePhotoId",
+    "documentPhotoId",
+    "found",
+  ],
+  capabilities: ["lookup_main_guest"],
+  factPaths: {
+    mainGuestId: "mainGuest.id",
+    documentNumber: "mainGuest.documentNumber",
+    email: "mainGuest.email",
+    birthDate: "mainGuest.birthDate",
+    found: "found",
+  },
+} as const;
+
+export const DEFAULT_CHECK_IN_TOOL_EIL = {
+  produces: ["checkinCompleted", "reservationStatus"],
+  capabilities: ["complete_checkin"],
+  factPaths: {
+    checkinCompleted: "ok",
+    reservationStatus: "status",
+  },
+} as const;
+
+export const DEFAULT_EMBRATUR_TOOL_EIL = {
+  produces: ["embraturReference", "travelMotives"],
+  capabilities: ["lookup_embratur_reference"],
+} as const;
+
+export type ToolEilBinding = {
+  pattern: RegExp;
+  eil: Record<string, unknown>;
+};
+
+export const DEFAULT_TOOL_EIL_BINDINGS: ToolEilBinding[] = [
+  { pattern: /consultar_reserva/i, eil: { ...DEFAULT_RESERVATION_LOOKUP_TOOL_EIL } },
+  { pattern: /consultar_main_guest|main_guest/i, eil: { ...DEFAULT_MAIN_GUEST_TOOL_EIL } },
+  { pattern: /check_in|checkin/i, eil: { ...DEFAULT_CHECK_IN_TOOL_EIL } },
+  { pattern: /embratur|reference/i, eil: { ...DEFAULT_EMBRATUR_TOOL_EIL } },
+];
 
 export type ApplyEilConfigResult = {
   botId: string;
@@ -40,12 +93,10 @@ export async function applyEilConfigToAgent(opts: {
   organizationId: string;
   botId: string;
   eil?: Record<string, unknown>;
-  reservationToolNamePattern?: RegExp;
-  toolEil?: Record<string, unknown>;
+  toolEilBindings?: ToolEilBinding[];
 }): Promise<ApplyEilConfigResult> {
   const eilBundle = opts.eil ?? { ...DEFAULT_ADDITIONAL_PARTY_EIL };
-  const toolEil = opts.toolEil ?? { ...DEFAULT_RESERVATION_LOOKUP_TOOL_EIL };
-  const nameRe = opts.reservationToolNamePattern ?? /consultar_reserva/i;
+  const bindings = opts.toolEilBindings ?? DEFAULT_TOOL_EIL_BINDINGS;
 
   const profile = await prisma.automationAgentProfile.findFirst({
     where: { botId: opts.botId, organizationId: opts.organizationId },
@@ -59,7 +110,7 @@ export async function applyEilConfigToAgent(opts: {
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"
       ? ({ ...(profile.behaviorConfig as Record<string, unknown>) } as Record<string, unknown>)
       : {};
-  beh.eil = eilBundle;
+  beh.eil = { ...(typeof beh.eil === "object" && beh.eil ? (beh.eil as object) : {}), ...eilBundle };
 
   await prisma.automationAgentProfile.update({
     where: { id: profile.id },
@@ -76,14 +127,15 @@ export async function applyEilConfigToAgent(opts: {
 
   const toolsUpdated: Array<{ id: string; name: string }> = [];
   for (const tool of tools) {
-    if (!nameRe.test(tool.name)) continue;
+    const binding = bindings.find((b) => b.pattern.test(tool.name));
+    if (!binding) continue;
     const cfg =
       tool.config && typeof tool.config === "object"
         ? ({ ...(tool.config as Record<string, unknown>) } as Record<string, unknown>)
         : {};
     const prevEil =
       cfg.eil && typeof cfg.eil === "object" ? (cfg.eil as Record<string, unknown>) : {};
-    cfg.eil = { ...prevEil, ...toolEil };
+    cfg.eil = { ...prevEil, ...binding.eil };
     await prisma.automationCustomTool.update({
       where: { id: tool.id },
       data: { config: cfg as Prisma.InputJsonValue },

@@ -16,6 +16,7 @@ import {
 } from "../audit/applyWorkflowGate.js";
 import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
+import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -579,6 +580,23 @@ export class LangGraphRuntime implements AgentRuntime {
           { id: "tool_validator", name: "Tool Validator" },
           validation.alerts.join("; "),
         );
+        try {
+          const reverted = await maybeRevertIllegalHandoffAfterValidation({
+            organizationId: state.input.organizationId,
+            conversationId: state.input.conversation.id,
+            toolOutcomes: state.toolOutcomes,
+            validationAlerts: validation.alerts,
+            turnPolicy,
+          });
+          if (reverted) {
+            state.input.executionLog?.info(
+              { id: "handoff_revert", name: "Handoff revert" },
+              "Handoff ilegal revertido após validação de turno",
+            );
+          }
+        } catch {
+          /* best-effort */
+        }
       }
       const eil = resolveEilTurn({
         behaviorConfig: state.input.behaviorConfig,
@@ -631,6 +649,9 @@ export class LangGraphRuntime implements AgentRuntime {
         return { supervisorApproved: approved, supervisorTrace: supTrace };
       }
 
+      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, {
+        userMessage: state.input.message.body ?? "",
+      });
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
@@ -648,6 +669,7 @@ export class LangGraphRuntime implements AgentRuntime {
         eilPlan: state.eilPlan,
         eilViolations: state.eilSnapshot?.violations,
         eilRequiredFactsMissing: state.eilPlan?.pendingFacts,
+        turnPolicy,
       });
       const supTrace = buildSupervisorTrace(supInput);
 
