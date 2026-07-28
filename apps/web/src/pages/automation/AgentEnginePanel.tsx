@@ -39,6 +39,12 @@ export type AgentEngineFormValues = {
   clientTokenStreamingEnabled: boolean;
   clientOutboundStreamingEnabled: boolean;
   parallelKbPrefetchEnabled: boolean;
+  /** Invoca tools obrigatórias do contrato antes do LLM (LangGraph). */
+  schedulerEnabled: boolean;
+  /** Recupera tools em falta e envia fallback em bloqueio strict. */
+  resilienceEnabled: boolean;
+  maxMandatoryRecoveries: number;
+  blockedFallbackMessage: string;
 };
 
 export const defaultMemoryEngineFormValues = (): MemoryEngineFormValues => ({
@@ -420,6 +426,86 @@ export function AgentEnginePanel({
               </span>
             </label>
           </div>
+
+          <div className="mt-4 border-t border-violet-200/50 pt-3 dark:border-violet-900/40">
+            <p className="text-xs font-semibold text-violet-900 dark:text-violet-200">
+              {t("automationPage.agentEngineTurnRuntimeTitle")}
+            </p>
+            <p className="mt-0.5 text-[11px] text-ink-500">
+              {t("automationPage.agentEngineTurnRuntimeHelp")}
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <label className="flex items-start gap-2 text-xs sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={value.schedulerEnabled}
+                  onChange={(e) => patch({ schedulerEnabled: e.target.checked })}
+                />
+                <span>
+                  <span className="font-medium">{t("automationPage.agentEngineScheduler")}</span>
+                  <span className="mt-0.5 block text-[11px] text-ink-500">
+                    {t("automationPage.agentEngineSchedulerHelp")}
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-xs sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={value.resilienceEnabled}
+                  onChange={(e) => patch({ resilienceEnabled: e.target.checked })}
+                />
+                <span>
+                  <span className="font-medium">{t("automationPage.agentEngineResilience")}</span>
+                  <span className="mt-0.5 block text-[11px] text-ink-500">
+                    {t("automationPage.agentEngineResilienceHelp")}
+                  </span>
+                </span>
+              </label>
+            </div>
+            {value.resilienceEnabled ? (
+              <div className="mt-3 space-y-2">
+                <label className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-medium">{t("automationPage.agentEngineMaxMandatoryRecoveries")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={3}
+                    className="w-16 rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
+                    value={value.maxMandatoryRecoveries}
+                    onChange={(e) =>
+                      patch({
+                        maxMandatoryRecoveries: Math.min(
+                          3,
+                          Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        ),
+                      })
+                    }
+                  />
+                  <span className="text-[11px] text-ink-500">
+                    {t("automationPage.agentEngineMaxMandatoryRecoveriesHelp")}
+                  </span>
+                </label>
+                <label className="block text-xs">
+                  <span className="font-medium">{t("automationPage.agentEngineBlockedFallback")}</span>
+                  <textarea
+                    rows={2}
+                    className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-xs dark:border-ink-700 dark:bg-ink-950"
+                    value={value.blockedFallbackMessage}
+                    placeholder={t("automationPage.agentEngineBlockedFallbackPlaceholder")}
+                    onChange={(e) =>
+                      patch({ blockedFallbackMessage: e.target.value.slice(0, 500) })
+                    }
+                  />
+                  <span className="mt-0.5 block text-[11px] text-ink-500">
+                    {t("automationPage.agentEngineBlockedFallbackHelp")}
+                  </span>
+                </label>
+              </div>
+            ) : null}
+          </div>
+
           <label className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="font-medium">{t("automationPage.agentEngineCheckpointStore")}</span>
             <select

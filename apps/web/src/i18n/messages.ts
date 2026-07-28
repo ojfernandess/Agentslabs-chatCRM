@@ -594,6 +594,22 @@ export const messages = {
       agentEngineOutboundStreamingHelp: "Envia chunks de texto ao contacto durante a geração LLM (opt-in; múltiplas mensagens).",
       agentEngineParallelKbPrefetch: "Prefetch KB paralelo (Send API)",
       agentEngineParallelKbPrefetchHelp: "Pré-carrega artigos pinned em paralelo antes do executor nativo (runtime langgraph).",
+      agentEngineTurnRuntimeTitle: "TurnContext — Scheduler e Resiliência",
+      agentEngineTurnRuntimeHelp:
+        "Disponível com LangGraph. O Scheduler invoca tools obrigatórias antes do LLM; a Resiliência evita silêncio quando o modo estrito bloqueia.",
+      agentEngineScheduler: "Tool Scheduler determinístico",
+      agentEngineSchedulerHelp:
+        "Antes do LLM, o runtime chama as tools exigidas pelo contrato (ex.: audaar_consultar_reserva no check-in). Reduz misturas proibidas com buscar_conhecimento.",
+      agentEngineResilience: "Resiliência de turno",
+      agentEngineResilienceHelp:
+        "Se tools obrigatórias faltarem, tenta recuperá-las; se o envio for bloqueado, envia a mensagem de fallback em vez de silêncio.",
+      agentEngineMaxMandatoryRecoveries: "Recuperações de tool",
+      agentEngineMaxMandatoryRecoveriesHelp: "0–3 tentativas determinísticas (recomendado: 1).",
+      agentEngineBlockedFallback: "Mensagem de fallback (bloqueio)",
+      agentEngineBlockedFallbackPlaceholder:
+        "Estou a confirmar a sua reserva. Em instantes continuo o check-in…",
+      agentEngineBlockedFallbackHelp:
+        "Enviada ao contacto quando o modo estrito bloqueia a resposta final. Vazio = mensagem padrão do sistema.",
       agentEngineHitlReject: "Rejeitar",
       agentEngineSupervisorModeLabel: "Modo do supervisor",
       agentEngineSupervisorMode_both: "Estrutural + LLM",
@@ -6067,6 +6083,22 @@ export const messages = {
       agentEngineOutboundStreamingHelp: "Sends text chunks to the contact during LLM generation (opt-in; multiple messages).",
       agentEngineParallelKbPrefetch: "Parallel KB prefetch (Send API)",
       agentEngineParallelKbPrefetchHelp: "Preloads pinned articles in parallel before the native executor (langgraph runtime).",
+      agentEngineTurnRuntimeTitle: "TurnContext — Scheduler & Resilience",
+      agentEngineTurnRuntimeHelp:
+        "Available with LangGraph. Scheduler runs required tools before the LLM; Resilience avoids silence when strict mode blocks.",
+      agentEngineScheduler: "Deterministic Tool Scheduler",
+      agentEngineSchedulerHelp:
+        "Before the LLM, the runtime invokes contract-required tools (e.g. reservation lookup on check-in). Reduces forbidden mixes with knowledge search.",
+      agentEngineResilience: "Turn resilience",
+      agentEngineResilienceHelp:
+        "If required tools are missing, recovers them; if send is blocked, delivers the fallback message instead of silence.",
+      agentEngineMaxMandatoryRecoveries: "Tool recoveries",
+      agentEngineMaxMandatoryRecoveriesHelp: "0–3 deterministic attempts (recommended: 1).",
+      agentEngineBlockedFallback: "Fallback message (blocked send)",
+      agentEngineBlockedFallbackPlaceholder:
+        "I'm confirming your reservation. I'll continue check-in shortly…",
+      agentEngineBlockedFallbackHelp:
+        "Sent to the contact when strict mode blocks the final reply. Empty = system default.",
       agentEngineHitlReject: "Reject",
       agentEngineSupervisorModeLabel: "Supervisor mode",
       agentEngineSupervisorMode_both: "Structural + LLM",

@@ -519,6 +519,10 @@ function emptyAgentForm(): AgentFormFields {
       clientTokenStreamingEnabled: false,
       clientOutboundStreamingEnabled: false,
       parallelKbPrefetchEnabled: false,
+      schedulerEnabled: false,
+      resilienceEnabled: false,
+      maxMandatoryRecoveries: 1,
+      blockedFallbackMessage: "",
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
     eilEnabled: false,
@@ -699,6 +703,17 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     clientTokenStreamingEnabled: engineRaw.clientTokenStreamingEnabled === true,
     clientOutboundStreamingEnabled: engineRaw.clientOutboundStreamingEnabled === true,
     parallelKbPrefetchEnabled: engineRaw.parallelKbPrefetchEnabled === true,
+    schedulerEnabled: engineRaw.schedulerEnabled === true,
+    resilienceEnabled: engineRaw.resilienceEnabled === true,
+    maxMandatoryRecoveries:
+      typeof engineRaw.maxMandatoryRecoveries === "number" &&
+      Number.isFinite(engineRaw.maxMandatoryRecoveries)
+        ? Math.min(3, Math.max(0, Math.floor(engineRaw.maxMandatoryRecoveries)))
+        : 1,
+    blockedFallbackMessage:
+      typeof engineRaw.blockedFallbackMessage === "string"
+        ? engineRaw.blockedFallbackMessage.slice(0, 500)
+        : "",
   };
 
   const kbRaw =
@@ -1007,6 +1022,12 @@ function formToPayload(
       clientTokenStreamingEnabled: form.agentEngine.clientTokenStreamingEnabled,
       clientOutboundStreamingEnabled: form.agentEngine.clientOutboundStreamingEnabled,
       parallelKbPrefetchEnabled: form.agentEngine.parallelKbPrefetchEnabled,
+      schedulerEnabled: form.agentEngine.schedulerEnabled,
+      resilienceEnabled: form.agentEngine.resilienceEnabled,
+      maxMandatoryRecoveries: form.agentEngine.maxMandatoryRecoveries,
+      ...(form.agentEngine.blockedFallbackMessage.trim()
+        ? { blockedFallbackMessage: form.agentEngine.blockedFallbackMessage.trim().slice(0, 500) }
+        : {}),
     },
     memoryEngine: {
       provider: form.agentEngine.memoryEngine.provider,
