@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { clearContactMemoriesForConversation } from "./agent-engine/memory/memoryCenterService.js";
 
+import type { PendingAgentContinuation } from "./agent-engine/continuation/types.js";
+
 export type FollowUpCampaignContextState = {
   campaignId: string;
   campaignName: string;
@@ -36,6 +38,10 @@ export type AutomationContextState = {
   flowSlots?: AutomationFlowSlots;
   /** Etapa livre do fluxo (ex.: "awaiting_document", "uploaded_selfie") — opcional. */
   flowStep?: string;
+  /** Turno proactivo agendado (continuação sem mensagem do hóspede). */
+  pendingContinuation?: PendingAgentContinuation;
+  /** Contagem de continuações já executadas por ruleId nesta conversa. */
+  continuationCounts?: Record<string, number>;
 };
 
 function asJson(v: unknown): Prisma.InputJsonValue {
@@ -83,6 +89,8 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
     o.toolCallCounts ||
     o.flowSlots ||
     typeof o.flowStep === "string" ||
+    o.pendingContinuation ||
+    o.continuationCounts ||
     o.source === "follow_up_campaign" ||
     o.source === "native_agent"
   ) {
@@ -143,6 +151,35 @@ export function parseAutomationContextState(raw: unknown): AutomationContextStat
 
     if (typeof o.flowStep === "string" && o.flowStep.trim()) {
       state.flowStep = o.flowStep.trim().slice(0, 120);
+    }
+
+    if (o.pendingContinuation && typeof o.pendingContinuation === "object") {
+      const pc = o.pendingContinuation as Record<string, unknown>;
+      const ruleId = typeof pc.ruleId === "string" ? pc.ruleId.trim() : "";
+      const turnHint = typeof pc.turnHint === "string" ? pc.turnHint.trim() : "";
+      const scheduledAt = typeof pc.scheduledAt === "string" ? pc.scheduledAt : "";
+      if (ruleId && turnHint && scheduledAt) {
+        state.pendingContinuation = {
+          ruleId: ruleId.slice(0, 120),
+          ruleName: typeof pc.ruleName === "string" ? pc.ruleName.slice(0, 200) : undefined,
+          scheduledAt,
+          turnHint: turnHint.slice(0, 4000),
+          sourceExecutionId:
+            typeof pc.sourceExecutionId === "string" ? pc.sourceExecutionId.slice(0, 80) : undefined,
+          attempts: typeof pc.attempts === "number" ? Math.max(0, Math.floor(pc.attempts)) : 0,
+        };
+      }
+    }
+
+    if (o.continuationCounts && typeof o.continuationCounts === "object" && !Array.isArray(o.continuationCounts)) {
+      const counts: Record<string, number> = {};
+      for (const [k, v] of Object.entries(o.continuationCounts as Record<string, unknown>)) {
+        const key = k.trim().slice(0, 120);
+        if (!key) continue;
+        const n = typeof v === "number" ? v : Number(v);
+        if (Number.isFinite(n) && n >= 0) counts[key] = Math.floor(n);
+      }
+      if (Object.keys(counts).length > 0) state.continuationCounts = counts;
     }
 
     return state;
@@ -333,6 +370,17 @@ function mergeStatePreserve(existing: AutomationContextState, patch: Partial<Aut
     ...(existing.flowStep || patch.flowStep
       ? { flowStep: patch.flowStep ?? existing.flowStep }
       : {}),
+    ...(existing.pendingContinuation || patch.pendingContinuation
+      ? { pendingContinuation: patch.pendingContinuation ?? existing.pendingContinuation }
+      : {}),
+    ...(existing.continuationCounts || patch.continuationCounts
+      ? {
+          continuationCounts: {
+            ...(existing.continuationCounts ?? {}),
+            ...(patch.continuationCounts ?? {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -357,6 +405,8 @@ const CONTEXT_ONLY_STATE_KEYS = new Set([
   "lastNativeToolRound",
   "flowSlots",
   "flowStep",
+  "pendingContinuation",
+  "continuationCounts",
   "source",
   "campaignId",
   "campaignName",
@@ -665,4 +715,93 @@ export function buildIsolatedNativeFlowStatePromptBlock(input: {
       ? { flowSlots: input.flowSlots }
       : {}),
   });
+}
+
+export async function mergePendingContinuationAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  pending: PendingAgentContinuation;
+}): Promise<void> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const state = mergeStatePreserve(existing.state, { pendingContinuation: params.pending });
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+}
+
+export async function clearPendingContinuationAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+}): Promise<void> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  if (!existing.state.pendingContinuation) return;
+  const state: AutomationContextState = { ...existing.state };
+  delete state.pendingContinuation;
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+}
+
+export async function incrementContinuationCountAutomationContext(params: {
+  organizationId: string;
+  conversationId: string;
+  botId: string;
+  ruleId: string;
+}): Promise<void> {
+  const existing = await loadAutomationConversationContext(params.conversationId);
+  const prev = existing.state.continuationCounts?.[params.ruleId] ?? 0;
+  const state = mergeStatePreserve(existing.state, {
+    continuationCounts: { [params.ruleId]: prev + 1 },
+  });
+
+  await prisma.automationConversationContext.upsert({
+    where: { conversationId: params.conversationId },
+    create: {
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      botId: params.botId,
+      state: asJson(state),
+      lastClearedAt: existing.lastClearedAt,
+    },
+    update: {
+      botId: params.botId,
+      state: asJson(state),
+    },
+  });
+}
+
+export function buildContinuationTurnPromptBlock(ruleId: string, turnHint: string): string {
+  return (
+    "\n\n[OpenConduit — turno proactivo / continuação automática]\n" +
+    `Regra: ${ruleId}\n` +
+    "Este turno foi iniciado pela plataforma (sem nova mensagem do cliente). " +
+    "Execute a instrução abaixo como prioridade máxima e envie resposta substantiva ao cliente.\n\n" +
+    turnHint.trim().slice(0, 4000)
+  );
 }

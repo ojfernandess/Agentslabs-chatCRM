@@ -73,6 +73,7 @@ import {
 import { publishGraphEvent } from "./agent-engine/observability/AgentGraphEventBus.js";
 import { createClientOutboundTokenStream } from "./clientOutboundTokenStream.js";
 import {
+  buildContinuationTurnPromptBlock,
   buildFollowUpCampaignPromptBlock,
   buildIsolatedNativeFlowStatePromptBlock,
   buildNativeFlowStatePromptBlock,
@@ -83,6 +84,10 @@ import {
   replaceFlowSlotsAutomationContext,
   type AutomationFlowSlots,
 } from "./automationConversationContextLib.js";
+import {
+  isContinuationSyntheticMessage,
+  parseContinuationSyntheticBody,
+} from "./agent-engine/continuation/constants.js";
 import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
@@ -1461,17 +1466,20 @@ async function generateNativeAgentReplyCore(input: {
   } = input;
   if (message.direction !== "INBOUND") return EMPTY_NATIVE_CORE_RESULT;
   const userMessageRaw = (message.body ?? "").trim();
+  const continuationParsed = parseContinuationSyntheticBody(userMessageRaw);
   const hasInboundMedia =
+    !continuationParsed &&
     Boolean(message.mediaUrl?.trim()) &&
     (message.type === "IMAGE" || message.type === "DOCUMENT" || message.type === "VIDEO");
   if (!userMessageRaw && !hasInboundMedia) return EMPTY_NATIVE_CORE_RESULT;
   const userMessage =
-    userMessageRaw ||
-    (message.type === "IMAGE"
-      ? "[Imagem enviada pelo cliente]"
-      : message.type === "DOCUMENT"
-        ? "[Documento enviado pelo cliente]"
-        : "[Ficheiro enviado pelo cliente]");
+    continuationParsed?.turnHint ??
+    (userMessageRaw ||
+      (message.type === "IMAGE"
+        ? "[Imagem enviada pelo cliente]"
+        : message.type === "DOCUMENT"
+          ? "[Documento enviado pelo cliente]"
+          : "[Ficheiro enviado pelo cliente]"));
 
   const profile = await prisma.automationAgentProfile.findUnique({
     where: { botId: bot.id },
@@ -1899,6 +1907,10 @@ async function generateNativeAgentReplyCore(input: {
     ? buildFollowUpCampaignPromptBlock(automationCtx.state.followUpCampaign)
     : "";
 
+  const continuationPrompt = continuationParsed
+    ? buildContinuationTurnPromptBlock(continuationParsed.ruleId, continuationParsed.turnHint)
+    : "";
+
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
   let identityConflictCleared = false;
   if (
@@ -1977,6 +1989,7 @@ async function generateNativeAgentReplyCore(input: {
     audioInboundHint +
     imageInboundHint +
     followUpPrompt +
+    continuationPrompt +
     flowStatePrompt;
 
   const lastClearedAt = automationCtx.lastClearedAt;
@@ -2000,7 +2013,7 @@ async function generateNativeAgentReplyCore(input: {
         role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
         content: (m.body ?? "").trim(),
       }))
-      .filter((m): m is PreviewChatTurn => Boolean(m.content));
+      .filter((m): m is PreviewChatTurn => Boolean(m.content) && !isContinuationSyntheticMessage(m.content));
   }
 
   const { history, isolated: historyIsolated } = resolveNativeAgentHistoryTurns({

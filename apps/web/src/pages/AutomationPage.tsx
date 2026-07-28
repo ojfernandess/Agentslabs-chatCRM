@@ -70,6 +70,14 @@ import {
   extractAgentEil,
 } from "@/pages/automation/AgentEilConfigSection";
 import {
+  AgentContinuationConfigSection,
+  agentContinuationIsActive,
+  agentContinuationRulesToJson,
+  buildAgentContinuationForPayload,
+  DEFAULT_AGENT_CONTINUATION_JSON,
+  extractAgentContinuation,
+} from "@/pages/automation/AgentContinuationConfigSection";
+import {
   buildAgentPlaybookFromBlocks,
   buildAgentUserCoreForPersist,
   countFilledPromptBlocks,
@@ -451,6 +459,9 @@ type AgentFormFields = {
   /** Execution Intelligence Layer — behaviorConfig.eil */
   eilEnabled: boolean;
   eilJson: string;
+  /** Turnos proactivos — behaviorConfig.agentContinuation */
+  continuationEnabled: boolean;
+  continuationJson: string;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -523,6 +534,8 @@ function emptyAgentForm(): AgentFormFields {
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
     eilEnabled: false,
     eilJson: DEFAULT_AGENT_EIL_JSON,
+    continuationEnabled: false,
+    continuationJson: DEFAULT_AGENT_CONTINUATION_JSON,
   };
 }
 
@@ -811,6 +824,11 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       return eil != null && eil.enabled !== false;
     })(),
     eilJson: agentEilPoliciesToJson(extractAgentEil(beh)),
+    continuationEnabled: (() => {
+      const cfg = extractAgentContinuation(beh);
+      return cfg != null && cfg.enabled !== false;
+    })(),
+    continuationJson: agentContinuationRulesToJson(extractAgentContinuation(beh)),
   };
 }
 
@@ -1041,6 +1059,14 @@ function formToPayload(
   const eilPayload = buildAgentEilForPayload(form.eilEnabled, form.eilJson);
   if (eilPayload) {
     behaviorConfig.eil = eilPayload;
+  }
+
+  const continuationPayload = buildAgentContinuationForPayload(
+    form.continuationEnabled,
+    form.continuationJson,
+  );
+  if (continuationPayload) {
+    behaviorConfig.agentContinuation = continuationPayload;
   }
 
   if (form.knowledgeEngine.provider === "llamaindex") {
@@ -1435,6 +1461,16 @@ export function AutomationPage() {
           return;
         }
       }
+      if (agentForm.continuationEnabled) {
+        const continuationPayload = buildAgentContinuationForPayload(
+          agentForm.continuationEnabled,
+          agentForm.continuationJson,
+        );
+        if (!continuationPayload) {
+          setError("agent_continuation_invalid");
+          return;
+        }
+      }
       const payload = formToPayload(agentForm, {
         knowledgeArticles: articles,
         customTools: tools,
@@ -1633,6 +1669,8 @@ export function AutomationPage() {
               ? t("automationPage.agentValidation")
               : error === "agent_eil_invalid"
                 ? t("automationPage.agentEilSaveInvalid")
+                : error === "agent_continuation_invalid"
+                  ? t("automationPage.agentContinuationSaveInvalid")
               : error === "prompt_validation"
                 ? t("automationPage.promptValidation")
                 : error === "load_failed"
@@ -1974,6 +2012,11 @@ function AgentsTab({
     toolsUpdated: number;
     policyIds: string[];
   } | null>(null);
+  const [applyingAgentContinuation, setApplyingAgentContinuation] = useState(false);
+  const [agentContinuationApplySummary, setAgentContinuationApplySummary] = useState<{
+    ruleIds: string[];
+    templateId: string;
+  } | null>(null);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   const openAgentConnections = (row: AgentProfileRow) => {
@@ -2004,6 +2047,36 @@ function AgentsTab({
       setPromptValidationScore(null);
     } finally {
       setPromptValidating(false);
+    }
+  };
+
+  const applyAgentContinuationTemplate = async () => {
+    if (!agentForm.editBotId) return;
+    setApplyingAgentContinuation(true);
+    setAgentContinuationApplySummary(null);
+    try {
+      const result = await api.post<{
+        continuationEnabled: boolean;
+        ruleIds: string[];
+        templateId: string;
+      }>(`/automation/agent-profiles/${agentForm.editBotId}/apply-continuation-template`, {
+        templateId: "auda_post_checkin_passo8",
+        merge: true,
+      });
+      setAgentForm((f) => ({
+        ...f,
+        continuationEnabled: result.continuationEnabled,
+        continuationJson: DEFAULT_AGENT_CONTINUATION_JSON,
+      }));
+      await onReloadProfiles();
+      setAgentContinuationApplySummary({
+        ruleIds: result.ruleIds,
+        templateId: result.templateId,
+      });
+    } catch {
+      setAgentContinuationApplySummary(null);
+    } finally {
+      setApplyingAgentContinuation(false);
     }
   };
 
@@ -2442,6 +2515,14 @@ function AgentsTab({
                     title={t("automationPage.agentEilBadgeTitle")}
                   >
                     {t("automationPage.agentEilBadge")}
+                  </span>
+                ) : null}
+                {agentContinuationIsActive(beh) ? (
+                  <span
+                    className="rounded-full border border-sky-300/80 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100"
+                    title={t("automationPage.agentContinuationBadgeTitle")}
+                  >
+                    {t("automationPage.agentContinuationBadge")}
                   </span>
                 ) : null}
                 <span className="text-[11px] text-ink-500">
@@ -3507,6 +3588,20 @@ function AgentsTab({
                 onApplyDefault={agentForm.editBotId ? applyAgentEilDefault : undefined}
                 applyingDefault={applyingAgentEil}
                 lastApplySummary={agentEilApplySummary}
+              />
+
+              <AgentContinuationConfigSection
+                enabled={agentForm.continuationEnabled}
+                onEnabledChange={(continuationEnabled) =>
+                  setAgentForm((f) => ({ ...f, continuationEnabled }))
+                }
+                json={agentForm.continuationJson}
+                onJsonChange={(continuationJson) => setAgentForm((f) => ({ ...f, continuationJson }))}
+                t={t}
+                editBotId={agentForm.editBotId}
+                onApplyTemplate={agentForm.editBotId ? applyAgentContinuationTemplate : undefined}
+                applyingTemplate={applyingAgentContinuation}
+                lastApplySummary={agentContinuationApplySummary}
               />
 
               <KnowledgeEnginePanel

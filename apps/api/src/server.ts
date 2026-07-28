@@ -74,6 +74,7 @@ import { runCrmFlowNoReplyScannerTick } from "./lib/crmFlowNoReplyScanner.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
+import { runAgentContinuationSchedulerTick } from "./lib/agent-engine/continuation/scheduleAgentContinuation.js";
 import { runCrmFlowSchedulerTick } from "./lib/crmFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
@@ -281,6 +282,11 @@ try {
     void runChatbotFlowSchedulerTick(app);
   }, chatbotSchedulerMs);
   void runChatbotFlowSchedulerTick(app);
+  const agentContinuationMs = 30_000;
+  setInterval(() => {
+    void runAgentContinuationSchedulerTick({ log: app.log });
+  }, agentContinuationMs);
+  void runAgentContinuationSchedulerTick({ log: app.log });
   setInterval(() => {
     void runCrmFlowSchedulerTick(app);
   }, chatbotSchedulerMs);
