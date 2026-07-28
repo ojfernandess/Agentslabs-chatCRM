@@ -18,6 +18,20 @@ import type {
 } from "./types.js";
 import type { FactStore } from "../eil/types.js";
 
+function normalizeFlowSlots(
+  flowSlots: Record<string, unknown> | undefined,
+): Record<string, string | number | boolean> | undefined {
+  if (!flowSlots) return undefined;
+  const out: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(flowSlots)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export type BuildExecutionContractOpts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
@@ -125,9 +139,10 @@ export function buildExecutionContract(opts: BuildExecutionContractOpts): Execut
 
   const toolConfigs = availableToolNames.map((name) => ({ name }));
   const capabilityGraph = buildCapabilityGraph({ tools: toolConfigs });
+  const flowSlots = normalizeFlowSlots(opts.flowSlots);
   const facts = mergeFactStores(
     opts.priorFacts ?? {},
-    factsFromFlowSlots(opts.flowSlots ?? {}),
+    factsFromFlowSlots(flowSlots),
   );
 
   const eilPlan = buildExecutionIntelligencePlan({
@@ -138,7 +153,7 @@ export function buildExecutionContract(opts: BuildExecutionContractOpts): Execut
     facts,
     graph: capabilityGraph,
     toolsCalled: toolsAlreadyCalled,
-    flowSlots: opts.flowSlots,
+    flowSlots,
     lastAssistantMessage: opts.lastAssistantMessage,
     existingTurnPlan: turnPlan,
   });

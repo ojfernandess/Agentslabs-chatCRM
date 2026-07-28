@@ -38,7 +38,7 @@ function compileStepsFromBlocks(blocks: PromptBlocks, playbook: string): PromptC
     const detectCol = m[3]!.trim();
     const toolsCol = m[4]!.trim();
     const toolsFromCol = parseRequiredToolNamesFromText(toolsCol);
-    const toolsFromMap = categoryMap[id] ?? [];
+    const toolsFromMap = categoryMap.get(id) ?? [];
     const tools = [...new Set([...toolsFromCol, ...toolsFromMap])];
     const constraints: string[] = [];
     if (/PROIBIDO|proibid|never|nunca/i.test(detectCol)) {
@@ -99,10 +99,7 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
 
   const auditResult = auditPromptAssembly({
     systemPrompt: opts.systemPrompt,
-    promptValidation: {
-      blocks,
-      systemPromptLength: opts.systemPrompt?.length ?? playbook.length,
-    },
+    promptValidation: { blocks },
   });
 
   // Confirmação: tools exclusivas do portão
