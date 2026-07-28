@@ -3,11 +3,16 @@ import { prisma } from "../db.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import {
   findWhatsappInboxByPhoneNumberId,
+  findWhatsappInboxByProvider,
   isMetaCloudWhatsappProvider,
   parseInboxWhatsappFromChannelConfig,
   resolveInboxWhatsappCredentials,
 } from "./inboxWhatsappConfig.js";
-import { findEvolutionGoWhatsappInboxId, isEvolutionGoWebhookPayload } from "./evolutionGoPlatform.js";
+import {
+  findEvolutionGoWhatsappInboxId,
+  isEvolutionApiWebhookPayload,
+  isEvolutionGoWebhookPayload,
+} from "./evolutionGoPlatform.js";
 import { extractMetaWebhookPhoneNumberId, isMetaCloudWebhookPayload } from "./metaWebhookPayload.js";
 
 export type WhatsappWebhookTarget = {
@@ -71,6 +76,11 @@ export async function resolveWhatsappWebhookTarget(
       );
       return null;
     }
+  }
+
+  if (!inboxId && options.body && isEvolutionApiWebhookPayload(options.body)) {
+    const evoApi = await findWhatsappInboxByProvider(organizationId, "evolution");
+    inboxId = evoApi?.id ?? undefined;
   }
 
   if (!inboxId && options.body && isEvolutionGoWebhookPayload(options.body)) {

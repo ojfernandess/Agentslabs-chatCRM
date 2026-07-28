@@ -22,10 +22,15 @@ import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundM
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
 import { persistMetaInboundMediaAsLocalUrl } from "../lib/metaInboundMedia.js";
 import { decrypt } from "../lib/encryption.js";
-import { findOrganizationByMetaPhoneNumberId, resolveInboxWhatsappCredentials } from "../lib/inboxWhatsappConfig.js";
+import {
+  findOrganizationByMetaPhoneNumberId,
+  findWhatsappInboxByProvider,
+  resolveInboxWhatsappCredentials,
+} from "../lib/inboxWhatsappConfig.js";
 import {
   evolutionGoWebhookMatchesOrgInstance,
   findEvolutionGoWhatsappInboxId,
+  isEvolutionApiWebhookPayload,
   isEvolutionGoWebhookPayload,
 } from "../lib/evolutionGoPlatform.js";
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
@@ -124,7 +129,11 @@ async function handleWhatsAppPost(
   }
 
   let resolvedInboxId = options?.inboxId;
-  if (isEvolutionGoWebhookPayload(body)) {
+  // Evolution API e Evolution Go partilham campos em `data` — nunca forçar Go em MESSAGES_*.
+  if (isEvolutionApiWebhookPayload(body)) {
+    const evoApiInbox = await findWhatsappInboxByProvider(organizationId, "evolution");
+    if (evoApiInbox) resolvedInboxId = evoApiInbox.id;
+  } else if (isEvolutionGoWebhookPayload(body)) {
     const evoInbox = await findEvolutionGoWhatsappInboxId(organizationId);
     if (evoInbox) resolvedInboxId = evoInbox;
   }
@@ -205,8 +214,26 @@ async function handleWhatsAppPost(
       (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
     const providerNeedsSignature =
       target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog";
+    const isEvolutionFamily =
+      target.whatsappProvider === "evolution" || target.whatsappProvider === "evolution_go";
     const embeddedCfg = providerNeedsSignature ? await getWhatsAppEmbeddedConfig() : null;
     const hasAnySecret = Boolean(secret?.trim() || embeddedCfg?.appSecret?.trim());
+    const headers = request.headers as Record<string, string | undefined>;
+    const hasOpenconduitToken = Boolean(headers["x-openconduit-token"]?.trim());
+    const bodyRec =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+    const hasEvolutionGoInstanceToken = Boolean(
+      typeof bodyRec?.instanceToken === "string" && bodyRec.instanceToken.trim(),
+    );
+    // Secret opcional na Evolution: só exigir quando o pedido traz material de auth.
+    // Caso contrário um App Secret Meta legado na inbox bloqueava todos os inbound.
+    const evolutionOptionalSecretIdle =
+      isEvolutionFamily &&
+      Boolean(secret?.trim()) &&
+      !hasOpenconduitToken &&
+      !(target.whatsappProvider === "evolution_go" && hasEvolutionGoInstanceToken);
 
     if (providerNeedsSignature && !hasAnySecret) {
       app.log.warn(
@@ -219,14 +246,10 @@ async function handleWhatsAppPost(
       return reply.status(503).send({ error: "Webhook secret not configured" });
     }
 
-    if (secret || providerNeedsSignature) {
+    if ((secret || providerNeedsSignature) && !evolutionOptionalSecretIdle) {
       let valid = false;
       if (secret) {
-        valid = provider.validateWebhookSignature(
-          request.headers as Record<string, string | undefined>,
-          rawBody,
-          secret,
-        );
+        valid = provider.validateWebhookSignature(headers, rawBody, secret);
       }
 
       if (
@@ -234,11 +257,7 @@ async function handleWhatsAppPost(
         (target.whatsappProvider === "meta" || target.whatsappProvider === "360dialog") &&
         embeddedCfg?.appSecret
       ) {
-        valid = provider.validateWebhookSignature(
-          request.headers as Record<string, string | undefined>,
-          rawBody,
-          embeddedCfg.appSecret,
-        );
+        valid = provider.validateWebhookSignature(headers, rawBody, embeddedCfg.appSecret);
         if (valid) {
           app.log.info(
             { organizationId, inboxId: target.inboxId },
@@ -263,6 +282,11 @@ async function handleWhatsAppPost(
         );
         return reply.status(401).send({ error: "Invalid signature" });
       }
+    } else if (evolutionOptionalSecretIdle) {
+      app.log.info(
+        { organizationId, inboxId: target.inboxId, provider: target.whatsappProvider },
+        "Evolution webhook: optional secret configured but no auth material on request — accepting",
+      );
     }
   }
 

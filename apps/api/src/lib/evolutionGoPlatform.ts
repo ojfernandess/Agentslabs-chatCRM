@@ -185,8 +185,54 @@ function webhookPayloadRecord(body: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * Detecta POST da Evolution API v1/v2 (ex.: MESSAGES_UPSERT).
+ * Estes NÃO devem ser tratados como Evolution Go — `data.key` / `data.message`
+ * existem nos dois formatos e confundiam o detector antigo.
+ */
+export function isEvolutionApiWebhookPayload(body: unknown): boolean {
+  const env = webhookPayloadRecord(body);
+  if (!env) return false;
+  const ev = typeof env.event === "string" ? env.event.trim() : "";
+  if (!ev) {
+    // Alguns proxies só reencaminham o envelope com `data` + instance name/API shape.
+    const data = webhookPayloadRecord(env.data);
+    if (data?.key && (data.message || data.messageType) && !data.Info && !data.Message) {
+      return typeof env.instance === "string" || typeof env.destination === "string";
+    }
+    return false;
+  }
+  const dotted = ev.toLowerCase().replace(/_/g, ".");
+  if (
+    dotted.startsWith("messages.") ||
+    dotted.startsWith("contacts.") ||
+    dotted.startsWith("chats.") ||
+    dotted.startsWith("connection.") ||
+    dotted.startsWith("qrcode.") ||
+    dotted.startsWith("presence.") ||
+    dotted.startsWith("groups.") ||
+    dotted.startsWith("group-participants.") ||
+    dotted.startsWith("application.")
+  ) {
+    return true;
+  }
+  const compact = ev.toUpperCase().replace(/[.-]/g, "_");
+  return (
+    compact.startsWith("MESSAGES_") ||
+    compact.startsWith("CONTACTS_") ||
+    compact.startsWith("CHATS_") ||
+    compact.startsWith("CONNECTION_") ||
+    compact.startsWith("QRCODE_") ||
+    compact.startsWith("PRESENCE_") ||
+    compact.startsWith("GROUPS_") ||
+    compact.startsWith("GROUP_PARTICIPANTS_") ||
+    compact === "APPLICATION_STARTUP"
+  );
+}
+
 /** Detecta POST do Evolution Go (não Evolution API v2 MESSAGES_UPSERT). */
 export function isEvolutionGoWebhookPayload(body: unknown): boolean {
+  if (isEvolutionApiWebhookPayload(body)) return false;
   const env = webhookPayloadRecord(body);
   if (!env) return false;
   if (typeof env.instanceToken === "string" && env.instanceToken.trim()) return true;
@@ -205,7 +251,9 @@ export function isEvolutionGoWebhookPayload(body: unknown): boolean {
   }
   if (ev === "Message" || ev === "Receipt") return true;
   const data = webhookPayloadRecord(env.data);
-  if (data?.Info || data?.info || data?.key || data?.Message || data?.message) return true;
+  // Só marcadores tipicamente Go (Info/Message). NÃO usar data.key/data.message —
+  // esses campos existem na Evolution API e desviavam o webhook para a inbox Go.
+  if (data?.Info || data?.info || data?.Message) return true;
   return false;
 }
 
