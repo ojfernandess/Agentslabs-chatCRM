@@ -38,6 +38,7 @@ import {
 } from "../lib/agentPromptSync.js";
 import { rankArticles } from "../lib/knowledgeSearchRanking.js";
 import { reindexAllKnowledgeArticlesForOrg, reindexKnowledgeArticle } from "../lib/knowledgeReindex.js";
+import { applyEilConfigToAgent } from "../lib/mcp/eil/applyEilConfig.js";
 import {
   analyzeDocumentRagReadiness,
   optimizeKnowledgeDocumentForRag,
@@ -2469,6 +2470,43 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
     return { ...row, llmConfig: redactLlmConfig(row.llmConfig) };
   });
+
+  app.post<{ Params: { botId: string } }>(
+    "/agent-profiles/:botId/apply-eil",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const bot = await prisma.bot.findFirst({
+        where: { id: request.params.botId, organizationId },
+      });
+      if (!bot) {
+        return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
+      }
+
+      const result = await applyEilConfigToAgent({
+        organizationId,
+        botId: bot.id,
+      });
+
+      await recordAuditLog({
+        actorUserId: request.user.id,
+        organizationId,
+        action: "automation.agent.apply_eil",
+        resourceType: "automation_agent_profile",
+        resourceId: result.profileId,
+        metadata: {
+          botId: bot.id,
+          policyIds: result.policyIds,
+          toolsUpdated: result.toolsUpdated.map((t) => t.name),
+        },
+        ip: clientIp(request),
+      });
+
+      return result;
+    },
+  );
 
   app.post<{ Params: { botId: string } }>(
     "/agent-profiles/:botId/sync-prompt",

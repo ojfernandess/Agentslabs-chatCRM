@@ -62,6 +62,14 @@ import {
   type AgentEngineFormValues,
 } from "@/pages/automation/AgentEnginePanel";
 import {
+  AgentEilConfigSection,
+  agentEilIsActive,
+  agentEilPoliciesToJson,
+  buildAgentEilForPayload,
+  DEFAULT_AGENT_EIL_JSON,
+  extractAgentEil,
+} from "@/pages/automation/AgentEilConfigSection";
+import {
   buildAgentPlaybookFromBlocks,
   buildAgentUserCoreForPersist,
   countFilledPromptBlocks,
@@ -440,6 +448,9 @@ type AgentFormFields = {
   agentSupervisorEnabled: boolean;
   agentEngine: AgentEngineFormValues;
   knowledgeEngine: KnowledgeEngineFormValues;
+  /** Execution Intelligence Layer — behaviorConfig.eil */
+  eilEnabled: boolean;
+  eilJson: string;
 };
 
 function emptyAgentForm(): AgentFormFields {
@@ -510,6 +521,8 @@ function emptyAgentForm(): AgentFormFields {
       parallelKbPrefetchEnabled: false,
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
+    eilEnabled: false,
+    eilJson: DEFAULT_AGENT_EIL_JSON,
   };
 }
 
@@ -793,6 +806,11 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     agentSupervisorEnabled: agentEngine.supervisorEnabled,
     agentEngine,
     knowledgeEngine,
+    eilEnabled: (() => {
+      const eil = extractAgentEil(beh);
+      return eil != null && eil.enabled !== false;
+    })(),
+    eilJson: agentEilPoliciesToJson(extractAgentEil(beh)),
   };
 }
 
@@ -1019,6 +1037,12 @@ function formToPayload(
       instructionFallbacks: fallbacksResolved,
     },
   };
+
+  const eilPayload = buildAgentEilForPayload(form.eilEnabled, form.eilJson);
+  if (eilPayload) {
+    behaviorConfig.eil = eilPayload;
+  }
+
   if (form.knowledgeEngine.provider === "llamaindex") {
     behaviorConfig.knowledgeEngine = {
       provider: "llamaindex",
@@ -1404,6 +1428,13 @@ export function AutomationPage() {
     setLoading(true);
     setError("");
     try {
+      if (agentForm.eilEnabled) {
+        const eilPayload = buildAgentEilForPayload(agentForm.eilEnabled, agentForm.eilJson);
+        if (!eilPayload) {
+          setError("agent_eil_invalid");
+          return;
+        }
+      }
       const payload = formToPayload(agentForm, {
         knowledgeArticles: articles,
         customTools: tools,
@@ -1600,6 +1631,8 @@ export function AutomationPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
             {error === "validation"
               ? t("automationPage.agentValidation")
+              : error === "agent_eil_invalid"
+                ? t("automationPage.agentEilSaveInvalid")
               : error === "prompt_validation"
                 ? t("automationPage.promptValidation")
                 : error === "load_failed"
@@ -1743,6 +1776,7 @@ export function AutomationPage() {
               setAgentModalOpen(false);
               setTab("knowledge");
             }}
+            onReloadProfiles={loadAgentProfiles}
             orgTeams={orgTeamsForAgent}
             orgTags={orgTagsForAgent}
             suggestionLocale={locale}
@@ -1886,6 +1920,7 @@ function AgentsTab({
   onOpenToolsTab,
   applyPromptModulesSelection,
   onOpenKnowledgeTab,
+  onReloadProfiles,
   orgTeams,
   orgTags,
   suggestionLocale,
@@ -1910,6 +1945,7 @@ function AgentsTab({
   onOpenToolsTab: () => void;
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
   onOpenKnowledgeTab: () => void;
+  onReloadProfiles: () => Promise<void>;
   orgTeams: Array<{ id: string; name: string }>;
   orgTags: Array<{ id: string; name: string; color: string }>;
   suggestionLocale: string;
@@ -1933,6 +1969,11 @@ function AgentsTab({
   const [connectionsBotId, setConnectionsBotId] = useState<string | null>(null);
   const [promptValidationScore, setPromptValidationScore] = useState<number | null>(null);
   const [promptValidating, setPromptValidating] = useState(false);
+  const [applyingAgentEil, setApplyingAgentEil] = useState(false);
+  const [agentEilApplySummary, setAgentEilApplySummary] = useState<{
+    toolsUpdated: number;
+    policyIds: string[];
+  } | null>(null);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   const openAgentConnections = (row: AgentProfileRow) => {
@@ -1963,6 +2004,33 @@ function AgentsTab({
       setPromptValidationScore(null);
     } finally {
       setPromptValidating(false);
+    }
+  };
+
+  const applyAgentEilDefault = async () => {
+    if (!agentForm.editBotId) return;
+    setApplyingAgentEil(true);
+    setAgentEilApplySummary(null);
+    try {
+      const result = await api.post<{
+        eilEnabled: boolean;
+        policyIds: string[];
+        toolsUpdated: Array<{ id: string; name: string }>;
+      }>(`/automation/agent-profiles/${agentForm.editBotId}/apply-eil`, {});
+      setAgentForm((f) => ({
+        ...f,
+        eilEnabled: result.eilEnabled,
+        eilJson: DEFAULT_AGENT_EIL_JSON,
+      }));
+      await onReloadProfiles();
+      setAgentEilApplySummary({
+        toolsUpdated: result.toolsUpdated.length,
+        policyIds: result.policyIds,
+      });
+    } catch {
+      setAgentEilApplySummary(null);
+    } finally {
+      setApplyingAgentEil(false);
     }
   };
 
@@ -2366,6 +2434,14 @@ function AgentsTab({
                 {voice.elevenLabsEnabled ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-ink-600 dark:text-ink-400">
                     <Volume2 className="h-3 w-3" /> {t("automationPage.agentVoiceTag")}
+                  </span>
+                ) : null}
+                {agentEilIsActive(beh) ? (
+                  <span
+                    className="rounded-full border border-violet-300/80 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
+                    title={t("automationPage.agentEilBadgeTitle")}
+                  >
+                    {t("automationPage.agentEilBadge")}
                   </span>
                 ) : null}
                 <span className="text-[11px] text-ink-500">
@@ -3419,6 +3495,18 @@ function AgentsTab({
                 onValidatePrompt={agentForm.editBotId ? validateAgentPromptScore : undefined}
                 validatingPrompt={promptValidating}
                 t={t}
+              />
+
+              <AgentEilConfigSection
+                enabled={agentForm.eilEnabled}
+                onEnabledChange={(eilEnabled) => setAgentForm((f) => ({ ...f, eilEnabled }))}
+                json={agentForm.eilJson}
+                onJsonChange={(eilJson) => setAgentForm((f) => ({ ...f, eilJson }))}
+                t={t}
+                editBotId={agentForm.editBotId}
+                onApplyDefault={agentForm.editBotId ? applyAgentEilDefault : undefined}
+                applyingDefault={applyingAgentEil}
+                lastApplySummary={agentEilApplySummary}
               />
 
               <KnowledgeEnginePanel
