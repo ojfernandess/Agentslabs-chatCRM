@@ -3,6 +3,7 @@
  */
 
 import { buildExecutionContract, type BuildExecutionContractOpts } from "./ExecutionContractBuilder.js";
+import { availableToolSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import type { ExecutionContract, PreExecutionValidationResult } from "./types.js";
 
 export type ValidateBeforeExecutionOpts = BuildExecutionContractOpts & {
@@ -29,15 +30,13 @@ export function validateBeforeExecution(
     contract = { ...contract, requiredTools: dedupedRequired };
   }
 
-  // Auto-fix: filtrar required tools não disponíveis quando há alias
-  if (opts.availableToolNames?.length) {
+  // Auto-fix: filtrar required tools não disponíveis quando há alias oc_tool_
+  const toolCatalog =
+    opts.availableToolCatalog ??
+    (opts.availableToolNames ?? []).map((name) => ({ name, description: "" }));
+  if (toolCatalog.length > 0) {
     const filtered = contract.requiredTools.filter((req) =>
-      opts.availableToolNames!.some(
-        (a) =>
-          a.toLowerCase() === req.toLowerCase() ||
-          a.toLowerCase().includes(req.toLowerCase().replace(/-/g, "_")) ||
-          req.toLowerCase().includes(a.toLowerCase()),
-      ),
+      availableToolSatisfiesRequired(req, toolCatalog),
     );
     if (filtered.length < contract.requiredTools.length) {
       const dropped = contract.requiredTools.filter((r) => !filtered.includes(r));

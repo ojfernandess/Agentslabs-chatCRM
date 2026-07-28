@@ -59,9 +59,11 @@ import {
   buildKbToolPreamble,
   buildSchedulerPromptBlock,
   buildServerKbGuardBlock,
+  checkExecutionConsistency,
   evaluateSmartFallback,
   filterToolsByOrchestrator,
   initializeRuntimeV2,
+  recoverMissedMandatoryTool,
   refreshRuntimeV2Orchestrator,
   runDeterministicToolPhase,
   scheduleNextAction,
@@ -2309,6 +2311,16 @@ async function generateNativeAgentReplyCore(input: {
   ];
 
   // Execution Runtime V2 — orquestração determinística (allowlist + mandatoryNextTool)
+  const availableToolCatalog = [
+    ...tools.map((t) => ({
+      name: t.function.name,
+      description: t.function.description ?? "",
+    })),
+    ...customHttpTools.map((row) => ({
+      name: row.name,
+      description: (row.description ?? "").trim(),
+    })),
+  ];
   const availableToolNames = [
     ...tools.map((t) => t.function.name),
     ...customHttpTools.map((t) => t.name),
@@ -2317,6 +2329,7 @@ async function generateNativeAgentReplyCore(input: {
     behaviorConfig: behaviorConfigObj,
     userMessage,
     availableToolNames,
+    availableToolCatalog,
     lastAssistantMessage,
     flowSlots: sessionFlowSlots,
     existingTurnPlan: turnPlan,
@@ -2755,8 +2768,19 @@ async function generateNativeAgentReplyCore(input: {
           ex?.info(
             { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
             `Fase determinística concluída — ${det.toolsInvoked} tool(s)`,
-            { output: { phase: activeSchedule.phase } },
+            {
+              output: {
+                phase: activeSchedule.phase,
+                missedMandatory: det.missedMandatory,
+              },
+            },
           );
+          if (det.missedMandatory.length > 0) {
+            ex?.warn(
+              { id: "deterministic_tool", name: "Deterministic Tool Invoker" },
+              `Tools obrigatórias não invocadas pelo LLM: ${det.missedMandatory.join(", ")}`,
+            );
+          }
         }
 
         const r = await callOpenAiCompatibleChatWithTools({
@@ -2853,6 +2877,49 @@ async function generateNativeAgentReplyCore(input: {
         });
         replyText = r.text.trim();
         completedToolRounds = r.toolRounds;
+        runtimeV2Session = refreshRuntimeV2Orchestrator(
+          runtimeV2Session,
+          availableToolNames,
+          toolRoundOutcomes,
+        );
+        const postSchedule = scheduleNextAction({
+          session: runtimeV2Session,
+          allTools: tools,
+          toolOutcomes: toolRoundOutcomes,
+          replyOnlyRetry,
+        });
+        if (
+          !replyOnlyRetry &&
+          postSchedule.blockTextReply &&
+          postSchedule.scheduledTool &&
+          replyText.trim()
+        ) {
+          const recovery = await recoverMissedMandatoryTool({
+            session: runtimeV2Session,
+            allTools: tools,
+            toolOutcomes: toolRoundOutcomes,
+            availableToolNames,
+            replyOnlyRetry,
+            onToolCall: handleNativeToolCall,
+          });
+          if (recovery.recovered) {
+            runtimeV2Session = refreshRuntimeV2Orchestrator(
+              runtimeV2Session,
+              availableToolNames,
+              toolRoundOutcomes,
+            );
+            ex?.info(
+              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
+              `Tool obrigatória recuperada: ${recovery.scheduledTool}`,
+            );
+          } else {
+            ex?.warn(
+              { id: "deterministic_tool", name: "Mandatory Tool Recovery" },
+              `LLM respondeu sem invocar ${postSchedule.scheduledTool} — reply descartada`,
+            );
+            replyText = "";
+          }
+        }
         ex?.info(
           { id: "llm", name: "Modelo + tools" },
           "Geração com ferramentas concluída",
@@ -3410,6 +3477,10 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   if (engineConfig.strictMode && replyText.trim()) {
+    const consistency = checkExecutionConsistency({
+      contract: runtimeV2Session.contract,
+      toolOutcomes: toolRoundOutcomes,
+    });
     const strictEval = evaluateStrictModeGate({
       strictMode: true,
       replyText,
@@ -3423,6 +3494,8 @@ async function generateNativeAgentReplyCore(input: {
       kbHasUsefulExcerpts,
       llmSupervisorApproved,
       hasSubstantiveReply: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
+      executionContract: runtimeV2Session.contract,
+      consistencyDivergences: consistency.divergences,
     });
     ex?.info(
       { id: "strict_mode", name: "Modo estrito" },

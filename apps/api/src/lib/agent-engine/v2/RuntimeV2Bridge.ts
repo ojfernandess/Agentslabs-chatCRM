@@ -19,6 +19,7 @@ export type InitializeRuntimeV2Opts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
   availableToolNames: string[];
+  availableToolCatalog?: import("../validators/requiredToolNamesParser.js").ToolCatalogEntry[];
   lastAssistantMessage?: string;
   flowSlots?: Record<string, unknown>;
   systemPrompt?: string;
@@ -43,6 +44,7 @@ export function initializeRuntimeV2(opts: InitializeRuntimeV2Opts): RuntimeV2Ses
     behaviorConfig: opts.behaviorConfig,
     userMessage: opts.userMessage,
     availableToolNames: opts.availableToolNames,
+    availableToolCatalog: opts.availableToolCatalog,
     lastAssistantMessage: opts.lastAssistantMessage,
     flowSlots: opts.flowSlots,
     systemPrompt: opts.systemPrompt,

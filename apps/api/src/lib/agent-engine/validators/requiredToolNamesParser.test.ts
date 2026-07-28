@@ -5,6 +5,8 @@ import {
   resolveRequiredToolNamesFromBehavior,
   resolveRequiredToolNamesForTurn,
   toolOutcomeSatisfiesRequired,
+  availableToolSatisfiesRequired,
+  toolNamesMatch,
   parseCategoryToolMapFromPlaybook,
 } from "./requiredToolNamesParser.js";
 
@@ -271,5 +273,28 @@ test("continuation Passo 8 hint does not require consultar_reserva", () => {
   assert.ok(
     required.includes("buscar_conhecimento"),
     `should mandate KB tool from hint, got ${JSON.stringify(required)}`,
+  );
+});
+
+test("toolNamesMatch normalizes hyphen vs underscore", () => {
+  assert.equal(toolNamesMatch("embratur-reference", "audaar_embratur_reference"), true);
+  assert.equal(toolNamesMatch("audaar_check_in", "oc_tool_abc"), false);
+});
+
+test("availableToolSatisfiesRequired resolves oc_tool via description alias", () => {
+  assert.equal(
+    availableToolSatisfiesRequired("audaar_check_in", [
+      {
+        name: "oc_tool_93546189e980494bb825185fa44676af",
+        description: "Ferramenta HTTP «audaar_check_in» — concluir check-in",
+      },
+    ]),
+    true,
+  );
+  assert.equal(
+    availableToolSatisfiesRequired("audaar_check_in", [
+      { name: "oc_tool_93546189e980494bb825185fa44676af", description: "Generic API" },
+    ]),
+    false,
   );
 });

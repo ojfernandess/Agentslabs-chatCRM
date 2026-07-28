@@ -3,7 +3,7 @@
  */
 
 import { pendingRequiredToolNames } from "../contract/TurnExecutionContract.js";
-import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
+import { toolNamesMatch, toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import { findForbiddenPairViolation, isEscalationToolName } from "../validators/turnPolicyParser.js";
 import type { ExecutionContract, ToolOrchestratorDecision } from "./types.js";
 
@@ -15,10 +15,8 @@ export type OrchestrateToolsOpts = {
 };
 
 function matchesAvailable(required: string, available: string[]): string | null {
-  const req = required.toLowerCase().replace(/-/g, "_");
   for (const a of available) {
-    const al = a.toLowerCase().replace(/-/g, "_");
-    if (al === req || al.includes(req) || req.includes(al)) return a;
+    if (toolNamesMatch(required, a)) return a;
   }
   return null;
 }

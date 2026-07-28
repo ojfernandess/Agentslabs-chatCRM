@@ -9,6 +9,11 @@ import { buildExecutionIntelligencePlan } from "../eil/ExecutionPlanner.js";
 import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import { isConfirmationUserMessage } from "../validators/turnPolicyParser.js";
 import { isContinuationSyntheticMessage } from "../continuation/constants.js";
+import {
+  availableToolSatisfiesRequired,
+  playbookTextFromBehavior,
+  type ToolCatalogEntry,
+} from "../validators/requiredToolNamesParser.js";
 import { compilePromptContract } from "./PromptCompiler.js";
 import type {
   DetectedIntent,
@@ -36,6 +41,8 @@ export type BuildExecutionContractOpts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
   availableToolNames?: string[];
+  /** Catálogo com descrições — resolve oc_tool_ ↔ nome canónico na validação. */
+  availableToolCatalog?: ToolCatalogEntry[];
   lastAssistantMessage?: string;
   flowSlots?: Record<string, unknown>;
   priorFacts?: FactStore;
@@ -170,17 +177,26 @@ export function buildExecutionContract(opts: BuildExecutionContractOpts): Execut
     turnPlan,
   });
 
+  const toolCatalog: ToolCatalogEntry[] =
+    opts.availableToolCatalog ??
+    availableToolNames.map((name) => ({ name, description: "" }));
+
   const validationErrors: string[] = [];
-  if (!promptContract.audit.loadedCompletely && (opts.systemPrompt?.length ?? 0) === 0) {
+  const hasPlaybookSource =
+    playbookTextFromBehavior(opts.behaviorConfig ?? {}).trim().length > 80 ||
+    (opts.systemPrompt?.length ?? 0) > 80;
+  if (
+    !promptContract.audit.loadedCompletely &&
+    !hasPlaybookSource &&
+    (opts.systemPrompt?.length ?? 0) === 0
+  ) {
     validationErrors.push("Prompt contract: playbook não carregado completamente");
   }
   if (requiredTools.length > 0 && availableToolNames.length === 0) {
     validationErrors.push("Execution contract: ferramentas obrigatórias mas nenhuma tool disponível");
   }
   for (const req of requiredTools) {
-    const reachable = availableToolNames.some(
-      (a) => a.toLowerCase() === req.toLowerCase() || a.toLowerCase().includes(req.toLowerCase()),
-    );
+    const reachable = availableToolSatisfiesRequired(req, toolCatalog);
     if (!reachable && availableToolNames.length > 0) {
       validationErrors.push(`Tool obrigatória não disponível: ${req}`);
     }

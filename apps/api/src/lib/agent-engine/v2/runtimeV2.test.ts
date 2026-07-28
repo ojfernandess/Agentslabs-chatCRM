@@ -15,6 +15,11 @@ import {
 } from "./DeterministicToolInvoker.js";
 import { buildKbToolPreamble } from "./NativePromptAssembly.js";
 import { buildContractWorkflowFindings } from "../audit/WorkflowContractValidator.js";
+import {
+  computeReplyConfidence,
+  evaluateStrictModeGate,
+  STRICT_MODE_MIN_CONFIDENCE,
+} from "../validators/StrictModeGate.js";
 
 const SAMPLE_PLAYBOOK = `
 ## Restrições (obrigatório)
@@ -237,4 +242,51 @@ test("buildContractWorkflowFindings uses execution contract", () => {
     replyText: "",
   });
   assert.ok(findings.some((f) => f.phase === "F-V2" && f.id === "contract_required_tools"));
+});
+
+test("buildExecutionContract accepts oc_tool catalog alias", () => {
+  const contract = buildExecutionContract({
+    behaviorConfig: {
+      promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK },
+    },
+    userMessage: "sim",
+    availableToolNames: ["oc_tool_abc123"],
+    availableToolCatalog: [
+      {
+        name: "oc_tool_abc123",
+        description: "HTTP tool audaar_check_in — finalizar check-in",
+      },
+    ],
+    lastAssistantMessage: "Confirme a FICHA DE VIAGEM. Está tudo certo?",
+  });
+  assert.equal(
+    contract.validationErrors.some((e) => /audaar_check_in/.test(e)),
+    false,
+    `unexpected validation errors: ${contract.validationErrors.join("; ")}`,
+  );
+});
+
+test("strict mode caps confidence when contract checks fail despite LLM approval", () => {
+  const contract = buildExecutionContract({
+    behaviorConfig: {
+      promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK },
+    },
+    userMessage: "sim",
+    availableToolNames: ["audaar_check_in"],
+    lastAssistantMessage: "Confirme a FICHA DE VIAGEM. Está tudo certo?",
+  });
+  const evaluation = evaluateStrictModeGate({
+    strictMode: true,
+    replyText: "Check-in concluído com sucesso! Boa estadia.",
+    userMessage: "sim",
+    toolOutcomes: [],
+    llmSupervisorApproved: true,
+    hasSubstantiveReply: true,
+    executionContract: contract,
+  });
+  assert.ok(
+    evaluation.confidence < STRICT_MODE_MIN_CONFIDENCE,
+    `expected block, got confidence ${evaluation.confidence}`,
+  );
+  assert.equal(evaluation.blockSend, true);
 });

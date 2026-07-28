@@ -49,6 +49,8 @@ export {
 export {
   runDeterministicToolPhase,
   shouldRunDeterministicToolPhase,
+  recoverMissedMandatoryTool,
+  invokeMandatoryToolDirect,
   type DeterministicToolPhaseResult,
   type RunDeterministicToolPhaseOpts,
 } from "./DeterministicToolInvoker.js";

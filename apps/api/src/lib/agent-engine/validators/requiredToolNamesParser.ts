@@ -346,18 +346,45 @@ function listAvailableToolNames(behaviorConfig: Record<string, unknown>): string
   return [...new Set([...fromConfig, ...fromPlaybook, ...KNOWN_NATIVE_TOOL_NAMES])];
 }
 
+export type ToolCatalogEntry = { name: string; description?: string };
+
+/** Normaliza token de tool para comparação (hífen ↔ underscore). */
+export function normalizeToolNameToken(s: string): string {
+  return s.toLowerCase().replace(/-/g, "_");
+}
+
+/** Match genérico entre nome canónico e nome disponível (incl. oc_tool_). */
+export function toolNamesMatch(required: string, available: string): boolean {
+  const req = normalizeToolNameToken(required);
+  const avail = normalizeToolNameToken(available);
+  if (req === avail || avail.includes(req) || req.includes(avail)) return true;
+  const reqIsCheckIn =
+    /check_?in/.test(req) && !/upload|selfie|documento|document|photo|foto/.test(req);
+  const outIsCheckIn =
+    /check_?in/.test(avail) && !/upload|selfie|documento|document|photo|foto/.test(avail);
+  if (reqIsCheckIn && outIsCheckIn) return true;
+  return false;
+}
+
+/**
+ * Verifica se alguma tool do catálogo satisfaz um nome obrigatório do playbook.
+ * Cobre `audaar_check_in` vs `oc_tool_<uuid>` quando a descrição contém o alias.
+ */
+export function availableToolSatisfiesRequired(
+  requiredName: string,
+  catalog: ToolCatalogEntry[],
+): boolean {
+  return catalog.some((entry) =>
+    toolOutcomeSatisfiesRequired(requiredName, [
+      { name: entry.name, preview: entry.description ?? "" },
+    ]),
+  );
+}
+
 function filterAgainstAvailable(required: string[], available: string[]): string[] {
   if (available.length === 0) return required;
-  const avail = new Set(available.map((a) => a.toLowerCase()));
-  return required.filter((r) => {
-    const lower = r.toLowerCase();
-    if (avail.has(lower)) return true;
-    // Match parcial: playbook `consultar_reserva` vs tool `audaar_consultar_reserva`
-    for (const a of avail) {
-      if (a.includes(lower) || lower.includes(a)) return true;
-    }
-    return false;
-  });
+  const catalog = available.map((name) => ({ name, description: "" }));
+  return required.filter((r) => availableToolSatisfiesRequired(r, catalog));
 }
 
 /**

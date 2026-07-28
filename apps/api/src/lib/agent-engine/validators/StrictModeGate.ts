@@ -1,9 +1,21 @@
 import type { AgentSupervisorTrace, ToolValidationResult } from "../types.js";
-import { buildSupervisorTrace } from "../supervisor/AgentSupervisorService.js";
+import {
+  buildSupervisorTrace,
+  buildSupervisorValidationInput,
+} from "../supervisor/AgentSupervisorService.js";
 import { validateToolExecution } from "./ToolValidator.js";
+import type { ExecutionContract } from "../v2/types.js";
 
 /** Limiar mínimo de confiança para enviar resposta com modo estrito activo. */
 export const STRICT_MODE_MIN_CONFIDENCE = 90;
+
+const CRITICAL_CONTRACT_CHECK_IDS = new Set([
+  "contract_valid",
+  "contract_required_tools",
+  "contract_validation_passed",
+  "contract_consistency",
+  "contract_phase",
+]);
 
 export type StrictModeEvaluationInput = {
   strictMode: boolean;
@@ -15,6 +27,9 @@ export type StrictModeEvaluationInput = {
   hasSubstantiveReply?: boolean;
   toolValidation?: ToolValidationResult;
   supervisorTrace?: AgentSupervisorTrace;
+  executionContract?: ExecutionContract | null;
+  validationBlockSend?: boolean;
+  consistencyDivergences?: Array<{ kind: string; detail: string; severity: string }>;
 };
 
 export type StrictModeEvaluation = {
@@ -45,12 +60,20 @@ export function computeReplyConfidence(input: Omit<StrictModeEvaluationInput, "s
 
   const failedChecks = input.supervisorTrace?.checks.filter((c) => !c.passed) ?? [];
   score -= failedChecks.length * 14;
+  const criticalContractFailed = failedChecks.filter((c) =>
+    CRITICAL_CONTRACT_CHECK_IDS.has(c.id),
+  );
+  if (criticalContractFailed.length > 0) {
+    score = Math.min(score, 72 - criticalContractFailed.length * 10);
+  }
   if (input.supervisorTrace && !input.supervisorTrace.approved) {
     score = Math.min(score, 68);
   }
 
   if (input.llmSupervisorApproved === false) score = Math.min(score, 52);
-  if (input.llmSupervisorApproved === true) score = Math.min(100, score + 4);
+  if (input.llmSupervisorApproved === true && criticalContractFailed.length === 0) {
+    score = Math.min(100, score + 4);
+  }
 
   const substantive = input.hasSubstantiveReply ?? hasSubstantiveReply(input.replyText);
   if (!substantive) score = Math.min(score, 35);
@@ -81,16 +104,19 @@ export function evaluateStrictModeGate(input: StrictModeEvaluationInput): Strict
 
   const supervisorTrace =
     input.supervisorTrace ??
-    buildSupervisorTrace({
-      userMessage: input.userMessage,
-      replyText: input.replyText,
-      toolSummary: input.toolOutcomes.map((t) => `${t.name}:${t.ok}`).join(", "),
-      kbHasUsefulExcerpts: input.kbHasUsefulExcerpts === true,
-      successfulToolCount: input.toolOutcomes.filter((t) => t.ok).length,
-      totalToolCount: input.toolOutcomes.length,
-      strictMode: input.strictMode,
-      llmApproved: input.llmSupervisorApproved ?? undefined,
-    });
+    buildSupervisorTrace(
+      buildSupervisorValidationInput({
+        userMessage: input.userMessage,
+        replyText: input.replyText,
+        toolOutcomes: input.toolOutcomes,
+        kbMeta: { hasUsefulExcerpts: input.kbHasUsefulExcerpts === true, coversQuery: false },
+        strictMode: input.strictMode,
+        llmApproved: input.llmSupervisorApproved ?? undefined,
+        validationBlockSend: input.validationBlockSend,
+        executionContract: input.executionContract ?? null,
+        consistencyDivergences: input.consistencyDivergences,
+      }),
+    );
 
   const confidence = computeReplyConfidence({
     replyText: input.replyText,
