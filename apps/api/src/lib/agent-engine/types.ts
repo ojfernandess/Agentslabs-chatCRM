@@ -91,7 +91,12 @@ export type AgentRuntimeExecuteInput = {
     /** Regenerar só a resposta — não reexecutar tools HTTP já bem-sucedidas. */
     replyOnlyRetry?: boolean;
     /** Outcomes do turno anterior (mesmo user message) a reutilizar. */
-    priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+    priorSuccessfulToolOutcomes?: Array<{
+      name: string;
+      ok: boolean;
+      preview: string;
+      structuredPayload?: unknown;
+    }>;
   };
 };
 

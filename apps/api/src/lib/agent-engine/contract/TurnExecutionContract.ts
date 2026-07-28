@@ -137,15 +137,28 @@ export function shouldUseReplyOnlyRetryForTurn(opts: {
 
 /** Compacta previews de tools OK para grounding do retry reply-only (genérico). */
 export function formatPriorToolFactsForReplyOnly(
-  prior: Array<{ name: string; ok: boolean; preview: string }> | undefined,
-  maxChars = 3500,
+  prior:
+    | Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>
+    | undefined,
+  maxChars = 4500,
 ): string {
-  const ok = (prior ?? []).filter((t) => t.ok && t.preview.trim());
+  const ok = (prior ?? []).filter((t) => t.ok && (t.preview.trim() || t.structuredPayload != null));
   if (ok.length === 0) return "";
   const blocks: string[] = [];
   let used = 0;
   for (const t of ok) {
-    const preview = t.preview.trim().slice(0, 1200);
+    const fromPayload =
+      t.structuredPayload != null
+        ? (() => {
+            try {
+              return JSON.stringify(t.structuredPayload, null, 0).slice(0, 2000);
+            } catch {
+              return "";
+            }
+          })()
+        : "";
+    const preview = (fromPayload || t.preview.trim()).slice(0, 2000);
+    if (!preview) continue;
     const block = `### ${t.name}\n${preview}`;
     if (used + block.length > maxChars) break;
     blocks.push(block);
@@ -218,7 +231,12 @@ export function buildGenericReplyOnlyRetryPromptBlock(opts: {
 export function buildRetryExecutionHints(opts: {
   turnPlan: ExecutionTurnPlan;
   replyOnly: boolean;
-  priorSuccessfulToolOutcomes: Array<{ name: string; ok: boolean; preview: string }>;
+  priorSuccessfulToolOutcomes: Array<{
+    name: string;
+    ok: boolean;
+    preview: string;
+    structuredPayload?: unknown;
+  }>;
 }): NonNullable<AgentRuntimeExecuteInput["executionHints"]> {
   return {
     turnPlan: opts.turnPlan,

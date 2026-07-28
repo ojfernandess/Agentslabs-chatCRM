@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildDeterministicReplyFromKnowledge,
   buildDeterministicReplyFromToolOutcomes,
+  buildGroundedConfirmationFromToolOutcomes,
+  collectScalarFactsFromPayload,
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
   knowledgeToolFoundUsefulExcerpts,
@@ -329,6 +331,43 @@ test("buildDeterministicReplyFromToolOutcomes uses tool preview when LLM fails",
   ]);
   assert.match(text, /Reserva confirmada/);
   assert.equal(hasSubstantiveAgentReplyToCustomer(text), true);
+});
+
+test("buildGroundedConfirmationFromToolOutcomes uses structuredPayload scalars only", () => {
+  const text = buildGroundedConfirmationFromToolOutcomes([
+    {
+      name: "audaar_consultar_main_guest",
+      ok: true,
+      preview: '{"ok":true}',
+      structuredPayload: {
+        found: true,
+        name: "Odair",
+        documentNumber: "41026299802",
+        rg: undefined,
+        nested: { email: "a@b.com", secret: "nope" },
+      },
+    },
+  ]);
+  assert.ok(text);
+  assert.match(text!, /Odair/);
+  assert.match(text!, /41026299802/);
+  assert.match(text!, /a@b\.com/);
+  assert.doesNotMatch(text!, /undefined/);
+  assert.doesNotMatch(text!, /secret|nope/i);
+  assert.match(text!, /Confirma\?/);
+});
+
+test("collectScalarFactsFromPayload skips empty and sensitive keys", () => {
+  const facts = collectScalarFactsFromPayload({
+    name: "Ana",
+    password: "x",
+    empty: "",
+    token: "abc",
+  });
+  assert.deepEqual(
+    facts.map((f) => f.key),
+    ["name"],
+  );
 });
 
 test("knowledgeToolFoundUsefulExcerpts detects found true", () => {

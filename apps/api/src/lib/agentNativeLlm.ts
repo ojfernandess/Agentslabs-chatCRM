@@ -287,7 +287,7 @@ export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<Na
       parsed.found === true ||
       (parsed.skipped === true && parsed.ok !== false);
     const structuredPayload = extractStructuredPayloadFromToolOut(parsed, out);
-    return { name, ok, preview: preview.slice(0, 500), structuredPayload };
+    return { name, ok, preview: preview.slice(0, 2500), structuredPayload };
   } catch {
     return { name, ok: out.trim().length > 0 && !/error|failed|falhou/i.test(out), preview: out.slice(0, 500) };
   }
@@ -415,6 +415,127 @@ export function buildDeterministicReplyFromToolOutcomes(
     return "Já consultei o sistema com base no seu pedido. Pode confirmar o próximo passo ou partilhar mais algum detalhe para eu avançar?";
   }
   return "Tentei consultar o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido ou partilhar mais um detalhe (por exemplo código ou nome)?";
+}
+
+const GROUNDED_SKIP_KEYS = new Set([
+  "ok",
+  "found",
+  "skipped",
+  "error",
+  "bodypreview",
+  "reason",
+  "message",
+  "statuscode",
+  "headers",
+  "raw",
+  "html",
+  "base64",
+  "token",
+  "password",
+  "secret",
+  "apikey",
+  "authorization",
+]);
+
+function tryParseJsonObject(raw: string): unknown {
+  const t = raw.trim();
+  if (!t.startsWith("{") && !t.startsWith("[")) return undefined;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Flatten scalar leaves from tool JSON (segment-agnostic). */
+export function collectScalarFactsFromPayload(
+  value: unknown,
+  opts?: { maxEntries?: number; maxDepth?: number },
+): Array<{ key: string; value: string }> {
+  const maxEntries = opts?.maxEntries ?? 18;
+  const maxDepth = opts?.maxDepth ?? 4;
+  const out: Array<{ key: string; value: string }> = [];
+
+  const walk = (node: unknown, prefix: string, depth: number) => {
+    if (out.length >= maxEntries || depth > maxDepth || node == null) return;
+    if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+      const s = String(node).trim();
+      if (!s || s === "undefined" || s === "null") return;
+      if (s.length > 180) return;
+      if (/^[A-Za-z0-9+/=]{80,}$/.test(s)) return; // base64-ish
+      const key = prefix || "value";
+      if (GROUNDED_SKIP_KEYS.has(key.toLowerCase().replace(/[^a-z0-9]/g, ""))) return;
+      out.push({ key, value: s });
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (let i = 0; i < Math.min(node.length, 6); i++) {
+        walk(node[i], prefix ? `${prefix}[${i}]` : `[${i}]`, depth + 1);
+        if (out.length >= maxEntries) return;
+      }
+      return;
+    }
+    if (typeof node === "object") {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        const kl = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (GROUNDED_SKIP_KEYS.has(kl)) continue;
+        if (/password|secret|token|base64|authorization/.test(kl)) continue;
+        const next = prefix ? `${prefix}.${k}` : k;
+        walk(v, next, depth + 1);
+        if (out.length >= maxEntries) return;
+      }
+    }
+  };
+
+  walk(value, "", 0);
+  return out;
+}
+
+/**
+ * Confirmação grounded só com campos presentes no payload das tools.
+ * Usado quando o LLM inventa campos (RG, profissão, …) e o strict mode bloquearia o envio.
+ */
+export function buildGroundedConfirmationFromToolOutcomes(
+  toolOutcomes: Array<{
+    name: string;
+    ok: boolean;
+    preview: string;
+    structuredPayload?: unknown;
+  }>,
+): string | null {
+  const preferred = [
+    ...toolOutcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento"),
+    ...toolOutcomes.filter((t) => t.ok),
+  ];
+  const seen = new Set<string>();
+  const facts: Array<{ key: string; value: string }> = [];
+
+  for (const t of preferred) {
+    if (seen.has(t.name)) continue;
+    seen.add(t.name);
+    if (t.name === "buscar_conhecimento") continue;
+    const payload =
+      t.structuredPayload !== undefined && t.structuredPayload !== null
+        ? t.structuredPayload
+        : tryParseJsonObject(t.preview);
+    if (payload === undefined) continue;
+    for (const f of collectScalarFactsFromPayload(payload)) {
+      const dedupe = `${f.key}=${f.value}`.toLowerCase();
+      if (facts.some((x) => `${x.key}=${x.value}`.toLowerCase() === dedupe)) continue;
+      facts.push(f);
+      if (facts.length >= 16) break;
+    }
+    if (facts.length >= 16) break;
+  }
+
+  if (facts.length === 0) return null;
+
+  const lines = facts.map((f) => `- ${f.key}: ${f.value}`);
+  return (
+    "Encontrei estes dados no sistema. Por favor confirme se estão correctos:\n\n" +
+    lines.join("\n") +
+    "\n\nConfirma?"
+  ).slice(0, 3500);
 }
 
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
@@ -1744,6 +1865,7 @@ async function generateNativeAgentReplyCore(input: {
         ok: true,
         preview: t.preview,
         monitored: false,
+        structuredPayload: t.structuredPayload,
       });
     }
   }
@@ -2759,7 +2881,7 @@ async function generateNativeAgentReplyCore(input: {
     const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
     const toolSummary =
       toolRoundOutcomes.length > 0
-        ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 200)}`).join("\n")
+        ? toolRoundOutcomes.map((t) => `${t.name}: ${t.ok ? "ok" : "fail"} — ${t.preview.slice(0, 600)}`).join("\n")
         : "(nenhuma ferramenta invocada)";
     // EIL: resumo compacto de facts (sem playbook / regras de domínio)
     let eilFactsSummary = "";
@@ -2883,9 +3005,10 @@ async function generateNativeAgentReplyCore(input: {
       // NÃO forçar aprovação se o próprio supervisor LLM apontou invenção, ou se violou política de turno.
       const toolReportsNotFound = toolRoundOutcomes.some((t) => /"found"\s*:\s*false/i.test(t.preview));
       const isForcedKbDump = FORCED_KB_REPLY_PREFIX_RE.test(replyText);
-      const llmFlagsInvention = /invent|alucin|não podem ser validados|nao podem ser validados|não suportad|nao suportad/i.test(
-        summary,
-      );
+      const llmFlagsInvention =
+        /invent|alucin|não podem ser validados|nao podem ser validados|não suportad|nao suportad|não aparecem|nao aparecem|expande\s+v[aá]rios/i.test(
+          summary,
+        );
       const policyAlerts = (() => {
         const names = toolRoundOutcomes.map((t) => t.name);
         const pair = findForbiddenPairViolation(names, turnPolicy.forbiddenSameTurnPairs);
@@ -2898,6 +3021,21 @@ async function generateNativeAgentReplyCore(input: {
       if (turnPolicyAlerts.length > 0) {
         approved = false;
         summary = `${summary} [turn policy: ${turnPolicyAlerts.join("; ")}]`.slice(0, 500);
+      }
+      // Invenção após tools OK: substituir pela confirmação grounded (só campos do payload).
+      if (
+        !approved &&
+        llmFlagsInvention &&
+        successfulTools.length > 0 &&
+        policyAlerts.length === 0 &&
+        turnPolicyAlerts.length === 0
+      ) {
+        const grounded = buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
+        if (grounded) {
+          replyText = grounded;
+          approved = true;
+          summary = `${summary} [auto: reply grounded a partir do payload da tool]`.slice(0, 500);
+        }
       }
       if (
         !approved &&
@@ -3004,24 +3142,61 @@ async function generateNativeAgentReplyCore(input: {
         },
         "strict mode hard-block — reply not sent",
       );
-      // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
-      // Só limpa a reply para não enviar texto reprovado ao contacto.
-      return {
-        reply: "",
-        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
-      name,
-      ok,
-      preview,
-      structuredPayload,
-    })),
-        kbMeta: {
-          hasUsefulExcerpts: kbHasUsefulExcerpts,
-          coversQuery:
-            proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
-        },
-        llmSupervisorApproved,
-        llmSupervisorSummary,
-      };
+
+      // Última linha: tools OK → enviar confirmação grounded em vez de silêncio.
+      const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
+      if (successfulTools.length > 0) {
+        const grounded = buildGroundedConfirmationFromToolOutcomes(toolRoundOutcomes);
+        if (grounded) {
+          replyText = grounded;
+          llmSupervisorApproved = true;
+          llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — grounded tool payload]`
+            .trim()
+            .slice(0, 500);
+          ex?.info(
+            { id: "strict_mode", name: "Modo estrito" },
+            "Hard-block contornado — reply grounded a partir do payload da tool",
+            { output: { replyPreview: replyText.slice(0, 500) } },
+          );
+        } else {
+          return {
+            reply: "",
+            toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+              name,
+              ok,
+              preview,
+              structuredPayload,
+            })),
+            kbMeta: {
+              hasUsefulExcerpts: kbHasUsefulExcerpts,
+              coversQuery:
+                proactiveCoversQuery ||
+                knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
+            },
+            llmSupervisorApproved,
+            llmSupervisorSummary,
+          };
+        }
+      } else {
+        // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
+        // Só limpa a reply para não enviar texto reprovado ao contacto.
+        return {
+          reply: "",
+          toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+            name,
+            ok,
+            preview,
+            structuredPayload,
+          })),
+          kbMeta: {
+            hasUsefulExcerpts: kbHasUsefulExcerpts,
+            coversQuery:
+              proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
+          },
+          llmSupervisorApproved,
+          llmSupervisorSummary,
+        };
+      }
     }
   }
 
