@@ -574,6 +574,42 @@ export function buildCompletionSuccessAck(
   return "Operação concluída com sucesso.";
 }
 
+/**
+ * Fallback Passo 8 quando continuação/strict falha sem KB —
+ * usa flowSlots e placeholders "será confirmado em breve" (playbook SYZIYAJG).
+ */
+export function buildPostCheckinDeliveryFallback(
+  slots: Record<string, unknown> | null | undefined,
+): string {
+  const s = slots ?? {};
+  const localizer = String(
+    s.localizadorOuReservationId ?? s.localizer ?? s.reservationId ?? "",
+  ).trim();
+  const checkin = String(s.checkinDate ?? "").trim();
+  const checkout = String(s.checkoutDate ?? "").trim();
+  const period =
+    checkin || checkout
+      ? `${checkin || "…"} a ${checkout || "…"}`
+      : "será confirmado em breve";
+  return (
+    "Seu check-in foi concluído com sucesso! Veja abaixo os dados da sua reserva e todas as informações necessárias para sua estadia:\n\n" +
+    "—\n" +
+    `🔢 Número da reserva: ${localizer || "será confirmado em breve"}\n` +
+    `📅 Período: ${period}\n` +
+    "⏰ Check-in: será confirmado em breve\n" +
+    "⏰ Checkout: será confirmado em breve\n" +
+    "🔑 Senha da porta: será confirmado em breve\n" +
+    "—\n\n" +
+    "Endereço da hospedagem:\nserá confirmado em breve\n\n" +
+    "—\n" +
+    "Procedimento de entrada:\nserá confirmado em breve\n\n" +
+    "—\n" +
+    "Wi-Fi:\nRede: será confirmado em breve\nSenha: será confirmado em breve\n\n" +
+    "—\n" +
+    "Importante:\nserá confirmado em breve"
+  );
+}
+
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
   buscar_conhecimento: "native:knowledge_search",
   listar_equipas: "native:list_teams",
@@ -3265,6 +3301,19 @@ async function generateNativeAgentReplyCore(input: {
         "strict mode hard-block — reply not sent",
       );
 
+      // Continuação Passo 8: nunca silenciar — template playbook com flowSlots.
+      if (isContinuationSyntheticMessage(userMessage)) {
+        replyText = buildPostCheckinDeliveryFallback(sessionFlowSlots);
+        llmSupervisorApproved = true;
+        llmSupervisorSummary = `${llmSupervisorSummary ?? ""} [auto: strict rescue — post_checkin Passo 8 fallback]`
+          .trim()
+          .slice(0, 500);
+        ex?.info(
+          { id: "strict_mode", name: "Modo estrito" },
+          "Hard-block contornado — Passo 8 fallback (continuação)",
+          { output: { replyPreview: replyText.slice(0, 500) } },
+        );
+      } else {
       // Última linha: tools OK → ack de conclusão / avanço de formulário / grounded — nunca dump JSON.
       const successfulTools = toolRoundOutcomes.filter((t) => t.ok);
       if (successfulTools.length > 0) {
@@ -3331,6 +3380,7 @@ async function generateNativeAgentReplyCore(input: {
           llmSupervisorApproved,
           llmSupervisorSummary,
         };
+      }
       }
     }
   }

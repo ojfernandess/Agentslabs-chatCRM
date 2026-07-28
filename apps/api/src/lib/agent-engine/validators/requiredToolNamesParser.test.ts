@@ -223,6 +223,27 @@ test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   );
 });
 
+test("toolOutcomeSatisfiesRequired: audaar_check_in satisfies playbook hint s-check-in", () => {
+  assert.equal(
+    toolOutcomeSatisfiesRequired("s-check-in", [
+      { name: "audaar_check_in", preview: '{"ok":true}' },
+    ]),
+    true,
+  );
+  assert.equal(
+    toolOutcomeSatisfiesRequired("check_in", [
+      { name: "audaar_check_in", preview: "" },
+    ]),
+    true,
+  );
+  assert.equal(
+    toolOutcomeSatisfiesRequired("s-check-in", [
+      { name: "checkin_upload_selfie", preview: "" },
+    ]),
+    false,
+  );
+});
+
 test("continuation Passo 8 hint does not require consultar_reserva", () => {
   const playbook = `
 | C3 | **Check-in explícito** | \`fazer check-in\` + localizador | Chame \`audaar_consultar_reserva\` · **PROIBIDO** \`buscar_conhecimento\` | consultar_reserva |

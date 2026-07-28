@@ -14,7 +14,6 @@ import {
   runWorkflowGate,
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
-import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import {
   buildRetryExecutionHints,
@@ -22,6 +21,12 @@ import {
 } from "../contract/TurnExecutionContract.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import { prisma } from "../../../db.js";
+import {
+  buildCompletionSuccessAck,
+  buildPostCheckinDeliveryFallback,
+} from "../../agentNativeLlm.js";
+import { isContinuationSyntheticMessage } from "../continuation/constants.js";
+import { flowSlotsFromMemory, resolveEilTurn } from "../eil/runtimeBridge.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -47,7 +52,6 @@ import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observabili
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
-import { resolveEilTurn } from "../eil/runtimeBridge.js";
 import type { EilSnapshot, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
 
@@ -83,6 +87,7 @@ type GraphState = {
   /** Alertas do último Tool Validator — reply-only retry. */
   lastValidationAlerts: string[];
   turnPlan: ExecutionTurnPlan;
+  lastAssistantMessage: string;
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -113,6 +118,7 @@ const GraphStateAnnotation = Annotation.Root({
   eilSnapshot: Annotation<EilSnapshot | undefined>,
   lastValidationAlerts: Annotation<string[]>,
   turnPlan: Annotation<ExecutionTurnPlan>,
+  lastAssistantMessage: Annotation<string>,
 });
 
 /**
@@ -200,6 +206,7 @@ export class LangGraphRuntime implements AgentRuntime {
       eilFacts: {},
       lastValidationAlerts: [],
       turnPlan,
+      lastAssistantMessage,
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -501,6 +508,8 @@ export class LangGraphRuntime implements AgentRuntime {
         behaviorConfig: state.input.behaviorConfig,
         userMessage: state.input.message.body ?? "",
         memory,
+        lastAssistantMessage: state.lastAssistantMessage,
+        existingTurnPlan: state.turnPlan,
       });
       state.traceBuilder.setNextNode("select_tool");
       state.traceBuilder.endNode("load_memory");
@@ -525,6 +534,8 @@ export class LangGraphRuntime implements AgentRuntime {
         userMessage: state.input.message.body ?? "",
         memory: state.memory,
         priorFacts: state.eilFacts,
+        lastAssistantMessage: state.lastAssistantMessage,
+        existingTurnPlan: state.turnPlan,
       });
       state.traceBuilder.setNextNode("execute_tool");
       state.traceBuilder.endNode(
@@ -583,6 +594,8 @@ export class LangGraphRuntime implements AgentRuntime {
         toolOutcomes: nextOutcomes,
         replyText: execResult.reply,
         priorFacts: state.eilFacts,
+        lastAssistantMessage: state.lastAssistantMessage,
+        existingTurnPlan: state.turnPlan,
       });
       return {
         previousReply: state.reply,
@@ -646,6 +659,8 @@ export class LangGraphRuntime implements AgentRuntime {
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         priorFacts: state.eilFacts,
+        lastAssistantMessage: state.lastAssistantMessage,
+        existingTurnPlan: state.turnPlan,
       });
       state.traceBuilder.setNextNode("supervisor");
       state.traceBuilder.endNode(
@@ -691,9 +706,7 @@ export class LangGraphRuntime implements AgentRuntime {
         return { supervisorApproved: approved, supervisorTrace: supTrace };
       }
 
-      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, {
-        userMessage: state.input.message.body ?? "",
-      });
+      const turnPolicy = state.turnPlan.turnPolicy;
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
@@ -865,6 +878,27 @@ export class LangGraphRuntime implements AgentRuntime {
     const respond = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("respond", "Responder utilizador");
       if (state.blockReply) {
+        // Nunca silenciar pós-conclusão / continuação Passo 8 — fallback humano (playbook).
+        const completionAck = buildCompletionSuccessAck(state.toolOutcomes);
+        const isCont = isContinuationSyntheticMessage(state.input.message.body);
+        const fallback =
+          completionAck ??
+          (isCont
+            ? buildPostCheckinDeliveryFallback(flowSlotsFromMemory(state.memory))
+            : null);
+        if (fallback) {
+          if (state.eilSnapshot) state.traceBuilder.setEilSnapshot(state.eilSnapshot);
+          state.traceBuilder.endNode(
+            "respond",
+            "warn",
+            "blockReply contornado — fallback pós-check-in / conclusão",
+          );
+          state.input.executionLog?.warn(
+            { id: "langgraph_supervisor", name: "LangGraph Supervisor" },
+            "blockReply após retries — enviado fallback de conclusão ao hóspede",
+          );
+          return { reply: fallback, blockReply: false };
+        }
         if (state.eilSnapshot) {
           state.traceBuilder.setEilSnapshot(state.eilSnapshot);
         }
@@ -878,6 +912,16 @@ export class LangGraphRuntime implements AgentRuntime {
             : "Resposta bloqueada após esgotar retries do supervisor",
         );
         return { reply: "" };
+      }
+
+      // Continuação Passo 8 com reply vazia (strict engoliu) → template mínimo
+      if (
+        !state.reply.trim() &&
+        isContinuationSyntheticMessage(state.input.message.body)
+      ) {
+        const fallback = buildPostCheckinDeliveryFallback(flowSlotsFromMemory(state.memory));
+        state.traceBuilder.endNode("respond", "warn", "reply vazia na continuação — Passo 8 fallback");
+        return { reply: fallback };
       }
 
       if (state.eilSnapshot) {

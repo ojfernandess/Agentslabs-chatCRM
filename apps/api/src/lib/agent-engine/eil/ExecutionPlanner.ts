@@ -27,11 +27,14 @@ export type BuildExecutionIntelligencePlanOpts = BuildEilContextOpts & {
 export function buildExecutionIntelligencePlan(
   opts: BuildExecutionIntelligencePlanOpts,
 ): ExecutionIntelligencePlan {
-  const turnPlan = buildExecutionTurnPlan({
-    behaviorConfig: opts.behaviorConfig,
-    userMessage: opts.userMessage,
-    availableToolNames: opts.availableToolNames,
-  });
+  const turnPlan =
+    opts.existingTurnPlan ??
+    buildExecutionTurnPlan({
+      behaviorConfig: opts.behaviorConfig,
+      userMessage: opts.userMessage,
+      availableToolNames: opts.availableToolNames,
+      lastAssistantMessage: opts.lastAssistantMessage,
+    });
 
   const eilEnabled = isEilEnabled(opts.behaviorConfig);
   const eilCfg = parseEilBehaviorConfig(opts.behaviorConfig);

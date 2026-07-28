@@ -124,4 +124,8 @@ export type BuildEilContextOpts = {
   priorFacts?: FactStore;
   flowSlots?: Record<string, string | number | boolean>;
   turnPolicy?: TurnPolicy;
+  /** Última msg outbound — desambigua Portão C11 no plano EIL. */
+  lastAssistantMessage?: string;
+  /** Plano já resolvido pelo runtime — evita re-parse sem lastAssistant. */
+  existingTurnPlan?: import("../planner/ExecutionTurnPlan.js").ExecutionTurnPlan;
 };

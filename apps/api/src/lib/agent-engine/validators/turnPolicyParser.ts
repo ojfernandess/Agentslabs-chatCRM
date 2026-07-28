@@ -397,14 +397,17 @@ export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
 
 /**
  * Só a tool de finalização (ex.: audaar_check_in) — exclui uploads/selfies
- * que aparecem no playbook junto a S10 mas NÃO são o passo de confirmação da ficha.
+ * e atalhos de prosa do playbook (`s-check-in`) quando existe tool real.
  */
 export function primaryFinalizeToolHints(hints: string[]): string[] {
-  const primary = hints.filter(
+  let primary = hints.filter(
     (h) =>
       /check[_-]?in|submit|finalize|concluir|gravar|salvar|enviar|book|reservar/i.test(h) &&
       !/upload|selfie|documento|document|photo|foto/i.test(h),
   );
+  // Preferir identificadores reais (com `_`) — drop `s-check-in` / atalhos de 1 letra
+  const vendorLike = primary.filter((h) => /_/.test(h) && !/^[a-z]-/i.test(h));
+  if (vendorLike.length > 0) primary = vendorLike;
   return primary.length > 0 ? primary : hints;
 }
 

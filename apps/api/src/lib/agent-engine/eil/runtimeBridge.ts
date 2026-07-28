@@ -41,6 +41,8 @@ export type ResolveEilTurnOpts = {
   toolConfigs?: Array<{ name: string; config?: unknown }>;
   availableToolNames?: string[];
   priorFacts?: FactStore;
+  lastAssistantMessage?: string;
+  existingTurnPlan?: import("../planner/ExecutionTurnPlan.js").ExecutionTurnPlan;
 };
 
 export type ResolveEilTurnResult = {
@@ -85,6 +87,8 @@ export function resolveEilTurn(opts: ResolveEilTurnOpts): ResolveEilTurnResult {
     graph,
     toolsCalled,
     flowSlots,
+    lastAssistantMessage: opts.lastAssistantMessage,
+    existingTurnPlan: opts.existingTurnPlan,
   });
   const snapshot = buildEilSnapshot({
     behaviorConfig: opts.behaviorConfig,

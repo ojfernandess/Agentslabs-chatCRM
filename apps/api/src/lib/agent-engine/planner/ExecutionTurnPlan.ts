@@ -43,7 +43,7 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
-  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
+  let turnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
     userMessage,
     lastAssistantMessage,
   });
@@ -72,16 +72,33 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
   // Confirmação curta: exigir a tool exclusiva do Portão (titular→S9 / ficha→S10)
   if (!isContinuation && isConfirmationUserMessage(userMessage)) {
     const gate = classifyConfirmationGate(lastAssistantMessage);
+    const available = (opts.availableToolNames ?? []).map((n) => n.toLowerCase());
+    const filterAvailable = (names: string[]) => {
+      if (available.length === 0) return names;
+      const kept = names.filter((n) =>
+        available.some(
+          (a) =>
+            a === n.toLowerCase() ||
+            a.includes(n.toLowerCase().replace(/-/g, "_")) ||
+            n.toLowerCase().replace(/-/g, "_").includes(a),
+        ),
+      );
+      return kept.length > 0 ? kept : names;
+    };
     if (gate === "titular_mirror") {
       matchedPatternIds.push("confirmation_titular");
       if (turnPolicy.exclusiveAllowedTools?.length) {
-        const merged = new Set([...requiredToolNames, ...turnPolicy.exclusiveAllowedTools]);
+        const exclusive = filterAvailable(turnPolicy.exclusiveAllowedTools);
+        turnPolicy = { ...turnPolicy, exclusiveAllowedTools: exclusive };
+        const merged = new Set([...requiredToolNames, ...exclusive]);
         requiredToolNames = [...merged];
       }
     } else if (gate === "travel_form_mirror") {
       matchedPatternIds.push("confirmation_travel_form");
       if (turnPolicy.exclusiveAllowedTools?.length) {
-        const merged = new Set([...requiredToolNames, ...turnPolicy.exclusiveAllowedTools]);
+        const exclusive = filterAvailable(turnPolicy.exclusiveAllowedTools);
+        turnPolicy = { ...turnPolicy, exclusiveAllowedTools: exclusive };
+        const merged = new Set([...requiredToolNames, ...exclusive]);
         requiredToolNames = [...merged];
       }
     } else if (gate === "data_collection") {

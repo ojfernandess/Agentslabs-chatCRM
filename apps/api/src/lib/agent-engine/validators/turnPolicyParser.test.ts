@@ -471,14 +471,14 @@ test("buildExecutionTurnPlan requires embratur on sim after titular mirror", () 
   assert.ok(plan.turnPolicy.exclusiveAllowedTools?.some((n) => /embratur|reference/i.test(n)));
 });
 
-test("primaryFinalizeToolHints drops upload tools", () => {
+test("primaryFinalizeToolHints drops upload tools and prose s-check-in", () => {
   const primary = primaryFinalizeToolHints([
     "audaar_check_in",
     "checkin_upload_selfie",
     "checkin_upload_documento",
     "s-check-in",
   ]);
-  assert.deepEqual(primary.sort(), ["audaar_check_in", "s-check-in"].sort());
+  assert.deepEqual(primary, ["audaar_check_in"]);
 });
 
 test("after check_in OK, KB is allowed same turn (Passo 8)", () => {

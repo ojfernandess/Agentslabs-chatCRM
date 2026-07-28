@@ -480,13 +480,22 @@ export function toolOutcomeSatisfiesRequired(
   requiredName: string,
   outcomes: Array<{ name: string; preview?: string }>,
 ): boolean {
-  const req = requiredName.toLowerCase();
+  const norm = (s: string) => s.toLowerCase().replace(/-/g, "_");
+  const req = norm(requiredName);
   for (const o of outcomes) {
-    const name = (o.name ?? "").toLowerCase();
+    const name = norm(o.name ?? "");
     if (name === req) return true;
     if (name.includes(req) || req.includes(name)) return true;
+    // Família check_in: audaar_check_in satisfaz s-check-in / check_in (não uploads)
+    const reqIsCheckIn =
+      /check_?in/.test(req) && !/upload|selfie|documento|document|photo|foto/.test(req);
+    const outIsCheckIn =
+      /check_?in/.test(name) && !/upload|selfie|documento|document|photo|foto/.test(name);
+    if (reqIsCheckIn && outIsCheckIn) return true;
     const preview = (o.preview ?? "").toLowerCase();
-    if (preview.includes(`"name":"${req}"`) || preview.includes(req)) return true;
+    if (preview.includes(`"name":"${req}"`) || preview.includes(requiredName.toLowerCase())) {
+      return true;
+    }
   }
   return false;
 }
