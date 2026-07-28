@@ -8,7 +8,11 @@ import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
-import { resolveTurnPolicy, shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
+import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
+import {
+  buildRetryExecutionHints,
+  shouldUseReplyOnlyRetryForTurn,
+} from "../contract/TurnExecutionContract.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
@@ -35,6 +39,10 @@ export type OrchestrationState = {
   eilSnapshot?: EilSnapshot;
   /** Checks do último Supervisor — usados no reply-only retry. */
   lastSupervisorChecks?: Array<{ id: string; passed: boolean }>;
+  /** Alertas do último Tool Validator — usados no reply-only retry. */
+  lastValidationAlerts?: string[];
+  /** Plano de turno calculado uma vez — fonte única de verdade. */
+  turnPlan?: import("../planner/ExecutionTurnPlan.js").ExecutionTurnPlan;
 };
 
 export type OrchestrationHook = (state: OrchestrationState) => Promise<void>;
@@ -73,6 +81,13 @@ export async function runOrchestratedRuntime(
   };
 
   const maxRetries = plan.maxRetries ?? 2;
+  const turnPlan =
+    input.executionHints?.turnPlan ??
+    buildExecutionTurnPlan({
+      behaviorConfig: input.behaviorConfig,
+      userMessage: input.message.body ?? "",
+    });
+  state.turnPlan = turnPlan;
 
   for (const hook of plan.preMemory ?? []) {
     await hook(state);
@@ -87,17 +102,21 @@ export async function runOrchestratedRuntime(
   for (;;) {
     const replyOnly =
       state.retryCount > 0 &&
-      shouldUseReplyOnlyRetry({
+      shouldUseReplyOnlyRetryForTurn({
+        turnPlan,
         toolOutcomes: state.toolOutcomes,
         supervisorChecks: state.lastSupervisorChecks,
+        validationAlerts: state.lastValidationAlerts,
       });
     const priorOk = state.toolOutcomes.filter((t) => t.ok);
     traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
     const { reply, toolOutcomes = [], kbMeta } = await executor({
       ...input,
-      executionHints: replyOnly
-        ? { replyOnlyRetry: true, priorSuccessfulToolOutcomes: priorOk }
-        : input.executionHints,
+      executionHints: buildRetryExecutionHints({
+        turnPlan,
+        replyOnly,
+        priorSuccessfulToolOutcomes: priorOk,
+      }),
     });
     state.reply = reply;
     state.toolOutcomes =
@@ -122,10 +141,10 @@ export async function runOrchestratedRuntime(
 
     traceBuilder.startNode("validate_result", "Validar resultado");
     const userMessage = input.message.body ?? "";
-    const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
-      userMessage,
-    });
-    const turnPolicy = resolveTurnPolicy(input.behaviorConfig, { userMessage });
+    const requiredToolNames = turnPlan.requiredToolNames.length
+      ? turnPlan.requiredToolNames
+      : resolveRequiredToolNamesForValidation(input.behaviorConfig, { userMessage });
+    const turnPolicy = turnPlan.turnPolicy;
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,
@@ -203,6 +222,7 @@ export async function runOrchestratedRuntime(
       state.supervisorApproved = !block;
       if (block) state.blockReply = true;
     }
+    state.lastValidationAlerts = validation.alerts;
 
     if (plan.postExecute) {
       const decision = await plan.postExecute(state);

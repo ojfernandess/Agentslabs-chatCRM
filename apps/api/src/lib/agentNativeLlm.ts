@@ -38,15 +38,17 @@ import {
 import {
   findForbiddenPairViolation,
   isLikelyMutableOrCompletionTool,
-  resolveTurnPolicy,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
   validateToolOutcomesAgainstTurnPolicy,
-  buildReplyOnlyRetryPromptBlock,
 } from "./agent-engine/validators/turnPolicyParser.js";
-import { resolveRequiredToolNamesForTurn } from "./agent-engine/validators/requiredToolNamesParser.js";
+import {
+  buildGenericReplyOnlyRetryPromptBlock,
+  resolveTurnExecutionContext,
+  shouldAllowPlainChatFallback,
+} from "./agent-engine/contract/TurnExecutionContract.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
@@ -1660,7 +1662,6 @@ async function generateNativeAgentReplyCore(input: {
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"
       ? (profile.behaviorConfig as Record<string, unknown>)
       : {};
-  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage });
   const executionHints = input.executionHints;
   let customHttpTools: AutomationHttpToolRow[] = [];
   if (nativeHttpCustomToolIds.length > 0) {
@@ -1681,10 +1682,14 @@ async function generateNativeAgentReplyCore(input: {
       .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
-  const requiredToolNamesForTurn = resolveRequiredToolNamesForTurn(behaviorConfigObj, {
+  const { turnPlan } = resolveTurnExecutionContext({
+    behaviorConfig: behaviorConfigObj,
     userMessage,
     availableToolNames: customHttpTools.map((t) => t.name),
+    existingTurnPlan: executionHints?.turnPlan,
   });
+  const turnPolicy = turnPlan.turnPolicy;
+  const requiredToolNamesForTurn = turnPlan.requiredToolNames;
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
   const allowedTagIds = flags.assign_contact_tags
     ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
@@ -1918,7 +1923,7 @@ async function generateNativeAgentReplyCore(input: {
     : "";
 
   const replyOnlyRetryPrompt = executionHints?.replyOnlyRetry
-    ? buildReplyOnlyRetryPromptBlock(userMessageRaw)
+    ? buildGenericReplyOnlyRetryPromptBlock({ turnPlan, userMessage: userMessageRaw })
     : "";
 
   let sessionFlowSlots: AutomationFlowSlots = { ...(automationCtx.state.flowSlots ?? {}) };
@@ -2436,6 +2441,26 @@ async function generateNativeAgentReplyCore(input: {
             rateLimitLikely: err instanceof Error && /HTTP 429|rate.?limit/i.test(err.message),
           },
         });
+        const allowPlainFallback = shouldAllowPlainChatFallback({
+          turnPlan,
+          toolsAlreadyRun: toolRoundOutcomes,
+        });
+        if (!allowPlainFallback) {
+          log.warn(
+            {
+              botId: bot.id,
+              pendingRequired: requiredToolNamesForTurn,
+              toolsAlreadyRun: toolRoundOutcomes.map((t) => t.name),
+            },
+            "Plain chat fallback blocked: required tools still pending for this turn",
+          );
+          ex?.warn(
+            { id: "llm", name: "Modelo (fallback)" },
+            "Fallback plain-chat bloqueado — ferramentas obrigatórias pendentes",
+            { output: { pendingRequired: requiredToolNamesForTurn } },
+          );
+          replyText = "";
+        } else {
         try {
           const r = await callOpenAiCompatibleChat({
             baseUrl: apiBaseUrl.replace(/\/+$/, ""),
@@ -2466,6 +2491,7 @@ async function generateNativeAgentReplyCore(input: {
             },
           );
           replyText = "";
+        }
         }
       }
     } else if (provider === "google_gemini") {

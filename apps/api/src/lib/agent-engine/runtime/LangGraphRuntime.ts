@@ -14,8 +14,12 @@ import {
   runWorkflowGate,
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
-import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
+import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
+import {
+  buildRetryExecutionHints,
+  shouldUseReplyOnlyRetryForTurn,
+} from "../contract/TurnExecutionContract.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
   buildSupervisorTrace,
@@ -75,6 +79,9 @@ type GraphState = {
   eilPlan?: ExecutionIntelligencePlan;
   eilFacts: FactStore;
   eilSnapshot?: EilSnapshot;
+  /** Alertas do último Tool Validator — reply-only retry. */
+  lastValidationAlerts: string[];
+  turnPlan: ExecutionTurnPlan;
 };
 
 const GraphStateAnnotation = Annotation.Root({
@@ -103,6 +110,8 @@ const GraphStateAnnotation = Annotation.Root({
   eilPlan: Annotation<ExecutionIntelligencePlan | undefined>,
   eilFacts: Annotation<FactStore>,
   eilSnapshot: Annotation<EilSnapshot | undefined>,
+  lastValidationAlerts: Annotation<string[]>,
+  turnPlan: Annotation<ExecutionTurnPlan>,
 });
 
 /**
@@ -147,8 +156,18 @@ export class LangGraphRuntime implements AgentRuntime {
     });
 
     const checkpointStore = input.engineConfig.checkpointStore ?? "memory";
+    const turnPlan =
+      input.executionHints?.turnPlan ??
+      buildExecutionTurnPlan({
+        behaviorConfig: input.behaviorConfig,
+        userMessage: input.message.body ?? "",
+      });
+    const inputWithTurnPlan: AgentRuntimeExecuteInput = {
+      ...input,
+      executionHints: { ...input.executionHints, turnPlan },
+    };
     const initialState: GraphState = {
-      input,
+      input: inputWithTurnPlan,
       memory: {},
       reply: "",
       toolOutcomes: [],
@@ -162,6 +181,8 @@ export class LangGraphRuntime implements AgentRuntime {
       intentHints: { kbQueryLikely: false },
       kbPrefetchResults: [],
       eilFacts: {},
+      lastValidationAlerts: [],
+      turnPlan,
     };
 
     const config = { configurable: { thread_id: threadId } };
@@ -507,20 +528,21 @@ export class LangGraphRuntime implements AgentRuntime {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
       const replyOnly =
         state.retryCount > 0 &&
-        shouldUseReplyOnlyRetry({
+        shouldUseReplyOnlyRetryForTurn({
+          turnPlan: state.turnPlan,
           toolOutcomes: state.toolOutcomes,
           supervisorChecks: state.supervisorTrace?.checks,
+          validationAlerts: state.lastValidationAlerts,
         });
       const priorOk = state.toolOutcomes.filter((t) => t.ok);
       const execResult = await executor({
         ...state.input,
         kbPrefetchAppendix: state.kbPrefetchAppendix,
-        executionHints: replyOnly
-          ? {
-              replyOnlyRetry: true,
-              priorSuccessfulToolOutcomes: priorOk,
-            }
-          : state.input.executionHints,
+        executionHints: buildRetryExecutionHints({
+          turnPlan: state.turnPlan,
+          replyOnly,
+          priorSuccessfulToolOutcomes: priorOk,
+        }),
       });
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode(
@@ -561,10 +583,12 @@ export class LangGraphRuntime implements AgentRuntime {
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
       const userMessage = state.input.message.body ?? "";
-      const requiredToolNames = resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
-        userMessage,
-      });
-      const turnPolicy = resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
+      const requiredToolNames = state.turnPlan.requiredToolNames.length
+        ? state.turnPlan.requiredToolNames
+        : resolveRequiredToolNamesForValidation(state.input.behaviorConfig, {
+            userMessage,
+          });
+      const turnPolicy = state.turnPlan.turnPolicy;
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
@@ -613,6 +637,7 @@ export class LangGraphRuntime implements AgentRuntime {
       );
       return {
         validationBlockSend: validation.blockSend,
+        lastValidationAlerts: validation.alerts,
         eilPlan: eil.plan,
         eilFacts: eil.facts,
         eilSnapshot: eil.snapshot,

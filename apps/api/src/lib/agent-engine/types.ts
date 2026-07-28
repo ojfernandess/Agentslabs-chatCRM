@@ -86,6 +86,8 @@ export type AgentRuntimeExecuteInput = {
    * Genérico — não específico de segmento/agente.
    */
   executionHints?: {
+    /** Plano de turno calculado uma vez pelo runtime — fonte única de verdade. */
+    turnPlan?: import("./planner/ExecutionTurnPlan.js").ExecutionTurnPlan;
     /** Regenerar só a resposta — não reexecutar tools HTTP já bem-sucedidas. */
     replyOnlyRetry?: boolean;
     /** Outcomes do turno anterior (mesmo user message) a reutilizar. */

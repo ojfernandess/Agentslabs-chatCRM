@@ -28,6 +28,17 @@ export {
   buildExecutionTurnPlan,
   type ExecutionTurnPlan,
 } from "./planner/ExecutionTurnPlan.js";
+export {
+  resolveTurnExecutionContext,
+  assertToolAllowedBeforeExec,
+  shouldAllowPlainChatFallback,
+  shouldUseReplyOnlyRetryForTurn,
+  buildGenericReplyOnlyRetryPromptBlock,
+  buildRetryExecutionHints,
+  ensureTurnPlanInInput,
+  pendingRequiredToolNames,
+  type TurnExecutionContext,
+} from "./contract/TurnExecutionContract.js";
 export * from "./eil/index.js";
 export {
   parseRequiredToolNamesFromText,
