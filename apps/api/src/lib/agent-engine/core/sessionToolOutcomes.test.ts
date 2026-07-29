@@ -36,3 +36,15 @@ test("buildPersistedFlowSlots preserves session tools and skips EIL overwrite of
   assert.ok(names.includes("embratur-reference"));
   assert.equal(slots.profilePhotoId, 99);
 });
+
+test("buildPersistedFlowSlots never persists failed tool outcomes", () => {
+  const slots = buildPersistedFlowSlots({
+    baseFlowSlots: {},
+    toolOutcomes: [
+      { name: "audaar_check_in", ok: false },
+      { name: "embratur-reference", ok: true },
+    ],
+  });
+  const names = readSessionSatisfiedToolNames(slots);
+  assert.deepEqual(names, ["embratur-reference"]);
+});

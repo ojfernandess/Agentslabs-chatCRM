@@ -2,6 +2,7 @@ import type { AgentEngineConfig } from "../types.js";
 import type { AgentRuntimeExecuteInput } from "../types.js";
 import type { TurnContext } from "../core/types.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
+import { turnPolicyPreExecBlockReason } from "../validators/turnPolicyParser.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -53,14 +54,17 @@ export function planScheduledToolInvocations(
   turnContext: TurnContext,
   existingOutcomes: Array<{ name: string; ok?: boolean }> = [],
 ): ScheduledToolInvocation[] {
+  const policy = turnContext.promptContract.turnPolicy;
   const pending = turnContext.executionContract.pendingToolNames.filter(
     (name) => !toolOutcomeSatisfiesRequired(name, existingOutcomes),
   );
-  return pending.map((toolName) => ({
-    toolName,
-    args: buildScheduledToolArgs(toolName, turnContext),
-    reason: "execution_contract_required" as const,
-  }));
+  return pending
+    .filter((toolName) => !turnPolicyPreExecBlockReason(toolName, policy))
+    .map((toolName) => ({
+      toolName,
+      args: buildScheduledToolArgs(toolName, turnContext),
+      reason: "execution_contract_required" as const,
+    }));
 }
 
 export function shouldRunToolScheduler(

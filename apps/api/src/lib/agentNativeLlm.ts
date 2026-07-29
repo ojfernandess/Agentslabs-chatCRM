@@ -46,6 +46,7 @@ import {
   turnPolicyPreExecBlockReasonForTurn,
   validateToolOutcomesAgainstTurnPolicy,
 } from "./agent-engine/validators/turnPolicyParser.js";
+import { playbookTextFromBehavior } from "./agent-engine/validators/requiredToolNamesParser.js";
 import {
   formatExecutionContractForSupervisor,
   executionContractViolationAlerts,
@@ -2123,6 +2124,17 @@ async function generateNativeAgentReplyCore(input: {
     existingToolNames: toolRoundOutcomes.map((t) => t.name),
     priorToolNames: priorSessionToolNames,
     flowSlots: sessionFlowSlots,
+    playbookText: playbookTextFromBehavior(behaviorConfigObj),
+    catalogToolNames: [
+      ...customHttpTools.map((r) => r.name),
+      "buscar_conhecimento",
+      "transfer_to_team",
+      "call_human",
+      "set_conversation_status",
+      "listar_equipas",
+      "atribuir_etiquetas",
+      "listar_etiquetas",
+    ],
   });
   const tools: OpenAiToolDefinition[] = [
     ...buildOpenAiTools(flags, {

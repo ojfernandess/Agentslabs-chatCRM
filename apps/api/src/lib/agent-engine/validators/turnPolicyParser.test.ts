@@ -78,8 +78,9 @@ test("turnPolicyPreExecBlockReason blocks transfer on sim", () => {
   assert.ok(turnPolicyPreExecBlockReason("call_human", policy));
   assert.ok(turnPolicyPreExecBlockReason("set_conversation_status", policy));
   assert.equal(turnPolicyPreExecBlockReason("embratur-reference", policy), null);
-  // Ficha→sim→check_in não é hard-block por exclusividade S9
-  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
+  // S9 pendente: check-in / upload NÃO podem correr — ficam para S10 / ficha
+  assert.ok(turnPolicyPreExecBlockReason("audaar_check_in", policy));
+  assert.ok(turnPolicyPreExecBlockReason("checkin_upload_documento", policy));
 });
 
 test("blockEscalation alone blocks transfer even without exclusive tools", () => {
@@ -102,7 +103,7 @@ test("resolveTurnPolicy on sim with pending S9 sets exclusive embratur", () => {
     policy.exclusiveAllowedTools?.some((t) => /embratur|reference/i.test(t)),
     "expected exclusive S9 tool on sim when prerequisite not satisfied",
   );
-  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
+  assert.ok(turnPolicyPreExecBlockReason("audaar_check_in", policy));
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
@@ -248,12 +249,19 @@ test("turnPolicyPreExecBlockReasonForTurn blocks forbidden pair before second to
     { userMessage: "sim" },
   );
   assert.equal(turnPolicyPreExecBlockReasonForTurn("embratur-reference", [], policy), null);
+  // On exclusive S9 ("sim"), check_in is blocked by category first; pair message applies when exclusive is unset.
   const blocked = turnPolicyPreExecBlockReasonForTurn(
     "audaar_check_in",
     ["embratur-reference"],
     policy,
   );
-  assert.ok(blocked && /proibid/i.test(blocked));
+  assert.ok(blocked && /(proibid|fora da categoria)/i.test(blocked));
+  const pairOnly = turnPolicyPreExecBlockReasonForTurn(
+    "audaar_check_in",
+    ["embratur-reference"],
+    { ...policy, exclusiveAllowedTools: null },
+  );
+  assert.ok(pairOnly && /proibid/i.test(pairOnly));
 });
 
 test("formatTurnPolicyForSupervisor summarizes blockEscalation and pairs", () => {
@@ -377,7 +385,42 @@ test("toolAliasesToOmitFromCatalog omits tools when playbook slot preconditions 
     policy,
     existingToolNames: [],
     flowSlots: { profilePhotoId: 123, documentPhotoId: 456 },
+    playbookText: playbook,
+    catalogToolNames: ["checkin_upload_selfie", "checkin_upload_documento"],
   });
   assert.ok(toolNameMatchesOmitAlias("checkin_upload_selfie", omit));
   assert.ok(toolNameMatchesOmitAlias("checkin_upload_documento", omit));
+});
+
+test("toolAliasesToOmitFromCatalog defaults omit uploads when photo slots present without playbook rule", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "olá" },
+  );
+  assert.equal(policy.omitToolsWhenSlotsPresent.length, 0);
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: [],
+    flowSlots: { profilePhotoId: 208493, documentPhotoId: 208494 },
+    playbookText: SAMPLE_PLAYBOOK,
+    catalogToolNames: ["checkin_upload_documento", "checkin_upload_selfie", "audaar_check_in"],
+  });
+  assert.ok(toolNameMatchesOmitAlias("checkin_upload_documento", omit));
+  assert.ok(toolNameMatchesOmitAlias("checkin_upload_selfie", omit));
+});
+
+test("validateToolOutcomesAgainstTurnPolicy flags check_in during exclusive S9", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.ok(policy.exclusiveAllowedTools?.length);
+  const alerts = validateToolOutcomesAgainstTurnPolicy(
+    [
+      { name: "embratur-reference", ok: true },
+      { name: "audaar_check_in", ok: true },
+    ],
+    policy,
+  );
+  assert.ok(alerts.some((a) => /fora da categoria|proibid/i.test(a)));
 });

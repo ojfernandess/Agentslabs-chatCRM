@@ -4,6 +4,24 @@ import {
   playbookTextFromBehavior,
   toolOutcomeSatisfiesRequired,
 } from "./requiredToolNamesParser.js";
+import {
+  COMPLETION_LINE_RE,
+  CONFIRMATION_USER_MSG_RE,
+  EXCLUSIVE_LANGUAGE_RE,
+  extractSlotKeysFromLine,
+  hasFilledMediaOrDocumentSlots,
+  isLikelyMutableOrCompletionTool,
+  isLikelyUploadOrMediaTool,
+  lineDescribesConfirmationExclusiveTools,
+  looksLikeFlowSlotKey,
+  slotKeyIsFilled,
+  TURN_TOOL_TABLE_MARKER_RE,
+} from "./playbookRuntimePolicy.js";
+
+export {
+  isLikelyMutableOrCompletionTool,
+  isLikelyUploadOrMediaTool,
+} from "./playbookRuntimePolicy.js";
 
 export type PriorToolOutcome = { name: string; ok?: boolean };
 
@@ -19,8 +37,6 @@ export type TurnPolicy = {
   /**
    * Se não-null, apenas estas tools (ou aliases parciais) são permitidas neste turno.
    * null = sem restrição exclusiva.
-   * Nota: tools de conclusão (check-in) não são hard-blockadas por exclusividade
-   * (ex.: Ficha→sim→audaar_check_in).
    */
   exclusiveAllowedTools: string[] | null;
   /** Nomes que o playbook trata como conclusão / mutação (check-in, submit, etc.). */
@@ -36,9 +52,10 @@ export type TurnPolicy = {
   blockEscalation: boolean;
 };
 
-const CONFIRMATION_MSG_RE = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|não|nao|no)$/i;
+const FORBIDDEN_PAIR_LINE_RE =
+  /proibid[oa]|n[aã]o\s+mistur|mesmo\s+turno|same\s*turn|must\s+not\s+(?:call|combine|mix)|never\s+(?:call|combine|mix)/i;
 
-/** Escalonamento / handoff — nunca entram no allowlist de confirmação (C11). */
+/** Escalonamento / handoff — nunca entram no allowlist de confirmação. */
 const ESCALATION_TOOL_NAMES = new Set([
   "call_human",
   "transfer_to_team",
@@ -55,13 +72,6 @@ export function isEscalationToolName(name: string): boolean {
   }
   return false;
 }
-
-const FORBIDDEN_PAIR_LINE_RE =
-  /proibid[oa]|n[aã]o\s+mistur|mesmo\s+turno|same\s*turn|must\s+not\s+(?:call|combine|mix)|never\s+(?:call|combine|mix)/i;
-
-/** Heurística segment-agnóstica de tool mutável / de conclusão. */
-const MUTABLE_OR_COMPLETION_RE =
-  /(?:^|_)(?:check[_-]?in|checkin|submit|create|update|delete|cancel|confirm|finalize|concluir|gravar|salvar|enviar|post|put|patch|write|book|reservar)(?:_|$)/i;
 
 /**
  * Parse pares proibidos no mesmo turno a partir do playbook.
@@ -116,9 +126,9 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
 }
 
 /**
- * Em turnos de confirmação curta (sim/ok), extrai tools exclusivas de linhas
- * com "só/somente" + tool, ou da coluna "Tool neste turno" da tabela C11/N=1.
- * Nunca inclui conclusão/mutação nem escalonamento (call_human / transfer / status).
+ * Em turnos de confirmação (sim/ok), extrai tools exclusivas do playbook:
+ * linhas com "só/somente/apenas/only" + tool em contexto de confirmação ou tabela de passo.
+ * Nunca inclui conclusão/mutação nem escalonamento.
  */
 export function parseExclusiveToolsForConfirmationTurn(playbookText: string): string[] {
   const exclusive = new Set<string>();
@@ -126,85 +136,63 @@ export function parseExclusiveToolsForConfirmationTurn(playbookText: string): st
 
   const addAllowed = (tools: string[]) => {
     for (const t of tools) {
-      if (MUTABLE_OR_COMPLETION_RE.test(t)) continue;
+      if (isLikelyMutableOrCompletionTool(t)) continue;
       if (isEscalationToolName(t)) continue;
       exclusive.add(t);
     }
   };
 
-  for (const line of playbookText.split(/\n+/)) {
-    // Evitar `\bok\b` solto — casa com "já ok" (C8) e polui o allowlist.
-    const isConfirmContext =
-      /\b(C11|titular OK|após TITULAR|N\s*=\s*1\s*→\s*S9|N=1 → S9)\b/i.test(line) ||
-      /`(?:sim|ok|okay|certo|não|nao)`/i.test(line) ||
-      (/\bsim\b/i.test(line) && /\b(?:titular|S9|S4c|Portão|C11|espelho)\b/i.test(line)) ||
-      (/\bN\s*=\s*1\b/.test(line) && /S9|reference/i.test(line));
-    if (!isConfirmContext) continue;
-
-    // Linha só de PROIBIDO (sem "só/somente") — não alimenta allowlist
-    if (/proibid/i.test(line) && !/\bs[oó]\s+|somente\s+|apenas\s+|only\s+/i.test(line)) {
-      continue;
-    }
-
-    // Tabela de categorias (GATE / C11): | categoria | tool permitida | proibido |
-    // Não usar linhas do Portão cujo 1.º campo é "Espelho TITULAR" (coluna do meio ≠ tools).
-    const cols = line
-      .split("|")
-      .map((c) => c.trim())
-      .filter((c) => c.length > 0);
-    if (cols.length >= 3 && /\b(?:C11\b|titular OK|N\s*=\s*1\s*→\s*S9)\b/i.test(cols[0]!)) {
-      // Coluna "tool neste turno" — só positivas (só `x` / backticks sem never)
-      const soMid = [
-        ...cols[1]!.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
-      ];
-      if (soMid.length > 0) {
-        addAllowed(soMid.map((m) => m[1]!.toLowerCase()));
-      } else if (!/proibid|nunca|zero/i.test(cols[1]!)) {
-        addAllowed(extractPositiveToolNamesFromLine(cols[1]!));
-      }
-      // Última coluna (tabela 5 cols): só se tiver "só `tool`"
-      if (cols.length >= 4) {
-        const last = cols[cols.length - 1]!;
-        const soLast = [
-          ...last.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
-        ];
-        addAllowed(soLast.map((m) => m[1]!.toLowerCase()));
-      }
-      continue;
-    }
-
-    // "só `embratur-reference`" — captura positiva após só/somente/apenas/only
+  const extractExclusiveFromLine = (line: string) => {
     const soMatches = [
       ...line.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
     ];
     if (soMatches.length > 0) {
       addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
+      return;
     }
+    if (EXCLUSIVE_LANGUAGE_RE.test(line)) {
+      addAllowed(extractPositiveToolNamesFromLine(line));
+    }
+  };
+
+  for (const line of playbookText.split(/\n+/)) {
+    if (!lineDescribesConfirmationExclusiveTools(line)) continue;
+
+    const cols = line
+      .split("|")
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+
+    if (cols.length >= 2 && (TURN_TOOL_TABLE_MARKER_RE.test(line) || /\|/.test(line))) {
+      for (const col of cols.slice(1, cols.length >= 4 ? -1 : undefined)) {
+        if (/proibid|nunca|zero/i.test(col) && !EXCLUSIVE_LANGUAGE_RE.test(col)) continue;
+        extractExclusiveFromLine(col);
+      }
+      continue;
+    }
+
+    extractExclusiveFromLine(line);
   }
 
   if (exclusive.size === 0) {
     for (const line of playbookText.split(/\n+/)) {
-      if (!/N\s*=\s*1/i.test(line) || !/S9|reference/i.test(line)) continue;
-      if (/proibid/i.test(line) && !/\bs[oó]\s+|somente|apenas|only/i.test(line)) continue;
-      const soMatches = [
-        ...line.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
-      ];
-      if (soMatches.length > 0) {
-        addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
-      }
+      if (!EXCLUSIVE_LANGUAGE_RE.test(line)) continue;
+      if (/proibid/i.test(line) && !/(?:s[oó]|somente|apenas|only)\s+`/i.test(line)) continue;
+      extractExclusiveFromLine(line);
     }
   }
 
   return [...exclusive];
 }
 
-/** Tools de conclusão mencionadas junto a "concluído" / Passo final / S10. */
+/** Tools de conclusão mencionadas junto a linguagem de passo final / submit / concluído. */
 export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
   const hints = new Set<string>();
   for (const line of text.split(/\n+/)) {
-    if (!/conclu[ií]d|passo\s*8|S10|finaliz|submit|check[_-]?in/i.test(line)) continue;
+    if (/proibid/i.test(line) && !/\bS\d+\b|conclu[ií]d|passo\s*\d+/i.test(line)) continue;
+    if (!COMPLETION_LINE_RE.test(line)) continue;
     for (const t of extractToolNamesFromText(line)) {
-      if (MUTABLE_OR_COMPLETION_RE.test(t) || /check/i.test(t)) hints.add(t);
+      if (isLikelyMutableOrCompletionTool(t)) hints.add(t);
     }
   }
   return [...hints];
@@ -222,12 +210,10 @@ export function parseOmitToolsWhenSlotsPresentFromPlaybook(text: string): Array<
   if (!text.trim()) return rules;
 
   const SLOT_KEY_RE = /\b([a-z][a-zA-Z0-9]{2,48})\b/g;
-  const looksLikeSlotKey = (k: string) =>
-    /^(?:profilePhotoId|documentPhotoId|[a-z]+(?:Id|Code|Number|Token|Ref))$/.test(k);
 
   for (const line of text.split(/\n+/)) {
     if (
-      !/(flowSlots|já\s+tem|ja\s+tem|already|when\s+.+\s+present|se\s+.+\s+exist|PROIBIDO|proibid|omit|skip)/i.test(
+      !/(flowSlots|já\s+tem|já\s+exist|ja\s+tem|ja\s+exist|already|when\s+.+\s+present|se\s+.+\s+exist|PROIBIDO|proibid|omit|skip)/i.test(
         line,
       )
     ) {
@@ -237,7 +223,7 @@ export function parseOmitToolsWhenSlotsPresentFromPlaybook(text: string): Array<
     if (tools.length === 0) continue;
     const slotKeys = [
       ...new Set(
-        [...line.matchAll(SLOT_KEY_RE)].map((m) => m[1]!).filter(looksLikeSlotKey),
+        [...line.matchAll(SLOT_KEY_RE)].map((m) => m[1]!).filter(looksLikeFlowSlotKey),
       ),
     ];
     if (slotKeys.length === 0) continue;
@@ -260,19 +246,6 @@ function toolsToOmitWhenSlotsPresent(
     if (allPresent) omit.push(...rule.tools);
   }
   return omit;
-}
-
-export function isLikelyMutableOrCompletionTool(
-  name: string,
-  completionHints: string[] = [],
-): boolean {
-  const n = name.toLowerCase();
-  if (MUTABLE_OR_COMPLETION_RE.test(n)) return true;
-  for (const h of completionHints) {
-    const hl = h.toLowerCase();
-    if (n === hl || n.includes(hl) || hl.includes(n)) return true;
-  }
-  return false;
 }
 
 export function toolsMatchAlias(a: string, b: string): boolean {
@@ -332,7 +305,7 @@ export function resolveTurnPolicy(
   const omitToolsWhenSlotsPresent = parseOmitToolsWhenSlotsPresentFromPlaybook(playbook);
 
   const userMessage = (options.userMessage ?? "").trim();
-  const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
+  const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));
 
   let exclusiveAllowedTools: string[] | null = null;
   if (isConfirmation && confirmationPrerequisiteTools.length > 0) {
@@ -412,8 +385,8 @@ export function validateToolOutcomesAgainstTurnPolicy(
   if (policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0) {
     for (const name of names) {
       if (isEscalationToolName(name)) continue;
-      // Ficha→sim→check_in: conclusão não é hard-block por exclusividade C11/S9
-      if (isLikelyMutableOrCompletionTool(name, policy.completionToolHints)) continue;
+      // S9 / exclusividade pendente: conclusão e uploads também são fora de categoria.
+      // S10 (pré-requisito já satisfeito) limpa exclusiveAllowedTools e permite check-in.
       const allowed = policy.exclusiveAllowedTools.some(
         (a) => toolOutcomeSatisfiesRequired(a, [{ name, preview: "" }]),
       );
@@ -427,8 +400,12 @@ export function validateToolOutcomesAgainstTurnPolicy(
 }
 
 /**
- * Motivo para bloquear execução *antes* do side-effect (transfer/status).
+ * Motivo para bloquear execução *antes* do side-effect (transfer/status/check-in).
  * null = permitido.
+ *
+ * Quando exclusiveAllowedTools está definido (ex. S9 / pré-requisito pendente),
+ * APENAS essas tools podem correr — incluindo bloqueio de conclusão/upload.
+ * S10 (pré-requisito já satisfeito) limpa exclusiveAllowedTools e permite check-in.
  */
 export function turnPolicyPreExecBlockReason(
   toolName: string,
@@ -442,9 +419,6 @@ export function turnPolicyPreExecBlockReason(
     return `Ferramenta de escalonamento ${toolName} bloqueada em turno de confirmação (C11).${hint}`;
   }
   if (!policy.exclusiveAllowedTools || policy.exclusiveAllowedTools.length === 0) {
-    return null;
-  }
-  if (isLikelyMutableOrCompletionTool(toolName, policy.completionToolHints)) {
     return null;
   }
   const allowed = policy.exclusiveAllowedTools.some((a) =>
@@ -506,17 +480,44 @@ function toolSatisfiedInSession(
   return all.some((n) => toolsMatchAlias(n, alias));
 }
 
-/**
- * Aliases a omitir do catálogo OpenAI neste turno (antes do LLM escolher).
- * - Se A já correu no turno, omite B (e vice-versa) para cada par proibido.
- * - Confirmação com exclusividade pendente (S9): omite tools de conclusão (S10).
- * - Confirmação pós-pré-requisito (S10): omite o lado reference do par já satisfeito.
- */
+/** Omite uploads/media quando slots do playbook ou slots media genéricos já estão preenchidos. */
+function inferUploadToolsToOmitWhenSlotsFilled(opts: {
+  playbookText: string;
+  flowSlots?: Record<string, string | number | boolean> | null;
+  catalogToolNames?: string[];
+}): string[] {
+  const { playbookText, flowSlots, catalogToolNames = [] } = opts;
+  const omit = new Set<string>();
+
+  for (const line of playbookText.split(/\n+/)) {
+    const slotKeys = extractSlotKeysFromLine(line);
+    const uploadTools = extractToolNamesFromText(line).filter(isLikelyUploadOrMediaTool);
+    if (slotKeys.length === 0 || uploadTools.length === 0) continue;
+    if (slotKeys.every((k) => slotKeyIsFilled(flowSlots, k))) {
+      for (const t of uploadTools) omit.add(t);
+    }
+  }
+
+  if (hasFilledMediaOrDocumentSlots(flowSlots)) {
+    for (const t of catalogToolNames.filter(isLikelyUploadOrMediaTool)) omit.add(t);
+    for (const t of extractToolNamesFromText(playbookText).filter(isLikelyUploadOrMediaTool)) {
+      omit.add(t);
+    }
+  }
+
+  return [...omit];
+}
+
+/** Aliases a omitir do catálogo OpenAI neste turno (antes do LLM escolher). */
 export function toolAliasesToOmitFromCatalog(opts: {
   policy: TurnPolicy;
   existingToolNames: string[];
   priorToolNames?: string[];
   flowSlots?: Record<string, string | number | boolean> | null;
+  /** Texto do playbook — inferência de upload omit quando slots preenchidos. */
+  playbookText?: string;
+  /** Nomes reais no catálogo (HTTP + nativas) — omit genérico de uploads. */
+  catalogToolNames?: string[];
 }): string[] {
   const omit = new Set<string>();
   const { policy, existingToolNames } = opts;
@@ -535,10 +536,16 @@ export function toolAliasesToOmitFromCatalog(opts: {
     for (const hint of policy.completionToolHints) omit.add(hint);
     for (const pair of pairs) {
       if (toolsMatchAlias(pair.a, pair.b)) continue;
-      const aCompletion = isLikelyMutableOrCompletionTool(pair.a, policy.completionToolHints);
-      const bCompletion = isLikelyMutableOrCompletionTool(pair.b, policy.completionToolHints);
-      if (aCompletion && !bCompletion) omit.add(pair.a);
-      if (bCompletion && !aCompletion) omit.add(pair.b);
+      const aAllowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, pair.a));
+      const bAllowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, pair.b));
+      if (!aAllowed) omit.add(pair.a);
+      if (!bAllowed) omit.add(pair.b);
+    }
+    if (opts.catalogToolNames?.length) {
+      for (const name of opts.catalogToolNames) {
+        const allowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, name));
+        if (!allowed && !isEscalationToolName(name)) omit.add(name);
+      }
     }
   } else if (policy.blockEscalation && policy.completionToolHints.length > 0) {
     for (const hint of policy.completionToolHints) {
@@ -556,6 +563,16 @@ export function toolAliasesToOmitFromCatalog(opts: {
 
   for (const alias of toolsToOmitWhenSlotsPresent(opts.flowSlots, policy.omitToolsWhenSlotsPresent)) {
     omit.add(alias);
+  }
+
+  if (opts.playbookText?.trim()) {
+    for (const alias of inferUploadToolsToOmitWhenSlotsFilled({
+      playbookText: opts.playbookText,
+      flowSlots: opts.flowSlots,
+      catalogToolNames: opts.catalogToolNames,
+    })) {
+      omit.add(alias);
+    }
   }
 
   return [...omit];

@@ -222,3 +222,39 @@ test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
     false,
   );
 });
+
+test("toolOutcomeSatisfiesRequired ignores failed outcomes", () => {
+  assert.equal(
+    toolOutcomeSatisfiesRequired("audaar_check_in", [
+      { name: "audaar_check_in", preview: "error", ok: false },
+    ]),
+    false,
+  );
+  assert.equal(
+    toolOutcomeSatisfiesRequired("audaar_check_in", [
+      { name: "audaar_check_in", preview: "ok", ok: true },
+    ]),
+    true,
+  );
+});
+
+test("resolveRequiredToolNamesForTurn does not require check_in on ficha form", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| S9 | ficha | Chame \`audaar_consultar_main_guest\` |
+| S10 | após ficha + sim | Chame \`audaar_check_in\` · PROIBIDO \`embratur-reference\` |
+`,
+    },
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage:
+      "* Motivo da viagem: Congresso\n* Meio de transporte: Automóvel\n* País de residência: Brasil\n* País de destino: Brasil",
+  });
+  assert.equal(
+    names.some((n) => /check[_-]?in/i.test(n)),
+    false,
+    `ficha must not require check_in, got ${JSON.stringify(names)}`,
+  );
+});

@@ -1,4 +1,10 @@
 import { parsePromptBlocks, type PromptBlocks } from "../../agentPlaybook.js";
+import {
+  COMPLETION_LINE_RE,
+  isLikelyMutableOrCompletionTool,
+  isLikelyUploadOrMediaTool,
+  shouldExcludeCompletionToolFromRequired,
+} from "./playbookRuntimePolicy.js";
 
 /** Nomes nativos estáveis expostos ao LLM (OpenAI function calling). */
 export const KNOWN_NATIVE_TOOL_NAMES = [
@@ -118,7 +124,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
         m.split(/\n/).filter((l) => l.trim()).length >= 3) ||
       (/\*\s*\w+\s*:/i.test(m) && m.split(/\n/).filter((l) => l.trim()).length >= 4),
     playbookHints:
-      /\b(S\d+|C\d+|ficha|formul[aá]rio|bloco\s+de\s+dados|espelho|multi.?campo)\b/i,
+      /\b(S\d+|C\d+|Passo\s*\d+|ficha|formul[aá]rio|form\b|dados|bloco\s+de\s+dados|espelho|multi.?campo)\b/i,
   },
   {
     id: "escalation",
@@ -217,18 +223,42 @@ export function findCategoriesForTurnPattern(
   pattern: TurnToolPattern,
   userMessage = "",
 ): string[] {
-  return findBestTurnMatches(playbookText, pattern, userMessage).map((m) => m.category);
+  const completionHints = completionHintsFromPlaybook(playbookText);
+  return findBestTurnMatches(playbookText, pattern, userMessage, completionHints).map((m) => m.category);
 }
 
 type TurnMatch = { category: string; score: number; line: string; tools: string[] };
+
+function completionHintsFromPlaybook(text: string): string[] {
+  const hints = new Set<string>();
+  for (const line of text.split(/\n+/)) {
+    if (/proibid/i.test(line) && !/\bS\d+\b|conclu[ií]d|passo\s*\d+/i.test(line)) continue;
+    if (!COMPLETION_LINE_RE.test(line)) continue;
+    for (const t of extractToolNamesFromText(line)) {
+      if (isLikelyMutableOrCompletionTool(t)) hints.add(t);
+    }
+  }
+  return [...hints];
+}
 
 function scoreTurnLine(
   line: string,
   pattern: TurnToolPattern,
   userMessage: string,
   category: string,
+  completionHints: string[],
 ): number {
   let score = 1;
+  const lineTools = extractToolNamesFromText(line);
+  const hasLookupTool = lineTools.some((t) =>
+    /(?:^|_)(?:consult|lookup|search|find|get|fetch|read)(?:_|$)/i.test(t),
+  );
+  const completionOrUploadOnly =
+    lineTools.length > 0 &&
+    lineTools.every(
+      (t) => isLikelyMutableOrCompletionTool(t, completionHints) || isLikelyUploadOrMediaTool(t),
+    );
+
   if (pattern.id === "checkin_or_reservation") {
     const wantsCheckin = /check[- ]?in/i.test(userMessage);
     const wantsVerify =
@@ -237,26 +267,27 @@ function scoreTurnLine(
     if (wantsVerify && (/\bC2\b/i.test(category) || /\bC2\b/i.test(line))) score += 6;
     if (wantsCheckin && /check[- ]?in/i.test(line)) score += 4;
     if (wantsVerify && /verificar|consultar/i.test(line)) score += 4;
-    if (/localizador/i.test(line)) score += 2;
-    if (/consultar_reserva/i.test(line)) score += 3;
-    if (
-      /\b(C8|C9|C10|S9|S10|selfie|embratur|main_guest)\b/i.test(line) &&
-      !/\bC[23]\b/i.test(line)
-    ) {
-      score -= 8;
-    }
-    // Linhas C3 que só listam FAQ/KB não são o detector principal
-    if (/buscar_conhecimento/i.test(line) && !/consultar_reserva/i.test(line)) score -= 5;
+    if (/localizador|reference|booking|reserva/i.test(line)) score += 2;
+    if (/consultar_reserva|lookup|search/i.test(line)) score += 3;
+    if (!hasLookupTool && completionOrUploadOnly) score -= 8;
+    if (/buscar_conhecimento/i.test(line) && !/consult|lookup|reserva/i.test(line)) score -= 5;
   } else if (pattern.id === "document_id") {
     if (/\bC8\b/i.test(category) || /\bC8\b/i.test(line)) score += 6;
-    if (/main_guest|consultar_main_guest|cpf\s*sozinho/i.test(line)) score += 4;
-    if (/\b(C3|S10|check_in|selfie)\b/i.test(line) && !/\bC8\b/i.test(line)) score -= 8;
+    if (/main_guest|consultar_main_guest|cpf\s*sozinho|document|cliente/i.test(line)) score += 4;
+    if (!hasLookupTool && completionOrUploadOnly) score -= 8;
   } else if (pattern.id === "escalation") {
     if (/\bC13\b/i.test(line)) score += 5;
   } else if (pattern.id === "structured_form_submission") {
-    if (/\b(S\d+|C\d+)\b/i.test(category) || /\b(S\d+|C\d+)\b/i.test(line)) score += 5;
-    if (/ficha|formul[aá]rio|espelho|bloco\s+de\s+dados/i.test(line)) score += 4;
-    if (/submit|finaliz|conclu/i.test(line)) score += 3;
+    if (/\b(S\d+|C\d+|Passo\s*\d+)\b/i.test(category) || /\b(S\d+|C\d+|Passo\s*\d+)\b/i.test(line))
+      score += 5;
+    if (/ficha|formul[aá]rio|espelho|bloco\s+de\s+dados|multi.?campo/i.test(line)) score += 4;
+    for (const t of lineTools) {
+      if (isLikelyMutableOrCompletionTool(t, completionHints)) score -= 10;
+      if (isLikelyUploadOrMediaTool(t) && !/ficha|formul[aá]rio|espelho/i.test(line)) score -= 4;
+    }
+    if (/submit|finaliz|conclu|save|gravar/i.test(line) && !lineTools.some((t) => isLikelyMutableOrCompletionTool(t, completionHints))) {
+      score += 3;
+    }
   }
   return score;
 }
@@ -265,19 +296,20 @@ function findBestTurnMatches(
   playbookText: string,
   pattern: TurnToolPattern,
   userMessage = "",
+  completionHints: string[] = [],
 ): TurnMatch[] {
   const scored: TurnMatch[] = [];
   for (const line of playbookText.split(/\n+/)) {
     if (!/\|/.test(line)) continue;
     if (!pattern.playbookHints.test(line)) continue;
-    const categoryMatch = line.match(/\|\s*\*{0,2}(C\d+|S\d+|Passo\s*\d+)\*{0,2}\s*\|/i);
+    const categoryMatch = line.match(/^\|\s*\*{0,2}([^|]+?)\*{0,2}\s*\|/);
     if (!categoryMatch) continue;
-    const category = categoryMatch[1]!.replace(/\s+/g, " ").toUpperCase().replace(/^PASSO\s+/i, "PASSO ");
+    const category = categoryMatch[1]!.replace(/\s+/g, " ").trim().toUpperCase();
     const tools = extractPositiveToolNamesFromLine(line).filter(
       (n) => pattern.id === "escalation" || !ESCALATION_TOOL_NAMES.has(n),
     );
     if (tools.length === 0) continue;
-    const score = scoreTurnLine(line, pattern, userMessage, category);
+    const score = scoreTurnLine(line, pattern, userMessage, category, completionHints);
     scored.push({ category, score, line, tools });
   }
   if (scored.length === 0) return [];
@@ -415,24 +447,26 @@ export function resolveRequiredToolNamesForTurn(
     ...(options.availableToolNames ?? []).map((n) => normalizeToolToken(n)).filter(Boolean) as string[],
   ];
   const playbook = playbookTextFromBehavior(behaviorConfig);
+  const completionHints = completionHintsFromPlaybook(playbook);
   const required = new Set<string>();
 
   const userMessage = (options.userMessage ?? "").trim();
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
-      const matches = findBestTurnMatches(playbook, pattern, userMessage);
+      const matches = findBestTurnMatches(playbook, pattern, userMessage, completionHints);
       for (const match of matches) {
         for (const tool of match.tools) {
+          if (shouldExcludeCompletionToolFromRequired(pattern.id, tool, completionHints)) continue;
           required.add(tool);
         }
       }
-      // Fallback: 1ª linha do playbook que casa com hints (não todas)
       if (matches.length === 0) {
         for (const line of playbook.split(/\n+/)) {
           if (!pattern.playbookHints.test(line)) continue;
           for (const tool of extractPositiveToolNamesFromLine(line)) {
             if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
+            if (shouldExcludeCompletionToolFromRequired(pattern.id, tool, completionHints)) continue;
             required.add(tool);
           }
           if (required.size > 0) break;
@@ -449,15 +483,17 @@ export function resolveRequiredToolNamesForTurn(
 }
 
 /**
- * Verifica se uma tool invocadasatisfaz um nome obrigatório (match exacto ou parcial).
+ * Verifica se uma tool invocada satisfaz um nome obrigatório (match exacto ou parcial).
  * Cobre `audaar_consultar_main_guest` vs `oc_tool_<uuid>` quando o alias está na preview.
+ * Outcomes com `ok: false` NUNCA satisfazem o contrato (evita marcar falhas HTTP como done).
  */
 export function toolOutcomeSatisfiesRequired(
   requiredName: string,
-  outcomes: Array<{ name: string; preview?: string }>,
+  outcomes: Array<{ name: string; preview?: string; ok?: boolean }>,
 ): boolean {
   const req = requiredName.toLowerCase();
   for (const o of outcomes) {
+    if (o.ok === false) continue;
     const name = (o.name ?? "").toLowerCase();
     if (name === req) return true;
     if (name.includes(req) || req.includes(name)) return true;

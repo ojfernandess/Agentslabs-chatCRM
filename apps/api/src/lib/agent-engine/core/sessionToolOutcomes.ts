@@ -35,14 +35,15 @@ export function priorToolOutcomesFromSession(
   return readSessionSatisfiedToolNames(flowSlots).map((name) => ({ name, ok: true }));
 }
 
-/** Acrescenta tools OK ao CSV de sessão (genérico). */
+/** Acrescenta tools OK ao CSV de sessão (genérico). Falhas (`ok: false`) nunca entram. */
 export function mergeSatisfiedToolsFromOutcomes(
   flowSlots: Record<string, string | number | boolean>,
   outcomes: Array<{ name: string; ok?: boolean }>,
 ): Record<string, string | number | boolean> {
   let slots = flowSlots;
   for (const o of outcomes) {
-    if (o.ok !== false) slots = appendSessionSatisfiedToolName(slots, o.name);
+    if (o.ok === false) continue;
+    slots = appendSessionSatisfiedToolName(slots, o.name);
   }
   return slots;
 }
