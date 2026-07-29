@@ -81,6 +81,15 @@ export function runWorkflowGate(input: WorkflowGateInput): WorkflowGateResult {
       behaviorConfig: input.behaviorConfig,
       userMessage: input.userMessage,
       availableToolNames: input.availableToolNames,
+      flowSlots: input.memorySnapshot?.flowSlots as
+        | Record<string, string | number | boolean>
+        | undefined,
+      lastAssistantMessage:
+        typeof input.previousReply === "string"
+          ? input.previousReply
+          : typeof input.memorySnapshot?.lastReplyPreview === "string"
+            ? input.memorySnapshot.lastReplyPreview
+            : undefined,
     });
   const { requiredToolNames: planRequired, turnPolicy: planPolicy } = turnPlan;
   const requiredToolNames = input.executionContract?.requiredToolNames ?? planRequired;

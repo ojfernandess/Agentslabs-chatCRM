@@ -34,6 +34,9 @@ export type BuildExecutionTurnPlanOpts = {
   flowSlots?: Record<string, string | number | boolean> | null;
   /** Turno começou com exclusive gate — não promover conclusão no refresh. */
   freezeCompletionPromotion?: boolean;
+  /** Última resposta do agente — desambigua passo C11 (titular vs ficha vs S4c). */
+  lastAssistantMessage?: string | null;
+  memory?: Record<string, unknown> | null;
 };
 
 /**
@@ -50,6 +53,9 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     userMessage,
     priorToolOutcomes,
     availableToolNames: opts.availableToolNames,
+    flowSlots: opts.flowSlots,
+    lastAssistantMessage: opts.lastAssistantMessage,
+    memory: opts.memory,
   });
   const availableSet = new Set(
     (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
@@ -69,6 +75,7 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
       sessionPriorOutcomes,
       flowSlots: opts.flowSlots,
       freezeCompletionPromotion: opts.freezeCompletionPromotion,
+      lastAssistantMessage: opts.lastAssistantMessage,
     },
   );
   const requiredToolNames = dedupeRequiredToolAliases([

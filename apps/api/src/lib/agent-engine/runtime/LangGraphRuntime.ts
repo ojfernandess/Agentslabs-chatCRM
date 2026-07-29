@@ -1194,6 +1194,7 @@ export class LangGraphRuntime implements AgentRuntime {
           state.turnContext?.turnPlan.turnPolicy.completionToolHints ??
           state.engineTurn?.plan.turnPolicy.completionToolHints,
         userMessage: state.input.message.body ?? "",
+        lastAssistantPreview: state.reply,
       });
       if (Object.keys(persistedSlots).length > 0) {
         try {

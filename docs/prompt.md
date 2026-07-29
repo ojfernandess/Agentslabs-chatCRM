@@ -92,8 +92,8 @@ Ex.: N=2 → “2… + 1 acompanhante” · N=3 → “3… + 2 acompanhantes”
 
 2. **`toolRounds: 0` · PARE.**  
 3. **PROIBIDO neste ramo (itens separados):**  
-   - tool `embratur-reference` · template dos 6  
-   - tool `audaar_check_in`  
+   - tool `embratur-reference` · template dos 6 · `audaar_check_in` · qualquer tool  
+   - tratar o `sim` do titular como S10/ficha (CPF/nacionalidade **não** liberam conclusão)  
    - tool `audaar_consultar_reserva`  
    - lookup / `audaar_consultar_main_guest`  
    - copiar “2 hóspedes + 1 acompanhante” se **N≠2**  

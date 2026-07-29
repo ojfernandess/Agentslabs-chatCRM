@@ -1,4 +1,8 @@
 import { CONFIRMATION_USER_MSG_RE } from "../validators/playbookRuntimePolicy.js";
+import {
+  messageLooksLikePostGateFormData,
+  SESSION_LAST_ASSISTANT_PREVIEW_KEY,
+} from "./confirmationTurnGuards.js";
 
 /** Chave genérica em flowSlots para tools satisfeitas na conversa (CSV). */
 export const SESSION_SATISFIED_TOOLS_KEY = "__satisfiedToolNames";
@@ -19,6 +23,8 @@ export const SESSION_AWAITING_POST_GATE_DATA_KEY = "__awaitingPostGateData";
 
 /** Utilizador já enviou dados após o gate — "sim" pode exigir conclusão. */
 export const SESSION_COMPLETION_READY_KEY = "__completionReady";
+
+export { SESSION_LAST_ASSISTANT_PREVIEW_KEY };
 
 export function readSessionSatisfiedToolNames(
   flowSlots?: Record<string, string | number | boolean> | null,
@@ -55,7 +61,10 @@ export function isCompletionReady(
 
 /**
  * Máquina de fase genérica (multi-segmento):
- * gate tool OK → aguarda dados → mensagem não-confirmação → ready → conclusão OK → limpa.
+ * gate tool OK → aguarda dados de formulário → ready → conclusão OK → limpa.
+ *
+ * Não arma `completionReady` com CPF/nacionalidade/localizador — só com bloco
+ * de formulário (evita saltar para tool de conclusão no espelho do titular).
  */
 export function applyConfirmationPhaseTransitions(opts: {
   baseFlowSlots?: Record<string, string | number | boolean> | null;
@@ -63,6 +72,8 @@ export function applyConfirmationPhaseTransitions(opts: {
   confirmationPrerequisiteTools?: string[];
   completionToolHints?: string[];
   userMessage?: string;
+  /** Preview da resposta do agente neste turno (persistido para o próximo). */
+  lastAssistantPreview?: string;
 }): Record<string, string | number | boolean> {
   const slots: Record<string, string | number | boolean> = {
     ...(opts.baseFlowSlots ?? {}),
@@ -80,11 +91,12 @@ export function applyConfirmationPhaseTransitions(opts: {
     slots[SESSION_COMPLETION_READY_KEY] = false;
   }
 
-  // Dados / formulário (não "sim") enquanto aguarda pós-gate → libera conclusão.
+  // Só formulário pós-gate libera conclusão — não CPF / nacionalidade / localizador.
   if (
     userMessage &&
     !CONFIRMATION_USER_MSG_RE.test(userMessage) &&
-    slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY)
+    slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY) &&
+    messageLooksLikePostGateFormData(userMessage)
   ) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
     slots[SESSION_COMPLETION_READY_KEY] = true;
@@ -96,6 +108,11 @@ export function applyConfirmationPhaseTransitions(opts: {
   if (completionJustOk) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
     slots[SESSION_COMPLETION_READY_KEY] = false;
+  }
+
+  const preview = (opts.lastAssistantPreview ?? "").trim();
+  if (preview) {
+    slots[SESSION_LAST_ASSISTANT_PREVIEW_KEY] = preview.slice(0, 800);
   }
 
   return slots;

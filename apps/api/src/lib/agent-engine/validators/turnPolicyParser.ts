@@ -22,6 +22,10 @@ import {
   isAwaitingPostGateData,
   isCompletionReady,
 } from "../core/sessionToolOutcomes.js";
+import {
+  shouldAllowCompletionToolPromotion,
+  shouldSuppressConfirmationExclusiveTools,
+} from "../core/confirmationTurnGuards.js";
 
 export {
   isLikelyMutableOrCompletionTool,
@@ -318,6 +322,11 @@ export function resolveTurnPolicy(
     priorToolOutcomes?: PriorToolOutcome[];
     /** Catálogo real do agente — exclusive nunca agenda nomes fora deste set. */
     availableToolNames?: Iterable<string>;
+    flowSlots?: Record<string, string | number | boolean> | null;
+    /** Última resposta do agente (espelho / pergunta) — desambigua o passo C11. */
+    lastAssistantMessage?: string | null;
+    /** Memória do turno (facts EIL) — N de hóspedes quando ainda não está em flowSlots. */
+    memory?: Record<string, unknown> | null;
   } = {},
 ): TurnPolicy {
   const empty: TurnPolicy = {
@@ -352,7 +361,16 @@ export function resolveTurnPolicy(
   const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));
 
   let exclusiveAllowedTools: string[] | null = null;
-  if (isConfirmation && confirmationPrerequisiteTools.length > 0) {
+  const suppressExclusive =
+    isConfirmation &&
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage: options.lastAssistantMessage,
+      flowSlots: options.flowSlots,
+      userMessage,
+      memory: options.memory,
+    });
+
+  if (isConfirmation && confirmationPrerequisiteTools.length > 0 && !suppressExclusive) {
     const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
     const pendingExclusive = confirmationPrerequisiteTools.filter(
       (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
@@ -379,6 +397,8 @@ export function resolveTurnPolicy(
  * Regras anti-salto de fase:
  * - freezeCompletionPromotion: turno começou com exclusive gate — não promove conclusão no mesmo turno
  * - awaitingPostGateData sem completionReady: falta recolha de dados após o gate
+ * - completionReady explícito obrigatório (sem legado "flags ausentes ⇒ permitir")
+ * - lastAssistantMessage: só promove no passo de conclusão (ficha), não no titular/S4c
  * - sessionPriorOutcomes: pré-requisitos têm de existir ANTES deste turno (não só após schedule)
  */
 export function resolveCompletionRequiredToolsForConfirmation(
@@ -388,6 +408,7 @@ export function resolveCompletionRequiredToolsForConfirmation(
     sessionPriorOutcomes?: PriorToolOutcome[];
     flowSlots?: Record<string, string | number | boolean> | null;
     freezeCompletionPromotion?: boolean;
+    lastAssistantMessage?: string | null;
   },
 ): string[] {
   if (!policy.blockEscalation || (policy.exclusiveAllowedTools?.length ?? 0) > 0) {
@@ -409,12 +430,22 @@ export function resolveCompletionRequiredToolsForConfirmation(
   );
   if (!prerequisiteSatisfiedInSession) return [];
 
-  // Pós-gate: não exigir conclusão até haver dados (ou ready explícito).
-  if (isAwaitingPostGateData(opts?.flowSlots) && !isCompletionReady(opts?.flowSlots)) {
+  // Exige ready explícito — CPF/nacionalidade já não armam a flag.
+  if (!isCompletionReady(opts?.flowSlots)) {
     return [];
   }
-  // Se a sessão já marcou awaiting nalgum momento e ainda não está ready, bloqueia.
-  // Se nunca houve flag (legado), permite conclusão quando prereq na sessão.
+  if (isAwaitingPostGateData(opts?.flowSlots)) {
+    return [];
+  }
+
+  if (
+    !shouldAllowCompletionToolPromotion({
+      lastAssistantMessage: opts?.lastAssistantMessage,
+      flowSlots: opts?.flowSlots,
+    })
+  ) {
+    return [];
+  }
 
   const priorOk = priorToolOutcomes.filter((t) => t.ok !== false);
   const pendingCompletion = policy.completionToolHints.filter(

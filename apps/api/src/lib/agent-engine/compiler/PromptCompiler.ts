@@ -58,6 +58,8 @@ export type CompilePromptContractOpts = {
   sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
   flowSlots?: Record<string, string | number | boolean> | null;
   freezeCompletionPromotion?: boolean;
+  lastAssistantMessage?: string | null;
+  memory?: Record<string, unknown> | null;
 };
 
 /**
@@ -75,6 +77,9 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
     userMessage,
     priorToolOutcomes,
     availableToolNames: opts.availableToolNames,
+    flowSlots: opts.flowSlots,
+    lastAssistantMessage: opts.lastAssistantMessage,
+    memory: opts.memory,
   });
   const availableSet = new Set(
     (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
@@ -94,6 +99,7 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
       sessionPriorOutcomes,
       flowSlots: opts.flowSlots,
       freezeCompletionPromotion: opts.freezeCompletionPromotion,
+      lastAssistantMessage: opts.lastAssistantMessage,
     },
   );
   const requiredToolNames = dedupeRequiredToolAliases([

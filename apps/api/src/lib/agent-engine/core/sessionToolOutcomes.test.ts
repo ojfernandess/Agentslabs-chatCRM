@@ -81,3 +81,29 @@ test("applyConfirmationPhaseTransitions gates completion until post-gate data", 
   assert.equal(slots.__awaitingPostGateData, false);
   assert.equal(slots.__completionReady, false);
 });
+
+test("applyConfirmationPhaseTransitions does not arm ready on CPF or nationality", () => {
+  const awaiting = {
+    __awaitingPostGateData: true,
+    __completionReady: false,
+  };
+  for (const msg of ["12345678901", "brasileiro", "NCMT0VPN"]) {
+    const slots = applyConfirmationPhaseTransitions({
+      baseFlowSlots: awaiting,
+      toolOutcomes: [],
+      confirmationPrerequisiteTools: ["embratur-reference"],
+      completionToolHints: ["audaar_check_in"],
+      userMessage: msg,
+    });
+    assert.equal(slots.__awaitingPostGateData, true, msg);
+    assert.equal(slots.__completionReady, false, msg);
+  }
+});
+
+test("applyConfirmationPhaseTransitions persists lastAssistantPreview", () => {
+  const slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: {},
+    lastAssistantPreview: "Confirme os dados do TITULAR. Está tudo certo?",
+  });
+  assert.match(String(slots.__lastAssistantPreview), /TITULAR/i);
+});

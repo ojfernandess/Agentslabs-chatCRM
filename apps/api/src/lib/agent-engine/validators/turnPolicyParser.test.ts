@@ -588,3 +588,48 @@ test("validateToolOutcomesAgainstTurnPolicy flags check_in during exclusive S9",
   );
   assert.ok(alerts.some((a) => /fora da categoria|proibid/i.test(a)));
 });
+
+test("titular Sim N≥2 does not require embratur or check_in", () => {
+  const titular =
+    "Confirme os dados do TITULAR. Está tudo certo?\n• Nome: Ana";
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "Sim",
+    priorToolOutcomes: [],
+    sessionPriorOutcomes: [],
+    flowSlots: {
+      guestsQuantity: 2,
+      __awaitingPostGateData: false,
+      __completionReady: true,
+      __lastAssistantPreview: titular,
+    },
+    lastAssistantMessage: titular,
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.equal(plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(
+    plan.requiredToolNames.some((t) => /embratur|check[_-]?in/i.test(t)),
+    false,
+    `expected ZERO gate/completion tools on titular N≥2, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});
+
+test("ficha Sim with completionReady requires check_in", () => {
+  const ficha = "Confira a ficha de viagem:\n• Motivo da viagem: lazer\nConfirme os dados da ficha.";
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "Sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [{ name: "embratur-reference", ok: true }],
+    flowSlots: {
+      __awaitingPostGateData: false,
+      __completionReady: true,
+    },
+    lastAssistantMessage: ficha,
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.ok(
+    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    `expected check_in on ficha confirm, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});

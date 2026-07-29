@@ -1,4 +1,5 @@
 import { priorToolOutcomesFromSession } from "./sessionToolOutcomes.js";
+import { readLastAssistantPreview } from "./confirmationTurnGuards.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import { compilePromptContract } from "../compiler/PromptCompiler.js";
 import type { ToolOutcomeForEil } from "../eil/types.js";
@@ -144,6 +145,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     | undefined;
   const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
   const sessionPriorOutcomes = opts.sessionPriorOutcomes ?? priorToolOutcomes;
+  const lastAssistantMessage = readLastAssistantPreview(opts.memory ?? memoryFlowSlots ?? null);
   const promptContract = compilePromptContract({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
@@ -152,6 +154,8 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     sessionPriorOutcomes,
     flowSlots: memoryFlowSlots,
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    lastAssistantMessage,
+    memory: opts.memory,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,
@@ -161,6 +165,8 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     sessionPriorOutcomes,
     flowSlots: memoryFlowSlots,
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    lastAssistantMessage,
+    memory: opts.memory,
   });
   const intent = analyzeIntent(userMessage, turnPlan);
 
