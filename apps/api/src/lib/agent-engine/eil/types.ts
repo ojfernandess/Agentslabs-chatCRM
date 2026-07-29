@@ -26,6 +26,16 @@ export type ToolEilConfig = {
   capabilities?: string[];
   /** JSONPath-lite: chave do facto → caminho no payload (ex. "stay.guestsQuantity"). */
   factPaths?: Record<string, string>;
+  /** Tools incompatíveis no mesmo turno (além do playbook). */
+  conflictsWith?: string[];
+  /** Timeout sugerido (ms) — metadata; runtime HTTP pode honrar depois. */
+  timeoutMs?: number;
+  /** Retries sugeridos em falha transitória. */
+  retryMax?: number;
+  /** Provider / integração (ex. audaar, http, native). */
+  provider?: string;
+  /** Versão semântica da tool. */
+  version?: string;
 };
 
 export type CapabilityNode = {
@@ -34,6 +44,11 @@ export type CapabilityNode = {
   produces: string[];
   requiresFacts: string[];
   factPaths: Record<string, string>;
+  conflictsWith: string[];
+  timeoutMs?: number;
+  retryMax?: number;
+  provider?: string;
+  version?: string;
 };
 
 export type CapabilityGraph = {

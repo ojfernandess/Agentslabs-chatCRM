@@ -10,12 +10,10 @@ import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import {
-  resolveRequiredToolNamesForValidation,
   runWorkflowGate,
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
 import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
-import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
 import { priorToolOutcomesFromSession, buildPersistedFlowSlots } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
@@ -40,11 +38,13 @@ import {
 } from "../checkpoint/AgentCheckpointFactory.js";
 import { registerHitlPending } from "../hitl/HumanInTheLoopStore.js";
 import { ingestAgentTraceToLangfuse, isLangfuseConfigured } from "../observability/LangfuseBridge.js";
+import { ingestAgentTraceToOtel } from "../observability/OtelBridge.js";
+import { executeRuntimeStream } from "./StreamingRuntime.js";
+import type { StreamRuntimeEvent } from "./StreamingRuntime.js";
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
-import { resolveEilTurn } from "../eil/runtimeBridge.js";
-import { buildTurnContext } from "../core/buildTurnContext.js";
+import { resolveEilTurn, flowSlotsFromMemory } from "../eil/runtimeBridge.js";
 import {
   blockReasonFromTurnContract,
   shouldBlockOutboundFromTurnContract,
@@ -53,12 +53,18 @@ import type { TurnContext } from "../core/types.js";
 import { invokeScheduledTools } from "../scheduler/invokeScheduledTools.js";
 import { planScheduledToolInvocations, shouldRunToolScheduler } from "../scheduler/TurnToolScheduler.js";
 import {
+  sharedExecutionEngine,
+  timelineToInspectorEntries,
+  type EngineTurnState,
+} from "../engine/index.js";
+import {
   decideResilienceAction,
   parseResilienceConfig,
   type ResilienceActionKind,
 } from "../resilience/TurnResilience.js";
 import type { EilSnapshot, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
+import { runContinuationIfEnabled } from "../continuation/runContinuation.js";
 
 export type LangGraphRuntimeDeps = {
   createMemoryProvider?: typeof defaultCreateMemoryProvider;
@@ -90,6 +96,8 @@ type GraphState = {
   eilFacts: FactStore;
   eilSnapshot?: EilSnapshot;
   turnContext?: TurnContext;
+  /** Estado da Execution Engine — plan/contract únicos por turno. */
+  engineTurn?: EngineTurnState;
   scheduledToolOutcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>;
   /** Contador de recovers determinísticos neste turno (Fase 4). */
   recoveryCount: number;
@@ -126,6 +134,7 @@ const GraphStateAnnotation = Annotation.Root({
   eilFacts: Annotation<FactStore>,
   eilSnapshot: Annotation<EilSnapshot | undefined>,
   turnContext: Annotation<TurnContext | undefined>,
+  engineTurn: Annotation<EngineTurnState | undefined>,
   scheduledToolOutcomes: Annotation<
     Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>
   >,
@@ -147,6 +156,10 @@ export class LangGraphRuntime implements AgentRuntime {
     deps?: LangGraphRuntimeDeps,
   ) {
     this.memoryFactory = deps?.createMemoryProvider ?? defaultCreateMemoryProvider;
+  }
+
+  executeStream(input: AgentRuntimeExecuteInput): AsyncGenerator<StreamRuntimeEvent> {
+    return executeRuntimeStream(this, input);
   }
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
@@ -357,6 +370,23 @@ export class LangGraphRuntime implements AgentRuntime {
       });
     }
 
+    if (input.engineConfig.otelEnabled && trace) {
+      void ingestAgentTraceToOtel(trace, {
+        enabled: true,
+        turnId: threadId,
+      }).then((r) => {
+        input.executionLog?.info(
+          { id: "otel", name: "OpenTelemetry" },
+          JSON.stringify({
+            spanCount: r.spanCount,
+            exported: r.exported,
+            endpoint: r.endpoint,
+            error: r.error,
+          }),
+        );
+      });
+    }
+
     return { reply: result.blockReply ? "" : result.reply, trace };
   }
 
@@ -527,20 +557,44 @@ export class LangGraphRuntime implements AgentRuntime {
         state.input.organizationId,
       );
       state.traceBuilder.setMemorySnapshot(memory);
-      const eilBoot = resolveEilTurn({
-        behaviorConfig: state.input.behaviorConfig,
-        userMessage: state.input.message.body ?? "",
+      const engineTurn0 = sharedExecutionEngine.beginTurn({
+        input: state.input,
         memory,
       });
-      const turnId = `${state.input.conversation.id}:${state.input.message.id}`;
-      const turnContext = buildTurnContext({
-        turnId,
-        behaviorConfig: state.input.behaviorConfig,
+      let engineTurn = engineTurn0;
+      const continuation = await runContinuationIfEnabled({
+        engineConfig: state.input.engineConfig,
+        behaviorConfig: state.input.behaviorConfig as Record<string, unknown>,
+        organizationId: state.input.organizationId,
+        conversationId: state.input.conversation.id,
         userMessage: state.input.message.body ?? "",
-        memory,
-        eilResolve: eilBoot,
+        vars: {
+          facts: engineTurn.turnContext.facts,
+          flowSlots: flowSlotsFromMemory(memory),
+        },
       });
-      state.traceBuilder.emitEvent("turn_context", "TurnContext compilado", {
+      if (continuation.enabled && continuation.state) {
+        engineTurn = sharedExecutionEngine.attachWorkflow(engineTurn, continuation.state);
+        engineTurn = sharedExecutionEngine.recordPhase(
+          engineTurn,
+          "workflow",
+          `${continuation.state.status}:${continuation.state.currentStepId ?? "done"}`,
+          {
+            resumed: continuation.resumed,
+            plannedTools: continuation.state.plannedToolNames,
+            suspendReason: continuation.state.suspendReason,
+          },
+        );
+        state.traceBuilder.emitEvent("workflow_engine", "Continuation advance", {
+          metadata: {
+            status: continuation.state.status,
+            resumed: continuation.resumed,
+            plannedTools: continuation.state.plannedToolNames,
+          },
+        });
+      }
+      const turnContext = engineTurn.turnContext;
+      state.traceBuilder.emitEvent("turn_context", "ExecutionEngine beginTurn", {
         metadata: {
           intent: turnContext.intent.kind,
           requiredTools: turnContext.executionContract.requiredToolNames,
@@ -552,10 +606,11 @@ export class LangGraphRuntime implements AgentRuntime {
       state.traceBuilder.endNode("load_memory");
       return {
         memory,
-        eilFacts: eilBoot.facts,
-        eilPlan: eilBoot.plan,
-        eilSnapshot: eilBoot.snapshot,
+        eilFacts: turnContext.facts,
+        eilPlan: turnContext.eilPlan,
+        eilSnapshot: turnContext.eilSnapshot,
         turnContext,
+        engineTurn,
         intentHints: { kbQueryLikely: turnContext.intent.kind === "knowledge_query" },
       };
     };
@@ -563,7 +618,8 @@ export class LangGraphRuntime implements AgentRuntime {
     const scheduleTools = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("schedule_tools", "Tool Scheduler");
       const userMessage = state.input.message.body ?? "";
-      let turnContext = state.turnContext;
+      let engineTurn = state.engineTurn;
+      let turnContext = state.turnContext ?? engineTurn?.turnContext;
       let scheduledToolOutcomes = state.scheduledToolOutcomes ?? [];
       let toolOutcomes = state.toolOutcomes;
       const forceRecovery = state.forceMandatoryRecovery === true;
@@ -600,15 +656,24 @@ export class LangGraphRuntime implements AgentRuntime {
               (t) => !toolOutcomes.some((p) => p.name === t.name && p.ok),
             ),
           ];
-          turnContext = buildTurnContext({
-            turnId: `${state.input.conversation.id}:${state.input.message.id}`,
-            behaviorConfig: state.input.behaviorConfig,
-            userMessage,
-            memory: state.memory,
-            toolOutcomes,
-            priorFacts: state.eilFacts,
-          });
-          if (forceRecovery) recoveryCount += 1;
+          if (engineTurn) {
+            engineTurn = sharedExecutionEngine.refreshTurnWithBehavior(
+              engineTurn,
+              state.input.behaviorConfig,
+              {
+                toolOutcomes,
+                memory: state.memory,
+                priorFacts: state.eilFacts,
+                phase: forceRecovery ? "recover" : "schedule",
+              },
+            );
+            if (forceRecovery) {
+              engineTurn = sharedExecutionEngine.bumpRecovery(engineTurn);
+              recoveryCount = engineTurn.recoveryCount;
+            }
+            turnContext = engineTurn.turnContext;
+          }
+          if (forceRecovery && !engineTurn) recoveryCount += 1;
           state.traceBuilder.emitEvent(
             "turn_context",
             forceRecovery
@@ -634,13 +699,6 @@ export class LangGraphRuntime implements AgentRuntime {
         }
       }
 
-      const eil = resolveEilTurn({
-        behaviorConfig: state.input.behaviorConfig,
-        userMessage,
-        memory: state.memory,
-        toolOutcomes,
-        priorFacts: state.eilFacts,
-      });
       state.traceBuilder.setNextNode("execute_tool");
       state.traceBuilder.endNode(
         "schedule_tools",
@@ -651,11 +709,12 @@ export class LangGraphRuntime implements AgentRuntime {
       );
       return {
         turnContext,
+        engineTurn,
         toolOutcomes,
         scheduledToolOutcomes,
-        eilPlan: eil.plan,
-        eilFacts: eil.facts,
-        eilSnapshot: eil.snapshot,
+        eilPlan: turnContext?.eilPlan ?? state.eilPlan,
+        eilFacts: turnContext?.facts ?? state.eilFacts,
+        eilSnapshot: turnContext?.eilSnapshot ?? state.eilSnapshot,
         recoveryCount,
         forceMandatoryRecovery: false,
       };
@@ -737,24 +796,40 @@ export class LangGraphRuntime implements AgentRuntime {
     const validateResult = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("validate_result", "Validar resultado");
       const userMessage = state.input.message.body ?? "";
-      const contract = state.turnContext?.executionContract;
-      const requiredToolNames =
-        contract?.requiredToolNames ??
-        resolveRequiredToolNamesForValidation(state.input.behaviorConfig, { userMessage });
-      const priorToolOutcomes = priorToolOutcomesFromSession(
-        state.memory?.flowSlots as Record<string, string | number | boolean> | undefined,
-      );
-      const turnPolicy =
-        state.turnContext?.promptContract.turnPolicy ??
-        resolveTurnPolicy(state.input.behaviorConfig, { userMessage, priorToolOutcomes });
+      let engineTurn = state.engineTurn;
+      if (engineTurn) {
+        engineTurn = sharedExecutionEngine.refreshTurnWithBehavior(
+          engineTurn,
+          state.input.behaviorConfig,
+          {
+            toolOutcomes: state.toolOutcomes,
+            memory: state.memory,
+            priorFacts: state.eilFacts,
+            phase: "validate",
+          },
+        );
+      }
+      const turnContext = engineTurn?.turnContext ?? state.turnContext;
+      const contract = turnContext?.executionContract;
+      const requiredToolNames = contract?.requiredToolNames ?? [];
+      const turnPolicy = turnContext?.promptContract.turnPolicy ?? {
+        forbiddenSameTurnPairs: [],
+        exclusiveAllowedTools: null,
+        completionToolHints: [],
+        confirmationPrerequisiteTools: [],
+        omitToolsWhenSlotsPresent: [],
+        blockEscalation: false,
+      };
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
         strictMode: state.input.engineConfig.strictMode,
         requiredToolNames,
         turnPolicy,
-        behaviorConfig: contract ? undefined : state.input.behaviorConfig,
+        behaviorConfig: turnContext ? undefined : state.input.behaviorConfig,
         userMessage,
+        capabilityGraph: turnContext?.capabilityGraph ?? state.engineTurn?.turnContext.capabilityGraph,
+        factsBeforeTurn: state.eilFacts ?? turnContext?.facts,
       });
       if (!validation.ok) {
         for (const a of validation.alerts) state.traceBuilder.addError(a);
@@ -780,14 +855,6 @@ export class LangGraphRuntime implements AgentRuntime {
           /* best-effort */
         }
       }
-      const eil = resolveEilTurn({
-        behaviorConfig: state.input.behaviorConfig,
-        userMessage,
-        memory: state.memory,
-        toolOutcomes: state.toolOutcomes,
-        replyText: state.reply,
-        priorFacts: state.eilFacts,
-      });
       state.traceBuilder.setNextNode("supervisor");
       state.traceBuilder.endNode(
         "validate_result",
@@ -795,18 +862,11 @@ export class LangGraphRuntime implements AgentRuntime {
       );
       return {
         validationBlockSend: validation.blockSend,
-        eilPlan: eil.plan,
-        eilFacts: eil.facts,
-        eilSnapshot: eil.snapshot,
-        turnContext: buildTurnContext({
-          turnId: `${state.input.conversation.id}:${state.input.message.id}`,
-          behaviorConfig: state.input.behaviorConfig,
-          userMessage,
-          memory: state.memory,
-          toolOutcomes: state.toolOutcomes,
-          priorFacts: state.eilFacts,
-          eilResolve: eil,
-        }),
+        eilPlan: turnContext?.eilPlan ?? state.eilPlan,
+        eilFacts: turnContext?.facts ?? state.eilFacts,
+        eilSnapshot: turnContext?.eilSnapshot ?? state.eilSnapshot,
+        turnContext,
+        engineTurn,
       };
     };
 
@@ -855,15 +915,7 @@ export class LangGraphRuntime implements AgentRuntime {
         return { supervisorApproved: approved && !blockReply, supervisorTrace: supTrace, blockReply };
       }
 
-      const supervisorPriorTools = priorToolOutcomesFromSession(
-        state.memory?.flowSlots as Record<string, string | number | boolean> | undefined,
-      );
-      const turnPolicy =
-        state.turnContext?.promptContract.turnPolicy ??
-        resolveTurnPolicy(state.input.behaviorConfig, {
-          userMessage: state.input.message.body ?? "",
-          priorToolOutcomes: supervisorPriorTools,
-        });
+      const turnPolicy = state.turnContext?.promptContract.turnPolicy;
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",
         replyText: state.reply,
@@ -896,17 +948,30 @@ export class LangGraphRuntime implements AgentRuntime {
         state.input.engineConfig,
         state.input.behaviorConfig,
       );
-      const resilience = decideResilienceAction({
-        config: resilienceCfg,
-        strictMode: state.input.engineConfig.strictMode,
-        supervisorTrace: supTrace,
-        executionContract: state.turnContext?.executionContract ?? null,
-        retryCount: state.retryCount,
-        recoveryCount: state.recoveryCount ?? 0,
-        previousReply: state.previousReply,
-        replyText: state.reply,
-        toolOutcomes: state.toolOutcomes,
-      });
+      const resilience =
+        state.engineTurn != null
+          ? sharedExecutionEngine.decideRecovery({
+              engineConfig: state.input.engineConfig,
+              behaviorConfig: state.input.behaviorConfig,
+              supervisorTrace: supTrace,
+              executionContract: state.turnContext?.executionContract ?? null,
+              retryCount: state.retryCount,
+              recoveryCount: state.recoveryCount ?? 0,
+              previousReply: state.previousReply,
+              replyText: state.reply,
+              toolOutcomes: state.toolOutcomes,
+            })
+          : decideResilienceAction({
+              config: resilienceCfg,
+              strictMode: state.input.engineConfig.strictMode,
+              supervisorTrace: supTrace,
+              executionContract: state.turnContext?.executionContract ?? null,
+              retryCount: state.retryCount,
+              recoveryCount: state.recoveryCount ?? 0,
+              previousReply: state.previousReply,
+              replyText: state.reply,
+              toolOutcomes: state.toolOutcomes,
+            });
 
       let resilienceRoute: GraphState["resilienceRoute"] = undefined;
       let forceMandatoryRecovery = false;
@@ -1216,6 +1281,27 @@ export class LangGraphRuntime implements AgentRuntime {
             }),
           );
         }
+      }
+
+      if (state.engineTurn) {
+        const finalized = sharedExecutionEngine.finalize(state.engineTurn, "langgraph");
+        const snap = sharedExecutionEngine.snapshot(finalized);
+        for (const entry of timelineToInspectorEntries(finalized.timeline)) {
+          state.input.executionLog?.info(
+            { id: entry.id, name: entry.name },
+            entry.message,
+          );
+        }
+        state.input.executionLog?.info(
+          { id: "execution_engine", name: "Execution Engine" },
+          JSON.stringify({
+            intent: snap.intentKind,
+            required: snap.plan.requiredToolNames,
+            pending: snap.contract.pendingToolNames,
+            metrics: snap.metrics,
+            recoveryCount: snap.recoveryCount,
+          }),
+        );
       }
 
       state.traceBuilder.endNode("respond");

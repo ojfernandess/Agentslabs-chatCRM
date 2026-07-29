@@ -47,9 +47,20 @@ export function parseMemoryEngineConfig(behaviorConfig: unknown): MemoryEngineCo
 
   const raw = beh.memoryEngine;
   if (!raw || typeof raw !== "object") {
+    const fromEngineBudget =
+      agentEngine?.memoryBudgetEnabled === true &&
+      typeof agentEngine.memoryTokenBudget === "number"
+        ? Math.min(8000, Math.max(64, Math.round(agentEngine.memoryTokenBudget as number)))
+        : 0;
+    const fromEngineTtl =
+      typeof agentEngine?.memoryDefaultTtlSeconds === "number"
+        ? Math.max(0, Math.round(agentEngine.memoryDefaultTtlSeconds as number))
+        : 0;
     return {
       ...DEFAULT_MEMORY_ENGINE_CONFIG,
       provider: legacyProvider,
+      promptTokenBudget: fromEngineBudget,
+      defaultTtlSeconds: fromEngineTtl,
     };
   }
   const o = raw as Record<string, unknown>;
@@ -57,6 +68,19 @@ export function parseMemoryEngineConfig(behaviorConfig: unknown): MemoryEngineCo
     typeof o.maxMemories === "number" && Number.isFinite(o.maxMemories)
       ? Math.min(500, Math.max(10, Math.round(o.maxMemories)))
       : DEFAULT_MEMORY_ENGINE_CONFIG.maxMemories;
+  const promptTokenBudget =
+    typeof o.promptTokenBudget === "number" && Number.isFinite(o.promptTokenBudget)
+      ? Math.min(8000, Math.max(0, Math.round(o.promptTokenBudget)))
+      : agentEngine?.memoryBudgetEnabled === true &&
+          typeof agentEngine.memoryTokenBudget === "number"
+        ? Math.min(8000, Math.max(64, Math.round(agentEngine.memoryTokenBudget as number)))
+        : DEFAULT_MEMORY_ENGINE_CONFIG.promptTokenBudget ?? 0;
+  const defaultTtlSeconds =
+    typeof o.defaultTtlSeconds === "number" && Number.isFinite(o.defaultTtlSeconds)
+      ? Math.min(60 * 60 * 24 * 30, Math.max(0, Math.round(o.defaultTtlSeconds)))
+      : typeof agentEngine?.memoryDefaultTtlSeconds === "number"
+        ? Math.max(0, Math.round(agentEngine.memoryDefaultTtlSeconds as number))
+        : DEFAULT_MEMORY_ENGINE_CONFIG.defaultTtlSeconds ?? 0;
 
   return {
     provider: asMemoryKind(o.provider, legacyProvider),
@@ -67,6 +91,8 @@ export function parseMemoryEngineConfig(behaviorConfig: unknown): MemoryEngineCo
     rememberTechnicalData: o.rememberTechnicalData !== false,
     ignoreCasualConversations: o.ignoreCasualConversations !== false,
     maxMemories,
+    promptTokenBudget,
+    defaultTtlSeconds,
   };
 }
 
@@ -89,6 +115,8 @@ export function mergeMemoryEngineIntoBehavior(
       rememberTechnicalData: memoryEngine.rememberTechnicalData,
       ignoreCasualConversations: memoryEngine.ignoreCasualConversations,
       maxMemories: memoryEngine.maxMemories,
+      promptTokenBudget: memoryEngine.promptTokenBudget ?? 0,
+      defaultTtlSeconds: memoryEngine.defaultTtlSeconds ?? 0,
     },
     agentEngine: {
       ...agentEngine,

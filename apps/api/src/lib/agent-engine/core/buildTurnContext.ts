@@ -84,10 +84,18 @@ export function buildExecutionContract(opts: {
     (k) => opts.eil!.facts[k]?.value != null,
   );
 
+  for (const fact of requiredFacts) {
+    violations.push(`fact_missing:${fact}`);
+  }
+
   let planPhase: ExecutionContract["planPhase"] = "planning";
-  if (pending.length === 0 && required.length > 0) planPhase = "reply";
-  else if (pending.length > 0) planPhase = "tooling";
-  else if (required.length === 0) planPhase = "reply";
+  if (pending.length === 0 && required.length > 0 && requiredFacts.length === 0) {
+    planPhase = "reply";
+  } else if (pending.length > 0 || requiredFacts.length > 0) {
+    planPhase = "tooling";
+  } else if (required.length === 0) {
+    planPhase = "reply";
+  }
 
   return {
     version: 1,
@@ -103,7 +111,9 @@ export function buildExecutionContract(opts: {
     existingFacts,
     constraints: eilViolations.map((v) => v.reason),
     completionCriteria: [
-      pending.length === 0 ? "required_tools_satisfied" : `pending_tools:${pending.join(",")}`,
+      pending.length === 0 && requiredFacts.length === 0
+        ? "required_tools_satisfied"
+        : `pending_tools:${pending.join(",")}|pending_facts:${requiredFacts.join(",")}`,
     ],
     valid: violations.length === 0 && eilViolations.length === 0,
     violations,

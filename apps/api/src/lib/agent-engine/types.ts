@@ -52,6 +52,26 @@ export type AgentEngineConfig = {
   schedulerEnabled?: boolean;
   /** Recovery de tools + fallback + self-healing (Fase 4). */
   resilienceEnabled?: boolean;
+  /**
+   * Hotfix: se true e runtime=openconduit, bypassa executeViaAgentEngine
+   * (path legado directo ao native core). Default false — unificação Execution Engine.
+   */
+  legacyOpenconduitBypass?: boolean;
+  /**
+   * Workflow/Step Engine durável (branch/loop/suspend/compensate).
+   * Requer `behaviorConfig.agentEngine.workflow` definition.
+   */
+  workflowEngineEnabled?: boolean;
+  /** Fase 4 — packing de memória com TTL/prioridade/token budget. */
+  memoryBudgetEnabled?: boolean;
+  /** Orçamento de tokens do appendix de memória (quando memoryBudgetEnabled). */
+  memoryTokenBudget?: number;
+  /** TTL default (s) para memória temporary. */
+  memoryDefaultTtlSeconds?: number;
+  /** Exporta spans OTEL (OTLP se endpoint env; sempre buffer local). */
+  otelEnabled?: boolean;
+  /** Permite dry-run via AgentTurnSimulator (flag documental / gate de API). */
+  simulatorEnabled?: boolean;
 };
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
@@ -71,6 +91,13 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   parallelKbPrefetchEnabled: false,
   schedulerEnabled: false,
   resilienceEnabled: false,
+  legacyOpenconduitBypass: false,
+  workflowEngineEnabled: false,
+  memoryBudgetEnabled: false,
+  memoryTokenBudget: 1200,
+  memoryDefaultTtlSeconds: 0,
+  otelEnabled: false,
+  simulatorEnabled: false,
 };
 
 export type AgentRuntimeExecuteInput = {

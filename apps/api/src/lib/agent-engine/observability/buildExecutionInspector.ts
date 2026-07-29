@@ -293,6 +293,20 @@ export function buildExecutionInspectorView(input: {
       label: "Resposta consistente / enviada",
       passed: Boolean(replySent) || sorted.some((e) => e.nodeId === "outbound"),
     },
+    {
+      id: "execution_engine",
+      label: "Execution Engine timeline",
+      passed:
+        sorted.some(
+          (e) =>
+            e.nodeId === "execution_engine" ||
+            e.nodeId.startsWith("engine_") ||
+            /ExecutionEngine:/i.test(e.nodeName),
+        ) || input.engine.runtime === "openconduit",
+      detail: sorted.some((e) => e.nodeId.startsWith("engine_") || e.nodeId === "execution_engine")
+        ? "Timeline registada"
+        : "Sem eventos engine_* (turno legado ou bypass)",
+    },
   ];
 
   if (

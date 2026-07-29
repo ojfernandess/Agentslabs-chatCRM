@@ -7,6 +7,7 @@ import {
   mergeMemoryHierarchy,
   summarizeMemoryRecords,
 } from "./MemoryContextBuilder.js";
+import { packMemoryForPrompt } from "./MemoryBudgetPacker.js";
 import { extractMemoryCandidates } from "./MemoryExtractor.js";
 import {
   applyDuplicateUpdate,
@@ -221,6 +222,31 @@ export class OpenNexoMemoryProvider implements MemoryProvider {
       global,
       userMessage: input.userMessage,
     });
+
+    const budgetOn =
+      typeof input.config.promptTokenBudget === "number" && input.config.promptTokenBudget > 0;
+    if (budgetOn) {
+      const packed = packMemoryForPrompt(hierarchy, {
+        promptTokenBudget: input.config.promptTokenBudget,
+        defaultTtlSeconds: input.config.defaultTtlSeconds ?? 0,
+        maxPerScope: 15,
+      });
+      const latencyMs = Date.now() - started;
+      return {
+        appendix: buildMemoryContextAppendix(packed.hierarchy),
+        records: packed.records.slice(0, input.config.maxMemories),
+        hierarchy: packed.hierarchy,
+        loadedCount: packed.records.length,
+        latencyMs,
+        budget: {
+          tokensUsed: packed.tokensUsed,
+          tokensBudget: packed.tokensBudget,
+          truncated: packed.truncated,
+          droppedCount: packed.droppedIds.length,
+          expiredCount: packed.expiredIds.length,
+        },
+      };
+    }
 
     const records = ranked.slice(0, input.config.maxMemories);
     const latencyMs = Date.now() - started;
@@ -509,6 +535,28 @@ export class Mem0MemoryProvider implements MemoryProvider {
         contact: [...base.hierarchy.contact, ...remote],
         userMessage: input.userMessage,
       });
+      const budgetOn =
+        typeof input.config.promptTokenBudget === "number" && input.config.promptTokenBudget > 0;
+      if (budgetOn) {
+        const packed = packMemoryForPrompt(hierarchy, {
+          promptTokenBudget: input.config.promptTokenBudget,
+          defaultTtlSeconds: input.config.defaultTtlSeconds ?? 0,
+        });
+        return {
+          appendix: buildMemoryContextAppendix(packed.hierarchy),
+          records: packed.records.slice(0, input.config.maxMemories),
+          hierarchy: packed.hierarchy,
+          loadedCount: packed.records.length,
+          latencyMs: Date.now() - started,
+          budget: {
+            tokensUsed: packed.tokensUsed,
+            tokensBudget: packed.tokensBudget,
+            truncated: packed.truncated,
+            droppedCount: packed.droppedIds.length,
+            expiredCount: packed.expiredIds.length,
+          },
+        };
+      }
       const records = ranked.slice(0, input.config.maxMemories);
       return {
         appendix: buildMemoryContextAppendix(hierarchy),

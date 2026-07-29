@@ -46,6 +46,8 @@ import {
   turnPolicyPreExecBlockReasonForTurn,
   validateToolOutcomesAgainstTurnPolicy,
 } from "./agent-engine/validators/turnPolicyParser.js";
+import { capabilityPreExecBlockReason, buildCapabilityGraph } from "./agent-engine/eil/CapabilityGraph.js";
+import { factsFromFlowSlots } from "./agent-engine/eil/FactsEngine.js";
 import { playbookTextFromBehavior } from "./agent-engine/validators/requiredToolNamesParser.js";
 import {
   formatExecutionContractForSupervisor,
@@ -1636,7 +1638,9 @@ async function generateNativeAgentReplyCore(input: {
 
   if (!input.skipEngineRoute) {
     ensureAgentEngineExecutorRegistered();
-    if (engineConfig.runtime !== "openconduit") {
+    const legacyBypass =
+      engineConfig.runtime === "openconduit" && engineConfig.legacyOpenconduitBypass === true;
+    if (!legacyBypass) {
       const reply = await executeViaAgentEngine({
         organizationId,
         bot,
@@ -2022,6 +2026,13 @@ async function generateNativeAgentReplyCore(input: {
   const priorSessionToolNames = readSessionSatisfiedToolNames(sessionFlowSlots);
   const priorToolOutcomes = priorToolOutcomesFromSession(sessionFlowSlots);
   const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage, priorToolOutcomes });
+  const capabilityGraph = buildCapabilityGraph({
+    tools: customHttpTools.map((t) => ({
+      name: t.name,
+      config: t.config,
+    })),
+  });
+  const sessionFacts = factsFromFlowSlots(sessionFlowSlots);
 
   const flowStatePrompt = isolateForConnectedTools
     ? buildIsolatedNativeFlowStatePromptBlock({
@@ -2394,6 +2405,20 @@ async function generateNativeAgentReplyCore(input: {
                 );
               }
 
+              const capBlock =
+                capabilityPreExecBlockReason(row.name, capabilityGraph, sessionFacts, existingNames) ??
+                capabilityPreExecBlockReason(name, capabilityGraph, sessionFacts, existingNames);
+              if (capBlock) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "capability_graph_precondition",
+                    message: capBlock,
+                  }),
+                );
+              }
+
               const maxCalls =
                 connectedToolMaxCalls.get(row.id) ?? connectedToolMaxCalls.get(name) ?? null;
               const countKey = row.id;
@@ -2480,6 +2505,22 @@ async function generateNativeAgentReplyCore(input: {
                   skipped: true,
                   reason: "turn_policy_exclusive",
                   message: nativeBlock,
+                }),
+              );
+            }
+            const nativeCapBlock = capabilityPreExecBlockReason(
+              name,
+              capabilityGraph,
+              sessionFacts,
+              nativeExisting,
+            );
+            if (nativeCapBlock) {
+              return finishToolCall(
+                JSON.stringify({
+                  ok: false,
+                  skipped: true,
+                  reason: "capability_graph_precondition",
+                  message: nativeCapBlock,
                 }),
               );
             }

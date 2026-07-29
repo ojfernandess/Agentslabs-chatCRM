@@ -38,6 +38,16 @@ function extractTurnFromMessages(messages: string[]): TurnSnapshot | null {
     if (o.contractValid != null || Array.isArray(o.requiredToolNames)) {
       return o as TurnSnapshot;
     }
+    // Execution Engine snapshot (openconduit / langgraph finalize)
+    if (Array.isArray(o.required) || o.intent != null) {
+      return {
+        intentKind: typeof o.intent === "string" ? o.intent : undefined,
+        requiredToolNames: Array.isArray(o.required) ? (o.required as string[]) : undefined,
+        pendingToolNames: Array.isArray(o.pending) ? (o.pending as string[]) : undefined,
+        contractValid:
+          Array.isArray(o.pending) && (o.pending as unknown[]).length === 0 ? true : undefined,
+      };
+    }
   }
   return null;
 }
@@ -52,9 +62,12 @@ async function loadTurnForExecution(
       OR: [
         { nodeId: "turn_context" },
         { nodeId: "agent_engine_trace" },
+        { nodeId: "execution_engine" },
+        { nodeId: { startsWith: "engine_" } },
         { nodeId: { contains: "agent_engine" } },
         { message: { contains: "contractValid" } },
         { message: { contains: '"turn"' } },
+        { message: { contains: "ExecutionEngine" } },
       ],
     },
     orderBy: { sequence: "asc" },

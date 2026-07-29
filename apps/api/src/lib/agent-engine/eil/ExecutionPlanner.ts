@@ -51,16 +51,6 @@ export function buildExecutionIntelligencePlan(
     if (!node) continue;
     for (const f of node.requiresFacts) requiredFacts.add(f);
   }
-  // Tools that produce facts needed by other required tools' requiresFacts
-  for (const node of graph.nodes) {
-    if (turnPlan.requiredToolNames.some((t) => t.toLowerCase() === node.toolName.toLowerCase())) {
-      for (const f of node.produces) {
-        // produced by required tools become "expected" known after execution — not required up-front
-        void f;
-      }
-    }
-  }
-
   const knownFactKeys = Object.keys(facts).filter((k) => hasFact(facts, k));
   const pendingFacts = [...requiredFacts].filter((f) => !hasFact(facts, f));
 
@@ -68,6 +58,22 @@ export function buildExecutionIntelligencePlan(
   for (const toolName of turnPlan.requiredToolNames) {
     const called = (opts.toolsCalled ?? []).some((t) => t.toLowerCase() === toolName.toLowerCase());
     if (!called) pendingTools.push(toolName);
+  }
+
+  // Producers of unmet required facts — schedule before dependents (Tool Call Accuracy).
+  for (const fact of pendingFacts) {
+    for (const producer of graph.producersByFact[fact] ?? []) {
+      const alreadyPending = pendingTools.some((t) => t.toLowerCase() === producer.toLowerCase());
+      const alreadyCalled = (opts.toolsCalled ?? []).some(
+        (t) => t.toLowerCase() === producer.toLowerCase(),
+      );
+      const inAvailable =
+        !opts.availableToolNames?.length ||
+        opts.availableToolNames.some((t) => t.toLowerCase() === producer.toLowerCase());
+      if (!alreadyPending && !alreadyCalled && inAvailable) {
+        pendingTools.unshift(producer);
+      }
+    }
   }
 
   // Pending capabilities: capabilities of pending tools

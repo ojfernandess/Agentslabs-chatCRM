@@ -46,5 +46,30 @@ export function parseToolEilConfig(config: unknown): ToolEilConfig {
       if (typeof v === "string" && v.trim()) factPaths[k] = v.trim();
     }
   }
-  return { produces, requiresFacts, capabilities, factPaths };
+  const conflictsWith = Array.isArray(e.conflictsWith)
+    ? e.conflictsWith
+        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        .map((x) => x.trim().toLowerCase())
+    : [];
+  const timeoutMs =
+    typeof e.timeoutMs === "number" && Number.isFinite(e.timeoutMs) && e.timeoutMs > 0
+      ? Math.trunc(e.timeoutMs)
+      : undefined;
+  const retryMax =
+    typeof e.retryMax === "number" && Number.isFinite(e.retryMax) && e.retryMax >= 0
+      ? Math.trunc(e.retryMax)
+      : undefined;
+  const provider = typeof e.provider === "string" && e.provider.trim() ? e.provider.trim() : undefined;
+  const version = typeof e.version === "string" && e.version.trim() ? e.version.trim() : undefined;
+  return {
+    produces,
+    requiresFacts,
+    capabilities,
+    factPaths,
+    conflictsWith,
+    timeoutMs,
+    retryMax,
+    provider,
+    version,
+  };
 }

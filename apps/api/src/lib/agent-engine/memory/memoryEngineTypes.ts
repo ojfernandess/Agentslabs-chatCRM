@@ -146,6 +146,14 @@ export type MemoryExecutionContext = {
   };
   loadedCount: number;
   latencyMs: number;
+  /** Fase 4 — packing sob token budget. */
+  budget?: {
+    tokensUsed: number;
+    tokensBudget: number;
+    truncated: boolean;
+    droppedCount: number;
+    expiredCount: number;
+  };
 };
 
 export type MemoryTurnSaveInput = {
@@ -186,6 +194,10 @@ export type MemoryEngineConfig = {
   rememberTechnicalData: boolean;
   ignoreCasualConversations: boolean;
   maxMemories: number;
+  /** Fase 4 — orçamento de tokens do appendix no prompt (0 = desligado). */
+  promptTokenBudget?: number;
+  /** TTL default para scope temporary (segundos; 0 = off). */
+  defaultTtlSeconds?: number;
 };
 
 export const DEFAULT_MEMORY_ENGINE_CONFIG: MemoryEngineConfig = {
@@ -197,6 +209,8 @@ export const DEFAULT_MEMORY_ENGINE_CONFIG: MemoryEngineConfig = {
   rememberTechnicalData: true,
   ignoreCasualConversations: true,
   maxMemories: 100,
+  promptTokenBudget: 0,
+  defaultTtlSeconds: 0,
 };
 
 /** Configuração administrativa da organização. */

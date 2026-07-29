@@ -63,6 +63,14 @@ test("parseAgentEngineConfig reads agentEngine block", () => {
   assert.equal(cfg.parallelKbPrefetchEnabled, true);
 });
 
+test("parseAgentEngineConfig reads workflowEngineEnabled", () => {
+  const cfg = parseAgentEngineConfig({
+    agentEngine: { workflowEngineEnabled: true },
+  });
+  assert.equal(cfg.workflowEngineEnabled, true);
+  assert.equal(DEFAULT_AGENT_ENGINE_CONFIG.workflowEngineEnabled, false);
+});
+
 test("parseAgentEngineConfig supervisorMode structural skips llm in native path", () => {
   const cfg = parseAgentEngineConfig({
     agentEngine: { supervisorEnabled: true, supervisorMode: "structural" },

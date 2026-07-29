@@ -13,6 +13,14 @@ export interface AgentRuntime {
 
   execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult>;
 
+  /**
+   * Stream opcional — default via StreamingRuntime.executeRuntimeStream.
+   * Runtimes podem override para stream nativo.
+   */
+  executeStream?(
+    input: AgentRuntimeExecuteInput,
+  ): AsyncIterable<import("./StreamingRuntime.js").StreamRuntimeEvent>;
+
   pause?(): Promise<void>;
   resume?(): Promise<void>;
   stop?(): Promise<void>;

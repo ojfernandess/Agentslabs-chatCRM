@@ -7,19 +7,23 @@ import type {
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
-import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
-import { resolveTurnPolicy, shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
+import { runWorkflowGate } from "../audit/applyWorkflowGate.js";
+import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import {
   buildSupervisorTrace,
   buildSupervisorValidationInput,
   shouldRetryAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
-import { resolveEilTurn } from "../eil/runtimeBridge.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
-import { buildPersistedFlowSlots, priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
+import { buildPersistedFlowSlots } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import type { EilSnapshot, FactStore } from "../eil/types.js";
+import {
+  sharedExecutionEngine,
+  timelineToInspectorEntries,
+  type EngineTurnState,
+} from "../engine/index.js";
 
 export type OrchestrationState = {
   input: AgentRuntimeExecuteInput;
@@ -36,6 +40,7 @@ export type OrchestrationState = {
   eilSnapshot?: EilSnapshot;
   /** Checks do último Supervisor — usados no reply-only retry. */
   lastSupervisorChecks?: Array<{ id: string; passed: boolean }>;
+  engineTurn?: EngineTurnState;
 };
 
 export type OrchestrationHook = (state: OrchestrationState) => Promise<void>;
@@ -89,12 +94,20 @@ export async function runOrchestratedRuntime(
   const provider = createMemory(input.engineConfig.memory);
   state.memory = await provider.load(input.conversation.id, input.organizationId);
   traceBuilder.setMemorySnapshot(state.memory);
+  state.engineTurn = sharedExecutionEngine.beginTurn({
+    input,
+    memory: state.memory,
+  });
+  state.eilFacts = state.engineTurn.turnContext.facts;
+  state.eilSnapshot = state.engineTurn.turnContext.eilSnapshot;
+  traceBuilder.emitEvent("turn_context", "ExecutionEngine beginTurn", {
+    metadata: {
+      intent: state.engineTurn.turnContext.intent.kind,
+      requiredTools: state.engineTurn.contract.requiredToolNames,
+      promptHash: state.engineTurn.turnContext.promptContract.promptHash,
+    },
+  });
   traceBuilder.endNode("load_memory");
-
-  const memoryFlowSlots = state.memory?.flowSlots as
-    | Record<string, string | number | boolean>
-    | undefined;
-  const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
 
   for (;;) {
     const replyOnly =
@@ -120,32 +133,43 @@ export async function runOrchestratedRuntime(
           ]
         : toolOutcomes;
     state.kbMeta = kbMeta ?? { hasUsefulExcerpts: false, coversQuery: false };
-    const eil = resolveEilTurn({
-      behaviorConfig: input.behaviorConfig,
-      userMessage: input.message.body ?? "",
-      memory: state.memory,
-      toolOutcomes: state.toolOutcomes,
-      replyText: state.reply,
-      priorFacts: state.eilFacts,
-    });
-    state.eilFacts = eil.facts;
-    state.eilSnapshot = eil.snapshot;
+    if (state.engineTurn) {
+      state.engineTurn = sharedExecutionEngine.refreshTurnWithBehavior(
+        state.engineTurn,
+        input.behaviorConfig,
+        {
+          toolOutcomes: state.toolOutcomes,
+          memory: state.memory,
+          priorFacts: state.eilFacts,
+          phase: "validate",
+        },
+      );
+      state.eilFacts = state.engineTurn.turnContext.facts;
+      state.eilSnapshot = state.engineTurn.turnContext.eilSnapshot;
+    }
     traceBuilder.endNode("execute_tool", "ok", replyOnly ? "reply-only retry" : undefined);
 
     traceBuilder.startNode("validate_result", "Validar resultado");
     const userMessage = input.message.body ?? "";
-    const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
-      userMessage,
-    });
-    const turnPolicy = resolveTurnPolicy(input.behaviorConfig, { userMessage, priorToolOutcomes });
+    const requiredToolNames = state.engineTurn?.plan.requiredToolNames ?? [];
+    const turnPolicy = state.engineTurn?.plan.turnPolicy ?? {
+      forbiddenSameTurnPairs: [],
+      exclusiveAllowedTools: null,
+      completionToolHints: [],
+      confirmationPrerequisiteTools: [],
+      omitToolsWhenSlotsPresent: [],
+      blockEscalation: false,
+    };
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,
       strictMode: input.engineConfig.strictMode,
       requiredToolNames,
       turnPolicy,
-      behaviorConfig: input.behaviorConfig,
+      behaviorConfig: state.engineTurn ? undefined : input.behaviorConfig,
       userMessage,
+      capabilityGraph: state.engineTurn?.turnContext.capabilityGraph,
+      factsBeforeTurn: state.eilFacts ?? state.engineTurn?.turnContext.facts,
     });
     if (!validation.ok) {
       for (const alert of validation.alerts) traceBuilder.addError(alert);
@@ -178,16 +202,7 @@ export async function runOrchestratedRuntime(
 
     if (input.engineConfig.supervisorEnabled) {
       traceBuilder.startNode("supervisor", "Supervisor IA");
-      const eilRefresh = resolveEilTurn({
-        behaviorConfig: input.behaviorConfig,
-        userMessage,
-        memory: state.memory,
-        toolOutcomes: state.toolOutcomes,
-        replyText: state.reply,
-        priorFacts: state.eilFacts,
-      });
-      state.eilSnapshot = eilRefresh.snapshot;
-      state.eilFacts = eilRefresh.facts;
+      const eng = state.engineTurn;
       const supTrace = buildSupervisorTrace(
         buildSupervisorValidationInput({
           userMessage: input.message.body ?? "",
@@ -198,11 +213,12 @@ export async function runOrchestratedRuntime(
           memorySnapshot: state.memory,
           retryCount: state.retryCount,
           validationBlockSend: validation.blockSend,
-          eilEnabled: eilRefresh.enabled,
-          eilPlan: eilRefresh.plan,
-          eilViolations: eilRefresh.snapshot.violations,
-          eilRequiredFactsMissing: eilRefresh.plan.pendingFacts,
+          eilEnabled: eng?.turnContext.eilEnabled === true,
+          eilPlan: eng?.turnContext.eilPlan,
+          eilViolations: eng?.turnContext.eilSnapshot?.violations,
+          eilRequiredFactsMissing: eng?.turnContext.eilPlan?.pendingFacts,
           turnPolicy,
+          executionContract: eng?.contract ?? null,
         }),
       );
       state.supervisorApproved = supTrace.approved;
@@ -323,6 +339,8 @@ export async function runOrchestratedRuntime(
     retryCount: state.retryCount,
     graphNodeSequence: plan.graphHistory,
     eilSnapshot: state.eilSnapshot,
+    turnPlan: state.engineTurn?.turnContext.turnPlan,
+    executionContract: state.engineTurn?.contract,
   });
   // WF diagnóstico: não limpa reply. Bloqueio só via Supervisor / Tool Validator.
   if (state.blockReply) {
@@ -346,6 +364,13 @@ export async function runOrchestratedRuntime(
     traceBuilder.endNode("respond");
   } else {
     traceBuilder.endNode("respond");
+  }
+
+  if (state.engineTurn) {
+    state.engineTurn = sharedExecutionEngine.finalize(state.engineTurn, kind);
+    for (const entry of timelineToInspectorEntries(state.engineTurn.timeline)) {
+      input.executionLog?.info({ id: entry.id, name: entry.name }, entry.message);
+    }
   }
 
   const trace = traceBuilder.build();

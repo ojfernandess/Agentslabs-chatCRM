@@ -197,6 +197,32 @@ export type {
   ResilienceConfig,
   ResilienceDecision,
 } from "./resilience/TurnResilience.js";
+export * from "./engine/index.js";
+export * from "./continuation/index.js";
+export * from "./simulator/index.js";
+export {
+  packMemoryForPrompt,
+  resolveMemoryPriority,
+  isMemoryExpired,
+  estimatePackedTokens,
+  DEFAULT_MEMORY_BUDGET_CONFIG,
+  type MemoryBudgetConfig,
+  type MemoryPackResult,
+} from "./memory/MemoryBudgetPacker.js";
+export {
+  executeRuntimeStream,
+  collectRuntimeStream,
+  type StreamRuntimeEvent,
+  type ExecuteStreamOpts,
+} from "./runtime/StreamingRuntime.js";
+export {
+  ingestAgentTraceToOtel,
+  buildOtelSpansFromTrace,
+  isOtelExportConfigured,
+  getRecentOtelSpans,
+  type OtelSpan,
+  type OtelExportResult,
+} from "./observability/OtelBridge.js";
 
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";

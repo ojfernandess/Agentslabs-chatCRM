@@ -3,6 +3,12 @@ import type { AgentRuntimeExecuteInput } from "../types.js";
 import type { TurnContext } from "../core/types.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import { turnPolicyPreExecBlockReason } from "../validators/turnPolicyParser.js";
+import {
+  canInvokeTool,
+  findCapabilityNode,
+  orderToolsByFactDeps,
+} from "../eil/CapabilityGraph.js";
+import { hasFact } from "../eil/FactsEngine.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -58,13 +64,42 @@ export function planScheduledToolInvocations(
   const available = new Set(
     (turnContext.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
   );
-  const pending = turnContext.executionContract.pendingToolNames.filter(
+  let pending = turnContext.executionContract.pendingToolNames.filter(
     (name) => !toolOutcomeSatisfiesRequired(name, existingOutcomes),
   );
+
+  const graph = turnContext.capabilityGraph;
+  const facts = turnContext.facts ?? {};
+
+  // Expandir com producers de factos em falta (Tool Call Accuracy — ordem correcta).
+  if (graph) {
+    const expanded: string[] = [];
+    const seen = new Set<string>();
+    const add = (name: string) => {
+      const k = name.trim().toLowerCase();
+      if (seen.has(k)) return;
+      if (available.size > 0 && !available.has(k)) return;
+      if (toolOutcomeSatisfiesRequired(name, existingOutcomes)) return;
+      seen.add(k);
+      expanded.push(name);
+    };
+    for (const toolName of pending) {
+      const node = findCapabilityNode(graph, toolName);
+      for (const fact of node?.requiresFacts ?? []) {
+        if (hasFact(facts, fact)) continue;
+        for (const producer of graph.producersByFact[fact] ?? []) add(producer);
+      }
+      add(toolName);
+    }
+    pending = orderToolsByFactDeps(graph, expanded.length > 0 ? expanded : pending, facts);
+  }
+
   return pending
     .filter((toolName) => {
       if (available.size > 0 && !available.has(toolName.trim().toLowerCase())) return false;
-      return !turnPolicyPreExecBlockReason(toolName, policy);
+      if (turnPolicyPreExecBlockReason(toolName, policy)) return false;
+      if (graph && !canInvokeTool(graph, toolName, facts).ok) return false;
+      return true;
     })
     .map((toolName) => ({
       toolName,

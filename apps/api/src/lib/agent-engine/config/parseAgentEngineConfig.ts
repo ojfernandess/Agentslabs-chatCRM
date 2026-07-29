@@ -91,6 +91,19 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     parallelKbPrefetchEnabled: o.parallelKbPrefetchEnabled === true,
     schedulerEnabled: o.schedulerEnabled === true,
     resilienceEnabled: o.resilienceEnabled === true,
+    legacyOpenconduitBypass: o.legacyOpenconduitBypass === true,
+    workflowEngineEnabled: o.workflowEngineEnabled === true,
+    memoryBudgetEnabled: o.memoryBudgetEnabled === true,
+    memoryTokenBudget:
+      typeof o.memoryTokenBudget === "number" && Number.isFinite(o.memoryTokenBudget)
+        ? Math.min(8000, Math.max(64, Math.round(o.memoryTokenBudget)))
+        : DEFAULT_AGENT_ENGINE_CONFIG.memoryTokenBudget,
+    memoryDefaultTtlSeconds:
+      typeof o.memoryDefaultTtlSeconds === "number" && Number.isFinite(o.memoryDefaultTtlSeconds)
+        ? Math.min(60 * 60 * 24 * 30, Math.max(0, Math.round(o.memoryDefaultTtlSeconds)))
+        : DEFAULT_AGENT_ENGINE_CONFIG.memoryDefaultTtlSeconds,
+    otelEnabled: o.otelEnabled === true,
+    simulatorEnabled: o.simulatorEnabled === true,
   };
 }
 
@@ -117,6 +130,13 @@ export function mergeAgentEngineIntoBehavior(
       parallelKbPrefetchEnabled: engine.parallelKbPrefetchEnabled ?? false,
       schedulerEnabled: engine.schedulerEnabled ?? false,
       resilienceEnabled: engine.resilienceEnabled ?? false,
+      legacyOpenconduitBypass: engine.legacyOpenconduitBypass ?? false,
+      workflowEngineEnabled: engine.workflowEngineEnabled ?? false,
+      memoryBudgetEnabled: engine.memoryBudgetEnabled ?? false,
+      memoryTokenBudget: engine.memoryTokenBudget ?? 1200,
+      memoryDefaultTtlSeconds: engine.memoryDefaultTtlSeconds ?? 0,
+      otelEnabled: engine.otelEnabled ?? false,
+      simulatorEnabled: engine.simulatorEnabled ?? false,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

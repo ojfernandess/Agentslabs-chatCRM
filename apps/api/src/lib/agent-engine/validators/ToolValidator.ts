@@ -5,6 +5,8 @@ import {
   validateToolOutcomesAgainstTurnPolicy,
   type TurnPolicy,
 } from "./turnPolicyParser.js";
+import type { CapabilityGraph, FactStore } from "../eil/types.js";
+import { detectToolOrderViolations, capabilityPreExecBlockReason } from "../eil/CapabilityGraph.js";
 
 export type ToolRoundOutcome = {
   name: string;
@@ -22,11 +24,16 @@ export type ToolValidatorInput = {
   turnPolicy?: TurnPolicy;
   behaviorConfig?: Record<string, unknown>;
   userMessage?: string;
+  /** Capability Graph — valida ordem / requiresFacts / conflicts. */
+  capabilityGraph?: CapabilityGraph | null;
+  /** Factos conhecidos no início do turno (antes das tools deste turno). */
+  factsBeforeTurn?: FactStore | null;
 };
 
 /**
  * Valida coerência entre ferramentas executadas e resposta enviada.
- * Inclui políticas genéricas do playbook (pares proibidos, exclusividade de turno).
+ * Inclui políticas genéricas do playbook (pares proibidos, exclusividade de turno)
+ * e hard-gates do Capability Graph quando fornecidos.
  */
 export function validateToolExecution(input: ToolValidatorInput): ToolValidationResult {
   const alerts: string[] = [];
@@ -55,6 +62,35 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
     for (const alert of validateToolOutcomesAgainstTurnPolicy(input.toolOutcomes, policy)) {
       alerts.push(alert);
       blockSend = true;
+    }
+  }
+
+  if (input.capabilityGraph) {
+    const facts = input.factsBeforeTurn ?? {};
+    const orderAlerts = detectToolOrderViolations(
+      input.capabilityGraph,
+      input.toolOutcomes,
+      facts,
+    );
+    for (const a of orderAlerts) {
+      alerts.push(a);
+      if (input.strictMode) blockSend = true;
+    }
+    // conflictsWith entre tools bem-sucedidas no turno
+    const okNames: string[] = [];
+    for (const t of input.toolOutcomes) {
+      if (t.ok === false) continue;
+      const block = capabilityPreExecBlockReason(
+        t.name,
+        input.capabilityGraph,
+        facts,
+        okNames,
+      );
+      if (block && /conflita/i.test(block)) {
+        alerts.push(block);
+        blockSend = true;
+      }
+      okNames.push(t.name);
     }
   }
 

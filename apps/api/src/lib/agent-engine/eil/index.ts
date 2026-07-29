@@ -20,6 +20,13 @@ export type {
 export { parseEilBehaviorConfig, isEilEnabled, parseToolEilConfig } from "./parseEilConfig.js";
 export { buildCapabilityGraph, findCapabilityNode } from "./CapabilityGraph.js";
 export {
+  toolRequiresUnmetFacts,
+  canInvokeTool,
+  orderToolsByFactDeps,
+  capabilityPreExecBlockReason,
+  detectToolOrderViolations,
+} from "./CapabilityGraph.js";
+export {
   getPathValue,
   extractFactsFromToolResult,
   factsFromFlowSlots,
