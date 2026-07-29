@@ -1,5 +1,4 @@
 import {
-  extractPositiveToolNamesFromLine,
   extractToolNamesFromText,
   playbookTextFromBehavior,
   toolOutcomeSatisfiesRequired,
@@ -7,15 +6,13 @@ import {
 import {
   COMPLETION_LINE_RE,
   CONFIRMATION_USER_MSG_RE,
-  EXCLUSIVE_LANGUAGE_RE,
-  extractSlotKeysFromLine,
-  hasFilledMediaOrDocumentSlots,
   isLikelyMutableOrCompletionTool,
   isLikelyUploadOrMediaTool,
   lineDescribesConfirmationExclusiveTools,
   looksLikeFlowSlotKey,
   slotKeyIsFilled,
-  TURN_TOOL_TABLE_MARKER_RE,
+  extractSlotKeysFromLine,
+  hasFilledMediaOrDocumentSlots,
 } from "./playbookRuntimePolicy.js";
 
 export {
@@ -127,7 +124,7 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
 
 /**
  * Em turnos de confirmação (sim/ok), extrai tools exclusivas do playbook:
- * linhas com "só/somente/apenas/only" + tool em contexto de confirmação ou tabela de passo.
+ * linhas com "só/somente/apenas/only" + tool em contexto de confirmação.
  * Nunca inclui conclusão/mutação nem escalonamento.
  */
 export function parseExclusiveToolsForConfirmationTurn(playbookText: string): string[] {
@@ -138,60 +135,32 @@ export function parseExclusiveToolsForConfirmationTurn(playbookText: string): st
     for (const t of tools) {
       if (isLikelyMutableOrCompletionTool(t)) continue;
       if (isEscalationToolName(t)) continue;
+      if (isLikelyUploadOrMediaTool(t)) continue;
       exclusive.add(t);
-    }
-  };
-
-  const extractExclusiveFromLine = (line: string) => {
-    const soMatches = [
-      ...line.matchAll(/\b(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
-    ];
-    if (soMatches.length > 0) {
-      addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
-      return;
-    }
-    if (EXCLUSIVE_LANGUAGE_RE.test(line)) {
-      addAllowed(extractPositiveToolNamesFromLine(line));
     }
   };
 
   for (const line of playbookText.split(/\n+/)) {
     if (!lineDescribesConfirmationExclusiveTools(line)) continue;
-
-    const cols = line
-      .split("|")
-      .map((c) => c.trim())
-      .filter((c) => c.length > 0);
-
-    if (cols.length >= 2 && (TURN_TOOL_TABLE_MARKER_RE.test(line) || /\|/.test(line))) {
-      for (const col of cols.slice(1, cols.length >= 4 ? -1 : undefined)) {
-        if (/proibid|nunca|zero/i.test(col) && !EXCLUSIVE_LANGUAGE_RE.test(col)) continue;
-        extractExclusiveFromLine(col);
-      }
-      continue;
-    }
-
-    extractExclusiveFromLine(line);
-  }
-
-  if (exclusive.size === 0) {
-    for (const line of playbookText.split(/\n+/)) {
-      if (!EXCLUSIVE_LANGUAGE_RE.test(line)) continue;
-      if (/proibid/i.test(line) && !/(?:s[oó]|somente|apenas|only)\s+`/i.test(line)) continue;
-      extractExclusiveFromLine(line);
+    const soMatches = [
+      ...line.matchAll(/(?:^|[\s|])(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+    ];
+    if (soMatches.length > 0) {
+      addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
     }
   }
 
   return [...exclusive];
 }
 
-/** Tools de conclusão mencionadas junto a linguagem de passo final / submit / concluído. */
+/** Tools de conclusão (mutáveis) — exclui uploads/media. */
 export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
   const hints = new Set<string>();
   for (const line of text.split(/\n+/)) {
-    if (/proibid/i.test(line) && !/\bS\d+\b|conclu[ií]d|passo\s*\d+/i.test(line)) continue;
+    if (/proibid/i.test(line) && !/\bS10\b|conclu[ií]d|passo\s*(?:final|\d+)/i.test(line)) continue;
     if (!COMPLETION_LINE_RE.test(line)) continue;
     for (const t of extractToolNamesFromText(line)) {
+      if (isLikelyUploadOrMediaTool(t)) continue;
       if (isLikelyMutableOrCompletionTool(t)) hints.add(t);
     }
   }
@@ -219,7 +188,8 @@ export function parseOmitToolsWhenSlotsPresentFromPlaybook(text: string): Array<
     ) {
       continue;
     }
-    const tools = extractToolNamesFromText(line);
+    // Só omitir uploads/media — nunca lookup (ex.: documentNumber + main_guest).
+    const tools = extractToolNamesFromText(line).filter(isLikelyUploadOrMediaTool);
     if (tools.length === 0) continue;
     const slotKeys = [
       ...new Set(
@@ -533,6 +503,8 @@ export function toolAliasesToOmitFromCatalog(opts: {
   }
 
   if (policy.exclusiveAllowedTools?.length) {
+    // Pré-requisito pendente: omitir conclusão + uploads + lado proibido do par.
+    // NÃO esvaziar o catálogo inteiro — isso quebrava o OpenNexo Runtime (Padrão).
     for (const hint of policy.completionToolHints) omit.add(hint);
     for (const pair of pairs) {
       if (toolsMatchAlias(pair.a, pair.b)) continue;
@@ -543,8 +515,8 @@ export function toolAliasesToOmitFromCatalog(opts: {
     }
     if (opts.catalogToolNames?.length) {
       for (const name of opts.catalogToolNames) {
-        const allowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, name));
-        if (!allowed && !isEscalationToolName(name)) omit.add(name);
+        if (isLikelyUploadOrMediaTool(name)) omit.add(name);
+        if (isLikelyMutableOrCompletionTool(name, policy.completionToolHints)) omit.add(name);
       }
     }
   } else if (policy.blockEscalation && policy.completionToolHints.length > 0) {

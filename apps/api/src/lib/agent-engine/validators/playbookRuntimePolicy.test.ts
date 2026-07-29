@@ -85,7 +85,7 @@ Proibido \`crm_validate_cart\` + \`crm_submit_order\` no mesmo turno.
 
 test("retail: form submission does not require submit in same turn", () => {
   const playbook = `
-| Form | dados do cliente | Chame \`crm_save_customer_form\` |
+| Form | dados do cliente | formulário multi-campo | Chame \`crm_save_customer_form\` |
 | Final | concluído | Chame \`crm_submit_order\` |
 `;
   const names = resolveRequiredToolNamesForTurn(
@@ -97,4 +97,20 @@ test("retail: form submission does not require submit in same turn", () => {
   );
   assert.ok(names.some((n) => n.includes("save_customer")));
   assert.equal(names.some((n) => n.includes("submit_order")), false);
+});
+
+test("omit-when-slots never drops lookup tools for documentNumber", () => {
+  const playbook = `
+| C8 | Se documentNumber já existe | Chame \`audaar_consultar_main_guest\` · PROIBIDO \`checkin_upload_selfie\` |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "41026299802" },
+  );
+  assert.equal(
+    policy.omitToolsWhenSlotsPresent.some((r) =>
+      r.tools.some((t) => /main_guest|consultar/i.test(t)),
+    ),
+    false,
+  );
 });

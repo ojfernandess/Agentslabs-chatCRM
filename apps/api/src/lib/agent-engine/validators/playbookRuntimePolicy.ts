@@ -10,7 +10,7 @@ export const UPLOAD_OR_MEDIA_TOOL_RE =
 
 /** Linha do playbook que descreve conclusão de passo (S10, Passo 8, submit, etc.). */
 export const COMPLETION_LINE_RE =
-  /conclu[ií]d|\bfinaliz\w*|submit|complete|\bdone\b|passo\s*\d+|step\s*\d+|\bS\d+\b/i;
+  /conclu[ií]d|\bfinaliz\w*|submit|complete|\bdone\b|passo\s*(?:final|\d+)|step\s*(?:final|\d+)|\bS10\b/i;
 
 /** Linguagem exclusiva no playbook (só/somente/apenas/only). */
 export const EXCLUSIVE_LANGUAGE_RE =
@@ -87,17 +87,18 @@ export function hasFilledMediaOrDocumentSlots(
 }
 
 /**
- * Linha do playbook descreve contexto de confirmação com exclusividade de tools.
- * Genérico: não depende de S9/C11/hotel — lê só/somente + sim/ok ou tabela de passo.
+ * Linha do playbook descreve exclusividade em turno de confirmação (sim/ok).
+ * Exige linguagem exclusiva + sinal de confirmação — não basta “passo/categoria” na tabela
+ * (isso poluía o allowlist e impedia a tool de conclusão no OpenNexo Runtime).
  */
 export function lineDescribesConfirmationExclusiveTools(line: string): boolean {
   if (!EXCLUSIVE_LANGUAGE_RE.test(line)) return false;
   if (/proibid/i.test(line) && !/(?:s[oó]|somente|apenas|only)\s+`/i.test(line)) return false;
+  if (!/(?:s[oó]|somente|apenas|only)\s+`/i.test(line)) return false;
 
   if (CONFIRMATION_IN_LINE_RE.test(line)) return true;
-  if (TURN_TOOL_TABLE_MARKER_RE.test(line)) return true;
-  if (/\|/.test(line) && /(?:s[oó]|somente|apenas|only)\s+`/i.test(line)) return true;
-  if (/\|\s*[^|]*(?:→|->)\s*[^|]*\|/i.test(line) && EXCLUSIVE_LANGUAGE_RE.test(line)) return true;
+  // Passo N=1 / seta de fluxo com “só `tool`”
+  if (/\bN\s*=\s*1\b/i.test(line) || /(?:→|->)/.test(line)) return true;
   return false;
 }
 

@@ -6,8 +6,12 @@ import { validateToolExecution } from "../validators/ToolValidator.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
-import { resolveEilTurn } from "../eil/runtimeBridge.js";
+import { resolveEilTurn, flowSlotsFromMemory } from "../eil/runtimeBridge.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
+import {
+  buildPersistedFlowSlots,
+  priorToolOutcomesFromSession,
+} from "../core/sessionToolOutcomes.js";
 
 export type NativeAgentKbMeta = {
   hasUsefulExcerpts: boolean;
@@ -28,6 +32,7 @@ export type NativeAgentExecutor = (
 
 /**
  * Runtime padrão — delega ao pipeline nativo existente (`generateNativeAgentReplyCore`).
+ * Persiste tools OK em flowSlots para confirmações multi-turno (sim → pré-requisito → conclusão).
  */
 export class OpenNexoRuntime implements AgentRuntime {
   readonly kind = "openconduit" as const;
@@ -52,36 +57,51 @@ export class OpenNexoRuntime implements AgentRuntime {
     const { reply, toolOutcomes = [] } = await this.executor(input);
     traceBuilder.endNode("respond");
 
+    const baseSlots = flowSlotsFromMemory(memSnap as Record<string, unknown>);
+    const persistedSlots = buildPersistedFlowSlots({
+      baseFlowSlots: baseSlots,
+      toolOutcomes,
+    });
+
     const eil = resolveEilTurn({
       behaviorConfig: input.behaviorConfig,
       userMessage: input.message.body ?? "",
-      memory: memSnap,
+      memory: { ...memSnap, flowSlots: persistedSlots },
       toolOutcomes,
       replyText: reply,
     });
     if (eil.enabled) {
       traceBuilder.setEilSnapshot(eil.snapshot);
-      if (Object.keys(eil.flowSlotsPatch).length > 0) {
-        try {
-          await mergeFlowSlotsAutomationContext({
-            organizationId: input.organizationId,
-            conversationId: input.conversation.id,
-            botId: input.bot.id,
-            flowSlots: eil.flowSlotsPatch,
-          });
-        } catch {
-          /* best-effort */
-        }
+    }
+
+    // Tools OK da sessão + facts EIL; __satisfiedToolNames não é sobrescrito pelo EIL.
+    const slotsToPersist = buildPersistedFlowSlots({
+      baseFlowSlots: persistedSlots,
+      toolOutcomes,
+      eilFacts: eil.enabled ? eil.facts : undefined,
+    });
+    if (Object.keys(slotsToPersist).length > 0) {
+      try {
+        await mergeFlowSlotsAutomationContext({
+          organizationId: input.organizationId,
+          conversationId: input.conversation.id,
+          botId: input.bot.id,
+          flowSlots: slotsToPersist,
+        });
+      } catch {
+        /* best-effort */
       }
     }
 
     if (toolOutcomes.length > 0) {
       traceBuilder.startNode("validate_result", "Validar ferramentas");
+      const priorToolOutcomes = priorToolOutcomesFromSession(persistedSlots);
       const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
         userMessage: input.message.body ?? "",
       });
       const turnPolicy = resolveTurnPolicy(input.behaviorConfig, {
         userMessage: input.message.body ?? "",
+        priorToolOutcomes,
       });
       const validation = validateToolExecution({
         toolOutcomes,
@@ -131,7 +151,7 @@ export class OpenNexoRuntime implements AgentRuntime {
       replyText: reply,
       toolOutcomes,
       kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
-      memorySnapshot: memSnap,
+      memorySnapshot: { ...memSnap, flowSlots: persistedSlots },
       graphNodeSequence: ["load_memory", "respond"],
       eilSnapshot: eil.snapshot,
     });
