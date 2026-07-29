@@ -387,7 +387,11 @@ export class LangGraphRuntime implements AgentRuntime {
       });
     }
 
-    return { reply: result.blockReply ? "" : result.reply, trace };
+    return {
+      reply: result.blockReply ? "" : result.reply,
+      trace,
+      toolOutcomes: result.toolOutcomes,
+    };
   }
 
   /** Lê snapshot de checkpoint LangGraph (memória + mirror Redis quando configurado). */

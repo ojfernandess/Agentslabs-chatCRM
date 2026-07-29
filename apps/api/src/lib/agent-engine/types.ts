@@ -72,6 +72,13 @@ export type AgentEngineConfig = {
   otelEnabled?: boolean;
   /** Permite dry-run via AgentTurnSimulator (flag documental / gate de API). */
   simulatorEnabled?: boolean;
+  /**
+   * Após tool de conclusão OK (ex. check_in) + ack curto, agenda um 2.º turno
+   * sintético (Passo 8 / KB) sem esperar resposta do contacto. Default false.
+   */
+  postCompletionFollowUpEnabled?: boolean;
+  /** Texto do inbound sintético do follow-up (default `"OK"`). */
+  postCompletionFollowUpSyntheticText?: string;
 };
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
@@ -98,6 +105,8 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   memoryDefaultTtlSeconds: 0,
   otelEnabled: false,
   simulatorEnabled: false,
+  postCompletionFollowUpEnabled: false,
+  postCompletionFollowUpSyntheticText: "OK",
 };
 
 export type AgentRuntimeExecuteInput = {
@@ -136,6 +145,13 @@ export type AgentRuntimeExecuteInput = {
 export type AgentRuntimeExecuteResult = {
   reply: string;
   trace?: AgentExecutionTrace;
+  /** Outcomes do turno (para follow-up pós-conclusão / inspectores). */
+  toolOutcomes?: Array<{
+    name: string;
+    ok: boolean;
+    preview: string;
+    structuredPayload?: unknown;
+  }>;
 };
 
 export type AgentGraphNodeId =

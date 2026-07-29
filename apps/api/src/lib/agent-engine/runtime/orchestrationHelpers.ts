@@ -380,7 +380,7 @@ export async function runOrchestratedRuntime(
   );
 
   return {
-    result: { reply: state.reply, trace },
+    result: { reply: state.reply, trace, toolOutcomes: state.toolOutcomes },
     runtimeState: {
       status: "completed",
       graphHistory: plan.graphHistory,

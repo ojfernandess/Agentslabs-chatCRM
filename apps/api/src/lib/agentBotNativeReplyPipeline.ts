@@ -8,6 +8,12 @@ import { withConversationAgentReplyLock } from "./llmSharedQuotaGate.js";
 import type { AutomationExecutionLogHandle } from "./automationExecutionLog.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { mergeNativeTurnAutomationContext } from "./automationConversationContextLib.js";
+import { parseAgentEngineConfig } from "./agent-engine/config/parseAgentEngineConfig.js";
+import {
+  isPostCompletionFollowUpMessage,
+  runPostCompletionFollowUp,
+  shouldSchedulePostCompletionFollowUp,
+} from "./agent-engine/continuation/postCompletionFollowUp.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -41,9 +47,13 @@ export async function runNativeAgentReplyAndDeliver(input: {
   message: Message;
   log: FastifyBaseLogger;
   exLog: AutomationExecutionLogHandle;
+  /** Evita reentrância no follow-up sintético pós-conclusão. */
+  skipPostCompletionFollowUp?: boolean;
 }): Promise<void> {
   const { organizationId, bot, conversation, contact, message, log, exLog } = input;
   const userMessage = (message.body ?? "").trim();
+  const skipFollowUp =
+    input.skipPostCompletionFollowUp === true || isPostCompletionFollowUpMessage(message);
 
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
@@ -85,6 +95,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
     );
     const replyText = replyResult.reply;
     const clientStreamDelivered = replyResult.clientStreamDelivered === true;
+    const toolOutcomes = replyResult.toolOutcomes ?? [];
 
     const handoffAfter = await prisma.conversation.findFirst({
       where: { id: conversation.id },
@@ -150,6 +161,12 @@ export async function runNativeAgentReplyAndDeliver(input: {
       return;
     }
 
+    const profileForVoice = await prisma.automationAgentProfile.findUnique({
+      where: { botId: bot.id },
+      select: { behaviorConfig: true },
+    });
+    const behaviorConfig = profileForVoice?.behaviorConfig;
+
     if (clientStreamDelivered) {
       exLog.info(
         { id: "outbound", name: "Entrega" },
@@ -168,14 +185,43 @@ export async function runNativeAgentReplyAndDeliver(input: {
           },
         })
         .catch(() => {});
+      const willFollowUpStream = shouldSchedulePostCompletionFollowUp({
+        enabled: parseAgentEngineConfig(behaviorConfig).postCompletionFollowUpEnabled === true,
+        skip: skipFollowUp,
+        replyText,
+        toolOutcomes,
+        behaviorConfig,
+        userMessage,
+        isFollowUpMessage: isPostCompletionFollowUpMessage(message),
+      });
+      if (willFollowUpStream) {
+        exLog.info(
+          { id: "post_completion_follow_up", name: "Follow-up pós-conclusão" },
+          "A agendar 2.º turno (Passo 8) após ack de conclusão — sem esperar o contacto",
+        );
+      }
       await exLog.completeSuccess();
+      if (willFollowUpStream) {
+        try {
+          await runPostCompletionFollowUp({
+            organizationId,
+            bot,
+            conversation,
+            contact,
+            sourceMessage: message,
+            behaviorConfig,
+            log,
+            deps: { runNativeAgentReplyAndDeliver },
+          });
+        } catch (err) {
+          log.warn(
+            { err, botId: bot.id, conversationId: conversation.id },
+            "post-completion follow-up schedule failed",
+          );
+        }
+      }
       return;
     }
-
-    const profileForVoice = await prisma.automationAgentProfile.findUnique({
-      where: { botId: bot.id },
-      select: { behaviorConfig: true },
-    });
 
     try {
       const deliveryKind = await deliverAgentReplyMessage({
@@ -185,7 +231,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         contact,
         inboundMessage: message,
         replyText,
-        behaviorConfig: profileForVoice?.behaviorConfig,
+        behaviorConfig,
         log,
       });
       exLog.info(
@@ -212,7 +258,43 @@ export async function runNativeAgentReplyAndDeliver(input: {
       })
       .catch(() => {});
 
+    const willFollowUp = shouldSchedulePostCompletionFollowUp({
+      enabled: parseAgentEngineConfig(behaviorConfig).postCompletionFollowUpEnabled === true,
+      skip: skipFollowUp,
+      replyText,
+      toolOutcomes,
+      behaviorConfig,
+      userMessage,
+      isFollowUpMessage: isPostCompletionFollowUpMessage(message),
+    });
+    if (willFollowUp) {
+      exLog.info(
+        { id: "post_completion_follow_up", name: "Follow-up pós-conclusão" },
+        "A agendar 2.º turno (Passo 8) após ack de conclusão — sem esperar o contacto",
+      );
+    }
+
     await exLog.completeSuccess();
+
+    if (willFollowUp) {
+      try {
+        await runPostCompletionFollowUp({
+          organizationId,
+          bot,
+          conversation,
+          contact,
+          sourceMessage: message,
+          behaviorConfig,
+          log,
+          deps: { runNativeAgentReplyAndDeliver },
+        });
+      } catch (err) {
+        log.warn(
+          { err, botId: bot.id, conversationId: conversation.id },
+          "post-completion follow-up schedule failed",
+        );
+      }
+    }
   } catch (err) {
     await exLog.completeError(err);
   }

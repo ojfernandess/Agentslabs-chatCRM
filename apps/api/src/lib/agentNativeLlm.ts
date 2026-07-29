@@ -85,7 +85,7 @@ import { buildNativeAgentMessageWhere, flowSlotsConflictWithUserIdentity, resolv
 import {
   AgentRuntimeFactory,
   evaluateStrictModeGate,
-  executeViaAgentEngine,
+  executeViaAgentEngineWithResult,
   MemoryEngineService,
   buildMemoryLoadedObservability,
   logMemoryEvents,
@@ -1663,7 +1663,7 @@ async function generateNativeAgentReplyCore(input: {
     const legacyBypass =
       engineConfig.runtime === "openconduit" && engineConfig.legacyOpenconduitBypass === true;
     if (!legacyBypass) {
-      const reply = await executeViaAgentEngine({
+      const engineResult = await executeViaAgentEngineWithResult({
         organizationId,
         bot,
         conversation,
@@ -1679,7 +1679,16 @@ async function generateNativeAgentReplyCore(input: {
             ? (profile.behaviorConfig as Record<string, unknown>)
             : {},
       });
-      return { ...EMPTY_NATIVE_CORE_RESULT, reply };
+      return {
+        ...EMPTY_NATIVE_CORE_RESULT,
+        reply: engineResult.reply,
+        toolOutcomes: (engineResult.toolOutcomes ?? []).map((t) => ({
+          name: t.name,
+          ok: t.ok,
+          preview: t.preview,
+          structuredPayload: t.structuredPayload,
+        })),
+      };
     }
   }
 

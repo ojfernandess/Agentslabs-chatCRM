@@ -418,6 +418,6 @@ export class OpenNexoRuntime implements AgentRuntime {
       });
     }
 
-    return { reply: outboundReply, trace: builtTrace };
+    return { reply: outboundReply, trace: builtTrace, toolOutcomes };
   }
 }

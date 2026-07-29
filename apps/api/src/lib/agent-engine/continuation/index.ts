@@ -37,3 +37,14 @@ export {
   type RunContinuationOpts,
   type RunContinuationResult,
 } from "./runContinuation.js";
+
+export {
+  shouldSchedulePostCompletionFollowUp,
+  runPostCompletionFollowUp,
+  isPostCompletionFollowUpMessage,
+  resolvePostCompletionFollowUpSyntheticText,
+  POST_COMPLETION_FOLLOWUP_PROVIDER_PREFIX,
+  POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS,
+  DEFAULT_POST_COMPLETION_FOLLOWUP_TEXT,
+  type ShouldSchedulePostCompletionFollowUpInput,
+} from "./postCompletionFollowUp.js";

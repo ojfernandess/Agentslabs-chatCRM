@@ -104,6 +104,12 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
         : DEFAULT_AGENT_ENGINE_CONFIG.memoryDefaultTtlSeconds,
     otelEnabled: o.otelEnabled === true,
     simulatorEnabled: o.simulatorEnabled === true,
+    postCompletionFollowUpEnabled: o.postCompletionFollowUpEnabled === true,
+    postCompletionFollowUpSyntheticText:
+      typeof o.postCompletionFollowUpSyntheticText === "string" &&
+      o.postCompletionFollowUpSyntheticText.trim()
+        ? o.postCompletionFollowUpSyntheticText.trim().slice(0, 200)
+        : DEFAULT_AGENT_ENGINE_CONFIG.postCompletionFollowUpSyntheticText,
   };
 }
 
@@ -137,6 +143,11 @@ export function mergeAgentEngineIntoBehavior(
       memoryDefaultTtlSeconds: engine.memoryDefaultTtlSeconds ?? 0,
       otelEnabled: engine.otelEnabled ?? false,
       simulatorEnabled: engine.simulatorEnabled ?? false,
+      postCompletionFollowUpEnabled: engine.postCompletionFollowUpEnabled ?? false,
+      postCompletionFollowUpSyntheticText:
+        engine.postCompletionFollowUpSyntheticText ??
+        DEFAULT_AGENT_ENGINE_CONFIG.postCompletionFollowUpSyntheticText ??
+        "OK",
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&
