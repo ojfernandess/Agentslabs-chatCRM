@@ -7,7 +7,7 @@ export { LangGraphRuntime } from "./runtime/LangGraphRuntime.js";
 export { CrewAIRuntime } from "./runtime/CrewAIRuntime.js";
 export { AutoGenRuntime } from "./runtime/AutoGenRuntime.js";
 export { MastraRuntime } from "./runtime/MastraRuntime.js";
-export { validateToolExecution } from "./validators/ToolValidator.js";
+export { validateToolExecution, unresolvedToolFailures } from "./validators/ToolValidator.js";
 export { validateAgentPrompt } from "./validators/PromptValidator.js";
 export { auditPromptAssembly } from "./audit/promptAssemblyAudit.js";
 export {
@@ -47,6 +47,8 @@ export {
   toolNameMatchesOmitAlias,
   buildPostGateSafeFallbackReply,
   confirmationGateSatisfiedThisTurn,
+  buildCompletionSafeFallbackReply,
+  completionToolSatisfiedThisTurn,
   type TurnPolicy,
   type ForbiddenToolPair,
 } from "./validators/turnPolicyParser.js";

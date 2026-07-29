@@ -44,13 +44,33 @@ test("validateToolExecution blocks empty reply after tool success", () => {
   assert.equal(result.blockSend, true);
 });
 
-test("validateToolExecution accepts partial name match for HTTP tools", () => {
+test("validateToolExecution ignores superseded failure when same tool later succeeds", () => {
   const result = validateToolExecution({
-    toolOutcomes: [{ name: "audaar_consultar_main_guest", ok: true, preview: '{"found":true}' }],
-    replyText: "Encontrei seu cadastro anterior.",
+    toolOutcomes: [
+      { name: "audaar_check_in", ok: false, preview: '{"ok":false,"error":"schema_validation_failed"}' },
+      { name: "audaar_check_in", ok: true, preview: '{"ok":true,"statusCode":200}' },
+    ],
+    replyText:
+      "Check-in concluído com sucesso. A sua reserva está confirmada e pronta para a sua chegada.",
     strictMode: true,
-    requiredToolNames: ["consultar_main_guest"],
   });
   assert.equal(result.ok, true);
   assert.equal(result.blockSend, false);
+  assert.equal(
+    result.alerts.some((a) => /retornou erro/i.test(a)),
+    false,
+  );
+});
+
+test("validateToolExecution still flags unresolved tool failure", () => {
+  const result = validateToolExecution({
+    toolOutcomes: [
+      { name: "audaar_check_in", ok: false, preview: '{"ok":false,"error":"http_500"}' },
+    ],
+    replyText: "Não consegui concluir o check-in neste momento.",
+    strictMode: true,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.blockSend, true);
+  assert.ok(result.alerts.some((a) => /retornou erro.*audaar_check_in/i.test(a)));
 });

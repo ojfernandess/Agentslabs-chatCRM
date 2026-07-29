@@ -2,11 +2,30 @@ import type { ToolValidationResult } from "../types.js";
 import { toolOutcomeSatisfiesRequired } from "./requiredToolNamesParser.js";
 import {
   resolveTurnPolicy,
+  toolsMatchAlias,
   validateToolOutcomesAgainstTurnPolicy,
   type TurnPolicy,
 } from "./turnPolicyParser.js";
 import type { CapabilityGraph, FactStore } from "../eil/types.js";
 import { detectToolOrderViolations, capabilityPreExecBlockReason } from "../eil/CapabilityGraph.js";
+
+/**
+ * Falhas reais (não skipped) que ainda não foram supersedidas por sucesso
+ * da mesma tool no turno (ex.: Scheduler falhou schema → LLM retentou OK).
+ */
+export function unresolvedToolFailures(
+  toolOutcomes: Array<{ name: string; ok: boolean; preview?: string }>,
+): Array<{ name: string; ok: boolean; preview?: string }> {
+  const successful = toolOutcomes.filter((t) => t.ok);
+  return toolOutcomes.filter((f) => {
+    if (f.ok) return false;
+    if (/"skipped"\s*:\s*true/i.test(f.preview ?? "")) return false;
+    const superseded = successful.some(
+      (s) => s.name === f.name || toolsMatchAlias(s.name, f.name),
+    );
+    return !superseded;
+  });
+}
 
 export type ToolRoundOutcome = {
   name: string;
@@ -41,7 +60,6 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
   let fallbackSuggested = false;
 
   const successful = input.toolOutcomes.filter((t) => t.ok);
-  const failed = input.toolOutcomes.filter((t) => !t.ok);
   const required = input.requiredToolNames ?? [];
 
   if (required.length > 0) {
@@ -94,13 +112,11 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
     }
   }
 
-  if (failed.length > 0) {
-    const realFailures = failed.filter((f) => !/"skipped"\s*:\s*true/i.test(f.preview));
-    if (realFailures.length > 0) {
-      alerts.push(`Ferramenta retornou erro: ${realFailures.map((f) => f.name).join(", ")}`);
-      fallbackSuggested = true;
-      if (input.strictMode) blockSend = true;
-    }
+  const realFailures = unresolvedToolFailures(input.toolOutcomes);
+  if (realFailures.length > 0) {
+    alerts.push(`Ferramenta retornou erro: ${realFailures.map((f) => f.name).join(", ")}`);
+    fallbackSuggested = true;
+    if (input.strictMode) blockSend = true;
   }
 
   if (successful.length > 0 && !input.replyText.trim()) {

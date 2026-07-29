@@ -217,6 +217,47 @@ test("suggestAiMemoryFromTurn extracts locator context", () => {
   assert.ok(mem?.includes("ABC123"));
 });
 
+test("evaluateStrictModeGate allows completion claim when check-in succeeded after scheduler fail", () => {
+  const evaluation = evaluateStrictModeGate({
+    strictMode: true,
+    replyText:
+      "O check-in foi concluído com sucesso. A sua reserva está confirmada para a data de chegada.",
+    userMessage: "sim",
+    toolOutcomes: [
+      {
+        name: "audaar_check_in",
+        ok: false,
+        preview: '{"ok":false,"error":"schema_validation_failed"}',
+      },
+      {
+        name: "audaar_check_in",
+        ok: true,
+        preview: '{"ok":true,"statusCode":200,"bodyPreview":"{\\"embraturId\\":1}"}',
+      },
+    ],
+    hasSubstantiveReply: true,
+    turnPolicy: {
+      forbiddenSameTurnPairs: [],
+      exclusiveAllowedTools: null,
+      completionToolHints: ["audaar_check_in"],
+      confirmationPrerequisiteTools: ["embratur-reference"],
+      omitToolsWhenSlotsPresent: [],
+      blockEscalation: false,
+    },
+  });
+  assert.equal(
+    evaluation.reasons.some((r) => /Sem afirmar conclusão sem tool/i.test(r)),
+    false,
+    `unexpected reasons: ${evaluation.reasons.join(" | ")}`,
+  );
+  assert.equal(
+    evaluation.reasons.some((r) => /retornou erro/i.test(r)),
+    false,
+  );
+  assert.ok(evaluation.confidence >= STRICT_MODE_MIN_CONFIDENCE);
+  assert.equal(evaluation.blockSend, false);
+});
+
 test("evaluateStrictModeGate blocks low confidence when strict mode on", () => {
   const evaluation = evaluateStrictModeGate({
     strictMode: true,

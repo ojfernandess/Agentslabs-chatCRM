@@ -36,7 +36,9 @@ import {
   parseKnowledgeSearchSkipFromBehavior,
 } from "./knowledgeSearchSkipConfig.js";
 import {
+  buildCompletionSafeFallbackReply,
   buildPostGateSafeFallbackReply,
+  completionToolSatisfiedThisTurn,
   confirmationGateSatisfiedThisTurn,
   findForbiddenPairViolation,
   resolveTurnPolicy,
@@ -3108,6 +3110,7 @@ async function generateNativeAgentReplyCore(input: {
       kbHasUsefulExcerpts,
       llmSupervisorApproved,
       hasSubstantiveReply: hasSubstantiveAgentReplyToCustomer(replyText, configuredStallMessages),
+      turnPolicy,
     });
     ex?.info(
       { id: "strict_mode", name: "Modo estrito" },
@@ -3149,6 +3152,28 @@ async function generateNativeAgentReplyCore(input: {
         ex?.warn(
           { id: "strict_mode", name: "Modo estrito" },
           "Fallback pós-gate após hard-block — resposta segura enviada",
+        );
+        replyText = fallback;
+      } else if (completionToolSatisfiedThisTurn(turnPolicy, toolRoundOutcomes)) {
+        // Após tool de conclusão OK (check-in / submit / finalize): não silenciar.
+        const completedNames = [
+          ...new Set(
+            toolRoundOutcomes
+              .filter((t) => t.ok !== false)
+              .filter((t) =>
+                (turnPolicy.completionToolHints ?? []).some((h) => toolsMatchAlias(h, t.name)),
+              )
+              .map((t) => t.name),
+          ),
+        ];
+        const fallback = buildCompletionSafeFallbackReply({
+          completionToolNames: completedNames.length
+            ? completedNames
+            : turnPolicy.completionToolHints,
+        });
+        ex?.warn(
+          { id: "strict_mode", name: "Modo estrito" },
+          "Fallback pós-conclusão após hard-block — resposta segura enviada",
         );
         replyText = fallback;
       } else {

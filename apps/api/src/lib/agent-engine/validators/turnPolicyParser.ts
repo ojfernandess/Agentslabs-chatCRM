@@ -719,3 +719,35 @@ export function confirmationGateSatisfiedThisTurn(
   const ok = toolOutcomes.filter((t) => t.ok !== false);
   return prereqs.some((p) => toolOutcomeSatisfiesRequired(p, ok));
 }
+
+/** True se alguma tool de conclusão (hints ou padrão genérico) correu OK neste turno. */
+export function completionToolSatisfiedThisTurn(
+  policy: TurnPolicy | null | undefined,
+  toolOutcomes: Array<{ name: string; ok?: boolean }>,
+): boolean {
+  const hints = policy?.completionToolHints ?? [];
+  return toolOutcomes.some(
+    (t) =>
+      t.ok !== false &&
+      (hints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
+        isLikelyMutableOrCompletionTool(t.name, hints)),
+  );
+}
+
+/**
+ * Resposta segura quando o modo estrito bloqueia após tool de conclusão OK.
+ * Genérico — evita silêncio total após check-in / submit / finalize bem-sucedido.
+ */
+export function buildCompletionSafeFallbackReply(opts: {
+  completionToolNames: string[];
+}): string {
+  const tools = opts.completionToolNames.filter(Boolean).slice(0, 3).join(", ");
+  const toolPart = tools
+    ? `A operação técnica (${tools}) foi concluída com sucesso.`
+    : "A operação técnica de conclusão foi concluída com sucesso.";
+  return (
+    `${toolPart} ` +
+    "Se precisar de mais alguma informação (acesso, horários, próximos passos), diga-me. " +
+    "Não invente dados — use apenas o que as ferramentas devolveram."
+  );
+}

@@ -1,6 +1,7 @@
 import type { AgentSupervisorTrace, ToolValidationResult } from "../types.js";
 import { buildSupervisorTrace } from "../supervisor/AgentSupervisorService.js";
-import { validateToolExecution } from "./ToolValidator.js";
+import type { TurnPolicy } from "./turnPolicyParser.js";
+import { unresolvedToolFailures, validateToolExecution } from "./ToolValidator.js";
 
 /** Limiar mínimo de confiança para enviar resposta com modo estrito activo. */
 export const STRICT_MODE_MIN_CONFIDENCE = 90;
@@ -15,6 +16,8 @@ export type StrictModeEvaluationInput = {
   hasSubstantiveReply?: boolean;
   toolValidation?: ToolValidationResult;
   supervisorTrace?: AgentSupervisorTrace;
+  /** Necessário para checks de conclusão / exclusividade no supervisor estrutural. */
+  turnPolicy?: TurnPolicy | null;
 };
 
 export type StrictModeEvaluation = {
@@ -56,7 +59,8 @@ export function computeReplyConfidence(input: Omit<StrictModeEvaluationInput, "s
   if (!substantive) score = Math.min(score, 35);
 
   const successfulTools = input.toolOutcomes.filter((t) => t.ok);
-  const failedTools = input.toolOutcomes.filter((t) => !t.ok);
+  // Falhas supersedidas (retry OK da mesma tool) não devem derrubar a confiança.
+  const failedTools = unresolvedToolFailures(input.toolOutcomes);
   if (failedTools.length > 0) score = Math.min(score, 55);
   if (
     successfulTools.length > 0 &&
@@ -90,6 +94,10 @@ export function evaluateStrictModeGate(input: StrictModeEvaluationInput): Strict
       totalToolCount: input.toolOutcomes.length,
       strictMode: input.strictMode,
       llmApproved: input.llmSupervisorApproved ?? undefined,
+      // Sem toolOutcomes o check completion_claim_without_tool falha em falso
+      // (afirma conclusão após check-in OK → hard-block indevido).
+      toolOutcomes: input.toolOutcomes,
+      turnPolicy: input.turnPolicy ?? null,
     });
 
   const confidence = computeReplyConfidence({

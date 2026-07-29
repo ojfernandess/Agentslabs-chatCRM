@@ -14,6 +14,8 @@ import {
   toolNameMatchesOmitAlias,
   buildPostGateSafeFallbackReply,
   confirmationGateSatisfiedThisTurn,
+  buildCompletionSafeFallbackReply,
+  completionToolSatisfiedThisTurn,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
@@ -365,6 +367,30 @@ test("buildPostGateSafeFallbackReply and confirmationGateSatisfiedThisTurn", () 
   });
   assert.ok(reply.length > 40);
   assert.match(reply, /dados|formul/i);
+});
+
+test("completionToolSatisfiedThisTurn and buildCompletionSafeFallbackReply", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+      flowSlots: { __completionReady: true, __awaitingPostGateData: false },
+    },
+  );
+  assert.equal(
+    completionToolSatisfiedThisTurn(policy, [{ name: "audaar_check_in", ok: true }]),
+    true,
+  );
+  assert.equal(
+    completionToolSatisfiedThisTurn(policy, [{ name: "audaar_check_in", ok: false }]),
+    false,
+  );
+  const reply = buildCompletionSafeFallbackReply({
+    completionToolNames: policy.completionToolHints,
+  });
+  assert.ok(reply.length > 40);
+  assert.match(reply, /conclu|sucesso/i);
 });
 
 test("parseExclusiveToolsForConfirmationTurn ignores slot/language backticks", () => {
