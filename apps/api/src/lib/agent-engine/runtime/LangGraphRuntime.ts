@@ -681,11 +681,14 @@ export class LangGraphRuntime implements AgentRuntime {
           : preScheduled.length > 0
             ? {
                 ...state.input.executionHints,
-                preScheduledToolOutcomes: preScheduled.map(({ name, ok, preview }) => ({
-                  name,
-                  ok,
-                  preview,
-                })),
+                preScheduledToolOutcomes: preScheduled.map(
+                  ({ name, ok, preview, structuredPayload }) => ({
+                    name,
+                    ok,
+                    preview,
+                    structuredPayload,
+                  }),
+                ),
               }
             : state.input.executionHints,
       });

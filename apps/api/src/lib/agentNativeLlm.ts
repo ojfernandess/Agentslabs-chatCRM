@@ -39,6 +39,8 @@ import {
   findForbiddenPairViolation,
   isLikelyMutableOrCompletionTool,
   resolveTurnPolicy,
+  toolAliasesToOmitFromCatalog,
+  toolNameMatchesOmitAlias,
   toolsMatchAlias,
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
@@ -1812,6 +1814,7 @@ async function generateNativeAgentReplyCore(input: {
       ok: t.ok,
       preview: t.preview,
       monitored: false,
+      structuredPayload: t.structuredPayload,
     });
   }
   let knowledgeSearchCallsThisTurn = toolRoundOutcomes.filter((t) => t.name === "buscar_conhecimento").length;
@@ -2134,11 +2137,23 @@ async function generateNativeAgentReplyCore(input: {
   let replyText = "";
   let completedToolRounds = 0;
 
+  const omitToolAliases = toolAliasesToOmitFromCatalog({
+    policy: turnPolicy,
+    existingToolNames: toolRoundOutcomes.map((t) => t.name),
+  });
   const tools: OpenAiToolDefinition[] = [
-    ...buildOpenAiTools(flags, { omitBuscarConhecimento, assignableTagsDescription }),
-    ...customHttpTools.map((row) =>
-      openAiToolDefinitionForAutomationTool(row, { agentInstruction: agentInstructionByToolId.get(row.id) }),
-    ),
+    ...buildOpenAiTools(flags, {
+      omitBuscarConhecimento:
+        omitBuscarConhecimento || toolNameMatchesOmitAlias("buscar_conhecimento", omitToolAliases),
+      assignableTagsDescription,
+    }).filter((t) => !toolNameMatchesOmitAlias(t.function.name, omitToolAliases)),
+    ...customHttpTools
+      .filter((row) => !toolNameMatchesOmitAlias(row.name, omitToolAliases))
+      .map((row) =>
+        openAiToolDefinitionForAutomationTool(row, {
+          agentInstruction: agentInstructionByToolId.get(row.id),
+        }),
+      ),
   ];
   const useTools = provider !== "google_gemini" && tools.length > 0;
 

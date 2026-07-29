@@ -43,6 +43,8 @@ export {
   validateToolOutcomesAgainstTurnPolicy,
   shouldUseReplyOnlyRetry,
   isLikelyMutableOrCompletionTool,
+  toolAliasesToOmitFromCatalog,
+  toolNameMatchesOmitAlias,
   type TurnPolicy,
   type ForbiddenToolPair,
 } from "./validators/turnPolicyParser.js";
@@ -174,6 +176,7 @@ export {
   buildScheduledToolArgs,
   shouldRunToolScheduler,
   formatScheduledToolsSystemAppendix,
+  compactStructuredPayloadForPrompt,
 } from "./scheduler/TurnToolScheduler.js";
 export { invokeScheduledTools } from "./scheduler/invokeScheduledTools.js";
 export type {

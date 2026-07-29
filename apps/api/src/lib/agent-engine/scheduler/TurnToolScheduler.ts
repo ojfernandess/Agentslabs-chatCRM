@@ -72,17 +72,38 @@ export function shouldRunToolScheduler(
   return true;
 }
 
+/** Compacta payload para o prompt — evita dumps gigantes; mantém chaves/valores úteis. */
+export function compactStructuredPayloadForPrompt(payload: unknown, maxChars = 3500): string {
+  if (payload == null) return "";
+  try {
+    const raw = typeof payload === "string" ? payload : JSON.stringify(payload);
+    if (raw.length <= maxChars) return raw;
+    return `${raw.slice(0, maxChars)}…`;
+  } catch {
+    return "";
+  }
+}
+
 export function formatScheduledToolsSystemAppendix(
-  outcomes: Array<{ name: string; ok: boolean; preview: string }>,
+  outcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>,
 ): string {
   if (!outcomes.length) return "";
-  const lines = outcomes.map(
-    (o) =>
-      `- **${o.name}** (${o.ok ? "ok" : "falhou"}): ${o.preview.slice(0, 1200)}`,
-  );
+  const lines = outcomes.map((o) => {
+    const factsJson =
+      o.ok && o.structuredPayload != null
+        ? compactStructuredPayloadForPrompt(o.structuredPayload)
+        : "";
+    const factsBlock = factsJson
+      ? `\n  Factos estruturados (OBRIGATÓRIO citar na resposta ao cliente):\n  \`\`\`json\n  ${factsJson}\n  \`\`\``
+      : "";
+    return `- **${o.name}** (${o.ok ? "ok" : "falhou"}): ${o.preview.slice(0, 1200)}${factsBlock}`;
+  });
   return (
     "\n\n## Ferramentas já executadas pelo Runtime (Tool Scheduler)\n" +
-    "Não volte a invocar estas ferramentas neste turno — use os resultados abaixo para responder ao cliente.\n" +
+    "Não volte a invocar estas ferramentas neste turno.\n" +
+    "A resposta AO CLIENTE DEVE usar os factos/dados abaixo de forma substantiva " +
+    "(datas, estado, identificadores, valores, nomes). " +
+    "Proibido responder só que «encontrou» / «localizou» sem detalhar os dados retornados.\n" +
     lines.join("\n")
   );
 }

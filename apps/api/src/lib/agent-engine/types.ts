@@ -97,7 +97,12 @@ export type AgentRuntimeExecuteInput = {
     /** Outcomes do turno anterior (mesmo user message) a reutilizar. */
     priorSuccessfulToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
     /** Tools já invocadas pelo Tool Scheduler neste turno — LLM não deve repetir. */
-    preScheduledToolOutcomes?: Array<{ name: string; ok: boolean; preview: string }>;
+    preScheduledToolOutcomes?: Array<{
+      name: string;
+      ok: boolean;
+      preview: string;
+      structuredPayload?: unknown;
+    }>;
   };
 };
 

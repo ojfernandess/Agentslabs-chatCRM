@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildScheduledToolArgs,
+  formatScheduledToolsSystemAppendix,
   planScheduledToolInvocations,
   shouldRunToolScheduler,
 } from "./TurnToolScheduler.js";
@@ -87,4 +88,24 @@ test("shouldRunToolScheduler respects feature flag and reply-only retry", () => 
     shouldRunToolScheduler({ schedulerEnabled: true } as never, undefined),
     true,
   );
+});
+
+test("formatScheduledToolsSystemAppendix requires substantive use of structured facts", () => {
+  const appendix = formatScheduledToolsSystemAppendix([
+    {
+      name: "audaar_consultar_reserva",
+      ok: true,
+      preview: "found",
+      structuredPayload: {
+        reservationId: 279264,
+        checkinDate: "2026-07-31",
+        checkoutDate: "2026-08-01",
+      },
+    },
+  ]);
+  assert.match(appendix, /OBRIGATÓRIO/i);
+  assert.match(appendix, /substantiva/i);
+  assert.match(appendix, /279264/);
+  assert.match(appendix, /2026-07-31/);
+  assert.match(appendix, /Proibido responder só que/);
 });

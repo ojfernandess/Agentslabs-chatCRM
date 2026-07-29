@@ -289,7 +289,10 @@ export function validateToolOutcomesAgainstTurnPolicy(
   const alerts: string[] = [];
   if (toolOutcomes.length === 0) return alerts;
 
-  const names = toolOutcomes.map((t) => t.name);
+  // Só tools que correram com sucesso contam para pares — skipped/pre-block
+  // (ok:false) não devem disparar validation_block_send após o runtime impedir o 2.º lado.
+  const effectiveOutcomes = toolOutcomes.filter((t) => t.ok !== false);
+  const names = effectiveOutcomes.map((t) => t.name);
   const violation = findForbiddenPairViolation(names, policy.forbiddenSameTurnPairs);
   if (violation) {
     alerts.push(
@@ -391,6 +394,47 @@ export function turnPolicyPreExecBlockReasonForTurn(
     return `PROIBIDO no mesmo turno: ${pairHit.a} + ${pairHit.b}. PARE e responda só com a acção da categoria actual.`;
   }
   return null;
+}
+
+/**
+ * Aliases a omitir do catálogo OpenAI neste turno (antes do LLM escolher).
+ * - Se A já correu, omite B (e vice-versa) para cada par proibido.
+ * - Em confirmação (sim/ok) com completion hints: trata conclusão como iminente
+ *   e omite o lado complementar do par (ex.: embratur-reference quando S10/check-in).
+ */
+export function toolAliasesToOmitFromCatalog(opts: {
+  policy: TurnPolicy;
+  existingToolNames: string[];
+}): string[] {
+  const omit = new Set<string>();
+  const { policy, existingToolNames } = opts;
+  const pairs = policy.forbiddenSameTurnPairs;
+  if (pairs.length === 0) return [];
+
+  for (const pair of pairs) {
+    if (toolsMatchAlias(pair.a, pair.b)) continue;
+    const hasA = existingToolNames.some((n) => toolsMatchAlias(n, pair.a));
+    const hasB = existingToolNames.some((n) => toolsMatchAlias(n, pair.b));
+    if (hasA && !hasB) omit.add(pair.b);
+    if (hasB && !hasA) omit.add(pair.a);
+  }
+
+  if (policy.blockEscalation && policy.completionToolHints.length > 0) {
+    for (const hint of policy.completionToolHints) {
+      for (const pair of pairs) {
+        if (toolsMatchAlias(pair.a, pair.b)) continue;
+        if (toolsMatchAlias(hint, pair.a)) omit.add(pair.b);
+        if (toolsMatchAlias(hint, pair.b)) omit.add(pair.a);
+      }
+    }
+  }
+
+  return [...omit];
+}
+
+export function toolNameMatchesOmitAlias(toolName: string, omitAliases: string[]): boolean {
+  if (omitAliases.length === 0) return false;
+  return omitAliases.some((alias) => toolsMatchAlias(toolName, alias));
 }
 
 /**

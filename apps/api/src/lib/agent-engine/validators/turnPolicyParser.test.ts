@@ -10,6 +10,8 @@ import {
   turnPolicyPreExecBlockReason,
   turnPolicyPreExecBlockReasonForTurn,
   formatTurnPolicyForSupervisor,
+  toolAliasesToOmitFromCatalog,
+  toolNameMatchesOmitAlias,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 
@@ -256,4 +258,41 @@ test("findForbiddenPairViolation requires two distinct tool invocations", () => 
   const real = [{ a: "foo_lookup", b: "foo_submit", source: "test" }];
   assert.ok(findForbiddenPairViolation(["foo_lookup", "foo_submit"], real));
   assert.equal(findForbiddenPairViolation(["foo_lookup"], real), null);
+});
+
+test("toolAliasesToOmitFromCatalog omits complementary side after one tool ran", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "fazer check-in" },
+  );
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: ["embratur-reference"],
+  });
+  assert.ok(
+    omit.some((a) => toolNameMatchesOmitAlias("audaar_check_in", [a]) || /check.?in/i.test(a)),
+    `expected check-in omit aliases, got ${JSON.stringify(omit)}`,
+  );
+});
+
+test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S10 hinted", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.equal(policy.blockEscalation, true);
+  assert.ok(policy.completionToolHints.length > 0, "expected completion hints from S10");
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: [],
+  });
+  assert.ok(
+    toolNameMatchesOmitAlias("embratur-reference", omit),
+    `expected embratur omitted on sim+S10, got ${JSON.stringify(omit)}`,
+  );
+  assert.equal(
+    toolNameMatchesOmitAlias("audaar_check_in", omit),
+    false,
+    "completion tool must remain available",
+  );
 });

@@ -266,13 +266,14 @@ export async function callOpenAiCompatibleChatWithTools(params: {
         content: choice?.content ?? null,
         tool_calls: toolCalls,
       });
-      const toolResults = await Promise.all(
-        toolCalls.map(async (tc) => {
-          const name = tc.function.name;
-          const out = await params.onToolCall(name, tc.function.arguments ?? "{}");
-          return { id: tc.id, content: out };
-        }),
-      );
+      // Sequencial: permite turnPolicy ver tools já aceites na mesma ronda
+      // (Promise.all deixa pares proibidos correrem em paralelo com existingNames vazio).
+      const toolResults: Array<{ id: string; content: string }> = [];
+      for (const tc of toolCalls) {
+        const name = tc.function.name;
+        const out = await params.onToolCall(name, tc.function.arguments ?? "{}");
+        toolResults.push({ id: tc.id, content: out });
+      }
       for (const result of toolResults) {
         messages.push({
           role: "tool",
