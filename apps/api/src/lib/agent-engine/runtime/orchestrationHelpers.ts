@@ -5,7 +5,7 @@ import type {
   AgentRuntimeState,
 } from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
-import { createMemoryProvider } from "../memory/MemoryProvider.js";
+import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { resolveRequiredToolNamesForValidation, runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import { resolveTurnPolicy, shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
@@ -17,6 +17,7 @@ import {
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
 import { resolveEilTurn } from "../eil/runtimeBridge.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
+import { buildPersistedFlowSlots, priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import type { EilSnapshot, FactStore } from "../eil/types.js";
 
@@ -47,11 +48,16 @@ export type OrchestrationPlan = {
   maxRetries?: number;
 };
 
+export type OrchestrationDeps = {
+  createMemoryProvider?: typeof defaultCreateMemoryProvider;
+};
+
 export async function runOrchestratedRuntime(
   kind: AgentRuntimeKind,
   input: AgentRuntimeExecuteInput,
   executor: NativeAgentExecutor,
   plan: OrchestrationPlan,
+  deps: OrchestrationDeps = {},
 ): Promise<{ result: AgentRuntimeExecuteResult; runtimeState: AgentRuntimeState }> {
   const traceBuilder = new ExecutionTraceBuilder({
     runtime: kind,
@@ -79,10 +85,16 @@ export async function runOrchestratedRuntime(
   }
 
   traceBuilder.startNode("load_memory", "Carregar memória");
-  const provider = createMemoryProvider(input.engineConfig.memory);
+  const createMemory = deps.createMemoryProvider ?? defaultCreateMemoryProvider;
+  const provider = createMemory(input.engineConfig.memory);
   state.memory = await provider.load(input.conversation.id, input.organizationId);
   traceBuilder.setMemorySnapshot(state.memory);
   traceBuilder.endNode("load_memory");
+
+  const memoryFlowSlots = state.memory?.flowSlots as
+    | Record<string, string | number | boolean>
+    | undefined;
+  const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
 
   for (;;) {
     const replyOnly =
@@ -125,7 +137,7 @@ export async function runOrchestratedRuntime(
     const requiredToolNames = resolveRequiredToolNamesForValidation(input.behaviorConfig, {
       userMessage,
     });
-    const turnPolicy = resolveTurnPolicy(input.behaviorConfig, { userMessage });
+    const turnPolicy = resolveTurnPolicy(input.behaviorConfig, { userMessage, priorToolOutcomes });
     const validation = validateToolExecution({
       toolOutcomes: state.toolOutcomes,
       replyText: state.reply,
@@ -252,17 +264,41 @@ export async function runOrchestratedRuntime(
     contactId: input.contactId ?? null,
   });
   if (state.eilSnapshot?.enabled && state.eilFacts && Object.keys(state.eilFacts).length > 0) {
-    const slots: Record<string, string | number | boolean> = {};
-    for (const [k, f] of Object.entries(state.eilFacts)) {
-      if (f.value !== null && f.value !== undefined) slots[k] = f.value as string | number | boolean;
-    }
-    if (Object.keys(slots).length > 0) {
+    const baseFlowSlots = state.memory?.flowSlots as
+      | Record<string, string | number | boolean>
+      | undefined;
+    const persistedSlots = buildPersistedFlowSlots({
+      baseFlowSlots,
+      toolOutcomes: state.toolOutcomes.map((t) => ({ name: t.name, ok: t.ok })),
+      eilFacts: state.eilFacts,
+    });
+    if (Object.keys(persistedSlots).length > 0) {
       try {
         await mergeFlowSlotsAutomationContext({
           organizationId: input.organizationId,
           conversationId: input.conversation.id,
           botId: input.bot.id,
-          flowSlots: slots,
+          flowSlots: persistedSlots,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+  } else if (state.toolOutcomes.some((t) => t.ok)) {
+    const baseFlowSlots = state.memory?.flowSlots as
+      | Record<string, string | number | boolean>
+      | undefined;
+    const persistedSlots = buildPersistedFlowSlots({
+      baseFlowSlots,
+      toolOutcomes: state.toolOutcomes.map((t) => ({ name: t.name, ok: t.ok })),
+    });
+    if (Object.keys(persistedSlots).length > 0) {
+      try {
+        await mergeFlowSlotsAutomationContext({
+          organizationId: input.organizationId,
+          conversationId: input.conversation.id,
+          botId: input.bot.id,
+          flowSlots: persistedSlots,
         });
       } catch {
         /* best-effort */
@@ -335,6 +371,7 @@ export class OrchestratedRuntimeBase {
     public readonly kind: AgentRuntimeKind,
     protected readonly executor: NativeAgentExecutor,
     protected readonly plan: OrchestrationPlan,
+    protected readonly deps: OrchestrationDeps = {},
   ) {}
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
@@ -344,6 +381,7 @@ export class OrchestratedRuntimeBase {
       input,
       this.executor,
       this.plan,
+      this.deps,
     );
     this.state = runtimeState;
     return result;

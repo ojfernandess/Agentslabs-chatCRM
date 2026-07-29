@@ -154,6 +154,25 @@ const CHECK_DEFS: Array<{
     },
   },
   {
+    id: "completion_claim_without_tool",
+    label: "Sem afirmar conclusão sem tool de check-in",
+    run: (i) => {
+      const claimsCompletion =
+        /check-in (foi )?conclu[ií]d|pedido (foi )?confirmado|reserva (foi )?confirmada|check[\s-]?in (realizad|efetuad|feito)/i.test(
+          i.replyText,
+        );
+      if (!claimsCompletion) return true;
+      const hints = i.turnPolicy?.completionToolHints ?? [];
+      const hasCompletionTool = (i.toolOutcomes ?? []).some(
+        (t) =>
+          t.ok &&
+          (hints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
+            /check[_-]?in|submit|confirm|concluir|finalize/i.test(t.name)),
+      );
+      return hasCompletionTool;
+    },
+  },
+  {
     id: "context_used",
     label: "Contexto utilizado",
     run: (i) => i.kbHasUsefulExcerpts || i.userMessage.length < 20 || i.replyText.length > 20,
@@ -337,6 +356,7 @@ const RETRYABLE_CHECK_IDS = new Set([
   "forbidden_tools_contract",
   "prompt_coherent",
   "completion_reply",
+  "completion_claim_without_tool",
   "no_execution_loop",
   "eil_plan_followed",
   "eil_required_facts",

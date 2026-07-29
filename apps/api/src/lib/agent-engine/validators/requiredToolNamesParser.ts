@@ -111,6 +111,16 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     playbookHints: /\b(C10|selfie|upload_foto|upload_documento|transcri)\b/i,
   },
   {
+    id: "structured_form_submission",
+    test: (m) =>
+      /\bficha\b/i.test(m) ||
+      (/\b(motivo|transporte|meio\s+de\s+transporte|endere[cç]o|e-mail)\b/i.test(m) &&
+        m.split(/\n/).filter((l) => l.trim()).length >= 3) ||
+      (/\*\s*\w+\s*:/i.test(m) && m.split(/\n/).filter((l) => l.trim()).length >= 4),
+    playbookHints:
+      /\b(S\d+|C\d+|ficha|formul[aá]rio|bloco\s+de\s+dados|espelho|multi.?campo)\b/i,
+  },
+  {
     id: "escalation",
     test: (m) =>
       /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(m),
@@ -243,6 +253,10 @@ function scoreTurnLine(
     if (/\b(C3|S10|check_in|selfie)\b/i.test(line) && !/\bC8\b/i.test(line)) score -= 8;
   } else if (pattern.id === "escalation") {
     if (/\bC13\b/i.test(line)) score += 5;
+  } else if (pattern.id === "structured_form_submission") {
+    if (/\b(S\d+|C\d+)\b/i.test(category) || /\b(S\d+|C\d+)\b/i.test(line)) score += 5;
+    if (/ficha|formul[aá]rio|espelho|bloco\s+de\s+dados/i.test(line)) score += 4;
+    if (/submit|finaliz|conclu/i.test(line)) score += 3;
   }
   return score;
 }

@@ -335,6 +335,10 @@ test("buildExecutionTurnPlan allows S10 on sim after embratur in session", () =>
     plan.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
     false,
   );
+  assert.ok(
+    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    `expected check_in in required, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
 });
 
 test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S9 already satisfied", () => {
@@ -359,4 +363,21 @@ test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S9 alread
     false,
     "completion tool must remain available",
   );
+});
+
+test("toolAliasesToOmitFromCatalog omits tools when playbook slot preconditions met", () => {
+  const playbook = `${SAMPLE_PLAYBOOK}
+| C10 | Se profilePhotoId e documentPhotoId já existem | PROIBIDO \`checkin_upload_selfie\` \`checkin_upload_documento\` |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "sim" },
+  );
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: [],
+    flowSlots: { profilePhotoId: 123, documentPhotoId: 456 },
+  });
+  assert.ok(toolNameMatchesOmitAlias("checkin_upload_selfie", omit));
+  assert.ok(toolNameMatchesOmitAlias("checkin_upload_documento", omit));
 });

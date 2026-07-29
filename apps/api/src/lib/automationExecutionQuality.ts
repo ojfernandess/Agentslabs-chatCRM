@@ -1,4 +1,4 @@
-import { hasSubstantiveAgentReplyToCustomer, isLikelyStallOnlyReply } from "./agentNativeLlm.js";
+import { hasSubstantiveAgentReplyToCustomer, isLikelyStallOnlyReply } from "./agentReplyQuality.js";
 import { buscarConhecimentoPreviewToPlainText, stripKnowledgeMarkdown } from "./knowledgeToolResult.js";
 
 export type ExecutionQualitySignalKind =

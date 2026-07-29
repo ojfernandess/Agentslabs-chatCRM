@@ -34,3 +34,34 @@ export function priorToolOutcomesFromSession(
 ): Array<{ name: string; ok: boolean }> {
   return readSessionSatisfiedToolNames(flowSlots).map((name) => ({ name, ok: true }));
 }
+
+/** Acrescenta tools OK ao CSV de sessão (genérico). */
+export function mergeSatisfiedToolsFromOutcomes(
+  flowSlots: Record<string, string | number | boolean>,
+  outcomes: Array<{ name: string; ok?: boolean }>,
+): Record<string, string | number | boolean> {
+  let slots = flowSlots;
+  for (const o of outcomes) {
+    if (o.ok !== false) slots = appendSessionSatisfiedToolName(slots, o.name);
+  }
+  return slots;
+}
+
+/** Persiste flowSlots mesclando tools OK da sessão + facts EIL (sem sobrescrever __satisfiedToolNames). */
+export function buildPersistedFlowSlots(opts: {
+  baseFlowSlots?: Record<string, string | number | boolean> | null;
+  toolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  eilFacts?: Record<string, { value?: unknown }>;
+}): Record<string, string | number | boolean> {
+  let slots: Record<string, string | number | boolean> = { ...(opts.baseFlowSlots ?? {}) };
+  slots = mergeSatisfiedToolsFromOutcomes(slots, opts.toolOutcomes ?? []);
+  if (opts.eilFacts) {
+    for (const [k, f] of Object.entries(opts.eilFacts)) {
+      if (k === SESSION_SATISFIED_TOOLS_KEY) continue;
+      if (f.value !== null && f.value !== undefined) {
+        slots[k] = f.value as string | number | boolean;
+      }
+    }
+  }
+  return slots;
+}

@@ -3,7 +3,11 @@ import {
   resolveRequiredToolNamesForTurn,
   toolOutcomeSatisfiesRequired,
 } from "../validators/requiredToolNamesParser.js";
-import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
+import {
+  resolveTurnPolicy,
+  resolveCompletionRequiredToolsForConfirmation,
+  type TurnPolicy,
+} from "../validators/turnPolicyParser.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 
 /**
@@ -42,7 +46,15 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
   const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
     (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
   );
-  const requiredToolNames = dedupeRequiredToolAliases([...baseRequired, ...exclusiveRequired]);
+  const completionRequired = resolveCompletionRequiredToolsForConfirmation(
+    turnPolicy,
+    priorToolOutcomes,
+  );
+  const requiredToolNames = dedupeRequiredToolAliases([
+    ...baseRequired,
+    ...exclusiveRequired,
+    ...completionRequired,
+  ]);
   const knowledgeSeeking = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
 
   // Infer pattern ids from required tools / message (leve — sem re-export circular)
@@ -57,6 +69,14 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
   }
   if (/reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(userMessage)) {
     matchedPatternIds.push("escalation");
+  }
+  if (
+    /\bficha\b/i.test(userMessage) ||
+    (/\b(motivo|transporte|meio\s+de\s+transporte|endere[cç]o|e-mail)\b/i.test(userMessage) &&
+      userMessage.split(/\n/).filter((l) => l.trim()).length >= 3) ||
+    (/\*\s*\w+\s*:/i.test(userMessage) && userMessage.split(/\n/).filter((l) => l.trim()).length >= 4)
+  ) {
+    matchedPatternIds.push("structured_form_submission");
   }
 
   return {

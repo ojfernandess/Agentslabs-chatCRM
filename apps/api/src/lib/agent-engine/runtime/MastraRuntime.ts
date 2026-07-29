@@ -1,7 +1,9 @@
 import type { AgentRuntime } from "./AgentRuntime.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
-import { OrchestratedRuntimeBase } from "./orchestrationHelpers.js";
+import { OrchestratedRuntimeBase, type OrchestrationDeps } from "./orchestrationHelpers.js";
 import { evaluateStrictModeGate } from "../validators/StrictModeGate.js";
+
+export type MastraRuntimeDeps = OrchestrationDeps;
 
 /**
  * Mastra Runtime — workflow declarativo (compose → run → audit).
@@ -9,7 +11,7 @@ import { evaluateStrictModeGate } from "../validators/StrictModeGate.js";
 export class MastraRuntime extends OrchestratedRuntimeBase implements AgentRuntime {
   readonly kind = "mastra" as const;
 
-  constructor(executor: NativeAgentExecutor) {
+  constructor(executor: NativeAgentExecutor, deps: MastraRuntimeDeps = {}) {
     super("mastra", executor, {
       graphHistory: [
         "mastra_compose",
@@ -59,6 +61,6 @@ export class MastraRuntime extends OrchestratedRuntimeBase implements AgentRunti
         },
       ],
       maxRetries: 1,
-    });
+    }, deps);
   }
 }

@@ -9,6 +9,7 @@ import {
 import {
   parseForbiddenSameTurnPairsFromPlaybook,
   resolveTurnPolicy,
+  resolveCompletionRequiredToolsForConfirmation,
   type TurnPolicy,
 } from "../validators/turnPolicyParser.js";
 import type { PromptContract } from "../core/types.js";
@@ -54,6 +55,7 @@ export type CompilePromptContractOpts = {
   userMessage: string;
   availableToolNames?: string[];
   priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  flowSlots?: Record<string, string | number | boolean> | null;
 };
 
 /**
@@ -75,7 +77,15 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
   const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
     (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
   );
-  const requiredToolNames = dedupeRequiredToolAliases([...baseRequired, ...exclusiveRequired]);
+  const completionRequired = resolveCompletionRequiredToolsForConfirmation(
+    turnPolicy,
+    priorToolOutcomes,
+  );
+  const requiredToolNames = dedupeRequiredToolAliases([
+    ...baseRequired,
+    ...exclusiveRequired,
+    ...completionRequired,
+  ]);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
   const categoryMap = parseCategoryToolMapFromPlaybook(playbook);
 

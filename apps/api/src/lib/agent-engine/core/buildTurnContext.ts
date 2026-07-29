@@ -19,7 +19,10 @@ export function analyzeIntent(userMessage: string, turnPlan: ExecutionTurnPlan):
   let kind: IntentKind = "general";
   let confidence = 0.55;
 
-  if (turnPlan.knowledgeSeeking || userMessageLooksLikeKnowledgeSeekingQuery(msg)) {
+  if (turnPlan.matchedPatternIds.includes("structured_form_submission")) {
+    kind = "data_submission";
+    confidence = 0.88;
+  } else if (turnPlan.knowledgeSeeking || userMessageLooksLikeKnowledgeSeekingQuery(msg)) {
     kind = "knowledge_query";
     confidence = 0.85;
   } else if (/^(sim|ok|confirmo|yes|não|nao|no)$/i.test(msg)) {
@@ -131,6 +134,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     userMessage,
     availableToolNames: opts.availableToolNames,
     priorToolOutcomes,
+    flowSlots: memoryFlowSlots,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,

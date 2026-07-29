@@ -25,6 +25,13 @@ export type TurnPolicy = {
   exclusiveAllowedTools: string[] | null;
   /** Nomes que o playbook trata como conclusão / mutação (check-in, submit, etc.). */
   completionToolHints: string[];
+  /**
+   * Pré-requisitos de confirmação (só/somente no sim) definidos no playbook.
+   * Usado para avançar para a tool de conclusão quando já satisfeitos na sessão.
+   */
+  confirmationPrerequisiteTools: string[];
+  /** Omite tools do catálogo quando todos os slotKeys existem em flowSlots (do playbook). */
+  omitToolsWhenSlotsPresent: Array<{ tools: string[]; slotKeys: string[] }>;
   /** true em turnos sim/ok/não — bloqueia transfer/call_human/status. */
   blockEscalation: boolean;
 };
@@ -203,6 +210,58 @@ export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
   return [...hints];
 }
 
+/**
+ * Regras do playbook: omitir tools quando facts/slots já presentes.
+ * Ex.: linha com profilePhotoId + checkin_upload_* + PROIBIDO/já tem.
+ */
+export function parseOmitToolsWhenSlotsPresentFromPlaybook(text: string): Array<{
+  tools: string[];
+  slotKeys: string[];
+}> {
+  const rules: Array<{ tools: string[]; slotKeys: string[] }> = [];
+  if (!text.trim()) return rules;
+
+  const SLOT_KEY_RE = /\b([a-z][a-zA-Z0-9]{2,48})\b/g;
+  const looksLikeSlotKey = (k: string) =>
+    /^(?:profilePhotoId|documentPhotoId|[a-z]+(?:Id|Code|Number|Token|Ref))$/.test(k);
+
+  for (const line of text.split(/\n+/)) {
+    if (
+      !/(flowSlots|já\s+tem|ja\s+tem|already|when\s+.+\s+present|se\s+.+\s+exist|PROIBIDO|proibid|omit|skip)/i.test(
+        line,
+      )
+    ) {
+      continue;
+    }
+    const tools = extractToolNamesFromText(line);
+    if (tools.length === 0) continue;
+    const slotKeys = [
+      ...new Set(
+        [...line.matchAll(SLOT_KEY_RE)].map((m) => m[1]!).filter(looksLikeSlotKey),
+      ),
+    ];
+    if (slotKeys.length === 0) continue;
+    rules.push({ tools, slotKeys });
+  }
+  return rules;
+}
+
+function toolsToOmitWhenSlotsPresent(
+  flowSlots: Record<string, string | number | boolean> | null | undefined,
+  rules: Array<{ tools: string[]; slotKeys: string[] }>,
+): string[] {
+  if (!flowSlots || rules.length === 0) return [];
+  const omit: string[] = [];
+  for (const rule of rules) {
+    const allPresent = rule.slotKeys.every((k) => {
+      const v = flowSlots[k];
+      return v != null && v !== "" && v !== 0;
+    });
+    if (allPresent) omit.push(...rule.tools);
+  }
+  return omit;
+}
+
 export function isLikelyMutableOrCompletionTool(
   name: string,
   completionHints: string[] = [],
@@ -258,6 +317,8 @@ export function resolveTurnPolicy(
     forbiddenSameTurnPairs: [],
     exclusiveAllowedTools: null,
     completionToolHints: [],
+    confirmationPrerequisiteTools: [],
+    omitToolsWhenSlotsPresent: [],
     blockEscalation: false,
   };
   if (!behaviorConfig || typeof behaviorConfig !== "object") {
@@ -267,21 +328,20 @@ export function resolveTurnPolicy(
   const playbook = playbookTextFromBehavior(behaviorConfig);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
   const completionToolHints = parseCompletionToolHintsFromPlaybook(playbook);
+  const confirmationPrerequisiteTools = parseExclusiveToolsForConfirmationTurn(playbook);
+  const omitToolsWhenSlotsPresent = parseOmitToolsWhenSlotsPresentFromPlaybook(playbook);
 
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
 
   let exclusiveAllowedTools: string[] | null = null;
-  if (isConfirmation) {
-    const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
-    if (exclusive.length > 0) {
-      const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
-      const pendingExclusive = exclusive.filter(
-        (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
-      );
-      if (pendingExclusive.length > 0) {
-        exclusiveAllowedTools = pendingExclusive;
-      }
+  if (isConfirmation && confirmationPrerequisiteTools.length > 0) {
+    const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+    const pendingExclusive = confirmationPrerequisiteTools.filter(
+      (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
+    );
+    if (pendingExclusive.length > 0) {
+      exclusiveAllowedTools = pendingExclusive;
     }
   }
 
@@ -289,8 +349,37 @@ export function resolveTurnPolicy(
     forbiddenSameTurnPairs,
     exclusiveAllowedTools,
     completionToolHints,
+    confirmationPrerequisiteTools,
+    omitToolsWhenSlotsPresent,
     blockEscalation: isConfirmation,
   };
+}
+
+/**
+ * Turno sim/ok: pré-requisitos do playbook já satisfeitos na sessão → exige tool de conclusão.
+ * Genérico: lê confirmationPrerequisiteTools + completionToolHints do playbook (sem nomes fixos).
+ */
+export function resolveCompletionRequiredToolsForConfirmation(
+  policy: TurnPolicy,
+  priorToolOutcomes: PriorToolOutcome[],
+): string[] {
+  if (!policy.blockEscalation || (policy.exclusiveAllowedTools?.length ?? 0) > 0) {
+    return [];
+  }
+  const prerequisites = policy.confirmationPrerequisiteTools;
+  if (prerequisites.length === 0 || policy.completionToolHints.length === 0) {
+    return [];
+  }
+  const priorOk = priorToolOutcomes.filter((t) => t.ok !== false);
+  const prerequisiteSatisfied = prerequisites.some((p) =>
+    toolOutcomeSatisfiesRequired(p, priorOk),
+  );
+  if (!prerequisiteSatisfied) return [];
+
+  const pendingCompletion = policy.completionToolHints.filter(
+    (h) => !toolOutcomeSatisfiesRequired(h, priorOk),
+  );
+  return pendingCompletion.length > 0 ? [pendingCompletion[0]!] : [];
 }
 
 /** Valida outcomes do turno contra a política (genérico multi-segmento). */
@@ -348,8 +437,8 @@ export function turnPolicyPreExecBlockReason(
   if (policy.blockEscalation && isEscalationToolName(toolName)) {
     const hint =
       policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0
-        ? ` Continue o check-in — use apenas: ${policy.exclusiveAllowedTools.join(", ")}.`
-        : " Continue o check-in sem transferir.";
+        ? ` Continue o fluxo — use apenas: ${policy.exclusiveAllowedTools.join(", ")}.`
+        : " Continue o fluxo sem transferir.";
     return `Ferramenta de escalonamento ${toolName} bloqueada em turno de confirmação (C11).${hint}`;
   }
   if (!policy.exclusiveAllowedTools || policy.exclusiveAllowedTools.length === 0) {
@@ -427,6 +516,7 @@ export function toolAliasesToOmitFromCatalog(opts: {
   policy: TurnPolicy;
   existingToolNames: string[];
   priorToolNames?: string[];
+  flowSlots?: Record<string, string | number | boolean> | null;
 }): string[] {
   const omit = new Set<string>();
   const { policy, existingToolNames } = opts;
@@ -462,6 +552,10 @@ export function toolAliasesToOmitFromCatalog(opts: {
         }
       }
     }
+  }
+
+  for (const alias of toolsToOmitWhenSlotsPresent(opts.flowSlots, policy.omitToolsWhenSlotsPresent)) {
+    omit.add(alias);
   }
 
   return [...omit];

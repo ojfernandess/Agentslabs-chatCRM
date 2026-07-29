@@ -16,7 +16,7 @@ import {
 } from "../audit/applyWorkflowGate.js";
 import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
-import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
+import { priorToolOutcomesFromSession, buildPersistedFlowSlots } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
   buildSupervisorTrace,
@@ -1103,23 +1103,29 @@ export class LangGraphRuntime implements AgentRuntime {
         botId: state.input.bot.id,
         contactId: state.input.contactId ?? null,
       });
-      // Espelhar facts EIL em flowSlots (session facts)
-      if (state.eilSnapshot?.enabled && Object.keys(state.eilFacts).length > 0) {
-        const slots: Record<string, string | number | boolean> = {};
-        for (const [k, f] of Object.entries(state.eilFacts)) {
-          if (f.value !== null && f.value !== undefined) slots[k] = f.value as string | number | boolean;
-        }
-        if (Object.keys(slots).length > 0) {
-          try {
-            await mergeFlowSlotsAutomationContext({
-              organizationId: state.input.organizationId,
-              conversationId: state.input.conversation.id,
-              botId: state.input.bot.id,
-              flowSlots: slots,
-            });
-          } catch {
-            /* best-effort */
-          }
+      // Espelhar facts EIL + tools OK da sessão em flowSlots (sem sobrescrever __satisfiedToolNames)
+      const baseFlowSlots = state.memory?.flowSlots as
+        | Record<string, string | number | boolean>
+        | undefined;
+      const toolOutcomesForSlots = state.toolOutcomes.map((t) => ({
+        name: t.name,
+        ok: t.ok,
+      }));
+      const persistedSlots = buildPersistedFlowSlots({
+        baseFlowSlots,
+        toolOutcomes: toolOutcomesForSlots,
+        eilFacts: state.eilSnapshot?.enabled ? state.eilFacts : undefined,
+      });
+      if (Object.keys(persistedSlots).length > 0) {
+        try {
+          await mergeFlowSlotsAutomationContext({
+            organizationId: state.input.organizationId,
+            conversationId: state.input.conversation.id,
+            botId: state.input.bot.id,
+            flowSlots: persistedSlots,
+          });
+        } catch {
+          /* best-effort */
         }
       }
       if (state.eilSnapshot) {
