@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { parsePromptBlocks } from "../../agentPlaybook.js";
 import {
   parseCategoryToolMapFromPlaybook,
+  dedupeRequiredToolAliases,
   resolveRequiredToolNamesForTurn,
+  toolOutcomeSatisfiesRequired,
 } from "../validators/requiredToolNamesParser.js";
 import {
   parseForbiddenSameTurnPairsFromPlaybook,
@@ -51,6 +53,7 @@ export type CompilePromptContractOpts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
   availableToolNames?: string[];
+  priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
 };
 
 /**
@@ -60,11 +63,19 @@ export type CompilePromptContractOpts = {
 export function compilePromptContract(opts: CompilePromptContractOpts): PromptContract {
   const playbook = playbookTextFromBehavior(opts.behaviorConfig);
   const userMessage = (opts.userMessage ?? "").trim();
-  const turnPolicy: TurnPolicy = resolveTurnPolicy(opts.behaviorConfig, { userMessage });
-  const requiredToolNames = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
+  const priorToolOutcomes = (opts.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+  const turnPolicy: TurnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
+    userMessage,
+    priorToolOutcomes,
+  });
+  const baseRequired = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
+  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
+    (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
+  );
+  const requiredToolNames = dedupeRequiredToolAliases([...baseRequired, ...exclusiveRequired]);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
   const categoryMap = parseCategoryToolMapFromPlaybook(playbook);
 

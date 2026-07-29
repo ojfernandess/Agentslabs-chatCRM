@@ -14,6 +14,7 @@ import {
   toolNameMatchesOmitAlias,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
+import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 
 const SAMPLE_PLAYBOOK = `
 ## Regras
@@ -90,17 +91,31 @@ test("blockEscalation alone blocks transfer even without exclusive tools", () =>
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
 });
 
-test("resolveTurnPolicy on sim blocks escalation but does not exclusive-lock embratur-only", () => {
+test("resolveTurnPolicy on sim with pending S9 sets exclusive embratur", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
     { userMessage: "sim" },
   );
   assert.ok(policy.forbiddenSameTurnPairs.length >= 1);
   assert.equal(policy.blockEscalation, true);
-  // Ficha→S10 precisa de audaar_check_in; exclusive S9 não pode aplicar a todo "sim"
-  assert.equal(policy.exclusiveAllowedTools, null);
+  assert.ok(
+    policy.exclusiveAllowedTools?.some((t) => /embratur|reference/i.test(t)),
+    "expected exclusive S9 tool on sim when prerequisite not satisfied",
+  );
   assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
   assert.ok(turnPolicyPreExecBlockReason("transfer_to_team", policy));
+});
+
+test("resolveTurnPolicy on sim after embratur allows check_in path", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    },
+  );
+  assert.equal(policy.exclusiveAllowedTools, null);
+  assert.equal(turnPolicyPreExecBlockReason("audaar_check_in", policy), null);
 });
 
 test("validateToolOutcomesAgainstTurnPolicy blocks reference+check_in", () => {
@@ -275,7 +290,7 @@ test("toolAliasesToOmitFromCatalog omits complementary side after one tool ran",
   );
 });
 
-test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S10 hinted", () => {
+test("toolAliasesToOmitFromCatalog on confirmation omits check_in when S9 pending", () => {
   const policy = resolveTurnPolicy(
     { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
     { userMessage: "sim" },
@@ -287,8 +302,57 @@ test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S10 hinte
     existingToolNames: [],
   });
   assert.ok(
+    toolNameMatchesOmitAlias("audaar_check_in", omit),
+    `expected check_in omitted when S9 pending, got ${JSON.stringify(omit)}`,
+  );
+  assert.equal(
     toolNameMatchesOmitAlias("embratur-reference", omit),
-    `expected embratur omitted on sim+S10, got ${JSON.stringify(omit)}`,
+    false,
+    "prerequisite tool must remain available",
+  );
+});
+
+test("buildExecutionTurnPlan requires exclusive S9 on sim without prior embratur", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "sim",
+  });
+  assert.ok(
+    plan.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
+    `expected embratur in required, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+  assert.equal(plan.turnPolicy.exclusiveAllowedTools?.length ?? 0, 1);
+});
+
+test("buildExecutionTurnPlan allows S10 on sim after embratur in session", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+  });
+  assert.equal(plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(
+    plan.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
+    false,
+  );
+});
+
+test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S9 already satisfied", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    },
+  );
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: [],
+    priorToolNames: ["embratur-reference"],
+  });
+  assert.ok(
+    toolNameMatchesOmitAlias("embratur-reference", omit),
+    `expected embratur omitted after S9, got ${JSON.stringify(omit)}`,
   );
   assert.equal(
     toolNameMatchesOmitAlias("audaar_check_in", omit),

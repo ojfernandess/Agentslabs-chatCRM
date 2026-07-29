@@ -2,7 +2,7 @@ import type { AgentSupervisorCheck, AgentSupervisorTrace } from "../types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/types.js";
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
-import { formatTurnPolicyForSupervisor } from "../validators/turnPolicyParser.js";
+import { formatTurnPolicyForSupervisor, isLikelyMutableOrCompletionTool } from "../validators/turnPolicyParser.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import type { ExecutionContract } from "../core/types.js";
 import { formatExecutionContractForSupervisor } from "../core/executionContractFormat.js";
@@ -119,10 +119,38 @@ const CHECK_DEFS: Array<{
     run: (i) => {
       const t = i.replyText.trim();
       if (!t) return false;
+      const hints = i.turnPolicy?.completionToolHints ?? [];
+      const completionRan = (i.toolOutcomes ?? []).some(
+        (o) => o.ok && isLikelyMutableOrCompletionTool(o.name, hints),
+      );
+      if (completionRan && i.strictMode) {
+        if (t.length >= 120) return true;
+        if (/\b(conclu[ií]d|confirmad|realizad|sucesso|finalizad|check[\s-]?in)\b/i.test(t)) {
+          return true;
+        }
+        return false;
+      }
       if (i.strictMode && /^(só um momento|aguarde|vou verificar)/i.test(t)) {
         return i.successfulToolCount === 0;
       }
       return t.length >= 8;
+    },
+  },
+  {
+    id: "completion_reply",
+    label: "Resposta após tool de conclusão",
+    run: (i) => {
+      const hints = i.turnPolicy?.completionToolHints ?? [];
+      const completionRan = (i.toolOutcomes ?? []).some(
+        (o) => o.ok && isLikelyMutableOrCompletionTool(o.name, hints),
+      );
+      if (!completionRan) return true;
+      const t = i.replyText.trim();
+      if (t.length >= 120) return true;
+      if (/\b(conclu[ií]d|confirmad|realizad|sucesso|finalizad|check[\s-]?in)\b/i.test(t)) {
+        return true;
+      }
+      return !i.strictMode;
     },
   },
   {
@@ -308,6 +336,7 @@ const RETRYABLE_CHECK_IDS = new Set([
   "required_tools_contract",
   "forbidden_tools_contract",
   "prompt_coherent",
+  "completion_reply",
   "no_execution_loop",
   "eil_plan_followed",
   "eil_required_facts",

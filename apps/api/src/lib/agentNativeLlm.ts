@@ -51,6 +51,11 @@ import {
   executionContractViolationAlerts,
 } from "./agent-engine/core/executionContractFormat.js";
 import { buildTurnContext } from "./agent-engine/core/buildTurnContext.js";
+import {
+  appendSessionSatisfiedToolName,
+  priorToolOutcomesFromSession,
+  readSessionSatisfiedToolNames,
+} from "./agent-engine/core/sessionToolOutcomes.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 import { formatScheduledToolsSystemAppendix } from "./agent-engine/scheduler/TurnToolScheduler.js";
 
@@ -1761,7 +1766,6 @@ async function generateNativeAgentReplyCore(input: {
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"
       ? (profile.behaviorConfig as Record<string, unknown>)
       : {};
-  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage });
   const executionHints = input.executionHints;
   let customHttpTools: AutomationHttpToolRow[] = [];
   if (nativeHttpCustomToolIds.length > 0) {
@@ -2041,6 +2045,16 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
+  for (const t of executionHints?.preScheduledToolOutcomes ?? []) {
+    if (t.ok !== false) {
+      sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, t.name);
+    }
+  }
+
+  const priorSessionToolNames = readSessionSatisfiedToolNames(sessionFlowSlots);
+  const priorToolOutcomes = priorToolOutcomesFromSession(sessionFlowSlots);
+  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage, priorToolOutcomes });
+
   const flowStatePrompt = isolateForConnectedTools
     ? buildIsolatedNativeFlowStatePromptBlock({
         flowStep: identityConflictCleared ? undefined : automationCtx.state.flowStep,
@@ -2140,6 +2154,7 @@ async function generateNativeAgentReplyCore(input: {
   const omitToolAliases = toolAliasesToOmitFromCatalog({
     policy: turnPolicy,
     existingToolNames: toolRoundOutcomes.map((t) => t.name),
+    priorToolNames: priorSessionToolNames,
   });
   const tools: OpenAiToolDefinition[] = [
     ...buildOpenAiTools(flags, {
@@ -2304,6 +2319,9 @@ async function generateNativeAgentReplyCore(input: {
                 ...parsed,
                 monitored: shouldNotifyBeforeToolCall(name, toolCallNotify),
               });
+              if (parsed.ok !== false) {
+                sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, outcomeName);
+              }
               return out;
             };
             const preScheduledReuse = (executionHints?.preScheduledToolOutcomes ?? []).find(
@@ -2822,6 +2840,7 @@ async function generateNativeAgentReplyCore(input: {
       turnId: `${conversation.id}:${message.id}`,
       behaviorConfig: profile.behaviorConfig as Record<string, unknown>,
       userMessage,
+      memory: { flowSlots: sessionFlowSlots },
       toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
         name,
         ok,

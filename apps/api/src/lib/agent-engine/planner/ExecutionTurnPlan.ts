@@ -1,5 +1,7 @@
 import {
+  dedupeRequiredToolAliases,
   resolveRequiredToolNamesForTurn,
+  toolOutcomeSatisfiesRequired,
 } from "../validators/requiredToolNamesParser.js";
 import { resolveTurnPolicy, type TurnPolicy } from "../validators/turnPolicyParser.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
@@ -22,6 +24,7 @@ export type BuildExecutionTurnPlanOpts = {
   behaviorConfig: Record<string, unknown> | null | undefined;
   userMessage: string;
   availableToolNames?: string[];
+  priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
 };
 
 /**
@@ -30,11 +33,16 @@ export type BuildExecutionTurnPlanOpts = {
  */
 export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): ExecutionTurnPlan {
   const userMessage = (opts.userMessage ?? "").trim();
-  const requiredToolNames = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
+  const priorToolOutcomes = (opts.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, { userMessage, priorToolOutcomes });
+  const baseRequired = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
-  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, { userMessage });
+  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
+    (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
+  );
+  const requiredToolNames = dedupeRequiredToolAliases([...baseRequired, ...exclusiveRequired]);
   const knowledgeSeeking = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
 
   // Infer pattern ids from required tools / message (leve — sem re-export circular)

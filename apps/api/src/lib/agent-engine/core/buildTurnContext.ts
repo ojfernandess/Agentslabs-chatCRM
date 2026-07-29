@@ -1,3 +1,4 @@
+import { priorToolOutcomesFromSession } from "./sessionToolOutcomes.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import { compilePromptContract } from "../compiler/PromptCompiler.js";
 import type { ToolOutcomeForEil } from "../eil/types.js";
@@ -121,15 +122,21 @@ export type BuildTurnContextOpts = {
 /** Constrói TurnContext completo — ponto de entrada único por turno (Fase 1). */
 export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
   const userMessage = (opts.userMessage ?? "").trim();
+  const memoryFlowSlots = opts.memory?.flowSlots as
+    | Record<string, string | number | boolean>
+    | undefined;
+  const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
   const promptContract = compilePromptContract({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
     availableToolNames: opts.availableToolNames,
+    priorToolOutcomes,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
     availableToolNames: opts.availableToolNames,
+    priorToolOutcomes,
   });
   const intent = analyzeIntent(userMessage, turnPlan);
 

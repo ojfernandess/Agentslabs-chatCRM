@@ -16,6 +16,7 @@ import {
 } from "../audit/applyWorkflowGate.js";
 import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
 import { resolveTurnPolicy } from "../validators/turnPolicyParser.js";
+import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
   buildSupervisorTrace,
@@ -740,9 +741,12 @@ export class LangGraphRuntime implements AgentRuntime {
       const requiredToolNames =
         contract?.requiredToolNames ??
         resolveRequiredToolNamesForValidation(state.input.behaviorConfig, { userMessage });
+      const priorToolOutcomes = priorToolOutcomesFromSession(
+        state.memory?.flowSlots as Record<string, string | number | boolean> | undefined,
+      );
       const turnPolicy =
         state.turnContext?.promptContract.turnPolicy ??
-        resolveTurnPolicy(state.input.behaviorConfig, { userMessage });
+        resolveTurnPolicy(state.input.behaviorConfig, { userMessage, priorToolOutcomes });
       const validation = validateToolExecution({
         toolOutcomes: state.toolOutcomes,
         replyText: state.reply,
@@ -851,10 +855,14 @@ export class LangGraphRuntime implements AgentRuntime {
         return { supervisorApproved: approved && !blockReply, supervisorTrace: supTrace, blockReply };
       }
 
+      const supervisorPriorTools = priorToolOutcomesFromSession(
+        state.memory?.flowSlots as Record<string, string | number | boolean> | undefined,
+      );
       const turnPolicy =
         state.turnContext?.promptContract.turnPolicy ??
         resolveTurnPolicy(state.input.behaviorConfig, {
           userMessage: state.input.message.body ?? "",
+          priorToolOutcomes: supervisorPriorTools,
         });
       const supInput = buildSupervisorValidationInput({
         userMessage: state.input.message.body ?? "",

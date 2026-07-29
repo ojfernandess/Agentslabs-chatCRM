@@ -5,6 +5,8 @@ import {
   toolOutcomeSatisfiesRequired,
 } from "./requiredToolNamesParser.js";
 
+export type PriorToolOutcome = { name: string; ok?: boolean };
+
 export type ForbiddenToolPair = {
   a: string;
   b: string;
@@ -250,7 +252,7 @@ export function findForbiddenPairViolation(
 
 export function resolveTurnPolicy(
   behaviorConfig: Record<string, unknown> | null | undefined,
-  options: { userMessage?: string } = {},
+  options: { userMessage?: string; priorToolOutcomes?: PriorToolOutcome[] } = {},
 ): TurnPolicy {
   const empty: TurnPolicy = {
     forbiddenSameTurnPairs: [],
@@ -269,13 +271,23 @@ export function resolveTurnPolicy(
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_MSG_RE.test(userMessage));
 
-  // Confirmação (sim/ok/não): bloquear só escalonamento.
-  // NÃO aplicar exclusiveAllowedTools=[embratur-reference] a todo "sim":
-  // isso quebra Ficha DE VIAGEM → S10 (`audaar_check_in`) — HJ2XQZXO-FICHA.
-  // Pares proibidos + prompt cobrem titular→S9 vs ficha→S10.
+  let exclusiveAllowedTools: string[] | null = null;
+  if (isConfirmation) {
+    const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
+    if (exclusive.length > 0) {
+      const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+      const pendingExclusive = exclusive.filter(
+        (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
+      );
+      if (pendingExclusive.length > 0) {
+        exclusiveAllowedTools = pendingExclusive;
+      }
+    }
+  }
+
   return {
     forbiddenSameTurnPairs,
-    exclusiveAllowedTools: null,
+    exclusiveAllowedTools,
     completionToolHints,
     blockEscalation: isConfirmation,
   };
@@ -396,20 +408,30 @@ export function turnPolicyPreExecBlockReasonForTurn(
   return null;
 }
 
+function toolSatisfiedInSession(
+  alias: string,
+  priorToolNames: string[],
+  existingToolNames: string[],
+): boolean {
+  const all = [...priorToolNames, ...existingToolNames];
+  return all.some((n) => toolsMatchAlias(n, alias));
+}
+
 /**
  * Aliases a omitir do catálogo OpenAI neste turno (antes do LLM escolher).
- * - Se A já correu, omite B (e vice-versa) para cada par proibido.
- * - Em confirmação (sim/ok) com completion hints: trata conclusão como iminente
- *   e omite o lado complementar do par (ex.: embratur-reference quando S10/check-in).
+ * - Se A já correu no turno, omite B (e vice-versa) para cada par proibido.
+ * - Confirmação com exclusividade pendente (S9): omite tools de conclusão (S10).
+ * - Confirmação pós-pré-requisito (S10): omite o lado reference do par já satisfeito.
  */
 export function toolAliasesToOmitFromCatalog(opts: {
   policy: TurnPolicy;
   existingToolNames: string[];
+  priorToolNames?: string[];
 }): string[] {
   const omit = new Set<string>();
   const { policy, existingToolNames } = opts;
+  const priorToolNames = opts.priorToolNames ?? [];
   const pairs = policy.forbiddenSameTurnPairs;
-  if (pairs.length === 0) return [];
 
   for (const pair of pairs) {
     if (toolsMatchAlias(pair.a, pair.b)) continue;
@@ -419,12 +441,25 @@ export function toolAliasesToOmitFromCatalog(opts: {
     if (hasB && !hasA) omit.add(pair.a);
   }
 
-  if (policy.blockEscalation && policy.completionToolHints.length > 0) {
+  if (policy.exclusiveAllowedTools?.length) {
+    for (const hint of policy.completionToolHints) omit.add(hint);
+    for (const pair of pairs) {
+      if (toolsMatchAlias(pair.a, pair.b)) continue;
+      const aCompletion = isLikelyMutableOrCompletionTool(pair.a, policy.completionToolHints);
+      const bCompletion = isLikelyMutableOrCompletionTool(pair.b, policy.completionToolHints);
+      if (aCompletion && !bCompletion) omit.add(pair.a);
+      if (bCompletion && !aCompletion) omit.add(pair.b);
+    }
+  } else if (policy.blockEscalation && policy.completionToolHints.length > 0) {
     for (const hint of policy.completionToolHints) {
       for (const pair of pairs) {
         if (toolsMatchAlias(pair.a, pair.b)) continue;
-        if (toolsMatchAlias(hint, pair.a)) omit.add(pair.b);
-        if (toolsMatchAlias(hint, pair.b)) omit.add(pair.a);
+        if (toolsMatchAlias(hint, pair.a) && toolSatisfiedInSession(pair.b, priorToolNames, existingToolNames)) {
+          omit.add(pair.b);
+        }
+        if (toolsMatchAlias(hint, pair.b) && toolSatisfiedInSession(pair.a, priorToolNames, existingToolNames)) {
+          omit.add(pair.a);
+        }
       }
     }
   }
