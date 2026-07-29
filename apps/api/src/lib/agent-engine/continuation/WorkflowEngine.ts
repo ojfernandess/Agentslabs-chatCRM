@@ -248,7 +248,10 @@ export async function advanceWorkflow(
   handlers?: WorkflowStepHandlers,
   persist = true,
 ): Promise<WorkflowAdvanceResult> {
-  let cur = { ...state, status: state.status === "suspended" ? ("running" as const) : state.status };
+  let cur: WorkflowRunState = {
+    ...state,
+    status: state.status === "suspended" ? "running" : state.status,
+  };
   if (cur.status !== "running" && cur.status !== "compensating") {
     return { state: cur, done: true };
   }

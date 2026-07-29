@@ -168,7 +168,8 @@ export type AgentGraphEventKind =
   | "stream"
   | "hitl"
   | "token"
-  | "turn_context";
+  | "turn_context"
+  | "workflow_engine";
 
 export type AgentGraphEvent = {
   kind: AgentGraphEventKind;
