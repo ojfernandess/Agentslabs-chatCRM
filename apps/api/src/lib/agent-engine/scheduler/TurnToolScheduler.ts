@@ -20,12 +20,20 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
   }
 
   const args: Record<string, unknown> = {};
-  if (entities.referenceCode) {
-    args.reference = entities.referenceCode;
-    args.localizador = entities.referenceCode;
-    args.booking_reference = entities.referenceCode;
-    args.reservation_code = entities.referenceCode;
-    args.codigo = entities.referenceCode;
+  const ref =
+    (typeof entities.referenceCode === "string" && entities.referenceCode.trim()) ||
+    msg.match(/\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i)?.[0]?.toUpperCase() ||
+    "";
+
+  if (ref) {
+    // Aliases comuns em HTTP tools (schema Audaar usa localizadorOuReservationId).
+    args.reference = ref;
+    args.localizador = ref;
+    args.localizadorOuReservationId = ref;
+    args.booking_reference = ref;
+    args.reservation_code = ref;
+    args.reservationId = ref;
+    args.codigo = ref;
   }
   if (entities.documentNumber) {
     args.cpf = entities.documentNumber;

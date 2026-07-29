@@ -38,8 +38,9 @@ export function analyzeIntent(userMessage: string, turnPlan: ExecutionTurnPlan):
   const entities: Record<string, string> = {};
   const doc = msg.match(/\b\d{11}\b/);
   if (doc) entities.documentNumber = doc[0];
-  const loc = msg.match(/\b[A-Z0-9]{6,12}\b/);
-  if (loc) entities.referenceCode = loc[0];
+  // Localizador: 6–12 alfanuméricos com pelo menos 1 dígito (evita apanhar palavras como "reserva").
+  const loc = msg.match(/\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i);
+  if (loc) entities.referenceCode = loc[0].toUpperCase();
 
   return {
     kind,

@@ -51,6 +51,21 @@ test("buildScheduledToolArgs maps reference entity for HTTP tools", () => {
   });
   const args = buildScheduledToolArgs("audaar_consultar_reserva", ctx);
   assert.equal(args.localizador, "ABC12345");
+  assert.equal(args.localizadorOuReservationId, "ABC12345");
+});
+
+test("buildScheduledToolArgs extracts locator from check-in phrase", () => {
+  const ctx = stubTurnContext({
+    userMessage: "fazer check-in na reserva HVW4V2D5",
+    intent: {
+      kind: "operational_action",
+      confidence: 0.7,
+      entities: {},
+      expectedGoal: "complete_operational_flow",
+    },
+  });
+  const args = buildScheduledToolArgs("audaar_consultar_reserva", ctx);
+  assert.equal(args.localizadorOuReservationId, "HVW4V2D5");
 });
 
 test("buildScheduledToolArgs uses user message for buscar_conhecimento", () => {
