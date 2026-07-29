@@ -45,6 +45,8 @@ export {
   isLikelyMutableOrCompletionTool,
   toolAliasesToOmitFromCatalog,
   toolNameMatchesOmitAlias,
+  buildPostGateSafeFallbackReply,
+  confirmationGateSatisfiedThisTurn,
   type TurnPolicy,
   type ForbiddenToolPair,
 } from "./validators/turnPolicyParser.js";

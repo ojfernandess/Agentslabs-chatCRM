@@ -591,6 +591,7 @@ export function toolAliasesToOmitFromCatalog(opts: {
   const { policy, existingToolNames } = opts;
   const priorToolNames = opts.priorToolNames ?? [];
   const pairs = policy.forbiddenSameTurnPairs;
+  const catalog = opts.catalogToolNames ?? [];
 
   for (const pair of pairs) {
     if (toolsMatchAlias(pair.a, pair.b)) continue;
@@ -600,9 +601,30 @@ export function toolAliasesToOmitFromCatalog(opts: {
     if (hasB && !hasA) omit.add(pair.a);
   }
 
+  // Confirmação: nunca expor escalonamento (listar_equipas / transfer / call_human).
+  if (policy.blockEscalation) {
+    for (const name of catalog) {
+      if (isEscalationToolName(name)) omit.add(name);
+    }
+    omit.add("listar_equipas");
+    omit.add("transfer_to_team");
+    omit.add("call_human");
+    omit.add("set_conversation_status");
+  }
+
   if (policy.exclusiveAllowedTools?.length) {
-    // Pré-requisito pendente: omitir conclusão + uploads + lado proibido do par.
-    // NÃO esvaziar o catálogo inteiro — isso quebrava o OpenNexo Runtime (Padrão).
+    // Allowlist estrito: só as tools exclusive (e ainda não satisfeitas neste turno).
+    // Se o gate já correu (Scheduler), o catálogo fica vazio → LLM só responde.
+    for (const name of catalog) {
+      const allowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, name));
+      if (!allowed) {
+        omit.add(name);
+        continue;
+      }
+      if (toolSatisfiedInSession(name, priorToolNames, existingToolNames)) {
+        omit.add(name);
+      }
+    }
     for (const hint of policy.completionToolHints) omit.add(hint);
     for (const pair of pairs) {
       if (toolsMatchAlias(pair.a, pair.b)) continue;
@@ -610,12 +632,6 @@ export function toolAliasesToOmitFromCatalog(opts: {
       const bAllowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, pair.b));
       if (!aAllowed) omit.add(pair.a);
       if (!bAllowed) omit.add(pair.b);
-    }
-    if (opts.catalogToolNames?.length) {
-      for (const name of opts.catalogToolNames) {
-        if (isLikelyUploadOrMediaTool(name)) omit.add(name);
-        if (isLikelyMutableOrCompletionTool(name, policy.completionToolHints)) omit.add(name);
-      }
     }
   } else if (policy.blockEscalation && policy.completionToolHints.length > 0) {
     for (const hint of policy.completionToolHints) {
@@ -673,4 +689,33 @@ export function shouldUseReplyOnlyRetry(opts: {
   // validation_passed / qualidade / coerência: tools já correram (mesmo ilegais) —
   // NÃO reexecutar HTTP (evita embratur×2 + side-effects). Só regenerar reply.
   return true;
+}
+
+/**
+ * Resposta segura quando o modo estrito bloqueia após um gate de confirmação OK.
+ * Genérico (sem campos de formulário fixos) — evita silêncio total ao contacto.
+ */
+export function buildPostGateSafeFallbackReply(opts: {
+  gateToolNames: string[];
+}): string {
+  const gates = opts.gateToolNames.filter(Boolean).slice(0, 3).join(", ");
+  const gatePart = gates
+    ? `O passo técnico (${gates}) foi concluído com sucesso.`
+    : "O passo técnico de confirmação foi concluído com sucesso.";
+  return (
+    `${gatePart} ` +
+    "Para continuar, envie agora os dados pedidos no fluxo (formulário / campos em falta). " +
+    "Não invente valores — use apenas o que o hóspede fornecer."
+  );
+}
+
+/** True se alguma tool de pré-requisito de confirmação correu OK neste turno. */
+export function confirmationGateSatisfiedThisTurn(
+  policy: TurnPolicy,
+  toolOutcomes: Array<{ name: string; ok?: boolean }>,
+): boolean {
+  const prereqs = policy.confirmationPrerequisiteTools;
+  if (prereqs.length === 0) return false;
+  const ok = toolOutcomes.filter((t) => t.ok !== false);
+  return prereqs.some((p) => toolOutcomeSatisfiesRequired(p, ok));
 }

@@ -36,8 +36,9 @@ import {
   parseKnowledgeSearchSkipFromBehavior,
 } from "./knowledgeSearchSkipConfig.js";
 import {
+  buildPostGateSafeFallbackReply,
+  confirmationGateSatisfiedThisTurn,
   findForbiddenPairViolation,
-  isLikelyMutableOrCompletionTool,
   resolveTurnPolicy,
   toolAliasesToOmitFromCatalog,
   toolNameMatchesOmitAlias,
@@ -2036,15 +2037,31 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
+  // Políticas exclusive/confirmação usam a sessão ANTES do schedule deste turno
+  // (senão o gate pré-executado limpa exclusive e o LLM chama main_guest/listar_equipas).
+  const sessionPriorAtBegin = priorToolOutcomesFromSession(sessionFlowSlots);
+
   for (const t of executionHints?.preScheduledToolOutcomes ?? []) {
     if (t.ok !== false) {
       sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, t.name);
     }
   }
 
-  const priorSessionToolNames = readSessionSatisfiedToolNames(sessionFlowSlots);
-  const priorToolOutcomes = priorToolOutcomesFromSession(sessionFlowSlots);
-  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, { userMessage, priorToolOutcomes });
+  const catalogToolNames = [
+    ...customHttpTools.map((r) => r.name),
+    "buscar_conhecimento",
+    "transfer_to_team",
+    "call_human",
+    "set_conversation_status",
+    "listar_equipas",
+    "atribuir_etiquetas",
+    "listar_etiquetas",
+  ];
+  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, {
+    userMessage,
+    priorToolOutcomes: sessionPriorAtBegin,
+    availableToolNames: catalogToolNames,
+  });
   const capabilityGraph = buildCapabilityGraph({
     tools: customHttpTools.map((t) => ({
       name: t.name,
@@ -2152,19 +2169,10 @@ async function generateNativeAgentReplyCore(input: {
   const omitToolAliases = toolAliasesToOmitFromCatalog({
     policy: turnPolicy,
     existingToolNames: toolRoundOutcomes.map((t) => t.name),
-    priorToolNames: priorSessionToolNames,
+    priorToolNames: sessionPriorAtBegin.map((t) => t.name),
     flowSlots: sessionFlowSlots,
     playbookText: playbookTextFromBehavior(behaviorConfigObj),
-    catalogToolNames: [
-      ...customHttpTools.map((r) => r.name),
-      "buscar_conhecimento",
-      "transfer_to_team",
-      "call_human",
-      "set_conversation_status",
-      "listar_equipas",
-      "atribuir_etiquetas",
-      "listar_etiquetas",
-    ],
+    catalogToolNames,
   });
   const tools: OpenAiToolDefinition[] = [
     ...buildOpenAiTools(flags, {
@@ -2380,7 +2388,8 @@ async function generateNativeAgentReplyCore(input: {
                 return finishToolCall(JSON.stringify({ ok: false, error: "tool_not_available_for_native_agent" }));
               }
 
-              // Reply-only retry: reutilizar tools OK; bloquear mutáveis novas
+              // Reply-only retry: reutilizar tools OK; bloquear QUALQUER tool nova
+              // (não só mutáveis — listar_equipas/main_guest partiam o fluxo S9).
               if (executionHints?.replyOnlyRetry) {
                 const prior = (executionHints.priorSuccessfulToolOutcomes ?? []).find(
                   (t) => toolsMatchAlias(t.name, row.name) || toolsMatchAlias(t.name, name),
@@ -2397,17 +2406,15 @@ async function generateNativeAgentReplyCore(input: {
                     }),
                   );
                 }
-                if (isLikelyMutableOrCompletionTool(row.name, turnPolicy.completionToolHints)) {
-                  return finishToolCall(
-                    JSON.stringify({
-                      ok: false,
-                      skipped: true,
-                      reason: "reply_only_retry_block_mutable",
-                      message:
-                        "Retry de qualidade: proibido reexecutar ferramentas mutáveis. Escreva apenas a resposta ao cliente.",
-                    }),
-                  );
-                }
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: false,
+                    skipped: true,
+                    reason: "reply_only_retry_block_new_tool",
+                    message:
+                      "Retry de qualidade: proibido invocar novas ferramentas. Escreva apenas a resposta ao cliente com os resultados já obtidos.",
+                  }),
+                );
               }
 
               // Política de turno (playbook): exclusividade + pares proibidos — genérico multi-segmento
@@ -2512,6 +2519,33 @@ async function generateNativeAgentReplyCore(input: {
                   ...(exec.autoFilledFields?.length
                     ? { autoFilledFields: exec.autoFilledFields.slice(0, 20) }
                     : {}),
+                }),
+              );
+            }
+            // Reply-only: bloquear tools nativas novas (escalonamento incluso)
+            if (executionHints?.replyOnlyRetry) {
+              const priorNative = (executionHints.priorSuccessfulToolOutcomes ?? []).find((t) =>
+                toolsMatchAlias(t.name, name),
+              );
+              if (priorNative) {
+                return finishToolCall(
+                  JSON.stringify({
+                    ok: true,
+                    skipped: true,
+                    reason: "reply_only_retry_reuse",
+                    bodyPreview: priorNative.preview.slice(0, 1500),
+                    message:
+                      "Resultado já obtido neste turno. Não volte a chamar a ferramenta — responda ao cliente.",
+                  }),
+                );
+              }
+              return finishToolCall(
+                JSON.stringify({
+                  ok: false,
+                  skipped: true,
+                  reason: "reply_only_retry_block_new_tool",
+                  message:
+                    "Retry de qualidade: proibido invocar novas ferramentas. Escreva apenas a resposta ao cliente.",
                 }),
               );
             }
@@ -3104,24 +3138,40 @@ async function generateNativeAgentReplyCore(input: {
         },
         "strict mode hard-block — reply not sent",
       );
-      // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
-      // Só limpa a reply para não enviar texto reprovado ao contacto.
-      return {
-        reply: "",
-        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
-      name,
-      ok,
-      preview,
-      structuredPayload,
-    })),
-        kbMeta: {
-          hasUsefulExcerpts: kbHasUsefulExcerpts,
-          coversQuery:
-            proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
-        },
-        llmSupervisorApproved,
-        llmSupervisorSummary,
-      };
+      // Após gate de confirmação OK: não silenciar o contacto — fallback seguro.
+      if (
+        confirmationGateSatisfiedThisTurn(turnPolicy, toolRoundOutcomes) &&
+        turnPolicy.blockEscalation
+      ) {
+        const fallback = buildPostGateSafeFallbackReply({
+          gateToolNames: turnPolicy.confirmationPrerequisiteTools,
+        });
+        ex?.warn(
+          { id: "strict_mode", name: "Modo estrito" },
+          "Fallback pós-gate após hard-block — resposta segura enviada",
+        );
+        replyText = fallback;
+      } else {
+        // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
+        // Só limpa a reply para não enviar texto reprovado ao contacto.
+        return {
+          reply: "",
+          toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+            name,
+            ok,
+            preview,
+            structuredPayload,
+          })),
+          kbMeta: {
+            hasUsefulExcerpts: kbHasUsefulExcerpts,
+            coversQuery:
+              proactiveCoversQuery ||
+              knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery),
+          },
+          llmSupervisorApproved,
+          llmSupervisorSummary,
+        };
+      }
     }
   }
 

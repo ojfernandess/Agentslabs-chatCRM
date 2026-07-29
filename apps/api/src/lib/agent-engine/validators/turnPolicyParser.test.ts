@@ -12,6 +12,8 @@ import {
   formatTurnPolicyForSupervisor,
   toolAliasesToOmitFromCatalog,
   toolNameMatchesOmitAlias,
+  buildPostGateSafeFallbackReply,
+  confirmationGateSatisfiedThisTurn,
 } from "./turnPolicyParser.js";
 import { validateToolExecution } from "./ToolValidator.js";
 import { buildExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
@@ -308,16 +310,61 @@ test("toolAliasesToOmitFromCatalog on confirmation omits check_in when S9 pendin
   const omit = toolAliasesToOmitFromCatalog({
     policy,
     existingToolNames: [],
+    catalogToolNames: [
+      "embratur-reference",
+      "audaar_check_in",
+      "audaar_consultar_main_guest",
+      "listar_equipas",
+      "transfer_to_team",
+    ],
   });
   assert.ok(
     toolNameMatchesOmitAlias("audaar_check_in", omit),
     `expected check_in omitted when S9 pending, got ${JSON.stringify(omit)}`,
   );
+  assert.ok(toolNameMatchesOmitAlias("audaar_consultar_main_guest", omit));
+  assert.ok(toolNameMatchesOmitAlias("listar_equipas", omit));
   assert.equal(
     toolNameMatchesOmitAlias("embratur-reference", omit),
     false,
     "prerequisite tool must remain available",
   );
+});
+
+test("toolAliasesToOmitFromCatalog empties catalog when exclusive gate already ran", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.ok(policy.exclusiveAllowedTools?.length);
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: ["embratur-reference"],
+    catalogToolNames: ["embratur-reference", "audaar_check_in", "listar_equipas", "buscar_conhecimento"],
+  });
+  assert.ok(toolNameMatchesOmitAlias("embratur-reference", omit));
+  assert.ok(toolNameMatchesOmitAlias("audaar_check_in", omit));
+  assert.ok(toolNameMatchesOmitAlias("listar_equipas", omit));
+});
+
+test("buildPostGateSafeFallbackReply and confirmationGateSatisfiedThisTurn", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    { userMessage: "sim" },
+  );
+  assert.equal(
+    confirmationGateSatisfiedThisTurn(policy, [{ name: "embratur-reference", ok: true }]),
+    true,
+  );
+  assert.equal(
+    confirmationGateSatisfiedThisTurn(policy, [{ name: "embratur-reference", ok: false }]),
+    false,
+  );
+  const reply = buildPostGateSafeFallbackReply({
+    gateToolNames: policy.confirmationPrerequisiteTools,
+  });
+  assert.ok(reply.length > 40);
+  assert.match(reply, /dados|formul/i);
 });
 
 test("parseExclusiveToolsForConfirmationTurn ignores slot/language backticks", () => {
