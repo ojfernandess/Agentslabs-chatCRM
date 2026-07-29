@@ -1,5 +1,7 @@
 import {
   extractToolNamesFromText,
+  isPlausibleToolName,
+  normalizeToolToken,
   playbookTextFromBehavior,
   toolOutcomeSatisfiesRequired,
 } from "./requiredToolNamesParser.js";
@@ -8,6 +10,8 @@ import {
   CONFIRMATION_USER_MSG_RE,
   isLikelyMutableOrCompletionTool,
   isLikelyUploadOrMediaTool,
+  isLikelyLookupOrKnowledgeTool,
+  isLikelyConfirmationGateTool,
   lineDescribesConfirmationExclusiveTools,
   looksLikeFlowSlotKey,
   slotKeyIsFilled,
@@ -123,34 +127,64 @@ export function parseForbiddenSameTurnPairsFromPlaybook(text: string): Forbidden
 }
 
 /**
+ * Refina exclusive de confirmação: descarta slots/idiomas, prioriza gates reais
+ * sobre lookup/knowledge quando ambos aparecem (evita agendar `mainguestid` / `brasileiro`).
+ */
+export function refineConfirmationExclusiveTools(candidates: string[]): string[] {
+  const plausible = [
+    ...new Set(
+      candidates
+        .map((n) => normalizeToolToken(n) ?? "")
+        .filter(
+          (n) =>
+            Boolean(n) &&
+            isPlausibleToolName(n) &&
+            !looksLikeFlowSlotKey(n) &&
+            !isLikelyMutableOrCompletionTool(n) &&
+            !isEscalationToolName(n) &&
+            !isLikelyUploadOrMediaTool(n),
+        ),
+    ),
+  ];
+  if (plausible.length <= 1) return plausible;
+
+  const gates = plausible.filter((n) => isLikelyConfirmationGateTool(n));
+  if (gates.length > 0) return gates;
+
+  const nonLookup = plausible.filter((n) => !isLikelyLookupOrKnowledgeTool(n));
+  if (nonLookup.length > 0) return nonLookup;
+
+  return plausible;
+}
+
+/**
  * Em turnos de confirmação (sim/ok), extrai tools exclusivas do playbook:
  * linhas com "só/somente/apenas/only" + tool em contexto de confirmação.
- * Nunca inclui conclusão/mutação nem escalonamento.
+ * Só aceita nomes plausíveis (snake/kebab) — nunca slots camelCase nem valores de tabela.
  */
 export function parseExclusiveToolsForConfirmationTurn(playbookText: string): string[] {
   const exclusive = new Set<string>();
   if (!playbookText.trim()) return [];
 
-  const addAllowed = (tools: string[]) => {
-    for (const t of tools) {
-      if (isLikelyMutableOrCompletionTool(t)) continue;
-      if (isEscalationToolName(t)) continue;
-      if (isLikelyUploadOrMediaTool(t)) continue;
-      exclusive.add(t);
-    }
-  };
-
   for (const line of playbookText.split(/\n+/)) {
     if (!lineDescribesConfirmationExclusiveTools(line)) continue;
     const soMatches = [
-      ...line.matchAll(/(?:^|[\s|])(?:s[oó]|somente|apenas|only)\s+`([a-z][a-z0-9_-]{2,80})`/gi),
+      ...line.matchAll(
+        /(?:^|[\s|])(?:s[oó]|somente|apenas|only)\s+`([a-zA-Z][a-zA-Z0-9_-]{2,80})`/gi,
+      ),
     ];
-    if (soMatches.length > 0) {
-      addAllowed(soMatches.map((m) => m[1]!.toLowerCase()));
+    for (const m of soMatches) {
+      const name = normalizeToolToken(m[1] ?? "");
+      if (!name) continue;
+      if (looksLikeFlowSlotKey(name)) continue;
+      if (isLikelyMutableOrCompletionTool(name)) continue;
+      if (isEscalationToolName(name)) continue;
+      if (isLikelyUploadOrMediaTool(name)) continue;
+      exclusive.add(name);
     }
   }
 
-  return [...exclusive];
+  return refineConfirmationExclusiveTools([...exclusive]);
 }
 
 /** Tools de conclusão (mutáveis) — exclui uploads/media. */
@@ -254,7 +288,12 @@ export function findForbiddenPairViolation(
 
 export function resolveTurnPolicy(
   behaviorConfig: Record<string, unknown> | null | undefined,
-  options: { userMessage?: string; priorToolOutcomes?: PriorToolOutcome[] } = {},
+  options: {
+    userMessage?: string;
+    priorToolOutcomes?: PriorToolOutcome[];
+    /** Catálogo real do agente — exclusive nunca agenda nomes fora deste set. */
+    availableToolNames?: Iterable<string>;
+  } = {},
 ): TurnPolicy {
   const empty: TurnPolicy = {
     forbiddenSameTurnPairs: [],
@@ -271,8 +310,15 @@ export function resolveTurnPolicy(
   const playbook = playbookTextFromBehavior(behaviorConfig);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
   const completionToolHints = parseCompletionToolHintsFromPlaybook(playbook);
-  const confirmationPrerequisiteTools = parseExclusiveToolsForConfirmationTurn(playbook);
+  let confirmationPrerequisiteTools = parseExclusiveToolsForConfirmationTurn(playbook);
   const omitToolsWhenSlotsPresent = parseOmitToolsWhenSlotsPresentFromPlaybook(playbook);
+
+  const available = new Set(
+    [...(options.availableToolNames ?? [])].map((n) => n.trim().toLowerCase()).filter(Boolean),
+  );
+  if (available.size > 0) {
+    confirmationPrerequisiteTools = confirmationPrerequisiteTools.filter((t) => available.has(t));
+  }
 
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));

@@ -38,14 +38,22 @@ export type BuildExecutionTurnPlanOpts = {
 export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): ExecutionTurnPlan {
   const userMessage = (opts.userMessage ?? "").trim();
   const priorToolOutcomes = (opts.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
-  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, { userMessage, priorToolOutcomes });
+  const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
+    userMessage,
+    priorToolOutcomes,
+    availableToolNames: opts.availableToolNames,
+  });
+  const availableSet = new Set(
+    (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
+  );
   const baseRequired = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
-  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
-    (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
-  );
+  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter((tool) => {
+    if (availableSet.size > 0 && !availableSet.has(tool.trim().toLowerCase())) return false;
+    return !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes);
+  });
   const completionRequired = resolveCompletionRequiredToolsForConfirmation(
     turnPolicy,
     priorToolOutcomes,

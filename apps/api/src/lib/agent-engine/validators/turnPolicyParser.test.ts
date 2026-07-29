@@ -320,6 +320,49 @@ test("toolAliasesToOmitFromCatalog on confirmation omits check_in when S9 pendin
   );
 });
 
+test("parseExclusiveToolsForConfirmationTurn ignores slot/language backticks", () => {
+  const playbook = `
+| C11 titular OK · N=1 → S9 | Sim → só \`embratur-reference\` · só \`mainGuestId\` · só \`brasileiro\` · só \`buscar_conhecimento\` · só \`audaar_consultar_reserva\` |
+`;
+  const exclusive = parseExclusiveToolsForConfirmationTurn(playbook);
+  assert.deepEqual(exclusive, ["embratur-reference"]);
+});
+
+test("resolveTurnPolicy sim guest confirm requires only gate tool not fake names", () => {
+  const playbook = `
+**Proibido** \`embratur-reference\` + \`audaar_check_in\` no mesmo turno
+| N=1 → S9 | só \`embratur-reference\` | só \`mainGuestId\` | só \`brasileiro\` |
+| S10 | concluído | Chame \`audaar_check_in\` |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    {
+      userMessage: "Sim",
+      availableToolNames: [
+        "embratur-reference",
+        "audaar_check_in",
+        "audaar_consultar_reserva",
+        "buscar_conhecimento",
+      ],
+    },
+  );
+  assert.deepEqual(policy.exclusiveAllowedTools, ["embratur-reference"]);
+  assert.equal(policy.confirmationPrerequisiteTools.includes("mainguestid"), false);
+  assert.equal(policy.confirmationPrerequisiteTools.includes("brasileiro"), false);
+
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    userMessage: "Sim",
+    availableToolNames: [
+      "embratur-reference",
+      "audaar_check_in",
+      "audaar_consultar_reserva",
+      "buscar_conhecimento",
+    ],
+  });
+  assert.deepEqual(plan.requiredToolNames, ["embratur-reference"]);
+});
+
 test("buildExecutionTurnPlan requires exclusive S9 on sim without prior embratur", () => {
   const plan = buildExecutionTurnPlan({
     behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },

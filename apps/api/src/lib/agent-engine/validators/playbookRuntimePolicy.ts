@@ -102,6 +102,26 @@ export function lineDescribesConfirmationExclusiveTools(line: string): boolean {
   return false;
 }
 
+/**
+ * Lookup / knowledge — em confirmação, costumam poluir o exclusive quando o playbook
+ * mistura `só \`consulta\`` / valores de tabela com gates reais (`reference`, etc.).
+ */
+export function isLikelyLookupOrKnowledgeTool(toolName: string): boolean {
+  const n = toolName.trim().toLowerCase().replace(/-/g, "_");
+  if (!n) return false;
+  if (/(?:conhecimento|knowledge|rag|faq|wiki)/i.test(n)) return true;
+  return /(?:^|_)(?:consult|consulta|lookup|search|find|get|fetch|read|buscar|query|retrieve)(?:_|$)/i.test(
+    n,
+  );
+}
+
+/** Gate típico de confirmação (referência, validação, emissão, registro). */
+export function isLikelyConfirmationGateTool(toolName: string): boolean {
+  const n = toolName.trim().toLowerCase();
+  if (!n) return false;
+  return /(?:reference|referenc|valid|emit|register|ficha|form|gate|confirm)/i.test(n);
+}
+
 /** Turnos de recolha de dados (formulário) não devem exigir tools de conclusão. */
 export function isDataCollectionPatternId(patternId: string): boolean {
   return patternId === "structured_form_submission";

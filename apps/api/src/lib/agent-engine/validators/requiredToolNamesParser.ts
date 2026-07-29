@@ -134,7 +134,8 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   },
 ];
 
-function isPlausibleToolName(raw: string): boolean {
+/** Nome de tool real (nativo, snake/kebab com separador, ou oc_tool_<hex>) — não slots/idiomas. */
+export function isPlausibleToolName(raw: string): boolean {
   const t = raw.trim().toLowerCase();
   if (!t || t.length < 3 || t.length > 96) return false;
   if (TOOL_NAME_STOPWORDS.has(t)) return false;
@@ -145,7 +146,7 @@ function isPlausibleToolName(raw: string): boolean {
   return false;
 }
 
-function normalizeToolToken(raw: string): string | null {
+export function normalizeToolToken(raw: string): string | null {
   const t = raw.trim();
   if (!t || !isPlausibleToolName(t)) return null;
   if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return t.toLowerCase();

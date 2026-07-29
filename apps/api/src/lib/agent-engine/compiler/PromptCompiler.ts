@@ -69,14 +69,19 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
   const turnPolicy: TurnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
     userMessage,
     priorToolOutcomes,
+    availableToolNames: opts.availableToolNames,
   });
+  const availableSet = new Set(
+    (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
+  );
   const baseRequired = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
   });
-  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter(
-    (tool) => !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes),
-  );
+  const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter((tool) => {
+    if (availableSet.size > 0 && !availableSet.has(tool.trim().toLowerCase())) return false;
+    return !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes);
+  });
   const completionRequired = resolveCompletionRequiredToolsForConfirmation(
     turnPolicy,
     priorToolOutcomes,

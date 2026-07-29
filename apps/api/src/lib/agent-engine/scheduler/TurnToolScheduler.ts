@@ -55,11 +55,17 @@ export function planScheduledToolInvocations(
   existingOutcomes: Array<{ name: string; ok?: boolean }> = [],
 ): ScheduledToolInvocation[] {
   const policy = turnContext.promptContract.turnPolicy;
+  const available = new Set(
+    (turnContext.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
+  );
   const pending = turnContext.executionContract.pendingToolNames.filter(
     (name) => !toolOutcomeSatisfiesRequired(name, existingOutcomes),
   );
   return pending
-    .filter((toolName) => !turnPolicyPreExecBlockReason(toolName, policy))
+    .filter((toolName) => {
+      if (available.size > 0 && !available.has(toolName.trim().toLowerCase())) return false;
+      return !turnPolicyPreExecBlockReason(toolName, policy);
+    })
     .map((toolName) => ({
       toolName,
       args: buildScheduledToolArgs(toolName, turnContext),
