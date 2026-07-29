@@ -1237,13 +1237,32 @@ export async function invokeSingleNativeAgentTool(input: {
           select: { id: true, name: true, phone: true },
         })
       : null;
-    const httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
+    let httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
       organizationId,
       conversationId: conversation.id,
       lastClearedAt: automationCtx.lastClearedAt,
       message,
       contact: contactRow,
     });
+    // Paridade com o path LLM: flowSlots alimentam fillMissingRequiredSchemaFields
+    // (sem isto o Tool Scheduler falha schema_validation em check-in / HTTP mutáveis).
+    const sessionFlowSlots =
+      automationCtx.state.flowSlots && typeof automationCtx.state.flowSlots === "object"
+        ? (automationCtx.state.flowSlots as Record<string, unknown>)
+        : {};
+    if (Object.keys(sessionFlowSlots).length > 0) {
+      httpToolRuntimeContext = {
+        ...httpToolRuntimeContext,
+        flowSlots: sessionFlowSlots,
+        conversation: {
+          ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? {
+            id: conversation.id,
+          }),
+          flowSlots: sessionFlowSlots,
+          ...(automationCtx.state.flowStep ? { flowStep: automationCtx.state.flowStep } : {}),
+        },
+      };
+    }
     const exec = await runAutomationHttpLikeTool({
       tool: httpRow,
       llmArgs: args,
@@ -2317,21 +2336,23 @@ async function generateNativeAgentReplyCore(input: {
             };
             const preScheduledReuse = (executionHints?.preScheduledToolOutcomes ?? []).find(
               (t) =>
-                toolsMatchAlias(t.name, name) ||
-                (customRow?.name ? toolsMatchAlias(t.name, customRow.name) : false),
+                t.ok === true &&
+                (toolsMatchAlias(t.name, name) ||
+                  (customRow?.name ? toolsMatchAlias(t.name, customRow.name) : false)),
             );
             if (preScheduledReuse) {
               return finishToolCall(
                 JSON.stringify({
-                  ok: preScheduledReuse.ok,
+                  ok: true,
                   skipped: true,
                   reason: "scheduler_pre_executed",
                   bodyPreview: preScheduledReuse.preview.slice(0, 1500),
                   message:
-                    "Ferramenta já executada pelo Tool Scheduler. Responda ao cliente com o resultado obtido.",
+                    "Ferramenta já executada com sucesso pelo Tool Scheduler. Responda ao cliente com o resultado obtido — não invente sucesso sem estes dados.",
                 }),
               );
             }
+            // Pré-execução falhou (ex.: schema_validation): permitir retentativa do LLM com args/contexto.
             if (name === "buscar_conhecimento") {
               knowledgeSearchCallsThisTurn += 1;
               const priorKbOutcomes = toolRoundOutcomes.filter((t) => t.name === "buscar_conhecimento");

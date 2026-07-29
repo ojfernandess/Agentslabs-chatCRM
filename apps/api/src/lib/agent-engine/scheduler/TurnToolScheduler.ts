@@ -48,6 +48,18 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
     args.documentNumber = entities.documentNumber;
   }
 
+  // Factos de sessão (flowSlots → FactStore) — preenche required HTTP sem depender do LLM.
+  const facts = turnContext.facts;
+  if (facts && typeof facts === "object") {
+    for (const [k, v] of Object.entries(facts)) {
+      if (k.startsWith("__")) continue;
+      if (v === undefined || v === null) continue;
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        if (!(k in args)) args[k] = v;
+      }
+    }
+  }
+
   // HTTP tools: runtime context + auto-fill preenchem o resto quando args vazios.
   if (Object.keys(args).length === 0 && msg) {
     args.user_message = msg;
@@ -133,6 +145,7 @@ export function formatScheduledToolsSystemAppendix(
   outcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>,
 ): string {
   if (!outcomes.length) return "";
+  const anyFailed = outcomes.some((o) => !o.ok);
   const lines = outcomes.map((o) => {
     const factsJson =
       o.ok && o.structuredPayload != null
@@ -143,9 +156,15 @@ export function formatScheduledToolsSystemAppendix(
       : "";
     return `- **${o.name}** (${o.ok ? "ok" : "falhou"}): ${o.preview.slice(0, 1200)}${factsBlock}`;
   });
+  const failBlock = anyFailed
+    ? "\n**ATENÇÃO:** pelo menos uma ferramenta FALHOU (ex.: schema_validation_failed / HTTP erro). " +
+      "PROIBIDO dizer ao cliente que a operação foi concluída/sucesso. " +
+      "Peça o dado em falta ou explique a falha de forma honesta; pode retentar a tool com argumentos correctos.\n"
+    : "";
   return (
     "\n\n## Ferramentas já executadas pelo Runtime (Tool Scheduler)\n" +
-    "Não volte a invocar estas ferramentas neste turno.\n" +
+    "Não volte a invocar ferramentas que tiveram sucesso neste turno.\n" +
+    failBlock +
     "A resposta AO CLIENTE DEVE usar os factos/dados abaixo de forma substantiva " +
     "(datas, estado, identificadores, valores, nomes). " +
     "Proibido responder só que «encontrou» / «localizou» sem detalhar os dados retornados.\n" +

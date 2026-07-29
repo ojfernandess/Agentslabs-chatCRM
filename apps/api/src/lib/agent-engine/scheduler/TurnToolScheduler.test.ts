@@ -109,3 +109,39 @@ test("formatScheduledToolsSystemAppendix requires substantive use of structured 
   assert.match(appendix, /2026-07-31/);
   assert.match(appendix, /Proibido responder só que/);
 });
+
+test("buildScheduledToolArgs copies session facts for HTTP required fields", () => {
+  const ctx = stubTurnContext({
+    userMessage: "sim",
+    intent: {
+      kind: "confirmation",
+      confidence: 0.9,
+      entities: {},
+      expectedGoal: "confirm_and_proceed",
+    },
+    facts: {
+      reservationId: 279307,
+      mainGuestId: 33051,
+      documentNumber: "41026299802",
+      __satisfiedToolNames: "embratur-reference",
+    },
+  });
+  const args = buildScheduledToolArgs("audaar_check_in", ctx);
+  assert.equal(args.reservationId, 279307);
+  assert.equal(args.mainGuestId, 33051);
+  assert.equal(args.documentNumber, "41026299802");
+  assert.equal(args.__satisfiedToolNames, undefined);
+});
+
+test("formatScheduledToolsSystemAppendix forbids claiming success when tool failed", () => {
+  const appendix = formatScheduledToolsSystemAppendix([
+    {
+      name: "audaar_check_in",
+      ok: false,
+      preview: '{"error":"schema_validation_failed","missingFields":["reservationId"]}',
+    },
+  ]);
+  assert.match(appendix, /FALHOU/i);
+  assert.match(appendix, /PROIBIDO dizer ao cliente que a operação foi concluída/i);
+  assert.match(appendix, /schema_validation_failed/);
+});

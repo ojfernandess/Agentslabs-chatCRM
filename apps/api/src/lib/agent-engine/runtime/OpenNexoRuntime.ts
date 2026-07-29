@@ -208,10 +208,21 @@ export class OpenNexoRuntime implements AgentRuntime {
     });
     const reply = execResult.reply;
     const llmOutcomes = execResult.toolOutcomes ?? [];
-    toolOutcomes = [
-      ...toolOutcomes,
-      ...llmOutcomes.filter((t) => !toolOutcomes.some((p) => p.name === t.name && p.ok)),
-    ];
+    // Preferir sucesso do LLM quando o Scheduler falhou (ex.: schema fill depois corrigido).
+    const merged: typeof toolOutcomes = [];
+    for (const o of [...llmOutcomes, ...toolOutcomes]) {
+      const key = o.name.trim().toLowerCase();
+      const existing = merged.find((m) => m.name.trim().toLowerCase() === key);
+      if (!existing) {
+        merged.push(o);
+        continue;
+      }
+      if (!existing.ok && o.ok) {
+        const idx = merged.indexOf(existing);
+        merged[idx] = o;
+      }
+    }
+    toolOutcomes = merged;
     engineState = engine.recordPhase(
       engineState,
       "execute_llm",
