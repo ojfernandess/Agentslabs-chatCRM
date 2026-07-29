@@ -1,7 +1,24 @@
-import { toolsMatchAlias } from "../validators/turnPolicyParser.js";
+import { CONFIRMATION_USER_MSG_RE } from "../validators/playbookRuntimePolicy.js";
 
 /** Chave genérica em flowSlots para tools satisfeitas na conversa (CSV). */
 export const SESSION_SATISFIED_TOOLS_KEY = "__satisfiedToolNames";
+
+/** Match local (evita ciclo com turnPolicyParser). */
+function toolsMatchAlias(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/-/g, "_");
+  const x = norm(a);
+  const y = norm(b);
+  return x === y || x.includes(y) || y.includes(x);
+}
+
+/**
+ * Após tool de gate (pré-requisito de confirmação) — falta recolha de dados
+ * antes de auto-exigir tools de conclusão no próximo "sim".
+ */
+export const SESSION_AWAITING_POST_GATE_DATA_KEY = "__awaitingPostGateData";
+
+/** Utilizador já enviou dados após o gate — "sim" pode exigir conclusão. */
+export const SESSION_COMPLETION_READY_KEY = "__completionReady";
 
 export function readSessionSatisfiedToolNames(
   flowSlots?: Record<string, string | number | boolean> | null,
@@ -13,6 +30,75 @@ export function readSessionSatisfiedToolNames(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function slotFlagTrue(
+  flowSlots: Record<string, string | number | boolean> | null | undefined,
+  key: string,
+): boolean {
+  if (!flowSlots) return false;
+  const v = flowSlots[key];
+  return v === true || v === "true" || v === 1;
+}
+
+export function isAwaitingPostGateData(
+  flowSlots?: Record<string, string | number | boolean> | null,
+): boolean {
+  return slotFlagTrue(flowSlots, SESSION_AWAITING_POST_GATE_DATA_KEY);
+}
+
+export function isCompletionReady(
+  flowSlots?: Record<string, string | number | boolean> | null,
+): boolean {
+  return slotFlagTrue(flowSlots, SESSION_COMPLETION_READY_KEY);
+}
+
+/**
+ * Máquina de fase genérica (multi-segmento):
+ * gate tool OK → aguarda dados → mensagem não-confirmação → ready → conclusão OK → limpa.
+ */
+export function applyConfirmationPhaseTransitions(opts: {
+  baseFlowSlots?: Record<string, string | number | boolean> | null;
+  toolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  confirmationPrerequisiteTools?: string[];
+  completionToolHints?: string[];
+  userMessage?: string;
+}): Record<string, string | number | boolean> {
+  const slots: Record<string, string | number | boolean> = {
+    ...(opts.baseFlowSlots ?? {}),
+  };
+  const prereqs = opts.confirmationPrerequisiteTools ?? [];
+  const completion = opts.completionToolHints ?? [];
+  const okOutcomes = (opts.toolOutcomes ?? []).filter((t) => t.ok !== false);
+  const userMessage = (opts.userMessage ?? "").trim();
+
+  const gateJustOk = okOutcomes.some((o) =>
+    prereqs.some((p) => toolsMatchAlias(o.name, p)),
+  );
+  if (gateJustOk) {
+    slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = true;
+    slots[SESSION_COMPLETION_READY_KEY] = false;
+  }
+
+  // Dados / formulário (não "sim") enquanto aguarda pós-gate → libera conclusão.
+  if (
+    userMessage &&
+    !CONFIRMATION_USER_MSG_RE.test(userMessage) &&
+    slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY)
+  ) {
+    slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
+    slots[SESSION_COMPLETION_READY_KEY] = true;
+  }
+
+  const completionJustOk = okOutcomes.some((o) =>
+    completion.some((h) => toolsMatchAlias(o.name, h)),
+  );
+  if (completionJustOk) {
+    slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
+    slots[SESSION_COMPLETION_READY_KEY] = false;
+  }
+
+  return slots;
 }
 
 export function appendSessionSatisfiedToolName(

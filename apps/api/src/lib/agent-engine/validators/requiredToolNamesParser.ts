@@ -139,6 +139,8 @@ export function isPlausibleToolName(raw: string): boolean {
   const t = raw.trim().toLowerCase();
   if (!t || t.length < 3 || t.length > 96) return false;
   if (TOOL_NAME_STOPWORDS.has(t)) return false;
+  // Rótulos de passo do playbook (`s-check-in`, `s1-transfer`, `s10-ficha`) — não são tools.
+  if (/^s\d*[-_]/.test(t)) return false;
   if (/^oc_tool_[a-f0-9]{32}$/i.test(t)) return true;
   if ((KNOWN_NATIVE_TOOL_NAMES as readonly string[]).includes(t)) return true;
   // HTTP / custom: snake_case ou kebab-case com pelo menos um separador
@@ -395,9 +397,16 @@ function filterAgainstAvailable(required: string[], available: string[]): string
   return required.filter((r) => {
     const lower = r.toLowerCase();
     if (avail.has(lower)) return true;
-    // Match parcial: playbook `consultar_reserva` vs tool `audaar_consultar_reserva`
+    const rn = lower.replace(/-/g, "_");
+    // Alias por sufixo (consultar_reserva ⊂ audaar_consultar_reserva).
+    // Exige ≥8 chars e fronteira — evita rótulos curtos / `s-check-in`.
+    if (rn.length < 8) return false;
     for (const a of avail) {
-      if (a.includes(lower) || lower.includes(a)) return true;
+      const an = a.replace(/-/g, "_");
+      if (an === rn) return true;
+      if (an.endsWith(`_${rn}`) || (an.endsWith(rn) && an.length > rn.length)) return true;
+      if (rn.endsWith(`_${an}`) || (rn.endsWith(an) && rn.length > an.length && an.length >= 8))
+        return true;
     }
     return false;
   });
@@ -485,21 +494,30 @@ export function resolveRequiredToolNamesForTurn(
 
 /**
  * Verifica se uma tool invocada satisfaz um nome obrigatório (match exacto ou parcial).
- * Cobre `audaar_consultar_main_guest` vs `oc_tool_<uuid>` quando o alias está na preview.
+ * Cobre `audaar_consultar_main_guest` vs alias curto `consultar_main_guest`.
  * Outcomes com `ok: false` NUNCA satisfazem o contrato (evita marcar falhas HTTP como done).
+ * Rótulos `s-*` do playbook nunca satisfazem (não são tools reais).
  */
 export function toolOutcomeSatisfiesRequired(
   requiredName: string,
   outcomes: Array<{ name: string; preview?: string; ok?: boolean }>,
 ): boolean {
   const req = requiredName.toLowerCase();
+  if (/^s\d*[-_]/.test(req)) return false;
+  const rr = req.replace(/-/g, "_");
   for (const o of outcomes) {
     if (o.ok === false) continue;
     const name = (o.name ?? "").toLowerCase();
-    if (name === req) return true;
-    if (name.includes(req) || req.includes(name)) return true;
-    const preview = (o.preview ?? "").toLowerCase();
-    if (preview.includes(`"name":"${req}"`) || preview.includes(req)) return true;
+    const nn = name.replace(/-/g, "_");
+    if (nn === rr) return true;
+    if (rr.length >= 8 && (nn.endsWith(`_${rr}`) || (nn.endsWith(rr) && nn.length > rr.length)))
+      return true;
+    if (nn.length >= 8 && (rr.endsWith(`_${nn}`) || (rr.endsWith(nn) && rr.length > nn.length)))
+      return true;
+    if (rr.length >= 12) {
+      const preview = (o.preview ?? "").toLowerCase();
+      if (preview.includes(`"name":"${req}"`) || preview.includes(req)) return true;
+    }
   }
   return false;
 }

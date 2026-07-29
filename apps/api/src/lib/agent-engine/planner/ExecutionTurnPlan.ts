@@ -29,6 +29,11 @@ export type BuildExecutionTurnPlanOpts = {
   userMessage: string;
   availableToolNames?: string[];
   priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  /** Tools já na sessão no início do turno (antes do schedule deste turno). */
+  sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
+  flowSlots?: Record<string, string | number | boolean> | null;
+  /** Turno começou com exclusive gate — não promover conclusão no refresh. */
+  freezeCompletionPromotion?: boolean;
 };
 
 /**
@@ -38,6 +43,9 @@ export type BuildExecutionTurnPlanOpts = {
 export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): ExecutionTurnPlan {
   const userMessage = (opts.userMessage ?? "").trim();
   const priorToolOutcomes = (opts.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+  const sessionPriorOutcomes = (opts.sessionPriorOutcomes ?? priorToolOutcomes).filter(
+    (t) => t.ok !== false,
+  );
   const turnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
     userMessage,
     priorToolOutcomes,
@@ -57,6 +65,11 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
   const completionRequired = resolveCompletionRequiredToolsForConfirmation(
     turnPolicy,
     priorToolOutcomes,
+    {
+      sessionPriorOutcomes,
+      flowSlots: opts.flowSlots,
+      freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    },
   );
   const requiredToolNames = dedupeRequiredToolAliases([
     ...baseRequired,

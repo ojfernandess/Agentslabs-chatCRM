@@ -7,7 +7,14 @@ import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversatio
 import { runWorkflowGate } from "../audit/applyWorkflowGate.js";
 import { flowSlotsFromMemory } from "../eil/runtimeBridge.js";
 import { mergeFlowSlotsAutomationContext } from "../../automationConversationContextLib.js";
-import { buildPersistedFlowSlots } from "../core/sessionToolOutcomes.js";
+import {
+  applyConfirmationPhaseTransitions,
+  buildPersistedFlowSlots,
+} from "../core/sessionToolOutcomes.js";
+import {
+  blockReasonFromTurnContract,
+  shouldBlockOutboundFromTurnContract,
+} from "../core/executionContractGate.js";
 import {
   sharedExecutionEngine,
   timelineToInspectorEntries,
@@ -233,9 +240,17 @@ export class OpenNexoRuntime implements AgentRuntime {
     traceBuilder.endNode("respond");
 
     const baseSlots = flowSlotsFromMemory(memSnap as Record<string, unknown>);
-    const persistedSlots = buildPersistedFlowSlots({
+    let persistedSlots = buildPersistedFlowSlots({
       baseFlowSlots: baseSlots,
       toolOutcomes,
+    });
+    persistedSlots = applyConfirmationPhaseTransitions({
+      baseFlowSlots: persistedSlots,
+      toolOutcomes,
+      confirmationPrerequisiteTools:
+        engineState.plan.turnPolicy.confirmationPrerequisiteTools,
+      completionToolHints: engineState.plan.turnPolicy.completionToolHints,
+      userMessage: input.message.body ?? "",
     });
 
     engineState = engine.refreshTurnWithBehavior(engineState, input.behaviorConfig, {
@@ -248,10 +263,18 @@ export class OpenNexoRuntime implements AgentRuntime {
       traceBuilder.setEilSnapshot(engineState.turnContext.eilSnapshot);
     }
 
-    const slotsToPersist = buildPersistedFlowSlots({
+    let slotsToPersist = buildPersistedFlowSlots({
       baseFlowSlots: persistedSlots,
       toolOutcomes,
       eilFacts: eilEnabled ? engineState.turnContext.facts : undefined,
+    });
+    slotsToPersist = applyConfirmationPhaseTransitions({
+      baseFlowSlots: slotsToPersist,
+      toolOutcomes,
+      confirmationPrerequisiteTools:
+        engineState.plan.turnPolicy.confirmationPrerequisiteTools,
+      completionToolHints: engineState.plan.turnPolicy.completionToolHints,
+      userMessage: input.message.body ?? "",
     });
     if (Object.keys(slotsToPersist).length > 0) {
       try {
@@ -266,6 +289,8 @@ export class OpenNexoRuntime implements AgentRuntime {
       }
     }
 
+    let validationOk = true;
+    let validationAlerts: string[] = [];
     if (toolOutcomes.length > 0) {
       traceBuilder.startNode("validate_result", "Validar ferramentas");
       const turnPolicy = engineState.plan.turnPolicy;
@@ -281,6 +306,8 @@ export class OpenNexoRuntime implements AgentRuntime {
         capabilityGraph: engineState.turnContext.capabilityGraph,
         factsBeforeTurn: engineState.turnContext.facts,
       });
+      validationOk = validation.ok;
+      validationAlerts = validation.alerts;
       if (!validation.ok) {
         for (const a of validation.alerts) traceBuilder.addError(a);
         input.executionLog?.warn(
@@ -358,6 +385,31 @@ export class OpenNexoRuntime implements AgentRuntime {
       );
     }
 
+    const blockOutbound = shouldBlockOutboundFromTurnContract({
+      strictMode: input.engineConfig.strictMode,
+      validationBlockSend: !validationOk && validationAlerts.some((a) => /proibid|block/i.test(a)),
+      retryCount: 0,
+      canRetry: false,
+      executionContract: engineState.turnContext.executionContract,
+      toolOutcomes,
+    });
+    let outboundReply = reply;
+    if (blockOutbound) {
+      const reason = blockReasonFromTurnContract({
+        strictMode: input.engineConfig.strictMode,
+        validationBlockSend: !validationOk,
+        retryCount: 0,
+        canRetry: false,
+        executionContract: engineState.turnContext.executionContract,
+        toolOutcomes,
+      });
+      input.executionLog?.warn(
+        { id: "turn_contract_gate", name: "Turn Contract Gate" },
+        `Outbound bloqueado — ${reason}`,
+      );
+      outboundReply = "";
+    }
+
     const builtTrace = traceBuilder.build();
     if (input.engineConfig.otelEnabled && builtTrace) {
       void ingestAgentTraceToOtel(builtTrace, {
@@ -366,6 +418,6 @@ export class OpenNexoRuntime implements AgentRuntime {
       });
     }
 
-    return { reply, trace: builtTrace };
+    return { reply: outboundReply, trace: builtTrace };
   }
 }

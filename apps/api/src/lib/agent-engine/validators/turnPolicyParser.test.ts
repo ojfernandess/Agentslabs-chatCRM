@@ -375,21 +375,69 @@ test("buildExecutionTurnPlan requires exclusive S9 on sim without prior embratur
   assert.equal(plan.turnPolicy.exclusiveAllowedTools?.length ?? 0, 1);
 });
 
-test("buildExecutionTurnPlan allows S10 on sim after embratur in session", () => {
-  const plan = buildExecutionTurnPlan({
-    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+test("buildExecutionTurnPlan allows S10 on sim after embratur only when completion-ready", () => {
+  const behavior = { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } };
+  const blocked = buildExecutionTurnPlan({
+    behaviorConfig: behavior,
     userMessage: "sim",
     priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [{ name: "embratur-reference", ok: true }],
+    flowSlots: { __awaitingPostGateData: true, __completionReady: false },
   });
-  assert.equal(plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(blocked.turnPolicy.exclusiveAllowedTools, null);
   assert.equal(
-    plan.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
+    blocked.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
     false,
+    `post-gate collect must not require check_in, got ${JSON.stringify(blocked.requiredToolNames)}`,
   );
+
+  const ready = buildExecutionTurnPlan({
+    behaviorConfig: behavior,
+    userMessage: "sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [{ name: "embratur-reference", ok: true }],
+    flowSlots: { __awaitingPostGateData: false, __completionReady: true },
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
   assert.ok(
-    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
-    `expected check_in in required, got ${JSON.stringify(plan.requiredToolNames)}`,
+    ready.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    `expected check_in when completion-ready, got ${JSON.stringify(ready.requiredToolNames)}`,
   );
+});
+
+test("buildExecutionTurnPlan does not promote completion mid-turn after exclusive gate", () => {
+  const playbook = `
+| N=1 → S9 | só \`embratur-reference\` |
+| S10 | concluído | Chame \`audaar_check_in\` |
+`;
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    userMessage: "Sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [],
+    freezeCompletionPromotion: true,
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.equal(
+    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    false,
+    `freeze must block check_in, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});
+
+test("completionToolHints exclude playbook step labels like s-check-in", () => {
+  const playbook = `
+| S10 | concluído | Chame \`audaar_check_in\` · \`s-check-in\` |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    {
+      userMessage: "sim",
+      availableToolNames: ["audaar_check_in", "embratur-reference"],
+    },
+  );
+  assert.ok(policy.completionToolHints.includes("audaar_check_in"));
+  assert.equal(policy.completionToolHints.includes("s-check-in"), false);
 });
 
 test("toolAliasesToOmitFromCatalog on confirmation omits embratur when S9 already satisfied", () => {

@@ -14,7 +14,7 @@ import {
   shouldRunWorkflowGate,
 } from "../audit/applyWorkflowGate.js";
 import { shouldUseReplyOnlyRetry } from "../validators/turnPolicyParser.js";
-import { priorToolOutcomesFromSession, buildPersistedFlowSlots } from "../core/sessionToolOutcomes.js";
+import { priorToolOutcomesFromSession, buildPersistedFlowSlots, applyConfirmationPhaseTransitions } from "../core/sessionToolOutcomes.js";
 import { maybeRevertIllegalHandoffAfterValidation } from "../../agentConversationHandoff.js";
 import {
   buildSupervisorTrace,
@@ -1176,10 +1176,20 @@ export class LangGraphRuntime implements AgentRuntime {
         name: t.name,
         ok: t.ok,
       }));
-      const persistedSlots = buildPersistedFlowSlots({
-        baseFlowSlots,
+      const persistedSlots = applyConfirmationPhaseTransitions({
+        baseFlowSlots: buildPersistedFlowSlots({
+          baseFlowSlots,
+          toolOutcomes: toolOutcomesForSlots,
+          eilFacts: state.eilSnapshot?.enabled ? state.eilFacts : undefined,
+        }),
         toolOutcomes: toolOutcomesForSlots,
-        eilFacts: state.eilSnapshot?.enabled ? state.eilFacts : undefined,
+        confirmationPrerequisiteTools:
+          state.turnContext?.turnPlan.turnPolicy.confirmationPrerequisiteTools ??
+          state.engineTurn?.plan.turnPolicy.confirmationPrerequisiteTools,
+        completionToolHints:
+          state.turnContext?.turnPlan.turnPolicy.completionToolHints ??
+          state.engineTurn?.plan.turnPolicy.completionToolHints,
+        userMessage: state.input.message.body ?? "",
       });
       if (Object.keys(persistedSlots).length > 0) {
         try {

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   SESSION_SATISFIED_TOOLS_KEY,
   appendSessionSatisfiedToolName,
+  applyConfirmationPhaseTransitions,
   buildPersistedFlowSlots,
   priorToolOutcomesFromSession,
   readSessionSatisfiedToolNames,
@@ -47,4 +48,36 @@ test("buildPersistedFlowSlots never persists failed tool outcomes", () => {
   });
   const names = readSessionSatisfiedToolNames(slots);
   assert.deepEqual(names, ["embratur-reference"]);
+});
+
+test("applyConfirmationPhaseTransitions gates completion until post-gate data", () => {
+  let slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: {},
+    toolOutcomes: [{ name: "embratur-reference", ok: true }],
+    confirmationPrerequisiteTools: ["embratur-reference"],
+    completionToolHints: ["audaar_check_in"],
+    userMessage: "Sim",
+  });
+  assert.equal(slots.__awaitingPostGateData, true);
+  assert.equal(slots.__completionReady, false);
+
+  slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: slots,
+    toolOutcomes: [],
+    confirmationPrerequisiteTools: ["embratur-reference"],
+    completionToolHints: ["audaar_check_in"],
+    userMessage: "Motivo: lazer\nTransporte: carro",
+  });
+  assert.equal(slots.__awaitingPostGateData, false);
+  assert.equal(slots.__completionReady, true);
+
+  slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: slots,
+    toolOutcomes: [{ name: "audaar_check_in", ok: true }],
+    confirmationPrerequisiteTools: ["embratur-reference"],
+    completionToolHints: ["audaar_check_in"],
+    userMessage: "Sim",
+  });
+  assert.equal(slots.__awaitingPostGateData, false);
+  assert.equal(slots.__completionReady, false);
 });

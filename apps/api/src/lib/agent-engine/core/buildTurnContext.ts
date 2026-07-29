@@ -130,6 +130,10 @@ export type BuildTurnContextOpts = {
   memory?: Record<string, unknown>;
   priorFacts?: FactStore;
   eilResolve?: ResolveEilTurnResult;
+  /** Snapshot de tools da sessão no beginTurn (antes do schedule). */
+  sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
+  /** Turno iniciou com exclusive gate — congela promoção a conclusão. */
+  freezeCompletionPromotion?: boolean;
 };
 
 /** Constrói TurnContext completo — ponto de entrada único por turno (Fase 1). */
@@ -139,18 +143,24 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     | Record<string, string | number | boolean>
     | undefined;
   const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
+  const sessionPriorOutcomes = opts.sessionPriorOutcomes ?? priorToolOutcomes;
   const promptContract = compilePromptContract({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
     availableToolNames: opts.availableToolNames,
     priorToolOutcomes,
+    sessionPriorOutcomes,
     flowSlots: memoryFlowSlots,
+    freezeCompletionPromotion: opts.freezeCompletionPromotion,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
     availableToolNames: opts.availableToolNames,
     priorToolOutcomes,
+    sessionPriorOutcomes,
+    flowSlots: memoryFlowSlots,
+    freezeCompletionPromotion: opts.freezeCompletionPromotion,
   });
   const intent = analyzeIntent(userMessage, turnPlan);
 

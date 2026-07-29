@@ -1,5 +1,6 @@
 import { buildTurnContext, type BuildTurnContextOpts } from "../core/buildTurnContext.js";
 import type { TurnContext } from "../core/types.js";
+import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
 import type { ToolOutcomeForEil, FactStore } from "../eil/types.js";
 import type { AgentRuntimeExecuteInput } from "../types.js";
 import {
@@ -41,6 +42,10 @@ export type EngineTurnState = {
   memory?: Record<string, unknown>;
   /** Workflow/Step Engine (Fase 3) — opcional. */
   workflowRun?: WorkflowRunState | null;
+  /** Tools na sessão no início do turno (antes de schedule). */
+  sessionPriorAtBegin: Array<{ name: string; ok: boolean }>;
+  /** Exclusive gate no begin — congela promoção a conclusão no refresh. */
+  freezeCompletionPromotion: boolean;
 };
 
 export type BeginTurnOpts = {
@@ -87,6 +92,11 @@ export class ExecutionEngine {
       availableToolNames: opts.availableToolNames,
     });
 
+    const memoryFlowSlots = opts.memory?.flowSlots as
+      | Record<string, string | number | boolean>
+      | undefined;
+    const sessionPriorAtBegin = priorToolOutcomesFromSession(memoryFlowSlots);
+
     const buildOpts: BuildTurnContextOpts = {
       turnId: context.turnId,
       behaviorConfig: input.behaviorConfig,
@@ -96,9 +106,14 @@ export class ExecutionEngine {
       toolOutcomes: opts.toolOutcomes,
       priorFacts: opts.priorFacts,
       toolConfigs: opts.toolConfigs,
+      sessionPriorOutcomes: sessionPriorAtBegin,
+      freezeCompletionPromotion: false,
     };
     const turnContext = buildTurnContext(buildOpts);
     const plan = enginePlanFromTurn(turnContext.turnPlan, turnContext.eilPlan);
+    const freezeCompletionPromotion = Boolean(
+      plan.turnPolicy.exclusiveAllowedTools?.length,
+    );
     let timeline = createExecutionTimeline();
     timeline = appendTimelineEvent(timeline, "begin", `runtime=${context.runtime}`);
     timeline = appendTimelineEvent(timeline, "plan", `required=${plan.requiredToolNames.join(",") || "none"}`, {
@@ -118,6 +133,8 @@ export class ExecutionEngine {
       metrics,
       recoveryCount: 0,
       memory: opts.memory,
+      sessionPriorAtBegin,
+      freezeCompletionPromotion,
     };
   }
 
@@ -144,6 +161,8 @@ export class ExecutionEngine {
       memory,
       toolOutcomes: opts.toolOutcomes,
       priorFacts: opts.priorFacts ?? state.turnContext.facts,
+      sessionPriorOutcomes: state.sessionPriorAtBegin,
+      freezeCompletionPromotion: state.freezeCompletionPromotion,
     });
     let next = syncPlanContract({ ...state, memory }, turnContext);
     const phase = opts.phase ?? "validate";

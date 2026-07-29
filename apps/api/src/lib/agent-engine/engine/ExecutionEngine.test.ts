@@ -70,12 +70,18 @@ test("ExecutionEngine refreshTurn updates contract after tools", () => {
   const input = mockInput("langgraph", HOTEL_PLAYBOOK, "Sim");
   let state = sharedExecutionEngine.beginTurn({ input, memory: {} });
   assert.ok(state.contract.pendingToolNames.includes("embratur-reference"));
+  assert.equal(state.freezeCompletionPromotion, true);
   state = sharedExecutionEngine.refreshTurnWithBehavior(state, input.behaviorConfig, {
     toolOutcomes: [{ name: "embratur-reference", ok: true }],
     phase: "validate",
   });
   assert.equal(state.contract.pendingToolNames.includes("embratur-reference"), false);
   assert.ok(state.contract.satisfiedToolNames.includes("embratur-reference"));
+  assert.equal(
+    state.contract.pendingToolNames.some((t) => /check[_-]?in/i.test(t)),
+    false,
+    "must not promote check_in mid-turn after exclusive gate",
+  );
   assert.ok(state.timeline.some((e) => e.phase === "validate"));
 });
 

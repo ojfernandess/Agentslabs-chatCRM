@@ -55,7 +55,9 @@ export type CompilePromptContractOpts = {
   userMessage: string;
   availableToolNames?: string[];
   priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
   flowSlots?: Record<string, string | number | boolean> | null;
+  freezeCompletionPromotion?: boolean;
 };
 
 /**
@@ -66,6 +68,9 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
   const playbook = playbookTextFromBehavior(opts.behaviorConfig);
   const userMessage = (opts.userMessage ?? "").trim();
   const priorToolOutcomes = (opts.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+  const sessionPriorOutcomes = (opts.sessionPriorOutcomes ?? priorToolOutcomes).filter(
+    (t) => t.ok !== false,
+  );
   const turnPolicy: TurnPolicy = resolveTurnPolicy(opts.behaviorConfig, {
     userMessage,
     priorToolOutcomes,
@@ -85,6 +90,11 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
   const completionRequired = resolveCompletionRequiredToolsForConfirmation(
     turnPolicy,
     priorToolOutcomes,
+    {
+      sessionPriorOutcomes,
+      flowSlots: opts.flowSlots,
+      freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    },
   );
   const requiredToolNames = dedupeRequiredToolAliases([
     ...baseRequired,

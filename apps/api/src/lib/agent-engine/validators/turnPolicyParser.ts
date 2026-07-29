@@ -18,6 +18,10 @@ import {
   extractSlotKeysFromLine,
   hasFilledMediaOrDocumentSlots,
 } from "./playbookRuntimePolicy.js";
+import {
+  isAwaitingPostGateData,
+  isCompletionReady,
+} from "../core/sessionToolOutcomes.js";
 
 export {
   isLikelyMutableOrCompletionTool,
@@ -187,7 +191,7 @@ export function parseExclusiveToolsForConfirmationTurn(playbookText: string): st
   return refineConfirmationExclusiveTools([...exclusive]);
 }
 
-/** Tools de conclusão (mutáveis) — exclui uploads/media. */
+/** Tools de conclusão (mutáveis) — exclui uploads/media e rótulos de passo. */
 export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
   const hints = new Set<string>();
   for (const line of text.split(/\n+/)) {
@@ -199,6 +203,27 @@ export function parseCompletionToolHintsFromPlaybook(text: string): string[] {
     }
   }
   return [...hints];
+}
+
+/** Mantém só nomes presentes no catálogo (ou aliases por sufixo ≥8). */
+export function filterCompletionHintsAgainstCatalog(
+  hints: string[],
+  available: Set<string>,
+): string[] {
+  if (available.size === 0) return hints.filter((h) => isPlausibleToolName(h));
+  return hints.filter((h) => {
+    const lower = h.toLowerCase();
+    if (available.has(lower)) return true;
+    const rn = lower.replace(/-/g, "_");
+    if (rn.length < 8) return false;
+    for (const a of available) {
+      const an = a.replace(/-/g, "_");
+      if (an === rn || an.endsWith(`_${rn}`) || (an.endsWith(rn) && an.length > rn.length)) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 /**
@@ -309,7 +334,7 @@ export function resolveTurnPolicy(
 
   const playbook = playbookTextFromBehavior(behaviorConfig);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
-  const completionToolHints = parseCompletionToolHintsFromPlaybook(playbook);
+  let completionToolHints = parseCompletionToolHintsFromPlaybook(playbook);
   let confirmationPrerequisiteTools = parseExclusiveToolsForConfirmationTurn(playbook);
   const omitToolsWhenSlotsPresent = parseOmitToolsWhenSlotsPresentFromPlaybook(playbook);
 
@@ -318,6 +343,9 @@ export function resolveTurnPolicy(
   );
   if (available.size > 0) {
     confirmationPrerequisiteTools = confirmationPrerequisiteTools.filter((t) => available.has(t));
+    completionToolHints = filterCompletionHintsAgainstCatalog(completionToolHints, available);
+  } else {
+    completionToolHints = completionToolHints.filter((t) => isPlausibleToolName(t));
   }
 
   const userMessage = (options.userMessage ?? "").trim();
@@ -347,24 +375,48 @@ export function resolveTurnPolicy(
 /**
  * Turno sim/ok: pré-requisitos do playbook já satisfeitos na sessão → exige tool de conclusão.
  * Genérico: lê confirmationPrerequisiteTools + completionToolHints do playbook (sem nomes fixos).
+ *
+ * Regras anti-salto de fase:
+ * - freezeCompletionPromotion: turno começou com exclusive gate — não promove conclusão no mesmo turno
+ * - awaitingPostGateData sem completionReady: falta recolha de dados após o gate
+ * - sessionPriorOutcomes: pré-requisitos têm de existir ANTES deste turno (não só após schedule)
  */
 export function resolveCompletionRequiredToolsForConfirmation(
   policy: TurnPolicy,
   priorToolOutcomes: PriorToolOutcome[],
+  opts?: {
+    sessionPriorOutcomes?: PriorToolOutcome[];
+    flowSlots?: Record<string, string | number | boolean> | null;
+    freezeCompletionPromotion?: boolean;
+  },
 ): string[] {
   if (!policy.blockEscalation || (policy.exclusiveAllowedTools?.length ?? 0) > 0) {
+    return [];
+  }
+  if (opts?.freezeCompletionPromotion) {
     return [];
   }
   const prerequisites = policy.confirmationPrerequisiteTools;
   if (prerequisites.length === 0 || policy.completionToolHints.length === 0) {
     return [];
   }
-  const priorOk = priorToolOutcomes.filter((t) => t.ok !== false);
-  const prerequisiteSatisfied = prerequisites.some((p) =>
-    toolOutcomeSatisfiesRequired(p, priorOk),
-  );
-  if (!prerequisiteSatisfied) return [];
 
+  const sessionOk = (opts?.sessionPriorOutcomes ?? priorToolOutcomes).filter(
+    (t) => t.ok !== false,
+  );
+  const prerequisiteSatisfiedInSession = prerequisites.some((p) =>
+    toolOutcomeSatisfiesRequired(p, sessionOk),
+  );
+  if (!prerequisiteSatisfiedInSession) return [];
+
+  // Pós-gate: não exigir conclusão até haver dados (ou ready explícito).
+  if (isAwaitingPostGateData(opts?.flowSlots) && !isCompletionReady(opts?.flowSlots)) {
+    return [];
+  }
+  // Se a sessão já marcou awaiting nalgum momento e ainda não está ready, bloqueia.
+  // Se nunca houve flag (legado), permite conclusão quando prereq na sessão.
+
+  const priorOk = priorToolOutcomes.filter((t) => t.ok !== false);
   const pendingCompletion = policy.completionToolHints.filter(
     (h) => !toolOutcomeSatisfiesRequired(h, priorOk),
   );
