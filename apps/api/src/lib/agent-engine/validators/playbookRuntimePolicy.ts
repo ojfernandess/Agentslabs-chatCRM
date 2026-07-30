@@ -110,7 +110,7 @@ export function isLikelyLookupOrKnowledgeTool(toolName: string): boolean {
   const n = toolName.trim().toLowerCase().replace(/-/g, "_");
   if (!n) return false;
   if (/(?:conhecimento|knowledge|rag|faq|wiki)/i.test(n)) return true;
-  return /(?:^|_)(?:consult|consulta|lookup|search|find|get|fetch|read|buscar|query|retrieve)(?:_|$)/i.test(
+  return /(?:^|_)(?:consult(?:ar)?|consulta|lookup|search|find|get|fetch|read|buscar|query|retrieve)(?:_|$)/i.test(
     n,
   );
 }
@@ -127,11 +127,20 @@ export function isDataCollectionPatternId(patternId: string): boolean {
   return patternId === "structured_form_submission";
 }
 
+/**
+ * C9 / bloco de dados: ZERO tools de lookup/gate/conclusão.
+ * Não exclui helpers de formulário (ex.: crm_save_customer_form) — só conclusão,
+ * lookup (main_guest/consultar_*) e gates Embratur/reference.
+ */
 export function shouldExcludeCompletionToolFromRequired(
   patternId: string,
   toolName: string,
   completionHints: string[] = [],
 ): boolean {
   if (!isDataCollectionPatternId(patternId)) return false;
-  return isLikelyMutableOrCompletionTool(toolName, completionHints);
+  if (isLikelyMutableOrCompletionTool(toolName, completionHints)) return true;
+  if (isLikelyLookupOrKnowledgeTool(toolName)) return true;
+  const n = toolName.trim().toLowerCase().replace(/-/g, "_");
+  if (/(?:embratur|(?:^|_)reference(?:_|$)|referencia)/i.test(n)) return true;
+  return false;
 }

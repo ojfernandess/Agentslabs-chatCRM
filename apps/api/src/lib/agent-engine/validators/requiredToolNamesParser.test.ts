@@ -258,3 +258,42 @@ test("resolveRequiredToolNamesForTurn does not require check_in on ficha form", 
     `ficha must not require check_in, got ${JSON.stringify(names)}`,
   );
 });
+
+test("companion personal data block requires ZERO tools (C9)", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C8 | CPF sozinho | Chame \`audaar_consultar_main_guest\` |
+| C9 | Bloco de dados | Extrair → espelho · PARE · ZERO \`audaar_check_in\` |
+| C11 titular OK · N=1 → S9 | só \`embratur-reference\` |
+| S10 | ficha OK | Chame \`audaar_check_in\` |
+`,
+      availableTools: [
+        { name: "audaar_consultar_main_guest" },
+        { name: "embratur-reference" },
+        { name: "audaar_check_in" },
+      ],
+    },
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: `* Nome completo  Caroline Luna Moreira
+* CPF (ou passaporte se estrangeiro)  513.464.754-23
+* RG e órgão (BR)  17.208.764-8 / SSP - SP
+* Data de nascimento (DD/MM/AAAA)  24/07/1977
+* Gênero  Feminino
+* País de nascimento : Brasil
+* Celular com DDD  55 (65) 3625-8200
+* E-mail caroline@technew.ind.br`,
+    availableToolNames: [
+      "audaar_consultar_main_guest",
+      "embratur-reference",
+      "audaar_check_in",
+    ],
+  });
+  assert.equal(
+    names.some((n) => /main_guest|embratur|check[_-]?in/i.test(n)),
+    false,
+    `companion block must require ZERO tools, got ${JSON.stringify(names)}`,
+  );
+});

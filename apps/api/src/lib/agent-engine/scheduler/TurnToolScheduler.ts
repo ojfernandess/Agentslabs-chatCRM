@@ -159,7 +159,9 @@ export function formatScheduledToolsSystemAppendix(
   const failBlock = anyFailed
     ? "\n**ATENÇÃO:** pelo menos uma ferramenta FALHOU (ex.: schema_validation_failed / HTTP erro). " +
       "PROIBIDO dizer ao cliente que a operação foi concluída/sucesso. " +
-      "Peça o dado em falta ou explique a falha de forma honesta; pode retentar a tool com argumentos correctos.\n"
+      "Peça **apenas** o campo realmente em falta segundo o erro da tool. " +
+      "PROIBIDO re-pedir RG/órgão/CPF/email/endereço/fotos já listados no espelho da última mensagem ou no JSON da tool de lookup (main_guest). " +
+      "Se o erro for de schema (ex.: rg+órgão juntos), separe os campos já conhecidos e retente — não peça de novo ao hóspede.\n"
     : "";
   return (
     "\n\n## Ferramentas já executadas pelo Runtime (Tool Scheduler)\n" +

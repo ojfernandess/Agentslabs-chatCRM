@@ -50,6 +50,18 @@ test("shouldExcludeCompletionToolFromRequired on form turns", () => {
     shouldExcludeCompletionToolFromRequired("checkin_or_reservation", "hotel_check_in", []),
     false,
   );
+  assert.equal(
+    shouldExcludeCompletionToolFromRequired(
+      "structured_form_submission",
+      "audaar_consultar_main_guest",
+      [],
+    ),
+    true,
+  );
+  assert.equal(
+    shouldExcludeCompletionToolFromRequired("structured_form_submission", "embratur-reference", []),
+    true,
+  );
 });
 
 test("retail: sim blocks submit until prerequisite satisfied", () => {
@@ -79,6 +91,9 @@ Proibido \`crm_validate_cart\` + \`crm_submit_order\` no mesmo turno.
     behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: playbook } },
     userMessage: "sim",
     priorToolOutcomes: [{ name: "crm_validate_cart", ok: true }],
+    sessionPriorOutcomes: [{ name: "crm_validate_cart", ok: true }],
+    flowSlots: { __completionReady: true, __awaitingPostGateData: false },
+    lastAssistantMessage: "Confirme os dados da ficha / pedido. Está tudo certo?",
   });
   assert.ok(plan.requiredToolNames.some((t) => t.includes("submit_order")));
 });

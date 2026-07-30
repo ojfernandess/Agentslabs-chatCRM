@@ -109,6 +109,29 @@ test("applyConfirmationPhaseTransitions does not arm ready on CPF or nationality
   }
 });
 
+test("applyConfirmationPhaseTransitions does not arm ready on companion personal block", () => {
+  const companion = `* Nome completo  Caroline Luna Moreira
+* CPF (ou passaporte se estrangeiro)  513.464.754-23
+* RG e órgão (BR)  17.208.764-8 / SSP - SP
+* Data de nascimento (DD/MM/AAAA)  24/07/1977
+* Gênero  Feminino
+* País de nascimento : Brasil
+* Celular com DDD  55 (65) 3625-8200
+* E-mail caroline@technew.ind.br`;
+  const slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: {
+      __awaitingPostGateData: true,
+      __completionReady: false,
+    },
+    toolOutcomes: [],
+    confirmationPrerequisiteTools: ["embratur-reference"],
+    completionToolHints: ["audaar_check_in"],
+    userMessage: companion,
+  });
+  assert.equal(slots.__awaitingPostGateData, true);
+  assert.equal(slots.__completionReady, false);
+});
+
 test("applyConfirmationPhaseTransitions persists lastAssistantPreview", () => {
   const slots = applyConfirmationPhaseTransitions({
     baseFlowSlots: {},

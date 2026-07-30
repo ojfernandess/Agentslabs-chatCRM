@@ -3,7 +3,7 @@
  * Multi-segmento: usa sinais de playbook/slots/última resposta — sem hardcodar um hotel.
  */
 
-/** Mensagem do hóspede parece recolha de formulário pós-gate (não CPF/nacionalidade curta). */
+/** Mensagem do hóspede parece recolha de formulário pós-gate (ficha), não bloco titular/acompanhante. */
 export function messageLooksLikePostGateFormData(userMessage: string): boolean {
   const msg = (userMessage ?? "").trim();
   if (!msg) return false;
@@ -24,21 +24,22 @@ export function messageLooksLikePostGateFormData(userMessage: string): boolean {
   // Localizador curto isolado.
   if (/^[A-Z0-9]{6,12}$/i.test(msg) && /\d/.test(msg) && !/\s/.test(msg)) return false;
 
-  const lines = msg.split(/\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length >= 3) return true;
-  if (/\*\s*\w+\s*:/.test(msg) && lines.length >= 2) return true;
+  // Bloco pessoal (titular/acompanhante) NÃO arma conclusão — só a ficha Embratur.
   if (
-    /\b(motivo|transporte|meio\s+de\s+transporte|pa[ií]s|cidade|proced[eê]ncia|destino|ficha)\b/i.test(
+    /\b(nome\s+completo|rg\s*e\s*[oó]rg[aã]o|data\s+de\s+nascimento|cpf\s*\(|celular\s+com\s+ddd)\b/i.test(
+      msg,
+    ) &&
+    !/\b(motivo(?:\s+da\s+viagem)?|meio\s+de\s+transporte|transporte|ficha\s+de\s+viagem)\b/i.test(
       msg,
     )
   ) {
-    return true;
+    return false;
   }
-  // Bloco com vários "campo: valor"
-  const kv = (msg.match(/^\s*[\wÀ-ú* ]{2,40}\s*[:=]/gim) ?? []).length;
-  if (kv >= 3) return true;
 
-  return false;
+  // Só sinais explícitos da ficha (S9b) — não basta multi-linha genérico.
+  return /\b(motivo(?:\s+da\s+viagem)?|meio\s+de\s+transporte|transporte|pa[ií]s\s+de\s+(?:resid|destino)|proced[eê]ncia|destino|ficha(?:\s+de\s+viagem)?)\b/i.test(
+    msg,
+  );
 }
 
 export function readPartySize(
@@ -118,6 +119,13 @@ export function assistantIsCompanionOptInPrompt(lastAssistantMessage?: string | 
   return /deseja\s+cadastrar|acompanhante\(s\)\s+agora|cadastrar\s+o\(s\)\s+acompanhante/i.test(t);
 }
 
+/** Espelho / confirmação do acompanhante (ainda S4c — próximo é S9, não S10). */
+export function assistantIsCompanionMirrorConfirm(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return /confirme\s+os\s+dados\s+do\s+acompanhante|dados\s+do\s+acompanhante/i.test(t);
+}
+
 /**
  * Turno de confirmação que deve ficar sem tools exclusivas de gate
  * (ex.: titular OK com N≥2 → pergunta acompanhante; ou "sim" fora de contexto C11).
@@ -164,9 +172,10 @@ export function shouldAllowCompletionToolPromotion(opts: {
   // Sem última resposta: só confiar em ready explícito (caller ainda exige a flag).
   if (!(opts.lastAssistantMessage ?? "").trim()) return true;
 
-  // Titular / S4c / pedido de dados → nunca promover conclusão.
+  // Titular / S4c / acompanhante / pedido de dados → nunca promover conclusão.
   if (assistantIsTitularMirrorConfirm(opts.lastAssistantMessage)) return false;
   if (assistantIsCompanionOptInPrompt(opts.lastAssistantMessage)) return false;
+  if (assistantIsCompanionMirrorConfirm(opts.lastAssistantMessage)) return false;
   if (assistantAsksPreConfirmationData(opts.lastAssistantMessage)) return false;
 
   return true;

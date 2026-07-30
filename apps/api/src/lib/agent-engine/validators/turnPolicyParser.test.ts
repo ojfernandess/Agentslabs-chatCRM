@@ -634,6 +634,33 @@ test("ficha Sim with completionReady requires check_in", () => {
   );
 });
 
+test("companion mirror Sim does not require check_in even with completionReady", () => {
+  const companion =
+    "Obrigado! Confira se os dados do acompanhante estão corretos:\n• Nome: Caroline\n• RG / órgão: 17.208.764-8 / SSP - SP\n➡️ Confirme os dados do ACOMPANHANTE. Está tudo certo?";
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [
+      { name: "audaar_consultar_main_guest", ok: true },
+      { name: "embratur-reference", ok: true },
+    ],
+    flowSlots: {
+      guestsQuantity: 2,
+      __awaitingPostGateData: false,
+      __completionReady: true,
+      __lastAssistantPreview: companion,
+    },
+    lastAssistantMessage: companion,
+    availableToolNames: ["embratur-reference", "audaar_check_in", "audaar_consultar_main_guest"],
+  });
+  assert.equal(
+    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    false,
+    `companion confirm must not require check_in, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});
+
 test("post-completion pending OK does not re-require embratur or check_in", () => {
   const ack =
     "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.";

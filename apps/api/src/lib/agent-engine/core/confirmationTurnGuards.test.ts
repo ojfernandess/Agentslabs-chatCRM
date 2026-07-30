@@ -35,6 +35,18 @@ test("messageLooksLikePostGateFormData accepts ficha block", () => {
   );
 });
 
+test("messageLooksLikePostGateFormData rejects companion personal block", () => {
+  const companion = `* Nome completo  Caroline Luna Moreira
+* CPF (ou passaporte se estrangeiro)  513.464.754-23
+* RG e órgão (BR)  17.208.764-8 / SSP - SP
+* Data de nascimento (DD/MM/AAAA)  24/07/1977
+* Gênero  Feminino
+* País de nascimento : Brasil
+* Celular com DDD  55 (65) 3625-8200
+* E-mail caroline@technew.ind.br`;
+  assert.equal(messageLooksLikePostGateFormData(companion), false);
+});
+
 test("titular sim with N≥2 suppresses exclusive gate tools", () => {
   assert.equal(
     shouldSuppressConfirmationExclusiveTools({
@@ -77,6 +89,18 @@ test("completion promotion blocked on titular / allowed on ficha", () => {
     shouldAllowCompletionToolPromotion({
       lastAssistantMessage:
         "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.",
+    }),
+    false,
+  );
+});
+
+test("completion promotion blocked on companion mirror even if completionReady", () => {
+  const companion =
+    "Obrigado! Confira se os dados do acompanhante estão corretos:\n• Nome: Caroline\n• RG / órgão: 17.208.764-8 / SSP - SP\n➡️ Confirme os dados do ACOMPANHANTE. Está tudo certo?";
+  assert.equal(
+    shouldAllowCompletionToolPromotion({
+      lastAssistantMessage: companion,
+      flowSlots: { __completionReady: true },
     }),
     false,
   );
