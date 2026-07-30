@@ -94,26 +94,120 @@ function mergeUnique(
   for (const e of source) pushEntry(target, e.id, e.label);
 }
 
-function walkObject(node: unknown, catalog: EmbraturReferenceCatalog, depth = 0): void {
-  if (depth > 6 || node == null) return;
+function inferCatalogBucketFromHint(hint: string): keyof EmbraturReferenceCatalog | null {
+  const h = hint.toLowerCase();
+  if (/motivo|viagem|snmotvia/i.test(h)) return "motivos";
+  if (/transporte|sntiptran|meio/i.test(h)) return "transportes";
+  if (/pa[ií]s|country|bgstdscpais/i.test(h)) return "paises";
+  if (/cidade|city|ibge|snidcidade/i.test(h)) return "cidades";
+  return null;
+}
+
+function bucketForArrayKey(key: string, parent?: Record<string, unknown>): keyof EmbraturReferenceCatalog | null {
+  if (MOTIVO_KEY_RE.test(key)) return "motivos";
+  if (TRANSPORTE_KEY_RE.test(key)) return "transportes";
+  if (PAIS_KEY_RE.test(key)) return "paises";
+  if (CIDADE_KEY_RE.test(key)) return "cidades";
+  if (key === "dados" || key === "data" || key === "items" || key === "results") {
+    if (parent) {
+      for (const hintKey of [
+        "dominio",
+        "domain",
+        "tipo",
+        "type",
+        "referenceType",
+        "resource",
+        "endpoint",
+        "path",
+      ]) {
+        const hint = parent[hintKey];
+        if (typeof hint === "string" && hint.trim()) {
+          const bucket = inferCatalogBucketFromHint(hint);
+          if (bucket) return bucket;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function walkObject(
+  node: unknown,
+  catalog: EmbraturReferenceCatalog,
+  depth = 0,
+  parent?: Record<string, unknown>,
+): void {
+  if (depth > 8 || node == null) return;
   if (Array.isArray(node)) {
-    for (const item of node) walkObject(item, catalog, depth + 1);
+    for (const item of node) walkObject(item, catalog, depth + 1, parent);
     return;
   }
   if (typeof node !== "object") return;
 
-  for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+  const o = node as Record<string, unknown>;
+  for (const [key, val] of Object.entries(o)) {
     if (!Array.isArray(val)) {
-      walkObject(val, catalog, depth + 1);
+      walkObject(val, catalog, depth + 1, o);
       continue;
     }
     const entries = collectEntriesFromArray(val);
     if (entries.length === 0) continue;
-    if (MOTIVO_KEY_RE.test(key)) mergeUnique(catalog.motivos, entries);
-    else if (TRANSPORTE_KEY_RE.test(key)) mergeUnique(catalog.transportes, entries);
-    else if (PAIS_KEY_RE.test(key)) mergeUnique(catalog.paises, entries);
-    else if (CIDADE_KEY_RE.test(key)) mergeUnique(catalog.cidades, entries);
+    const bucket = bucketForArrayKey(key, o);
+    if (bucket) mergeUnique(catalog[bucket], entries);
+    else walkObject(val, catalog, depth + 1, o);
   }
+}
+
+/** Desembrulha bodyPreview / wrappers HTTP antes de parsear o catálogo. */
+export function unwrapEmbraturToolResponsePayload(payload: unknown): unknown {
+  if (payload == null) return payload;
+  let root: unknown = payload;
+  if (typeof root === "string") {
+    const t = root.trim();
+    if (!t) return payload;
+    try {
+      root = JSON.parse(t) as unknown;
+    } catch {
+      return payload;
+    }
+  }
+  if (!root || typeof root !== "object" || Array.isArray(root)) return root;
+  const o = root as Record<string, unknown>;
+  const bodyPreview = o.bodyPreview;
+  if (typeof bodyPreview === "string" && bodyPreview.trim()) {
+    const inner = bodyPreview.trim();
+    if (inner.startsWith("{") || inner.startsWith("[")) {
+      try {
+        return unwrapEmbraturToolResponsePayload(JSON.parse(inner));
+      } catch {
+        /* truncated preview */
+      }
+    }
+  }
+  for (const wrap of ["data", "result", "body", "payload", "response"]) {
+    const inner = o[wrap];
+    if (inner != null && inner !== root && typeof inner === "object") {
+      return unwrapEmbraturToolResponsePayload(inner);
+    }
+  }
+  return root;
+}
+
+export function mergeEmbraturReferenceCatalogs(
+  base: EmbraturReferenceCatalog,
+  patch: EmbraturReferenceCatalog,
+): EmbraturReferenceCatalog {
+  const out: EmbraturReferenceCatalog = {
+    motivos: [...base.motivos],
+    transportes: [...base.transportes],
+    paises: [...base.paises],
+    cidades: [...base.cidades],
+  };
+  mergeUnique(out.motivos, patch.motivos);
+  mergeUnique(out.transportes, patch.transportes);
+  mergeUnique(out.paises, patch.paises);
+  mergeUnique(out.cidades, patch.cidades);
+  return out;
 }
 
 /** Extrai catálogo normalizado da resposta JSON de `embratur-reference`. */
@@ -135,11 +229,13 @@ export function parseEmbraturReferenceCatalog(payload: unknown): EmbraturReferen
     }
   }
 
+  root = unwrapEmbraturToolResponsePayload(root);
+
   if (root && typeof root === "object" && !Array.isArray(root)) {
     const o = root as Record<string, unknown>;
     for (const wrap of ["data", "result", "body", "dados", "payload", "response"]) {
       if (o[wrap] != null) {
-        walkObject(o[wrap], catalog, 0);
+        walkObject(o[wrap], catalog, 0, o);
       }
     }
     walkObject(root, catalog, 0);
@@ -301,17 +397,32 @@ export function extractEmbraturReferenceCatalogFlowSlots(input: {
   ok?: boolean;
 }): Record<string, string> {
   if (input.ok === false) return {};
-  let catalog = parseEmbraturReferenceCatalog(input.structuredPayload);
+  let catalog = parseEmbraturReferenceCatalog(
+    unwrapEmbraturToolResponsePayload(input.structuredPayload),
+  );
   if (!catalogHasAnyEntries(catalog) && input.responseText?.trim()) {
-    const t = input.responseText.trim();
-    if (t.startsWith("{") || t.startsWith("[")) {
-      try {
-        catalog = parseEmbraturReferenceCatalog(JSON.parse(t));
-      } catch {
-        /* ignore */
-      }
-    }
+    catalog = parseEmbraturReferenceCatalog(input.responseText);
   }
   if (!catalogHasAnyEntries(catalog)) return {};
   return embraturReferenceCatalogToFlowSlot(catalog);
+}
+
+/** Mescla catálogo existente em flowSlots com nova resposta da reference. */
+export function mergeEmbraturReferenceCatalogFlowSlots(
+  existingSlots: Record<string, unknown> | null | undefined,
+  input: {
+    responseText?: string;
+    structuredPayload?: unknown;
+    ok?: boolean;
+  },
+): Record<string, string> {
+  const fresh = extractEmbraturReferenceCatalogFlowSlots(input);
+  if (Object.keys(fresh).length === 0) return {};
+  const prev = readEmbraturReferenceCatalogFromFlowSlots(existingSlots ?? undefined);
+  const next = parseEmbraturReferenceCatalog(
+    unwrapEmbraturToolResponsePayload(input.structuredPayload ?? input.responseText),
+  );
+  const merged = prev ? mergeEmbraturReferenceCatalogs(prev, next) : next;
+  if (!catalogHasAnyEntries(merged)) return fresh;
+  return embraturReferenceCatalogToFlowSlot(merged);
 }

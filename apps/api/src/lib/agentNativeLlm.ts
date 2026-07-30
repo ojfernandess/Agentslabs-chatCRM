@@ -82,10 +82,16 @@ import {
   extractReservationDisplayFields,
 } from "./agent-engine/reply/ReplySynthesizer.js";
 import {
-  extractEmbraturReferenceCatalogFlowSlots,
   readEmbraturReferenceCatalogFromFlowSlots,
   buildModeloS9TemplateFromCatalog,
 } from "./agent-engine/checkin/embraturReferenceCatalog.js";
+import {
+  hasCompleteEmbraturFields,
+  mergeReferenceOutcomeIntoFlowSlots,
+  resolveEmbraturSlotsForTravelForm,
+} from "./agent-engine/checkin/embraturReferenceResolver.js";
+import { messageLooksLikePostGateFormData } from "./agent-engine/core/confirmationTurnGuards.js";
+import { isCompletionReady } from "./agent-engine/core/sessionToolOutcomes.js";
 import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -189,13 +195,61 @@ function mergeEmbraturReferenceCatalogIntoFlowSlots(
   outcome: { name: string; ok?: boolean; preview?: string; structuredPayload?: unknown },
 ): AutomationFlowSlots {
   if (outcome.ok === false || !/embratur[-_]?reference/i.test(outcome.name)) return slots;
-  const catalogSlots = extractEmbraturReferenceCatalogFlowSlots({
-    responseText: outcome.preview,
-    structuredPayload: outcome.structuredPayload,
+  const merged = mergeReferenceOutcomeIntoFlowSlots(slots, {
     ok: true,
+    preview: outcome.preview,
+    structuredPayload: outcome.structuredPayload,
   });
-  if (Object.keys(catalogSlots).length === 0) return slots;
-  return { ...slots, ...catalogSlots };
+  return merged as AutomationFlowSlots;
+}
+
+async function maybeResolveEmbraturFlowSlots(input: {
+  organizationId: string;
+  bot: Bot;
+  conversation: Conversation;
+  message: Message;
+  log: FastifyBaseLogger;
+  behaviorConfig: Record<string, unknown>;
+  userMessage: string;
+  flowSlots: AutomationFlowSlots;
+  kbPrefetchAppendix?: string;
+}): Promise<AutomationFlowSlots> {
+  const travelText =
+    (typeof input.flowSlots.__travelFormMessage === "string" &&
+      input.flowSlots.__travelFormMessage.trim()) ||
+    (messageLooksLikePostGateFormData(input.userMessage) ? input.userMessage.trim() : "");
+  if (!travelText) return input.flowSlots;
+  if (hasCompleteEmbraturFields(input.flowSlots as Record<string, unknown>)) {
+    return input.flowSlots;
+  }
+
+  const resolved = await resolveEmbraturSlotsForTravelForm({
+    userMessage: travelText,
+    flowSlots: input.flowSlots,
+    invokeReference: async (args) => {
+      const result = await invokeSingleNativeAgentTool({
+        organizationId: input.organizationId,
+        bot: input.bot,
+        conversation: input.conversation,
+        message: input.message,
+        log: input.log,
+        behaviorConfig: input.behaviorConfig,
+        toolName: "embratur-reference",
+        args,
+        userMessage: input.userMessage,
+        kbPrefetchAppendix: input.kbPrefetchAppendix,
+      });
+      const parsed = parseToolCallOutcomeFromJson(result.outcomeName, result.rawJson);
+      return {
+        ok: parsed.ok,
+        responseText: parsed.preview,
+        structuredPayload: parsed.structuredPayload,
+      };
+    },
+  });
+
+  if (Object.keys(resolved).length === 0) return input.flowSlots;
+  return { ...input.flowSlots, ...resolved } as AutomationFlowSlots;
 }
 
 function sessionHasEmbraturReference(
@@ -2233,6 +2287,37 @@ async function generateNativeAgentReplyCore(input: {
   // Sandbox (Motor Padrão + LangGraph production): forçar tools obrigatórias do playbook
   // (S9 embratur / S10 check_in) — o Scheduler vivia só no Orchestrator removido.
   if (
+    historyOverride == null &&
+    (isCompletionReady(sessionFlowSlots) ||
+      messageLooksLikePostGateFormData(userMessage)) &&
+    !hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)
+  ) {
+    try {
+      sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
+        organizationId,
+        bot,
+        conversation,
+        message,
+        log,
+        behaviorConfig: behaviorConfigObj,
+        userMessage,
+        flowSlots: sessionFlowSlots,
+        kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+      });
+      if (Object.keys(sessionFlowSlots).length > 0) {
+        await mergeFlowSlotsAutomationContext({
+          organizationId,
+          conversationId: conversation.id,
+          botId: bot.id,
+          flowSlots: sessionFlowSlots,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "embratur resolve before scheduler failed");
+    }
+  }
+
+  if (
     shouldRunToolScheduler(engineConfig, executionHints) &&
     !scheduledThisTurn &&
     historyOverride == null
@@ -2749,7 +2834,10 @@ async function generateNativeAgentReplyCore(input: {
                 name,
                 ok: exec.ok,
                 preview: exec.responseText,
-                structuredPayload: exec.ok ? exec.responseText : undefined,
+                structuredPayload: parseToolCallOutcomeFromJson(name, JSON.stringify({
+                  ok: exec.ok,
+                  bodyPreview: exec.responseText.slice(0, 12_000),
+                })).structuredPayload,
               });
               if (Object.keys(extracted).length > 0 || sessionFlowSlots.__embraturReferenceCatalog) {
                 if (httpToolRuntimeContext) {
@@ -3176,6 +3264,22 @@ async function generateNativeAgentReplyCore(input: {
         userMessage,
         lastAssistantPreview: replyText,
       }) as AutomationFlowSlots;
+      if (
+        messageLooksLikePostGateFormData(userMessage) &&
+        !hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)
+      ) {
+        sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
+          organizationId,
+          bot,
+          conversation,
+          message,
+          log,
+          behaviorConfig: behaviorConfigObj,
+          userMessage,
+          flowSlots: sessionFlowSlots,
+          kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+        });
+      }
       if (Object.keys(sessionFlowSlots).length > 0) {
         await mergeFlowSlotsAutomationContext({
           organizationId,

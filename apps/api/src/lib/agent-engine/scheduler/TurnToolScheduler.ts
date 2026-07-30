@@ -10,6 +10,7 @@ import {
 } from "../eil/CapabilityGraph.js";
 import { hasFact } from "../eil/FactsEngine.js";
 import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "../checkin/embraturTravelForm.js";
+import { hasCompleteEmbraturFields } from "../checkin/embraturReferenceResolver.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -197,6 +198,9 @@ export function planScheduledToolInvocations(
   return pending
     .filter((toolName) => {
       if (available.size > 0 && !available.has(toolName.trim().toLowerCase())) return false;
+      if (/check[_-]?in|checkin/i.test(toolName) && !hasCompleteEmbraturFields(facts as Record<string, unknown>)) {
+        return false;
+      }
       if (turnPolicyPreExecBlockReason(toolName, policy)) return false;
       if (graph && !canInvokeTool(graph, toolName, facts).ok) return false;
       return true;

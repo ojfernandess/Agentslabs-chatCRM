@@ -6,6 +6,8 @@ import {
   resolveReferenceEntryId,
   buildModeloS9TemplateFromCatalog,
   extractEmbraturReferenceCatalogFlowSlots,
+  mergeEmbraturReferenceCatalogFlowSlots,
+  unwrapEmbraturToolResponsePayload,
 } from "./embraturReferenceCatalog.js";
 
 const SAMPLE_REFERENCE = {
@@ -94,4 +96,57 @@ test("extractEmbraturReferenceCatalogFlowSlots persists catalog JSON", () => {
   });
   assert.ok(slots.__embraturReferenceCatalog);
   assert.match(slots.__embraturReferenceCatalog, /motivos/);
+});
+
+test("extractEmbraturReferenceCatalogFlowSlots unwraps HTTP bodyPreview wrapper", () => {
+  const slots = extractEmbraturReferenceCatalogFlowSlots({
+    ok: true,
+    structuredPayload: {
+      ok: true,
+      bodyPreview: JSON.stringify(SAMPLE_REFERENCE),
+    },
+  });
+  assert.ok(slots.__embraturReferenceCatalog);
+  const parsed = JSON.parse(slots.__embraturReferenceCatalog);
+  assert.equal(parsed.paises.length, 2);
+});
+
+test("mergeEmbraturReferenceCatalogFlowSlots merges paises from lookup", () => {
+  const base = extractEmbraturReferenceCatalogFlowSlots({
+    ok: true,
+    structuredPayload: {
+      motivosViagem: SAMPLE_REFERENCE.motivosViagem,
+      meiosTransporte: SAMPLE_REFERENCE.meiosTransporte,
+    },
+  });
+  const merged = mergeEmbraturReferenceCatalogFlowSlots(
+    { __embraturReferenceCatalog: base.__embraturReferenceCatalog },
+    {
+      ok: true,
+      structuredPayload: { paises: [{ id: "6289", nome: "Inglaterra" }] },
+    },
+  );
+  const catalog = JSON.parse(merged.__embraturReferenceCatalog!);
+  assert.equal(catalog.motivos.length, 2);
+  assert.equal(catalog.paises.length, 1);
+  assert.equal(catalog.paises[0].id, "6289");
+});
+
+test("parseEmbraturReferenceCatalog handles FNRH dados + dominio hint", () => {
+  const c = parseEmbraturReferenceCatalog({
+    dominio: "paises",
+    dados: [{ id: "6289", label: "Inglaterra" }],
+  });
+  assert.equal(c.paises.length, 1);
+  assert.equal(c.paises[0]!.id, "6289");
+});
+
+test("unwrapEmbraturToolResponsePayload peels nested data", () => {
+  const inner = unwrapEmbraturToolResponsePayload({
+    ok: true,
+    data: { motivosViagem: [{ id: 1, nome: "Lazer" }] },
+  });
+  assert.ok(inner && typeof inner === "object");
+  const c = parseEmbraturReferenceCatalog(inner);
+  assert.equal(c.motivos.length, 1);
 });
