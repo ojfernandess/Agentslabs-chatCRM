@@ -37,6 +37,26 @@ test("parseTravelFormFields extracts labels", () => {
   assert.equal(f.cidadeProcedencia, "São Paulo");
 });
 
+test("parseTravelFormFields strips markdown bold labels from WhatsApp/LLM", () => {
+  const md = `* **Motivo da viagem:** Saúde  
+* **Meio de transporte:** Automóvel  
+* **País de residência:** Brasil  
+* **País de destino:** Brasil  
+* **Cidade de procedência:** São Paulo  
+* **Cidade de destino:** São Paulo`;
+  const f = parseTravelFormFields(md);
+  assert.equal(f.motivo, "Saúde");
+  assert.equal(f.transporte, "Automóvel");
+  assert.equal(f.paisResidencia, "Brasil");
+  assert.equal(f.cidadeDestino, "São Paulo");
+  const mapped = mapTravelFormToEmbraturFields(md);
+  assert.ok(mapped);
+  assert.equal(mapped!.snmotvia, "7");
+  assert.equal(mapped!.sntiptran, "2");
+  assert.equal(mapped!.bgstdscpais, "1058");
+  assert.equal(mapped!.snidcidadeibge, "3550308");
+});
+
 test("applyConfirmationPhaseTransitions persists Embratur slots from ficha", () => {
   const slots = applyConfirmationPhaseTransitions({
     baseFlowSlots: { __awaitingPostGateData: true },
@@ -48,6 +68,26 @@ test("applyConfirmationPhaseTransitions persists Embratur slots from ficha", () 
   assert.equal(slots.__completionReady, true);
   assert.equal(slots.snmotvia, "3");
   assert.equal(slots.sntiptran, "2");
+  assert.equal(slots.snidcidadeibge, "3550308");
+});
+
+test("applyConfirmationPhaseTransitions maps markdown ficha into Embratur slots", () => {
+  const md = `* **Motivo da viagem:** Saúde
+* **Meio de transporte:** Automóvel
+* **País de residência:** Brasil
+* **País de destino:** Brasil
+* **Cidade de procedência:** São Paulo
+* **Cidade de destino:** São Paulo`;
+  const slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: { __awaitingPostGateData: true },
+    userMessage: md,
+    lastAssistantPreview: "Para finalizar, envie o motivo da viagem",
+    confirmationPrerequisiteTools: ["embratur-reference"],
+    completionToolHints: ["audaar_check_in"],
+  });
+  assert.equal(slots.__completionReady, true);
+  assert.equal(slots.snmotvia, "7");
+  assert.equal(slots.bgstdscpais, "1058");
   assert.equal(slots.snidcidadeibge, "3550308");
 });
 

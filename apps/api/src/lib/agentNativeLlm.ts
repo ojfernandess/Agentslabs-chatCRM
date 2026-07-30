@@ -285,9 +285,17 @@ function extractStructuredPayloadFromToolOut(parsed: Record<string, unknown>, ou
     const t = bodyPreview.trim();
     if (t.startsWith("{") || t.startsWith("[")) {
       try {
-        return JSON.parse(t);
+        const inner = JSON.parse(t) as unknown;
+        // Preferir objecto com factos de reserva (data/stay) quando o wrapper é meta.
+        if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+          const ir = inner as Record<string, unknown>;
+          if (ir.data != null || ir.stay != null || ir.reservation != null || ir.checkinDate != null) {
+            return inner;
+          }
+        }
+        return inner;
       } catch {
-        /* fall through */
+        /* fall through — bodyPreview pode estar truncado */
       }
     }
   }
@@ -295,7 +303,8 @@ function extractStructuredPayloadFromToolOut(parsed: Record<string, unknown>, ou
     if (parsed[key] != null && typeof parsed[key] === "object") return parsed[key];
   }
   // Drop meta keys; keep rest as payload when useful
-  const { ok: _ok, found: _f, skipped: _s, error: _e, bodyPreview: _bp, ...rest } = parsed;
+  const { ok: _ok, found: _f, skipped: _s, error: _e, bodyPreview: _bp, reason: _r, message: _m, ...rest } =
+    parsed;
   if (Object.keys(rest).length > 0) return rest;
   try {
     return JSON.parse(out);

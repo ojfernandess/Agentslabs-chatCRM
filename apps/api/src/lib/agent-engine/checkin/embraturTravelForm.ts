@@ -93,10 +93,25 @@ export function mapCountryToEmbraturCode(raw: string): string | null {
   return null;
 }
 
+/** Remove markdown (* **, _) que o LLM/WhatsApp mete nos rótulos da ficha. */
+export function normalizeTravelFormMessage(userMessage: string): string {
+  return (userMessage ?? "")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/`+/g, "")
+    .replace(/(^|\n)\s*[*•\-–—]\s+/gm, "$1")
+    .replace(/\s*[:：]\s*/g, ": ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
 function extractLabeledField(msg: string, labels: RegExp): string {
   const m = msg.match(labels);
   if (!m?.[1]) return "";
-  return m[1].replace(/\s+/g, " ").trim();
+  return m[1]
+    .replace(/\*+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Extrai textos da ficha (Motivo / Transporte / países / cidades). */
@@ -108,31 +123,40 @@ export function parseTravelFormFields(userMessage: string): {
   cidadeProcedencia: string;
   cidadeDestino: string;
 } {
-  const msg = (userMessage ?? "").trim();
+  const msg = normalizeTravelFormMessage(userMessage);
+  // Aceita "Motivo:**" / "Motivo :" após strip de markdown.
+  const sep = String.raw`\s*[:：]\s*`;
+  const value = String.raw`([^\n]+?)(?:\s*$|\s*(?=\n)|(?=\s*\n))`;
   return {
     motivo: extractLabeledField(
       msg,
-      /(?:motivo(?:\s+da\s+viagem)?)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(String.raw`(?:motivo(?:\s+da\s+viagem)?)${sep}${value}`, "i"),
     ),
     transporte: extractLabeledField(
       msg,
-      /(?:meio\s+de\s+transporte(?:\s+da\s+chegada)?|transporte)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(
+        String.raw`(?:meio\s+de\s+transporte(?:\s+da\s+chegada)?|transporte)${sep}${value}`,
+        "i",
+      ),
     ),
     paisResidencia: extractLabeledField(
       msg,
-      /(?:pa[ií]s\s+de\s+resid(?:[eê]ncia)?(?:\s+permanente)?)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(
+        String.raw`(?:pa[ií]s\s+de\s+resid(?:[eê]ncia)?(?:\s+permanente)?)${sep}${value}`,
+        "i",
+      ),
     ),
     paisDestino: extractLabeledField(
       msg,
-      /(?:pa[ií]s\s+de\s+destino)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(String.raw`(?:pa[ií]s\s+de\s+destino)${sep}${value}`, "i"),
     ),
     cidadeProcedencia: extractLabeledField(
       msg,
-      /(?:cidade\s+de\s+proced[eê]ncia)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(String.raw`(?:cidade\s+de\s+proced[eê]ncia)${sep}${value}`, "i"),
     ),
     cidadeDestino: extractLabeledField(
       msg,
-      /(?:cidade\s+de\s+destino)\s*[:：]\s*([^\n*]+)/i,
+      new RegExp(String.raw`(?:cidade\s+de\s+destino)${sep}${value}`, "i"),
     ),
   };
 }

@@ -77,6 +77,38 @@ test("ensureDeliveringReply forces S1 when LLM invents non-script check-in reply
   assert.doesNotMatch(result.reply, /CPF/);
 });
 
+test("ensureDeliveringReply forces S1 when paraphrase misses prompt script", () => {
+  const paraphrase =
+    "Olá! Encontrei sua reserva.\n📍 Hospedagem: Vivá\n📅 Check-in: 01/08/2026\n📅 Check-out: 03/08/2026\n👥 Hóspedes: 2\nPode me dizer se é brasileiro?";
+  const result = ensureDeliveringReply({
+    replyText: paraphrase,
+    userMessage: "fazer check-in na reserva NCMT0VPN",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_reserva",
+        ok: true,
+        preview: "Resultado da ferramenta",
+        structuredPayload: {
+          data: {
+            stay: {
+              checkinDate: "2026-08-01",
+              checkoutDate: "2026-08-03",
+              guestsQuantity: 2,
+              localizer: "NCMT0VPN",
+            },
+            establishment: { name: "Vivá Porto de Galinhas" },
+          },
+        },
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "reservation_s1");
+  assert.match(result.reply, /Encontramos sua reserva com sucesso!/);
+  assert.match(result.reply, /checkin\/vivapp\/access/);
+  assert.match(result.reply, /brasileiro\(a\) ou estrangeiro/);
+});
+
 test("ensureDeliveringReply keeps reply that already looks like Modelo S1", () => {
   const good =
     "Olá! 😊\nEncontramos sua reserva com sucesso!\n📍 Hospedagem: Hotel X\n📅 Check-in: 01/08/2026, a partir das 14:00h\n📅 Check-out: 03/08/2026, até as 12:00h\n👥 Hóspedes: 1\nSeu check-in ainda não foi realizado.\n✅ Pelo link: 🔗 https://pms.audaar.com.br/checkin/vivapp/access\n💬 Por este chat: responda abaixo.\nPara começar, informe: você é brasileiro(a) ou estrangeiro(a)?";

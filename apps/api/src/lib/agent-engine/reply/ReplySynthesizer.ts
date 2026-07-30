@@ -95,7 +95,17 @@ export function extractReservationDisplayFields(payload: unknown): {
   checkInDone: boolean;
 } {
   const root = asRecord(payload);
+  // Audaar: { data: { reservation, stay, guest } } ou { data: { ...flat } }
   const data = asRecord(root?.data) ?? root;
+  const stay = asRecord(data?.stay) ?? asRecord(root?.stay) ?? data;
+  const reservation = asRecord(data?.reservation) ?? asRecord(root?.reservation) ?? data;
+  const room = asRecord(data?.room) ?? asRecord(stay?.room) ?? null;
+  const establishment =
+    asRecord(data?.establishment) ??
+    asRecord(reservation?.establishment) ??
+    asRecord(stay?.establishment) ??
+    null;
+
   const lodging =
     pickString(data, [
       "establishmentName",
@@ -105,34 +115,51 @@ export function extractReservationDisplayFields(payload: unknown): {
       "hotel.name",
       "stay.establishmentName",
       "room.establishmentName",
-    ]) || "…";
+      "room.categoryName",
+      "categoryName",
+    ]) ||
+    pickString(stay, ["establishmentName", "hotelName", "categoryName"]) ||
+    pickString(reservation, ["establishmentName", "hotelName", "propertyName"]) ||
+    pickString(establishment, ["name", "establishmentName"]) ||
+    pickString(room, ["establishmentName", "categoryName", "name"]) ||
+    "…";
+
   const checkIn = formatDatePt(
-    dig(data, ["checkinDate", "checkInDate", "stay.checkinDate", "reservation.checkinDate"]),
+    dig(stay, ["checkinDate", "checkInDate"]) ??
+      dig(data, ["checkinDate", "checkInDate", "stay.checkinDate", "reservation.checkinDate"]) ??
+      dig(reservation, ["checkinDate", "checkInDate"]),
   );
   const checkOut = formatDatePt(
-    dig(data, ["checkoutDate", "checkOutDate", "stay.checkoutDate", "reservation.checkoutDate"]),
+    dig(stay, ["checkoutDate", "checkOutDate"]) ??
+      dig(data, ["checkoutDate", "checkOutDate", "stay.checkoutDate", "reservation.checkoutDate"]) ??
+      dig(reservation, ["checkoutDate", "checkOutDate"]),
   );
-  const guests = pickNumber(data, [
-    "guestsQuantity",
-    "stay.guestsQuantity",
-    "reservation.guestsQuantity",
-    "N",
-  ]);
-  const locator = pickString(data, [
-    "uid",
-    "locator",
-    "localizador",
-    "reservationCode",
-    "reference",
-    "stay.uid",
-  ]);
+  const guests =
+    pickNumber(stay, ["guestsQuantity", "N"]) ??
+    pickNumber(data, ["guestsQuantity", "stay.guestsQuantity", "reservation.guestsQuantity", "N"]) ??
+    pickNumber(reservation, ["guestsQuantity", "N"]);
+  const locator =
+    pickString(data, [
+      "uid",
+      "locator",
+      "localizer",
+      "localizador",
+      "reservationCode",
+      "reference",
+      "stay.uid",
+      "stay.localizer",
+      "reservation.localizer",
+      "reservation.uid",
+    ]) ||
+    pickString(stay, ["uid", "localizer", "localizador"]) ||
+    pickString(reservation, ["uid", "localizer", "localizador"]);
   return {
     lodging,
     checkIn,
     checkOut,
     guests,
     locator,
-    checkInDone: isCheckInDone(data),
+    checkInDone: isCheckInDone(data) || isCheckInDone(stay) || isCheckInDone(reservation),
   };
 }
 
@@ -200,9 +227,19 @@ export function replyLooksLikeModeloS1(text: string): boolean {
     /📅\s*Check-in|Check-in\s*:/i.test(t) &&
     /👥\s*Hóspedes|Hóspedes\s*:/i.test(t);
   if (!hasFacts) return false;
+
+  // Check-in pendente: exigir o script do prompt (link + nacionalidade) — não aceitar paráfrase.
+  if (/encontramos\s+sua\s+reserva\s+com\s+sucesso/i.test(t)) {
+    return (
+      /checkin\/vivapp\/access/i.test(t) &&
+      /brasileiro\(a\)\s+ou\s+estrangeiro/i.test(t) &&
+      /ainda\s+n[aã]o\s+foi\s+realizado/i.test(t)
+    );
+  }
+
   return (
-    /encontramos\s+sua\s+reserva|encontrei\s+sua\s+reserva/i.test(t) &&
-    (/brasileiro\(a\)\s+ou\s+estrangeiro|deseja\s+fazer\s+o\s+check-in\s+agora|check-in:\s*já\s+realizado|check-in:\s*pendente/i.test(
+    /encontrei\s+sua\s+reserva/i.test(t) &&
+    (/deseja\s+fazer\s+o\s+check-in\s+agora|check-in:\s*já\s+realizado|check-in:\s*pendente/i.test(
       t,
     ) ||
       /pelo\s+link:.*checkin/i.test(t))
@@ -283,7 +320,15 @@ function tryBuildModeloS1(
   reservation: SynthesizerToolOutcome,
   userMessage?: string,
 ): string | null {
-  const payload = reservation.structuredPayload ?? tryParseJson(reservation.preview);
+  let payload = reservation.structuredPayload ?? tryParseJson(reservation.preview);
+  // Scheduler skip: { ok, bodyPreview: "{...}" } ainda no preview
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const o = payload as Record<string, unknown>;
+    if (typeof o.bodyPreview === "string" && o.bodyPreview.trim().startsWith("{")) {
+      const inner = tryParseJson(o.bodyPreview);
+      if (inner) payload = inner;
+    }
+  }
   if (!payload) return null;
   const s1 = buildModeloS1FromReservationPayload(payload, { userMessage });
   if (s1.trim() && !isNonDeliveringAgentReply(s1)) return s1;
