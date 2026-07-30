@@ -1,15 +1,16 @@
 /**
  * Mapeia a ficha de viagem (S9b) → payload Embratur do audaar_check_in.
  * IDs alinhados a docs/prompt.md (tabela «ids Embratur — SOMENTE no S10»).
+ * País = código Embratur (Brasil → "1058"), não o nome textual.
  */
 
 export type EmbraturCheckInFields = {
-  snmotvia: number;
-  sntiptran: number;
+  snmotvia: string;
+  sntiptran: string;
   bgstdscpais: string;
   bgstdscpaisdest: string;
-  snidcidadeibge: number;
-  snidcidadeibgedest: number;
+  snidcidadeibge: string;
+  snidcidadeibgedest: string;
 };
 
 const MOTIVO_RULES: Array<{ re: RegExp; id: number }> = [
@@ -42,6 +43,13 @@ const CITY_IBGE: Array<{ re: RegExp; id: number; label: string }> = [
   { re: /^rio\s+de\s+janeiro$/i, id: 3304557, label: "Rio de Janeiro" },
 ];
 
+/** País → código Embratur (bgstdscpais / bgstdscpaisdest). */
+const COUNTRY_CODES: Array<{ re: RegExp; id: string }> = [
+  { re: /^brasil$/i, id: "1058" },
+  { re: /^brazil$/i, id: "1058" },
+  { re: /^1058$/, id: "1058" },
+];
+
 function normalizeCity(raw: string): string {
   return raw
     .normalize("NFD")
@@ -69,6 +77,19 @@ function pickCityIbge(text: string): number | null {
   for (const c of CITY_IBGE) {
     if (c.re.test(t.split(/[-–,]/)[0]?.trim() ?? "")) return c.id;
   }
+  // Já é código IBGE numérico
+  if (/^\d{7}$/.test(t)) return Number(t);
+  return null;
+}
+
+/** Nome do país ou código já numérico → id Embratur. */
+export function mapCountryToEmbraturCode(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  for (const c of COUNTRY_CODES) {
+    if (c.re.test(t)) return c.id;
+  }
+  if (/^\d{3,5}$/.test(t)) return t;
   return null;
 }
 
@@ -128,8 +149,8 @@ export function mapTravelFormToEmbraturFields(
   const sntiptran = pickId(f.transporte, TRANSPORTE_RULES);
   const snidcidadeibge = pickCityIbge(f.cidadeProcedencia);
   const snidcidadeibgedest = pickCityIbge(f.cidadeDestino);
-  const bgstdscpais = f.paisResidencia.trim();
-  const bgstdscpaisdest = f.paisDestino.trim();
+  const bgstdscpais = mapCountryToEmbraturCode(f.paisResidencia);
+  const bgstdscpaisdest = mapCountryToEmbraturCode(f.paisDestino);
   if (
     snmotvia == null ||
     sntiptran == null ||
@@ -141,12 +162,12 @@ export function mapTravelFormToEmbraturFields(
     return null;
   }
   return {
-    snmotvia,
-    sntiptran,
+    snmotvia: String(snmotvia),
+    sntiptran: String(sntiptran),
     bgstdscpais,
     bgstdscpaisdest,
-    snidcidadeibge,
-    snidcidadeibgedest,
+    snidcidadeibge: String(snidcidadeibge),
+    snidcidadeibgedest: String(snidcidadeibgedest),
   };
 }
 
@@ -171,6 +192,20 @@ export function embraturFieldsToFlowSlots(
   };
 }
 
+function coerceEmbraturId(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return undefined;
+}
+
+function coerceCountryCode(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v === "string" && v.trim()) {
+    return mapCountryToEmbraturCode(v.trim()) ?? undefined;
+  }
+  return undefined;
+}
+
 export function assembleEmbraturFromSources(
   sources: Record<string, unknown>,
 ): Record<string, unknown> | null {
@@ -179,32 +214,33 @@ export function assembleEmbraturFromSources(
       ? { ...(sources.embratur as Record<string, unknown>) }
       : {};
 
-  const readNum = (...keys: string[]): number | undefined => {
+  const readId = (...keys: string[]): string | undefined => {
     for (const k of keys) {
       const v = sources[k] ?? existing[k.replace(/^embratur\./, "")];
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-      if (typeof v === "string" && /^\d+$/.test(v.trim())) return Number(v.trim());
+      const c = coerceEmbraturId(v);
+      if (c) return c;
     }
     return undefined;
   };
-  const readStr = (...keys: string[]): string | undefined => {
+  const readCountry = (...keys: string[]): string | undefined => {
     for (const k of keys) {
       const v = sources[k] ?? existing[k.replace(/^embratur\./, "")];
-      if (typeof v === "string" && v.trim()) return v.trim();
+      const c = coerceCountryCode(v);
+      if (c) return c;
     }
     return undefined;
   };
 
-  const snmotvia = readNum("snmotvia", "embratur.snmotvia");
-  const sntiptran = readNum("sntiptran", "embratur.sntiptran");
-  const bgstdscpais = readStr("bgstdscpais", "embratur.bgstdscpais", "paisResidencia");
-  const bgstdscpaisdest = readStr(
+  let snmotvia = readId("snmotvia", "embratur.snmotvia");
+  let sntiptran = readId("sntiptran", "embratur.sntiptran");
+  let bgstdscpais = readCountry("bgstdscpais", "embratur.bgstdscpais", "paisResidencia");
+  let bgstdscpaisdest = readCountry(
     "bgstdscpaisdest",
     "embratur.bgstdscpaisdest",
     "paisDestino",
   );
-  const snidcidadeibge = readNum("snidcidadeibge", "embratur.snidcidadeibge");
-  const snidcidadeibgedest = readNum("snidcidadeibgedest", "embratur.snidcidadeibgedest");
+  let snidcidadeibge = readId("snidcidadeibge", "embratur.snidcidadeibge");
+  let snidcidadeibgedest = readId("snidcidadeibgedest", "embratur.snidcidadeibgedest");
 
   // Fallback: texto da ficha ainda no histórico / slot.
   const rawForm =
@@ -224,6 +260,22 @@ export function assembleEmbraturFromSources(
     if (mapped) {
       return { ...existing, ...mapped };
     }
+  }
+
+  // Re-normaliza país se veio como "Brasil" no objecto existing.
+  if (existing.bgstdscpais != null && !bgstdscpais) {
+    bgstdscpais = coerceCountryCode(existing.bgstdscpais);
+  }
+  if (existing.bgstdscpaisdest != null && !bgstdscpaisdest) {
+    bgstdscpaisdest = coerceCountryCode(existing.bgstdscpaisdest);
+  }
+  if (typeof existing.bgstdscpais === "string" && !/^\d+$/.test(existing.bgstdscpais.trim())) {
+    const fixed = coerceCountryCode(existing.bgstdscpais);
+    if (fixed) existing.bgstdscpais = fixed;
+  }
+  if (typeof existing.bgstdscpaisdest === "string" && !/^\d+$/.test(existing.bgstdscpaisdest.trim())) {
+    const fixed = coerceCountryCode(existing.bgstdscpaisdest);
+    if (fixed) existing.bgstdscpaisdest = fixed;
   }
 
   if (
@@ -262,4 +314,46 @@ export function extractEmbraturSlotsFromTravelForm(
     ...embraturFieldsToFlowSlots(mapped),
     __travelFormMessage: userMessage.trim().slice(0, 1500),
   };
+}
+
+const CHECK_IN_MODE_VALUES = new Set(["digital", "reception", "both"]);
+
+/** Normaliza payload audaar_check_in: mode enum, dependents sem slots vazios. */
+export function normalizeAudaarCheckInPayload(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...data };
+
+  const modeRaw = out.mode;
+  const modeStr = typeof modeRaw === "string" ? modeRaw.trim().toLowerCase() : "";
+  if (!CHECK_IN_MODE_VALUES.has(modeStr)) {
+    out.mode = "digital";
+  } else {
+    out.mode = modeStr;
+  }
+
+  if (out.approveCheckin === undefined) out.approveCheckin = true;
+  if (out.sentToReception === undefined) out.sentToReception = true;
+  if (out.validatedCheckin === undefined) out.validatedCheckin = true;
+
+  if (Array.isArray(out.dependents)) {
+    const cleaned = out.dependents.filter((d) => {
+      if (!d || typeof d !== "object" || Array.isArray(d)) return false;
+      const o = d as Record<string, unknown>;
+      const name = typeof o.name === "string" ? o.name.trim() : "";
+      const doc = typeof o.documentNumber === "string" ? o.documentNumber.trim() : "";
+      const id = o.dependentId;
+      return name.length > 0 || doc.length > 0 || (typeof id === "number" && Number.isFinite(id));
+    });
+    if (cleaned.length > 0) out.dependents = cleaned;
+    else delete out.dependents;
+  }
+
+  // Garante Embratur com códigos de país (1058) mesmo se veio "Brasil" no objecto.
+  const embratur = assembleEmbraturFromSources(out);
+  if (embratur && Object.keys(embratur).length > 0) {
+    out.embratur = embratur;
+  }
+
+  return out;
 }

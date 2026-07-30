@@ -5,10 +5,11 @@ import {
   extractEmbraturSlotsFromTravelForm,
   assembleEmbraturFromSources,
   parseTravelFormFields,
+  normalizeAudaarCheckInPayload,
 } from "./embraturTravelForm.js";
 import { applyConfirmationPhaseTransitions } from "../core/sessionToolOutcomes.js";
 import { buildScheduledToolArgs } from "../scheduler/TurnToolScheduler.js";
-import { buildSchemaFillSources, fillMissingRequiredSchemaFields } from "../../automationHttpToolExecute.js";
+import { buildSchemaFillSources, fillMissingRequiredSchemaFields, normalizeLlmArgsKeyAliases } from "../../automationHttpToolExecute.js";
 import type { TurnContext } from "../core/types.js";
 
 const FORM = `* Motivo da viagem: Congresso
@@ -21,12 +22,12 @@ const FORM = `* Motivo da viagem: Congresso
 test("mapTravelFormToEmbraturFields maps Congresso/Automóvel/SP", () => {
   const mapped = mapTravelFormToEmbraturFields(FORM);
   assert.ok(mapped);
-  assert.equal(mapped!.snmotvia, 3);
-  assert.equal(mapped!.sntiptran, 2);
-  assert.equal(mapped!.bgstdscpais, "Brasil");
-  assert.equal(mapped!.bgstdscpaisdest, "Brasil");
-  assert.equal(mapped!.snidcidadeibge, 3550308);
-  assert.equal(mapped!.snidcidadeibgedest, 3550308);
+  assert.equal(mapped!.snmotvia, "3");
+  assert.equal(mapped!.sntiptran, "2");
+  assert.equal(mapped!.bgstdscpais, "1058");
+  assert.equal(mapped!.bgstdscpaisdest, "1058");
+  assert.equal(mapped!.snidcidadeibge, "3550308");
+  assert.equal(mapped!.snidcidadeibgedest, "3550308");
 });
 
 test("parseTravelFormFields extracts labels", () => {
@@ -45,9 +46,9 @@ test("applyConfirmationPhaseTransitions persists Embratur slots from ficha", () 
     completionToolHints: ["audaar_check_in"],
   });
   assert.equal(slots.__completionReady, true);
-  assert.equal(slots.snmotvia, 3);
-  assert.equal(slots.sntiptran, 2);
-  assert.equal(slots.snidcidadeibge, 3550308);
+  assert.equal(slots.snmotvia, "3");
+  assert.equal(slots.sntiptran, "2");
+  assert.equal(slots.snidcidadeibge, "3550308");
 });
 
 test("buildScheduledToolArgs includes embratur object for check_in", () => {
@@ -70,9 +71,11 @@ test("buildScheduledToolArgs includes embratur object for check_in", () => {
   const args = buildScheduledToolArgs("audaar_check_in", turnContext);
   assert.ok(args.embratur && typeof args.embratur === "object");
   const e = args.embratur as Record<string, unknown>;
-  assert.equal(e.snmotvia, 3);
-  assert.equal(e.sntiptran, 2);
-  assert.equal(e.snidcidadeibge, 3550308);
+  assert.equal(e.snmotvia, "3");
+  assert.equal(e.sntiptran, "2");
+  assert.equal(e.snidcidadeibge, "3550308");
+  assert.equal(e.bgstdscpais, "1058");
+  assert.equal(args.mode, "digital");
   assert.ok(args.mainGuest);
 });
 
@@ -117,10 +120,10 @@ test("fillMissingRequiredSchemaFields fills nested embratur from flat slots", ()
   });
   const embratur = filled.data.embratur as Record<string, unknown>;
   assert.ok(embratur);
-  assert.equal(embratur.snmotvia, 3);
-  assert.equal(embratur.sntiptran, 2);
-  assert.equal(embratur.bgstdscpais, "Brasil");
-  assert.equal(embratur.snidcidadeibge, 3550308);
+  assert.equal(embratur.snmotvia, "3");
+  assert.equal(embratur.sntiptran, "2");
+  assert.equal(embratur.bgstdscpais, "1058");
+  assert.equal(embratur.snidcidadeibge, "3550308");
   assert.ok(
     filled.applied.includes("embratur") ||
       filled.applied.some((p) => p.includes("snmotvia")),
@@ -130,6 +133,61 @@ test("fillMissingRequiredSchemaFields fills nested embratur from flat slots", ()
 test("assembleEmbraturFromSources remaps from __travelFormMessage", () => {
   const e = assembleEmbraturFromSources({ __travelFormMessage: FORM });
   assert.ok(e);
-  assert.equal(e!.snmotvia, 3);
-  assert.equal(e!.sntiptran, 2);
+  assert.equal(e!.snmotvia, "3");
+  assert.equal(e!.sntiptran, "2");
+  assert.equal(e!.bgstdscpais, "1058");
+});
+
+test("normalizeAudaarCheckInPayload fixes INVALID_MODE from RG and drops empty dependents", () => {
+  const normalized = normalizeAudaarCheckInPayload({
+    mode: "49642301",
+    reservationIdOrLocalizer: "NCMT0VPN",
+    embratur: {
+      snmotvia: "7",
+      sntiptran: "2",
+      bgstdscpais: "Brasil",
+      bgstdscpaisdest: "Brasil",
+      snidcidadeibge: "3550308",
+      snidcidadeibgedest: "3550308",
+    },
+    dependents: [
+      { name: "", documentNumber: "", gender: "" },
+      { name: "", email: "" },
+    ],
+    mainGuest: { name: "Odair", rg: "49642301" },
+  });
+  assert.equal(normalized.mode, "digital");
+  assert.equal(normalized.dependents, undefined);
+  const e = normalized.embratur as Record<string, unknown>;
+  assert.equal(e.bgstdscpais, "1058");
+  assert.equal(e.bgstdscpaisdest, "1058");
+  assert.equal(e.snmotvia, "7");
+});
+
+test("normalizeLlmArgsKeyAliases does not map rg onto mode", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      mode: { type: "string" },
+      mainGuest: {
+        type: "object",
+        properties: {
+          rg: { type: "string" },
+          name: { type: "string" },
+        },
+      },
+    },
+  };
+  const normalized = normalizeLlmArgsKeyAliases(
+    {
+      rg: "49642301",
+      mainGuest: { name: "Odair Jose Fernandes Soares" },
+    },
+    schema,
+  );
+  assert.equal(normalized.mode, undefined);
+  assert.equal(normalized.rg, "49642301");
+  const guest = normalized.mainGuest as Record<string, unknown>;
+  assert.equal(guest.name, "Odair Jose Fernandes Soares");
+  assert.equal(guest.rg, undefined);
 });

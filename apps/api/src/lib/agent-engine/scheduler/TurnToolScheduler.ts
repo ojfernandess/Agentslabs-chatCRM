@@ -9,7 +9,7 @@ import {
   orderToolsByFactDeps,
 } from "../eil/CapabilityGraph.js";
 import { hasFact } from "../eil/FactsEngine.js";
-import { assembleEmbraturFromSources } from "../checkin/embraturTravelForm.js";
+import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "../checkin/embraturTravelForm.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -97,12 +97,20 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
 
   // check_in / schemas nested: monta mainGuest a partir de factos flat.
   if (/check[_-]?in|checkin/i.test(normalized)) {
+    // Nunca herdar RG/IDs numéricos em `mode` (typo alias rg↔mode).
+    args.mode = "digital";
+    args.approveCheckin = args.approveCheckin ?? true;
+    args.sentToReception = args.sentToReception ?? true;
+    args.validatedCheckin = args.validatedCheckin ?? true;
+
     const guest: Record<string, unknown> = {};
     const map: Array<[string, string[]]> = [
       ["name", ["name", "guestName", "mainGuestName", "fullName"]],
       ["email", ["email", "guestEmail"]],
       ["documentNumber", ["documentNumber", "cpf", "document"]],
       ["documentType", ["documentType", "docType"]],
+      ["rg", ["rg", "rgNumber"]],
+      ["expeditor", ["expeditor", "rgExpeditor", "orgaoEmissor"]],
       ["mobilePhoneNumber", ["mobilePhoneNumber", "phone"]],
       ["birthDate", ["birthDate"]],
       ["gender", ["gender"]],
@@ -136,6 +144,8 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
     if (embratur && Object.keys(embratur).length > 0) {
       args.embratur = embratur;
     }
+
+    return normalizeAudaarCheckInPayload(args);
   }
 
   // HTTP tools: runtime context + auto-fill preenchem o resto quando args vazios.

@@ -6,7 +6,7 @@ import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecut
 import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js";
-import { assembleEmbraturFromSources } from "./agent-engine/checkin/embraturTravelForm.js";
+import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "./agent-engine/checkin/embraturTravelForm.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -642,7 +642,11 @@ function levenshteinDistance(a: string, b: string): number {
 }
 
 function maxTypoDistanceForKey(key: string): number {
-  return Math.max(5, Math.floor(key.length * 0.2));
+  // Chaves curtas (mode, rg, id): limiar antigo (≥5) mapeava rg→mode e name→rg.
+  if (key.length <= 4) return 0;
+  if (key.length <= 8) return 1;
+  if (key.length <= 16) return 2;
+  return Math.max(3, Math.floor(key.length * 0.15));
 }
 
 function stripArgKey(key: string): string {
@@ -683,7 +687,14 @@ function findLikelySchemaKeyAlias(
     return true;
   }
 
-  return levenshteinDistance(argLower, expLower) <= maxTypoDistanceForKey(expectedKey);
+  const dist = levenshteinDistance(argLower, expLower);
+  if (dist <= maxTypoDistanceForKey(expectedKey)) return true;
+
+  // Typos longos do modelo (ex.: reservationIdOrLocalLocalizer) — prefixo partilhado.
+  if (expectedKey.length >= 16 && argKey.length >= 16 && argLower.slice(0, 10) === expLower.slice(0, 10)) {
+    return dist <= 6;
+  }
+  return false;
 }
 
 /** Corrige typos frequentes do LLM nos nomes dos argumentos (ex.: reservationIdOrLocalLocalizer). */
@@ -812,6 +823,8 @@ const MAIN_GUEST_FIELD_ALIASES: Record<string, string[]> = {
   email: ["email", "guestEmail", "mainGuestEmail"],
   documentNumber: ["documentNumber", "cpf", "document", "docNumber"],
   documentType: ["documentType", "docType"],
+  rg: ["rg", "rgNumber", "identityDocument"],
+  expeditor: ["expeditor", "rgExpeditor", "orgaoEmissor", "issuer"],
   mobilePhoneNumber: ["mobilePhoneNumber", "phone", "contactPhone", "mobilePhone", "celular"],
   birthDate: ["birthDate", "dateOfBirth", "nascimento"],
   gender: ["gender", "genero", "sexo"],
@@ -859,11 +872,14 @@ function lookupFillValue(sources: Record<string, unknown>, key: string): unknown
     if (sk.toLowerCase() === lower) return sv;
   }
   // Alias leve: reservationId ↔ reservationIdOrLocalizer, etc.
-  for (const [sk, sv] of Object.entries(sources)) {
-    const a = sk.toLowerCase();
-    const b = lower;
-    if (a.includes(b) || b.includes(a)) {
-      if (Math.abs(a.length - b.length) <= Math.max(8, Math.floor(b.length * 0.35))) return sv;
+  // Não aplicar includes em chaves ≤4 chars (mode/rg/id — falsos positivos).
+  if (key.length > 4) {
+    for (const [sk, sv] of Object.entries(sources)) {
+      const a = sk.toLowerCase();
+      const b = lower;
+      if (a.includes(b) || b.includes(a)) {
+        if (Math.abs(a.length - b.length) <= Math.max(8, Math.floor(b.length * 0.35))) return sv;
+      }
     }
   }
   // Sinónimos de localizador (ordem das palavras / nomes cruzados entre tools).
@@ -1187,6 +1203,11 @@ export async function runAutomationHttpLikeTool(input: {
       durationMs,
       autoFilledFields,
     };
+  }
+
+  // audaar_check_in: mode enum + dependents sem slots vazios (rg≠mode).
+  if (/check[_-]?in|checkin/i.test(tool.name)) {
+    llmArgs = normalizeAudaarCheckInPayload(llmArgs);
   }
 
   const flat = buildHttpToolFlatContext(llmArgs, {
