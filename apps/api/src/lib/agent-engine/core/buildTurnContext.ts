@@ -184,6 +184,8 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
       toolConfigs: opts.toolConfigs,
       availableToolNames: opts.availableToolNames,
       priorFacts: opts.priorFacts,
+      freezeCompletionPromotion: opts.freezeCompletionPromotion,
+      postCompletionFollowUp: opts.postCompletionFollowUp,
     });
 
   const executionContract = buildExecutionContract({

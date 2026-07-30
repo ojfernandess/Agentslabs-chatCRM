@@ -95,9 +95,25 @@ export function decideResilienceAction(opts: DecideResilienceOpts): ResilienceDe
   const pending =
     opts.executionContract?.pendingToolNames.filter(Boolean) ??
     [];
-  const hasToolGap =
-    pending.length > 0 ||
-    failed.some((id) => TOOL_MISSING_CHECK_IDS.has(id));
+  const contractSatisfied =
+    pending.length === 0 &&
+    (opts.executionContract == null || opts.executionContract.valid !== false);
+  const toolGapFailures = failed.filter((id) => TOOL_MISSING_CHECK_IDS.has(id));
+  // Contrato Engine OK + só falha EIL de tools → plano EIL stale; Engine é fonte de verdade.
+  const onlyStaleEilPlan =
+    contractSatisfied &&
+    toolGapFailures.length > 0 &&
+    toolGapFailures.every((id) => id === "eil_plan_followed");
+
+  if (onlyStaleEilPlan && !failed.some((id) => QUALITY_CHECK_IDS.has(id))) {
+    return {
+      action: "continue",
+      reason: "engine_contract_satisfied_ignore_stale_eil",
+      pendingToolNames: [],
+    };
+  }
+
+  const hasToolGap = pending.length > 0 || (!onlyStaleEilPlan && toolGapFailures.length > 0);
   const hasQualityGap = failed.some((id) => QUALITY_CHECK_IDS.has(id));
   const hasSuccessfulTool = (opts.toolOutcomes ?? []).some((t) => t.ok);
 

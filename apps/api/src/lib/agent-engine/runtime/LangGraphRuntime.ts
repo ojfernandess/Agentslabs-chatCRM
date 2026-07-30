@@ -783,6 +783,8 @@ export class LangGraphRuntime implements AgentRuntime {
         toolOutcomes: nextOutcomes,
         replyText: execResult.reply,
         priorFacts: state.eilFacts,
+        freezeCompletionPromotion: state.engineTurn?.freezeCompletionPromotion,
+        postCompletionFollowUp: state.engineTurn?.postCompletionFollowUp,
       });
       return {
         previousReply: state.reply,

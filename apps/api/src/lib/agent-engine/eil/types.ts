@@ -139,4 +139,11 @@ export type BuildEilContextOpts = {
   priorFacts?: FactStore;
   flowSlots?: Record<string, string | number | boolean>;
   turnPolicy?: TurnPolicy;
+  /** Alinhado com ExecutionEngine / buildExecutionTurnPlan — evita plano EIL stale. */
+  priorToolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
+  lastAssistantMessage?: string | null;
+  memory?: Record<string, unknown> | null;
+  freezeCompletionPromotion?: boolean;
+  postCompletionFollowUp?: boolean;
 };

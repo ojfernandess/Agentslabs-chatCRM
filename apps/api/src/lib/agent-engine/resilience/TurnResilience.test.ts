@@ -113,6 +113,28 @@ test("decideResilienceAction is no-op when disabled", () => {
   assert.equal(d.action, "continue");
 });
 
+test("decideResilienceAction ignores stale eil_plan_followed when Engine contract is satisfied", () => {
+  const d = decideResilienceAction({
+    config: { ...DEFAULT_RESILIENCE_CONFIG, enabled: true },
+    strictMode: true,
+    supervisorTrace: trace(["eil_plan_followed"]),
+    executionContract: {
+      ...pendingContract,
+      pendingToolNames: [],
+      requiredToolNames: [],
+      satisfiedToolNames: [],
+      valid: true,
+      violations: [],
+      planPhase: "reply",
+    },
+    retryCount: 0,
+    recoveryCount: 0,
+    toolOutcomes: [],
+  });
+  assert.equal(d.action, "continue");
+  assert.equal(d.reason, "engine_contract_satisfied_ignore_stale_eil");
+});
+
 test("parseResilienceConfig reads engine flag and custom message", () => {
   const cfg = parseResilienceConfig(
     { resilienceEnabled: true } as never,

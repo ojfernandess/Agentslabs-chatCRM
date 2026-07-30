@@ -12,6 +12,8 @@ import {
   type FactStore,
   type ToolOutcomeForEil,
 } from "./index.js";
+import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
+import { readLastAssistantPreview } from "../core/confirmationTurnGuards.js";
 
 /** Extrai flowSlots do snapshot de memória do runtime. */
 export function flowSlotsFromMemory(memory: Record<string, unknown> | undefined): Record<
@@ -41,6 +43,10 @@ export type ResolveEilTurnOpts = {
   toolConfigs?: Array<{ name: string; config?: unknown }>;
   availableToolNames?: string[];
   priorFacts?: FactStore;
+  /** Congela promoção a conclusão (exclusive gate no begin). */
+  freezeCompletionPromotion?: boolean;
+  /** Turno sintético pós-conclusão (Passo 8). */
+  postCompletionFollowUp?: boolean;
 };
 
 export type ResolveEilTurnResult = {
@@ -76,6 +82,8 @@ export function resolveEilTurn(opts: ResolveEilTurnOpts): ResolveEilTurnResult {
     graph,
   });
   const toolsCalled = (opts.toolOutcomes ?? []).filter((t) => t.ok).map((t) => t.name);
+  const sessionPrior = priorToolOutcomesFromSession(flowSlots);
+  const lastAssistantMessage = readLastAssistantPreview(opts.memory ?? flowSlots);
   const plan = buildExecutionIntelligencePlan({
     behaviorConfig: opts.behaviorConfig,
     userMessage: opts.userMessage,
@@ -85,6 +93,12 @@ export function resolveEilTurn(opts: ResolveEilTurnOpts): ResolveEilTurnResult {
     graph,
     toolsCalled,
     flowSlots,
+    priorToolOutcomes: sessionPrior,
+    sessionPriorOutcomes: sessionPrior,
+    lastAssistantMessage,
+    memory: opts.memory,
+    freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
   const snapshot = buildEilSnapshot({
     behaviorConfig: opts.behaviorConfig,

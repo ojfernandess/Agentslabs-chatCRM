@@ -23,6 +23,7 @@ export type BuildExecutionIntelligencePlanOpts = BuildEilContextOpts & {
 
 /**
  * Plano de execução EIL — reutiliza ExecutionTurnPlan legado e acrescenta facts/policies.
+ * Deve receber o mesmo contexto de turno que o ExecutionEngine (slots, prior tools, last msg).
  */
 export function buildExecutionIntelligencePlan(
   opts: BuildExecutionIntelligencePlanOpts,
@@ -31,6 +32,13 @@ export function buildExecutionIntelligencePlan(
     behaviorConfig: opts.behaviorConfig,
     userMessage: opts.userMessage,
     availableToolNames: opts.availableToolNames,
+    priorToolOutcomes: opts.priorToolOutcomes,
+    sessionPriorOutcomes: opts.sessionPriorOutcomes ?? opts.priorToolOutcomes,
+    flowSlots: opts.flowSlots,
+    lastAssistantMessage: opts.lastAssistantMessage,
+    memory: opts.memory,
+    freezeCompletionPromotion: opts.freezeCompletionPromotion,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
 
   const eilEnabled = isEilEnabled(opts.behaviorConfig);

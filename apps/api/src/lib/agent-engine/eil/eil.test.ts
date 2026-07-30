@@ -212,3 +212,47 @@ test("ingestToolOutcomes + snapshot detects constraint violation on reply", () =
   assert.equal(snap.violations.length, 1);
   assert.ok(snap.replyActions.includes("request_additional_party"));
 });
+
+const TITULAR_PLAYBOOK = `
+| N=1 → S9 | só \`embratur-reference\` | reference |
+| S10 | Chame \`audaar_check_in\` | check-in |
+**Proibido** \`embratur-reference\` + \`audaar_check_in\` no mesmo turno
+`;
+
+test("buildExecutionIntelligencePlan suppresses embratur on titular Sim N≥2", () => {
+  const titular =
+    "Confirme os dados do TITULAR. Está tudo certo?\n• Nome: Ana";
+  const withoutCtx = buildExecutionIntelligencePlan({
+    behaviorConfig: {
+      promptBuilder: { useFullPrompt: true, userCore: TITULAR_PLAYBOOK },
+      eil: { policies: [] },
+    },
+    userMessage: "sim",
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.ok(
+    withoutCtx.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
+    "sem contexto ainda exige embratur",
+  );
+
+  const withCtx = buildExecutionIntelligencePlan({
+    behaviorConfig: {
+      promptBuilder: { useFullPrompt: true, userCore: TITULAR_PLAYBOOK },
+      eil: { policies: [] },
+    },
+    userMessage: "sim",
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+    flowSlots: { guestsQuantity: 2, __lastAssistantPreview: titular },
+    lastAssistantMessage: titular,
+    memory: { flowSlots: { guestsQuantity: 2 } },
+    priorToolOutcomes: [],
+    sessionPriorOutcomes: [],
+  });
+  assert.equal(withCtx.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(
+    withCtx.requiredToolNames.some((t) => /embratur|check[_-]?in/i.test(t)),
+    false,
+    `titular N≥2 must require ZERO gate tools, got ${JSON.stringify(withCtx.requiredToolNames)}`,
+  );
+  assert.equal(withCtx.pendingTools.length, 0);
+});
