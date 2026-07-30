@@ -110,6 +110,8 @@ export function isLikelyLookupOrKnowledgeTool(toolName: string): boolean {
   const n = toolName.trim().toLowerCase().replace(/-/g, "_");
   if (!n) return false;
   if (/(?:conhecimento|knowledge|rag|faq|wiki)/i.test(n)) return true;
+  // Alias curto do playbook (`main_guest`) — C9 não deve exigir via match de sufixo no catálogo.
+  if (/(?:^|_)main_guest(?:_|$)/i.test(n)) return true;
   return /(?:^|_)(?:consult(?:ar)?|consulta|lookup|search|find|get|fetch|read|buscar|query|retrieve)(?:_|$)/i.test(
     n,
   );

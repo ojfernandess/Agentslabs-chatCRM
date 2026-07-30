@@ -661,6 +661,35 @@ test("companion mirror Sim does not require check_in even with completionReady",
   );
 });
 
+test("companion mirror Sim reopens Embratur when gate was marked early (awaiting post-gate)", () => {
+  const companion =
+    "Obrigado! Confira se os dados do acompanhante estão corretos:\n• Nome: Caroline\n➡️ Confirme os dados do ACOMPANHANTE. Está tudo certo?";
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "sim",
+    priorToolOutcomes: [{ name: "embratur-reference", ok: true }],
+    sessionPriorOutcomes: [{ name: "embratur-reference", ok: true }],
+    flowSlots: {
+      guestsQuantity: 2,
+      __awaitingPostGateData: true,
+      __completionReady: false,
+      __lastAssistantPreview: companion,
+    },
+    lastAssistantMessage: companion,
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.equal(plan.turnPolicy.forceExclusiveExecution, true);
+  assert.ok(
+    plan.requiredToolNames.some((t) => /embratur|reference/i.test(t)),
+    `expected Embratur reopened on companion confirm, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+  assert.equal(
+    plan.requiredToolNames.some((t) => /check[_-]?in/i.test(t)),
+    false,
+    `must not jump to check_in, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});
+
 test("post-completion pending OK does not re-require embratur or check_in", () => {
   const ack =
     "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.";

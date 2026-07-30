@@ -48,6 +48,8 @@ export type ResolveEilTurnOpts = {
   /** Turno sintético pós-conclusão (Passo 8). */
   postCompletionFollowUp?: boolean;
   workflowPlannedToolNames?: string[];
+  /** Preview do assistente congelado no begin (evita replan mid-turn stale). */
+  lastAssistantMessage?: string | null;
 };
 
 export type ResolveEilTurnResult = {
@@ -84,7 +86,10 @@ export function resolveEilTurn(opts: ResolveEilTurnOpts): ResolveEilTurnResult {
   });
   const toolsCalled = (opts.toolOutcomes ?? []).filter((t) => t.ok).map((t) => t.name);
   const sessionPrior = priorToolOutcomesFromSession(flowSlots);
-  const lastAssistantMessage = readLastAssistantPreview(opts.memory ?? flowSlots);
+  const lastAssistantMessage =
+    opts.lastAssistantMessage !== undefined && opts.lastAssistantMessage !== null
+      ? opts.lastAssistantMessage
+      : readLastAssistantPreview(opts.memory ?? flowSlots);
   const plan = buildExecutionIntelligencePlan({
     behaviorConfig: opts.behaviorConfig,
     userMessage: opts.userMessage,

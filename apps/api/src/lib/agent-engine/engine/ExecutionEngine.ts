@@ -1,6 +1,7 @@
 import { buildTurnContext, type BuildTurnContextOpts } from "../core/buildTurnContext.js";
 import type { TurnContext } from "../core/types.js";
 import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
+import { readLastAssistantPreview } from "../core/confirmationTurnGuards.js";
 import { isPostCompletionFollowUpMessage } from "../continuation/postCompletionFollowUp.js";
 import type { ToolOutcomeForEil, FactStore } from "../eil/types.js";
 import type { AgentRuntimeExecuteInput } from "../types.js";
@@ -49,6 +50,11 @@ export type EngineTurnState = {
   freezeCompletionPromotion: boolean;
   /** Turno sintético pós-conclusão (Passo 8). */
   postCompletionFollowUp: boolean;
+  /**
+   * Preview do assistente no beginTurn — nunca usar a reply do turno actual
+   * ao replanear (senão S4c/suppress quebra e reabre Embratur a meio do turno).
+   */
+  lastAssistantAtBegin: string;
 };
 
 export type BeginTurnOpts = {
@@ -99,6 +105,7 @@ export class ExecutionEngine {
       | Record<string, string | number | boolean>
       | undefined;
     const sessionPriorAtBegin = priorToolOutcomesFromSession(memoryFlowSlots);
+    const lastAssistantAtBegin = readLastAssistantPreview(opts.memory ?? memoryFlowSlots ?? null);
 
     const postCompletionFollowUp = isPostCompletionFollowUpMessage(input.message);
     const buildOpts: BuildTurnContextOpts = {
@@ -113,6 +120,7 @@ export class ExecutionEngine {
       sessionPriorOutcomes: sessionPriorAtBegin,
       freezeCompletionPromotion: false,
       postCompletionFollowUp,
+      lastAssistantMessage: lastAssistantAtBegin,
     };
     const turnContext = buildTurnContext(buildOpts);
     const plan = enginePlanFromTurn(turnContext.turnPlan, turnContext.eilPlan);
@@ -141,6 +149,7 @@ export class ExecutionEngine {
       sessionPriorAtBegin,
       freezeCompletionPromotion,
       postCompletionFollowUp,
+      lastAssistantAtBegin,
     };
   }
 
@@ -171,6 +180,7 @@ export class ExecutionEngine {
       freezeCompletionPromotion: state.freezeCompletionPromotion,
       postCompletionFollowUp: state.postCompletionFollowUp,
       workflowPlannedToolNames: state.workflowRun?.plannedToolNames,
+      lastAssistantMessage: state.lastAssistantAtBegin,
     });
     let next = syncPlanContract({ ...state, memory }, turnContext);
     const phase = opts.phase ?? "validate";
@@ -220,6 +230,7 @@ export class ExecutionEngine {
       freezeCompletionPromotion: state.freezeCompletionPromotion,
       postCompletionFollowUp: state.postCompletionFollowUp,
       workflowPlannedToolNames: planned,
+      lastAssistantMessage: state.lastAssistantAtBegin,
     });
     let next = syncPlanContract({ ...state, memory }, turnContext);
     next = {

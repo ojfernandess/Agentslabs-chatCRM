@@ -93,6 +93,7 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
   });
   const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter((tool) => {
     if (availableSet.size > 0 && !availableSet.has(tool.trim().toLowerCase())) return false;
+    if (turnPolicy.forceExclusiveExecution) return true;
     return !toolOutcomeSatisfiesRequired(tool, priorToolOutcomes);
   });
   const completionRequired = resolveCompletionRequiredToolsForConfirmation(

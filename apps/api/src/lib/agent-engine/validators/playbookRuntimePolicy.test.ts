@@ -59,6 +59,11 @@ test("shouldExcludeCompletionToolFromRequired on form turns", () => {
     true,
   );
   assert.equal(
+    shouldExcludeCompletionToolFromRequired("structured_form_submission", "main_guest", []),
+    true,
+    "bare main_guest alias must be treated as lookup on C9",
+  );
+  assert.equal(
     shouldExcludeCompletionToolFromRequired("structured_form_submission", "embratur-reference", []),
     true,
   );

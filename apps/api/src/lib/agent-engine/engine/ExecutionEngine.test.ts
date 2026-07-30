@@ -111,6 +111,47 @@ test("ExecutionEngine replanWithWorkflow merges plannedToolNames into required",
   assert.ok(state.timeline.some((e) => e.detail?.includes("workflow_merge")));
 });
 
+test("ExecutionEngine refresh keeps begin lastAssistant (S4c suppress not broken mid-turn)", () => {
+  const playbook = `
+| N=1 → S9 | Sim → só \`embratur-reference\` |
+| S10 | concluído | Chame \`audaar_check_in\` |
+`;
+  const s4cAsk =
+    "Sua reserva é para 2 hóspedes no total (você + 1 acompanhante). Deseja cadastrar o(s) acompanhante(s) agora? (Sim/Não)";
+  const input = mockInput("openconduit", playbook, "Sim");
+  let state = sharedExecutionEngine.beginTurn({
+    input,
+    memory: {
+      flowSlots: {
+        guestsQuantity: 2,
+        __lastAssistantPreview: s4cAsk,
+      },
+    },
+    availableToolNames: ["embratur-reference", "audaar_check_in"],
+  });
+  assert.equal(state.plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(state.plan.requiredToolNames.some((t) => /embratur/i.test(t)), false);
+
+  // Mid-turn: reply actual grava-se em memory — replan NÃO deve reler e reabrir Embratur.
+  state = sharedExecutionEngine.refreshTurnWithBehavior(state, input.behaviorConfig, {
+    memory: {
+      flowSlots: {
+        guestsQuantity: 2,
+        __lastAssistantPreview:
+          "Perfeito! Envie os dados do acompanhante (nome, CPF, RG…).",
+      },
+    },
+    phase: "validate",
+  });
+  assert.equal(state.lastAssistantAtBegin, s4cAsk);
+  assert.equal(state.plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(
+    state.plan.requiredToolNames.some((t) => /embratur|check[_-]?in/i.test(t)),
+    false,
+    `mid-turn refresh must keep S4c ZERO tools, got ${JSON.stringify(state.plan.requiredToolNames)}`,
+  );
+});
+
 test("parseAgentEngineConfig legacyOpenconduitBypass default false", () => {
   const cfg = parseAgentEngineConfig({ agentEngine: { runtime: "openconduit" } });
   assert.equal(cfg.legacyOpenconduitBypass, false);

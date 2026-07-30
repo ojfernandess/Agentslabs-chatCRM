@@ -139,6 +139,11 @@ export type BuildTurnContextOpts = {
   postCompletionFollowUp?: boolean;
   /** Tools planeadas pelo Workflow (explícito ou implícito). */
   workflowPlannedToolNames?: string[];
+  /**
+   * Preview do assistente congelado no beginTurn.
+   * Se omitido, lê de memory — mas refresh mid-turn NÃO deve re-ler a reply actual.
+   */
+  lastAssistantMessage?: string | null;
 };
 
 /** Constrói TurnContext completo — ponto de entrada único por turno (Fase 1). */
@@ -149,7 +154,10 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     | undefined;
   const priorToolOutcomes = priorToolOutcomesFromSession(memoryFlowSlots);
   const sessionPriorOutcomes = opts.sessionPriorOutcomes ?? priorToolOutcomes;
-  const lastAssistantMessage = readLastAssistantPreview(opts.memory ?? memoryFlowSlots ?? null);
+  const lastAssistantMessage =
+    opts.lastAssistantMessage !== undefined && opts.lastAssistantMessage !== null
+      ? opts.lastAssistantMessage
+      : readLastAssistantPreview(opts.memory ?? memoryFlowSlots ?? null);
   const promptContract = compilePromptContract({
     behaviorConfig: opts.behaviorConfig,
     userMessage,
@@ -191,6 +199,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
       freezeCompletionPromotion: opts.freezeCompletionPromotion,
       postCompletionFollowUp: opts.postCompletionFollowUp,
       workflowPlannedToolNames: opts.workflowPlannedToolNames,
+      lastAssistantMessage,
     });
 
   const executionContract = buildExecutionContract({

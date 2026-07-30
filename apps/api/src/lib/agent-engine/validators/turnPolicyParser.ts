@@ -27,6 +27,7 @@ import {
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
   assistantIsPostCheckInAck,
+  assistantIsCompanionMirrorConfirm,
 } from "../core/confirmationTurnGuards.js";
 
 export {
@@ -61,6 +62,11 @@ export type TurnPolicy = {
   omitToolsWhenSlotsPresent: Array<{ tools: string[]; slotKeys: string[] }>;
   /** true em turnos sim/ok/não — bloqueia transfer/call_human/status. */
   blockEscalation: boolean;
+  /**
+   * Gate marcado cedo demais na sessão (ex.: Embratur antes do espelho do acompanhante).
+   * Exclusive volta a exigir execução neste turno mesmo se já estiver em prior outcomes.
+   */
+  forceExclusiveExecution?: boolean;
 };
 
 const FORBIDDEN_PAIR_LINE_RE =
@@ -343,6 +349,7 @@ export function resolveTurnPolicy(
     confirmationPrerequisiteTools: [],
     omitToolsWhenSlotsPresent: [],
     blockEscalation: false,
+    forceExclusiveExecution: false,
   };
   if (!behaviorConfig || typeof behaviorConfig !== "object") {
     return empty;
@@ -382,6 +389,7 @@ export function resolveTurnPolicy(
       confirmationPrerequisiteTools,
       omitToolsWhenSlotsPresent,
       blockEscalation: false,
+      forceExclusiveExecution: false,
     };
   }
 
@@ -389,6 +397,7 @@ export function resolveTurnPolicy(
   const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));
 
   let exclusiveAllowedTools: string[] | null = null;
+  let forceExclusiveExecution = false;
   const suppressExclusive =
     isConfirmation &&
     shouldSuppressConfirmationExclusiveTools({
@@ -404,6 +413,14 @@ export function resolveTurnPolicy(
     );
     if (pendingExclusive.length > 0) {
       exclusiveAllowedTools = pendingExclusive;
+    } else if (
+      // Espelho do acompanhante + ainda a recolher pós-gate: Embratur marcado cedo demais.
+      isAwaitingPostGateData(options.flowSlots) &&
+      !isCompletionReady(options.flowSlots) &&
+      assistantIsCompanionMirrorConfirm(options.lastAssistantMessage)
+    ) {
+      exclusiveAllowedTools = confirmationPrerequisiteTools;
+      forceExclusiveExecution = true;
     }
   }
 
@@ -414,6 +431,7 @@ export function resolveTurnPolicy(
     confirmationPrerequisiteTools,
     omitToolsWhenSlotsPresent,
     blockEscalation: isConfirmation,
+    forceExclusiveExecution,
   };
 }
 
