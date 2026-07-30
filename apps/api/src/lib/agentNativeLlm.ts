@@ -41,6 +41,7 @@ import {
   completionToolSatisfiedThisTurn,
   confirmationGateSatisfiedThisTurn,
   findForbiddenPairViolation,
+  formatTurnPolicyForSupervisor,
   resolveTurnPolicy,
   toolAliasesToOmitFromCatalog,
   toolNameMatchesOmitAlias,
@@ -59,11 +60,14 @@ import {
 import { buildTurnContext } from "./agent-engine/core/buildTurnContext.js";
 import {
   appendSessionSatisfiedToolName,
+  applyConfirmationPhaseTransitions,
   priorToolOutcomesFromSession,
   readSessionSatisfiedToolNames,
 } from "./agent-engine/core/sessionToolOutcomes.js";
+import { readLastAssistantPreview } from "./agent-engine/core/confirmationTurnGuards.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 import { formatScheduledToolsSystemAppendix } from "./agent-engine/scheduler/TurnToolScheduler.js";
+import { ensureDeliveringReply } from "./agent-engine/reply/ReplySynthesizer.js";
 import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -2084,11 +2088,17 @@ async function generateNativeAgentReplyCore(input: {
     "atribuir_etiquetas",
     "listar_etiquetas",
   ];
+  const lastAssistantForPolicy =
+    readLastAssistantPreview(sessionFlowSlots) || lastAssistantMessage;
   const turnPolicy = resolveTurnPolicy(behaviorConfigObj, {
     userMessage,
     priorToolOutcomes: sessionPriorAtBegin,
     availableToolNames: catalogToolNames,
+    flowSlots: sessionFlowSlots,
+    lastAssistantMessage: lastAssistantForPolicy,
+    memory: { flowSlots: sessionFlowSlots },
   });
+  const turnPolicyAppendix = formatTurnPolicyForSupervisor(turnPolicy);
   const capabilityGraph = buildCapabilityGraph({
     tools: customHttpTools.map((t) => ({
       name: t.name,
@@ -2166,7 +2176,10 @@ async function generateNativeAgentReplyCore(input: {
     followUpPrompt +
     flowStatePrompt +
     schedulerAppendix +
-    runtimeOwnedReplyGuard;
+    runtimeOwnedReplyGuard +
+    (turnPolicyAppendix
+      ? `\n\n[OpenConduit — política de turno]\n${turnPolicyAppendix}`
+      : "");
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
@@ -2828,6 +2841,55 @@ async function generateNativeAgentReplyCore(input: {
     });
     if (reinforced.trim() && hasSubstantiveAgentReplyToCustomer(reinforced, configuredStallMessages)) {
       replyText = reinforced.trim();
+    }
+  }
+
+  // Última linha: nunca sair vazio após tools OK (S9 embratur ×N / check-in).
+  if (toolRoundOutcomes.some((t) => t.ok) && isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
+    const synthesized = ensureDeliveringReply({
+      replyText,
+      toolOutcomes: toolRoundOutcomes,
+      userMessage,
+    });
+    if (synthesized.replaced && synthesized.reply.trim()) {
+      replyText = synthesized.reply.trim();
+      ex?.warn(
+        { id: "reply_synthesizer", name: "Reply Synthesizer" },
+        JSON.stringify({ reason: synthesized.reason, afterChars: replyText.length }),
+      );
+    } else {
+      const deterministic = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
+      if (deterministic.trim()) {
+        replyText = deterministic.trim();
+        ex?.warn(
+          { id: "reply_synthesizer", name: "Reply Synthesizer" },
+          "fallback deterministic after empty tool round",
+        );
+      }
+    }
+  }
+
+  // Máquina S9→S9b→S10 (antes vivia só no Orchestrator).
+  if (historyOverride == null) {
+    try {
+      sessionFlowSlots = applyConfirmationPhaseTransitions({
+        baseFlowSlots: sessionFlowSlots,
+        toolOutcomes: toolRoundOutcomes,
+        confirmationPrerequisiteTools: turnPolicy.confirmationPrerequisiteTools,
+        completionToolHints: turnPolicy.completionToolHints,
+        userMessage,
+        lastAssistantPreview: replyText,
+      }) as AutomationFlowSlots;
+      if (Object.keys(sessionFlowSlots).length > 0) {
+        await mergeFlowSlotsAutomationContext({
+          organizationId,
+          conversationId: conversation.id,
+          botId: bot.id,
+          flowSlots: sessionFlowSlots,
+        });
+      }
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "confirmation phase transitions failed");
     }
   }
 

@@ -76,6 +76,23 @@ test("S4c sim suppresses exclusive gate tools", () => {
   );
 });
 
+test("S4c nao does not suppress — goes to S9 embratur exclusive", () => {
+  assert.equal(
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage: S4C_ASK,
+      userMessage: "Não",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage: S4C_ASK,
+      userMessage: "não desejo cadastrar o acompanhante",
+    }),
+    false,
+  );
+});
+
 test("completion promotion blocked on titular / allowed on ficha", () => {
   assert.equal(
     shouldAllowCompletionToolPromotion({ lastAssistantMessage: TITULAR_MIRROR }),

@@ -634,6 +634,28 @@ test("ficha Sim with completionReady requires check_in", () => {
   );
 });
 
+test("ficha Sim forces check_in exclusive even when embratur still pending (HJ2XQZXO-FICHA)", () => {
+  const ficha = "Confira a ficha de viagem:\n• Motivo da viagem: Congresso\nConfirme os dados da ficha.";
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      priorToolOutcomes: [],
+      lastAssistantMessage: ficha,
+      availableToolNames: ["embratur-reference", "audaar_check_in"],
+    },
+  );
+  assert.ok(
+    policy.exclusiveAllowedTools?.some((t) => /check[_-]?in/i.test(t)),
+    `expected exclusive check_in, got ${JSON.stringify(policy.exclusiveAllowedTools)}`,
+  );
+  assert.equal(
+    policy.exclusiveAllowedTools?.some((t) => /embratur|reference/i.test(t)) ?? false,
+    false,
+    "must not keep embratur exclusive on ficha confirm",
+  );
+});
+
 test("companion mirror Sim does not require check_in even with completionReady", () => {
   const companion =
     "Obrigado! Confira se os dados do acompanhante estão corretos:\n• Nome: Caroline\n• RG / órgão: 17.208.764-8 / SSP - SP\n➡️ Confirme os dados do ACOMPANHANTE. Está tudo certo?";

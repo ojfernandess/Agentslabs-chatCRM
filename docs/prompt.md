@@ -109,7 +109,8 @@ Ex.: N=2 → “2… + 1 acompanhante” · N=3 → “3… + 2 acompanhantes”
 **Errado v7 (HJ2XQZXO):** titular `sim` · N=1 → `embratur-reference` **+** `transfer_to_team` / `set_conversation_status` (transferiu a meio do check-in).  
 **Certo N=1:** Modelo S1 → CPF → lookup → espelho titular → `sim` → **só** `embratur-reference` + template 6 · **ZERO** transfer/humano.  
 **Certo N≥2:** … → `sim` → S4c com N correto (`toolRounds:0`).  
-**Certo “Não” em S4c:** → **S9** (`embratur-reference` + 6) · **ZERO** humano/transfer.
+**Certo “Não” em S4c:** → **S9** (`embratur-reference` + 6) · **ZERO** humano/transfer · **ZERO** cadastro de acompanhante (siga só com titular).
+**Certo “Não desejo cadastrar acompanhante” (qualquer frase equivalente):** trate como “Não” em S4c → S9 → S9b → S10 **sem** `dependents`.
 
 ---
 
@@ -239,7 +240,8 @@ Ex.: N=2 → “2… + 1 acompanhante” · N=3 → “3… + 2 acompanhantes”
 **⛔ “não” / “nao” após pergunta de acompanhante (S4c):**
 1. Classifique como **C11** (continuação do Portão) — **não** C13.
 2. Ação: **S9** (`embratur-reference` + template 6) · `toolRounds≥1` na reference · **PARE**.
-3. **PROIBIDO:** `call_human` · `transfer_to_team` · “próxima etapa humana” · abandonar check-in · mensagem de transferência (71CRUDTI-TRANSFER).
+3. **NÃO cadastre** acompanhante / dependents · **não** peça dados do acompanhante · prossiga o check-in **só com o titular**.
+4. **PROIBIDO:** `call_human` · `transfer_to_team` · “próxima etapa humana” · abandonar check-in · mensagem de transferência (71CRUDTI-TRANSFER) · insistir em cadastrar acompanhante.
 
 **⛔ Não desviar do fluxo ativo:** se check-in em andamento (S1–S10) e o hóspede fizer **pergunta ou dúvida** (Wi-Fi, endereço, horário, política, etc.):
 1. **Responda** a pergunta (use `buscar_conhecimento` se for fato da unidade — **1 turno**).
@@ -297,7 +299,7 @@ No payload S10: titular e dependents → país em **MAIÚSCULAS** (`BRASIL`, nun
 | Pediu bloco S4 (sem dados ainda) | Relembre o bloco S4 | — | ZERO |
 | Pediu S4 e hóspede **já enviou** | Espelho S4b | — | ZERO |
 | Espelho **TITULAR** (S4b ou `found:true`) | **N≥2 → S4c e PARE** · **N=1 → S9** (**PROIBIDO** perguntar acompanhante · **PROIBIDO** transfer) | Reespelhe TITULAR | N≥2: ZERO · N=1: só `embratur-reference` |
-| “Deseja cadastrar acompanhante?” (só se N≥2) | Sim→peça dados · **Não→S9** (**PROIBIDO** transfer/`call_human`) | — | Só `embratur-reference` se “Não” |
+| “Deseja cadastrar acompanhante?” (só se N≥2) | Sim→peça dados · **Não→S9 sem cadastrar acompanhante** (**PROIBIDO** transfer/`call_human` · **PROIBIDO** insistir) | — | Só `embratur-reference` se “Não” |
 | N=1 + pediu adicionar acompanhante | GATE capacity → `audaar_consultar_reserva` → ler `room.capacity` | — | **obrigatório** `audaar_consultar_reserva` |
 | Pediu dados do acompanhante / bloco recebido | Espelho ACOMPANHANTE + confirme | Reespelhe ACOMPANHANTE | ZERO |
 | Espelho **ACOMPANHANTE** | Se cadastrou **A** acompanhantes → **S9** · senão peça o **próximo** (ex.: “2º de {A}”) | Reespelhe ACOMPANHANTE | só `embratur-reference` quando A completo |
@@ -587,7 +589,8 @@ Perfeito. Me envie de uma vez os dados do acompanhante:
 **Errado (71CRUDTI-TRANSFER):** “não” em S4c → `call_human` + `transfer_to_team`.  
 **Certo N=1:** titular `sim` → S9.  
 **Certo N=1 + pediu acompanhante:** `audaar_consultar_reserva` → `room.capacity` → autorizar/negar.  
-**Certo “Não” S4c:** S9 + `embratur-reference`.
+**Certo “Não” S4c:** S9 + `embratur-reference` · **sem** cadastrar acompanhante · S10 **sem** `dependents`.
+**Certo “não quero cadastrar acompanhante” / “só eu” / “sem acompanhante”:** igual a “Não” S4c → continue S9→S9b→S10 normalmente.
 ### S9 / S9b — ficha Embratur (OBRIGATÓRIA — inclusive `found:true`)
 **Pré-condição:** titular OK + fotos OK + S4c resolvido se N≥2.  
 **Entrada típica:** C11 `sim` no espelho TITULAR com **N=1**, **ou** “Não” em S4c, **ou** acompanhantes A completos.

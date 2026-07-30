@@ -107,11 +107,18 @@ export function applyConfirmationPhaseTransitions(opts: {
   }
 
   // Só formulário pós-gate libera conclusão — não CPF / nacionalidade / localizador.
+  // Também aceita ficha quando o agente pediu o template dos 6 sem ter marcado awaiting
+  // (ex.: LLM saltou `embratur-reference` mas já pediu Motivo/Transporte).
+  const assistantAskedEmbraturSix =
+    typeof opts.lastAssistantPreview === "string" &&
+    /\b(motivo(?:\s+da\s+viagem)?|meio\s+de\s+transporte|template\s+dos\s*6|ficha\s+de\s+viagem)\b/i.test(
+      opts.lastAssistantPreview,
+    );
   if (
     userMessage &&
     !CONFIRMATION_USER_MSG_RE.test(userMessage) &&
-    slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY) &&
-    messageLooksLikePostGateFormData(userMessage)
+    messageLooksLikePostGateFormData(userMessage) &&
+    (slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY) || assistantAskedEmbraturSix)
   ) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
     slots[SESSION_COMPLETION_READY_KEY] = true;

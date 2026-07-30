@@ -153,7 +153,27 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
     return true;
   }
 
+  // "Não" / recusa de cadastro de acompanhante → S9 (não suppress; Embratur exclusive).
+  if (
+    assistantIsCompanionOptInPrompt(opts.lastAssistantMessage) &&
+    isCompanionRegistrationDeclined(msg)
+  ) {
+    return false;
+  }
+
   return false;
+}
+
+/** Hóspede recusa cadastrar acompanhante (S4c). */
+export function isCompanionRegistrationDeclined(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (/^(n[aã]o|nao|no|nop|nunca)$/i.test(msg)) return true;
+  return (
+    /\b(n[aã]o|nao)\s+(quero|desejo|preciso|vou)\b[\s\S]{0,40}acompanhante/i.test(msg) ||
+    /\bsem\s+acompanhante\b|\bn[aã]o\s+cadastrar\b|\bs[oó]\s+(eu|o\s+titular)\b/i.test(msg) ||
+    /\bn[aã]o\s+desejo\s+cadastrar\b/i.test(msg)
+  );
 }
 
 /**

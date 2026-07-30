@@ -28,6 +28,9 @@ import {
   shouldSuppressConfirmationExclusiveTools,
   assistantIsPostCheckInAck,
   assistantIsCompanionMirrorConfirm,
+  assistantIsFichaMirrorConfirm,
+  assistantIsCompanionOptInPrompt,
+  isCompanionRegistrationDeclined,
 } from "../core/confirmationTurnGuards.js";
 
 export {
@@ -394,7 +397,11 @@ export function resolveTurnPolicy(
   }
 
   const userMessage = (options.userMessage ?? "").trim();
-  const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));
+  const companionDecline =
+    assistantIsCompanionOptInPrompt(options.lastAssistantMessage) &&
+    isCompanionRegistrationDeclined(userMessage);
+  const isConfirmation =
+    Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage)) || companionDecline;
 
   let exclusiveAllowedTools: string[] | null = null;
   let forceExclusiveExecution = false;
@@ -407,7 +414,20 @@ export function resolveTurnPolicy(
       memory: options.memory,
     });
 
-  if (isConfirmation && confirmationPrerequisiteTools.length > 0 && !suppressExclusive) {
+  // HJ2XQZXO-FICHA: `sim` no espelho FICHA → S10 exclusive (nunca reabrir embratur-reference).
+  const fichaConfirm =
+    isConfirmation &&
+    !suppressExclusive &&
+    assistantIsFichaMirrorConfirm(options.lastAssistantMessage);
+  if (fichaConfirm && completionToolHints.length > 0) {
+    const pendingCompletion = completionToolHints.filter(
+      (h) => !toolOutcomeSatisfiesRequired(h, priorOk),
+    );
+    if (pendingCompletion.length > 0) {
+      exclusiveAllowedTools = pendingCompletion;
+      forceExclusiveExecution = true;
+    }
+  } else if (isConfirmation && confirmationPrerequisiteTools.length > 0 && !suppressExclusive) {
     const pendingExclusive = confirmationPrerequisiteTools.filter(
       (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
     );

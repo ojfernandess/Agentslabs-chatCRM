@@ -132,6 +132,18 @@ test("applyConfirmationPhaseTransitions does not arm ready on companion personal
   assert.equal(slots.__completionReady, false);
 });
 
+test("applyConfirmationPhaseTransitions arms ready on ficha form even without awaiting flag", () => {
+  const slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: {},
+    userMessage:
+      "* Motivo da viagem: Congresso\n* Meio de transporte: Automóvel\n* País de residência: Brasil",
+    lastAssistantPreview:
+      "Para finalizar, envie de uma vez as informações da viagem:\n1. Qual é o motivo da viagem?",
+  });
+  assert.equal(slots.__completionReady, true);
+  assert.equal(slots.__awaitingPostGateData, false);
+});
+
 test("applyConfirmationPhaseTransitions persists lastAssistantPreview", () => {
   const slots = applyConfirmationPhaseTransitions({
     baseFlowSlots: {},

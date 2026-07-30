@@ -368,10 +368,7 @@ export class LangGraphRuntime implements AgentRuntime {
       // Produção: loop linear nativo (sandbox) dentro do nó agent — sem orchestrator.
       const exec = await runtime.executor({
         ...crm,
-        executionHints: {
-          ...(crm.executionHints ?? {}),
-          toolExecutionMode: crm.executionHints?.toolExecutionMode ?? "hybrid",
-        },
+        // Não forçar hybrid: respeitar engineConfig / hints do CRM.
       });
       const content = (exec.reply ?? "").trim();
       return {
