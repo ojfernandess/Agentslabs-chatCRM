@@ -60,6 +60,43 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
     }
   }
 
+  // check_in / schemas nested: monta mainGuest a partir de factos flat.
+  if (/check[_-]?in|checkin/i.test(normalized)) {
+    const guest: Record<string, unknown> = {};
+    const map: Array<[string, string[]]> = [
+      ["name", ["name", "guestName", "mainGuestName", "fullName"]],
+      ["email", ["email", "guestEmail"]],
+      ["documentNumber", ["documentNumber", "cpf", "document"]],
+      ["documentType", ["documentType", "docType"]],
+      ["mobilePhoneNumber", ["mobilePhoneNumber", "phone"]],
+      ["birthDate", ["birthDate"]],
+      ["gender", ["gender"]],
+      ["profession", ["profession"]],
+      ["citizenship", ["citizenship", "nationality"]],
+      ["zipCode", ["zipCode", "postalCode"]],
+      ["country", ["country"]],
+      ["state", ["state"]],
+      ["city", ["city"]],
+      ["street", ["street", "address"]],
+      ["number", ["number", "addressNumber"]],
+      ["neighborhood", ["neighborhood"]],
+      ["profilePhotoUrl", ["profilePhotoUrl"]],
+      ["documentPhotoUrl", ["documentPhotoUrl"]],
+    ];
+    for (const [field, keys] of map) {
+      for (const k of keys) {
+        const v = args[k];
+        if (v !== undefined && v !== null && String(v).trim() !== "") {
+          guest[field] = v;
+          break;
+        }
+      }
+    }
+    if (Object.keys(guest).length > 0) {
+      args.mainGuest = guest;
+    }
+  }
+
   // HTTP tools: runtime context + auto-fill preenchem o resto quando args vazios.
   if (Object.keys(args).length === 0 && msg) {
     args.user_message = msg;

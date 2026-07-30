@@ -120,6 +120,25 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
     if (input.strictMode) blockSend = true;
   }
 
+  // Anti-alucinação: nunca enviar «check-in concluído» se a tool de conclusão falhou / não OK.
+  const claimsCompletion =
+    /check-in (foi )?conclu[ií]d|pedido (foi )?confirmado|reserva (foi )?confirmada|check[\s-]?in (realizad|efetuad|feito)/i.test(
+      input.replyText,
+    );
+  if (claimsCompletion) {
+    const hints = policy?.completionToolHints ?? [];
+    const hasCompletionOk = input.toolOutcomes.some(
+      (t) =>
+        t.ok &&
+        (hints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
+          /check[_-]?in|submit|confirm|concluir|finalize/i.test(t.name)),
+    );
+    if (!hasCompletionOk) {
+      alerts.push("Resposta afirma conclusão sem ferramenta de check-in bem-sucedida");
+      blockSend = true;
+    }
+  }
+
   if (successful.length > 0 && !input.replyText.trim()) {
     alerts.push("Ferramenta executada mas resposta não enviada ao utilizador");
     blockSend = true;

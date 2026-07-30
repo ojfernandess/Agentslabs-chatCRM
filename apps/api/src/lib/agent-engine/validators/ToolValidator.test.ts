@@ -57,6 +57,31 @@ test("validateToolExecution blocks 11:31 tool-narration after reservation lookup
   assert.equal(result.blockSend, true);
 });
 
+test("validateToolExecution blocks invented check-in success when tool failed", () => {
+  const result = validateToolExecution({
+    toolOutcomes: [
+      {
+        name: "audaar_check_in",
+        ok: false,
+        preview: '{"ok":false,"error":"schema_validation_failed"}',
+      },
+    ],
+    replyText: "Check-in concluído com sucesso! Em seguida envio os detalhes da estadia.",
+    strictMode: false,
+    turnPolicy: {
+      forbiddenSameTurnPairs: [],
+      exclusiveAllowedTools: null,
+      completionToolHints: ["audaar_check_in"],
+      confirmationPrerequisiteTools: [],
+      omitToolsWhenSlotsPresent: [],
+      blockEscalation: false,
+      forceExclusiveExecution: false,
+    },
+  });
+  assert.equal(result.blockSend, true);
+  assert.ok(result.alerts.some((a) => /conclusão sem ferramenta/i.test(a)));
+});
+
 test("validateToolExecution blocks empty reply after tool success", () => {
   const result = validateToolExecution({
     toolOutcomes: [{ name: "http_tool", ok: true, preview: "200 OK" }],

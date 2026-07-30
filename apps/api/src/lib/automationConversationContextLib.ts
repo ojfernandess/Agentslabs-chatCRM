@@ -291,6 +291,10 @@ export function extractFlowSlotsFromToolExchange(input: {
             : root.result && typeof root.result === "object" && !Array.isArray(root.result)
               ? (root.result as Record<string, unknown>)
               : root;
+        const guest =
+          nested.mainGuest && typeof nested.mainGuest === "object" && !Array.isArray(nested.mainGuest)
+            ? (nested.mainGuest as Record<string, unknown>)
+            : null;
         for (const [k, v] of Object.entries(nested)) {
           const keyLower = k.toLowerCase();
           const looksLikeId =
@@ -301,7 +305,16 @@ export function extractFlowSlotsFromToolExchange(input: {
             keyLower.includes("token") ||
             keyLower.includes("reference") ||
             keyLower.includes("code");
-          if (looksLikeId) takeScalar(k, v, 0);
+          const looksLikeGuestPii =
+            /^(name|email|phone|birthdate|gender|profession|citizenship|zipcode|country|state|city|street|number|neighborhood|documentnumber|documenttype|mobilephonenumber)$/i.test(
+              keyLower,
+            );
+          if (looksLikeId || looksLikeGuestPii) takeScalar(k, v, 0);
+        }
+        if (guest) {
+          for (const [k, v] of Object.entries(guest)) {
+            takeScalar(k, v, 0);
+          }
         }
       }
     } catch {

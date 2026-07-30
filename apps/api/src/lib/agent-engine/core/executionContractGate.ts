@@ -20,11 +20,12 @@ export type TurnContractGateInput = {
 /**
  * Gate de outbound baseado no contrato de turno — não interpreta prompt textual.
  * Com recoverFirst, Required pendente não limpa a reply (resilience já tentou).
+ * validationBlockSend (política / anti-alucinação / stall pós-tool) aplica sempre.
  */
 export function shouldBlockOutboundFromTurnContract(opts: TurnContractGateInput): boolean {
-  if (!opts.strictMode) return false;
-
   if (opts.validationBlockSend === true) return true;
+
+  if (!opts.strictMode) return false;
 
   if (!opts.recoverFirst) {
     if (opts.executionContract && !opts.executionContract.valid) {

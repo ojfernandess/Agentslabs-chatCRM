@@ -177,6 +177,18 @@ export function decideResilienceAction(opts: DecideResilienceOpts): ResilienceDe
     };
   }
 
+  // Sem modo estrito: nunca deixar passar afirmação de check-in sem tool OK.
+  if (failed.includes("completion_claim_without_tool")) {
+    return {
+      action: "apply_fallback",
+      reason: "completion_claim_without_tool",
+      pendingToolNames: pending,
+      fallbackMessage:
+        "Não consegui concluir o check-in automaticamente — faltam dados obrigatórios no sistema. " +
+        "Pode confirmar se o selfie e o documento já foram enviados, ou partilhar novamente os dados do titular?",
+    };
+  }
+
   return { action: "continue", reason: "non_strict_pass", pendingToolNames: pending };
 }
 

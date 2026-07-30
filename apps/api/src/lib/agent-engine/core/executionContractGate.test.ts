@@ -24,7 +24,7 @@ const baseContract: ExecutionContract = {
   violations: ["required_tool_missing:audaar_consultar_reserva"],
 };
 
-test("shouldBlockOutboundFromTurnContract returns false when strict mode off", () => {
+test("shouldBlockOutboundFromTurnContract honors validationBlockSend without strict mode", () => {
   assert.equal(
     shouldBlockOutboundFromTurnContract({
       strictMode: false,
@@ -33,7 +33,7 @@ test("shouldBlockOutboundFromTurnContract returns false when strict mode off", (
       canRetry: false,
       executionContract: baseContract,
     }),
-    false,
+    true,
   );
 });
 
@@ -49,6 +49,18 @@ test("shouldBlockOutboundFromTurnContract blocks on validationBlockSend in stric
   );
 });
 
+test("shouldBlockOutboundFromTurnContract allows without block when strict off and no validationBlockSend", () => {
+  assert.equal(
+    shouldBlockOutboundFromTurnContract({
+      strictMode: false,
+      validationBlockSend: false,
+      retryCount: 0,
+      canRetry: false,
+      executionContract: baseContract,
+    }),
+    false,
+  );
+});
 test("shouldBlockOutboundFromTurnContract blocks when required tool missing", () => {
   assert.equal(
     shouldBlockOutboundFromTurnContract({

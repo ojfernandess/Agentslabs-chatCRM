@@ -377,13 +377,19 @@ export function shouldRetryAfterSupervisor(
   return trace.checks.some((c) => c.id === "tool_used" && !c.passed);
 }
 
-/** Bloqueia envio após esgotar retries quando supervisor reprova em modo estrito. */
+/** Bloqueia envio após esgotar retries quando supervisor reprova em modo estrito.
+ * Sempre bloqueia se o agente afirmou check-in concluído sem tool OK (anti-alucinação).
+ */
 export function shouldBlockReplyAfterSupervisor(
   trace: AgentSupervisorTrace,
   strictMode: boolean,
   retryCount: number,
 ): boolean {
   if (trace.approved) return false;
+  const claimedWithoutTool = trace.checks.some(
+    (c) => c.id === "completion_claim_without_tool" && !c.passed,
+  );
+  if (claimedWithoutTool) return true;
   if (!strictMode) return false;
   if (retryCount < 2) return false;
   return true;

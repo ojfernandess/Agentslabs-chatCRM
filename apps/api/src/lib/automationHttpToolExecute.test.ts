@@ -230,6 +230,44 @@ test("fillMissingRequiredSchemaFields applies schema defaults and flowSlots", ()
   assert.ok(applied.length >= 4);
   assert.equal(collectMissingRequiredSchemaFields(schema, data).length, 0);
 });
+
+test("buildSchemaFillSources nests mainGuest from scheduler flat facts", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      mainGuest: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          email: { type: "string" },
+          documentNumber: { type: "string" },
+          mobilePhoneNumber: { type: "string" },
+        },
+        required: ["name", "email", "documentNumber", "mobilePhoneNumber"],
+      },
+    },
+    required: ["mainGuest"],
+  };
+  const llmArgs = {
+    email: "odair@test.com",
+    documentNumber: "41026299802",
+    phone: "+5511991071874",
+    name: "Odair Fernandes",
+  };
+  const fillSources = buildSchemaFillSources(llmArgs, {});
+  assert.ok(fillSources.mainGuest && typeof fillSources.mainGuest === "object");
+  const { data } = fillMissingRequiredSchemaFields({
+    schema,
+    data: { ...llmArgs },
+    fillSources,
+  });
+  const guest = data.mainGuest as Record<string, unknown>;
+  assert.equal(guest.email, "odair@test.com");
+  assert.equal(guest.documentNumber, "41026299802");
+  assert.equal(guest.mobilePhoneNumber, "+5511991071874");
+  assert.equal(guest.name, "Odair Fernandes");
+  assert.equal(collectMissingRequiredSchemaFields(schema, data).length, 0);
+});
 test("buildHttpToolFlatContext promotes flowSlots to top-level template keys", () => {
   const flat = buildHttpToolFlatContext({
     sampleContext: {

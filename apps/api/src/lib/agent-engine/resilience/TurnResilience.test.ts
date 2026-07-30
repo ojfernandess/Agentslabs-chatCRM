@@ -149,3 +149,24 @@ test("parseResilienceConfig reads engine flag and custom message", () => {
   assert.equal(cfg.blockedFallbackMessage, "Mensagem custom.");
   assert.equal(cfg.maxMandatoryRecoveries, 2);
 });
+
+test("decideResilienceAction applies fallback on completion_claim without strict mode", () => {
+  const d = decideResilienceAction({
+    config: { ...DEFAULT_RESILIENCE_CONFIG, enabled: true },
+    strictMode: false,
+    supervisorTrace: trace(["completion_claim_without_tool", "required_tools_contract"]),
+    executionContract: {
+      ...pendingContract,
+      requiredToolNames: ["audaar_check_in"],
+      pendingToolNames: ["audaar_check_in"],
+      violations: ["required_tool_missing:audaar_check_in"],
+    },
+    retryCount: 1,
+    recoveryCount: 1,
+    toolOutcomes: [{ name: "audaar_check_in", ok: false }],
+    replyText: "Check-in concluído com sucesso!",
+  });
+  assert.equal(d.action, "apply_fallback");
+  assert.equal(d.reason, "completion_claim_without_tool");
+  assert.ok(d.fallbackMessage && /Não consegui concluir o check-in/i.test(d.fallbackMessage));
+});

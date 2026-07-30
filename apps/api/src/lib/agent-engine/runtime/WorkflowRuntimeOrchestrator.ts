@@ -690,9 +690,8 @@ export async function runWorkflowRuntimeTurn(
     );
   }
 
-  // Strict: recover-first — só bloqueia política proibida / supervisor final
-  const hardPolicyBlock =
-    !validationOk && validationAlerts.some((a) => /proibid|block/i.test(a));
+  // Política dura (stall, conclusão inventada, pares proibidos) — mesmo sem strictMode.
+  const hardPolicyBlock = validationBlockSend === true;
   const blockOutbound = shouldBlockOutboundFromTurnContract({
     strictMode: input.engineConfig.strictMode,
     validationBlockSend: hardPolicyBlock,
@@ -720,7 +719,18 @@ export async function runWorkflowRuntimeTurn(
       { id: "turn_contract_gate", name: "Turn Contract Gate" },
       `Outbound bloqueado — ${reason}`,
     );
-    if (!outboundReply.trim()) outboundReply = "";
+    const claimsFakeCompletion =
+      /check-in (foi )?conclu[ií]d|check[\s-]?in (realizad|efetuad|feito)/i.test(outboundReply);
+    const checkInFailed = toolOutcomes.some(
+      (t) => /check[_-]?in/i.test(t.name) && t.ok === false,
+    );
+    if (claimsFakeCompletion && checkInFailed) {
+      outboundReply =
+        "Não consegui concluir o check-in automaticamente — faltam dados obrigatórios no sistema. " +
+        "Pode confirmar se o selfie e o documento já foram enviados, ou partilhar novamente os dados do titular?";
+    } else if (!outboundReply.trim()) {
+      outboundReply = "";
+    }
   }
 
   const builtTrace = traceBuilder.build();

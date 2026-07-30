@@ -775,10 +775,50 @@ const CONTEXT_FILL_SKIP_KEYS = new Set([
   "sampleContext",
 ]);
 
+/** Aliases flat → campos nested de mainGuest (check-in Audaar / schemas similares). */
+const MAIN_GUEST_FIELD_ALIASES: Record<string, string[]> = {
+  name: ["name", "guestName", "mainGuestName", "fullName", "titularName"],
+  email: ["email", "guestEmail", "mainGuestEmail"],
+  documentNumber: ["documentNumber", "cpf", "document", "docNumber"],
+  documentType: ["documentType", "docType"],
+  mobilePhoneNumber: ["mobilePhoneNumber", "phone", "contactPhone", "mobilePhone", "celular"],
+  birthDate: ["birthDate", "dateOfBirth", "nascimento"],
+  gender: ["gender", "genero", "sexo"],
+  profession: ["profession", "profissao", "occupation"],
+  citizenship: ["citizenship", "nationality", "nacionalidade", "citizenshipCountry"],
+  zipCode: ["zipCode", "postalCode", "cep"],
+  country: ["country", "pais", "countryName"],
+  state: ["state", "uf", "estado"],
+  city: ["city", "cidade"],
+  street: ["street", "rua", "address", "logradouro"],
+  number: ["number", "addressNumber", "numero"],
+  neighborhood: ["neighborhood", "bairro"],
+  profilePhotoUrl: ["profilePhotoUrl", "selfieUrl", "photoUrl"],
+  documentPhotoUrl: ["documentPhotoUrl", "docPhotoUrl", "documentUrl"],
+};
+
 function isFillableScalar(v: unknown): v is string | number | boolean {
   if (typeof v === "boolean" || typeof v === "number") return typeof v === "number" ? Number.isFinite(v) : true;
   if (typeof v === "string") return true;
   return false;
+}
+
+function assembleMainGuestFromFlatSources(sources: Record<string, unknown>): Record<string, unknown> {
+  const existing =
+    sources.mainGuest && typeof sources.mainGuest === "object" && !Array.isArray(sources.mainGuest)
+      ? { ...(sources.mainGuest as Record<string, unknown>) }
+      : {};
+  for (const [field, aliases] of Object.entries(MAIN_GUEST_FIELD_ALIASES)) {
+    if (existing[field] !== undefined && existing[field] !== null && existing[field] !== "") continue;
+    for (const alias of aliases) {
+      const v = sources[alias];
+      if (isFillableScalar(v) && String(v).trim() !== "") {
+        existing[field] = v;
+        break;
+      }
+    }
+  }
+  return existing;
 }
 
 function lookupFillValue(sources: Record<string, unknown>, key: string): unknown {
@@ -800,7 +840,8 @@ function lookupFillValue(sources: Record<string, unknown>, key: string): unknown
 
 /**
  * Fontes genéricas para completar required omitidos pelo modelo:
- * argDefaults da tool, defaults do JSON Schema, flowSlots / sampleContext.
+ * argDefaults da tool, defaults do JSON Schema, flowSlots / sampleContext,
+ * e args top-level do Scheduler (factos flat → nested mainGuest).
  */
 export function buildSchemaFillSources(
   llmArgs: Record<string, unknown>,
@@ -815,6 +856,18 @@ export function buildSchemaFillSources(
   if (argDefaults) {
     for (const [k, v] of Object.entries(argDefaults)) {
       if (isFillableScalar(v) || (v && typeof v === "object")) sources[k] = v;
+    }
+  }
+
+  // Args do Scheduler / LLM (ex.: email, documentNumber vindos de factos).
+  for (const [k, v] of Object.entries(llmArgs)) {
+    if (CONTEXT_FILL_SKIP_KEYS.has(k)) continue;
+    if (isFillableScalar(v)) sources[k] = v;
+    if (k === "mainGuest" && v && typeof v === "object" && !Array.isArray(v)) {
+      sources.mainGuest = { ...(v as Record<string, unknown>) };
+      for (const [gk, gv] of Object.entries(v as Record<string, unknown>)) {
+        if (isFillableScalar(gv)) sources[gk] = gv;
+      }
     }
   }
 
@@ -861,6 +914,11 @@ export function buildSchemaFillSources(
         sources.mobilePhoneNumber = sources.mobilePhoneNumber ?? contact.phone;
       }
     }
+  }
+
+  const guest = assembleMainGuestFromFlatSources(sources);
+  if (Object.keys(guest).length > 0) {
+    sources.mainGuest = guest;
   }
 
   return sources;
