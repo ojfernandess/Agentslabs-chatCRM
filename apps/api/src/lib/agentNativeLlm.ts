@@ -1672,38 +1672,36 @@ async function generateNativeAgentReplyCore(input: {
         }
       : undefined;
 
-  if (!input.skipEngineRoute) {
+  // Motor Padrão (openconduit) = loop linear sandbox — nunca via Agent Engine / orchestrator.
+  // Outros runtimes (langgraph, crewai, autogen, mastra) passam pela Factory.
+  if (!input.skipEngineRoute && engineConfig.runtime !== "openconduit") {
     ensureAgentEngineExecutorRegistered();
-    const legacyBypass =
-      engineConfig.runtime === "openconduit" && engineConfig.legacyOpenconduitBypass === true;
-    if (!legacyBypass) {
-      const engineResult = await executeViaAgentEngineWithResult({
-        organizationId,
-        bot,
-        conversation,
-        message,
-        log,
-        executionLog: ex,
-        historyOverride,
-        contactId,
-        engineConfig,
-        llmConfig: llm,
-        behaviorConfig:
-          profile.behaviorConfig && typeof profile.behaviorConfig === "object"
-            ? (profile.behaviorConfig as Record<string, unknown>)
-            : {},
-      });
-      return {
-        ...EMPTY_NATIVE_CORE_RESULT,
-        reply: engineResult.reply,
-        toolOutcomes: (engineResult.toolOutcomes ?? []).map((t) => ({
-          name: t.name,
-          ok: t.ok,
-          preview: t.preview,
-          structuredPayload: t.structuredPayload,
-        })),
-      };
-    }
+    const engineResult = await executeViaAgentEngineWithResult({
+      organizationId,
+      bot,
+      conversation,
+      message,
+      log,
+      executionLog: ex,
+      historyOverride,
+      contactId,
+      engineConfig,
+      llmConfig: llm,
+      behaviorConfig:
+        profile.behaviorConfig && typeof profile.behaviorConfig === "object"
+          ? (profile.behaviorConfig as Record<string, unknown>)
+          : {},
+    });
+    return {
+      ...EMPTY_NATIVE_CORE_RESULT,
+      reply: engineResult.reply,
+      toolOutcomes: (engineResult.toolOutcomes ?? []).map((t) => ({
+        name: t.name,
+        ok: t.ok,
+        preview: t.preview,
+        structuredPayload: t.structuredPayload,
+      })),
+    };
   }
 
   const temperatureRaw = llm.temperature;

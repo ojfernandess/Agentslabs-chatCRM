@@ -1,8 +1,7 @@
 import type { AgentRuntime } from "./AgentRuntime.js";
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "../types.js";
-import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";
+import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { executeRuntimeStream, type StreamRuntimeEvent } from "./StreamingRuntime.js";
-import { runWorkflowRuntimeTurn } from "./WorkflowRuntimeOrchestrator.js";
 
 export type NativeAgentKbMeta = {
   hasUsefulExcerpts: boolean;
@@ -21,34 +20,38 @@ export type NativeAgentExecutor = (
   input: AgentRuntimeExecuteInput,
 ) => Promise<NativeAgentExecutorResult>;
 
-export type OpenNexoRuntimeDeps = {
-  createMemoryProvider?: typeof defaultCreateMemoryProvider;
-};
-
 /**
- * Motor Padrão — executor do Workflow Runtime.
- * Delega toda a orquestração a `runWorkflowRuntimeTurn`
- * (Workflow → Planner → Contract → Scheduler → Tools → Facts → LLM → Reply).
+ * Motor Padrão (openconduit) — loop linear sandbox.
+ * Delega ao executor nativo (`generateNativeAgentReplyCore`) sem WorkflowRuntimeOrchestrator.
  */
 export class OpenNexoRuntime implements AgentRuntime {
   readonly kind = "openconduit" as const;
-  private readonly memoryFactory: typeof defaultCreateMemoryProvider;
 
-  constructor(
-    private readonly executor: NativeAgentExecutor,
-    deps?: OpenNexoRuntimeDeps,
-  ) {
-    this.memoryFactory = deps?.createMemoryProvider ?? defaultCreateMemoryProvider;
-  }
+  constructor(private readonly executor: NativeAgentExecutor) {}
 
   executeStream(input: AgentRuntimeExecuteInput): AsyncGenerator<StreamRuntimeEvent> {
     return executeRuntimeStream(this, input);
   }
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
-    return runWorkflowRuntimeTurn(input, this.executor, {
-      runtimeLabel: "openconduit",
-      createMemoryProvider: this.memoryFactory,
+    const traceBuilder = new ExecutionTraceBuilder({
+      runtime: "openconduit",
+      memory: input.engineConfig.memory,
+      strictMode: input.engineConfig.strictMode,
+      observability: input.engineConfig.observability,
     });
+    traceBuilder.emitEvent("start", "Motor Padrão — loop linear sandbox");
+    traceBuilder.startNode("respond", "Native linear reply");
+    const result = await this.executor(input);
+    traceBuilder.endNode(
+      "respond",
+      "ok",
+      result.reply ? `reply ${result.reply.length} chars` : "empty reply",
+    );
+    return {
+      reply: result.reply,
+      toolOutcomes: result.toolOutcomes,
+      trace: traceBuilder.build(),
+    };
   }
 }

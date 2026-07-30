@@ -8,7 +8,6 @@ import {
   resolveEffectiveToolExecutionMode,
   runWorkflowRuntimeTurn,
 } from "./WorkflowRuntimeOrchestrator.js";
-import { LangGraphRuntime } from "./LangGraphRuntime.js";
 
 const stubMemoryFactory = () =>
   ({
@@ -96,17 +95,13 @@ test("resolveEffectiveToolExecutionMode respects hybrid hint", () => {
   assert.equal(resolveEffectiveToolExecutionMode(input), "hybrid");
 });
 
-test("OpenNexoRuntime passes toolExecutionMode hint and keeps reply", async () => {
-  let seenMode: string | undefined;
-  const executor: NativeAgentExecutor = async (input) => {
-    seenMode = input.executionHints?.toolExecutionMode;
-    return {
-      reply: "Posso ajudar com a sua reserva.",
-      toolOutcomes: [],
-      kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
-    };
-  };
-  const runtime = new OpenNexoRuntime(executor, { createMemoryProvider: stubMemoryFactory });
+test("OpenNexoRuntime Motor Padrao is linear sandbox (no orchestrator)", async () => {
+  const executor: NativeAgentExecutor = async () => ({
+    reply: "Posso ajudar com a sua reserva.",
+    toolOutcomes: [],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+  });
+  const runtime = new OpenNexoRuntime(executor);
   const result = await runtime.execute(
     buildInput({
       messageBody: "oi",
@@ -114,15 +109,12 @@ test("OpenNexoRuntime passes toolExecutionMode hint and keeps reply", async () =
         schedulerEnabled: true,
         toolExecutionMode: "runtime_owned",
       }),
-      // Force mode via hint so scheduler-off fallback is not required
-      executionHints: { toolExecutionMode: "runtime_owned" },
     }),
   );
-  assert.equal(seenMode, "runtime_owned");
   assert.ok(result.reply.length > 0);
   assert.equal(result.trace?.runtime, "openconduit");
-  assert.ok(result.trace?.nodes.some((n) => n.id === "load_memory"));
   assert.ok(result.trace?.nodes.some((n) => n.id === "respond"));
+  assert.ok(!result.trace?.nodes.some((n) => n.id === "load_memory"));
 });
 
 test("runWorkflowRuntimeTurn emits workflow_engine timeline for implicit workflow", async () => {
@@ -158,36 +150,7 @@ test("runWorkflowRuntimeTurn emits workflow_engine timeline for implicit workflo
   assert.ok(events.includes("agent_engine"));
 });
 
-test("LangGraph workflowRuntimeShared delegates to same orchestrator", async () => {
-  let calls = 0;
-  const executor: NativeAgentExecutor = async (input) => {
-    calls += 1;
-    assert.equal(input.executionHints?.toolExecutionMode, "runtime_owned");
-    return {
-      reply: "Parity ok.",
-      toolOutcomes: [],
-      kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
-    };
-  };
-  const runtime = new LangGraphRuntime(executor, { createMemoryProvider: stubMemoryFactory });
-  const result = await runtime.execute(
-    buildInput({
-      messageBody: "oi",
-      engineConfig: engineForTest({
-        runtime: "langgraph",
-        workflowRuntimeShared: true,
-        schedulerEnabled: false,
-        toolExecutionMode: "runtime_owned",
-      }),
-      executionHints: { toolExecutionMode: "runtime_owned" },
-    }),
-  );
-  assert.equal(calls, 1);
-  assert.equal(result.reply, "Parity ok.");
-  assert.equal(result.trace?.runtime, "langgraph");
-});
-
-test("ReplySynthesizer replaces 11:31 tool-narration with Modelo S1 after tools", async () => {
+test("ReplySynthesizer replaces tool-narration with Modelo S1 after tools (legacy orchestrator)", async () => {
   const payload = {
     found: true,
     uid: "NCMT0VPN",

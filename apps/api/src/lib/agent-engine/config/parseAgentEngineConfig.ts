@@ -115,11 +115,8 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     resilienceEnabled,
     legacyOpenconduitBypass: o.legacyOpenconduitBypass === true,
     workflowEngineEnabled: o.workflowEngineEnabled === true,
-    // LangGraph default: shared spine (orchestrator). Opt-out com workflowRuntimeShared: false.
-    workflowRuntimeShared:
-      typeof o.workflowRuntimeShared === "boolean"
-        ? o.workflowRuntimeShared
-        : runtime === "langgraph",
+    // Deprecated: shared orchestrator spine removido do path de produção LangGraph/Motor Padrão.
+    workflowRuntimeShared: o.workflowRuntimeShared === true,
     memoryBudgetEnabled: o.memoryBudgetEnabled === true,
     memoryTokenBudget:
       typeof o.memoryTokenBudget === "number" && Number.isFinite(o.memoryTokenBudget)
@@ -166,8 +163,7 @@ export function mergeAgentEngineIntoBehavior(
       resilienceEnabled: engine.resilienceEnabled ?? false,
       legacyOpenconduitBypass: engine.legacyOpenconduitBypass ?? false,
       workflowEngineEnabled: engine.workflowEngineEnabled ?? false,
-      workflowRuntimeShared:
-        engine.workflowRuntimeShared ?? engine.runtime === "langgraph",
+      workflowRuntimeShared: engine.workflowRuntimeShared ?? false,
       memoryBudgetEnabled: engine.memoryBudgetEnabled ?? false,
       memoryTokenBudget: engine.memoryTokenBudget ?? 1200,
       memoryDefaultTtlSeconds: engine.memoryDefaultTtlSeconds ?? 0,

@@ -1,3 +1,8 @@
+/**
+ * @deprecated Production path for Motor Padrão / LangGraph no longer uses this orchestrator.
+ * Motor Padrão = linear sandbox (`generateNativeAgentReplyCore`); LangGraph = StateGraph agent↔tools.
+ * Kept for simulator / legacy unit tests of EIL + ReplySynthesizer spine.
+ */
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
 import { createMemoryProvider as defaultCreateMemoryProvider } from "../memory/MemoryProvider.js";

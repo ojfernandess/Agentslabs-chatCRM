@@ -42,20 +42,20 @@ test("parseAgentEngineConfig Motor Padrao openconduit enables scheduler by defau
   assert.equal(cfg.resilienceEnabled, true);
 });
 
-test("parseAgentEngineConfig langgraph defaults to shared workflow spine", () => {
+test("parseAgentEngineConfig langgraph does not default to shared workflow spine", () => {
   const cfg = parseAgentEngineConfig({
     agentEngine: { runtime: "langgraph" },
   });
   assert.equal(cfg.schedulerEnabled, false);
   assert.equal(cfg.toolExecutionMode, "hybrid");
-  assert.equal(cfg.workflowRuntimeShared, true);
+  assert.equal(cfg.workflowRuntimeShared, false);
 });
 
-test("parseAgentEngineConfig langgraph can opt out of shared spine", () => {
+test("parseAgentEngineConfig langgraph can still set workflowRuntimeShared true (legacy ignored at runtime)", () => {
   const cfg = parseAgentEngineConfig({
-    agentEngine: { runtime: "langgraph", workflowRuntimeShared: false },
+    agentEngine: { runtime: "langgraph", workflowRuntimeShared: true },
   });
-  assert.equal(cfg.workflowRuntimeShared, false);
+  assert.equal(cfg.workflowRuntimeShared, true);
 });
 
 test("parseAgentEngineConfig reads agentEngine block", () => {

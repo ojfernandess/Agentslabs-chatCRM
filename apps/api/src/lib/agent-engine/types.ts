@@ -59,8 +59,7 @@ export type AgentEngineConfig = {
   /** Recovery de tools + fallback + self-healing (Fase 4). */
   resilienceEnabled?: boolean;
   /**
-   * Hotfix: se true e runtime=openconduit, bypassa executeViaAgentEngine
-   * (path legado directo ao native core). Default false — unificação Execution Engine.
+   * @deprecated Motor Padrão usa sempre loop linear sandbox; esta flag deixou de ter efeito.
    */
   legacyOpenconduitBypass?: boolean;
   /**
@@ -69,8 +68,9 @@ export type AgentEngineConfig = {
    */
   workflowEngineEnabled?: boolean;
   /**
-   * LangGraph: delega o turno inteiro ao WorkflowRuntimeOrchestrator (parity Motor Padrão).
-   * Default true para runtime langgraph — mesmo spine PLAN→ACT→OBSERVE→REPLY.
+   * @deprecated Shared orchestrator spine removido do path de produção.
+   * LangGraph usa StateGraph agent↔tools; Motor Padrão usa loop linear sandbox.
+   * Flag ignorada se true (mantida só para compatibilidade de config legada).
    */
   workflowRuntimeShared?: boolean;
   /** Fase 4 — packing de memória com TTL/prioridade/token budget. */
@@ -185,7 +185,9 @@ export type AgentGraphNodeId =
   | "supervisor"
   | "update_memory"
   | "respond"
-  | "human_review";
+  | "human_review"
+  | "agent"
+  | "tools";
 
 export type AgentGraphEventKind =
   | "start"
