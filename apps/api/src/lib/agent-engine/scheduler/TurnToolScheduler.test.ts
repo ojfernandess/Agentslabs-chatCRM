@@ -53,6 +53,7 @@ test("buildScheduledToolArgs maps reference entity for HTTP tools", () => {
   const args = buildScheduledToolArgs("audaar_consultar_reserva", ctx);
   assert.equal(args.localizador, "ABC12345");
   assert.equal(args.localizadorOuReservationId, "ABC12345");
+  assert.equal(args.reservationIdOrLocalizer, "ABC12345");
 });
 
 test("buildScheduledToolArgs extracts locator from check-in phrase", () => {
@@ -67,6 +68,7 @@ test("buildScheduledToolArgs extracts locator from check-in phrase", () => {
   });
   const args = buildScheduledToolArgs("audaar_consultar_reserva", ctx);
   assert.equal(args.localizadorOuReservationId, "HVW4V2D5");
+  assert.equal(args.reservationIdOrLocalizer, "HVW4V2D5");
 });
 
 test("buildScheduledToolArgs uses user message for buscar_conhecimento", () => {
@@ -133,6 +135,28 @@ test("buildScheduledToolArgs copies session facts for HTTP required fields", () 
   assert.equal(args.mainGuestId, 33051);
   assert.equal(args.documentNumber, "41026299802");
   assert.equal(args.__satisfiedToolNames, undefined);
+  // Sem localizador string: usa reservationId numérico como reservationIdOrLocalizer.
+  assert.equal(args.reservationIdOrLocalizer, "279307");
+});
+
+test("buildScheduledToolArgs maps session localizer aliases to reservationIdOrLocalizer on sim", () => {
+  const ctx = stubTurnContext({
+    userMessage: "sim",
+    intent: {
+      kind: "confirmation",
+      confidence: 0.9,
+      entities: {},
+      expectedGoal: "confirm_and_proceed",
+    },
+    facts: {
+      localizadorOuReservationId: "NCMT0VPN",
+      reservationId: 279307,
+    },
+  });
+  const args = buildScheduledToolArgs("audaar_check_in", ctx);
+  assert.equal(args.reservationIdOrLocalizer, "NCMT0VPN");
+  assert.equal(args.localizadorOuReservationId, "NCMT0VPN");
+  assert.equal(args.reservationId, 279307);
 });
 
 test("formatScheduledToolsSystemAppendix forbids claiming success when tool failed", () => {

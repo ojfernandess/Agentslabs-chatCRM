@@ -180,6 +180,21 @@ test("normalizeLlmArgsKeyAliases fixes common reservationId typo from the model"
   assert.equal(normalized.type, "document");
 });
 
+test("normalizeLlmArgsKeyAliases maps localizadorOuReservationId to reservationIdOrLocalizer", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      reservationIdOrLocalizer: { type: "string" },
+    },
+    required: ["reservationIdOrLocalizer"],
+  };
+  const normalized = normalizeLlmArgsKeyAliases(
+    { localizadorOuReservationId: "NCMT0VPN" },
+    schema,
+  );
+  assert.equal(normalized.reservationIdOrLocalizer, "NCMT0VPN");
+});
+
 test("normalizeLlmArgsKeyAliases fixes nested object key typos", () => {
   const schema = {
     type: "object",

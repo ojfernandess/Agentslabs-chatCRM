@@ -28,21 +28,28 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
   }
 
   const args: Record<string, unknown> = {};
-  const ref =
+  const refFromMsg =
     (typeof entities.referenceCode === "string" && entities.referenceCode.trim()) ||
     msg.match(/\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i)?.[0]?.toUpperCase() ||
     "";
 
-  if (ref) {
-    // Aliases comuns em HTTP tools (schema Audaar usa localizadorOuReservationId).
-    args.reference = ref;
-    args.localizador = ref;
-    args.localizadorOuReservationId = ref;
-    args.booking_reference = ref;
-    args.reservation_code = ref;
-    args.reservationId = ref;
-    args.codigo = ref;
-  }
+  const applyLocatorAliases = (ref: string) => {
+    const v = ref.trim();
+    if (!v) return;
+    // Schema audaar_check_in usa reservationIdOrLocalizer; consultar_reserva usa localizadorOuReservationId.
+    args.reservationIdOrLocalizer = args.reservationIdOrLocalizer ?? v;
+    args.localizadorOuReservationId = args.localizadorOuReservationId ?? v;
+    args.reference = args.reference ?? v;
+    args.localizador = args.localizador ?? v;
+    args.localizer = args.localizer ?? v;
+    args.booking_reference = args.booking_reference ?? v;
+    args.reservation_code = args.reservation_code ?? v;
+    args.reservationId = args.reservationId ?? v;
+    args.codigo = args.codigo ?? v;
+  };
+
+  if (refFromMsg) applyLocatorAliases(refFromMsg);
+
   if (entities.documentNumber) {
     args.cpf = entities.documentNumber;
     args.document = entities.documentNumber;
@@ -65,6 +72,28 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
       }
     }
   }
+
+  // Localizador da sessão (C3) — no S10 a msg é só «sim», sem código na mensagem.
+  let locatorFromFacts: string | undefined;
+  for (const x of [
+    args.reservationIdOrLocalizer,
+    args.localizadorOuReservationId,
+    args.localizador,
+    args.localizer,
+    args.uid,
+    args.reference,
+    args.reservationId,
+  ]) {
+    if (typeof x === "string" && x.trim().length >= 4) {
+      locatorFromFacts = x.trim();
+      break;
+    }
+    if (typeof x === "number" && Number.isFinite(x) && String(x).length >= 4) {
+      locatorFromFacts = String(x);
+      break;
+    }
+  }
+  if (locatorFromFacts) applyLocatorAliases(locatorFromFacts);
 
   // check_in / schemas nested: monta mainGuest a partir de factos flat.
   if (/check[_-]?in|checkin/i.test(normalized)) {

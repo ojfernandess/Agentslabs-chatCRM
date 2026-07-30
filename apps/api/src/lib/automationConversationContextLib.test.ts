@@ -42,6 +42,15 @@ test("extractFlowSlotsFromToolExchange captures scalars and response ids", () =>
   assert.equal(slots.id, "doc-9");
 });
 
+test("extractFlowSlotsFromToolExchange mirrors localizadorOuReservationId to reservationIdOrLocalizer", () => {
+  const slots = extractFlowSlotsFromToolExchange({
+    llmArgs: { localizadorOuReservationId: "NCMT0VPN" },
+    ok: true,
+  });
+  assert.equal(slots.localizadorOuReservationId, "NCMT0VPN");
+  assert.equal(slots.reservationIdOrLocalizer, "NCMT0VPN");
+});
+
 test("buildNativeFlowStatePromptBlock includes slots and last tools", () => {
   const block = buildNativeFlowStatePromptBlock({
     flowStep: "uploaded_doc",

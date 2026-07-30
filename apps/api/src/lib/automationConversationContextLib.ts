@@ -322,6 +322,19 @@ export function extractFlowSlotsFromToolExchange(input: {
     }
   }
 
+  // Espelha localizador sob os nomes usados por consultar_reserva e check_in.
+  const locator =
+    (typeof out.reservationIdOrLocalizer === "string" && out.reservationIdOrLocalizer.trim()) ||
+    (typeof out.localizadorOuReservationId === "string" && out.localizadorOuReservationId.trim()) ||
+    (typeof out.localizador === "string" && out.localizador.trim()) ||
+    (typeof out.localizer === "string" && out.localizer.trim()) ||
+    (typeof out.uid === "string" && out.uid.trim()) ||
+    "";
+  if (locator.length >= 4) {
+    if (out.reservationIdOrLocalizer === undefined) out.reservationIdOrLocalizer = locator;
+    if (out.localizadorOuReservationId === undefined) out.localizadorOuReservationId = locator;
+  }
+
   return out;
 }
 

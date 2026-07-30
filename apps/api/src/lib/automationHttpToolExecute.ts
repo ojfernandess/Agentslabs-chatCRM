@@ -645,6 +645,23 @@ function maxTypoDistanceForKey(key: string): number {
   return Math.max(5, Math.floor(key.length * 0.2));
 }
 
+function stripArgKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Campos canónicos de localizador no schema vs aliases de sessão / outras tools. */
+const LOCATOR_SCHEMA_KEYS = new Set(["reservationidorlocalizer", "localizadoroureservationid"]);
+const LOCATOR_SOURCE_KEYS = new Set([
+  "reservationidorlocalizer",
+  "localizadoroureservationid",
+  "localizador",
+  "localizer",
+  "bookingreference",
+  "reservationcode",
+  "reference",
+  "uid",
+]);
+
 function findLikelySchemaKeyAlias(
   argKey: string,
   expectedKey: string,
@@ -653,6 +670,19 @@ function findLikelySchemaKeyAlias(
   const argLower = argKey.toLowerCase();
   const expLower = expectedKey.toLowerCase();
   if (argLower === expLower) return true;
+
+  const argStrip = stripArgKey(argKey);
+  const expStrip = stripArgKey(expectedKey);
+  // localizadorOuReservationId ↔ reservationIdOrLocalizer (Levenshtein falha — ordem das palavras).
+  if (LOCATOR_SCHEMA_KEYS.has(expStrip) && LOCATOR_SOURCE_KEYS.has(argStrip)) return true;
+  if (LOCATOR_SCHEMA_KEYS.has(argStrip) && LOCATOR_SOURCE_KEYS.has(expStrip)) return true;
+  if (
+    (argStrip === "reservationid" && LOCATOR_SCHEMA_KEYS.has(expStrip)) ||
+    (expStrip === "reservationid" && LOCATOR_SCHEMA_KEYS.has(argStrip))
+  ) {
+    return true;
+  }
+
   return levenshteinDistance(argLower, expLower) <= maxTypoDistanceForKey(expectedKey);
 }
 
@@ -834,6 +864,17 @@ function lookupFillValue(sources: Record<string, unknown>, key: string): unknown
     const b = lower;
     if (a.includes(b) || b.includes(a)) {
       if (Math.abs(a.length - b.length) <= Math.max(8, Math.floor(b.length * 0.35))) return sv;
+    }
+  }
+  // Sinónimos de localizador (ordem das palavras / nomes cruzados entre tools).
+  const want = stripArgKey(key);
+  if (LOCATOR_SCHEMA_KEYS.has(want) || LOCATOR_SOURCE_KEYS.has(want)) {
+    for (const [sk, sv] of Object.entries(sources)) {
+      if (sv === undefined || sv === null) continue;
+      const src = stripArgKey(sk);
+      if (LOCATOR_SOURCE_KEYS.has(src) || LOCATOR_SCHEMA_KEYS.has(src) || src === "reservationid") {
+        return sv;
+      }
     }
   }
   return undefined;
