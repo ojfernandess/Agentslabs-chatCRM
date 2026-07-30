@@ -8,6 +8,7 @@ import {
 } from "./turnPolicyParser.js";
 import type { CapabilityGraph, FactStore } from "../eil/types.js";
 import { detectToolOrderViolations, capabilityPreExecBlockReason } from "../eil/CapabilityGraph.js";
+import { isLikelyStallOnlyReply } from "../../agentReplyQuality.js";
 
 /**
  * Falhas reais (não skipped) que ainda não foram supersedidas por sucesso
@@ -125,13 +126,12 @@ export function validateToolExecution(input: ToolValidatorInput): ToolValidation
   }
 
   const stallPatterns = /^(só um momento|aguarde|vou verificar|um instante)/i;
-  if (
-    successful.length > 0 &&
-    input.replyText.trim() &&
-    stallPatterns.test(input.replyText.trim()) &&
-    input.strictMode
-  ) {
+  const replyLooksLikeStall =
+    Boolean(input.replyText.trim()) &&
+    (stallPatterns.test(input.replyText.trim()) || isLikelyStallOnlyReply(input.replyText));
+  if (successful.length > 0 && replyLooksLikeStall) {
     alerts.push("Resposta de espera após tool com sucesso — possível resultado não entregue");
+    // Bloqueia sempre: com tools HTTP OK o cliente deve receber factos (Modelo S1, etc.).
     blockSend = true;
   }
 

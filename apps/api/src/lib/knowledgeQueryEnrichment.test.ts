@@ -139,6 +139,20 @@ test("check-in with locator is not a knowledge-seeking query", () => {
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi da suíte?"), true);
 });
 
+test("resolveKnowledgeSearchSkip on check-in even without flow slots", () => {
+  assert.equal(
+    resolveKnowledgeSearchSkip("fazer check-in na reserva NCMT0VPN"),
+    "checkin_reservation_turn",
+  );
+  assert.equal(
+    resolveKnowledgeSearchSkip("preciso de ajuda com o quarto", {
+      reservationLookupScheduled: true,
+    }),
+    "checkin_reservation_turn",
+  );
+  assert.equal(resolveKnowledgeSearchSkip("Qual o Wi-Fi?"), null);
+});
+
 test("shouldSkipKnowledgeSearchForTurn on active flow without KB intent", () => {
   assert.equal(
     resolveKnowledgeSearchSkip("123456", {

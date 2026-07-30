@@ -234,6 +234,21 @@ test("shouldForceDeliveryAfterTools when empty or stall after any tools", () => 
     }),
     false,
   );
+  // Scheduler pré-executa com monitored=false — stall ainda deve forçar entrega.
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: [
+        {
+          name: "audaar_consultar_reserva",
+          ok: true,
+          preview: '{"found":true}',
+          monitored: false,
+        },
+      ],
+      replyText: "Vou verificar os detalhes da sua reserva. Um momento, por favor.",
+    }),
+    true,
+  );
 });
 
 test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {

@@ -108,6 +108,8 @@ test("formatScheduledToolsSystemAppendix requires substantive use of structured 
   assert.match(appendix, /279264/);
   assert.match(appendix, /2026-07-31/);
   assert.match(appendix, /Proibido responder só que/);
+  assert.match(appendix, /SCRIPT FIXO/i);
+  assert.match(appendix, /Modelo S1/i);
 });
 
 test("buildScheduledToolArgs copies session facts for HTTP required fields", () => {

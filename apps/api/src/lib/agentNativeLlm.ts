@@ -1378,15 +1378,27 @@ async function augmentReplyWithToolOutcomes(params: {
   signal: AbortSignal;
   log: FastifyBaseLogger;
 }): Promise<string> {
-  const monitored = params.toolOutcomes.filter((t) => t.monitored);
-  if (!monitored.length) return params.draftReply.trim();
-  const toolBlock = monitored
+  // Prefer monitored; Scheduler pré-executa com monitored=false — usar tools HTTP ok.
+  const monitored = params.toolOutcomes.filter((t) => t.monitored && t.ok);
+  const actionable =
+    monitored.length > 0
+      ? monitored
+      : params.toolOutcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento");
+  if (!actionable.length) return params.draftReply.trim();
+  const hasReservationLookup = actionable.some((t) => /consultar[_-]?reserva/i.test(t.name));
+  const toolBlock = actionable
     .map((t, i) => `${i + 1}. ${t.name} — ${t.ok ? "ok" : "falhou"}: ${t.preview}`)
     .join("\n");
+  const checkInScript = hasReservationLookup
+    ? "\nEste turno é check-in/verificar reserva: responda com o **script fixo do playbook (Modelo S1 / Modelo Verificar)** " +
+      "usando **apenas** o JSON da tool — hospedagem, datas, N hóspedes, estado do check-in e próximo passo (nacionalidade). " +
+      "PROIBIDO inventar formato alternativo ou responder só «vou verificar».\n"
+    : "";
   const extra =
     "\n\n[OpenConduit — resultado de ferramentas]\n" +
     "O cliente ainda não recebeu uma resposta substantiva após consultas automáticas.\n" +
     "Use os resultados abaixo para responder de forma clara e completa (mesma língua do cliente).\n" +
+    checkInScript +
     "Se alguma ferramenta falhou, explique o que falta ou peça só o necessário.\n" +
     "Não repita apenas «um momento» ou «vou verificar».\n\n" +
     toolBlock;
@@ -1858,6 +1870,9 @@ async function generateNativeAgentReplyCore(input: {
   const lastAssistantMessage =
     [...kbHistoryForSearch].reverse().find((t) => t.role === "assistant")?.content ?? "";
   const kbSearchSkipCfg = parseKnowledgeSearchSkipFromBehavior(profile.behaviorConfig);
+  const reservationLookupScheduled = toolRoundOutcomes.some(
+    (t) => t.ok && /consultar[_-]?reserva/i.test(t.name),
+  );
   const kbSearchSkipReason = kbSearchSkipCfg.enabled
     ? resolveKnowledgeSearchSkip(userMessage, {
         lastAssistantMessage,
@@ -1866,6 +1881,7 @@ async function generateNativeAgentReplyCore(input: {
         lastToolRoundHadHttpTools: Boolean(
           automationCtx.state.lastNativeToolRound?.tools?.some((t) => t.name !== "buscar_conhecimento"),
         ),
+        reservationLookupScheduled,
       })
     : null;
   const skipKbSearch = kbSearchSkipReason !== null;
@@ -2763,7 +2779,14 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
+  // Stall / vazio após tools HTTP (incl. Scheduler com monitored=false) → reforçar com factos da tool.
   if (
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: toolRoundOutcomes,
+      replyText,
+      forceDeliveryEnabled: toolCallNotify.forceDeliveryEnabled,
+      forceDeliveryTools: toolCallNotify.forceDeliveryTools,
+    }) ||
     shouldEnsureToolResultFollowUp({
       ensureResultDelivered: toolCallNotify.ensureResultDelivered,
       toolOutcomes: toolRoundOutcomes,
@@ -2775,7 +2798,7 @@ async function generateNativeAgentReplyCore(input: {
       "Resposta final não entregou resultado das ferramentas — reforço automático",
       {
         input: {
-          monitoredTools: toolRoundOutcomes.filter((t) => t.monitored).map((t) => t.name).slice(0, 8),
+          tools: toolRoundOutcomes.map((t) => t.name).slice(0, 8),
           replyChars: replyText.length,
         },
       },

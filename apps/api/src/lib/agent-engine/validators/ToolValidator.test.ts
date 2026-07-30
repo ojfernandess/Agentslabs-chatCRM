@@ -35,6 +35,17 @@ test("validateToolExecution blocks stall reply after successful tool in strict m
   assert.equal(result.blockSend, true);
 });
 
+test("validateToolExecution blocks stall after reservation lookup even without strict mode", () => {
+  const result = validateToolExecution({
+    toolOutcomes: [{ name: "audaar_consultar_reserva", ok: true, preview: '{"found":true}' }],
+    replyText: "Vou verificar os detalhes da sua reserva para realizar o check-in. Um momento, por favor.",
+    strictMode: false,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.blockSend, true);
+  assert.ok(result.alerts.some((a) => /espera|stall|não entregue/i.test(a)));
+});
+
 test("validateToolExecution blocks empty reply after tool success", () => {
   const result = validateToolExecution({
     toolOutcomes: [{ name: "http_tool", ok: true, preview: "200 OK" }],

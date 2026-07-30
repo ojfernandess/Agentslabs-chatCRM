@@ -7,7 +7,7 @@ export type KnowledgeSearchSkipConfig = {
 };
 
 export const DEFAULT_KNOWLEDGE_SEARCH_SKIP_HINT =
-  "A mensagem do cliente é confirmação, dado de cadastro ou continuação de fluxo — **não** invoque `buscar_conhecimento` nem responda com factos da base de conhecimento. Continue o fluxo de recolha/check-in em curso.";
+  "A mensagem do cliente é confirmação, dado de cadastro, check-in/verificar reserva ou continuação de fluxo — **não** invoque `buscar_conhecimento` nem responda com factos da base de conhecimento. Continue o fluxo operacional (API / check-in) em curso; no C3 use o **Modelo S1** só com o JSON da tool de reserva.";
 
 const DEFAULT_KNOWLEDGE_SEARCH_SKIP_CONFIG: KnowledgeSearchSkipConfig = {
   enabled: true,

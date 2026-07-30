@@ -164,10 +164,7 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   if (isUserDataProvisionMessage(t)) return false;
   if (isShortConfirmationOrFlowReply(t)) return false;
   // Pedidos operacionais (check-in / verificar reserva + localizador) → API HTTP, não KB.
-  if (
-    /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(t) &&
-    /[A-Za-z0-9]{5,}/.test(t.replace(/\s+/g, ""))
-  ) {
+  if (isOperationalReservationLookupMessage(t)) {
     return false;
   }
   if (/\?/.test(t)) return true;
@@ -186,14 +183,30 @@ export type KnowledgeSearchSkipReason =
   | "short_confirmation"
   | "data_provision"
   | "cadastro_turn"
-  | "active_flow";
+  | "active_flow"
+  | "checkin_reservation_turn";
 
 export type KnowledgeSearchSkipContext = {
   lastAssistantMessage?: string;
   flowStep?: string;
   hasFlowSlots?: boolean;
   lastToolRoundHadHttpTools?: boolean;
+  /** Tools de lookup de reserva já agendadas/executadas neste turno (Scheduler). */
+  reservationLookupScheduled?: boolean;
 };
+
+/**
+ * Pedido operacional C2/C3 (check-in / verificar reserva + localizador) —
+ * dados vêm da API HTTP, nunca da KB.
+ */
+export function isOperationalReservationLookupMessage(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  return (
+    /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(t) &&
+    /[A-Za-z0-9]{5,}/.test(t.replace(/\s+/g, ""))
+  );
+}
 
 /** Motivo para omitir RAG proactivo e `buscar_conhecimento` neste turno, ou null se a KB deve correr. */
 export function resolveKnowledgeSearchSkip(
@@ -202,6 +215,9 @@ export function resolveKnowledgeSearchSkip(
 ): KnowledgeSearchSkipReason | null {
   if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";
   if (isUserDataProvisionMessage(userMessage)) return "data_provision";
+  if (isOperationalReservationLookupMessage(userMessage) || ctx.reservationLookupScheduled) {
+    return "checkin_reservation_turn";
+  }
 
   const lastAssistant = ctx.lastAssistantMessage?.trim() ?? "";
   if (lastAssistant && assistantMessageIsDataCollection(lastAssistant)) {

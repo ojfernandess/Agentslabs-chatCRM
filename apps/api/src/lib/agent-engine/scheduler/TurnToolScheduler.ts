@@ -163,10 +163,20 @@ export function formatScheduledToolsSystemAppendix(
       "PROIBIDO re-pedir RG/órgão/CPF/email/endereço/fotos já listados no espelho da última mensagem ou no JSON da tool de lookup (main_guest). " +
       "Se o erro for de schema (ex.: rg+órgão juntos), separe os campos já conhecidos e retente — não peça de novo ao hóspede.\n"
     : "";
+  const reservationLookupOk = outcomes.some(
+    (o) => o.ok && /consultar[_-]?reserva/i.test(o.name),
+  );
+  const checkInScriptBlock = reservationLookupOk
+    ? "\n**SCRIPT FIXO (check-in / verificar reserva):** a resposta DEVE seguir o template do playbook " +
+      "(Modelo S1 se check-in explícito · Modelo Verificar se só verificar) com dados **desta** tool: " +
+      "hospedagem, check-in/out, N hóspedes, estado do check-in, opções/próximo passo (nacionalidade no C3). " +
+      "PROIBIDO mudar o formato · PROIBIDO «Vou verificar/consultar…» · PROIBIDO montar a resposta com KB/mem0/histórico.\n"
+    : "";
   return (
     "\n\n## Ferramentas já executadas pelo Runtime (Tool Scheduler)\n" +
     "Não volte a invocar ferramentas que tiveram sucesso neste turno.\n" +
     failBlock +
+    checkInScriptBlock +
     "A resposta AO CLIENTE DEVE usar os factos/dados abaixo de forma substantiva " +
     "(datas, estado, identificadores, valores, nomes). " +
     "Proibido responder só que «encontrou» / «localizou» sem detalhar os dados retornados.\n" +
