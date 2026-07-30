@@ -48,6 +48,7 @@ export {
 
 export {
   shouldSchedulePostCompletionFollowUp,
+  shouldSuppressOutboundCheckInAck,
   runPostCompletionFollowUp,
   isPostCompletionFollowUpMessage,
   resolvePostCompletionFollowUpSyntheticText,

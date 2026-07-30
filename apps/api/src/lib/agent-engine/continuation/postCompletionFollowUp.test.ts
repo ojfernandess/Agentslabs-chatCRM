@@ -6,6 +6,7 @@ import {
   POST_COMPLETION_FOLLOWUP_PROVIDER_PREFIX,
   resolvePostCompletionFollowUpSyntheticText,
   shouldSchedulePostCompletionFollowUp,
+  shouldSuppressOutboundCheckInAck,
 } from "./postCompletionFollowUp.js";
 import { parseAgentEngineConfig } from "../config/parseAgentEngineConfig.js";
 
@@ -38,19 +39,28 @@ test("parseAgentEngineConfig reads postCompletionFollowUpEnabled", () => {
   assert.equal(cfg.postCompletionFollowUpSyntheticText, "ok, pode enviar");
 });
 
-test("shouldSchedulePostCompletionFollowUp requires flag + completion tool + short ack", () => {
+test("shouldSchedulePostCompletionFollowUp schedules Passo 8 after check-in even if flag off", () => {
   const base = {
     replyText: "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes.",
     toolOutcomes: [{ name: "audaar_check_in", ok: true }],
     behaviorConfig: playbookBehavior,
     userMessage: "sim",
   };
+  // Check-in: always schedule Passo 8 (ack curto não é a mensagem ao hóspede).
   assert.equal(
     shouldSchedulePostCompletionFollowUp({ ...base, enabled: false }),
-    false,
+    true,
   );
   assert.equal(
     shouldSchedulePostCompletionFollowUp({ ...base, enabled: true }),
+    true,
+  );
+  assert.equal(
+    shouldSchedulePostCompletionFollowUp({
+      ...base,
+      enabled: false,
+      replyText: "",
+    }),
     true,
   );
   assert.equal(
@@ -90,6 +100,33 @@ test("shouldSchedulePostCompletionFollowUp requires flag + completion tool + sho
       ...base,
       enabled: true,
       isFollowUpMessage: true,
+    }),
+    false,
+  );
+});
+
+test("shouldSuppressOutboundCheckInAck hides short S10 ack when Passo 8 follows", () => {
+  assert.equal(
+    shouldSuppressOutboundCheckInAck({
+      willFollowUp: true,
+      replyText: "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.",
+      toolOutcomes: [{ name: "audaar_check_in", ok: true }],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldSuppressOutboundCheckInAck({
+      willFollowUp: false,
+      replyText: "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.",
+      toolOutcomes: [{ name: "audaar_check_in", ok: true }],
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSuppressOutboundCheckInAck({
+      willFollowUp: true,
+      replyText: "Seu check-in foi concluído!\n\n🏨 Nome: Hotel\nWi-Fi: …",
+      toolOutcomes: [{ name: "audaar_check_in", ok: true }],
     }),
     false,
   );

@@ -13,6 +13,7 @@ import {
   isPostCompletionFollowUpMessage,
   runPostCompletionFollowUp,
   shouldSchedulePostCompletionFollowUp,
+  shouldSuppressOutboundCheckInAck,
 } from "./agent-engine/continuation/postCompletionFollowUp.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
@@ -224,77 +225,95 @@ export async function runNativeAgentReplyAndDeliver(input: {
     }
 
     try {
-      const deliveryKind = await deliverAgentReplyMessage({
-        organizationId,
-        botId: bot.id,
-        conversation,
-        contact,
-        inboundMessage: message,
+      const willFollowUp = shouldSchedulePostCompletionFollowUp({
+        enabled: parseAgentEngineConfig(behaviorConfig).postCompletionFollowUpEnabled === true,
+        skip: skipFollowUp,
         replyText,
+        toolOutcomes,
         behaviorConfig,
-        log,
+        userMessage,
+        isFollowUpMessage: isPostCompletionFollowUpMessage(message),
       });
-      exLog.info(
-        { id: "outbound", name: "Entrega" },
-        deliveryKind === "audio" ? "Resposta em áudio enviada (ElevenLabs)" : "Mensagem outbound enviada",
-        { output: { chars: replyText.length, deliveryKind } },
-      );
+      const suppressAck = shouldSuppressOutboundCheckInAck({
+        replyText,
+        willFollowUp,
+        toolOutcomes,
+      });
+
+      if (!suppressAck) {
+        const deliveryKind = await deliverAgentReplyMessage({
+          organizationId,
+          botId: bot.id,
+          conversation,
+          contact,
+          inboundMessage: message,
+          replyText,
+          behaviorConfig,
+          log,
+        });
+        exLog.info(
+          { id: "outbound", name: "Entrega" },
+          deliveryKind === "audio" ? "Resposta em áudio enviada (ElevenLabs)" : "Mensagem outbound enviada",
+          { output: { chars: replyText.length, deliveryKind } },
+        );
+      } else {
+        exLog.info(
+          { id: "outbound", name: "Entrega" },
+          "Ack S10 suprimido — Passo 8 (follow-up) será a mensagem ao contacto",
+          { output: { chars: replyText.length, suppressedAck: true } },
+        );
+      }
+
+      await prisma.automationInteraction
+        .create({
+          data: {
+            organizationId,
+            botId: bot.id,
+            conversationId: conversation.id,
+            userMessage,
+            assistantMessage: suppressAck
+              ? "[ack S10 suprimido — Passo 8 a seguir]"
+              : replyText,
+            responseType: "native_fallback",
+          },
+        })
+        .catch(() => {});
+
+      if (willFollowUp) {
+        exLog.info(
+          { id: "post_completion_follow_up", name: "Follow-up pós-conclusão" },
+          "A agendar 2.º turno (Passo 8) após conclusão — sem esperar o contacto",
+        );
+      }
+
+      await exLog.completeSuccess();
+
+      if (willFollowUp) {
+        try {
+          await runPostCompletionFollowUp({
+            organizationId,
+            bot,
+            conversation,
+            contact,
+            sourceMessage: message,
+            behaviorConfig,
+            log,
+            deps: { runNativeAgentReplyAndDeliver },
+          });
+        } catch (err) {
+          log.warn(
+            { err, botId: bot.id, conversationId: conversation.id },
+            "post-completion follow-up schedule failed",
+          );
+        }
+      }
     } catch (err) {
       log.warn({ err, botId: bot.id }, "Agent bot native fallback send failed");
       await exLog.completeError(err);
       return;
     }
 
-    await prisma.automationInteraction
-      .create({
-        data: {
-          organizationId,
-          botId: bot.id,
-          conversationId: conversation.id,
-          userMessage,
-          assistantMessage: replyText,
-          responseType: "native_fallback",
-        },
-      })
-      .catch(() => {});
-
-    const willFollowUp = shouldSchedulePostCompletionFollowUp({
-      enabled: parseAgentEngineConfig(behaviorConfig).postCompletionFollowUpEnabled === true,
-      skip: skipFollowUp,
-      replyText,
-      toolOutcomes,
-      behaviorConfig,
-      userMessage,
-      isFollowUpMessage: isPostCompletionFollowUpMessage(message),
-    });
-    if (willFollowUp) {
-      exLog.info(
-        { id: "post_completion_follow_up", name: "Follow-up pós-conclusão" },
-        "A agendar 2.º turno (Passo 8) após ack de conclusão — sem esperar o contacto",
-      );
-    }
-
-    await exLog.completeSuccess();
-
-    if (willFollowUp) {
-      try {
-        await runPostCompletionFollowUp({
-          organizationId,
-          bot,
-          conversation,
-          contact,
-          sourceMessage: message,
-          behaviorConfig,
-          log,
-          deps: { runNativeAgentReplyAndDeliver },
-        });
-      } catch (err) {
-        log.warn(
-          { err, botId: bot.id, conversationId: conversation.id },
-          "post-completion follow-up schedule failed",
-        );
-      }
-    }
+    return;
   } catch (err) {
     await exLog.completeError(err);
   }

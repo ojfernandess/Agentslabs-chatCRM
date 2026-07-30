@@ -49,29 +49,64 @@ export type ShouldSchedulePostCompletionFollowUpInput = {
 };
 
 /**
- * Decide se deve agendar um 2.º turno (S11 / Passo 8) após tool de conclusão OK + ack curto.
- * Genérico — não hardcoda nomes de tools de um segmento.
- *
- * Importante: resolve política SEM userMessage de confirmação, para hints de conclusão
- * não dependerem do "sim" do hóspede (e para toolOutcomes vazios falharem cedo).
+ * Decide se deve agendar um 2.º turno (S11 / Passo 8) após tool de conclusão OK.
+ * Após check-in HTTP 200 agenda Passo 8 mesmo com a flag do painel desligada —
+ * a mensagem ao hóspede é o template Passo 8, não o ack curto S10.
  */
 export function shouldSchedulePostCompletionFollowUp(
   input: ShouldSchedulePostCompletionFollowUpInput,
 ): boolean {
   if (input.skip || input.isFollowUpMessage) return false;
-  if (!input.enabled) return false;
-  const reply = (input.replyText ?? "").trim();
-  if (!reply) return false;
-  if (reply.length > POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS) return false;
   if (!input.toolOutcomes.length) return false;
 
   const behavior =
     input.behaviorConfig && typeof input.behaviorConfig === "object"
       ? (input.behaviorConfig as Record<string, unknown>)
       : {};
-  // Sem userMessage: evita exclusive de gate no "sim" e foca só nos completion hints.
   const policy = resolveTurnPolicy(behavior, {});
-  return completionToolSatisfiedThisTurn(policy, input.toolOutcomes);
+  if (!completionToolSatisfiedThisTurn(policy, input.toolOutcomes)) return false;
+
+  const isCheckInCompletion = input.toolOutcomes.some(
+    (t) =>
+      t.ok !== false &&
+      /check[_-]?in/i.test(t.name) &&
+      !/consultar|upload|selfie|documento|document|photo|foto/i.test(t.name),
+  );
+  if (!input.enabled && !isCheckInCompletion) return false;
+
+  const reply = (input.replyText ?? "").trim();
+  // Check-in: permite reply vazia/ack curto (outbound do ack pode ser suprimido).
+  if (!reply && !isCheckInCompletion) return false;
+  if (reply.length > POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS) return false;
+
+  return true;
+}
+
+/** Ack curto S10 — não enviar ao canal se o Passo 8 vai sair a seguir. */
+export function shouldSuppressOutboundCheckInAck(input: {
+  replyText: string;
+  willFollowUp: boolean;
+  toolOutcomes: Array<{ name: string; ok?: boolean }>;
+}): boolean {
+  if (!input.willFollowUp) return false;
+  const isCheckIn = input.toolOutcomes.some(
+    (t) =>
+      t.ok !== false &&
+      /check[_-]?in/i.test(t.name) &&
+      !/consultar|upload|selfie|documento|document|photo|foto/i.test(t.name),
+  );
+  if (!isCheckIn) return false;
+  const t = (input.replyText ?? "").trim();
+  if (!t) return true;
+  if (t.length > POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS) return false;
+  // Já é Passo 8 / mensagem completa — não suprimir.
+  if (/🏨|veja abaixo|senha da porta|procedimento de entrada|endere[cç]o da hospedagem/i.test(t)) {
+    return false;
+  }
+  return (
+    /em\s+seguida\s+envio/i.test(t) ||
+    (/check-in\s+foi\s+conclu[ií]do/i.test(t) && t.length <= 140)
+  );
 }
 
 export type RunPostCompletionFollowUpDeps = {

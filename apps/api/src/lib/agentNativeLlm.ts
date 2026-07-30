@@ -2997,26 +2997,32 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  // S4c “não” / N=1 titular “sim”: se Embratur já correu na sessão, ainda assim entregar template dos 6.
+  // S4c “não” / N=1 titular “sim”: entregar template dos 6 (nunca pergunta “0 acompanhante”).
+  const partySizeNow = readPartySize(sessionFlowSlots);
+  const n1TitularConfirm =
+    /^(sim|ok|okay|certo|confirmo|yes)$/i.test(userMessage.trim()) &&
+    assistantIsTitularMirrorConfirm(lastAssistantForPolicy) &&
+    (partySizeNow == null || partySizeNow <= 1);
+  const replyIsInvalidN1Companion =
+    (partySizeNow == null || partySizeNow <= 1) &&
+    (assistantIsCompanionOptInPrompt(replyText) ||
+      /0\s+acompanhante|\+\s*0\s+acompanhante|1\s+hóspedes?\s+no\s+total/i.test(replyText));
   const needsS9TemplateOnly =
     !replyLooksLikeModeloS9(replyText) &&
-    !toolRoundOutcomes.some((t) => t.ok && /embratur[-_]?reference/i.test(t.name)) &&
-    ((assistantIsCompanionOptInPrompt(lastAssistantForPolicy) &&
-      isCompanionRegistrationDeclined(userMessage)) ||
-      (/^(sim|ok|okay|certo|confirmo|yes)$/i.test(userMessage.trim()) &&
-        assistantIsTitularMirrorConfirm(lastAssistantForPolicy) &&
-        (readPartySize(sessionFlowSlots) ?? 0) <= 1));
+    (replyIsInvalidN1Companion ||
+      (assistantIsCompanionOptInPrompt(lastAssistantForPolicy) &&
+        isCompanionRegistrationDeclined(userMessage)) ||
+      n1TitularConfirm);
   if (needsS9TemplateOnly) {
-    const gateAlreadyOk = sessionPriorAtBegin.some(
-      (t) => t.ok !== false && /embratur[-_]?reference/i.test(t.name),
+    replyText = buildModeloS9TravelFormTemplate();
+    ex?.warn(
+      { id: "reply_synthesizer", name: "Reply Synthesizer" },
+      JSON.stringify({
+        reason: replyIsInvalidN1Companion || n1TitularConfirm ? "n1_skip_s4c" : "embratur_s9_session",
+        afterChars: replyText.length,
+        partySize: partySizeNow,
+      }),
     );
-    if (gateAlreadyOk) {
-      replyText = buildModeloS9TravelFormTemplate();
-      ex?.warn(
-        { id: "reply_synthesizer", name: "Reply Synthesizer" },
-        JSON.stringify({ reason: "embratur_s9_session", afterChars: replyText.length }),
-      );
-    }
   }
 
   // Máquina S9→S9b→S10 (antes vivia só no Orchestrator).
