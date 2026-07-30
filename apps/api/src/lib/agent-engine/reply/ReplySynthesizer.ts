@@ -20,7 +20,14 @@ export type EnsureDeliveringReplyInput = {
 export type EnsureDeliveringReplyResult = {
   reply: string;
   replaced: boolean;
-  reason?: "tool_narration" | "stall" | "empty" | "reservation_s1" | "deterministic_fallback";
+  reason?:
+    | "tool_narration"
+    | "stall"
+    | "empty"
+    | "reservation_s1"
+    | "embratur_s9"
+    | "check_in_ack"
+    | "deterministic_fallback";
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -131,7 +138,7 @@ export function extractReservationDisplayFields(payload: unknown): {
 
 /**
  * Modelo S1 (check-in pendente) — script fixo a partir do JSON da tool.
- * Usado quando o LLM narra «Invocando ferramenta» em vez de entregar factos.
+ * Alinhado a docs/prompt.md (GATE C3).
  */
 export function buildModeloS1FromReservationPayload(
   payload: unknown,
@@ -171,16 +178,45 @@ export function buildModeloS1FromReservationPayload(
   }
 
   return (
-    `Encontrei sua reserva com sucesso!\n\n` +
+    `Olá! 😊\n` +
+    `Encontramos sua reserva com sucesso!\n` +
     `📍 Hospedagem: ${f.lodging}\n` +
     `📅 Check-in: ${checkInLine}\n` +
     `📅 Check-out: ${checkOutLine}\n` +
     `👥 Hóspedes: ${n}\n` +
-    `Seu check-in ainda não foi realizado.\n\n` +
+    `Seu check-in ainda não foi realizado.\n` +
     `✅ Pelo link: 🔗 https://pms.audaar.com.br/checkin/vivapp/access\n` +
     `💬 Por este chat: responda abaixo.\n` +
     `Para começar, informe: você é brasileiro(a) ou estrangeiro(a)?`
   );
+}
+
+/** Reply já segue o script S1 / verificar / check-in feito. */
+export function replyLooksLikeModeloS1(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  const hasFacts =
+    /📍\s*Hospedagem|Hospedagem\s*:/i.test(t) &&
+    /📅\s*Check-in|Check-in\s*:/i.test(t) &&
+    /👥\s*Hóspedes|Hóspedes\s*:/i.test(t);
+  if (!hasFacts) return false;
+  return (
+    /encontramos\s+sua\s+reserva|encontrei\s+sua\s+reserva/i.test(t) &&
+    (/brasileiro\(a\)\s+ou\s+estrangeiro|deseja\s+fazer\s+o\s+check-in\s+agora|check-in:\s*já\s+realizado|check-in:\s*pendente/i.test(
+      t,
+    ) ||
+      /pelo\s+link:.*checkin/i.test(t))
+  );
+}
+
+export function userMessageLooksLikeCheckInTurn(userMessage?: string): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (/\bcheck[- ]?in\b/i.test(msg)) return true;
+  if (/\bfazer\s+check\b/i.test(msg)) return true;
+  // Localizador + menção a reserva (C3 curto).
+  if (/\breserva\b/i.test(msg) && /\b[A-Z0-9]{6,12}\b/i.test(msg)) return true;
+  return false;
 }
 
 function findReservationLookupOutcome(
@@ -204,6 +240,12 @@ function tryParseJson(preview: string): unknown {
   } catch {
     return null;
   }
+}
+
+function looksLikeReservationPayload(outcome: SynthesizerToolOutcome): boolean {
+  const p = outcome.structuredPayload ?? tryParseJson(outcome.preview);
+  if (!p) return false;
+  return dig(p, ["checkinDate", "data.checkinDate", "stay.checkinDate", "guestsQuantity"]) != null;
 }
 
 function deterministicFallbackFromTools(outcomes: SynthesizerToolOutcome[]): string {
@@ -234,17 +276,96 @@ function deterministicFallbackFromTools(outcomes: SynthesizerToolOutcome[]): str
       "Pode confirmar o próximo passo ou partilhar mais algum detalhe?"
     );
   }
-  return bits.join("\n\n");
+  return bits.join("\n\n").slice(0, 3500);
+}
+
+function tryBuildModeloS1(
+  reservation: SynthesizerToolOutcome,
+  userMessage?: string,
+): string | null {
+  const payload = reservation.structuredPayload ?? tryParseJson(reservation.preview);
+  if (!payload) return null;
+  const s1 = buildModeloS1FromReservationPayload(payload, { userMessage });
+  if (s1.trim() && !isNonDeliveringAgentReply(s1)) return s1;
+  return null;
+}
+
+/** Template dos 6 (S9) — docs/prompt.md após embratur-reference. */
+export function buildModeloS9TravelFormTemplate(): string {
+  return (
+    `Para finalizar, envie de uma vez as informações da viagem:\n` +
+    `1. Qual é o motivo da viagem? (Lazer/Férias, Negócios, Congresso/Feira, Parentes/Amigos, Estudos/Cursos, Religião, Saúde, Compras ou Outro)\n` +
+    `2. Qual é o meio de transporte da chegada? (Avião, Automóvel, Ônibus, Moto, Trem, Van, Bicicleta, Caminhada ou Outro)\n` +
+    `3. Qual é o país de residência permanente? Exemplo: Brasil\n` +
+    `4. Qual é o país de destino? Exemplo: Brasil\n` +
+    `5. Qual é a cidade de procedência? Exemplo: São Paulo\n` +
+    `6. Qual é a cidade de destino? Exemplo: Rio de Janeiro\n` +
+    `Pode responder em uma única mensagem.`
+  );
+}
+
+export function replyLooksLikeModeloS9(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return (
+    /motivo\s+da\s+viagem/i.test(t) &&
+    /meio\s+de\s+transporte/i.test(t) &&
+    /pa[ií]s\s+de\s+resid/i.test(t) &&
+    /cidade\s+de\s+(?:proced|destino)/i.test(t)
+  );
+}
+
+/** Ack S10 após audaar_check_in HTTP 200. */
+export function buildModeloS10CheckInAck(): string {
+  return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+}
+
+export function replyLooksLikeCheckInAck(text: string): boolean {
+  return /check-in\s+foi\s+conclu[ií]do/i.test((text ?? "").trim());
 }
 
 /**
  * Garante reply substantiva apos tools OK.
- * Descarta stall / narracao de invocacao e substitui por Modelo S1 ou fallback.
+ * C3 → Modelo S1 · S9 embratur → template dos 6 · S10 check_in → ack.
  */
 export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): EnsureDeliveringReplyResult {
   const successful = input.toolOutcomes.filter((t) => t.ok !== false && t.name !== "buscar_conhecimento");
   if (successful.length === 0) {
     return { reply: input.replyText, replaced: false };
+  }
+
+  const hasCompletionTool = successful.some(
+    (t) => /check[_-]?in/i.test(t.name) && !/consultar/i.test(t.name),
+  );
+  const hasEmbraturGate = successful.some((t) => /embratur[-_]?reference/i.test(t.name));
+
+  if (hasCompletionTool && !replyLooksLikeCheckInAck(input.replyText)) {
+    return { reply: buildModeloS10CheckInAck(), replaced: true, reason: "check_in_ack" };
+  }
+
+  if (hasEmbraturGate && !hasCompletionTool && !replyLooksLikeModeloS9(input.replyText)) {
+    return { reply: buildModeloS9TravelFormTemplate(), replaced: true, reason: "embratur_s9" };
+  }
+
+  const reservation = findReservationLookupOutcome(successful);
+  const checkInTurn = userMessageLooksLikeCheckInTurn(input.userMessage);
+  const soleReservationLookup =
+    Boolean(reservation) &&
+    successful.every(
+      (t) => /consultar[_-]?reserva/i.test(t.name) || looksLikeReservationPayload(t),
+    );
+
+  if (
+    !hasCompletionTool &&
+    !hasEmbraturGate &&
+    reservation &&
+    (checkInTurn || soleReservationLookup) &&
+    !replyLooksLikeModeloS1(input.replyText)
+  ) {
+    const s1 = tryBuildModeloS1(reservation, input.userMessage);
+    if (s1) {
+      return { reply: s1, replaced: true, reason: "reservation_s1" };
+    }
   }
 
   const nonDelivering = isNonDeliveringAgentReply(
@@ -255,16 +376,10 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     return { reply: input.replyText, replaced: false };
   }
 
-  const reservation = findReservationLookupOutcome(successful);
-  if (reservation) {
-    const payload = reservation.structuredPayload ?? tryParseJson(reservation.preview);
-    if (payload) {
-      const s1 = buildModeloS1FromReservationPayload(payload, {
-        userMessage: input.userMessage,
-      });
-      if (s1.trim() && !isNonDeliveringAgentReply(s1)) {
-        return { reply: s1, replaced: true, reason: "reservation_s1" };
-      }
+  if (!hasCompletionTool && !hasEmbraturGate && reservation) {
+    const s1 = tryBuildModeloS1(reservation, input.userMessage);
+    if (s1) {
+      return { reply: s1, replaced: true, reason: "reservation_s1" };
     }
   }
 

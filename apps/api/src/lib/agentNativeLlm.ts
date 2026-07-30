@@ -64,10 +64,21 @@ import {
   priorToolOutcomesFromSession,
   readSessionSatisfiedToolNames,
 } from "./agent-engine/core/sessionToolOutcomes.js";
-import { readLastAssistantPreview } from "./agent-engine/core/confirmationTurnGuards.js";
+import {
+  readLastAssistantPreview,
+  assistantIsCompanionOptInPrompt,
+  isCompanionRegistrationDeclined,
+  assistantIsTitularMirrorConfirm,
+  readPartySize,
+} from "./agent-engine/core/confirmationTurnGuards.js";
 import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
-import { formatScheduledToolsSystemAppendix } from "./agent-engine/scheduler/TurnToolScheduler.js";
-import { ensureDeliveringReply } from "./agent-engine/reply/ReplySynthesizer.js";
+import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
+import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
+import {
+  ensureDeliveringReply,
+  buildModeloS9TravelFormTemplate,
+  replyLooksLikeModeloS9,
+} from "./agent-engine/reply/ReplySynthesizer.js";
 import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -2152,16 +2163,109 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  const schedulerAppendix = formatScheduledToolsSystemAppendix(
+  const schedulerAppendixFromHints = formatScheduledToolsSystemAppendix(
     executionHints?.preScheduledToolOutcomes ?? [],
   );
+  let schedulerAppendix = schedulerAppendixFromHints;
+  let scheduledThisTurn = (executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0;
+
+  // Sandbox (Motor Padrão + LangGraph production): forçar tools obrigatórias do playbook
+  // (S9 embratur / S10 check_in) — o Scheduler vivia só no Orchestrator removido.
+  if (
+    shouldRunToolScheduler(engineConfig, executionHints) &&
+    !scheduledThisTurn &&
+    historyOverride == null
+  ) {
+    try {
+      const scheduleCtx = buildTurnContext({
+        turnId: `${conversation.id}:${message.id}`,
+        behaviorConfig: behaviorConfigObj,
+        userMessage,
+        availableToolNames: catalogToolNames,
+        toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+          name,
+          ok,
+          preview,
+          structuredPayload,
+        })),
+        toolConfigs: customHttpTools.map((t) => ({ name: t.name, config: t.config })),
+        memory: { flowSlots: sessionFlowSlots },
+        sessionPriorOutcomes: sessionPriorAtBegin,
+        lastAssistantMessage: lastAssistantForPolicy,
+      });
+      if (scheduleCtx.executionContract.pendingToolNames.length > 0) {
+        const scheduled = await invokeScheduledTools({
+          organizationId,
+          bot,
+          conversation,
+          message,
+          log,
+          behaviorConfig: behaviorConfigObj,
+          turnContext: scheduleCtx,
+          existingOutcomes: toolRoundOutcomes,
+          userMessage,
+          kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+        });
+        for (const o of scheduled.outcomes) {
+          toolRoundOutcomes.push({
+            name: o.name,
+            ok: o.ok,
+            preview: o.preview,
+            monitored: false,
+            structuredPayload: o.structuredPayload,
+          });
+          if (o.ok) {
+            sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, o.name);
+          }
+        }
+        if (scheduled.outcomes.length > 0) {
+          scheduledThisTurn = true;
+          schedulerAppendix = formatScheduledToolsSystemAppendix(
+            toolRoundOutcomes.map((t) => ({
+              name: t.name,
+              ok: t.ok,
+              preview: t.preview,
+              structuredPayload: t.structuredPayload,
+            })),
+          );
+          ex?.info(
+            { id: "tool_scheduler", name: "Tool Scheduler" },
+            `Pré-executou ${scheduled.outcomes.length} tool(s) obrigatória(s)`,
+            {
+              output: {
+                tools: scheduled.outcomes.map((o) => ({ name: o.name, ok: o.ok })),
+                pending: scheduleCtx.executionContract.pendingToolNames,
+              },
+            },
+          );
+        }
+      }
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "native tool scheduler failed");
+      ex?.warn(
+        { id: "tool_scheduler", name: "Tool Scheduler" },
+        err instanceof Error ? err.message : "scheduler failed",
+      );
+    }
+  }
+
   const runtimeOwnedReplyGuard =
     schedulerAppendix &&
     (executionHints?.toolExecutionMode === "runtime_owned" ||
+      scheduledThisTurn ||
       ((executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
         executionHints?.toolExecutionMode !== "hybrid"))
       ? buildRuntimeOwnedReplyGuardAppendix()
       : "";
+
+  const omitToolAliases = toolAliasesToOmitFromCatalog({
+    policy: turnPolicy,
+    existingToolNames: toolRoundOutcomes.map((t) => t.name),
+    priorToolNames: sessionPriorAtBegin.map((t) => t.name),
+    flowSlots: sessionFlowSlots,
+    playbookText: playbookTextFromBehavior(behaviorConfigObj),
+    catalogToolNames,
+  });
 
   const systemBase =
     systemInstructions +
@@ -2214,16 +2318,9 @@ async function generateNativeAgentReplyCore(input: {
   let replyText = "";
   let completedToolRounds = 0;
 
-  const omitToolAliases = toolAliasesToOmitFromCatalog({
-    policy: turnPolicy,
-    existingToolNames: toolRoundOutcomes.map((t) => t.name),
-    priorToolNames: sessionPriorAtBegin.map((t) => t.name),
-    flowSlots: sessionFlowSlots,
-    playbookText: playbookTextFromBehavior(behaviorConfigObj),
-    catalogToolNames,
-  });
   const runtimeOwnedTools =
     executionHints?.toolExecutionMode === "runtime_owned" ||
+    (scheduledThisTurn && turnPolicy.forceExclusiveExecution) ||
     (executionHints?.replyOnlyRetry === true &&
       (executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
       executionHints?.toolExecutionMode !== "hybrid");
@@ -2844,12 +2941,13 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  // Última linha: nunca sair vazio após tools OK (S9 embratur ×N / check-in).
-  if (toolRoundOutcomes.some((t) => t.ok) && isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
+  // Última linha: forçar Modelo S1 após consultar_reserva (C3) e nunca sair vazio após tools OK.
+  if (toolRoundOutcomes.some((t) => t.ok)) {
     const synthesized = ensureDeliveringReply({
       replyText,
       toolOutcomes: toolRoundOutcomes,
       userMessage,
+      configuredStallMessages,
     });
     if (synthesized.replaced && synthesized.reply.trim()) {
       replyText = synthesized.reply.trim();
@@ -2857,7 +2955,7 @@ async function generateNativeAgentReplyCore(input: {
         { id: "reply_synthesizer", name: "Reply Synthesizer" },
         JSON.stringify({ reason: synthesized.reason, afterChars: replyText.length }),
       );
-    } else {
+    } else if (isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
       const deterministic = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
       if (deterministic.trim()) {
         replyText = deterministic.trim();
@@ -2866,6 +2964,28 @@ async function generateNativeAgentReplyCore(input: {
           "fallback deterministic after empty tool round",
         );
       }
+    }
+  }
+
+  // S4c “não” / N=1 titular “sim”: se Embratur já correu na sessão, ainda assim entregar template dos 6.
+  const needsS9TemplateOnly =
+    !replyLooksLikeModeloS9(replyText) &&
+    !toolRoundOutcomes.some((t) => t.ok && /embratur[-_]?reference/i.test(t.name)) &&
+    ((assistantIsCompanionOptInPrompt(lastAssistantForPolicy) &&
+      isCompanionRegistrationDeclined(userMessage)) ||
+      (/^(sim|ok|okay|certo|confirmo|yes)$/i.test(userMessage.trim()) &&
+        assistantIsTitularMirrorConfirm(lastAssistantForPolicy) &&
+        (readPartySize(sessionFlowSlots) ?? 0) <= 1));
+  if (needsS9TemplateOnly) {
+    const gateAlreadyOk = sessionPriorAtBegin.some(
+      (t) => t.ok !== false && /embratur[-_]?reference/i.test(t.name),
+    );
+    if (gateAlreadyOk) {
+      replyText = buildModeloS9TravelFormTemplate();
+      ex?.warn(
+        { id: "reply_synthesizer", name: "Reply Synthesizer" },
+        JSON.stringify({ reason: "embratur_s9_session", afterChars: replyText.length }),
+      );
     }
   }
 

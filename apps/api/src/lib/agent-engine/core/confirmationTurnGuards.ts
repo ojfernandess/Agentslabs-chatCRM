@@ -116,7 +116,10 @@ export function assistantIsCompletionStepConfirm(lastAssistantMessage?: string |
 export function assistantIsCompanionOptInPrompt(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
-  return /deseja\s+cadastrar|acompanhante\(s\)\s+agora|cadastrar\s+o\(s\)\s+acompanhante/i.test(t);
+  return (
+    /deseja\s+cadastrar|acompanhante\(s\)\s+agora|cadastrar\s+o\(s\)\s+acompanhante/i.test(t) ||
+    (/acompanhante/i.test(t) && /\b(sim\s*\/\s*n[aã]o|sim\/n[aã]o|\(sim\/n[aã]o\))\b/i.test(t))
+  );
 }
 
 /** Espelho / confirmação do acompanhante (ainda S4c — próximo é S9, não S10). */

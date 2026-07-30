@@ -241,6 +241,10 @@ export {
 export {
   ensureDeliveringReply,
   buildModeloS1FromReservationPayload,
+  replyLooksLikeModeloS1,
+  userMessageLooksLikeCheckInTurn,
+  buildModeloS9TravelFormTemplate,
+  buildModeloS10CheckInAck,
   extractReservationDisplayFields,
 } from "./reply/ReplySynthesizer.js";
 export {

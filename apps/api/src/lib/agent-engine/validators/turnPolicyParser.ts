@@ -721,7 +721,14 @@ export function toolAliasesToOmitFromCatalog(opts: {
         omit.add(name);
       }
     }
-    for (const hint of policy.completionToolHints) omit.add(hint);
+    // HJ2XQZXO-FICHA: NÃO omitir completion hints que são exactamente a exclusive
+    // deste turno (senão catálogo fica vazio e S10 nunca corre — “Geração sem tools”).
+    for (const hint of policy.completionToolHints) {
+      const isExclusiveNow = policy.exclusiveAllowedTools.some((ex) =>
+        toolsMatchAlias(ex, hint),
+      );
+      if (!isExclusiveNow) omit.add(hint);
+    }
     for (const pair of pairs) {
       if (toolsMatchAlias(pair.a, pair.b)) continue;
       const aAllowed = policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, pair.a));
@@ -837,7 +844,12 @@ export function completionToolSatisfiedThisTurn(
 export function buildCompletionSafeFallbackReply(opts: {
   completionToolNames: string[];
 }): string {
-  const tools = opts.completionToolNames.filter(Boolean).slice(0, 3).join(", ");
+  const names = opts.completionToolNames.filter(Boolean);
+  if (names.some((n) => /check[_-]?in/i.test(n))) {
+    // docs/prompt.md — ack S10 (XN4DYXTI-EMPTY)
+    return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+  }
+  const tools = names.slice(0, 3).join(", ");
   const toolPart = tools
     ? `A operação técnica (${tools}) foi concluída com sucesso.`
     : "A operação técnica de conclusão foi concluída com sucesso.";
