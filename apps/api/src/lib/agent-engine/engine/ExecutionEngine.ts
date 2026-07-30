@@ -1,6 +1,7 @@
 import { buildTurnContext, type BuildTurnContextOpts } from "../core/buildTurnContext.js";
 import type { TurnContext } from "../core/types.js";
 import { priorToolOutcomesFromSession } from "../core/sessionToolOutcomes.js";
+import { isPostCompletionFollowUpMessage } from "../continuation/postCompletionFollowUp.js";
 import type { ToolOutcomeForEil, FactStore } from "../eil/types.js";
 import type { AgentRuntimeExecuteInput } from "../types.js";
 import {
@@ -46,6 +47,8 @@ export type EngineTurnState = {
   sessionPriorAtBegin: Array<{ name: string; ok: boolean }>;
   /** Exclusive gate no begin — congela promoção a conclusão no refresh. */
   freezeCompletionPromotion: boolean;
+  /** Turno sintético pós-conclusão (Passo 8). */
+  postCompletionFollowUp: boolean;
 };
 
 export type BeginTurnOpts = {
@@ -97,6 +100,7 @@ export class ExecutionEngine {
       | undefined;
     const sessionPriorAtBegin = priorToolOutcomesFromSession(memoryFlowSlots);
 
+    const postCompletionFollowUp = isPostCompletionFollowUpMessage(input.message);
     const buildOpts: BuildTurnContextOpts = {
       turnId: context.turnId,
       behaviorConfig: input.behaviorConfig,
@@ -108,6 +112,7 @@ export class ExecutionEngine {
       toolConfigs: opts.toolConfigs,
       sessionPriorOutcomes: sessionPriorAtBegin,
       freezeCompletionPromotion: false,
+      postCompletionFollowUp,
     };
     const turnContext = buildTurnContext(buildOpts);
     const plan = enginePlanFromTurn(turnContext.turnPlan, turnContext.eilPlan);
@@ -135,6 +140,7 @@ export class ExecutionEngine {
       memory: opts.memory,
       sessionPriorAtBegin,
       freezeCompletionPromotion,
+      postCompletionFollowUp,
     };
   }
 
@@ -163,6 +169,7 @@ export class ExecutionEngine {
       priorFacts: opts.priorFacts ?? state.turnContext.facts,
       sessionPriorOutcomes: state.sessionPriorAtBegin,
       freezeCompletionPromotion: state.freezeCompletionPromotion,
+      postCompletionFollowUp: state.postCompletionFollowUp,
     });
     let next = syncPlanContract({ ...state, memory }, turnContext);
     const phase = opts.phase ?? "validate";

@@ -8,6 +8,7 @@ import {
   resolveCompletionRequiredToolsForConfirmation,
   type TurnPolicy,
 } from "../validators/turnPolicyParser.js";
+import { isPostCompletionPending } from "../core/sessionToolOutcomes.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 
 /**
@@ -37,6 +38,8 @@ export type BuildExecutionTurnPlanOpts = {
   /** Última resposta do agente — desambigua passo C11 (titular vs ficha vs S4c). */
   lastAssistantMessage?: string | null;
   memory?: Record<string, unknown> | null;
+  /** Turno sintético pós-conclusão (Passo 8). */
+  postCompletionFollowUp?: boolean;
 };
 
 /**
@@ -56,6 +59,7 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     flowSlots: opts.flowSlots,
     lastAssistantMessage: opts.lastAssistantMessage,
     memory: opts.memory,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
   const availableSet = new Set(
     (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
@@ -83,7 +87,10 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
     ...exclusiveRequired,
     ...completionRequired,
   ]);
-  const knowledgeSeeking = userMessageLooksLikeKnowledgeSeekingQuery(userMessage);
+  const knowledgeSeeking =
+    userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
+    opts.postCompletionFollowUp === true ||
+    isPostCompletionPending(opts.flowSlots);
 
   // Infer pattern ids from required tools / message (leve — sem re-export circular)
   const matchedPatternIds: string[] = [];

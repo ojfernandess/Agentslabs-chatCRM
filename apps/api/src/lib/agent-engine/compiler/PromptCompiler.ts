@@ -60,6 +60,7 @@ export type CompilePromptContractOpts = {
   freezeCompletionPromotion?: boolean;
   lastAssistantMessage?: string | null;
   memory?: Record<string, unknown> | null;
+  postCompletionFollowUp?: boolean;
 };
 
 /**
@@ -80,6 +81,7 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
     flowSlots: opts.flowSlots,
     lastAssistantMessage: opts.lastAssistantMessage,
     memory: opts.memory,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
   const availableSet = new Set(
     (opts.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),

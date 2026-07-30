@@ -21,10 +21,12 @@ import {
 import {
   isAwaitingPostGateData,
   isCompletionReady,
+  isPostCompletionPending,
 } from "../core/sessionToolOutcomes.js";
 import {
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
+  assistantIsPostCheckInAck,
 } from "../core/confirmationTurnGuards.js";
 
 export {
@@ -327,6 +329,11 @@ export function resolveTurnPolicy(
     lastAssistantMessage?: string | null;
     /** Memória do turno (facts EIL) — N de hóspedes quando ainda não está em flowSlots. */
     memory?: Record<string, unknown> | null;
+    /**
+     * Turno sintético pós-conclusão (Passo 8) ou sessão com conclusion pending.
+     * Não reabre exclusive de gate nem trata "OK" como C11.
+     */
+    postCompletionFollowUp?: boolean;
   } = {},
 ): TurnPolicy {
   const empty: TurnPolicy = {
@@ -357,6 +364,27 @@ export function resolveTurnPolicy(
     completionToolHints = completionToolHints.filter((t) => isPlausibleToolName(t));
   }
 
+  const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
+  const completionAlreadyDone = completionToolHints.some((h) =>
+    toolOutcomeSatisfiesRequired(h, priorOk),
+  );
+  const postCompletionMode =
+    options.postCompletionFollowUp === true ||
+    isPostCompletionPending(options.flowSlots) ||
+    (completionAlreadyDone && assistantIsPostCheckInAck(options.lastAssistantMessage));
+
+  // Passo 8 / pós-check-in: sem exclusive de gate; não bloquear KB/lookup por "OK".
+  if (postCompletionMode) {
+    return {
+      forbiddenSameTurnPairs,
+      exclusiveAllowedTools: null,
+      completionToolHints,
+      confirmationPrerequisiteTools,
+      omitToolsWhenSlotsPresent,
+      blockEscalation: false,
+    };
+  }
+
   const userMessage = (options.userMessage ?? "").trim();
   const isConfirmation = Boolean(userMessage && CONFIRMATION_USER_MSG_RE.test(userMessage));
 
@@ -371,7 +399,6 @@ export function resolveTurnPolicy(
     });
 
   if (isConfirmation && confirmationPrerequisiteTools.length > 0 && !suppressExclusive) {
-    const priorOk = (options.priorToolOutcomes ?? []).filter((t) => t.ok !== false);
     const pendingExclusive = confirmationPrerequisiteTools.filter(
       (tool) => !toolOutcomeSatisfiesRequired(tool, priorOk),
     );

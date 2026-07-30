@@ -80,6 +80,15 @@ test("applyConfirmationPhaseTransitions gates completion until post-gate data", 
   });
   assert.equal(slots.__awaitingPostGateData, false);
   assert.equal(slots.__completionReady, false);
+  assert.equal(slots.__postCompletionPending, true);
+
+  slots = applyConfirmationPhaseTransitions({
+    baseFlowSlots: slots,
+    toolOutcomes: [],
+    clearPostCompletionPending: true,
+    lastAssistantPreview: "Passo 8 completo com Wi-Fi",
+  });
+  assert.equal(slots.__postCompletionPending, false);
 });
 
 test("applyConfirmationPhaseTransitions does not arm ready on CPF or nationality", () => {

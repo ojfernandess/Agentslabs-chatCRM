@@ -252,6 +252,7 @@ export class OpenNexoRuntime implements AgentRuntime {
       completionToolHints: engineState.plan.turnPolicy.completionToolHints,
       userMessage: input.message.body ?? "",
       lastAssistantPreview: reply,
+      clearPostCompletionPending: engineState.postCompletionFollowUp,
     });
 
     engineState = engine.refreshTurnWithBehavior(engineState, input.behaviorConfig, {
@@ -277,6 +278,7 @@ export class OpenNexoRuntime implements AgentRuntime {
       completionToolHints: engineState.plan.turnPolicy.completionToolHints,
       userMessage: input.message.body ?? "",
       lastAssistantPreview: reply,
+      clearPostCompletionPending: engineState.postCompletionFollowUp,
     });
     if (Object.keys(slotsToPersist).length > 0) {
       try {

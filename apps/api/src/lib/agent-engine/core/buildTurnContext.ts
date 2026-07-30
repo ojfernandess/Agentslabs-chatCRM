@@ -135,6 +135,8 @@ export type BuildTurnContextOpts = {
   sessionPriorOutcomes?: Array<{ name: string; ok?: boolean }>;
   /** Turno iniciou com exclusive gate — congela promoção a conclusão. */
   freezeCompletionPromotion?: boolean;
+  /** Turno sintético pós-conclusão (Passo 8). */
+  postCompletionFollowUp?: boolean;
 };
 
 /** Constrói TurnContext completo — ponto de entrada único por turno (Fase 1). */
@@ -156,6 +158,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
     lastAssistantMessage,
     memory: opts.memory,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,
@@ -167,6 +170,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
     lastAssistantMessage,
     memory: opts.memory,
+    postCompletionFollowUp: opts.postCompletionFollowUp,
   });
   const intent = analyzeIntent(userMessage, turnPlan);
 

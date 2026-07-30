@@ -73,4 +73,23 @@ test("completion promotion blocked on titular / allowed on ficha", () => {
     shouldAllowCompletionToolPromotion({ lastAssistantMessage: FICHA_MIRROR }),
     true,
   );
+  assert.equal(
+    shouldAllowCompletionToolPromotion({
+      lastAssistantMessage:
+        "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.",
+    }),
+    false,
+  );
+});
+
+test("post check-in ack suppresses exclusive gate on OK", () => {
+  assert.equal(
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage:
+        "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.",
+      userMessage: "OK",
+      flowSlots: { guestsQuantity: 1 },
+    }),
+    true,
+  );
 });

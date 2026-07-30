@@ -633,3 +633,41 @@ test("ficha Sim with completionReady requires check_in", () => {
     `expected check_in on ficha confirm, got ${JSON.stringify(plan.requiredToolNames)}`,
   );
 });
+
+test("post-completion pending OK does not re-require embratur or check_in", () => {
+  const ack =
+    "Seu check-in foi concluído com sucesso! Em seguida envio os detalhes da sua estadia.";
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: SAMPLE_PLAYBOOK } },
+    userMessage: "OK",
+    priorToolOutcomes: [
+      { name: "embratur-reference", ok: true },
+      { name: "audaar_check_in", ok: true },
+    ],
+    sessionPriorOutcomes: [
+      { name: "embratur-reference", ok: true },
+      { name: "audaar_check_in", ok: true },
+    ],
+    flowSlots: {
+      __postCompletionPending: true,
+      __completionReady: false,
+      __lastAssistantPreview: ack,
+    },
+    lastAssistantMessage: ack,
+    postCompletionFollowUp: true,
+    availableToolNames: [
+      "embratur-reference",
+      "audaar_check_in",
+      "audaar_consultar_reserva",
+      "buscar_conhecimento",
+    ],
+  });
+  assert.equal(plan.turnPolicy.exclusiveAllowedTools, null);
+  assert.equal(plan.turnPolicy.blockEscalation, false);
+  assert.equal(plan.knowledgeSeeking, true);
+  assert.equal(
+    plan.requiredToolNames.some((t) => /embratur|check[_-]?in/i.test(t)),
+    false,
+    `expected no gate/completion on Passo 8, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+});

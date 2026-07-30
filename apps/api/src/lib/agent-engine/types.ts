@@ -77,7 +77,7 @@ export type AgentEngineConfig = {
    * sintético (Passo 8 / KB) sem esperar resposta do contacto. Default false.
    */
   postCompletionFollowUpEnabled?: boolean;
-  /** Texto do inbound sintético do follow-up (default `"OK"`). */
+  /** Texto do inbound sintético do follow-up (default não-confirmação). */
   postCompletionFollowUpSyntheticText?: string;
 };
 
@@ -106,7 +106,7 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   otelEnabled: false,
   simulatorEnabled: false,
   postCompletionFollowUpEnabled: false,
-  postCompletionFollowUpSyntheticText: "OK",
+  postCompletionFollowUpSyntheticText: "envie os detalhes da estadia",
 };
 
 export type AgentRuntimeExecuteInput = {

@@ -24,6 +24,12 @@ export const SESSION_AWAITING_POST_GATE_DATA_KEY = "__awaitingPostGateData";
 /** Utilizador já enviou dados após o gate — "sim" pode exigir conclusão. */
 export const SESSION_COMPLETION_READY_KEY = "__completionReady";
 
+/**
+ * Tool de conclusão OK neste turno — próximo turno é Passo 8 / pós-conclusão
+ * (não reabrir exclusive de gate nem reexigir check-in).
+ */
+export const SESSION_POST_COMPLETION_PENDING_KEY = "__postCompletionPending";
+
 export { SESSION_LAST_ASSISTANT_PREVIEW_KEY };
 
 export function readSessionSatisfiedToolNames(
@@ -59,6 +65,12 @@ export function isCompletionReady(
   return slotFlagTrue(flowSlots, SESSION_COMPLETION_READY_KEY);
 }
 
+export function isPostCompletionPending(
+  flowSlots?: Record<string, string | number | boolean> | null,
+): boolean {
+  return slotFlagTrue(flowSlots, SESSION_POST_COMPLETION_PENDING_KEY);
+}
+
 /**
  * Máquina de fase genérica (multi-segmento):
  * gate tool OK → aguarda dados de formulário → ready → conclusão OK → limpa.
@@ -74,6 +86,8 @@ export function applyConfirmationPhaseTransitions(opts: {
   userMessage?: string;
   /** Preview da resposta do agente neste turno (persistido para o próximo). */
   lastAssistantPreview?: string;
+  /** Turno sintético pós-conclusão (Passo 8) — limpa a flag pending. */
+  clearPostCompletionPending?: boolean;
 }): Record<string, string | number | boolean> {
   const slots: Record<string, string | number | boolean> = {
     ...(opts.baseFlowSlots ?? {}),
@@ -89,6 +103,7 @@ export function applyConfirmationPhaseTransitions(opts: {
   if (gateJustOk) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = true;
     slots[SESSION_COMPLETION_READY_KEY] = false;
+    slots[SESSION_POST_COMPLETION_PENDING_KEY] = false;
   }
 
   // Só formulário pós-gate libera conclusão — não CPF / nacionalidade / localizador.
@@ -108,6 +123,11 @@ export function applyConfirmationPhaseTransitions(opts: {
   if (completionJustOk) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
     slots[SESSION_COMPLETION_READY_KEY] = false;
+    slots[SESSION_POST_COMPLETION_PENDING_KEY] = true;
+  }
+
+  if (opts.clearPostCompletionPending) {
+    slots[SESSION_POST_COMPLETION_PENDING_KEY] = false;
   }
 
   const preview = (opts.lastAssistantPreview ?? "").trim();

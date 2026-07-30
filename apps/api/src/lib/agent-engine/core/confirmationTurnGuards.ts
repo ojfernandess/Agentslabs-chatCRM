@@ -87,12 +87,27 @@ export function assistantIsTitularMirrorConfirm(lastAssistantMessage?: string | 
 }
 
 /** Espelho da ficha de viagem / passo pré-conclusão. */
-export function assistantIsCompletionStepConfirm(lastAssistantMessage?: string | null): boolean {
+export function assistantIsFichaMirrorConfirm(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return /ficha\s+de\s+viagem|confirme\s+os\s+dados\s+da\s+ficha|motivo\s+da\s+viagem/i.test(t);
+}
+
+/** Ack mínimo pós tool de conclusão (S10) — próximo turno é Passo 8, não novo gate. */
+export function assistantIsPostCheckInAck(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
   return (
-    /ficha\s+de\s+viagem|confirme\s+os\s+dados\s+da\s+ficha|motivo\s+da\s+viagem/i.test(t) ||
-    /check-in\s+foi\s+conclu[ií]do|em\s+seguida\s+envio|responda\s+ok\s+para/i.test(t)
+    /check-in\s+foi\s+conclu[ií]do|em\s+seguida\s+envio|responda\s+ok\s+para/i.test(t) ||
+    /opera[cç][aã]o t[eé]cnica .* conclu[ií]da/i.test(t)
+  );
+}
+
+/** Espelho da ficha de viagem / passo pré-conclusão (ou ack pós check-in). */
+export function assistantIsCompletionStepConfirm(lastAssistantMessage?: string | null): boolean {
+  return (
+    assistantIsFichaMirrorConfirm(lastAssistantMessage) ||
+    assistantIsPostCheckInAck(lastAssistantMessage)
   );
 }
 
@@ -114,6 +129,7 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
   memory?: Record<string, unknown> | null;
 }): boolean {
   if (assistantAsksPreConfirmationData(opts.lastAssistantMessage)) return true;
+  if (assistantIsPostCheckInAck(opts.lastAssistantMessage)) return true;
 
   const party = readPartySize(opts.flowSlots, opts.memory);
   const msg = (opts.userMessage ?? "").trim();
@@ -140,7 +156,10 @@ export function shouldAllowCompletionToolPromotion(opts: {
   lastAssistantMessage?: string | null;
   flowSlots?: Record<string, string | number | boolean> | null;
 }): boolean {
-  if (assistantIsCompletionStepConfirm(opts.lastAssistantMessage)) return true;
+  // Ack pós check-in → Passo 8 (nunca reexigir tool de conclusão).
+  if (assistantIsPostCheckInAck(opts.lastAssistantMessage)) return false;
+
+  if (assistantIsFichaMirrorConfirm(opts.lastAssistantMessage)) return true;
 
   // Sem última resposta: só confiar em ready explícito (caller ainda exige a flag).
   if (!(opts.lastAssistantMessage ?? "").trim()) return true;

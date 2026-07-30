@@ -147,7 +147,7 @@ export function mergeAgentEngineIntoBehavior(
       postCompletionFollowUpSyntheticText:
         engine.postCompletionFollowUpSyntheticText ??
         DEFAULT_AGENT_ENGINE_CONFIG.postCompletionFollowUpSyntheticText ??
-        "OK",
+        "envie os detalhes da estadia",
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

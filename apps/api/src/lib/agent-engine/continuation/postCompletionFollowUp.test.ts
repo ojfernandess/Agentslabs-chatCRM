@@ -24,7 +24,7 @@ audaar_consultar_reserva + buscar_conhecimento
 test("parseAgentEngineConfig defaults postCompletionFollowUpEnabled to false", () => {
   const cfg = parseAgentEngineConfig({});
   assert.equal(cfg.postCompletionFollowUpEnabled, false);
-  assert.equal(cfg.postCompletionFollowUpSyntheticText, "OK");
+  assert.equal(cfg.postCompletionFollowUpSyntheticText, "envie os detalhes da estadia");
 });
 
 test("parseAgentEngineConfig reads postCompletionFollowUpEnabled", () => {
@@ -58,6 +58,14 @@ test("shouldSchedulePostCompletionFollowUp requires flag + completion tool + sho
       ...base,
       enabled: true,
       toolOutcomes: [{ name: "audaar_check_in", ok: false }],
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSchedulePostCompletionFollowUp({
+      ...base,
+      enabled: true,
+      toolOutcomes: [],
     }),
     false,
   );
@@ -99,7 +107,10 @@ test("isPostCompletionFollowUpMessage detects synthetic provider id", () => {
 });
 
 test("resolvePostCompletionFollowUpSyntheticText uses config or default", () => {
-  assert.equal(resolvePostCompletionFollowUpSyntheticText({}), "OK");
+  assert.equal(
+    resolvePostCompletionFollowUpSyntheticText({}),
+    "envie os detalhes da estadia",
+  );
   assert.equal(
     resolvePostCompletionFollowUpSyntheticText({
       agentEngine: { postCompletionFollowUpSyntheticText: "  pode seguir  " },

@@ -15,7 +15,11 @@ export const POST_COMPLETION_FOLLOWUP_PROVIDER_PREFIX = "oc:post-completion-foll
 /** Ack curto típico (S10) — se a reply for muito longa, assume Passo 8 já enviado. */
 export const POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS = 280;
 
-export const DEFAULT_POST_COMPLETION_FOLLOWUP_TEXT = "OK";
+/**
+ * Texto sintético que NÃO casa com CONFIRMATION_USER_MSG_RE ("ok"/"sim"),
+ * para o turno Passo 8 não reabrir exclusive de gate.
+ */
+export const DEFAULT_POST_COMPLETION_FOLLOWUP_TEXT = "envie os detalhes da estadia";
 
 export function isPostCompletionFollowUpMessage(message: {
   providerMsgId?: string | null;
@@ -47,6 +51,9 @@ export type ShouldSchedulePostCompletionFollowUpInput = {
 /**
  * Decide se deve agendar um 2.º turno (S11 / Passo 8) após tool de conclusão OK + ack curto.
  * Genérico — não hardcoda nomes de tools de um segmento.
+ *
+ * Importante: resolve política SEM userMessage de confirmação, para hints de conclusão
+ * não dependerem do "sim" do hóspede (e para toolOutcomes vazios falharem cedo).
  */
 export function shouldSchedulePostCompletionFollowUp(
   input: ShouldSchedulePostCompletionFollowUpInput,
@@ -58,12 +65,12 @@ export function shouldSchedulePostCompletionFollowUp(
   if (reply.length > POST_COMPLETION_FOLLOWUP_MAX_ACK_CHARS) return false;
   if (!input.toolOutcomes.length) return false;
 
-  const policy = resolveTurnPolicy(
+  const behavior =
     input.behaviorConfig && typeof input.behaviorConfig === "object"
       ? (input.behaviorConfig as Record<string, unknown>)
-      : {},
-    { userMessage: input.userMessage ?? "" },
-  );
+      : {};
+  // Sem userMessage: evita exclusive de gate no "sim" e foca só nos completion hints.
+  const policy = resolveTurnPolicy(behavior, {});
   return completionToolSatisfiedThisTurn(policy, input.toolOutcomes);
 }
 
