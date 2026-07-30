@@ -85,6 +85,32 @@ test("ExecutionEngine refreshTurn updates contract after tools", () => {
   assert.ok(state.timeline.some((e) => e.phase === "validate"));
 });
 
+test("ExecutionEngine replanWithWorkflow merges plannedToolNames into required", () => {
+  const input = mockInput("openconduit", HOTEL_PLAYBOOK, "Sim");
+  let state = sharedExecutionEngine.beginTurn({ input, memory: {} });
+  state = sharedExecutionEngine.attachWorkflow(state, {
+    version: 1,
+    workflowId: "implicit-turn-v1",
+    runId: "r1",
+    organizationId: "org-1",
+    conversationId: "conv-1",
+    status: "running",
+    currentStepId: "schedule_required",
+    completedStepIds: ["intent"],
+    plannedToolNames: ["audaar_consultar_reserva"],
+    toolResults: [],
+    vars: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    compensationStack: [],
+    iterationCounts: {},
+  });
+  state = sharedExecutionEngine.replanWithWorkflow(state, input.behaviorConfig, { memory: {} });
+  assert.ok(state.plan.requiredToolNames.includes("audaar_consultar_reserva"));
+  assert.ok(state.plan.requiredToolNames.includes("embratur-reference"));
+  assert.ok(state.timeline.some((e) => e.detail?.includes("workflow_merge")));
+});
+
 test("parseAgentEngineConfig legacyOpenconduitBypass default false", () => {
   const cfg = parseAgentEngineConfig({ agentEngine: { runtime: "openconduit" } });
   assert.equal(cfg.legacyOpenconduitBypass, false);

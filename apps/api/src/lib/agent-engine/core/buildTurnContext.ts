@@ -137,6 +137,8 @@ export type BuildTurnContextOpts = {
   freezeCompletionPromotion?: boolean;
   /** Turno sintético pós-conclusão (Passo 8). */
   postCompletionFollowUp?: boolean;
+  /** Tools planeadas pelo Workflow (explícito ou implícito). */
+  workflowPlannedToolNames?: string[];
 };
 
 /** Constrói TurnContext completo — ponto de entrada único por turno (Fase 1). */
@@ -159,6 +161,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     lastAssistantMessage,
     memory: opts.memory,
     postCompletionFollowUp: opts.postCompletionFollowUp,
+    workflowPlannedToolNames: opts.workflowPlannedToolNames,
   });
   const turnPlan = buildExecutionTurnPlan({
     behaviorConfig: opts.behaviorConfig,
@@ -171,6 +174,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     lastAssistantMessage,
     memory: opts.memory,
     postCompletionFollowUp: opts.postCompletionFollowUp,
+    workflowPlannedToolNames: opts.workflowPlannedToolNames,
   });
   const intent = analyzeIntent(userMessage, turnPlan);
 
@@ -186,6 +190,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
       priorFacts: opts.priorFacts,
       freezeCompletionPromotion: opts.freezeCompletionPromotion,
       postCompletionFollowUp: opts.postCompletionFollowUp,
+      workflowPlannedToolNames: opts.workflowPlannedToolNames,
     });
 
   const executionContract = buildExecutionContract({

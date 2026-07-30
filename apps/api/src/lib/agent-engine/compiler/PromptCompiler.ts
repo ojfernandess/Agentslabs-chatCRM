@@ -61,6 +61,7 @@ export type CompilePromptContractOpts = {
   lastAssistantMessage?: string | null;
   memory?: Record<string, unknown> | null;
   postCompletionFollowUp?: boolean;
+  workflowPlannedToolNames?: string[];
 };
 
 /**
@@ -104,10 +105,15 @@ export function compilePromptContract(opts: CompilePromptContractOpts): PromptCo
       lastAssistantMessage: opts.lastAssistantMessage,
     },
   );
+  const workflowPlanned = (opts.workflowPlannedToolNames ?? [])
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .filter((tool) => availableSet.size === 0 || availableSet.has(tool.toLowerCase()));
   const requiredToolNames = dedupeRequiredToolAliases([
     ...baseRequired,
     ...exclusiveRequired,
     ...completionRequired,
+    ...workflowPlanned,
   ]);
   const forbiddenSameTurnPairs = parseForbiddenSameTurnPairsFromPlaybook(playbook);
   const categoryMap = parseCategoryToolMapFromPlaybook(playbook);

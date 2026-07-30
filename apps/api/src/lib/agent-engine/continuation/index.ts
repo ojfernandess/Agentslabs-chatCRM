@@ -39,6 +39,14 @@ export {
 } from "./runContinuation.js";
 
 export {
+  IMPLICIT_TURN_WORKFLOW_ID,
+  SESSION_WORKFLOW_PHASE_KEY,
+  buildImplicitTurnWorkflowDefinition,
+  materializeImplicitWorkflowRun,
+  advanceImplicitWorkflowPhase,
+} from "./implicitTurnWorkflow.js";
+
+export {
   shouldSchedulePostCompletionFollowUp,
   runPostCompletionFollowUp,
   isPostCompletionFollowUpMessage,

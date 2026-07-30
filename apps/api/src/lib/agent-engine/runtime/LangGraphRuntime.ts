@@ -43,6 +43,15 @@ import { executeRuntimeStream } from "./StreamingRuntime.js";
 import type { StreamRuntimeEvent } from "./StreamingRuntime.js";
 import { publishGraphEvent } from "../observability/AgentGraphEventBus.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
+import {
+  resolveEffectiveToolExecutionMode,
+  runWorkflowRuntimeTurn,
+} from "./WorkflowRuntimeOrchestrator.js";
+import {
+  advanceImplicitWorkflowPhase,
+  materializeImplicitWorkflowRun,
+  SESSION_WORKFLOW_PHASE_KEY,
+} from "../continuation/implicitTurnWorkflow.js";
 import type { AgentCheckpointStoreKind } from "../types.js";
 import { resolveEilTurn, flowSlotsFromMemory } from "../eil/runtimeBridge.js";
 import {
@@ -163,6 +172,16 @@ export class LangGraphRuntime implements AgentRuntime {
   }
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
+    if (input.engineConfig.workflowRuntimeShared === true) {
+      this.state = { status: "running", graphHistory: ["workflow_runtime_shared"], currentNode: "orchestrator" };
+      const result = await runWorkflowRuntimeTurn(input, this.executor, {
+        runtimeLabel: "langgraph",
+        createMemoryProvider: this.memoryFactory,
+      });
+      this.state = { status: "idle", graphHistory: ["workflow_runtime_shared"], currentNode: undefined };
+      return result;
+    }
+
     this.state = { status: "running", graphHistory: [], currentNode: "classify_intent" };
 
     const traceBuilder = new ExecutionTraceBuilder({
@@ -577,25 +596,48 @@ export class LangGraphRuntime implements AgentRuntime {
           flowSlots: flowSlotsFromMemory(memory),
         },
       });
+      let workflowImplicit = false;
       if (continuation.enabled && continuation.state) {
         engineTurn = sharedExecutionEngine.attachWorkflow(engineTurn, continuation.state);
-        engineTurn = sharedExecutionEngine.recordPhase(
-          engineTurn,
-          "workflow",
-          `${continuation.state.status}:${continuation.state.currentStepId ?? "done"}`,
-          {
-            resumed: continuation.resumed,
-            plannedTools: continuation.state.plannedToolNames,
-            suspendReason: continuation.state.suspendReason,
-          },
-        );
-        state.traceBuilder.emitEvent("workflow_engine", "Continuation advance", {
-          metadata: {
-            status: continuation.state.status,
-            resumed: continuation.resumed,
-            plannedTools: continuation.state.plannedToolNames,
-          },
+      } else {
+        workflowImplicit = true;
+        const implicit = materializeImplicitWorkflowRun({
+          organizationId: state.input.organizationId,
+          conversationId: state.input.conversation.id,
+          messageId: state.input.message.id,
+          requiredToolNames: engineTurn.plan.requiredToolNames,
+          userMessage: state.input.message.body ?? "",
         });
+        engineTurn = sharedExecutionEngine.attachWorkflow(engineTurn, implicit.state);
+      }
+      engineTurn = sharedExecutionEngine.replanWithWorkflow(engineTurn, state.input.behaviorConfig, {
+        memory,
+      });
+      engineTurn = sharedExecutionEngine.recordPhase(
+        engineTurn,
+        "workflow",
+        `${engineTurn.workflowRun?.status}:${engineTurn.workflowRun?.currentStepId ?? "done"}`,
+        {
+          implicit: workflowImplicit,
+          resumed: continuation.resumed,
+          plannedTools: engineTurn.workflowRun?.plannedToolNames,
+          suspendReason: engineTurn.workflowRun?.suspendReason,
+        },
+      );
+      state.traceBuilder.emitEvent("workflow_engine", "Workflow controls turn", {
+        metadata: {
+          implicit: workflowImplicit,
+          status: engineTurn.workflowRun?.status,
+          resumed: continuation.resumed,
+          plannedTools: engineTurn.workflowRun?.plannedToolNames,
+          requiredAfterMerge: engineTurn.plan.requiredToolNames,
+        },
+      });
+      if (engineTurn.workflowRun && workflowImplicit) {
+        engineTurn = sharedExecutionEngine.attachWorkflow(
+          engineTurn,
+          advanceImplicitWorkflowPhase(engineTurn.workflowRun, "schedule_required"),
+        );
       }
       const turnContext = engineTurn.turnContext;
       state.traceBuilder.emitEvent("turn_context", "ExecutionEngine beginTurn", {
@@ -726,25 +768,30 @@ export class LangGraphRuntime implements AgentRuntime {
 
     const executeTool = async (state: GraphState): Promise<Partial<GraphState>> => {
       state.traceBuilder.startNode("execute_tool", "Executar agente + ferramentas");
+      const toolMode = resolveEffectiveToolExecutionMode(state.input);
       const replyOnly =
-        state.retryCount > 0 &&
-        shouldUseReplyOnlyRetry({
-          toolOutcomes: state.toolOutcomes,
-          supervisorChecks: state.supervisorTrace?.checks,
-        });
+        (state.retryCount > 0 &&
+          shouldUseReplyOnlyRetry({
+            toolOutcomes: state.toolOutcomes,
+            supervisorChecks: state.supervisorTrace?.checks,
+          })) ||
+        (toolMode === "runtime_owned" && (state.scheduledToolOutcomes?.length ?? 0) > 0);
       const priorOk = state.toolOutcomes.filter((t) => t.ok);
       const preScheduled = state.scheduledToolOutcomes ?? [];
       const execResult = await executor({
         ...state.input,
         kbPrefetchAppendix: state.kbPrefetchAppendix,
-        executionHints: replyOnly
-          ? {
-              replyOnlyRetry: true,
-              priorSuccessfulToolOutcomes: priorOk,
-            }
-          : preScheduled.length > 0
+        executionHints: {
+          ...state.input.executionHints,
+          toolExecutionMode: toolMode,
+          ...(replyOnly
             ? {
-                ...state.input.executionHints,
+                replyOnlyRetry: true,
+                priorSuccessfulToolOutcomes: priorOk,
+              }
+            : {}),
+          ...(preScheduled.length > 0
+            ? {
                 preScheduledToolOutcomes: preScheduled.map(
                   ({ name, ok, preview, structuredPayload }) => ({
                     name,
@@ -754,7 +801,8 @@ export class LangGraphRuntime implements AgentRuntime {
                   }),
                 ),
               }
-            : state.input.executionHints,
+            : {}),
+        },
       });
       state.traceBuilder.setNextNode("validate_result");
       state.traceBuilder.endNode(
@@ -763,19 +811,21 @@ export class LangGraphRuntime implements AgentRuntime {
         replyOnly ? "reply-only retry (sem reexecutar tools mutáveis)" : undefined,
       );
       const nextOutcomes =
-        replyOnly && priorOk.length > 0
-          ? [
-              ...priorOk,
-              ...(execResult.toolOutcomes ?? []).filter(
-                (t) => !priorOk.some((p) => p.name === t.name && p.ok),
-              ),
-            ]
-          : [
-              ...state.toolOutcomes,
-              ...(execResult.toolOutcomes ?? []).filter(
-                (t) => !state.toolOutcomes.some((p) => p.name === t.name && p.ok),
-              ),
-            ];
+        toolMode === "runtime_owned"
+          ? [...state.toolOutcomes]
+          : replyOnly && priorOk.length > 0
+            ? [
+                ...priorOk,
+                ...(execResult.toolOutcomes ?? []).filter(
+                  (t) => !priorOk.some((p) => p.name === t.name && p.ok),
+                ),
+              ]
+            : [
+                ...state.toolOutcomes,
+                ...(execResult.toolOutcomes ?? []).filter(
+                  (t) => !state.toolOutcomes.some((p) => p.name === t.name && p.ok),
+                ),
+              ];
       const eil = resolveEilTurn({
         behaviorConfig: state.input.behaviorConfig,
         userMessage: state.input.message.body ?? "",
@@ -888,6 +938,9 @@ export class LangGraphRuntime implements AgentRuntime {
         canRetry: opts.canRetry,
         executionContract: state.turnContext?.executionContract,
         toolOutcomes: state.toolOutcomes,
+        recoverFirst:
+          state.input.engineConfig.resilienceEnabled === true ||
+          state.input.engineConfig.workflowRuntimeShared === true,
       });
 
     const supervisor = async (state: GraphState): Promise<Partial<GraphState>> => {
@@ -1199,6 +1252,11 @@ export class LangGraphRuntime implements AgentRuntime {
         lastAssistantPreview: state.reply,
         clearPostCompletionPending: state.engineTurn?.postCompletionFollowUp === true,
       });
+      if (state.engineTurn?.workflowRun?.currentStepId) {
+        persistedSlots[SESSION_WORKFLOW_PHASE_KEY] = String(
+          state.engineTurn.workflowRun.currentStepId,
+        );
+      }
       if (Object.keys(persistedSlots).length > 0) {
         try {
           await mergeFlowSlotsAutomationContext({

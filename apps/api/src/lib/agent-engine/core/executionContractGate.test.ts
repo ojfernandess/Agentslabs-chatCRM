@@ -98,6 +98,34 @@ test("shouldBlockOutboundFromTurnContract blocks supervisor rejection after retr
   );
 });
 
+test("shouldBlockOutboundFromTurnContract recoverFirst does not wipe on pending Required", () => {
+  assert.equal(
+    shouldBlockOutboundFromTurnContract({
+      strictMode: true,
+      retryCount: 2,
+      canRetry: false,
+      executionContract: baseContract,
+      toolOutcomes: [],
+      recoverFirst: true,
+    }),
+    false,
+  );
+});
+
+test("shouldBlockOutboundFromTurnContract recoverFirst still blocks policy validationBlockSend", () => {
+  assert.equal(
+    shouldBlockOutboundFromTurnContract({
+      strictMode: true,
+      validationBlockSend: true,
+      retryCount: 2,
+      canRetry: false,
+      executionContract: baseContract,
+      recoverFirst: true,
+    }),
+    true,
+  );
+});
+
 test("blockReasonFromTurnContract prefers validation_block_send", () => {
   assert.equal(
     blockReasonFromTurnContract({

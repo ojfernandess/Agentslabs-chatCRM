@@ -170,6 +170,7 @@ export class ExecutionEngine {
       sessionPriorOutcomes: state.sessionPriorAtBegin,
       freezeCompletionPromotion: state.freezeCompletionPromotion,
       postCompletionFollowUp: state.postCompletionFollowUp,
+      workflowPlannedToolNames: state.workflowRun?.plannedToolNames,
     });
     let next = syncPlanContract({ ...state, memory }, turnContext);
     const phase = opts.phase ?? "validate";
@@ -189,6 +190,50 @@ export class ExecutionEngine {
 
   attachWorkflow(state: EngineTurnState, workflowRun: WorkflowRunState | null | undefined): EngineTurnState {
     return { ...state, workflowRun: workflowRun ?? null };
+  }
+
+  /**
+   * Recompila plan/contract incluindo tools planeadas pelo Workflow.
+   * Deve correr após attachWorkflow (explícito ou implícito).
+   */
+  replanWithWorkflow(
+    state: EngineTurnState,
+    behaviorConfig: Record<string, unknown> | null | undefined,
+    opts: {
+      toolOutcomes?: ToolOutcomeForEil[];
+      memory?: Record<string, unknown>;
+      priorFacts?: FactStore;
+    } = {},
+  ): EngineTurnState {
+    const t0 = Date.now();
+    const memory = opts.memory ?? state.memory;
+    const planned = state.workflowRun?.plannedToolNames ?? [];
+    const turnContext = buildTurnContext({
+      turnId: state.context.turnId,
+      behaviorConfig,
+      userMessage: state.context.userMessage,
+      availableToolNames: state.context.availableToolNames,
+      memory,
+      toolOutcomes: opts.toolOutcomes,
+      priorFacts: opts.priorFacts ?? state.turnContext.facts,
+      sessionPriorOutcomes: state.sessionPriorAtBegin,
+      freezeCompletionPromotion: state.freezeCompletionPromotion,
+      postCompletionFollowUp: state.postCompletionFollowUp,
+      workflowPlannedToolNames: planned,
+    });
+    let next = syncPlanContract({ ...state, memory }, turnContext);
+    next = {
+      ...next,
+      timeline: appendTimelineEvent(
+        next.timeline,
+        "plan",
+        `workflow_merge planned=${planned.join(",") || "none"} required=${next.plan.requiredToolNames.join(",") || "none"}`,
+        { plannedToolNames: planned },
+        Date.now() - t0,
+      ),
+      metrics: recordPhaseMs(next.metrics, "plan", Date.now() - t0),
+    };
+    return next;
   }
 
   recordPhase(

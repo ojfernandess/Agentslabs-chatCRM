@@ -67,18 +67,39 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
   if (!raw || typeof raw !== "object") {
     return {
       ...DEFAULT_AGENT_ENGINE_CONFIG,
+      schedulerEnabled: true,
+      toolExecutionMode: "runtime_owned",
+      resilienceEnabled: true,
       supervisorEnabled: legacySupervisor,
+      supervisorMode: legacySupervisor ? "structural" : "both",
     };
   }
   const o = raw as Record<string, unknown>;
   const supervisorEnabled =
     o.supervisorEnabled === true ||
     (o.supervisorEnabled !== false && legacySupervisor);
+  const runtime = asRuntimeKind(o.runtime);
+  const schedulerEnabled =
+    typeof o.schedulerEnabled === "boolean"
+      ? o.schedulerEnabled
+      : runtime === "openconduit";
+  const resilienceEnabled =
+    typeof o.resilienceEnabled === "boolean"
+      ? o.resilienceEnabled
+      : runtime === "openconduit";
+  const toolExecutionMode: AgentEngineConfig["toolExecutionMode"] =
+    o.toolExecutionMode === "runtime_owned" || o.toolExecutionMode === "hybrid"
+      ? o.toolExecutionMode
+      : runtime === "openconduit"
+        ? "runtime_owned"
+        : "hybrid";
   return {
-    runtime: asRuntimeKind(o.runtime),
+    runtime,
     memory: asMemoryKind(o.memory),
     supervisorEnabled,
-    supervisorMode: supervisorEnabled ? asSupervisorMode(o.supervisorMode) : "both",
+    supervisorMode: supervisorEnabled
+      ? asSupervisorMode(o.supervisorMode ?? (runtime === "openconduit" ? "structural" : "both"))
+      : "both",
     strictMode: o.strictMode === true,
     observability: asObsLevel(o.observability),
     checkpointStore: asCheckpointStore(o.checkpointStore),
@@ -89,10 +110,12 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     clientTokenStreamingEnabled: o.clientTokenStreamingEnabled === true,
     clientOutboundStreamingEnabled: o.clientOutboundStreamingEnabled === true,
     parallelKbPrefetchEnabled: o.parallelKbPrefetchEnabled === true,
-    schedulerEnabled: o.schedulerEnabled === true,
-    resilienceEnabled: o.resilienceEnabled === true,
+    schedulerEnabled,
+    toolExecutionMode,
+    resilienceEnabled,
     legacyOpenconduitBypass: o.legacyOpenconduitBypass === true,
     workflowEngineEnabled: o.workflowEngineEnabled === true,
+    workflowRuntimeShared: o.workflowRuntimeShared === true,
     memoryBudgetEnabled: o.memoryBudgetEnabled === true,
     memoryTokenBudget:
       typeof o.memoryTokenBudget === "number" && Number.isFinite(o.memoryTokenBudget)
@@ -135,9 +158,11 @@ export function mergeAgentEngineIntoBehavior(
       clientOutboundStreamingEnabled: engine.clientOutboundStreamingEnabled ?? false,
       parallelKbPrefetchEnabled: engine.parallelKbPrefetchEnabled ?? false,
       schedulerEnabled: engine.schedulerEnabled ?? false,
+      toolExecutionMode: engine.toolExecutionMode ?? "hybrid",
       resilienceEnabled: engine.resilienceEnabled ?? false,
       legacyOpenconduitBypass: engine.legacyOpenconduitBypass ?? false,
       workflowEngineEnabled: engine.workflowEngineEnabled ?? false,
+      workflowRuntimeShared: engine.workflowRuntimeShared ?? false,
       memoryBudgetEnabled: engine.memoryBudgetEnabled ?? false,
       memoryTokenBudget: engine.memoryTokenBudget ?? 1200,
       memoryDefaultTtlSeconds: engine.memoryDefaultTtlSeconds ?? 0,

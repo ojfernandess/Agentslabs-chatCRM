@@ -50,6 +50,12 @@ export type AgentEngineConfig = {
   parallelKbPrefetchEnabled?: boolean;
   /** Invoca tools obrigatórias antes do LLM (Tool Scheduler — Fase 2). */
   schedulerEnabled?: boolean;
+  /**
+   * Quem executa tools no Motor Padrão:
+   * - runtime_owned: só Scheduler (LLM reply-only)
+   * - hybrid: Scheduler pré-executa Required; LLM ainda pode chamar tools
+   */
+  toolExecutionMode?: "runtime_owned" | "hybrid";
   /** Recovery de tools + fallback + self-healing (Fase 4). */
   resilienceEnabled?: boolean;
   /**
@@ -62,6 +68,11 @@ export type AgentEngineConfig = {
    * Requer `behaviorConfig.agentEngine.workflow` definition.
    */
   workflowEngineEnabled?: boolean;
+  /**
+   * LangGraph: delega o turno inteiro ao WorkflowRuntimeOrchestrator (parity Motor Padrão).
+   * Default false — preserva grafo LangGraph clássico.
+   */
+  workflowRuntimeShared?: boolean;
   /** Fase 4 — packing de memória com TTL/prioridade/token budget. */
   memoryBudgetEnabled?: boolean;
   /** Orçamento de tokens do appendix de memória (quando memoryBudgetEnabled). */
@@ -97,9 +108,11 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   clientOutboundStreamingEnabled: false,
   parallelKbPrefetchEnabled: false,
   schedulerEnabled: false,
+  toolExecutionMode: "hybrid",
   resilienceEnabled: false,
   legacyOpenconduitBypass: false,
   workflowEngineEnabled: false,
+  workflowRuntimeShared: false,
   memoryBudgetEnabled: false,
   memoryTokenBudget: 1200,
   memoryDefaultTtlSeconds: 0,
@@ -139,6 +152,11 @@ export type AgentRuntimeExecuteInput = {
       preview: string;
       structuredPayload?: unknown;
     }>;
+    /**
+     * runtime_owned: não expor tools ao LLM (só texto).
+     * hybrid / omitido: comportamento clássico com function-calling.
+     */
+    toolExecutionMode?: "runtime_owned" | "hybrid";
   };
 };
 

@@ -40,6 +40,8 @@ export type BuildExecutionTurnPlanOpts = {
   memory?: Record<string, unknown> | null;
   /** Turno sintético pós-conclusão (Passo 8). */
   postCompletionFollowUp?: boolean;
+  /** Tools planeadas pelo Workflow (explícito ou implícito). */
+  workflowPlannedToolNames?: string[];
 };
 
 /**
@@ -82,10 +84,15 @@ export function buildExecutionTurnPlan(opts: BuildExecutionTurnPlanOpts): Execut
       lastAssistantMessage: opts.lastAssistantMessage,
     },
   );
+  const workflowPlanned = (opts.workflowPlannedToolNames ?? [])
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .filter((tool) => availableSet.size === 0 || availableSet.has(tool.toLowerCase()));
   const requiredToolNames = dedupeRequiredToolAliases([
     ...baseRequired,
     ...exclusiveRequired,
     ...completionRequired,
+    ...workflowPlanned,
   ]);
   const knowledgeSeeking =
     userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||

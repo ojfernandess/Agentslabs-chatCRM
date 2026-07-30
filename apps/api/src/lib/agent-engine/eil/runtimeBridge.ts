@@ -47,6 +47,7 @@ export type ResolveEilTurnOpts = {
   freezeCompletionPromotion?: boolean;
   /** Turno sintético pós-conclusão (Passo 8). */
   postCompletionFollowUp?: boolean;
+  workflowPlannedToolNames?: string[];
 };
 
 export type ResolveEilTurnResult = {
@@ -99,6 +100,7 @@ export function resolveEilTurn(opts: ResolveEilTurnOpts): ResolveEilTurnResult {
     memory: opts.memory,
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
     postCompletionFollowUp: opts.postCompletionFollowUp,
+    workflowPlannedToolNames: opts.workflowPlannedToolNames,
   });
   const snapshot = buildEilSnapshot({
     behaviorConfig: opts.behaviorConfig,

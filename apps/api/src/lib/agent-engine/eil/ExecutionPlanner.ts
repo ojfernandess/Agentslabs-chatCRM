@@ -39,6 +39,7 @@ export function buildExecutionIntelligencePlan(
     memory: opts.memory,
     freezeCompletionPromotion: opts.freezeCompletionPromotion,
     postCompletionFollowUp: opts.postCompletionFollowUp,
+    workflowPlannedToolNames: opts.workflowPlannedToolNames,
   });
 
   const eilEnabled = isEilEnabled(opts.behaviorConfig);

@@ -2185,20 +2185,28 @@ async function generateNativeAgentReplyCore(input: {
     playbookText: playbookTextFromBehavior(behaviorConfigObj),
     catalogToolNames,
   });
-  const tools: OpenAiToolDefinition[] = [
-    ...buildOpenAiTools(flags, {
-      omitBuscarConhecimento:
-        omitBuscarConhecimento || toolNameMatchesOmitAlias("buscar_conhecimento", omitToolAliases),
-      assignableTagsDescription,
-    }).filter((t) => !toolNameMatchesOmitAlias(t.function.name, omitToolAliases)),
-    ...customHttpTools
-      .filter((row) => !toolNameMatchesOmitAlias(row.name, omitToolAliases))
-      .map((row) =>
-        openAiToolDefinitionForAutomationTool(row, {
-          agentInstruction: agentInstructionByToolId.get(row.id),
-        }),
-      ),
-  ];
+  const runtimeOwnedTools =
+    executionHints?.toolExecutionMode === "runtime_owned" ||
+    (executionHints?.replyOnlyRetry === true &&
+      (executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
+      executionHints?.toolExecutionMode !== "hybrid");
+  const tools: OpenAiToolDefinition[] = runtimeOwnedTools
+    ? []
+    : [
+        ...buildOpenAiTools(flags, {
+          omitBuscarConhecimento:
+            omitBuscarConhecimento ||
+            toolNameMatchesOmitAlias("buscar_conhecimento", omitToolAliases),
+          assignableTagsDescription,
+        }).filter((t) => !toolNameMatchesOmitAlias(t.function.name, omitToolAliases)),
+        ...customHttpTools
+          .filter((row) => !toolNameMatchesOmitAlias(row.name, omitToolAliases))
+          .map((row) =>
+            openAiToolDefinitionForAutomationTool(row, {
+              agentInstruction: agentInstructionByToolId.get(row.id),
+            }),
+          ),
+      ];
   const useTools = provider !== "google_gemini" && tools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;

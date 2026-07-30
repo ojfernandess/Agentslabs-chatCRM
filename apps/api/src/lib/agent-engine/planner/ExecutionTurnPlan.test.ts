@@ -4,6 +4,21 @@ import { buildExecutionTurnPlan } from "./ExecutionTurnPlan.js";
 import { shouldBlockOutboundFromWorkflow, validateAgentWorkflow } from "../audit/WorkflowValidator.js";
 import { runWorkflowGate } from "../audit/applyWorkflowGate.js";
 
+test("buildExecutionTurnPlan merges workflowPlannedToolNames", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: "Chame `embratur-reference` quando confirmar.",
+      },
+    },
+    userMessage: "sim",
+    workflowPlannedToolNames: ["audaar_consultar_reserva"],
+    availableToolNames: ["embratur-reference", "audaar_consultar_reserva"],
+  });
+  assert.ok(plan.requiredToolNames.includes("audaar_consultar_reserva"));
+});
+
 test("buildExecutionTurnPlan requires only consultar_reserva for C2 message", () => {
   const plan = buildExecutionTurnPlan({
     behaviorConfig: {

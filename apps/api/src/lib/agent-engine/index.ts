@@ -3,6 +3,10 @@ export { parseAgentEngineConfig, mergeAgentEngineIntoBehavior } from "./config/p
 export type { AgentRuntime } from "./runtime/AgentRuntime.js";
 export { AgentRuntimeFactory } from "./runtime/AgentRuntimeFactory.js";
 export { OpenNexoRuntime, type NativeAgentExecutor } from "./runtime/OpenNexoRuntime.js";
+export {
+  runWorkflowRuntimeTurn,
+  resolveEffectiveToolExecutionMode,
+} from "./runtime/WorkflowRuntimeOrchestrator.js";
 export { LangGraphRuntime } from "./runtime/LangGraphRuntime.js";
 export { CrewAIRuntime } from "./runtime/CrewAIRuntime.js";
 export { AutoGenRuntime } from "./runtime/AutoGenRuntime.js";

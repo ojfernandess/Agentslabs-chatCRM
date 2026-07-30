@@ -10,27 +10,34 @@ export type TurnContractGateInput = {
   canRetry: boolean;
   executionContract?: ExecutionContract | null;
   toolOutcomes?: Array<{ name: string; ok?: boolean }>;
+  /**
+   * Motor Padrão recover-first: não esvazia outbound só por Required pendente
+   * após loops de recovery — só bloqueia política proibida / supervisor final.
+   */
+  recoverFirst?: boolean;
 };
 
 /**
  * Gate de outbound baseado no contrato de turno — não interpreta prompt textual.
- * Fase 0: bloqueia envio quando validação falhou ou supervisor esgotou retries.
+ * Com recoverFirst, Required pendente não limpa a reply (resilience já tentou).
  */
 export function shouldBlockOutboundFromTurnContract(opts: TurnContractGateInput): boolean {
   if (!opts.strictMode) return false;
 
   if (opts.validationBlockSend === true) return true;
 
-  if (opts.executionContract && !opts.executionContract.valid) {
-    return true;
-  }
+  if (!opts.recoverFirst) {
+    if (opts.executionContract && !opts.executionContract.valid) {
+      return true;
+    }
 
-  if (opts.executionContract?.requiredToolNames.length) {
-    const outcomes = opts.toolOutcomes ?? [];
-    const missing = opts.executionContract.requiredToolNames.filter(
-      (n) => !toolOutcomeSatisfiesRequired(n, outcomes),
-    );
-    if (missing.length > 0) return true;
+    if (opts.executionContract?.requiredToolNames.length) {
+      const outcomes = opts.toolOutcomes ?? [];
+      const missing = opts.executionContract.requiredToolNames.filter(
+        (n) => !toolOutcomeSatisfiesRequired(n, outcomes),
+      );
+      if (missing.length > 0) return true;
+    }
   }
 
   if (!opts.supervisorTrace) return false;

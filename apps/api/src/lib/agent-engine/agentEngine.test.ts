@@ -28,6 +28,27 @@ test("parseAgentEngineConfig defaults for legacy agents", () => {
   assert.equal(cfg.memory, "openconduit");
   assert.equal(cfg.strictMode, false);
   assert.equal(cfg.observability, "basic");
+  assert.equal(cfg.schedulerEnabled, true);
+  assert.equal(cfg.toolExecutionMode, "runtime_owned");
+  assert.equal(cfg.resilienceEnabled, true);
+});
+
+test("parseAgentEngineConfig Motor Padrao openconduit enables scheduler by default", () => {
+  const cfg = parseAgentEngineConfig({
+    agentEngine: { runtime: "openconduit" },
+  });
+  assert.equal(cfg.schedulerEnabled, true);
+  assert.equal(cfg.toolExecutionMode, "runtime_owned");
+  assert.equal(cfg.resilienceEnabled, true);
+});
+
+test("parseAgentEngineConfig langgraph keeps hybrid tools until shared parity", () => {
+  const cfg = parseAgentEngineConfig({
+    agentEngine: { runtime: "langgraph" },
+  });
+  assert.equal(cfg.schedulerEnabled, false);
+  assert.equal(cfg.toolExecutionMode, "hybrid");
+  assert.equal(cfg.workflowRuntimeShared, false);
 });
 
 test("parseAgentEngineConfig reads agentEngine block", () => {

@@ -146,4 +146,5 @@ export type BuildEilContextOpts = {
   memory?: Record<string, unknown> | null;
   freezeCompletionPromotion?: boolean;
   postCompletionFollowUp?: boolean;
+  workflowPlannedToolNames?: string[];
 };
