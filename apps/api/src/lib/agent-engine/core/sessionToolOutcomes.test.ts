@@ -136,12 +136,15 @@ test("applyConfirmationPhaseTransitions arms ready on ficha form even without aw
   const slots = applyConfirmationPhaseTransitions({
     baseFlowSlots: {},
     userMessage:
-      "* Motivo da viagem: Congresso\n* Meio de transporte: Automóvel\n* País de residência: Brasil",
+      "* Motivo da viagem: Congresso\n* Meio de transporte: Automóvel\n* País de residência: Brasil\n* País de destino: Brasil\n* Cidade de procedência: São Paulo\n* Cidade de destino: São Paulo",
     lastAssistantPreview:
       "Para finalizar, envie de uma vez as informações da viagem:\n1. Qual é o motivo da viagem?",
   });
   assert.equal(slots.__completionReady, true);
   assert.equal(slots.__awaitingPostGateData, false);
+  assert.equal(slots.snmotvia, 3);
+  assert.equal(slots.sntiptran, 2);
+  assert.equal(slots.snidcidadeibge, 3550308);
 });
 
 test("applyConfirmationPhaseTransitions persists lastAssistantPreview", () => {

@@ -9,6 +9,7 @@ import {
   orderToolsByFactDeps,
 } from "../eil/CapabilityGraph.js";
 import { hasFact } from "../eil/FactsEngine.js";
+import { assembleEmbraturFromSources } from "../checkin/embraturTravelForm.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -52,10 +53,15 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
   const facts = turnContext.facts;
   if (facts && typeof facts === "object") {
     for (const [k, v] of Object.entries(facts)) {
-      if (k.startsWith("__")) continue;
+      if (k.startsWith("__") && k !== "__travelFormMessage") continue;
       if (v === undefined || v === null) continue;
-      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-        if (!(k in args)) args[k] = v;
+      // FactStore: { key, value, source } · stubs de teste: escalar directo.
+      let scalar: unknown = v;
+      if (typeof v === "object" && !Array.isArray(v) && "value" in (v as object)) {
+        scalar = (v as { value?: unknown }).value;
+      }
+      if (typeof scalar === "string" || typeof scalar === "number" || typeof scalar === "boolean") {
+        if (!(k in args)) args[k] = scalar;
       }
     }
   }
@@ -94,6 +100,12 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
     }
     if (Object.keys(guest).length > 0) {
       args.mainGuest = guest;
+    }
+
+    // Embratur (ficha S9b → snmotvia / sntiptran / IBGE) a partir de flowSlots/facts.
+    const embratur = assembleEmbraturFromSources(args);
+    if (embratur && Object.keys(embratur).length > 0) {
+      args.embratur = embratur;
     }
   }
 

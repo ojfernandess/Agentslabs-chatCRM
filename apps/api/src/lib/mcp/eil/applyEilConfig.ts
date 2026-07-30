@@ -87,7 +87,17 @@ export const DEFAULT_MAIN_GUEST_TOOL_EIL = {
 
 export const DEFAULT_CHECK_IN_TOOL_EIL = {
   produces: ["checkinCompleted", "reservationStatus"],
-  requiresFacts: ["documentNumber", "email", "mainGuestId"],
+  requiresFacts: [
+    "documentNumber",
+    "email",
+    "mainGuestId",
+    "snmotvia",
+    "sntiptran",
+    "bgstdscpais",
+    "bgstdscpaisdest",
+    "snidcidadeibge",
+    "snidcidadeibgedest",
+  ],
   capabilities: ["complete_checkin"],
   factPaths: {
     checkinCompleted: "ok",

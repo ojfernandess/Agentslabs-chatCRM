@@ -6,6 +6,7 @@ import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecut
 import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js";
+import { assembleEmbraturFromSources } from "./agent-engine/checkin/embraturTravelForm.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -919,6 +920,15 @@ export function buildSchemaFillSources(
   const guest = assembleMainGuestFromFlatSources(sources);
   if (Object.keys(guest).length > 0) {
     sources.mainGuest = guest;
+  }
+
+  // Embratur nested: factos flat (snmotvia…) ou __travelFormMessage → objecto completo.
+  const embratur = assembleEmbraturFromSources(sources);
+  if (embratur && Object.keys(embratur).length > 0) {
+    sources.embratur = embratur;
+    for (const [k, v] of Object.entries(embratur)) {
+      if (isFillableScalar(v)) sources[k] = v;
+    }
   }
 
   return sources;
