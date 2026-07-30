@@ -73,16 +73,31 @@ function pickNumber(payload: unknown, paths: string[]): number | null {
   return null;
 }
 
+function truthyFlag(v: unknown): boolean {
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+
 function isCheckInDone(payload: unknown): boolean {
   const status = dig(payload, [
     "checkinActionDate",
     "data.checkinActionDate",
+    "data.checkin.checkinActionDate",
     "stay.checkinActionDate",
     "reservation.checkinActionDate",
   ]);
-  if (status != null && String(status).trim()) return true;
-  const flag = dig(payload, ["checkInDone", "data.checkInDone", "stay.checkInCompleted"]);
-  return flag === true || flag === "true";
+  if (status != null && String(status).trim() && String(status) !== "null") return true;
+  const flag = dig(payload, [
+    "checkInDone",
+    "data.checkInDone",
+    "stay.checkInCompleted",
+    "validatedCheckin",
+    "data.checkin.validatedCheckin",
+    "data.validatedCheckin",
+    "hasCheckinApproved",
+    "data.checkin.hasCheckinApproved",
+    "data.hasCheckinApproved",
+  ]);
+  return truthyFlag(flag);
 }
 
 /** Extrai campos tipicos de consultar_reserva (Audaar / generico). */
@@ -285,10 +300,38 @@ function looksLikeReservationPayload(outcome: SynthesizerToolOutcome): boolean {
   return dig(p, ["checkinDate", "data.checkinDate", "stay.checkinDate", "guestsQuantity"]) != null;
 }
 
+/** Preview/reply parece JSON de API — nunca enviar ao hóspede. */
+export function looksLikeRawToolJson(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  if (/^\s*[\[{]/.test(t) && /"(?:message|data|ok|error|found|statusCode|bodyPreview|checkin)"\s*:/i.test(t)) {
+    return true;
+  }
+  return /"message"\s*:\s*"Check-in realizado/i.test(t);
+}
+
+function outcomeLooksLikeCheckInCompletion(t: SynthesizerToolOutcome): boolean {
+  if (/consultar/i.test(t.name)) return false;
+  if (/check[_-]?in/i.test(t.name) && !/upload|selfie|documento|document|photo|foto/i.test(t.name)) {
+    return true;
+  }
+  const preview = t.preview ?? "";
+  if (/check-in\s+realizado\s+com\s+sucesso/i.test(preview)) return true;
+  if (/"validatedCheckin"\s*:\s*1\b/.test(preview) || /"hasCheckinApproved"\s*:\s*1\b/.test(preview)) {
+    return true;
+  }
+  const payload = t.structuredPayload ?? tryParseJson(preview);
+  if (!payload) return false;
+  return isCheckInDone(payload);
+}
+
 function deterministicFallbackFromTools(outcomes: SynthesizerToolOutcome[]): string {
   const ok = outcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento");
   if (ok.length === 0) {
     return "Consultei o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido?";
+  }
+  if (ok.some(outcomeLooksLikeCheckInCompletion)) {
+    return buildModeloS10CheckInAck();
   }
   const bits: string[] = [];
   for (const t of ok.slice(0, 2)) {
@@ -303,9 +346,11 @@ function deterministicFallbackFromTools(outcomes: SynthesizerToolOutcome[]): str
       }
     }
     const preview = t.preview.replace(/\s+/g, " ").slice(0, 280);
-    if (preview && !/invocando|consultando a reserva/i.test(preview)) {
-      bits.push(preview);
+    // Nunca reenviar JSON cru / bodyPreview truncado ao contacto (bug 16:09).
+    if (!preview || looksLikeRawToolJson(preview) || /invocando|consultando a reserva/i.test(preview)) {
+      continue;
     }
+    bits.push(preview);
   }
   if (bits.length === 0) {
     return (
@@ -366,7 +411,16 @@ export function buildModeloS10CheckInAck(): string {
 }
 
 export function replyLooksLikeCheckInAck(text: string): boolean {
-  return /check-in\s+foi\s+conclu[ií]do/i.test((text ?? "").trim());
+  const t = (text ?? "").trim();
+  if (!t || looksLikeRawToolJson(t)) return false;
+  return /check-in\s+foi\s+conclu[ií]do/i.test(t);
+}
+
+/** Turno sintético Passo 8 — não reabrir Modelo S1 de check-in pendente. */
+function userMessageLooksLikePostCompletionFollowUp(userMessage?: string): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  return /envie os detalhes da estadia|detalhes da estadia|wi-?fi|endere[cç]o e acessos/i.test(msg);
 }
 
 /**
@@ -379,12 +433,16 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     return { reply: input.replyText, replaced: false };
   }
 
-  const hasCompletionTool = successful.some(
-    (t) => /check[_-]?in/i.test(t.name) && !/consultar/i.test(t.name),
-  );
+  const hasCompletionTool = successful.some(outcomeLooksLikeCheckInCompletion);
   const hasEmbraturGate = successful.some((t) => /embratur[-_]?reference/i.test(t.name));
+  const replyIsRawJson = looksLikeRawToolJson(input.replyText);
 
   if (hasCompletionTool && !replyLooksLikeCheckInAck(input.replyText)) {
+    return { reply: buildModeloS10CheckInAck(), replaced: true, reason: "check_in_ack" };
+  }
+
+  // LLM ecoou bodyPreview JSON sem tool de conclusão no outcome — ainda assim não enviar JSON.
+  if (replyIsRawJson && /check-in\s+realizado/i.test(input.replyText)) {
     return { reply: buildModeloS10CheckInAck(), replaced: true, reason: "check_in_ack" };
   }
 
@@ -392,6 +450,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     return { reply: buildModeloS9TravelFormTemplate(), replaced: true, reason: "embratur_s9" };
   }
 
+  const postCompletionTurn = userMessageLooksLikePostCompletionFollowUp(input.userMessage);
   const reservation = findReservationLookupOutcome(successful);
   const checkInTurn = userMessageLooksLikeCheckInTurn(input.userMessage);
   const soleReservationLookup =
@@ -403,6 +462,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   if (
     !hasCompletionTool &&
     !hasEmbraturGate &&
+    !postCompletionTurn &&
     reservation &&
     (checkInTurn || soleReservationLookup) &&
     !replyLooksLikeModeloS1(input.replyText)
@@ -413,15 +473,17 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     }
   }
 
-  const nonDelivering = isNonDeliveringAgentReply(
-    input.replyText,
-    input.configuredStallMessages,
-  );
-  if (!nonDelivering && hasSubstantiveAgentReplyToCustomer(input.replyText, input.configuredStallMessages)) {
+  const nonDelivering =
+    replyIsRawJson ||
+    isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages);
+  if (
+    !nonDelivering &&
+    hasSubstantiveAgentReplyToCustomer(input.replyText, input.configuredStallMessages)
+  ) {
     return { reply: input.replyText, replaced: false };
   }
 
-  if (!hasCompletionTool && !hasEmbraturGate && reservation) {
+  if (!hasCompletionTool && !hasEmbraturGate && !postCompletionTurn && reservation) {
     const s1 = tryBuildModeloS1(reservation, input.userMessage);
     if (s1) {
       return { reply: s1, replaced: true, reason: "reservation_s1" };

@@ -171,3 +171,52 @@ test("ensureDeliveringReply forces S10 ack after audaar_check_in", () => {
   assert.equal(result.reason, "check_in_ack");
   assert.match(result.reply, /check-in foi concluído/i);
 });
+
+test("ensureDeliveringReply replaces truncated check-in JSON stall (16:09 bug)", () => {
+  const rawJson =
+    '{"message":"Check-in realizado com sucesso","data":{"checkin":{"reservationId":279321,"mode":"digital","checkin":0,"checkin_mobile":1,"checkinApi":1,"validatedCheckin":1,"hasCheckinApproved":1,"sentToReception":1,"checkinActionDate":null,"localizedDate":"2026-07-30T19:09:48.000Z"';
+  const result = ensureDeliveringReply({
+    replyText: "Um momento",
+    userMessage: "sim",
+    toolOutcomes: [
+      {
+        name: "audaar_check_in",
+        ok: true,
+        preview: rawJson.slice(0, 500),
+      },
+    ],
+  });
+  assert.equal(result.reason, "check_in_ack");
+  assert.match(result.reply, /check-in foi concluído/i);
+  assert.doesNotMatch(result.reply, /reservationId|validatedCheckin/);
+});
+
+test("ensureDeliveringReply replaces echoed check-in JSON even without ok tool name match", () => {
+  const rawJson =
+    '{"message":"Check-in realizado com sucesso","data":{"checkin":{"reservationId":279321,"validatedCheckin":1}}}';
+  const result = ensureDeliveringReply({
+    replyText: rawJson,
+    userMessage: "sim",
+    toolOutcomes: [{ name: "oc_tool_abc", ok: true, preview: rawJson }],
+  });
+  assert.equal(result.reason, "check_in_ack");
+  assert.match(result.reply, /check-in foi concluído/i);
+});
+
+test("ensureDeliveringReply does not force Modelo S1 on post-completion follow-up", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Wi-Fi: rede X senha Y",
+    userMessage: "envie os detalhes da estadia",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_reserva",
+        ok: true,
+        preview: JSON.stringify(RESERVATION_PAYLOAD),
+        structuredPayload: RESERVATION_PAYLOAD,
+      },
+    ],
+  });
+  assert.equal(result.replaced, false);
+  assert.match(result.reply, /Wi-Fi/);
+  assert.doesNotMatch(result.reply, /brasileiro\(a\) ou estrangeiro/);
+});

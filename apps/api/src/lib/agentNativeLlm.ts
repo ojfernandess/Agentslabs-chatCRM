@@ -386,6 +386,13 @@ export function shouldForceDeliveryAfterTools(input: {
 function humanizeToolPreviewForCustomer(preview: string): string {
   const raw = preview.trim();
   if (!raw) return "";
+  // Truncated / raw API JSON — never ship to WhatsApp.
+  if (/^\s*[\[{]/.test(raw) && /"(?:message|data|checkin|statusCode|bodyPreview)"\s*:/i.test(raw)) {
+    if (/check-in\s+realizado|validatedCheckin|hasCheckinApproved/i.test(raw)) {
+      return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+    }
+    return "";
+  }
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -406,7 +413,13 @@ function humanizeToolPreviewForCustomer(preview: string): string {
         "confirmationCode",
       ]) {
         const v = o[key];
-        if (typeof v === "string" && v.trim()) return v.trim().slice(0, 600);
+        if (typeof v === "string" && v.trim()) {
+          // API success strings are not customer-ready ack scripts.
+          if (/check-in\s+realizado/i.test(v)) {
+            return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+          }
+          return v.trim().slice(0, 600);
+        }
       }
       if (typeof o.found === "boolean") {
         const bits: string[] = [];
@@ -421,6 +434,7 @@ function humanizeToolPreviewForCustomer(preview: string): string {
   } catch {
     /* plain text */
   }
+  if (/^\s*[\[{]/.test(raw)) return "";
   return raw.replace(/\s+/g, " ").slice(0, 500);
 }
 
@@ -643,7 +657,14 @@ export function sanitizeOutboundAgentReply(text: string): string {
   let t = text.trim();
   if (!t) return t;
   t = t.replace(/```[\s\S]*?```/g, "").trim();
-  if (/^\s*[\[{]/.test(t) && /"(found|articles|ok|error|tool)"\s*:/i.test(t)) {
+  // KB dumps e payloads HTTP (check-in, etc.) — nunca enviar JSON cru ao contacto.
+  if (
+    /^\s*[\[{]/.test(t) &&
+    /"(found|articles|ok|error|tool|message|data|statusCode|bodyPreview|checkin)"\s*:/i.test(t)
+  ) {
+    if (/check-in\s+realizado|validatedCheckin|hasCheckinApproved/i.test(t)) {
+      return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+    }
     return (
       "Obrigado pela sua mensagem. Não consegui formatar a resposta automaticamente — " +
       "pode repetir a pergunta com um pouco mais de detalhe?"
