@@ -70,7 +70,7 @@ export type AgentEngineConfig = {
   workflowEngineEnabled?: boolean;
   /**
    * LangGraph: delega o turno inteiro ao WorkflowRuntimeOrchestrator (parity Motor Padrão).
-   * Default false — preserva grafo LangGraph clássico.
+   * Default true para runtime langgraph — mesmo spine PLAN→ACT→OBSERVE→REPLY.
    */
   workflowRuntimeShared?: boolean;
   /** Fase 4 — packing de memória com TTL/prioridade/token budget. */

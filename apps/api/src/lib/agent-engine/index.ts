@@ -231,6 +231,22 @@ export {
   type OtelSpan,
   type OtelExportResult,
 } from "./observability/OtelBridge.js";
+export {
+  isLikelyStallOnlyReply,
+  isToolNarrationReply,
+  isNonDeliveringAgentReply,
+  hasSubstantiveAgentReplyToCustomer,
+  buildRuntimeOwnedReplyGuardAppendix,
+} from "./reply/ReplyQuality.js";
+export {
+  ensureDeliveringReply,
+  buildModeloS1FromReservationPayload,
+  extractReservationDisplayFields,
+} from "./reply/ReplySynthesizer.js";
+export {
+  resolveActProgressMessage,
+  logActProgress,
+} from "./runtime/ProgressEmitter.js";
 
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "./types.js";
 import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";

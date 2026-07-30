@@ -186,3 +186,41 @@ test("LangGraph workflowRuntimeShared delegates to same orchestrator", async () 
   assert.equal(result.reply, "Parity ok.");
   assert.equal(result.trace?.runtime, "langgraph");
 });
+
+test("ReplySynthesizer replaces 11:31 tool-narration with Modelo S1 after tools", async () => {
+  const payload = {
+    found: true,
+    uid: "NCMT0VPN",
+    establishmentName: "Vivá Porto",
+    checkinDate: "2026-08-01",
+    checkoutDate: "2026-08-03",
+    guestsQuantity: 2,
+  };
+  const executor: NativeAgentExecutor = async () => ({
+    reply:
+      "Vou consultar… Um momento…\n\n### Consultando a reserva…\n\n(Invocando a ferramenta `audaar_consultar_reserva`).",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_reserva",
+        ok: true,
+        preview: JSON.stringify(payload),
+        structuredPayload: payload,
+      },
+    ],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+  });
+  const result = await runWorkflowRuntimeTurn(
+    buildInput({
+      messageBody: "fazer check-in na reserva NCMT0VPN",
+      engineConfig: engineForTest({
+        schedulerEnabled: false,
+        toolExecutionMode: "hybrid",
+      }),
+      executionHints: { toolExecutionMode: "hybrid" },
+    }),
+    executor,
+    { runtimeLabel: "openconduit", createMemoryProvider: stubMemoryFactory },
+  );
+  assert.doesNotMatch(result.reply, /Invocando/i);
+  assert.match(result.reply, /Vivá Porto|Hospedagem/i);
+});

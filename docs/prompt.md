@@ -25,6 +25,7 @@ O OpenConduit extrai ferramentas required de frases tipo *Sempre use* / *Deve in
 ### Proibido na resposta final
 
 - Responder só *“Só um momento”*, *“Vou verificar”* ou *“Aguarde”* **depois** de ferramenta ter devolvido resultado com sucesso — use os dados e responda.
+- Narrar *“(Invocando a ferramenta…)”*, *“### Consultando a reserva…”* ou fingir chamada pendente — no Motor Padrão (`toolExecutionMode=runtime_owned`) o Scheduler **já executou** as tools obrigatórias; a reply só sintetiza factos (ex. Modelo S1).
 - Copiar JSON bruto de ferramentas para o hóspede.
 - Contradizer excertos da base de conhecimento sem nova consulta.
 - Afirmar dados de reserva, cadastro ou check-in **sem** ter invocado a ferramenta HTTP/API **neste turno** quando a categoria activa exige tool.

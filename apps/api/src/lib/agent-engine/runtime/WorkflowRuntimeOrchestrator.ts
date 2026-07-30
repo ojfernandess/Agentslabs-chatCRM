@@ -38,6 +38,9 @@ import {
   shouldRetryAfterSupervisor,
 } from "../supervisor/AgentSupervisorService.js";
 import type { NativeAgentExecutor } from "./OpenNexoRuntime.js";
+import { ensureDeliveringReply } from "../reply/ReplySynthesizer.js";
+import { isNonDeliveringAgentReply } from "../reply/ReplyQuality.js";
+import { logActProgress, resolveActProgressMessage } from "./ProgressEmitter.js";
 
 export type ToolOutcomeRow = {
   name: string;
@@ -257,7 +260,9 @@ export async function runWorkflowRuntimeTurn(
 
   const canSchedule = shouldRunToolScheduler(input.engineConfig, input.executionHints);
 
+  // Spine: PLAN (beginTurn acima) → ACT → OBSERVE → REPLY → VALIDATE
   for (let loop = 0; loop < maxLoops; loop++) {
+    // --- ACT: Tool Scheduler owns required tools ---
     if (canSchedule) {
       const t0 = Date.now();
       if (loop === 0) {
@@ -265,6 +270,17 @@ export async function runWorkflowRuntimeTurn(
       } else {
         traceBuilder.startNode("schedule_tools", "Tool Scheduler (recovery)");
       }
+      const planPreview = planScheduledToolInvocations(engineState.turnContext, toolOutcomes);
+      const actProgress = resolveActProgressMessage({
+        toolExecutionMode: toolMode,
+        plannedToolNames: planPreview.map((p) => p.toolName),
+        behaviorConfig: input.behaviorConfig,
+      });
+      logActProgress(
+        input,
+        actProgress,
+        planPreview.map((p) => p.toolName),
+      );
       const scheduled = await runSchedulerOnce(input, engineState, memSnap, toolOutcomes);
       toolOutcomes = scheduled.outcomes;
       scheduledAppendix = scheduled.appendix || scheduledAppendix;
@@ -286,6 +302,7 @@ export async function runWorkflowRuntimeTurn(
           planned: scheduled.planned,
           executed: toolOutcomes.map((o) => o.name),
           recoveryCount: engineState.recoveryCount,
+          phase: "ACT",
         }),
       );
       engineState = engine.recordPhase(
@@ -304,7 +321,7 @@ export async function runWorkflowRuntimeTurn(
       );
     }
 
-    // Pending required after schedule → recover once before LLM when resilience on
+    // --- OBSERVE: pending required after schedule → recover before REPLY ---
     const pendingAfterSchedule = engineState.contract.pendingToolNames ?? [];
     if (
       canSchedule &&
@@ -330,6 +347,7 @@ export async function runWorkflowRuntimeTurn(
       }
     }
 
+    // --- REPLY: LLM synthesizes from OBSERVE facts (runtime_owned = no tool calls) ---
     const tExec = Date.now();
     traceBuilder.startNode("respond", runtimeLabel === "langgraph" ? "Executar agente" : "OpenNexo Runtime");
     execResult = await executor({
@@ -352,11 +370,31 @@ export async function runWorkflowRuntimeTurn(
     if (toolMode === "hybrid") {
       toolOutcomes = mergeToolOutcomes(toolOutcomes, execResult.toolOutcomes ?? []);
     }
+
+    // Contrato duro: nunca enviar stall / «Invocando ferramenta» apos tools OK.
+    const synthesized = ensureDeliveringReply({
+      replyText: reply,
+      toolOutcomes,
+      userMessage: input.message.body ?? "",
+    });
+    if (synthesized.replaced) {
+      input.executionLog?.warn(
+        { id: "reply_synthesizer", name: "Reply Synthesizer" },
+        JSON.stringify({
+          reason: synthesized.reason,
+          beforeChars: reply.length,
+          afterChars: synthesized.reply.length,
+        }),
+      );
+      reply = synthesized.reply;
+      execResult = { ...execResult, reply };
+    }
+
     engineState = engine.recordPhase(
       engineState,
       "execute_llm",
       scheduledAppendix ? "with_scheduler" : toolMode,
-      { toolExecutionMode: toolMode },
+      { toolExecutionMode: toolMode, replySynthesized: synthesized.replaced },
       Date.now() - tExec,
     );
     traceBuilder.endNode("respond");
@@ -393,6 +431,7 @@ export async function runWorkflowRuntimeTurn(
       phase: "validate",
     });
 
+    // --- VALIDATE ---
     validationOk = true;
     validationAlerts = [];
     validationBlockSend = false;
@@ -430,10 +469,20 @@ export async function runWorkflowRuntimeTurn(
           /* best-effort */
         }
       }
+      // Hard gate: narracao apos tools OK nunca sai (mesmo se validator soft)
+      if (toolOutcomes.some((t) => t.ok) && isNonDeliveringAgentReply(reply)) {
+        validationBlockSend = true;
+        validationOk = false;
+        if (!validationAlerts.some((a) => /espera|non-delivering|não entregue/i.test(a))) {
+          validationAlerts.push(
+            "Resposta de espera após tool com sucesso — possível resultado não entregue",
+          );
+        }
+      }
       traceBuilder.endNode(
         "validate_result",
-        validation.ok ? "ok" : "warn",
-        validation.alerts.join("; "),
+        validation.ok && !validationBlockSend ? "ok" : "warn",
+        validationAlerts.join("; "),
       );
     }
 

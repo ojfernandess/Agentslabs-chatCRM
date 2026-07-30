@@ -249,6 +249,21 @@ test("shouldForceDeliveryAfterTools when empty or stall after any tools", () => 
     }),
     true,
   );
+  assert.equal(
+    shouldForceDeliveryAfterTools({
+      toolOutcomes: [
+        {
+          name: "audaar_consultar_reserva",
+          ok: true,
+          preview: '{"found":true}',
+          monitored: false,
+        },
+      ],
+      replyText:
+        "Vou consultar… Um momento…\n\n### Consultando a reserva…\n\n(Invocando a ferramenta `audaar_consultar_reserva`).",
+    }),
+    true,
+  );
 });
 
 test("shouldForceKnowledgeDelivery when stall with useful appendix", () => {

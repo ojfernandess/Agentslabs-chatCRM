@@ -46,6 +46,17 @@ test("validateToolExecution blocks stall after reservation lookup even without s
   assert.ok(result.alerts.some((a) => /espera|stall|não entregue/i.test(a)));
 });
 
+test("validateToolExecution blocks 11:31 tool-narration after reservation lookup", () => {
+  const result = validateToolExecution({
+    toolOutcomes: [{ name: "audaar_consultar_reserva", ok: true, preview: '{"found":true}' }],
+    replyText:
+      "Vou consultar… Um momento…\n\n### Consultando a reserva…\n\n(Invocando a ferramenta `audaar_consultar_reserva`).",
+    strictMode: false,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.blockSend, true);
+});
+
 test("validateToolExecution blocks empty reply after tool success", () => {
   const result = validateToolExecution({
     toolOutcomes: [{ name: "http_tool", ok: true, preview: "200 OK" }],

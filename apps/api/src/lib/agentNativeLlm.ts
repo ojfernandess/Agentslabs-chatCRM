@@ -68,12 +68,14 @@ import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
   isNonDeliveringAgentReply,
+  buildRuntimeOwnedReplyGuardAppendix,
 } from "./agentReplyQuality.js";
 export { userMessageLooksLikeKnowledgeSeekingQuery, shouldSkipKnowledgeSearchForTurn } from "./knowledgeQueryEnrichment.js";
 export {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
   isNonDeliveringAgentReply,
+  buildRuntimeOwnedReplyGuardAppendix,
 } from "./agentReplyQuality.js";
 export {
   parseKnowledgeSearchSkipFromBehavior,
@@ -2145,6 +2147,13 @@ async function generateNativeAgentReplyCore(input: {
   const schedulerAppendix = formatScheduledToolsSystemAppendix(
     executionHints?.preScheduledToolOutcomes ?? [],
   );
+  const runtimeOwnedReplyGuard =
+    schedulerAppendix &&
+    (executionHints?.toolExecutionMode === "runtime_owned" ||
+      ((executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
+        executionHints?.toolExecutionMode !== "hybrid"))
+      ? buildRuntimeOwnedReplyGuardAppendix()
+      : "";
 
   const systemBase =
     systemInstructions +
@@ -2158,7 +2167,8 @@ async function generateNativeAgentReplyCore(input: {
     imageInboundHint +
     followUpPrompt +
     flowStatePrompt +
-    schedulerAppendix;
+    schedulerAppendix +
+    runtimeOwnedReplyGuard;
 
   const lastClearedAt = automationCtx.lastClearedAt;
 
