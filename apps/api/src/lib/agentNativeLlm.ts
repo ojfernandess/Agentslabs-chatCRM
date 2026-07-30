@@ -76,9 +76,16 @@ import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./ag
 import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
 import {
   ensureDeliveringReply,
-  buildModeloS9TravelFormTemplate,
+  buildModeloS9TravelFormTemplateFromToolOutcomes,
+  buildModeloS4cCompanionOptIn,
   replyLooksLikeModeloS9,
+  extractReservationDisplayFields,
 } from "./agent-engine/reply/ReplySynthesizer.js";
+import {
+  extractEmbraturReferenceCatalogFlowSlots,
+  readEmbraturReferenceCatalogFromFlowSlots,
+  buildModeloS9TemplateFromCatalog,
+} from "./agent-engine/checkin/embraturReferenceCatalog.js";
 import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -176,6 +183,30 @@ const EMPTY_NATIVE_CORE_RESULT: NativeAgentCoreResult = {
   toolOutcomes: [],
   kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
 };
+
+function mergeEmbraturReferenceCatalogIntoFlowSlots(
+  slots: AutomationFlowSlots,
+  outcome: { name: string; ok?: boolean; preview?: string; structuredPayload?: unknown },
+): AutomationFlowSlots {
+  if (outcome.ok === false || !/embratur[-_]?reference/i.test(outcome.name)) return slots;
+  const catalogSlots = extractEmbraturReferenceCatalogFlowSlots({
+    responseText: outcome.preview,
+    structuredPayload: outcome.structuredPayload,
+    ok: true,
+  });
+  if (Object.keys(catalogSlots).length === 0) return slots;
+  return { ...slots, ...catalogSlots };
+}
+
+function sessionHasEmbraturReference(
+  toolOutcomes: Array<{ name: string; ok?: boolean }>,
+  flowSlots: AutomationFlowSlots,
+): boolean {
+  if (toolOutcomes.some((t) => t.ok !== false && /embratur[-_]?reference/i.test(t.name))) {
+    return true;
+  }
+  return readSessionSatisfiedToolNames(flowSlots).some((t) => /embratur[-_]?reference/i.test(t));
+}
 
 function nativeAgentLlmAbortSignal(): AbortSignal {
   return AbortSignal.timeout(NATIVE_AGENT_LLM_TIMEOUT_MS);
@@ -2246,6 +2277,51 @@ async function generateNativeAgentReplyCore(input: {
           });
           if (o.ok) {
             sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, o.name);
+            // Persistir N/C da reserva no Scheduler (senão titular OK com N≥2 salta S4c).
+            const extracted = extractFlowSlotsFromToolExchange({
+              responseText:
+                typeof o.preview === "string" && o.preview.trim().startsWith("{")
+                  ? o.preview
+                  : o.structuredPayload != null
+                    ? JSON.stringify(o.structuredPayload)
+                    : undefined,
+              ok: true,
+            });
+            if (o.structuredPayload != null) {
+              const f = extractReservationDisplayFields(o.structuredPayload);
+              if (f.guests != null) extracted.guestsQuantity = f.guests;
+            }
+            if (Object.keys(extracted).length > 0) {
+              sessionFlowSlots = { ...sessionFlowSlots, ...extracted };
+            }
+            sessionFlowSlots = mergeEmbraturReferenceCatalogIntoFlowSlots(sessionFlowSlots, {
+              name: o.name,
+              ok: o.ok,
+              preview: o.preview,
+              structuredPayload: o.structuredPayload,
+            });
+            const persistSlots: AutomationFlowSlots = { ...extracted };
+            const catalogRaw = sessionFlowSlots.__embraturReferenceCatalog;
+            if (typeof catalogRaw === "string" && catalogRaw.trim()) {
+              persistSlots.__embraturReferenceCatalog = catalogRaw;
+            }
+            if (Object.keys(persistSlots).length > 0) {
+              if (historyOverride == null) {
+                try {
+                  await mergeFlowSlotsAutomationContext({
+                    organizationId,
+                    conversationId: conversation.id,
+                    botId: bot.id,
+                    flowSlots: persistSlots,
+                  });
+                } catch (err) {
+                  log.warn(
+                    { err, conversationId: conversation.id },
+                    "merge flow slots from scheduler failed",
+                  );
+                }
+              }
+            }
           }
         }
         if (scheduled.outcomes.length > 0) {
@@ -2668,6 +2744,14 @@ async function generateNativeAgentReplyCore(input: {
               });
               if (Object.keys(extracted).length > 0) {
                 sessionFlowSlots = { ...sessionFlowSlots, ...extracted };
+              }
+              sessionFlowSlots = mergeEmbraturReferenceCatalogIntoFlowSlots(sessionFlowSlots, {
+                name,
+                ok: exec.ok,
+                preview: exec.responseText,
+                structuredPayload: exec.ok ? exec.responseText : undefined,
+              });
+              if (Object.keys(extracted).length > 0 || sessionFlowSlots.__embraturReferenceCatalog) {
                 if (httpToolRuntimeContext) {
                   httpToolRuntimeContext = {
                     ...httpToolRuntimeContext,
@@ -2681,15 +2765,22 @@ async function generateNativeAgentReplyCore(input: {
                   };
                 }
                 if (historyOverride == null) {
-                  try {
-                    await mergeFlowSlotsAutomationContext({
-                      organizationId,
-                      conversationId: conversation.id,
-                      botId: bot.id,
-                      flowSlots: extracted,
-                    });
-                  } catch (err) {
-                    log.warn({ err, conversationId: conversation.id }, "merge flow slots failed");
+                  const persistSlots: AutomationFlowSlots = { ...extracted };
+                  const catalogRaw = sessionFlowSlots.__embraturReferenceCatalog;
+                  if (typeof catalogRaw === "string" && catalogRaw.trim()) {
+                    persistSlots.__embraturReferenceCatalog = catalogRaw;
+                  }
+                  if (Object.keys(persistSlots).length > 0) {
+                    try {
+                      await mergeFlowSlotsAutomationContext({
+                        organizationId,
+                        conversationId: conversation.id,
+                        botId: bot.id,
+                        flowSlots: persistSlots,
+                      });
+                    } catch (err) {
+                      log.warn({ err, conversationId: conversation.id }, "merge flow slots failed");
+                    }
                   }
                 }
               }
@@ -2997,32 +3088,81 @@ async function generateNativeAgentReplyCore(input: {
     }
   }
 
-  // S4c “não” / N=1 titular “sim”: entregar template dos 6 (nunca pergunta “0 acompanhante”).
-  const partySizeNow = readPartySize(sessionFlowSlots);
-  const n1TitularConfirm =
+  // S4c “não” / N=1 titular “sim”: template dos 6.
+  // N≥2 titular “sim”: forçar pergunta S4c (nunca saltar para Embratur).
+  // partySize null ≠ N=1 (bug 17:32: n1_skip_s4c com partySize:null pulou S4c).
+  let partySizeNow = readPartySize(sessionFlowSlots);
+  if (partySizeNow == null) {
+    for (const t of toolRoundOutcomes) {
+      if (t.ok === false) continue;
+      const payload =
+        t.structuredPayload ??
+        (typeof t.preview === "string" && t.preview.trim().startsWith("{")
+          ? (() => {
+              try {
+                return JSON.parse(t.preview);
+              } catch {
+                return null;
+              }
+            })()
+          : null);
+      const f = extractReservationDisplayFields(payload);
+      if (f.guests != null && f.guests > 0) {
+        partySizeNow = f.guests;
+        sessionFlowSlots = { ...sessionFlowSlots, guestsQuantity: f.guests };
+        break;
+      }
+    }
+  }
+  const titularSim =
     /^(sim|ok|okay|certo|confirmo|yes)$/i.test(userMessage.trim()) &&
-    assistantIsTitularMirrorConfirm(lastAssistantForPolicy) &&
-    (partySizeNow == null || partySizeNow <= 1);
+    assistantIsTitularMirrorConfirm(lastAssistantForPolicy);
+  const n1TitularConfirm = titularSim && partySizeNow != null && partySizeNow <= 1;
+  const n2TitularConfirm = titularSim && partySizeNow != null && partySizeNow >= 2;
   const replyIsInvalidN1Companion =
-    (partySizeNow == null || partySizeNow <= 1) &&
+    partySizeNow != null &&
+    partySizeNow <= 1 &&
     (assistantIsCompanionOptInPrompt(replyText) ||
       /0\s+acompanhante|\+\s*0\s+acompanhante|1\s+hóspedes?\s+no\s+total/i.test(replyText));
-  const needsS9TemplateOnly =
-    !replyLooksLikeModeloS9(replyText) &&
-    (replyIsInvalidN1Companion ||
-      (assistantIsCompanionOptInPrompt(lastAssistantForPolicy) &&
-        isCompanionRegistrationDeclined(userMessage)) ||
-      n1TitularConfirm);
-  if (needsS9TemplateOnly) {
-    replyText = buildModeloS9TravelFormTemplate();
+  if (
+    n2TitularConfirm &&
+    !assistantIsCompanionOptInPrompt(replyText) &&
+    !replyLooksLikeModeloS9(replyText)
+  ) {
+    replyText = buildModeloS4cCompanionOptIn(partySizeNow!);
     ex?.warn(
       { id: "reply_synthesizer", name: "Reply Synthesizer" },
-      JSON.stringify({
-        reason: replyIsInvalidN1Companion || n1TitularConfirm ? "n1_skip_s4c" : "embratur_s9_session",
-        afterChars: replyText.length,
-        partySize: partySizeNow,
-      }),
+      JSON.stringify({ reason: "companion_s4c", afterChars: replyText.length, partySize: partySizeNow }),
     );
+  } else {
+    const needsS9TemplateOnly =
+      !replyLooksLikeModeloS9(replyText) &&
+      (replyIsInvalidN1Companion ||
+        (assistantIsCompanionOptInPrompt(lastAssistantForPolicy) &&
+          isCompanionRegistrationDeclined(userMessage)) ||
+        n1TitularConfirm);
+    if (needsS9TemplateOnly && sessionHasEmbraturReference(toolRoundOutcomes, sessionFlowSlots)) {
+      replyText = buildModeloS9TravelFormTemplateFromToolOutcomes(toolRoundOutcomes);
+      const catalog = readEmbraturReferenceCatalogFromFlowSlots(sessionFlowSlots);
+      const fromCatalog = catalog ? buildModeloS9TemplateFromCatalog(catalog) : null;
+      if (fromCatalog) replyText = fromCatalog;
+      ex?.warn(
+        { id: "reply_synthesizer", name: "Reply Synthesizer" },
+        JSON.stringify({
+          reason: replyIsInvalidN1Companion || n1TitularConfirm ? "n1_skip_s4c" : "embratur_s9_session",
+          afterChars: replyText.length,
+          partySize: partySizeNow,
+        }),
+      );
+    } else if (needsS9TemplateOnly) {
+      ex?.warn(
+        { id: "reply_synthesizer", name: "Reply Synthesizer" },
+        JSON.stringify({
+          reason: "s9_blocked_no_embratur_reference",
+          partySize: partySizeNow,
+        }),
+      );
+    }
   }
 
   // Máquina S9→S9b→S10 (antes vivia só no Orchestrator).

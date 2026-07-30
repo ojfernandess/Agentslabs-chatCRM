@@ -2,6 +2,10 @@ import {
   hasSubstantiveAgentReplyToCustomer,
   isNonDeliveringAgentReply,
 } from "./ReplyQuality.js";
+import {
+  buildModeloS9TemplateFromCatalog,
+  parseEmbraturReferenceCatalog,
+} from "../checkin/embraturReferenceCatalog.js";
 
 export type SynthesizerToolOutcome = {
   name: string;
@@ -27,6 +31,7 @@ export type EnsureDeliveringReplyResult = {
     | "reservation_s1"
     | "embratur_s9"
     | "check_in_ack"
+    | "companion_s4c"
     | "deterministic_fallback";
 };
 
@@ -380,18 +385,42 @@ function tryBuildModeloS1(
   return null;
 }
 
-/** Template dos 6 (S9) — docs/prompt.md após embratur-reference. */
+/** Template genérico dos 6 (S9) — sem listas fixas de IDs/opções inventadas pelo runtime. */
 export function buildModeloS9TravelFormTemplate(): string {
   return (
     `Para finalizar, envie de uma vez as informações da viagem:\n` +
-    `1. Qual é o motivo da viagem? (Lazer/Férias, Negócios, Congresso/Feira, Parentes/Amigos, Estudos/Cursos, Religião, Saúde, Compras ou Outro)\n` +
-    `2. Qual é o meio de transporte da chegada? (Avião, Automóvel, Ônibus, Moto, Trem, Van, Bicicleta, Caminhada ou Outro)\n` +
-    `3. Qual é o país de residência permanente? Exemplo: Brasil\n` +
-    `4. Qual é o país de destino? Exemplo: Brasil\n` +
-    `5. Qual é a cidade de procedência? Exemplo: São Paulo\n` +
-    `6. Qual é a cidade de destino? Exemplo: Rio de Janeiro\n` +
+    `1. Qual é o motivo da viagem?\n` +
+    `2. Qual é o meio de transporte da chegada?\n` +
+    `3. Qual é o país de residência permanente?\n` +
+    `4. Qual é o país de destino?\n` +
+    `5. Qual é a cidade de procedência?\n` +
+    `6. Qual é a cidade de destino?\n` +
     `Pode responder em uma única mensagem.`
   );
+}
+
+/** Template S9 com opções retornadas por `embratur-reference` (preferido). */
+export function buildModeloS9TravelFormTemplateFromToolOutcomes(
+  toolOutcomes: Array<{ name: string; ok?: boolean; preview?: string; structuredPayload?: unknown }>,
+): string {
+  for (const t of toolOutcomes) {
+    if (t.ok === false || !/embratur[-_]?reference/i.test(t.name)) continue;
+    let catalog = parseEmbraturReferenceCatalog(t.structuredPayload);
+    if (
+      (catalog.motivos.length === 0 || catalog.transportes.length === 0) &&
+      typeof t.preview === "string" &&
+      t.preview.trim().startsWith("{")
+    ) {
+      try {
+        catalog = parseEmbraturReferenceCatalog(JSON.parse(t.preview));
+      } catch {
+        /* ignore */
+      }
+    }
+    const fromCatalog = buildModeloS9TemplateFromCatalog(catalog);
+    if (fromCatalog) return fromCatalog;
+  }
+  return buildModeloS9TravelFormTemplate();
 }
 
 export function replyLooksLikeModeloS9(text: string): boolean {
@@ -402,6 +431,16 @@ export function replyLooksLikeModeloS9(text: string): boolean {
     /meio\s+de\s+transporte/i.test(t) &&
     /pa[ií]s\s+de\s+resid/i.test(t) &&
     /cidade\s+de\s+(?:proced|destino)/i.test(t)
+  );
+}
+
+/** Template S4c — docs/prompt.md quando N≥2 após OK do titular. */
+export function buildModeloS4cCompanionOptIn(partySize: number): string {
+  const n = Math.max(2, Math.floor(partySize));
+  const companions = n - 1;
+  return (
+    `Sua reserva é para ${n} hóspedes no total (você + ${companions} acompanhante(s)). ` +
+    `Deseja cadastrar o(s) acompanhante(s) agora? (Sim/Não)`
   );
 }
 
@@ -447,7 +486,11 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   }
 
   if (hasEmbraturGate && !hasCompletionTool && !replyLooksLikeModeloS9(input.replyText)) {
-    return { reply: buildModeloS9TravelFormTemplate(), replaced: true, reason: "embratur_s9" };
+    return {
+      reply: buildModeloS9TravelFormTemplateFromToolOutcomes(successful),
+      replaced: true,
+      reason: "embratur_s9",
+    };
   }
 
   const postCompletionTurn = userMessageLooksLikePostCompletionFollowUp(input.userMessage);

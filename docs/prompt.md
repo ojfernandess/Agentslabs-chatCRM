@@ -591,10 +591,13 @@ Perfeito. Me envie de uma vez os dados do acompanhante:
 **Errado (LH3WCSKX v2):** `fazer check-in` → consultar_reserva → pergunta acompanhante sem Modelo S1.  
 **Errado (M7I2QJ9X):** API `guestsQuantity:1` · `sim` titular → S4c “1+0” ou “2+1”.  
 **Errado (71CRUDTI-TRANSFER):** “não” em S4c → `call_human` + `transfer_to_team`.  
+**Errado (17:32):** titular `sim` · N≥2 · `partySize` ausente nos slots → motor forçou S9 (`n1_skip_s4c`) · **sem** pergunta de acompanhante.  
 **Certo N=1:** titular `sim` → S9.  
 **Certo N=1 + pediu acompanhante:** `audaar_consultar_reserva` → `room.capacity` → autorizar/negar.  
-**Certo “Não” S4c:** S9 + `embratur-reference` · **sem** cadastrar acompanhante · S10 **sem** `dependents`.
+**Certo N≥2:** titular `sim` → **S4c** com N e (N−1) correctos (`toolRounds:0`) · **PROIBIDO** saltar para S9/Embratur · persistir `guestsQuantity` no C3.  
+**Certo “Não” S4c:** S9 + `embratur-reference` · **sem** cadastrar acompanhante · S10 **sem** `dependents`.  
 **Certo “não quero cadastrar acompanhante” / “só eu” / “sem acompanhante”:** igual a “Não” S4c → continue S9→S9b→S10 normalmente.
+
 ### S9 / S9b — ficha Embratur (OBRIGATÓRIA — inclusive `found:true`)
 **Pré-condição:** titular OK + fotos OK + S4c resolvido se N≥2.  
 **Entrada típica:** C11 `sim` no espelho TITULAR com **N=1**, **ou** “Não” em S4c, **ou** acompanhantes A completos.

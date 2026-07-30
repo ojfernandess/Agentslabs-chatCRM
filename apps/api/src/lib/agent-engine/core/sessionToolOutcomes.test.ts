@@ -133,8 +133,14 @@ test("applyConfirmationPhaseTransitions does not arm ready on companion personal
 });
 
 test("applyConfirmationPhaseTransitions arms ready on ficha form even without awaiting flag", () => {
+  const catalog = {
+    motivos: [{ id: "3", label: "Congresso/Feira" }],
+    transportes: [{ id: "2", label: "Automóvel" }],
+    paises: [{ id: "1058", label: "Brasil" }],
+    cidades: [{ id: "3550308", label: "São Paulo" }],
+  };
   const slots = applyConfirmationPhaseTransitions({
-    baseFlowSlots: {},
+    baseFlowSlots: { __embraturReferenceCatalog: JSON.stringify(catalog) },
     userMessage:
       "* Motivo da viagem: Congresso\n* Meio de transporte: Automóvel\n* País de residência: Brasil\n* País de destino: Brasil\n* Cidade de procedência: São Paulo\n* Cidade de destino: São Paulo",
     lastAssistantPreview:
@@ -142,9 +148,9 @@ test("applyConfirmationPhaseTransitions arms ready on ficha form even without aw
   });
   assert.equal(slots.__completionReady, true);
   assert.equal(slots.__awaitingPostGateData, false);
-  assert.equal(slots.snmotvia, 3);
-  assert.equal(slots.sntiptran, 2);
-  assert.equal(slots.snidcidadeibge, 3550308);
+  assert.equal(slots.snmotvia, "3");
+  assert.equal(slots.sntiptran, "2");
+  assert.equal(slots.snidcidadeibge, "3550308");
 });
 
 test("applyConfirmationPhaseTransitions persists lastAssistantPreview", () => {

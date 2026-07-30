@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   ensureDeliveringReply,
   buildModeloS1FromReservationPayload,
+  buildModeloS4cCompanionOptIn,
   replyLooksLikeModeloS1,
 } from "./ReplySynthesizer.js";
 
@@ -145,14 +146,20 @@ test("ensureDeliveringReply forces S9 template after embratur-reference", () => 
       {
         name: "embratur-reference",
         ok: true,
-        preview: '{"ids":[1,2,3]}',
+        preview: JSON.stringify({
+          motivosViagem: [{ id: 1, nome: "Lazer/Férias" }],
+          meiosTransporte: [{ id: 2, nome: "Automóvel" }],
+          paises: [{ id: "1058", nome: "Brasil" }],
+          cidades: [{ id: 3550308, nome: "São Paulo" }],
+        }),
       },
     ],
   });
   assert.equal(result.replaced, true);
   assert.equal(result.reason, "embratur_s9");
   assert.match(result.reply, /motivo da viagem/i);
-  assert.match(result.reply, /meio de transporte/i);
+  assert.match(result.reply, /Lazer\/Férias/);
+  assert.match(result.reply, /Automóvel/);
 });
 
 test("ensureDeliveringReply forces S10 ack after audaar_check_in", () => {
@@ -170,6 +177,14 @@ test("ensureDeliveringReply forces S10 ack after audaar_check_in", () => {
   assert.equal(result.replaced, true);
   assert.equal(result.reason, "check_in_ack");
   assert.match(result.reply, /check-in foi concluído/i);
+});
+
+test("buildModeloS4cCompanionOptIn uses N and N-1", () => {
+  const s4c = buildModeloS4cCompanionOptIn(2);
+  assert.match(s4c, /2 hóspedes/);
+  assert.match(s4c, /\+ 1 acompanhante/);
+  assert.match(s4c, /Deseja cadastrar/);
+  assert.doesNotMatch(s4c, /\+ 0 acompanhante/);
 });
 
 test("ensureDeliveringReply replaces truncated check-in JSON stall (16:09 bug)", () => {

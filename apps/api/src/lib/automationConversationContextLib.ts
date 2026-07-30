@@ -309,8 +309,30 @@ export function extractFlowSlotsFromToolExchange(input: {
             /^(name|email|phone|birthdate|gender|profession|citizenship|zipcode|country|state|city|street|number|neighborhood|documentnumber|documenttype|mobilephonenumber)$/i.test(
               keyLower,
             );
-          if (looksLikeId || looksLikeGuestPii) takeScalar(k, v, 0);
+          const looksLikePartySize =
+            keyLower === "guestsquantity" ||
+            keyLower === "guests_quantity" ||
+            keyLower === "n" ||
+            keyLower === "capacity";
+          if (looksLikeId || looksLikeGuestPii || looksLikePartySize) takeScalar(k, v, 0);
         }
+        // Audaar: guestsQuantity vive em data.stay (depth 2) — extrair explicitamente.
+        const stay =
+          nested.stay && typeof nested.stay === "object" && !Array.isArray(nested.stay)
+            ? (nested.stay as Record<string, unknown>)
+            : null;
+        if (stay) {
+          for (const key of ["guestsQuantity", "guests_quantity", "N", "capacity"] as const) {
+            if (stay[key] !== undefined) takeScalar(key === "N" ? "guestsQuantity" : key, stay[key], 0);
+          }
+        }
+        const room =
+          nested.room && typeof nested.room === "object" && !Array.isArray(nested.room)
+            ? (nested.room as Record<string, unknown>)
+            : stay && typeof stay.room === "object" && !Array.isArray(stay.room)
+              ? (stay.room as Record<string, unknown>)
+              : null;
+        if (room && room.capacity !== undefined) takeScalar("capacity", room.capacity, 0);
         if (guest) {
           for (const [k, v] of Object.entries(guest)) {
             takeScalar(k, v, 0);

@@ -60,7 +60,7 @@ export function buildScheduledToolArgs(toolName: string, turnContext: TurnContex
   const facts = turnContext.facts;
   if (facts && typeof facts === "object") {
     for (const [k, v] of Object.entries(facts)) {
-      if (k.startsWith("__") && k !== "__travelFormMessage") continue;
+      if (k.startsWith("__") && k !== "__travelFormMessage" && k !== "__embraturReferenceCatalog") continue;
       if (v === undefined || v === null) continue;
       // FactStore: { key, value, source } · stubs de teste: escalar directo.
       let scalar: unknown = v;

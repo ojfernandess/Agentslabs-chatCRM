@@ -42,13 +42,20 @@ test("extractFlowSlotsFromToolExchange captures scalars and response ids", () =>
   assert.equal(slots.id, "doc-9");
 });
 
-test("extractFlowSlotsFromToolExchange mirrors localizadorOuReservationId to reservationIdOrLocalizer", () => {
+test("extractFlowSlotsFromToolExchange captures stay.guestsQuantity from reservation", () => {
   const slots = extractFlowSlotsFromToolExchange({
-    llmArgs: { localizadorOuReservationId: "NCMT0VPN" },
+    llmArgs: { localizadorOuReservationId: "EGAI6QKW" },
+    responseText: JSON.stringify({
+      data: {
+        stay: { guestsQuantity: 2, checkinDate: "2026-08-01" },
+        room: { capacity: 3 },
+      },
+    }),
     ok: true,
   });
-  assert.equal(slots.localizadorOuReservationId, "NCMT0VPN");
-  assert.equal(slots.reservationIdOrLocalizer, "NCMT0VPN");
+  assert.equal(slots.guestsQuantity, 2);
+  assert.equal(slots.capacity, 3);
+  assert.equal(slots.localizadorOuReservationId, "EGAI6QKW");
 });
 
 test("buildNativeFlowStatePromptBlock includes slots and last tools", () => {

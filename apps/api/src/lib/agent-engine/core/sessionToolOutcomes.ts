@@ -4,6 +4,7 @@ import {
   SESSION_LAST_ASSISTANT_PREVIEW_KEY,
 } from "./confirmationTurnGuards.js";
 import { extractEmbraturSlotsFromTravelForm } from "../checkin/embraturTravelForm.js";
+import { readEmbraturReferenceCatalogFromFlowSlots } from "../checkin/embraturReferenceCatalog.js";
 
 /** Chave genérica em flowSlots para tools satisfeitas na conversa (CSV). */
 export const SESSION_SATISFIED_TOOLS_KEY = "__satisfiedToolNames";
@@ -123,8 +124,9 @@ export function applyConfirmationPhaseTransitions(opts: {
   ) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
     slots[SESSION_COMPLETION_READY_KEY] = true;
-    // Persistir IDs Embratur (snmotvia / sntiptran / IBGE) para o S10 auto-fill.
-    Object.assign(slots, extractEmbraturSlotsFromTravelForm(userMessage));
+    // Persistir IDs Embratur via catálogo da reference (S9) — nunca tabelas fixas.
+    const catalog = readEmbraturReferenceCatalogFromFlowSlots(slots);
+    Object.assign(slots, extractEmbraturSlotsFromTravelForm(userMessage, catalog));
   }
 
   const completionJustOk = okOutcomes.some((o) =>
