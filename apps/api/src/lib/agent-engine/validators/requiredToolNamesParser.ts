@@ -125,6 +125,7 @@ import {
   userMessageLooksLikeAmenityItemQuestion,
   unitKbTurnNeedsEstablishmentCollection,
   resolveEstablishmentInConversation,
+  shouldRequireUnitKnowledgeLookupThisTurn,
   shouldRequireReservationLookupThisTurn,
 } from "../../unitKnowledgeFlow.js";
 
@@ -635,16 +636,10 @@ export function resolveRequiredToolNamesForTurn(
     );
   }
 
-  if (
-    userMessageLooksLikeCheckoutProcedureQuestion(userMessage) ||
-    userMessageLooksLikeReceiptOrInvoiceRequest(userMessage) ||
-    userMessageLooksLikeAmenityItemQuestion(userMessage)
-  ) {
-    if (resolveEstablishmentInConversation(unitCtx)) {
-      return dedupeRequiredToolAliases(
-        filterAgainstAvailable(["buscar_conhecimento"], available),
-      );
-    }
+  if (shouldRequireUnitKnowledgeLookupThisTurn(unitCtx)) {
+    return dedupeRequiredToolAliases(
+      filterAgainstAvailable(["buscar_conhecimento"], available),
+    );
   }
 
   const quoteConfirmationTurn = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode)$/i.test(

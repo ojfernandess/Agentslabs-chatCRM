@@ -21,6 +21,38 @@ test("shouldEnrichKnowledgeSearchQuery rejects menu digit replies", () => {
   assert.equal(shouldEnrichKnowledgeSearchQuery("qual wifi?"), true);
 });
 
+test("buildKnowledgeSearchQuery enriches establishment-only NF follow-up with topic from history", () => {
+  const lastAssistant = `Para emitir a nota fiscal, informe qual unidade:
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Qual delas?`;
+  const q = buildKnowledgeSearchQuery(
+    "Hotel brooklin",
+    [
+      { role: "user", content: "boa tarde, gostaria de solicitar a NF" },
+      { role: "assistant", content: lastAssistant },
+    ],
+  );
+  assert.ok(q.toLowerCase().includes("brooklin"));
+  assert.ok(q.toLowerCase().includes("nota fiscal"));
+});
+
+test("buildKnowledgeSearchQuery enriches menu digit after NF unit collection", () => {
+  const lastAssistant = `Para emitir a nota fiscal:
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Qual delas?`;
+  const q = buildKnowledgeSearchQuery("7", [
+    { role: "user", content: "gostaria de solicitar a NF" },
+    { role: "assistant", content: lastAssistant },
+  ]);
+  assert.ok(q.includes("nota fiscal"));
+});
+
 test("buildKnowledgeSearchQuery does not pollute menu selection with history", () => {
   const q = buildKnowledgeSearchQuery("1", [
     { role: "user", content: "Hotel Brooklin" },

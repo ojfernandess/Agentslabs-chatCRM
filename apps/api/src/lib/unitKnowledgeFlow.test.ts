@@ -7,7 +7,9 @@ import {
   unitKbTurnNeedsEstablishmentCollection,
   messageIsStandaloneReservationLocator,
   assistantRequestedReservationLocator,
+  assistantRequestedEstablishmentForUnitKb,
   shouldRequireReservationLookupThisTurn,
+  shouldRequireUnitKnowledgeLookupThisTurn,
 } from "./unitKnowledgeFlow.js";
 
 test("checkout procedure question is detected", () => {
@@ -65,5 +67,30 @@ test("standalone locator after NF request requires reservation lookup", () => {
       lastAssistantMessage: "Olá! Como posso ajudar?",
     }),
     false,
+  );
+});
+
+test("establishment-only reply after NF unit collection requires KB lookup", () => {
+  const lastAssistant = `Para emitir a nota fiscal, preciso saber em qual unidade você está hospedado:
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Qual delas?`;
+
+  assert.equal(assistantRequestedEstablishmentForUnitKb(lastAssistant), true);
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({
+      userMessage: "Hotel brooklin",
+      lastAssistantMessage: lastAssistant,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({
+      userMessage: "7",
+      lastAssistantMessage: lastAssistant,
+    }),
+    true,
   );
 });

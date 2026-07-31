@@ -290,6 +290,28 @@ test("resolveRequiredToolNamesForTurn standalone locator after NF request requir
   assert.deepEqual(names, ["audaar_consultar_reserva"]);
 });
 
+test("resolveRequiredToolNamesForTurn establishment reply after NF unit ask requires buscar_conhecimento", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C19 | Recibo/NF | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "Hotel brooklin",
+    lastAssistantMessage: `Para emitir a nota fiscal, informe qual unidade:
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Qual delas?`,
+  });
+  assert.deepEqual(names, ["buscar_conhecimento"]);
+});
+
 test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

@@ -117,6 +117,57 @@ export function unitKbTurnNeedsEstablishmentCollection(opts: {
   return !resolveEstablishmentInConversation(opts);
 }
 
+/** Agente pediu unidade/estabelecimento no fluxo C17/C18/C19 (menu 1–7 ou pergunta explícita). */
+export function assistantRequestedEstablishmentForUnitKb(
+  lastAssistantMessage?: string | null,
+): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+
+  const showsEstablishmentMenu =
+    (/1️⃣/.test(t) && /7️⃣/.test(t)) ||
+    (/\bAudaar Tech Suites\b/i.test(t) && /\bHotel Brooklin\b/i.test(t));
+
+  const asksForUnit =
+    /\bqual\s+(?:delas|unidade|estabelecimento|hotel)\b/i.test(t) ||
+    /\bem\s+qual\s+(?:unidade|estabelecimento|hotel)\b/i.test(t) ||
+    /\bnome\s+(?:do\s+)?(?:estabelecimento|hotel)\b/i.test(t) ||
+    /\bpreciso\s+saber\s+(?:em\s+)?qual\s+unidade\b/i.test(t) ||
+    /\binforme\s+(?:o\s+)?(?:nome\s+(?:do\s+)?)?(?:estabelecimento|hotel)\b/i.test(t);
+
+  if (!showsEstablishmentMenu && !asksForUnit) return false;
+
+  return (
+    showsEstablishmentMenu ||
+    /\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t) ||
+    /\bcheck[\s-]?out\b/i.test(t) ||
+    /\b(?:ferro|secador|comodidade)\b/i.test(t)
+  );
+}
+
+/**
+ * Resposta só com unidade (ex.: «Hotel Brooklin» ou «7») após coleta C17/C18/C19
+ * → exige buscar_conhecimento neste turno.
+ */
+export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): boolean {
+  if (!resolveEstablishmentInConversation(opts)) return false;
+
+  const msg = (opts.userMessage ?? "").trim();
+  if (
+    userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
+    userMessageLooksLikeReceiptOrInvoiceRequest(msg) ||
+    userMessageLooksLikeAmenityItemQuestion(msg)
+  ) {
+    return true;
+  }
+
+  return assistantRequestedEstablishmentForUnitKb(opts.lastAssistantMessage);
+}
+
 /** Mensagem contém só o localizador (ex.: DE4KRMDP). */
 export function messageIsStandaloneReservationLocator(userMessage?: string | null): boolean {
   const t = (userMessage ?? "").trim();

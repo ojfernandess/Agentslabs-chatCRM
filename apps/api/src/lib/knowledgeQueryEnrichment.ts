@@ -5,6 +5,8 @@ import {
   userMessageLooksLikeCheckoutProcedureQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
   userMessageLooksLikeAmenityItemQuestion,
+  resolveEstablishmentInConversation,
+  assistantRequestedEstablishmentForUnitKb,
 } from "./unitKnowledgeFlow.js";
 
 export type KnowledgeConversationTurn = {
@@ -269,13 +271,23 @@ export function resolveKnowledgeSearchSkip(
   userMessage: string,
   ctx: KnowledgeSearchSkipContext = {},
 ): KnowledgeSearchSkipReason | null {
+  const lastAssistant = ctx.lastAssistantMessage?.trim() ?? "";
+  if (
+    resolveEstablishmentInConversation({
+      userMessage,
+      lastAssistantMessage: lastAssistant,
+    }) &&
+    assistantRequestedEstablishmentForUnitKb(lastAssistant)
+  ) {
+    return null;
+  }
+
   if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";
   if (isUserDataProvisionMessage(userMessage)) return "data_provision";
   if (isOperationalReservationLookupMessage(userMessage) || ctx.reservationLookupScheduled) {
     return "checkin_reservation_turn";
   }
 
-  const lastAssistant = ctx.lastAssistantMessage?.trim() ?? "";
   if (lastAssistant && assistantMessageIsDataCollection(lastAssistant)) {
     if (!userMessageLooksLikeKnowledgeSeekingQuery(userMessage)) return "cadastro_turn";
   }
@@ -300,10 +312,24 @@ export function shouldSkipKnowledgeSearchForTurn(
 }
 
 /** Evita poluir a query com histórico em respostas de menu / fluxo (ex.: «1», «sim»). */
-export function shouldEnrichKnowledgeSearchQuery(userMessage: string): boolean {
-  if (shouldSkipKnowledgeSearchForTurn(userMessage)) return false;
+export function shouldEnrichKnowledgeSearchQuery(
+  userMessage: string,
+  history: KnowledgeConversationTurn[] = [],
+): boolean {
   const t = userMessage.trim();
-  return t.length > 0;
+  if (!t) return false;
+  const lastAssistant =
+    [...history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  if (
+    resolveEstablishmentInConversation({ userMessage: t }) &&
+    assistantRequestedEstablishmentForUnitKb(lastAssistant)
+  ) {
+    return true;
+  }
+  if (shouldSkipKnowledgeSearchForTurn(userMessage, { lastAssistantMessage: lastAssistant })) {
+    return false;
+  }
+  return true;
 }
 
 /** Enriquece a query curta/ambígua com contexto da conversa (estabelecimento, tópico). */
@@ -313,11 +339,20 @@ export function buildKnowledgeSearchQuery(
 ): string {
   const user = userMessage.trim();
   if (!user) return user;
-  if (!shouldEnrichKnowledgeSearchQuery(user)) return user.slice(0, 500);
 
-  const parts = [user];
   const recent = history.slice(-8);
   const combinedHistory = recent.map((t) => t.content).join("\n");
+  const lastAssistant =
+    [...recent].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  const unitKbEstablishmentReply =
+    resolveEstablishmentInConversation({ userMessage: user }) &&
+    assistantRequestedEstablishmentForUnitKb(lastAssistant);
+
+  if (!shouldEnrichKnowledgeSearchQuery(user, history) && !unitKbEstablishmentReply) {
+    return user.slice(0, 500);
+  }
+
+  const parts = [user];
   const establishments = extractEstablishmentFromText(combinedHistory);
   const userEstablishments = extractEstablishmentFromText(user);
   const allEst = [...new Set([...userEstablishments, ...establishments])];
@@ -327,6 +362,15 @@ export function buildKnowledgeSearchQuery(
     const syns = TOPIC_SYNONYMS[topic]?.slice(0, 3) ?? [];
     for (const s of syns) {
       if (!user.toLowerCase().includes(s)) parts.push(s);
+    }
+  }
+
+  if (unitKbEstablishmentReply) {
+    if (/\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(combinedHistory)) {
+      parts.push("nota fiscal");
+    }
+    if (/\bcheck[\s-]?out\b/i.test(combinedHistory)) {
+      parts.push("procedimento checkout");
     }
   }
 
