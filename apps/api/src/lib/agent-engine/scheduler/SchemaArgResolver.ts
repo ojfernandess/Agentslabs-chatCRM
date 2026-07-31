@@ -111,6 +111,15 @@ const CAPABILITY_ARG_PROFILES: Record<string, Partial<ToolEilConfig>> = {
       documentNumber: ["cpf", "document", "documentNumber"],
     },
   },
+  availability: {
+    argAliases: {
+      establishmentId: ["establishment_id", "propertyId", "hotelId", "unitId"],
+      checkinDate: ["checkInDate", "check_in", "checkIn", "dataCheckin", "arrivalDate"],
+      checkoutDate: ["checkOutDate", "check_out", "checkOut", "dataCheckout", "departureDate"],
+      guestsQuantity: ["guests", "quantity", "N", "pessoas", "people", "guestCount"],
+      establishmentName: ["propertyName", "hotelName", "unitName", "propriedade"],
+    },
+  },
 };
 
 const REFERENCE_CODE_RE = /\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i;
@@ -124,6 +133,8 @@ const TOOL_CAPABILITY_HINTS: Record<string, string[]> = {
   audaar_consultar_reserva: ["lookup"],
   consultar_reserva: ["lookup"],
   audaar_check_in: ["checkin"],
+  audaar_consultar_disponibilidade: ["availability"],
+  consultar_disponibilidade: ["availability"],
 };
 
 function mergeEilProfiles(

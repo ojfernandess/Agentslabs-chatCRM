@@ -10,9 +10,9 @@ const STALL_RE =
 const TOOL_ROUNDS_EXHAUSTED_RE =
   /não\s+foi\s+possível\s+concluir\s+as\s+ações\s+automáticas\s+a\s+tempo/i;
 
-/** Narracao de invocacao pendente (ex.: execucao 11:31). */
+/** Narracao de invocacao pendente (ex.: execucao 11:31 / 12:14). */
 const TOOL_NARRATION_RE =
-  /\(\s*invocando\s+a\s+ferramenta\b|invocando\s+a\s+ferramenta\s*[`'"]?\w|#{1,3}\s*consultando\s+a\s+reserva|consultando\s+a\s+reserva\s*\.{0,3}\s*$|chame\s+`?[a-z0-9_-]*consultar|vou\s+(consultar|verificar|chamar|invocar)\b.{0,80}\b(ferramenta|tool|reserva)/i;
+  /\(\s*invocando\s+a\s+ferramenta\b|invocando\s+a\s+ferramenta\s*[`'"]?\w|#{1,3}\s*consultando\s+a\s+reserva|consultando\s+a\s+reserva\s*\.{0,3}\s*$|chame\s+`?[a-z0-9_-]*consultar|vou\s+(consultar|verificar|chamar|invocar)\b.{0,80}\b(ferramenta|tool|reserva)|\*[\w_-]*(?:consultar|disponibilidade)[\w_-]*\*/i;
 
 /**
  * True quando a reply narra chamada de tool / «consultando…» em vez de entregar factos.

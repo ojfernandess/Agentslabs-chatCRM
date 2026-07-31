@@ -321,9 +321,18 @@ function scoreTurnLine(
     pattern.id === "quote_stay_details" ||
     pattern.id === "availability_quote"
   ) {
-    if (/\bC6c\b/i.test(category) || /\bC6c\b/i.test(line)) score += 8;
-    if (/\bC6\b/i.test(category) || /\bC6\b/i.test(line)) score += 6;
-    if (/consultar_disponibilidade|disponibilidade|cota/i.test(line)) score += 4;
+    const isConfirmation = /^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(userMessage.trim());
+    if (/\bC6c\b/i.test(category) || /\bC6c\b/i.test(line)) {
+      score += isConfirmation ? 8 : -12;
+    }
+    if (/\bC6\b/i.test(category) && !/\bC6c\b/i.test(category)) score += 6;
+    if (/\bZERO\b/i.test(line) || /Modelo C6 (Abertura|Confirm)/i.test(line)) score += 8;
+    if (/GATE C6 coleta|coleta|confirma/i.test(line) && !/consultar_disponibilidade/i.test(line)) {
+      score += 4;
+    }
+    if (/consultar_disponibilidade|disponibilidade|cota/i.test(line)) {
+      score += isConfirmation ? 4 : -6;
+    }
     if (/consultar_reserva/i.test(line) && !/C2|C3/i.test(category)) score -= 10;
     if (/buscar_conhecimento/i.test(line)) score -= 6;
   } else if (pattern.id === "structured_form_submission") {
@@ -507,9 +516,21 @@ export function resolveRequiredToolNamesForTurn(
   const required = new Set<string>();
 
   const userMessage = (options.userMessage ?? "").trim();
+  const quoteConfirmationTurn = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode)$/i.test(
+    userMessage,
+  );
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
+      // C6 coleta/confirmação = ZERO tools; C6c (disponibilidade) só via turnPolicy no «sim» pós Confirm.
+      if (
+        (pattern.id === "quote_request" ||
+          pattern.id === "quote_stay_details" ||
+          pattern.id === "availability_quote") &&
+        !quoteConfirmationTurn
+      ) {
+        continue;
+      }
       const matches = findBestTurnMatches(playbook, pattern, userMessage, completionHints);
       for (const match of matches) {
         for (const tool of match.tools) {

@@ -73,10 +73,13 @@ import {
   assistantIsCompanionOptInPrompt,
   isCompanionRegistrationDeclined,
   assistantIsTitularMirrorConfirm,
+  assistantIsQuoteAvailabilityConfirm,
+  isShortAffirmativeConfirmation,
   readPartySize,
 } from "./agent-engine/core/confirmationTurnGuards.js";
 import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
 import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
+import { mergeQuoteFlowSlotsFromConversation } from "./agent-engine/quote/quoteFlowSlots.js";
 import {
   ensureDeliveringReply,
   buildModeloS9TravelFormTemplateFromToolOutcomes,
@@ -2112,6 +2115,31 @@ async function generateNativeAgentReplyCore(input: {
   ];
   const lastAssistantForPolicy =
     readLastAssistantPreview(sessionFlowSlots) || lastAssistantMessage;
+
+  const quoteHistoryUserMessages =
+    isShortAffirmativeConfirmation(userMessage) &&
+    assistantIsQuoteAvailabilityConfirm(lastAssistantForPolicy)
+      ? kbHistoryForSearch.filter((t) => t.role === "user").map((t) => t.content)
+      : [];
+  sessionFlowSlots = mergeQuoteFlowSlotsFromConversation({
+    flowSlots: sessionFlowSlots,
+    userMessage,
+    lastAssistantMessage: lastAssistantForPolicy,
+    historyUserMessages: quoteHistoryUserMessages,
+  }) as AutomationFlowSlots;
+  if (historyOverride == null && Object.keys(sessionFlowSlots).length > 0) {
+    try {
+      await mergeFlowSlotsAutomationContext({
+        organizationId,
+        conversationId: conversation.id,
+        botId: bot.id,
+        flowSlots: sessionFlowSlots,
+      });
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "merge quote flow slots failed");
+    }
+  }
+
   const unifiedSpineRuntimeInput: AgentRuntimeExecuteInput = {
     organizationId,
     bot,
@@ -2460,9 +2488,16 @@ async function generateNativeAgentReplyCore(input: {
   let replyText = "";
   let completedToolRounds = 0;
 
+  const schedulerFailedRequiredAvailability =
+    scheduledThisTurn &&
+    toolRoundOutcomes.some(
+      (t) => t.ok === false && /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name),
+    ) &&
+    turnPolicy.forceExclusiveExecution;
+
   const runtimeOwnedTools =
-    effectiveToolMode === "runtime_owned" ||
-    (scheduledThisTurn && turnPolicy.forceExclusiveExecution) ||
+    (effectiveToolMode === "runtime_owned" && !schedulerFailedRequiredAvailability) ||
+    (scheduledThisTurn && turnPolicy.forceExclusiveExecution && !schedulerFailedRequiredAvailability) ||
     (executionHints?.replyOnlyRetry === true &&
       (executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
       effectiveToolMode !== "hybrid");
@@ -3156,7 +3191,15 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   // Última linha: forçar Modelo S1 após consultar_reserva (C3) e nunca sair vazio após tools OK.
-  if (toolRoundOutcomes.some((t) => t.ok)) {
+  const shouldSynthesizeReply =
+    toolRoundOutcomes.some((t) => t.ok) ||
+    (toolRoundOutcomes.some(
+      (t) =>
+        t.ok === false &&
+        /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name),
+    ) &&
+      isShortAffirmativeConfirmation(userMessage));
+  if (shouldSynthesizeReply) {
     const synthesized = ensureDeliveringReply({
       replyText,
       toolOutcomes: toolRoundOutcomes,

@@ -37,7 +37,8 @@ export type EnsureDeliveringReplyResult = {
     | "check_in_ack"
     | "companion_s4c"
     | "ir_template"
-    | "deterministic_fallback";
+    | "deterministic_fallback"
+    | "quote_availability_failed";
 };
 
 export { extractReservationDisplayFields };
@@ -207,7 +208,28 @@ function tryRenderReservationLookup(
  */
 export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): EnsureDeliveringReplyResult {
   const successful = input.toolOutcomes.filter((t) => t.ok !== false && t.name !== "buscar_conhecimento");
+  const failedAvailability = input.toolOutcomes.some(
+    (t) =>
+      t.ok === false &&
+      /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name),
+  );
+  const quoteConfirmTurn = /^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(
+    (input.userMessage ?? "").trim(),
+  );
+
   if (successful.length === 0) {
+    if (
+      failedAvailability &&
+      quoteConfirmTurn &&
+      isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages)
+    ) {
+      return {
+        reply:
+          "Não consegui consultar a disponibilidade agora. Pode repetir as datas e a propriedade, ou prefere que eu encaminhe para a equipe?",
+        replaced: true,
+        reason: "quote_availability_failed",
+      };
+    }
     return { reply: input.replyText, replaced: false };
   }
 

@@ -326,3 +326,19 @@ test("resolveRequiredToolNamesForTurn — quote request does not trigger KB-only
   );
   assert.equal(names.includes("buscar_conhecimento"), false);
 });
+
+test("resolveRequiredToolNamesForTurn — quote request does not require disponibilidade on collection", () => {
+  const playbook = `
+| C6 | Cotação | cotação · disponibilidade | GATE C6 coleta | ZERO |
+| C6c | Sim pós Confirm | sim após Modelo C6 Confirm | \`audaar_consultar_disponibilidade\` | consultar_disponibilidade |
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "gostaria de fazer uma cotação para audaar tech" },
+  );
+  assert.equal(
+    names.some((n) => /disponibilidade/i.test(n)),
+    false,
+    JSON.stringify(names),
+  );
+});

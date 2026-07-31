@@ -36,3 +36,10 @@ test("isLikelyStallOnlyReply still catches short stalls", () => {
   assert.equal(isLikelyStallOnlyReply("Só um momento por gentileza"), true);
   assert.equal(isLikelyStallOnlyReply("O endereço é Rua Acruás, 267."), false);
 });
+
+test("isToolNarrationReply catches 12:14 italic tool name stall", () => {
+  const reply =
+    "Vou consultar a disponibilidade agora. Um momento, por favor.\n\n*audaar_consultar_disponibilidade*";
+  assert.equal(isToolNarrationReply(reply), true);
+  assert.equal(hasSubstantiveAgentReplyToCustomer(reply), false);
+});

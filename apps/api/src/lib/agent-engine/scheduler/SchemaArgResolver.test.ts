@@ -64,3 +64,29 @@ test("resolveSchemaToolArgs checkin nested mainGuest from session facts", () => 
   assert.equal(args.reservationId, 279307);
   assert.equal((args.mainGuest as Record<string, unknown>).name, "João Silva");
 });
+
+test("resolveSchemaToolArgs availability tool maps quote flow slots", () => {
+  const ctx = buildTurnContext({
+    turnId: "t1",
+    behaviorConfig: {},
+    userMessage: "sim",
+    availableToolNames: ["audaar_consultar_disponibilidade"],
+  });
+  const enriched: TurnContext = {
+    ...ctx,
+    facts: {
+      establishmentId: { key: "establishmentId", value: 49 },
+      checkinDate: { key: "checkinDate", value: "2026-08-02" },
+      checkoutDate: { key: "checkoutDate", value: "2026-08-03" },
+      guestsQuantity: { key: "guestsQuantity", value: 2 },
+    },
+  };
+  const args = resolveSchemaToolArgs({
+    toolName: "audaar_consultar_disponibilidade",
+    turnContext: enriched,
+  });
+  assert.equal(args.establishmentId, 49);
+  assert.equal(args.checkinDate, "2026-08-02");
+  assert.equal(args.checkoutDate, "2026-08-03");
+  assert.equal(args.guestsQuantity, 2);
+});

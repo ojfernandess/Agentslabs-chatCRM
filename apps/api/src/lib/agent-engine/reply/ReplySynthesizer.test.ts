@@ -139,6 +139,23 @@ test("ensureDeliveringReply no-op without successful tools", () => {
   assert.equal(result.reply, REPLY_1131);
 });
 
+test("ensureDeliveringReply replaces quote availability stall after failed tool", () => {
+  const result = ensureDeliveringReply({
+    replyText:
+      "Vou consultar a disponibilidade agora. Um momento, por favor.\n\n*audaar_consultar_disponibilidade*",
+    userMessage: "sim",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_disponibilidade",
+        ok: false,
+        preview: '{"ok":false,"error":"schema_validation_failed"}',
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.match(result.reply, /Não consegui consultar a disponibilidade/i);
+});
+
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
   const mainGuestPayload = {
     found: true,
