@@ -62,7 +62,7 @@ Cumpra este playbook pela ordem de precedência abaixo. Em caso de conflito:
 | **C17 coleta unidade** | ZERO | `buscar_conhecimento` antes de saber a unidade |
 | **C18 comodidade (com unidade)** | `buscar_conhecimento` · `call_human` se item ausente na KB | inventar comodidade |
 | **C19 recibo/NF (com unidade)** | `buscar_conhecimento` · `call_human` após confirmação | inventar política fiscal |
-| **C19 localizador pós-pedido** | `audaar_consultar_reserva` | inventar período/valor/quarto |
+| **C19 localizador pós-pedido** | `audaar_consultar_reserva` + `audaar_consultar_main_guest` | inventar dados da reserva ou do titular |
 | **C19 / C17 coleta unidade** | ZERO | qualquer tool antes da unidade |
 | **C6 coleta/confirmação** | ZERO | `audaar_consultar_disponibilidade` antes do hóspede confirmar os dados · inventar preços |
 | **C6 consulta (pós-sim)** | `audaar_consultar_disponibilidade` | inventar preços/disponibilidade · `buscar_conhecimento` · mem0 · appendix · `audaar_consultar_reserva` |
@@ -281,25 +281,30 @@ Faça uma última checagem para garantir que não esqueceu nenhum pertence.
 2. Se a KB indicar que a unidade **emite NF** e trouxer procedimento → siga o procedimento da KB · **PARE**
 
 **Passo 3 — Procedimento NF (quando KB contém secção «Nota fiscal (NF)»):**
-Solicite os dados abaixo. Peça ao hóspede o **localizador** para preencher **Período**, **Valor**, **Unidade**, **Hóspede** e **Quarto**; o restante o hóspede preenche:
+Peça ao hóspede o **localizador** da reserva para **auto-preencher** o formulário NF via API. Campos ausentes no JSON ficam em branco para o hóspede completar.
 
 **Passo 3a — Localizador informado (turno seguinte):**
-- Quando o hóspede enviar **somente o localizador** (ex.: `DE4KRMDP`) após você ter pedido → chame **`audaar_consultar_reserva`** (`toolRounds≥1`) **neste turno**
-- Use **somente** o JSON da API para preencher **Período**, **Valor**, **Unidade**, **Hóspede** e **Quarto** — **PROIBIDO** inventar
-- Depois peça os campos restantes (nome, CPF/CNPJ, endereço, etc.) · **PARE**
+- Quando o hóspede enviar **somente o localizador** (ex.: `DE4KRMDP`) após você ter pedido:
+  1. Chame **`audaar_consultar_reserva`** (`toolRounds≥1`) com o localizador
+  2. Chame **`audaar_consultar_main_guest`** (`toolRounds≥1`) com o CPF/CNPJ (**somente dígitos**) de `data.guest.documentNumber` ou `data.responsible.documentNumber` da reserva
+- Use **somente** o JSON das tools — **PROIBIDO** inventar · **PROIBIDO** usar `guest`/`responsible` da reserva no lugar de `mainGuest` para nome, documento, endereço, CEP, telefone ou e-mail
+- Preencha o **espelho NF** com a tabela abaixo · peça ao hóspede **somente** corrigir/completar campos **vazios** ou divergentes · **PARE**
 
-- **Nome completo**
-- **CPF ou CNPJ**
-- **Endereço**
-- **CEP**
-- **Telefone**
-- **Período**
-- **Valor**
-- **Unidade**
-- **E-mail**
-- **Hóspede**
-- **Quarto**
+| Campo NF | Fonte |
+|---|---|
+| **Nome completo** | `mainGuest.name` |
+| **CPF ou CNPJ** | `mainGuest.documentNumber` (+ `mainGuest.documentType` se houver) |
+| **Endereço** | `mainGuest.street`, `mainGuest.number`, `mainGuest.neighborhood`, `mainGuest.city`, `mainGuest.state` (uma linha) |
+| **CEP** | `mainGuest.zipCode` |
+| **Telefone** | `mainGuest.mobilePhoneNumber` ou `mainGuest.phone` |
+| **E-mail** | `mainGuest.email` |
+| **Hóspede** | `mainGuest.name` |
+| **Período** | `stay.checkinDate` a `stay.checkoutDate` (DD/MM/AAAA) — `audaar_consultar_reserva` |
+| **Valor** | `stay.totalPrice` ou `reservation.totalAmount` ou `billing.totalPaid` (primeiro não vazio) — `audaar_consultar_reserva` |
+| **Unidade** | `establishment.establishmentName` ou `establishmentName` — `audaar_consultar_reserva` |
+| **Quarto** | `room.categoryName` / `room.roomName` + `room.roomNumber` — `audaar_consultar_reserva` |
 
+- Se **`audaar_consultar_main_guest`** retornar `found:false` → envie o **formulário** em branco (lista acima) para o hóspede preencher manualmente
 - Se **não tiver localizador** → envie o **formulário** para preenchimento
 - Após o hóspede preencher → envie **espelho de confirmação**
 - Após confirmar que está ok → chame **`call_human`** (`toolRounds≥1`) · **PARE**
@@ -769,7 +774,8 @@ Ver **GATE C6** e **POLÍTICA COTAÇÃO** — resumo:
 
 | Tool | Quando | Obrigatório? |
 |---|---|---|
-| `audaar_consultar_reserva` | S1 · C2 · C3 · C14 · Passo 8 | **Sim** — antes de afirmar dados da reserva |
+| `audaar_consultar_reserva` | S1 · C2 · C3 · C14 · Passo 8 · **C19 passo 3a** | **Sim** — antes de afirmar dados da reserva |
+| `audaar_consultar_main_guest` | **C19 passo 3a** (pós-reserva, CPF da reserva) | **Sim** — antes de preencher nome/CPF/endereço/CEP/telefone/e-mail no espelho NF |
 | `buscar_conhecimento` | C5 · **C17/C18/C19 (com unidade)** · **Passo 8 / S1 Concluído** | **Sim** — antes de fatos da unidade / acessos / checkout / NF |
 | `audaar_consultar_disponibilidade` | **C6 passo 3 / C6c** (após confirmação do hóspede) | **Sim** — única fonte de preços/opções/disponibilidade · **obrigatório** antes de qualquer R$ |
 | `call_human` | C13 · **C6 passo 4** · **C18 (item ausente na KB)** · **C19 (pós-confirmação NF/recibo)** · hóspede irritado | Quando escalar |
@@ -876,7 +882,7 @@ Troca de assunto ou **novo pedido de cotação** → zere dados da cotação ant
 | C17 check-out sem unidade | Modelo C17 Coleta Unidade · ZERO tools | Link check-in · KB genérica |
 | C17 check-out com unidade | `buscar_conhecimento` → procedimento ou fallback | Modelo S1 · link check-in |
 | C18 item ausente na KB | Informar + `call_human` | Inventar que tem/não tem |
-| C19 recibo/NF | KB → localizador → **`consultar_reserva`** → formulário/espelho → `call_human` | Inventar dados da reserva |
+| C19 recibo/NF | KB → localizador → **`consultar_reserva`** + **`consultar_main_guest`** → espelho NF → `call_human` | Inventar dados da reserva ou do titular |
 | CPF/selfie enviados | Reenviar Modelo S1 (link) | Lookup · upload · check-in no chat |
 | Stall pós-tool | Responder com dados da tool | “Só um momento” após consulta OK |
 | C2 verificar | Modelo Verificar | Modelo S1 + pedir cadastro |
