@@ -19,6 +19,7 @@ import type {
 } from "../eil/types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import { isPostCompletionPending } from "../core/sessionToolOutcomes.js";
+import { guestAsksQuoteCategoryInfo } from "../core/confirmationTurnGuards.js";
 import {
   GENERIC_TURN_PATTERNS,
 } from "../validators/requiredToolNamesParser.js";
@@ -89,11 +90,17 @@ export function executionTurnPlanFromPromptIr(
   const quoteFlow = matchedPatternIds.some((id) =>
     ["quote_request", "quote_stay_details", "availability_quote"].includes(id),
   );
+  const quoteCategoryInfoTurn = guestAsksQuoteCategoryInfo({
+    userMessage,
+    lastAssistantMessage: opts.lastAssistantMessage,
+    flowSlots,
+  });
   const knowledgeSeeking =
-    !quoteFlow &&
-    (userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
-      opts.postCompletionFollowUp === true ||
-      isPostCompletionPending(flowSlots));
+    quoteCategoryInfoTurn ||
+    (!quoteFlow &&
+      (userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
+        opts.postCompletionFollowUp === true ||
+        isPostCompletionPending(flowSlots)));
 
   return {
     userMessage,

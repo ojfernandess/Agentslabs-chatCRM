@@ -146,3 +146,48 @@ test("buildModeloC6HandoffReply renders full summary before transfer", () => {
   assert.match(reply, /R\$ 380,00 total/);
   assert.match(reply, /encaminhar seu atendimento para nossa equipe/i);
 });
+
+const BROOKLIN_PAYLOAD = {
+  data: {
+    establishmentId: 51,
+    establishmentName: "Hotel Brooklin",
+    checkin: "2026-08-03",
+    checkout: "2026-08-04",
+    guests: 2,
+    categories: [
+      {
+        categoryName: "Standard Quadruplo (4 camas)",
+        available: true,
+        ratePlans: [
+          {
+            channelName: "Balcão",
+            totalPrice: 210,
+            averageNightlyPrice: 210,
+            available: true,
+          },
+        ],
+      },
+      {
+        categoryName: "Garagem Coberta",
+        available: true,
+        ratePlans: [
+          {
+            channelName: "Balcão",
+            totalPrice: 50,
+            averageNightlyPrice: 50,
+            available: true,
+          },
+        ],
+      },
+    ],
+  },
+};
+
+test("buildModeloC6OptionsReply omits garage categories for Hotel Brooklin", () => {
+  const reply = buildModeloC6OptionsReply(BROOKLIN_PAYLOAD);
+  assert.match(reply, /Standard Quadruplo/i);
+  assert.doesNotMatch(reply, /Garagem|garagem/i);
+  const catalog = buildQuoteOptionsCatalogFromPayload(BROOKLIN_PAYLOAD);
+  assert.equal(catalog?.options.length, 1);
+  assert.match(catalog!.options[0]!.categoryName, /Standard/i);
+});

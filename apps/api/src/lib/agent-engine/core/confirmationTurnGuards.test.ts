@@ -5,6 +5,9 @@ import {
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
   assistantIsQuoteAvailabilityConfirm,
+  guestSelectedQuoteOption,
+  guestAsksQuoteCategoryInfo,
+  messageLooksLikeQuoteOptionChoice,
 } from "./confirmationTurnGuards.js";
 
 const TITULAR_MIRROR = `
@@ -163,6 +166,41 @@ test("sim after Modelo C6 Confirm does not suppress exclusive gate", () => {
     shouldSuppressConfirmationExclusiveTools({
       lastAssistantMessage: C6_CONFIRM,
       userMessage: "Sim",
+    }),
+    false,
+  );
+});
+
+const C6_OPTIONS = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Standard Quadruplo (4 camas) — R$ 210,00 / diária · R$ 210,00 total
+2️⃣ Deluxe Duplo — R$ 380,00 / diária · R$ 380,00 total
+
+Qual opção você prefere?`;
+
+test("guestSelectedQuoteOption detects category name without choice verb", () => {
+  assert.equal(
+    guestSelectedQuoteOption({
+      lastAssistantMessage: C6_OPTIONS,
+      userMessage: "Standard Quadruplo (4 camas)",
+    }),
+    true,
+  );
+  assert.equal(messageLooksLikeQuoteOptionChoice("Standard Quadruplo (4 camas)"), true);
+});
+
+test("guestAsksQuoteCategoryInfo detects category question and not bare choice", () => {
+  assert.equal(
+    guestAsksQuoteCategoryInfo({
+      lastAssistantMessage: C6_OPTIONS,
+      userMessage: "Quantas camas tem o Standard Quadruplo?",
+    }),
+    true,
+  );
+  assert.equal(
+    guestSelectedQuoteOption({
+      lastAssistantMessage: C6_OPTIONS,
+      userMessage: "Quantas camas tem o Standard Quadruplo?",
     }),
     false,
   );

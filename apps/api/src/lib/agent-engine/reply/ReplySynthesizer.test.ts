@@ -316,6 +316,37 @@ test("ensureDeliveringReply replaces call_human stall with Modelo C6 handoff sum
   assert.doesNotMatch(result.reply, /\*call_human\*|um momento/i);
 });
 
+test("ensureDeliveringReply appends quote options after category KB answer", () => {
+  const result = ensureDeliveringReply({
+    replyText: "O Standard Quadruplo possui 4 camas de solteiro.",
+    userMessage: "Quantas camas tem o Standard Quadruplo?",
+    lastAssistantMessage: C6_OPTIONS_MSG,
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: '{"found":true}' }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_category_info_return");
+  assert.match(result.reply, /4 camas de solteiro/i);
+  assert.match(result.reply, /Qual opção você prefere/i);
+  assert.match(result.reply, /R\$ 210,00 total/);
+});
+
+test("ensureDeliveringReply blocks fake transfer when call_human did not run on quote choice", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Perfeito! Vou encaminhar você para nossa equipe de atendimento.",
+    userMessage: "Standard Quadruplo (4 camas)",
+    lastAssistantMessage: `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Standard Quadruplo (4 camas) — R$ 210,00 / diária · R$ 210,00 total
+
+Qual opção você prefere?`,
+    toolOutcomes: [],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_call_human_missing");
+  assert.match(result.reply, /problema ao encaminhar/i);
+  assert.doesNotMatch(result.reply, /Perfeito! Então temos/i);
+});
+
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
   const mainGuestPayload = {
     found: true,

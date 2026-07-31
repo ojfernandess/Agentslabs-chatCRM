@@ -106,8 +106,9 @@ export function messageLooksLikeQuoteStayDetails(userMessage: string): boolean {
 }
 
 import {
-  assistantIsQuoteOptionsList,
-  messageLooksLikeQuoteOptionChoice,
+  guestSelectedQuoteOption,
+  guestAsksQuoteCategoryInfo,
+  messageLooksLikeQuoteCategoryQuestion,
 } from "../core/confirmationTurnGuards.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
@@ -180,6 +181,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       if (!msg) return false;
       if (/^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode|n[aã]o|nao)$/i.test(msg)) return false;
       if (/^\d{11}$/.test(msg)) return false;
+      if (messageLooksLikeQuoteCategoryQuestion(msg)) return false;
       if (/^[1-9]$/.test(msg)) return true;
       if (/^(?:op[cç][aã]o\s*)?[1-9]\b/i.test(msg)) return true;
       if (/\b(?:a\s+)?(?:primeir[ao]|segund[ao]|terceir[ao])\b/i.test(msg)) return true;
@@ -189,6 +191,12 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       return false;
     },
     playbookHints: /\b(C6e|escolha\s+p[oó]s|call_human|GATE C6\s+passo\s+4|C6\s+escolha)\b/i,
+  },
+  {
+    id: "quote_category_info",
+    test: (m) => messageLooksLikeQuoteCategoryQuestion(m),
+    playbookHints:
+      /\b(C6d|d[uú]vida\s+p[oó]s|categoria\s+p[oó]s|buscar_conhecimento|GATE C6\s+passo\s+3a|C6\s+categoria)\b/i,
   },
 ];
 
@@ -342,6 +350,9 @@ function scoreTurnLine(
     if (/\bC6e\b/i.test(category) || /\bC6e\b/i.test(line)) score += 8;
     if (/escolha|call_human|passo\s+4/i.test(line)) score += 4;
     if (/C6\s+escolha/i.test(line)) score += 4;
+  } else if (pattern.id === "quote_category_info") {
+    if (/\bC6d\b/i.test(category) || /\bC6d\b/i.test(line)) score += 8;
+    if (/buscar_conhecimento|categoria|passo\s+3a/i.test(line)) score += 4;
   } else if (
     pattern.id === "quote_request" ||
     pattern.id === "quote_stay_details" ||
@@ -554,8 +565,21 @@ export function resolveRequiredToolNamesForTurn(
       if (!pattern.test(userMessage)) continue;
       if (
         pattern.id === "quote_option_choice" &&
-        (!assistantIsQuoteOptionsList(options.lastAssistantMessage) ||
-          !messageLooksLikeQuoteOptionChoice(userMessage))
+        !guestSelectedQuoteOption({
+          userMessage,
+          lastAssistantMessage: options.lastAssistantMessage,
+          flowSlots: options.flowSlots,
+        })
+      ) {
+        continue;
+      }
+      if (
+        pattern.id === "quote_category_info" &&
+        !guestAsksQuoteCategoryInfo({
+          userMessage,
+          lastAssistantMessage: options.lastAssistantMessage,
+          flowSlots: options.flowSlots,
+        })
       ) {
         continue;
       }

@@ -76,7 +76,8 @@ import {
   assistantIsQuoteAvailabilityConfirm,
   assistantIsQuoteOptionsList,
   isShortAffirmativeConfirmation,
-  messageLooksLikeQuoteOptionChoice,
+  guestSelectedQuoteOption,
+  guestAsksQuoteCategoryInfo,
   readPartySize,
 } from "./agent-engine/core/confirmationTurnGuards.js";
 import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
@@ -3195,12 +3196,19 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   // Última linha: forçar Modelo S1 após consultar_reserva (C3) e nunca sair vazio após tools OK.
-  const quoteChoiceTurn =
-    assistantIsQuoteOptionsList(lastAssistantForPolicy) &&
-    messageLooksLikeQuoteOptionChoice(userMessage);
+  const quoteChoiceTurn = guestSelectedQuoteOption({
+    userMessage,
+    lastAssistantMessage: lastAssistantForPolicy,
+    flowSlots: sessionFlowSlots,
+  });
   const quoteDiscountObjectionTurn =
     assistantIsQuoteOptionsList(lastAssistantForPolicy) &&
     messageLooksLikeQuoteDiscountObjection(userMessage);
+  const quoteCategoryInfoTurn = guestAsksQuoteCategoryInfo({
+    userMessage,
+    lastAssistantMessage: lastAssistantForPolicy,
+    flowSlots: sessionFlowSlots,
+  });
   const shouldSynthesizeReply =
     toolRoundOutcomes.some((t) => t.ok) ||
     (toolRoundOutcomes.some(
@@ -3211,6 +3219,8 @@ async function generateNativeAgentReplyCore(input: {
       isShortAffirmativeConfirmation(userMessage)) ||
     (toolRoundOutcomes.some((t) => t.ok === false && /^call_human$/i.test(t.name)) &&
       quoteChoiceTurn) ||
+    quoteChoiceTurn ||
+    quoteCategoryInfoTurn ||
     quoteDiscountObjectionTurn;
   if (shouldSynthesizeReply) {
     const synthesized = ensureDeliveringReply({

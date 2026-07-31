@@ -7,6 +7,11 @@ const BALCAO_RE = /balc[aã]o/i;
 /** channelId do plano Balcão na API Audaar (fallback quando o nome vem vazio). */
 const BALCAO_CHANNEL_IDS = new Set([138]);
 
+/** Hotel Brooklin — establishmentId 51; omitir categorias de garagem/vaga na cotação. */
+export const BROOKLIN_ESTABLISHMENT_ID = 51;
+
+const GARAGE_CATEGORY_RE = /\b(garagem|vaga|estacionamento|parking)\b/i;
+
 const EMOJI_NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
 
 type RatePlan = {
@@ -130,6 +135,25 @@ export function looksLikeAvailabilityQuotePayload(payload: unknown): boolean {
   return Array.isArray(data.categories);
 }
 
+export function isGarageCategoryName(categoryName: string): boolean {
+  return GARAGE_CATEGORY_RE.test((categoryName ?? "").trim());
+}
+
+function isBrooklinQuote(data: Record<string, unknown>): boolean {
+  const id = data.establishmentId ?? data.establishment_id;
+  if (typeof id === "number" && id === BROOKLIN_ESTABLISHMENT_ID) return true;
+  const name = String(data.establishmentName ?? data.establishment ?? "").toLowerCase();
+  return /\bbrooklin\b|\bbrookin\b/.test(name);
+}
+
+function shouldIncludeQuoteCategory(data: Record<string, unknown>, cat: Category): boolean {
+  if (cat.available === false) return false;
+  if (isBrooklinQuote(data) && isGarageCategoryName((cat.categoryName ?? "").trim())) {
+    return false;
+  }
+  return true;
+}
+
 function buildOptionsIntro(data: Record<string, unknown>): string {
   const period = formatQuoteStayPeriod(data);
   if (period) {
@@ -148,7 +172,7 @@ export function buildModeloC6OptionsReply(payload: unknown): string {
   const periodInBody = periodSuffix ? ` (${periodSuffix})` : "";
 
   const categories = (data.categories as Category[] | undefined) ?? [];
-  const availableCategories = categories.filter((c) => c.available !== false);
+  const availableCategories = categories.filter((c) => shouldIncludeQuoteCategory(data, c));
 
   if (availableCategories.length === 0) {
     return (
@@ -187,6 +211,44 @@ export function buildModeloC6OptionsReply(payload: unknown): string {
   }
 
   return `${buildOptionsIntro(data)}\n\n${lines.join("\n")}\n\nQual opção você prefere?`;
+}
+
+/** Reexibe Modelo C6 Opções após dúvida de categoria (C6d) — retorno à cotação. */
+export function buildQuoteOptionsReturnPrompt(opts: {
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean>;
+  lastOptionsPayload?: unknown;
+}): string | null {
+  const fromReply = (opts.lastAssistantMessage ?? "").trim();
+  if (replyLooksLikeModeloC6Options(fromReply)) {
+    return fromReply;
+  }
+  if (opts.lastOptionsPayload && looksLikeAvailabilityQuotePayload(opts.lastOptionsPayload)) {
+    return buildModeloC6OptionsReply(opts.lastOptionsPayload);
+  }
+  const catalog = readQuoteCatalogFromFlowSlots(opts.flowSlots);
+  if (!catalog?.options.length) return null;
+  const pseudoPayload = {
+    data: {
+      establishmentName: catalog.establishmentName,
+      checkin: catalog.checkin,
+      checkout: catalog.checkout,
+      guests: catalog.guests,
+      categories: catalog.options.map((o) => ({
+        categoryName: o.categoryName,
+        available: true,
+        ratePlans: [
+          {
+            channelName: "Balcão",
+            totalPrice: o.totalPrice ?? undefined,
+            averageNightlyPrice: o.nightlyPrice ?? undefined,
+            available: true,
+          },
+        ],
+      })),
+    },
+  };
+  return buildModeloC6OptionsReply(pseudoPayload);
 }
 
 export function replyLooksLikeModeloC6Options(text: string): boolean {
@@ -272,7 +334,7 @@ export function buildQuoteOptionsCatalogFromPayload(payload: unknown): QuoteOpti
   const categories = (data.categories as Category[] | undefined) ?? [];
   const options: QuoteOptionCatalogEntry[] = [];
   for (const cat of categories) {
-    if (cat.available === false) continue;
+    if (!shouldIncludeQuoteCategory(data, cat)) continue;
     const plan = selectBalconRatePlan(cat.ratePlans);
     if (!plan) continue;
     options.push({

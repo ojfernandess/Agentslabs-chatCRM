@@ -5,7 +5,10 @@ import {
   readSessionSatisfiedToolNames,
   SESSION_SATISFIED_TOOLS_KEY,
 } from "../core/sessionToolOutcomes.js";
-import { assistantIsQuoteAvailabilityConfirm } from "../core/confirmationTurnGuards.js";
+import {
+  assistantIsQuoteAvailabilityConfirm,
+  guestSelectedQuoteOption,
+} from "../core/confirmationTurnGuards.js";
 import { QUOTE_OPTIONS_CATALOG_SLOT } from "./quoteAvailabilityReply.js";
 
 export type QuoteFlowSlots = Record<string, string | number | boolean>;
@@ -111,7 +114,26 @@ function quoteSessionFingerprint(slots: QuoteFlowSlots): string {
   ].join("|");
 }
 
-/** Remove consulta de disponibilidade satisfeita — cada cotação exige nova tool. */
+const QUOTE_SESSION_TOOL_RE =
+  /(?:consultar[_-]?)?disponibilidade|availability|^call_human$/i;
+
+/** Remove tools de cotação satisfeitas — cada cotação/escolha exige nova execução. */
+export function stripQuoteSessionToolsFromSatisfiedNames(
+  flowSlots: QuoteFlowSlots,
+): QuoteFlowSlots {
+  const prev = readSessionSatisfiedToolNames(flowSlots);
+  const filtered = prev.filter((t) => !QUOTE_SESSION_TOOL_RE.test(t));
+  if (filtered.length === prev.length) return flowSlots;
+  const next: QuoteFlowSlots = { ...flowSlots };
+  if (filtered.length > 0) {
+    next[SESSION_SATISFIED_TOOLS_KEY] = filtered.join(",");
+  } else {
+    delete next[SESSION_SATISFIED_TOOLS_KEY];
+  }
+  return next;
+}
+
+/** @deprecated Use stripQuoteSessionToolsFromSatisfiedNames */
 export function stripAvailabilityToolFromSatisfiedNames(
   flowSlots: QuoteFlowSlots,
 ): QuoteFlowSlots {
@@ -129,8 +151,21 @@ export function stripAvailabilityToolFromSatisfiedNames(
   return next;
 }
 
+export function stripCallHumanFromSatisfiedNames(flowSlots: QuoteFlowSlots): QuoteFlowSlots {
+  const prev = readSessionSatisfiedToolNames(flowSlots);
+  const filtered = prev.filter((t) => !/^call_human$/i.test(t));
+  if (filtered.length === prev.length) return flowSlots;
+  const next: QuoteFlowSlots = { ...flowSlots };
+  if (filtered.length > 0) {
+    next[SESSION_SATISFIED_TOOLS_KEY] = filtered.join(",");
+  } else {
+    delete next[SESSION_SATISFIED_TOOLS_KEY];
+  }
+  return next;
+}
+
 export function resetQuoteAvailabilitySessionState(flowSlots: QuoteFlowSlots): QuoteFlowSlots {
-  const next = stripAvailabilityToolFromSatisfiedNames(flowSlots);
+  const next = stripQuoteSessionToolsFromSatisfiedNames(flowSlots);
   delete next[QUOTE_OPTIONS_CATALOG_SLOT];
   delete next[QUOTE_SESSION_FINGERPRINT_SLOT];
   return next;
@@ -155,6 +190,16 @@ export function mergeQuoteFlowSlotsFromConversation(opts: {
   ) {
     merged = stripAvailabilityToolFromSatisfiedNames(merged);
     delete merged[QUOTE_OPTIONS_CATALOG_SLOT];
+  }
+
+  if (
+    guestSelectedQuoteOption({
+      userMessage: userMsg,
+      lastAssistantMessage: opts.lastAssistantMessage,
+      flowSlots: merged,
+    })
+  ) {
+    merged = stripCallHumanFromSatisfiedNames(merged);
   }
 
   const texts = [

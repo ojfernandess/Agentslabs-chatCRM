@@ -36,12 +36,11 @@ import {
   assistantIsFichaMirrorConfirm,
   assistantIsCompanionOptInPrompt,
   assistantIsQuoteAvailabilityConfirm,
-  assistantIsQuoteOptionsList,
   assistantIsQuoteDiscountTransferOffer,
   isCompanionRegistrationDeclined,
-  messageLooksLikeQuoteOptionChoice,
+  guestSelectedQuoteOption,
+  guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
-import { messageLooksLikeQuoteDiscountObjection } from "../quote/quoteAvailabilityReply.js";
 
 export {
   isLikelyMutableOrCompletionTool,
@@ -468,21 +467,31 @@ export function resolveTurnPolicy(
       forceExclusiveExecution = true;
     }
   } else if (
-    assistantIsQuoteOptionsList(options.lastAssistantMessage) &&
-    messageLooksLikeQuoteOptionChoice(userMessage) &&
-    !messageLooksLikeQuoteDiscountObjection(userMessage) &&
-    !toolOutcomeSatisfiesRequired("call_human", priorOk)
+    guestAsksQuoteCategoryInfo({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+      flowSlots: options.flowSlots,
+    })
   ) {
-    // C6e: escolha pós Modelo C6 Opções → call_human (exclusive).
+    // C6d: dúvida sobre categoria pós Modelo C6 Opções → buscar_conhecimento (exclusive).
+    exclusiveAllowedTools = ["buscar_conhecimento"];
+    forceExclusiveExecution = true;
+  } else if (
+    guestSelectedQuoteOption({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+      flowSlots: options.flowSlots,
+    })
+  ) {
+    // C6e: escolha pós Modelo C6 Opções → call_human (exclusive; sempre neste turno).
     exclusiveAllowedTools = ["call_human"];
     forceExclusiveExecution = true;
   } else if (
     isConfirmation &&
     !suppressExclusive &&
-    assistantIsQuoteDiscountTransferOffer(options.lastAssistantMessage) &&
-    !toolOutcomeSatisfiesRequired("call_human", priorOk)
+    assistantIsQuoteDiscountTransferOffer(options.lastAssistantMessage)
   ) {
-    // C6f: sim pós oferta de desconto → call_human (exclusive).
+    // C6f: sim pós oferta de desconto → call_human (exclusive; sempre neste turno).
     exclusiveAllowedTools = ["call_human"];
     forceExclusiveExecution = true;
   } else if (

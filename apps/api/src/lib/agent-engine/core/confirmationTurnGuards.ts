@@ -3,7 +3,13 @@
  * Multi-segmento: usa sinais de playbook/slots/última resposta — sem hardcodar um hotel.
  */
 
-import { messageLooksLikeQuoteDiscountObjection } from "../quote/quoteAvailabilityReply.js";
+import {
+  messageLooksLikeQuoteDiscountObjection,
+  parseQuoteOptionCategoriesFromOptionsReply,
+  resolveQuoteOptionChoice,
+  QUOTE_OPTIONS_CATALOG_SLOT,
+} from "../quote/quoteAvailabilityReply.js";
+import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 
 /** Mensagem do hóspede parece recolha de formulário pós-gate (ficha), não bloco titular/acompanhante. */
 export function messageLooksLikePostGateFormData(userMessage: string): boolean {
@@ -184,7 +190,99 @@ export function messageLooksLikeQuoteOptionChoice(userMessage?: string | null): 
     return true;
   }
   if (msg.length <= 80 && /\b(?:op[cç]|n[úu]mero|item)\b/i.test(msg) && /\d/.test(msg)) return true;
+  if (/\(\s*\d+\s*camas?\s*\)/i.test(msg)) return true;
+  if (
+    msg.length <= 120 &&
+    /\b(standard|deluxe|executiv|superior|premium|quadrupl|tripl|dupl|single|duplo|triplo|master|luxo|su[ií]te|quarto)\b/i.test(
+      msg,
+    )
+  ) {
+    return true;
+  }
   return false;
+}
+
+function readQuoteOptionCategories(opts: {
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): string[] {
+  const fromReply = parseQuoteOptionCategoriesFromOptionsReply(opts.lastAssistantMessage ?? "");
+  if (fromReply.length > 0) return fromReply;
+  const raw = opts.flowSlots?.[QUOTE_OPTIONS_CATALOG_SLOT];
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const catalog = JSON.parse(raw) as { options?: Array<{ categoryName?: string }> };
+      const names = catalog.options
+        ?.map((o) => o.categoryName?.trim())
+        .filter((n): n is string => Boolean(n));
+      if (names?.length) return names;
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
+/** Pergunta sobre categoria/comodidades após Modelo C6 Opções (C6d) — não é escolha C6e. */
+export function messageLooksLikeQuoteCategoryQuestion(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (messageLooksLikeQuoteDiscountObjection(msg)) return false;
+  if (!userMessageLooksLikeKnowledgeSeekingQuery(msg)) return false;
+  return (
+    /\?/.test(msg) ||
+    /\b(qual|quais|como|onde|tem|possui|inclui|aceita|permite|capacidade|comodidade|metragem|m²|banheiro|varanda|café|wifi|estacionamento|camas|hóspedes|pessoas|detalhe|informa[cç][aã]o|saber|conhecer|descrev|foto|imagem|amenidades?|facilidades?)\b/i.test(
+      msg,
+    )
+  );
+}
+
+/** Hóspede pergunta sobre categoria após Modelo C6 Opções (C6d) → buscar_conhecimento. */
+export function guestAsksQuoteCategoryInfo(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): boolean {
+  if (!assistantIsQuoteOptionsList(opts.lastAssistantMessage)) return false;
+  const msg = (opts.userMessage ?? "").trim();
+  if (messageLooksLikeQuoteDiscountObjection(msg)) return false;
+
+  const categories = readQuoteOptionCategories(opts);
+  if (categories.length > 0) {
+    const chosen = resolveQuoteOptionChoice(msg, categories);
+    const looksLikeQuestion =
+      /\?/.test(msg) ||
+      /\b(qual|quais|como|onde|tem|possui|inclui|aceita|permite|quantas?|quantos?|detalhe|informa[cç][aã]o|saber|conhecer|descrev)\b/i.test(
+        msg,
+      );
+    if (chosen && !looksLikeQuestion) return false;
+  }
+
+  if (!messageLooksLikeQuoteCategoryQuestion(msg)) return false;
+  if (categories.length === 0) return true;
+  const mentionsCategory = categories.some(
+    (cat) =>
+      msg.toLowerCase().includes(cat.toLowerCase()) ||
+      cat.toLowerCase().includes(msg.toLowerCase()),
+  );
+  const mentionsRoom = /\b(quarto|su[ií]te|categoria|op[cç][aã]o|acomoda[cç][aã]o)\b/i.test(msg);
+  return mentionsCategory || mentionsRoom || /\?/.test(msg);
+}
+
+/** Hóspede escolheu opção após Modelo C6 Opções (C6e) — número, ordinal ou nome da categoria. */
+export function guestSelectedQuoteOption(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): boolean {
+  if (!assistantIsQuoteOptionsList(opts.lastAssistantMessage)) return false;
+  if (messageLooksLikeQuoteDiscountObjection(opts.userMessage ?? "")) return false;
+  if (guestAsksQuoteCategoryInfo(opts)) return false;
+  const categories = readQuoteOptionCategories(opts);
+  if (categories.length > 0) {
+    return resolveQuoteOptionChoice(opts.userMessage ?? "", categories) != null;
+  }
+  return messageLooksLikeQuoteOptionChoice(opts.userMessage);
 }
 
 /** Mensagem curta de confirmação (sim/ok) — reutilizado por gates. */

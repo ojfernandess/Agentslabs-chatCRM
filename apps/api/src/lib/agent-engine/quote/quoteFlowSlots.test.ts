@@ -48,12 +48,12 @@ test("mergeQuoteFlowSlotsFromConversation accumulates from assistant + user hist
   assert.equal(merged.guestsQuantity, 2);
 });
 
-test("resetQuoteAvailabilitySessionState clears prior availability satisfaction", () => {
+test("resetQuoteAvailabilitySessionState clears prior availability and call_human satisfaction", () => {
   const reset = resetQuoteAvailabilitySessionState({
     [SESSION_SATISFIED_TOOLS_KEY]: "audaar_consultar_disponibilidade,call_human",
     [QUOTE_OPTIONS_CATALOG_SLOT]: '{"options":[]}',
   });
-  assert.equal(reset[SESSION_SATISFIED_TOOLS_KEY], "call_human");
+  assert.equal(reset[SESSION_SATISFIED_TOOLS_KEY], undefined);
   assert.equal(reset[QUOTE_OPTIONS_CATALOG_SLOT], undefined);
 });
 
@@ -88,6 +88,22 @@ test("mergeQuoteFlowSlotsFromConversation strips prior availability before C6c s
     },
     userMessage: "sim",
     lastAssistantMessage: C6_CONFIRM,
+  });
+  assert.equal(merged[SESSION_SATISFIED_TOOLS_KEY], undefined);
+});
+
+const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Standard Quadruplo (4 camas) — R$ 210,00 / diária · R$ 210,00 total
+2️⃣ Deluxe Duplo — R$ 380,00 / diária · R$ 380,00 total
+
+Qual opção você prefere?`;
+
+test("mergeQuoteFlowSlotsFromConversation strips prior call_human on quote option choice", () => {
+  const merged = mergeQuoteFlowSlotsFromConversation({
+    flowSlots: { [SESSION_SATISFIED_TOOLS_KEY]: "call_human" },
+    userMessage: "Standard Quadruplo (4 camas)",
+    lastAssistantMessage: C6_OPTIONS_MSG,
   });
   assert.equal(merged[SESSION_SATISFIED_TOOLS_KEY], undefined);
 });

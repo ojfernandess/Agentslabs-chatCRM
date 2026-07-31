@@ -827,6 +827,43 @@ test("buildExecutionTurnPlan — sim after C6 Confirm schedules disponibilidade 
   assert.equal(plan.requiredToolNames.includes("embratur-reference"), false);
 });
 
+const C6_OPTIONS_CATEGORY_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Standard Quadruplo (4 camas) — R$ 210,00 / diária · R$ 210,00 total
+2️⃣ Deluxe Duplo — R$ 380,00 / diária · R$ 380,00 total
+
+Qual opção você prefere?`;
+
+const C6D_PLAYBOOK = `
+| C6d | Dúvida categoria pós-cotação | pergunta sobre quarto após lista C6 | \`buscar_conhecimento\` | buscar_conhecimento |
+| C6e | Escolha pós-cotação | escolhe opção após lista C6 | \`call_human\` | call_human |
+| C6 | Cotação | cotação | GATE C6 | ZERO |
+`;
+
+test("resolveTurnPolicy — category question requires buscar_conhecimento exclusive", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6D_PLAYBOOK } },
+    {
+      userMessage: "Quantas camas tem o Standard Quadruplo?",
+      lastAssistantMessage: C6_OPTIONS_CATEGORY_MSG,
+      availableToolNames: ["buscar_conhecimento", "call_human"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["buscar_conhecimento"]);
+});
+
+test("buildExecutionTurnPlan — category question schedules buscar_conhecimento", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: C6D_PLAYBOOK } },
+    userMessage: "Quantas camas tem o Standard Quadruplo?",
+    lastAssistantMessage: C6_OPTIONS_CATEGORY_MSG,
+    availableToolNames: ["buscar_conhecimento", "call_human"],
+  });
+  assert.ok(plan.requiredToolNames.includes("buscar_conhecimento"));
+  assert.equal(plan.knowledgeSeeking, true);
+});
+
 const C6E_PLAYBOOK = `
 | C6e | Escolha pós-cotação | escolhe opção após lista C6 | \`call_human\` | call_human |
 | C6 | Cotação | cotação | GATE C6 | ZERO |
@@ -849,6 +886,20 @@ test("resolveTurnPolicy — quote option choice requires call_human exclusive", 
     },
   );
   assert.equal(policy.blockEscalation, false);
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+});
+
+test("resolveTurnPolicy — category name choice requires call_human even if prior call_human ok", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6E_PLAYBOOK } },
+    {
+      userMessage: "Standard Quadruplo (4 camas)",
+      lastAssistantMessage: C6_OPTIONS_CATEGORY_MSG,
+      availableToolNames: ["call_human"],
+      priorToolOutcomes: [{ name: "call_human", ok: true }],
+    },
+  );
   assert.equal(policy.forceExclusiveExecution, true);
   assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
 });

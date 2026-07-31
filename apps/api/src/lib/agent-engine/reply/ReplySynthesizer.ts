@@ -10,6 +10,7 @@ import {
   buildModeloC6DiscountTransferOfferReply,
   buildModeloC6HandoffReply,
   buildModeloC6OptionsReply,
+  buildQuoteOptionsReturnPrompt,
   buildQuoteOptionsCatalogFromPayload,
   looksLikeAvailabilityQuotePayload,
   messageLooksLikeQuoteDiscountObjection,
@@ -23,7 +24,8 @@ import {
   assistantIsQuoteDiscountTransferOffer,
   assistantIsQuoteOptionsList,
   assistantIsQuoteAvailabilityConfirm,
-  messageLooksLikeQuoteOptionChoice,
+  guestSelectedQuoteOption,
+  guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
 import {
   extractReservationDisplayFields,
@@ -301,9 +303,16 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   );
   const quoteC6ConfirmTurn =
     quoteConfirmTurn && assistantIsQuoteAvailabilityConfirm(input.lastAssistantMessage);
-  const quoteChoiceTurn =
-    assistantIsQuoteOptionsList(input.lastAssistantMessage) &&
-    messageLooksLikeQuoteOptionChoice(input.userMessage);
+  const quoteChoiceTurn = guestSelectedQuoteOption({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+    flowSlots: input.flowSlots,
+  });
+  const quoteCategoryInfoTurn = guestAsksQuoteCategoryInfo({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+    flowSlots: input.flowSlots,
+  });
   const quoteDiscountObjectionTurn =
     assistantIsQuoteOptionsList(input.lastAssistantMessage) &&
     messageLooksLikeQuoteDiscountObjection(input.userMessage);
@@ -349,6 +358,19 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       };
     }
     if (
+      quoteChoiceTurn &&
+      !failedCallHuman &&
+      /transferi|encaminh|equipe de atendimento/i.test(input.replyText ?? "")
+    ) {
+      return {
+        reply:
+          "Recebi sua escolha! Tive um problema ao encaminhar para a equipe agora. " +
+          "Pode repetir a opção preferida ou aguardar um instante?",
+        replaced: true,
+        reason: "quote_call_human_missing",
+      };
+    }
+    if (
       failedCallHuman &&
       (quoteChoiceTurn || quoteDiscountAcceptTurn) &&
       isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages)
@@ -370,6 +392,23 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         replaced: true,
         reason: "quote_c6_discount_offer",
       };
+    }
+    const kbOnly = input.toolOutcomes.find(
+      (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
+    );
+    if (quoteCategoryInfoTurn && kbOnly) {
+      const recap = buildQuoteOptionsReturnPrompt({
+        lastAssistantMessage: input.lastAssistantMessage,
+        flowSlots: input.flowSlots,
+      });
+      const answer = (input.replyText ?? "").trim();
+      if (recap && answer) {
+        return {
+          reply: `${answer}\n\n${recap}`,
+          replaced: true,
+          reason: "quote_c6_category_info_return",
+        };
+      }
     }
     return { reply: input.replyText, replaced: false };
   }
@@ -424,6 +463,32 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       replaced: true,
       reason: "quote_c6_discount_offer",
     };
+  }
+
+  const kbTool = input.toolOutcomes.find(
+    (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
+  );
+  if (
+    !postCompletionTurn &&
+    quoteCategoryInfoTurn &&
+    kbTool &&
+    !replyLooksLikeModeloC6Options(input.replyText)
+  ) {
+    const recap = buildQuoteOptionsReturnPrompt({
+      lastAssistantMessage: input.lastAssistantMessage,
+      flowSlots: input.flowSlots,
+      lastOptionsPayload: unwrapPayload(
+        availability?.structuredPayload ?? tryParseJson(availability?.preview),
+      ),
+    });
+    const answer = (input.replyText ?? "").trim();
+    if (recap && answer) {
+      return {
+        reply: `${answer}\n\n${recap}`,
+        replaced: true,
+        reason: "quote_c6_category_info_return",
+      };
+    }
   }
 
   if (
