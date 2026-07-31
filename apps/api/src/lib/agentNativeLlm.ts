@@ -3240,7 +3240,7 @@ async function generateNativeAgentReplyCore(input: {
           isCompanionRegistrationDeclined(userMessage)) ||
         n1TitularConfirm);
     if (needsS9TemplateOnly && sessionHasEmbraturReference(toolRoundOutcomes, sessionFlowSlots)) {
-      replyText = buildModeloS9TravelFormTemplateFromToolOutcomes(toolRoundOutcomes);
+      replyText = buildModeloS9TravelFormTemplateFromToolOutcomes();
       const catalog = readEmbraturReferenceCatalogFromFlowSlots(sessionFlowSlots);
       const fromCatalog = catalog ? buildModeloS9TemplateFromCatalog(catalog) : null;
       if (fromCatalog) replyText = fromCatalog;
