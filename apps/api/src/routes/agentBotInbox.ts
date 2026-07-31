@@ -8,6 +8,10 @@ import {
   assignConversationTeamBodySchema,
   assignConversationTeamForOrg,
 } from "../lib/conversationTeamAssignment.js";
+import {
+  callHumanBodySchema,
+  callHumanForConversationForOrg,
+} from "../lib/conversationNativeToolActions.js";
 
 const patchConversationSchema = z.object({
   status: z.enum(["OPEN", "PENDING"]),
@@ -139,6 +143,36 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     return result.payload;
+  });
+
+  /**
+   * Handoff humano completo (`call_human`) — paridade com POST /api/v1/automations/conversations/:id/call-human.
+   * Usa token `ocb_...`; regista nota interna e `awaitingHumanHandoff`.
+   */
+  app.post<{ Params: { id: string } }>("/conversations/:id/call-human", async (request, reply) => {
+    const bot = request.agentBot!;
+    const parsed = callHumanBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const conv = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId: bot.organizationId },
+      select: { id: true },
+    });
+    if (!conv) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+
+    const result = await callHumanForConversationForOrg(prisma, {
+      organizationId: bot.organizationId,
+      conversationId: conv.id,
+      teamId: parsed.data.teamId,
+      reason: parsed.data.reason,
+      userMessageSnippet: parsed.data.reason ?? "",
+      log: request.log,
+    });
+    return { ok: true, ...result.payload };
   });
 
   /** Handoff humano (`OPEN`) ou devolver à fila do bot (`PENDING`). */

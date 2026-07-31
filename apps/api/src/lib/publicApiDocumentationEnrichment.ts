@@ -287,6 +287,17 @@ POST — HTTP 201: caixa criada (admin)`,
   "agent_bot_id": "<uuid>"
 }`,
   },
+  "/api/v1/agent-bot/conversations/:id/call-human": {
+    successStatus: 200,
+    exampleResponsePt: `HTTP 200 application/json:
+{
+  "ok": true,
+  "teamId": "<uuid-opcional>",
+  "teamName": "Suporte",
+  "message": "Conversa aberta para atendimento humano."
+}`,
+    extraErrors: [{ status: 404, descriptionPt: "Conversa não encontrada na organização do bot." }],
+  },
   "/api/v1/pipeline/board": {
     successStatus: 200,
     exampleResponsePt: `HTTP 200:

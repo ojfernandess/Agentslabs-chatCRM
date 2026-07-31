@@ -47,6 +47,6 @@ export const PUBLIC_AGENT_NATIVE_TOOLS_API_DOCUMENTATION_ENDPOINTS: PublicApiDoc
     descriptionPt:
       "Equivalente HTTP da ferramenta nativa `call_human` — abre a conversa para atendentes humanos (estado OPEN, limpa atendente), opcionalmente encaminha para uma equipa e regista nota interna de handoff.",
     examplePayloadPt:
-      'Autenticação: Authorization: Bearer <jwt> OU header api_access_token: ocu_... (admin no tenant).\n\nPOST application/json (campos opcionais):\n{\n  "teamId": "<uuid-equipa-opcional>",\n  "reason": "Cliente solicitou atendente humano"\n}\n\nSem `teamId`: apenas abre para a fila geral. Com `teamId`: atribui equipa antes do handoff (falha de equipa inválida não bloqueia a abertura).',
+      'Autenticação: Authorization: Bearer <jwt> OU header api_access_token: ocu_... (admin no tenant).\n\nPOST application/json (campos opcionais):\n{\n  "teamId": "<uuid-equipa-opcional>",\n  "reason": "Cliente solicitou atendente humano"\n}\n\nSem `teamId`: apenas abre para a fila geral. Com `teamId`: atribui equipa antes do handoff (falha de equipa inválida não bloqueia a abertura).\n\n**Bot externo (ocb_):** POST /api/v1/agent-bot/conversations/:id/call-human — mesma semântica com Bearer ocb_<token>.',
   },
 ];

@@ -9,6 +9,16 @@ export type PublicApiDocChangelogEntry = {
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
     date: "2026-07-31",
+    schemaVersion: 12,
+    titlePt: "Agent Bot — call_human para bots externos",
+    changesPt: [
+      "POST /api/v1/agent-bot/conversations/:id/call-human — handoff humano com token ocb_ (paridade com automations/call-human)",
+      "Documentação Agent Bot HTTP API e ferramentas nativas actualizadas",
+    ],
+    breaking: false,
+  },
+  {
+    date: "2026-07-31",
     schemaVersion: 11,
     titlePt: "Ferramentas nativas do agente — equivalentes HTTP",
     changesPt: [

@@ -377,6 +377,17 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
           'Authorization: Bearer ocb_<token-do-bot>\n\nPATCH application/json:\n{\n  "teamId": "<uuid-equipa-ou-null>",\n  "assignedToId": "<uuid-agente-opcional-ou-null>"\n}\n\n`assignedToId` pode ser omitido para não alterar o atendente.',
       },
       {
+        method: "POST",
+        path: "/api/v1/agent-bot/conversations/:id/call-human",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "Full `call_human` handoff for external agent bots — same behavior as POST /api/v1/automations/conversations/:id/call-human (OPEN status, optional team, internal handoff note, awaitingHumanHandoff). Use `conversation.id` from the inbound webhook payload.",
+        descriptionPt:
+          "Handoff humano completo (`call_human`) para bots externos — mesmo comportamento que POST /api/v1/automations/conversations/:id/call-human (estado OPEN, equipa opcional, nota interna de handoff, awaitingHumanHandoff). Use `conversation.id` do webhook de entrada.",
+        examplePayloadPt:
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (campos opcionais):\n{\n  "teamId": "<uuid-equipa-opcional>",\n  "reason": "Cliente pediu atendente humano"\n}\n\nObtenha teamId em GET /api/v1/agent-bot/teams.\n\nResposta 200: { "ok": true, "teamId": null, "teamName": null, "message": "Conversa aberta para atendimento humano." }',
+      },
+      {
         method: "PATCH",
         path: "/api/v1/agent-bot/conversations/:id",
         auth: "agent_bot_bearer",
