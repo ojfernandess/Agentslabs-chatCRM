@@ -10,13 +10,13 @@ import {
   buildModeloC6DiscountTransferOfferReply,
   buildModeloC6HandoffReply,
   buildModeloC6OptionsReply,
+  buildQuoteOptionsCatalogFromPayload,
   looksLikeAvailabilityQuotePayload,
   messageLooksLikeQuoteDiscountObjection,
-  parseQuoteOptionCategoriesFromOptionsReply,
+  QUOTE_OPTIONS_CATALOG_SLOT,
   replyLooksLikeModeloC6DiscountOffer,
   replyLooksLikeModeloC6Handoff,
-  replyLooksLikeModeloC6Options,
-  resolveQuoteOptionChoice,
+  resolveQuoteHandoffContext,
 } from "../quote/quoteAvailabilityReply.js";
 import {
   assistantIsQuoteDiscountTransferOffer,
@@ -39,6 +39,7 @@ export type EnsureDeliveringReplyInput = {
   toolOutcomes: SynthesizerToolOutcome[];
   userMessage?: string;
   lastAssistantMessage?: string;
+  flowSlots?: Record<string, string | number | boolean>;
   configuredStallMessages?: string[];
   /** Prompt IR — templates de resposta (Fase 6). */
   promptIr?: PromptIR;
@@ -184,19 +185,30 @@ function findCallHumanOutcome(outcomes: SynthesizerToolOutcome[]): SynthesizerTo
   return ok.find((t) => /^call_human$/i.test(t.name)) ?? null;
 }
 
-function tryRenderQuoteHandoffReply(input: EnsureDeliveringReplyInput): string | null {
-  const lastAssistant = (input.lastAssistantMessage ?? "").trim();
-  const userMessage = (input.userMessage ?? "").trim();
-  const categories = lastAssistant
-    ? parseQuoteOptionCategoriesFromOptionsReply(lastAssistant)
-    : [];
-  const chosen =
-    categories.length > 0
-      ? resolveQuoteOptionChoice(userMessage, categories)
-      : userMessage || null;
-  const reply = buildModeloC6HandoffReply(chosen);
-  if (!reply.trim()) return null;
-  return reply;
+function tryRenderQuoteHandoffReply(
+  input: EnsureDeliveringReplyInput,
+  availability?: SynthesizerToolOutcome | null,
+): string | null {
+  const payload = availability
+    ? unwrapPayload(availability.structuredPayload ?? tryParseJson(availability.preview))
+    : undefined;
+  const ctx = resolveQuoteHandoffContext({
+    userMessage: input.userMessage ?? "",
+    lastAssistantMessage: input.lastAssistantMessage,
+    lastOptionsPayload: payload,
+    flowSlots: input.flowSlots,
+  });
+  if (!ctx) return null;
+  return buildModeloC6HandoffReply(ctx);
+}
+
+export function quoteOptionsCatalogSlotPatchFromAvailabilityOutcome(
+  outcome: SynthesizerToolOutcome,
+): Record<string, string> | null {
+  const payload = unwrapPayload(outcome.structuredPayload ?? tryParseJson(outcome.preview));
+  const catalog = buildQuoteOptionsCatalogFromPayload(payload);
+  if (!catalog) return null;
+  return { [QUOTE_OPTIONS_CATALOG_SLOT]: JSON.stringify(catalog) };
 }
 
 export function looksLikeRawToolJson(text: string): boolean {
@@ -370,7 +382,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         reason: "quote_c6_discount_handoff",
       };
     }
-    const rendered = tryRenderQuoteHandoffReply(input);
+    const rendered = tryRenderQuoteHandoffReply(input, availability);
     if (rendered) {
       return { reply: rendered, replaced: true, reason: "quote_c6_handoff" };
     }
@@ -391,8 +403,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   if (
     !postCompletionTurn &&
     availability &&
-    (quoteConfirmTurn || soleAvailabilityLookup) &&
-    !replyLooksLikeModeloC6Options(input.replyText)
+    (quoteConfirmTurn || soleAvailabilityLookup)
   ) {
     const rendered = tryRenderAvailabilityQuote(availability);
     if (rendered) {
@@ -425,7 +436,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     }
   }
 
-  if (!postCompletionTurn && availability && !replyLooksLikeModeloC6Options(input.replyText)) {
+  if (!postCompletionTurn && availability) {
     const rendered = tryRenderAvailabilityQuote(availability);
     if (rendered) {
       return { reply: rendered, replaced: true, reason: "quote_c6_options" };

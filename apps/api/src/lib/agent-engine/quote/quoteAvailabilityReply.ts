@@ -4,10 +4,13 @@
  */
 
 const BALCAO_RE = /balc[aã]o/i;
+/** channelId do plano Balcão na API Audaar (fallback quando o nome vem vazio). */
+const BALCAO_CHANNEL_IDS = new Set([138]);
 
 const EMOJI_NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
 
 type RatePlan = {
+  channelId?: number;
   channelName?: string;
   ratePlanName?: string;
   averageNightlyPrice?: number;
@@ -49,6 +52,8 @@ function parsePayloadRoot(payload: unknown): Record<string, unknown> | null {
 }
 
 export function isBalconRatePlan(plan: RatePlan): boolean {
+  if (plan.available === false) return false;
+  if (typeof plan.channelId === "number" && BALCAO_CHANNEL_IDS.has(plan.channelId)) return true;
   const channel = (plan.channelName ?? "").trim();
   const name = (plan.ratePlanName ?? "").trim();
   return BALCAO_RE.test(channel) || BALCAO_RE.test(name);
@@ -234,7 +239,8 @@ export function resolveQuoteOptionChoice(
 
   const lower = msg.toLowerCase();
   for (const cat of categories) {
-    if (lower.includes(cat.toLowerCase()) || cat.toLowerCase().includes(lower)) {
+    const catLower = cat.toLowerCase();
+    if (lower === catLower || lower.includes(catLower) || catLower.includes(lower)) {
       return cat;
     }
   }
@@ -243,13 +249,196 @@ export function resolveQuoteOptionChoice(
   return null;
 }
 
-export function buildModeloC6HandoffReply(chosenOption?: string | null): string {
-  const optionPart = chosenOption?.trim()
-    ? `Registrei sua preferência: **${chosenOption.trim()}**.\n\n`
-    : "";
-  return (
-    `${optionPart}Perfeito! Vou encaminhar sua preferência para nossa equipe, que dará continuidade na reserva.`
+export type QuoteOptionCatalogEntry = {
+  categoryName: string;
+  nightlyPrice: number | null;
+  totalPrice: number | null;
+};
+
+export type QuoteOptionCatalog = {
+  establishmentName?: string;
+  checkin?: string;
+  checkout?: string;
+  guests?: number;
+  options: QuoteOptionCatalogEntry[];
+};
+
+export const QUOTE_OPTIONS_CATALOG_SLOT = "__quoteOptionsCatalog";
+
+/** Catálogo Balcão por categoria — usado no handoff e persistido em flowSlots. */
+export function buildQuoteOptionsCatalogFromPayload(payload: unknown): QuoteOptionCatalog | null {
+  const data = parsePayloadRoot(payload);
+  if (!data) return null;
+  const categories = (data.categories as Category[] | undefined) ?? [];
+  const options: QuoteOptionCatalogEntry[] = [];
+  for (const cat of categories) {
+    if (cat.available === false) continue;
+    const plan = selectBalconRatePlan(cat.ratePlans);
+    if (!plan) continue;
+    options.push({
+      categoryName: (cat.categoryName ?? "Opção").trim(),
+      nightlyPrice: nightlyPrice(plan),
+      totalPrice: totalPrice(plan),
+    });
+  }
+  if (options.length === 0) return null;
+  const guestsRaw = data.guests ?? data.guestsQuantity;
+  const guests =
+    typeof guestsRaw === "number"
+      ? guestsRaw
+      : Number.parseInt(String(guestsRaw ?? ""), 10);
+  return {
+    establishmentName:
+      typeof data.establishmentName === "string" ? data.establishmentName : undefined,
+    checkin: formatIsoDateToBr(data.checkin ?? data.checkinDate ?? data.checkInDate) ?? undefined,
+    checkout:
+      formatIsoDateToBr(data.checkout ?? data.checkoutDate ?? data.checkOutDate) ?? undefined,
+    guests: Number.isFinite(guests) && guests > 0 ? guests : undefined,
+    options,
+  };
+}
+
+export type QuoteHandoffContext = {
+  chosenCategory: string;
+  establishmentName?: string;
+  checkinDate?: string;
+  checkoutDate?: string;
+  guests?: number;
+  totalPrice?: number | null;
+  nightlyPrice?: number | null;
+};
+
+function readQuoteCatalogFromFlowSlots(
+  flowSlots?: Record<string, string | number | boolean>,
+): QuoteOptionCatalog | null {
+  if (!flowSlots) return null;
+  const raw = flowSlots[QUOTE_OPTIONS_CATALOG_SLOT];
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    return JSON.parse(raw) as QuoteOptionCatalog;
+  } catch {
+    return null;
+  }
+}
+
+const QUOTE_OPTION_PRICE_LINE_RE =
+  /^(?:\d️⃣|\d+\.|1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣|7️⃣|8️⃣|9️⃣|🔟)\s*(.+?)\s*—\s*R\$\s*([\d.,]+)\s*\/\s*di[aá]ria\s*·\s*R\$\s*([\d.,]+)\s*total/i;
+
+function parseBrlNumber(raw: string): number | null {
+  const n = Number.parseFloat(raw.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Fallback: extrai preços Balcão da msg renderizada (Modelo C6 Opções). */
+export function parseQuoteOptionsFromOptionsReply(text: string): QuoteOptionCatalogEntry[] {
+  const options: QuoteOptionCatalogEntry[] = [];
+  for (const line of (text ?? "").split(/\n/)) {
+    const m = line.trim().match(QUOTE_OPTION_PRICE_LINE_RE);
+    if (!m?.[1]) continue;
+    options.push({
+      categoryName: m[1].trim(),
+      nightlyPrice: parseBrlNumber(m[2] ?? ""),
+      totalPrice: parseBrlNumber(m[3] ?? ""),
+    });
+  }
+  return options;
+}
+
+export function resolveQuoteHandoffContext(opts: {
+  userMessage: string;
+  lastAssistantMessage?: string;
+  lastOptionsPayload?: unknown;
+  flowSlots?: Record<string, string | number | boolean>;
+}): QuoteHandoffContext | null {
+  const catalog =
+    buildQuoteOptionsCatalogFromPayload(opts.lastOptionsPayload) ??
+    readQuoteCatalogFromFlowSlots(opts.flowSlots);
+  const parsedFromReply = opts.lastAssistantMessage
+    ? parseQuoteOptionsFromOptionsReply(opts.lastAssistantMessage)
+    : [];
+  const categoryNames =
+    catalog?.options.map((o) => o.categoryName) ??
+    parsedFromReply.map((o) => o.categoryName) ??
+    parseQuoteOptionCategoriesFromOptionsReply(opts.lastAssistantMessage ?? "");
+
+  const chosen = resolveQuoteOptionChoice(opts.userMessage, categoryNames);
+  if (!chosen) return null;
+
+  const chosenNorm = chosen.trim().toLowerCase();
+  const catalogEntry =
+    catalog?.options.find((o) => o.categoryName.toLowerCase() === chosenNorm) ??
+    catalog?.options.find(
+      (o) =>
+        chosenNorm.includes(o.categoryName.toLowerCase()) ||
+        o.categoryName.toLowerCase().includes(chosenNorm),
+    ) ??
+    parsedFromReply.find((o) => o.categoryName.toLowerCase() === chosenNorm) ??
+    parsedFromReply.find(
+      (o) =>
+        chosenNorm.includes(o.categoryName.toLowerCase()) ||
+        o.categoryName.toLowerCase().includes(chosenNorm),
+    );
+
+  const slots = opts.flowSlots ?? {};
+  const establishmentName =
+    (typeof slots.establishmentName === "string" && slots.establishmentName.trim()) ||
+    catalog?.establishmentName ||
+    undefined;
+  const checkinDate =
+    formatIsoDateToBr(slots.checkinDate ?? slots.checkInDate ?? slots.checkin) ??
+    catalog?.checkin;
+  const checkoutDate =
+    formatIsoDateToBr(slots.checkoutDate ?? slots.checkOutDate ?? slots.checkout) ??
+    catalog?.checkout;
+  const guestsRaw = slots.guestsQuantity ?? slots.guests ?? catalog?.guests;
+  const guests =
+    typeof guestsRaw === "number"
+      ? guestsRaw
+      : Number.parseInt(String(guestsRaw ?? ""), 10);
+
+  return {
+    chosenCategory: catalogEntry?.categoryName ?? chosen,
+    establishmentName,
+    checkinDate: checkinDate ?? undefined,
+    checkoutDate: checkoutDate ?? undefined,
+    guests: Number.isFinite(guests) && guests > 0 ? guests : undefined,
+    nightlyPrice: catalogEntry?.nightlyPrice ?? null,
+    totalPrice: catalogEntry?.totalPrice ?? null,
+  };
+}
+
+export function buildModeloC6HandoffReply(
+  ctx: QuoteHandoffContext | string | null | undefined,
+): string {
+  const resolved: QuoteHandoffContext =
+    typeof ctx === "string"
+      ? { chosenCategory: ctx.trim(), nightlyPrice: null, totalPrice: null }
+      : ctx ?? { chosenCategory: "Opção escolhida", nightlyPrice: null, totalPrice: null };
+
+  const lines = ["Perfeito! Então temos:", ""];
+  if (resolved.establishmentName) {
+    lines.push(`🏢 Propriedade: ${resolved.establishmentName}`);
+  }
+  if (resolved.checkinDate) {
+    lines.push(`📅 Data de chegada: ${resolved.checkinDate}`);
+  }
+  if (resolved.checkoutDate) {
+    lines.push(`📅 Data de partida: ${resolved.checkoutDate}`);
+  }
+  lines.push(`🛏️ ${resolved.chosenCategory}`);
+  if (resolved.guests != null) {
+    lines.push(`👤 Quantidade de pessoas: ${resolved.guests}`);
+  }
+  if (resolved.totalPrice != null) {
+    lines.push(`💰 Valor: ${formatBrl(resolved.totalPrice)} total`);
+  } else if (resolved.nightlyPrice != null) {
+    lines.push(`💰 Valor: ${formatBrl(resolved.nightlyPrice)} / diária`);
+  }
+  lines.push(
+    "",
+    "Vou encaminhar seu atendimento para nossa equipe, que dará continuidade na reserva.",
   );
+  return lines.join("\n");
 }
 
 export function buildModeloC6DiscountTransferOfferReply(): string {
@@ -271,9 +460,11 @@ export function replyLooksLikeModeloC6Handoff(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
   return (
-    /encaminhar sua preferência para nossa equipe|transferir você para nossa equipe de atendimento/i.test(
-      t,
-    ) &&
+    (/perfeito!\s*ent[aã]o temos/i.test(t) ||
+      /encaminhar sua preferência para nossa equipe|encaminhar seu atendimento para nossa equipe/i.test(
+        t,
+      )) &&
+    /propriedade:|data de chegada:|quantidade de pessoas:/i.test(t) &&
     !/\*call_human\*|\*transfer_to_team\*/i.test(t) &&
     !/um momento/i.test(t)
   );

@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildModeloC6DiscountTransferOfferReply,
+  buildModeloC6HandoffReply,
   buildModeloC6OptionsReply,
+  buildQuoteOptionsCatalogFromPayload,
   formatQuoteStayPeriod,
   isBalconRatePlan,
   messageLooksLikeQuoteDiscountObjection,
   replyLooksLikeModeloC6Options,
+  resolveQuoteHandoffContext,
   selectBalconRatePlan,
 } from "./quoteAvailabilityReply.js";
 
@@ -110,4 +113,36 @@ test("buildModeloC6DiscountTransferOfferReply does not promise discount", () => 
   assert.match(reply, /Não posso conceder descontos/i);
   assert.match(reply, /transferir.*equipe de atendimento/i);
   assert.doesNotMatch(reply, /claro|com certeza|posso dar desconto/i);
+});
+
+test("isBalconRatePlan accepts channelId 138 when name is empty", () => {
+  assert.equal(isBalconRatePlan({ channelId: 138, available: true }), true);
+  assert.equal(isBalconRatePlan({ channelId: 99, channelName: "Motor de reserva" }), false);
+});
+
+test("buildQuoteOptionsCatalogFromPayload stores Balcão prices for all categories", () => {
+  const catalog = buildQuoteOptionsCatalogFromPayload(SAMPLE_PAYLOAD);
+  assert.ok(catalog);
+  assert.equal(catalog!.options.length, 2);
+  assert.equal(catalog!.options[0]!.totalPrice, 210);
+  assert.equal(catalog!.options[1]!.totalPrice, 380);
+  assert.equal(catalog!.guests, 2);
+});
+
+test("buildModeloC6HandoffReply renders full summary before transfer", () => {
+  const ctx = resolveQuoteHandoffContext({
+    userMessage: "Suíte Deluxe",
+    lastAssistantMessage: buildModeloC6OptionsReply(SAMPLE_PAYLOAD),
+    lastOptionsPayload: SAMPLE_PAYLOAD,
+    flowSlots: { establishmentName: "Vivá Porto de Galinhas" },
+  });
+  const reply = buildModeloC6HandoffReply(ctx);
+  assert.match(reply, /Perfeito! Então temos/i);
+  assert.match(reply, /Vivá Porto de Galinhas/);
+  assert.match(reply, /03\/08\/2026/);
+  assert.match(reply, /04\/08\/2026/);
+  assert.match(reply, /Suíte Deluxe/);
+  assert.match(reply, /Quantidade de pessoas: 2/);
+  assert.match(reply, /R\$ 380,00 total/);
+  assert.match(reply, /encaminhar seu atendimento para nossa equipe/i);
 });

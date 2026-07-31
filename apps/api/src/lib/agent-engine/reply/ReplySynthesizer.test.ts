@@ -236,18 +236,57 @@ test("ensureDeliveringReply offers discount transfer when guest says it is expen
   assert.doesNotMatch(result.reply, /10%|aplicar desconto|claro/i);
 });
 
-test("ensureDeliveringReply replaces call_human stall with Modelo C6 handoff", () => {
+test("ensureDeliveringReply forces C6 options when LLM mimics format with Motor prices", () => {
+  const wrongLlmReply = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Suíte Executiva — R$ 257,00 / diária · R$ 257,00 total
+2️⃣ Suíte Deluxe — R$ 704,00 / diária · R$ 704,00 total
+
+Qual opção você prefere?`;
+  const result = ensureDeliveringReply({
+    replyText: wrongLlmReply,
+    userMessage: "sim",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_disponibilidade",
+        ok: true,
+        preview: JSON.stringify(AVAILABILITY_PAYLOAD),
+        structuredPayload: AVAILABILITY_PAYLOAD,
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_options");
+  assert.match(result.reply, /R\$ 380,00 \/ diária · R\$ 380,00 total/);
+  assert.doesNotMatch(result.reply, /704/);
+});
+
+test("ensureDeliveringReply replaces call_human stall with Modelo C6 handoff summary", () => {
+  const catalog = JSON.stringify({
+    establishmentName: "Vivá Porto de Galinhas",
+    checkin: "03/08/2026",
+    checkout: "04/08/2026",
+    guests: 2,
+    options: [
+      { categoryName: "Suíte Executiva", nightlyPrice: 210, totalPrice: 210 },
+      { categoryName: "Suíte Deluxe", nightlyPrice: 380, totalPrice: 380 },
+    ],
+  });
   const result = ensureDeliveringReply({
     replyText:
-      "Perfeito! Vou encaminhar sua preferência para nossa equipe, que dará continuidade na reserva. Um momento, por favor.\n\n*call_human*",
+      "Perfeito! Vou encaminhar sua preferência para nossa equipe. Um momento, por favor.\n\n*call_human*",
     userMessage: "1",
     lastAssistantMessage: C6_OPTIONS_MSG,
+    flowSlots: { __quoteOptionsCatalog: catalog },
     toolOutcomes: [{ name: "call_human", ok: true, preview: '{"ok":true}' }],
   });
   assert.equal(result.replaced, true);
   assert.equal(result.reason, "quote_c6_handoff");
+  assert.match(result.reply, /Perfeito! Então temos/i);
+  assert.match(result.reply, /Vivá Porto de Galinhas/);
   assert.match(result.reply, /Suíte Executiva/i);
-  assert.match(result.reply, /encaminhar sua preferência para nossa equipe/i);
+  assert.match(result.reply, /R\$ 210,00 total/);
+  assert.match(result.reply, /encaminhar seu atendimento para nossa equipe/i);
   assert.doesNotMatch(result.reply, /\*call_human\*|um momento/i);
 });
 

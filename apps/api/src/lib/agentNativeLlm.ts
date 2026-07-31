@@ -89,6 +89,7 @@ import {
   buildModeloS4cCompanionOptIn,
   replyLooksLikeModeloS9,
   extractReservationDisplayFields,
+  quoteOptionsCatalogSlotPatchFromAvailabilityOutcome,
 } from "./agent-engine/reply/ReplySynthesizer.js";
 import { buildDeterministicReplyFromToolOutcomes } from "./agent-engine/reply/DeterministicReplyFromTools.js";
 import {
@@ -3217,6 +3218,7 @@ async function generateNativeAgentReplyCore(input: {
       toolOutcomes: toolRoundOutcomes,
       userMessage,
       lastAssistantMessage: lastAssistantForPolicy,
+      flowSlots: sessionFlowSlots,
       configuredStallMessages,
       promptIr: unifiedSpineMode !== "off" ? resolveSpineCtx().promptIr : undefined,
     });
@@ -3226,6 +3228,14 @@ async function generateNativeAgentReplyCore(input: {
         { id: "reply_synthesizer", name: "Reply Synthesizer" },
         JSON.stringify({ reason: synthesized.reason, afterChars: replyText.length }),
       );
+    }
+    for (const t of toolRoundOutcomes) {
+      if (t.ok === false) continue;
+      if (!/(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name)) continue;
+      const catalogPatch = quoteOptionsCatalogSlotPatchFromAvailabilityOutcome(t);
+      if (catalogPatch) {
+        sessionFlowSlots = { ...sessionFlowSlots, ...catalogPatch };
+      }
     }
     if (isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
       const deterministic = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
