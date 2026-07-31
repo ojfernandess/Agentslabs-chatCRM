@@ -2235,6 +2235,23 @@ async function generateNativeAgentReplyCore(input: {
     lastAssistantMessage: lastAssistantForPolicy,
   });
   const resolveSpineCtx = () => resolveSpineBoundTurnContext(unifiedSpine, spineBindings(), ex);
+  const unifiedSpineMode = resolveUnifiedSpineMode(engineConfig);
+  const effectiveToolMode = executionHints?.toolExecutionMode ?? engineConfig.toolExecutionMode;
+  const refreshUnifiedSpine = (phase: "schedule" | "validate") => {
+    if (unifiedSpineMode === "off") return;
+    unifiedSpine.refresh({
+      behaviorConfig: behaviorConfigObj,
+      toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+        name,
+        ok,
+        preview,
+        structuredPayload,
+      })),
+      memory: { flowSlots: sessionFlowSlots },
+      phase,
+      executionLog: ex,
+    });
+  };
   const turnPolicy = resolveSpineCtx().promptContract.turnPolicy;
   const turnPolicyAppendix = formatTurnPolicyForSupervisor(turnPolicy);
   const capabilityGraph = buildCapabilityGraph({
@@ -2432,6 +2449,7 @@ async function generateNativeAgentReplyCore(input: {
               structuredPayload: t.structuredPayload,
             })),
           );
+          refreshUnifiedSpine("schedule");
           ex?.info(
             { id: "tool_scheduler", name: "Tool Scheduler" },
             `Pré-executou ${scheduled.outcomes.length} tool(s) obrigatória(s)`,
@@ -2455,10 +2473,10 @@ async function generateNativeAgentReplyCore(input: {
 
   const runtimeOwnedReplyGuard =
     schedulerAppendix &&
-    (executionHints?.toolExecutionMode === "runtime_owned" ||
+    (effectiveToolMode === "runtime_owned" ||
       scheduledThisTurn ||
       ((executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
-        executionHints?.toolExecutionMode !== "hybrid"))
+        effectiveToolMode !== "hybrid"))
       ? buildRuntimeOwnedReplyGuardAppendix()
       : "";
 
@@ -2489,7 +2507,6 @@ async function generateNativeAgentReplyCore(input: {
       ? `\n\n[OpenConduit — política de turno]\n${turnPolicyAppendix}`
       : "");
 
-  const unifiedSpineMode = resolveUnifiedSpineMode(engineConfig);
   let systemForLlm = systemBase;
   if (unifiedSpineMode !== "off") {
     try {
@@ -2533,11 +2550,11 @@ async function generateNativeAgentReplyCore(input: {
   let completedToolRounds = 0;
 
   const runtimeOwnedTools =
-    executionHints?.toolExecutionMode === "runtime_owned" ||
+    effectiveToolMode === "runtime_owned" ||
     (scheduledThisTurn && turnPolicy.forceExclusiveExecution) ||
     (executionHints?.replyOnlyRetry === true &&
       (executionHints?.preScheduledToolOutcomes?.length ?? 0) > 0 &&
-      executionHints?.toolExecutionMode !== "hybrid");
+      effectiveToolMode !== "hybrid");
   const tools: OpenAiToolDefinition[] = runtimeOwnedTools
     ? []
     : [
@@ -2708,6 +2725,7 @@ async function generateNativeAgentReplyCore(input: {
               if (parsed.ok !== false) {
                 sessionFlowSlots = appendSessionSatisfiedToolName(sessionFlowSlots, outcomeName);
               }
+              refreshUnifiedSpine("validate");
               return out;
             };
             const preScheduledReuse = (executionHints?.preScheduledToolOutcomes ?? []).find(
