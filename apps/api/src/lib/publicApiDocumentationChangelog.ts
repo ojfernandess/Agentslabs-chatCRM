@@ -9,6 +9,16 @@ export type PublicApiDocChangelogEntry = {
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
     date: "2026-07-31",
+    schemaVersion: 13,
+    titlePt: "Guia n8n — bot externo e call_human",
+    changesPt: [
+      "Nova secção «Integração n8n» na documentação pública: fluxo webhook → handoff, diagrama de sequência, Opção A (ocb_) vs Opção B (automations)",
+      "Exemplos prontos para nós HTTP Request no n8n, teamId opcional e detecção automática de organização pelo token",
+    ],
+    breaking: false,
+  },
+  {
+    date: "2026-07-31",
     schemaVersion: 12,
     titlePt: "Agent Bot — call_human para bots externos",
     changesPt: [

@@ -401,4 +401,91 @@
       box-shadow: none;
     }
   }
+
+  /* n8n workflow animation (public API docs) */
+  @keyframes n8n-wf-node-glow {
+    0%,
+    12%,
+    100% {
+      opacity: 0.45;
+    }
+    6% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes n8n-wf-line-dash {
+    to {
+      stroke-dashoffset: -20;
+    }
+  }
+
+  @keyframes n8n-wf-status-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .n8n-wf-node {
+    animation: n8n-wf-node-glow 7s ease-in-out infinite;
+  }
+
+  .n8n-wf-node-box {
+    fill: #252830;
+    stroke-width: 1.5;
+  }
+
+  .n8n-wf-node-label {
+    fill: #e8eaed;
+    font-size: 11px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+  }
+
+  .n8n-wf-node-sublabel {
+    fill: #888;
+    font-size: 9px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .n8n-wf-port {
+    fill: #555;
+    stroke: #888;
+    stroke-width: 1;
+  }
+
+  .n8n-wf-line-bg {
+    fill: none;
+    stroke: #3a3d4a;
+    stroke-width: 2;
+  }
+
+  .n8n-wf-line-flow {
+    fill: none;
+    stroke: #ea4b71;
+    stroke-width: 2;
+    stroke-dasharray: 6 8;
+    opacity: 0.85;
+    animation: n8n-wf-line-dash 0.8s linear infinite;
+  }
+
+  .n8n-wf-status-dot {
+    animation: n8n-wf-status-blink 2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .n8n-wf-node,
+    .n8n-wf-line-flow,
+    .n8n-wf-status-dot {
+      animation: none;
+    }
+
+    .n8n-wf-node {
+      opacity: 1;
+    }
+  }
 }

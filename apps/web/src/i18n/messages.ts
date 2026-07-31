@@ -82,6 +82,8 @@ export const messages = {
       navFullApi: "Toda a API",
       navQuickGuide: "Guia rápido (automação)",
       navEmailGuide: "Guia rápido (e-mail)",
+      navN8nGuide: "Integração n8n",
+      n8nDiagramCaption: "Fluxo geral",
       navBotAutomationHint:
         "Token de perfil, API do bot (perfil, equipas, mensagens, estado e equipa da conversa), automações /automations, bots admin, conversas, mensagens e funil.",
       navFullApiHint: "Todos os grupos publicados no JSON de sistema, incluindo workspace de e-mail.",
@@ -5589,6 +5591,8 @@ export const messages = {
       navFullApi: "Full API",
       navQuickGuide: "Quick guide (automation)",
       navEmailGuide: "Quick guide (email)",
+      navN8nGuide: "n8n integration",
+      n8nDiagramCaption: "Overall flow",
       navBotAutomationHint:
         "Profile token, bot API (profile, teams, messages, conversation state/team), /automations, admin bots, conversations, messages, and CRM funnel.",
       navFullApiHint: "All groups in the system JSON, including the email workspace.",

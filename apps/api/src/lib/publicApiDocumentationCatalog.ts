@@ -35,6 +35,8 @@ export type { PublicApiDocResourceSchema, PublicApiDocSchemaField } from "./publ
 export { PUBLIC_API_DOCUMENTATION_SCHEMAS } from "./publicApiDocumentationSchemas.js";
 export type { PublicApiDocChangelogEntry } from "./publicApiDocumentationChangelog.js";
 export { PUBLIC_API_DOCUMENTATION_CHANGELOG } from "./publicApiDocumentationChangelog.js";
+export type { PublicApiDocN8nGuide, PublicApiDocGuideSection } from "./publicApiDocumentationN8nGuide.js";
+export { PUBLIC_API_DOCUMENTATION_N8N_GUIDE } from "./publicApiDocumentationN8nGuide.js";
 
 export type PublicApiDocGroup = {
   id: string;

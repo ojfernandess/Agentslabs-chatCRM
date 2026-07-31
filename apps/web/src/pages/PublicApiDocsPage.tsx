@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { translate } from "@/i18n/messages";
+import { PublicApiN8nGuideSection } from "@/pages/PublicApiN8nGuideSection";
+import { DocCodeBlock } from "@/pages/publicApiDocsShared";
 
 const DOC_LOCALE = "pt-BR" as const;
 
@@ -65,6 +67,21 @@ type PublicDocsPayload = {
     titlePt: string;
     endpoints: PublicEndpoint[];
   }[];
+  guides?: {
+    n8n?: {
+      titlePt: string;
+      introPt: string;
+      sequenceDiagramMermaid: string;
+      sections: {
+        id: string;
+        titlePt: string;
+        bodyPt?: string;
+        codeLabelPt?: string;
+        codePt?: string;
+        bulletsPt?: string[];
+      }[];
+    };
+  };
 };
 
 const tDoc = (path: string) => translate(DOC_LOCALE, path);
@@ -146,17 +163,29 @@ function MethodPills({ methods }: { methods: string[] }) {
   );
 }
 
-/** Bloco de código sem truncamento horizontal — adequado para web e impressão. */
-function DocCodeBlock({ children }: { children: string }) {
-  return (
-    <pre className="overflow-x-visible whitespace-pre-wrap break-words rounded-md border border-ink-200/80 bg-ink-900/[0.03] p-3 font-mono text-[11px] leading-relaxed text-ink-800 print:overflow-visible print:whitespace-pre-wrap dark:border-ink-700 dark:bg-black/25 dark:text-ink-300">
-      {children.trim() || "—"}
-    </pre>
-  );
-}
-
 function isAuthEndpointForBotAutomation(e: PublicEndpoint): boolean {
   return e.path === "/api/v1/auth/login" || e.path === "/api/v1/auth/me/access-token";
+}
+
+function buildBotAutomationGroups(data: PublicDocsPayload): PublicDocsPayload["groups"] {
+  const auth = data.groups.find((g) => g.id === "auth");
+  const tenant = data.groups.find((g) => g.id === "tenant_api");
+  const agentBot = data.groups.find((g) => g.id === "agent_bot");
+  const nativeTools = data.groups.find((g) => g.id === "agent_native_tools");
+  const out: PublicDocsPayload["groups"] = [];
+  if (auth) {
+    const endpoints = auth.endpoints.filter(isAuthEndpointForBotAutomation);
+    if (endpoints.length)
+      out.push({ ...auth, id: "auth_automation", titlePt: "Login e token de perfil (integrações)", endpoints });
+  }
+  if (agentBot?.endpoints.length) out.push(agentBot);
+  if (nativeTools?.endpoints.length) out.push(nativeTools);
+  if (tenant) {
+    const endpoints = tenant.endpoints.filter(isTenantEndpointForBotAutomation);
+    if (endpoints.length)
+      out.push({ ...tenant, id: "tenant_automation", titlePt: "Tickets, gestão de bots, automação e funil CRM", endpoints });
+  }
+  return out;
 }
 
 function isTenantEndpointForBotAutomation(e: PublicEndpoint): boolean {
@@ -180,25 +209,6 @@ function isTenantEndpointForBotAutomation(e: PublicEndpoint): boolean {
     p === "/api/v1/lead-types/:id" ||
     p === "/api/v1/contacts/:id/stage"
   );
-}
-
-function buildBotAutomationGroups(data: PublicDocsPayload): PublicDocsPayload["groups"] {
-  const auth = data.groups.find((g) => g.id === "auth");
-  const tenant = data.groups.find((g) => g.id === "tenant_api");
-  const agentBot = data.groups.find((g) => g.id === "agent_bot");
-  const out: PublicDocsPayload["groups"] = [];
-  if (auth) {
-    const endpoints = auth.endpoints.filter(isAuthEndpointForBotAutomation);
-    if (endpoints.length)
-      out.push({ ...auth, id: "auth_automation", titlePt: "Login e token de perfil (integrações)", endpoints });
-  }
-  if (agentBot?.endpoints.length) out.push(agentBot);
-  if (tenant) {
-    const endpoints = tenant.endpoints.filter(isTenantEndpointForBotAutomation);
-    if (endpoints.length)
-      out.push({ ...tenant, id: "tenant_automation", titlePt: "Tickets, gestão de bots, automação e funil CRM", endpoints });
-  }
-  return out;
 }
 
 function endpointMatchesQuery(ep: PublicEndpoint, q: string): boolean {
@@ -509,6 +519,9 @@ export function PublicApiDocsPage() {
                   <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-email">
                     {tDoc("publicDocs.navEmailGuide")}
                   </a>
+                  <a className="block rounded px-2 py-1 font-semibold text-orange-800 hover:bg-orange-50 dark:text-orange-200 dark:hover:bg-orange-950/40" href="#guia-n8n">
+                    {tDoc("publicDocs.navN8nGuide")}
+                  </a>
                   {navEntries.map((entry, i) =>
                     entry.kind === "group" ? (
                       <a
@@ -664,6 +677,20 @@ export function PublicApiDocsPage() {
                     </a>
                   </p>
                 </section>
+
+                {data.guides?.n8n ? (
+                  <PublicApiN8nGuideSection
+                    guide={data.guides.n8n}
+                    diagramCaption={tDoc("publicDocs.n8nDiagramCaption")}
+                    endpointLinks={[
+                      { label: "POST agent-bot/call-human", href: "#api-v1-agent-bot-conversations-id-call-human" },
+                      { label: "POST automations/call-human", href: "#api-v1-automations-conversations-id-call-human" },
+                      { label: "GET agent-bot/teams", href: "#api-v1-agent-bot-teams" },
+                      { label: "GET agent-bot/profile", href: "#api-v1-agent-bot-profile" },
+                      { label: "POST agent-bot/messages", href: "#api-v1-agent-bot-messages" },
+                    ]}
+                  />
+                ) : null}
 
                 {search && activeGroups.length === 0 ? (
                   <p className="text-sm text-ink-500">{tDoc("publicDocs.searchEmpty")}</p>
