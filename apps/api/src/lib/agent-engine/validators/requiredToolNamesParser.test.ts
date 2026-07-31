@@ -271,13 +271,12 @@ test("resolveRequiredToolNamesForTurn checkout with unit requires buscar_conheci
   assert.deepEqual(names, ["buscar_conhecimento"]);
 });
 
-test("resolveRequiredToolNamesForTurn standalone locator after NF request requires consultar_reserva", () => {
+test("resolveRequiredToolNamesForTurn standalone locator after NF form does not require consultar_reserva", () => {
   const behavior = {
     promptBuilder: {
       useFullPrompt: true,
       userCore: `
 | C19 | Recibo/NF | Chame \`audaar_consultar_reserva\` · \`buscar_conhecimento\` |
-| C3 | Check-in | Chame \`audaar_consultar_reserva\` |
 `,
     },
     availableToolNames: ["audaar_consultar_reserva", "buscar_conhecimento"],
@@ -287,7 +286,24 @@ test("resolveRequiredToolNamesForTurn standalone locator after NF request requir
     lastAssistantMessage:
       "Para a nota fiscal, informe o localizador da reserva para preencher período, valor, unidade, hóspede e quarto.",
   });
-  assert.deepEqual(names, ["audaar_consultar_reserva"]);
+  assert.deepEqual(names, []);
+});
+
+test("resolveRequiredToolNamesForTurn NF locator no longer requires main_guest", () => {
+  const behavior = {
+    promptBuilder: { useFullPrompt: true, userCore: "" },
+    availableToolNames: [
+      "audaar_consultar_reserva",
+      "audaar_consultar_main_guest",
+      "buscar_conhecimento",
+    ],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "DE4KRMDP",
+    lastAssistantMessage:
+      "Para completar hóspede e quarto da nota fiscal, informe o localizador da reserva.",
+  });
+  assert.deepEqual(names, []);
 });
 
 test("resolveRequiredToolNamesForTurn establishment reply after NF unit ask requires buscar_conhecimento", () => {
@@ -337,26 +353,57 @@ Está tudo correto?`;
   assert.deepEqual(names, ["call_human"]);
 });
 
-test("resolveRequiredToolNamesForTurn NF locator requires consultar_reserva and main_guest", () => {
+test("resolveRequiredToolNamesForTurn receipt form submission requires no tools", () => {
   const behavior = {
-    promptBuilder: { useFullPrompt: true, userCore: "" },
-    availableToolNames: [
-      "audaar_consultar_reserva",
-      "audaar_consultar_main_guest",
-      "buscar_conhecimento",
-    ],
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C19 | Recibo/NF | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento", "call_human"],
   };
+  const lastAssistant = `Para emitir o recibo (pessoa física), preencha:
+
+🏨 Nome da hospedagem:
+🛏️ Quarto:
+⏰ Check-in:
+⏰ Checkout:`;
+  const userMsg = `🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 101
+⏰ Check-in: 01/08/2026
+⏰ Checkout: 05/08/2026`;
   const names = resolveRequiredToolNamesForTurn(behavior, {
-    userMessage: "DE4KRMDP",
-    lastAssistantMessage:
-      "Para completar hóspede e quarto da nota fiscal, informe o localizador da reserva.",
+    userMessage: userMsg,
+    lastAssistantMessage: lastAssistant,
   });
-  assert.equal(names.length, 2);
-  assert.ok(names.includes("audaar_consultar_reserva"));
-  assert.ok(names.includes("audaar_consultar_main_guest"));
+  assert.deepEqual(names, []);
 });
 
-test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
+test("resolveRequiredToolNamesForTurn sim after receipt mirror requires call_human", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C19 | Recibo/NF | Chame \`call_human\` após confirmação |
+`,
+    },
+    availableToolNames: ["call_human"],
+  };
+  const mirror = `Confira os dados para emissão do recibo (pessoa física):
+
+🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 101
+
+Está tudo correto?`;
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "sim",
+    lastAssistantMessage: mirror,
+  });
+  assert.deepEqual(names, ["call_human"]);
+});
+
+test("resolveRequiredToolNamesForTurn establishment reply after NF unit ask requires buscar_conhecimento", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [
       { name: "oc_tool_abc", preview: 'name":"audaar_consultar_main_guest"' },

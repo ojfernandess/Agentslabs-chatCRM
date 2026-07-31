@@ -418,3 +418,77 @@ test("ensureDeliveringReply does not force Modelo S1 on post-completion follow-u
   assert.match(result.reply, /Wi-Fi/);
   assert.doesNotMatch(result.reply, /brasileiro\(a\) ou estrangeiro/);
 });
+
+test("ensureDeliveringReply replaces NF form with receipt-only after Audaar KB", () => {
+  const lastAssistant = `Para emitir a nota fiscal, informe qual unidade:
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin`;
+  const result = ensureDeliveringReply({
+    replyText:
+      "Para emitir sua nota fiscal, preciso dos dados abaixo... localizador da reserva DE4KRMDP",
+    userMessage: "udaar Tech Suites",
+    lastAssistantMessage: lastAssistant,
+    toolOutcomes: [
+      {
+        name: "buscar_conhecimento",
+        ok: true,
+        preview: "Audaar Tech Suites só gera recibo — não emite nota fiscal.",
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "nf_receipt_only");
+  assert.match(result.reply, /n[aã]o emite nota fiscal/i);
+  assert.match(result.reply, /recibo/i);
+  assert.doesNotMatch(result.reply, /localizador/i);
+});
+
+test("ensureDeliveringReply delivers NF form without locator when KB has NF section", () => {
+  const kb = `## Nota fiscal (NF)
+
+- Nome completo
+- CPF ou CNPJ
+- CEP
+- Telefone`;
+  const result = ensureDeliveringReply({
+    replyText: "Vou ajudar com sua nota fiscal.",
+    userMessage: "Hotel Brooklin",
+    lastAssistantMessage: "Para emitir a nota fiscal, qual unidade? 1️⃣ ... 7️⃣ Hotel Brooklin",
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: kb }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "nf_form_no_locator");
+  assert.match(result.reply, /Nome completo/i);
+  assert.doesNotMatch(result.reply, /localizador/i);
+});
+
+test("ensureDeliveringReply delivers receipt confirmation mirror after PF form submission", () => {
+  const lastAssistant = `Para emitir o recibo (pessoa física), preencha:
+
+🏨 Nome da hospedagem:
+🔢 Localizador da reserva (opcional):
+🛏️ Quarto:
+⏰ Check-in:
+⏰ Checkout:`;
+  const userMsg = `🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 101
+⏰ Check-in: 01/08/2026
+⏰ Checkout: 05/08/2026`;
+  const result = ensureDeliveringReply({
+    replyText: "Consultei a base de conhecimento sobre check-out.",
+    userMessage: userMsg,
+    lastAssistantMessage: lastAssistant,
+    toolOutcomes: [
+      {
+        name: "buscar_conhecimento",
+        ok: true,
+        preview: "Procedimento de check-out...",
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "receipt_confirmation_mirror");
+  assert.match(result.reply, /Confira os dados para emissão do recibo/i);
+  assert.match(result.reply, /Audaar Tech Suites/);
+});

@@ -127,8 +127,8 @@ import {
   resolveEstablishmentInConversation,
   shouldRequireUnitKnowledgeLookupThisTurn,
   shouldRequireReservationLookupThisTurn,
-  shouldRequireNfGuestLookupWithReservation,
   shouldRequireCallHumanAfterNfConfirmation,
+  isReceiptFormSubmissionTurn,
 } from "../../unitKnowledgeFlow.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
@@ -637,14 +637,13 @@ export function resolveRequiredToolNamesForTurn(
     return dedupeRequiredToolAliases(filterAgainstAvailable(["call_human"], available));
   }
 
+  if (isReceiptFormSubmissionTurn(unitCtx)) {
+    return [];
+  }
+
   if (shouldRequireReservationLookupThisTurn(unitCtx)) {
     const reservationTool = available.find((t) => /consultar_reserva/i.test(t));
     const tools = reservationTool ? [reservationTool] : ["audaar_consultar_reserva"];
-    if (shouldRequireNfGuestLookupWithReservation(unitCtx)) {
-      const guestTool = available.find((t) => /consultar_main_guest|main_guest/i.test(t));
-      if (guestTool) tools.push(guestTool);
-      else tools.push("audaar_consultar_main_guest");
-    }
     return dedupeRequiredToolAliases(filterAgainstAvailable(tools, available));
   }
 

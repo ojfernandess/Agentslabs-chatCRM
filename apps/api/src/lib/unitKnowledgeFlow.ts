@@ -21,6 +21,7 @@ const ESTABLISHMENT_ALIASES: ReadonlyArray<{ pattern: RegExp; name: string }> = 
   { pattern: /\bclub\s*su[ií]tes|vivapp\s*club\b/i, name: "Vivapp Club Suítes" },
   { pattern: /\briviera|anchieta\b/i, name: "Residencial Anchieta Riviera" },
   { pattern: /\baudaar\s*tech\b/i, name: "Audaar Tech Suites" },
+  { pattern: /\budaar\s*tech\b/i, name: "Audaar Tech Suites" },
   { pattern: /\brock\s*cgh\b/i, name: "Rock CGH Suítes" },
   { pattern: /\bblue\s*ocean|rock\s*blue\b/i, name: "Rock Blue Ocean Suites" },
   { pattern: /\bapartamento\s*vgc|\bvgc\b/i, name: "Apartamento VGC" },
@@ -33,6 +34,14 @@ export function userMessageLooksLikeCheckoutProcedureQuestion(userMessage?: stri
   if (/data de (?:chegada|partida)\s*\(check/i.test(t)) return false;
   if (/\b(cota[cç][aã]o|disponibilidade|pre[cç]o|di[aá]ria|reservar)\b/i.test(t)) return false;
   if (/\bcheck[\s-]?in\b/i.test(t) && !/\bcheck[\s-]?out\b/i.test(t)) return false;
+
+  // Bloco de formulário recibo/NF (datas de estadia) — não é pergunta de procedimento C17.
+  if (
+    (/🏨/.test(t) || /\bnome da hospedagem\b/i.test(t)) &&
+    /\b(?:check[\s-]?in|checkout|quarto|localizador)\b/i.test(t)
+  ) {
+    return false;
+  }
 
   return (
     /\bcheck[\s-]?out\b/i.test(t) ||
@@ -70,33 +79,52 @@ export function userMessageLooksLikeAmenityItemQuestion(userMessage?: string | n
   );
 }
 
-export function resolveEstablishmentInConversation(opts: {
-  userMessage?: string | null;
-  lastAssistantMessage?: string | null;
-  flowSlots?: Record<string, string | number | boolean> | null;
-}): string | null {
-  const parts = [
-    opts.userMessage ?? "",
-    opts.lastAssistantMessage ?? "",
-    String(opts.flowSlots?.establishmentName ?? ""),
-    String(opts.flowSlots?.establishment ?? ""),
-    String(opts.flowSlots?.propertyName ?? ""),
-  ];
-  const combined = parts.join("\n");
+function resolveEstablishmentFromText(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
 
-  const menuDigit = (opts.userMessage ?? "").trim().match(/^([1-7])$/);
+  const menuDigit = t.match(/^([1-7])$/);
   if (menuDigit) {
     const hit = ESTABLISHMENT_MENU.find((e) => e.digit === menuDigit[1]);
     if (hit) return hit.name;
   }
 
   for (const { pattern, name } of ESTABLISHMENT_ALIASES) {
-    if (pattern.test(combined)) return name;
+    if (pattern.test(t)) return name;
   }
 
   for (const { name } of ESTABLISHMENT_MENU) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(escaped, "i").test(combined)) return name;
+    if (new RegExp(escaped, "i").test(t)) return name;
+  }
+
+  return null;
+}
+
+export function resolveEstablishmentInConversation(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): string | null {
+  const userMsg = (opts.userMessage ?? "").trim();
+  if (userMsg) {
+    const fromUser = resolveEstablishmentFromText(userMsg);
+    if (fromUser) return fromUser;
+  }
+
+  for (const slot of [
+    opts.flowSlots?.establishmentName,
+    opts.flowSlots?.establishment,
+    opts.flowSlots?.propertyName,
+  ]) {
+    const fromSlot = resolveEstablishmentFromText(String(slot ?? ""));
+    if (fromSlot) return fromSlot;
+  }
+
+  // Só usa a última msg do agente quando o hóspede não enviou texto neste turno
+  // (evita falso positivo ao listar o menu 1–7 no fluxo C17/C18/C19).
+  if (!userMsg && opts.lastAssistantMessage) {
+    return resolveEstablishmentFromText(opts.lastAssistantMessage);
   }
 
   return null;
@@ -157,6 +185,9 @@ export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
   if (!resolveEstablishmentInConversation(opts)) return false;
 
   const msg = (opts.userMessage ?? "").trim();
+  if (userMessageLooksLikeReceiptFormSubmission(msg)) return false;
+  if (assistantSentReceiptDataForm(opts.lastAssistantMessage) && msg) return false;
+
   if (
     userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
     userMessageLooksLikeReceiptOrInvoiceRequest(msg) ||
@@ -206,12 +237,9 @@ export function assistantIsNfFlowTurn(lastAssistantMessage?: string | null): boo
   );
 }
 
-/** Agente pediu localizador (opcional ou não) no fluxo NF. */
-export function assistantRequestedOptionalNfLocator(lastAssistantMessage?: string | null): boolean {
-  const t = (lastAssistantMessage ?? "").trim();
-  if (!t || !/\blocalizador\b/i.test(t)) return false;
-  if (!assistantIsNfFlowTurn(t) && !assistantSentNfDataForm(t)) return false;
-  return true;
+/** @deprecated Fluxo C19 não usa mais localizador opcional. */
+export function assistantRequestedOptionalNfLocator(_lastAssistantMessage?: string | null): boolean {
+  return false;
 }
 
 /** Hóspede enviou bloco com campos do formulário NF. */
@@ -234,6 +262,66 @@ export function userMessageLooksLikeNfFormSubmission(userMessage?: string | null
   return fieldHits >= 2 && (lines >= 2 || t.length >= 60);
 }
 
+/** Agente enviou formulário de recibo PF/PJ (Passo 2b). */
+export function assistantSentReceiptDataForm(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t || !/\brecibo\b/i.test(t)) return false;
+  if (/\bnome completo\b/i.test(t) && /\bcpf\s+ou\s+cnpj\b/i.test(t)) return false;
+  const receiptFieldHits = [
+    /🏨|\bnome da hospedagem\b/i,
+    /\blocalizador\b/i,
+    /🛏️|\bquarto\b/i,
+    /⏰|\bcheck[\s-]?in\b/i,
+    /\bcheckout\b/i,
+    /\braz[aã]o social\b/i,
+    /\bcnpj\b/i,
+  ].filter((r) => r.test(t)).length;
+  return receiptFieldHits >= 3;
+}
+
+/** Hóspede enviou bloco do formulário de recibo (PF ou PJ). */
+export function userMessageLooksLikeReceiptFormSubmission(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (messageIsStandaloneReservationLocator(t)) return false;
+  const fieldHits = [
+    /🏨|\bnome da hospedagem\b/i,
+    /\blocalizador\b/i,
+    /🛏️|\bquarto\b/i,
+    /⏰|\bcheck[\s-]?in\b/i,
+    /\bcheckout\b/i,
+    /\braz[aã]o social\b/i,
+    /\bcnpj\b/i,
+  ].filter((r) => r.test(t)).length;
+  const lines = t.split(/\n/).filter((l) => l.trim()).length;
+  return fieldHits >= 2 && (lines >= 2 || t.length >= 40);
+}
+
+/** Última msg do agente = espelho de confirmação de recibo. */
+export function assistantSentReceiptConfirmationMirror(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (!/\b(?:confirme|confira|est[aá]\s+correto|correto\?|dados\s+(?:para|da))\b/i.test(t)) {
+    return false;
+  }
+  if (!/\brecibo\b/i.test(t)) return false;
+  return (
+    /🏨|\bnome da hospedagem\b/i.test(t) &&
+    (/🛏️|\bquarto\b/i.test(t) || /\braz[aã]o social\b/i.test(t))
+  );
+}
+
+/** Turno de envio de dados do formulário recibo → espelho (ZERO tools). */
+export function isReceiptFormSubmissionTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  return (
+    assistantSentReceiptDataForm(opts.lastAssistantMessage) &&
+    userMessageLooksLikeReceiptFormSubmission(opts.userMessage)
+  );
+}
+
 /** Última msg do agente = espelho de confirmação NF. */
 export function assistantSentNfConfirmationMirror(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
@@ -247,7 +335,7 @@ export function assistantSentNfConfirmationMirror(lastAssistantMessage?: string 
   );
 }
 
-/** `sim`/`ok` após espelho NF → call_human (C19 passo 4). */
+/** `sim`/`ok` após espelho NF ou recibo → call_human (C19 passo 4 / 2b-b). */
 export function shouldRequireCallHumanAfterNfConfirmation(opts: {
   userMessage?: string | null;
   lastAssistantMessage?: string | null;
@@ -256,15 +344,29 @@ export function shouldRequireCallHumanAfterNfConfirmation(opts: {
   if (!/^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode|est[aá]\s+correto|correto|isso|tudo\s+certo)$/i.test(msg)) {
     return false;
   }
-  return assistantSentNfConfirmationMirror(opts.lastAssistantMessage);
+  return (
+    assistantSentNfConfirmationMirror(opts.lastAssistantMessage) ||
+    assistantSentReceiptConfirmationMirror(opts.lastAssistantMessage)
+  );
 }
 
-/** Agente pediu localizador (NF, senha, etc.). */
+/** Turno de escolha de unidade após pedido NF/recibo (Passo 1→2 C19). */
+export function isNfEstablishmentSelectionTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): boolean {
+  const last = (opts.lastAssistantMessage ?? "").trim();
+  if (!last || !/\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(last)) return false;
+  if (!assistantRequestedEstablishmentForUnitKb(last)) return false;
+  return Boolean(resolveEstablishmentInConversation(opts));
+}
+
+/** Agente pediu localizador (senha, check-in, etc.) — exceto fluxo C19 NF. */
 export function assistantMentionedReservationLocator(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t || !/\blocalizador\b/i.test(t)) return false;
-  if (assistantRequestedOptionalNfLocator(t)) return true;
-  if (/\b(nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)) return true;
+  if (assistantIsNfFlowTurn(t)) return false;
   if (/\b(per[ií]odo|valor|quarto|h[oó]spede|unidade)\b/i.test(t)) return true;
   if (/\b(senha|acesso|c[oó]digo)\b/i.test(t)) return true;
   if (/\b(?:me\s+)?(?:informe|envie|mande|passe)\b/i.test(t)) return true;
@@ -286,11 +388,10 @@ export function shouldRequireReservationLookupThisTurn(opts: {
 /** @deprecated Use assistantMentionedReservationLocator */
 export const assistantRequestedReservationLocator = assistantMentionedReservationLocator;
 
-/** NF + localizador → consultar_reserva e consultar_main_guest. */
-export function shouldRequireNfGuestLookupWithReservation(opts: {
+/** @deprecated C19 não usa mais localizador para auto-preenchimento. */
+export function shouldRequireNfGuestLookupWithReservation(_opts: {
   userMessage?: string | null;
   lastAssistantMessage?: string | null;
 }): boolean {
-  if (!shouldRequireReservationLookupThisTurn(opts)) return false;
-  return assistantIsNfFlowTurn(opts.lastAssistantMessage);
+  return false;
 }

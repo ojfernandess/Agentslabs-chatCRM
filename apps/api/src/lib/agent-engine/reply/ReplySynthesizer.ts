@@ -36,6 +36,8 @@ import {
   resolveReservationLookupTemplateId,
   type SynthesizerToolOutcome,
 } from "./ReplyTemplateRenderer.js";
+import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply } from "../../nfFlowReply.js";
+import { isNfEstablishmentSelectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn } from "../../unitKnowledgeFlow.js";
 
 export type { SynthesizerToolOutcome };
 
@@ -71,7 +73,10 @@ export type EnsureDeliveringReplyResult = {
     | "quote_call_human_failed"
     | "quote_call_human_missing"
     | "escalation_call_human_missing"
-    | "quote_c6_category_info_return";
+    | "quote_c6_category_info_return"
+    | "nf_receipt_only"
+    | "nf_form_no_locator"
+    | "receipt_confirmation_mirror";
 };
 
 export { extractReservationDisplayFields };
@@ -415,9 +420,58 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         reason: "quote_c6_discount_offer",
       };
     }
+    if (isReceiptFormSubmissionTurn({
+      userMessage: input.userMessage,
+      lastAssistantMessage: input.lastAssistantMessage,
+    })) {
+      const mirror = tryReceiptFormSubmissionReply({
+        userMessage: input.userMessage,
+        lastAssistantMessage: input.lastAssistantMessage,
+        replyText: input.replyText,
+      });
+      if (mirror) {
+        return {
+          reply: mirror,
+          replaced: true,
+          reason: "receipt_confirmation_mirror",
+        };
+      }
+    }
     const kbOnly = input.toolOutcomes.find(
       (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
     );
+    if (
+      kbOnly &&
+      isNfEstablishmentSelectionTurn({
+        userMessage: input.userMessage,
+        lastAssistantMessage: input.lastAssistantMessage,
+        flowSlots: input.flowSlots,
+      })
+    ) {
+      const nfReply = tryNfEstablishmentKbReply({
+        replyText: input.replyText,
+        userMessage: input.userMessage,
+        lastAssistantMessage: input.lastAssistantMessage,
+        flowSlots: input.flowSlots,
+        kbTool: kbOnly,
+      });
+      if (nfReply) {
+        const establishment =
+          resolveEstablishmentInConversation({
+            userMessage: input.userMessage,
+            lastAssistantMessage: input.lastAssistantMessage,
+            flowSlots: input.flowSlots,
+          }) ?? "";
+        const kbText = extractKbTextFromToolOutcome(kbOnly);
+        const receiptOnly =
+          /audaar\s*tech/i.test(establishment) || kbTextIndicatesReceiptOnlyNoNf(kbText);
+        return {
+          reply: nfReply,
+          replaced: true,
+          reason: receiptOnly ? "nf_receipt_only" : "nf_form_no_locator",
+        };
+      }
+    }
     if (quoteCategoryInfoTurn && kbOnly) {
       const recap = buildQuoteOptionsReturnPrompt({
         lastAssistantMessage: input.lastAssistantMessage,
