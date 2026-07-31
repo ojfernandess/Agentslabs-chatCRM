@@ -403,6 +403,22 @@ Está tudo correto?`;
   assert.deepEqual(names, ["call_human"]);
 });
 
+test("resolveRequiredToolNamesForTurn FNRH question requires buscar_conhecimento", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C16 | FNRH/Embratur | Chame \`buscar_conhecimento\` (# FNRH Digital) |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento", "audaar_consultar_reserva"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "por que preciso informar motivo da viagem na ficha Embratur?",
+  });
+  assert.deepEqual(names, ["buscar_conhecimento"]);
+});
+
 test("resolveRequiredToolNamesForTurn establishment reply after NF unit ask requires buscar_conhecimento", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

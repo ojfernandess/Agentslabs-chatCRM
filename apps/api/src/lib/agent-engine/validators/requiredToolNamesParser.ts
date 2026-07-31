@@ -129,6 +129,8 @@ import {
   shouldRequireReservationLookupThisTurn,
   shouldRequireCallHumanAfterNfConfirmation,
   isReceiptFormSubmissionTurn,
+  shouldRequireFnrhKnowledgeLookupThisTurn,
+  userMessageLooksLikeFnrhEmbraturQuestion,
 } from "../../unitKnowledgeFlow.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
@@ -222,6 +224,11 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     id: "amenity_item",
     test: (m) => userMessageLooksLikeAmenityItemQuestion(m),
     playbookHints: /\b(C18|ferro de passar|comodidade|item)\b/i,
+  },
+  {
+    id: "fnrh_embratur_question",
+    test: (m) => userMessageLooksLikeFnrhEmbraturQuestion(m),
+    playbookHints: /\b(C16|FNRH|Embratur|ficha de viagem|FNRH Digital|GATE C16)\b/i,
   },
   {
     id: "escalation",
@@ -639,6 +646,12 @@ export function resolveRequiredToolNamesForTurn(
 
   if (isReceiptFormSubmissionTurn(unitCtx)) {
     return [];
+  }
+
+  if (shouldRequireFnrhKnowledgeLookupThisTurn(unitCtx)) {
+    return dedupeRequiredToolAliases(
+      filterAgainstAvailable(["buscar_conhecimento"], available),
+    );
   }
 
   if (shouldRequireReservationLookupThisTurn(unitCtx)) {

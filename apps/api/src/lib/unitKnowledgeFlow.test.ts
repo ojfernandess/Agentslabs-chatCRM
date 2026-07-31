@@ -19,6 +19,9 @@ import {
   assistantSentReceiptDataForm,
   isReceiptFormSubmissionTurn,
   assistantSentReceiptConfirmationMirror,
+  userMessageLooksLikeFnrhEmbraturQuestion,
+  userMessageLooksLikeFnrhFormSubmission,
+  shouldRequireFnrhKnowledgeLookupThisTurn,
 } from "./unitKnowledgeFlow.js";
 
 test("checkout procedure question is detected", () => {
@@ -240,4 +243,29 @@ Está tudo correto?`;
     }),
     true,
   );
+});
+
+test("FNRH Embratur question is detected for C16 KB lookup", () => {
+  assert.equal(
+    userMessageLooksLikeFnrhEmbraturQuestion("por que preciso preencher a ficha Embratur?"),
+    true,
+  );
+  assert.equal(
+    userMessageLooksLikeFnrhEmbraturQuestion("o que é motivo da viagem na FNRH?"),
+    true,
+  );
+  assert.equal(shouldRequireFnrhKnowledgeLookupThisTurn({ userMessage: "o que é FNRH Digital?" }), true);
+});
+
+test("FNRH form submission block is not treated as C16 question", () => {
+  const submission = `Motivo: Turismo
+Meio de transporte: Avião
+Procedência: São Paulo
+Destino: Rio de Janeiro`;
+  assert.equal(userMessageLooksLikeFnrhFormSubmission(submission), true);
+  assert.equal(userMessageLooksLikeFnrhEmbraturQuestion(submission), false);
+});
+
+test("check-in refusal without FNRH context is not C16", () => {
+  assert.equal(userMessageLooksLikeFnrhEmbraturQuestion("não quero fazer check-in"), false);
 });

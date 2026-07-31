@@ -395,3 +395,60 @@ export function shouldRequireNfGuestLookupWithReservation(_opts: {
 }): boolean {
   return false;
 }
+
+/** Hóspede enviou bloco preenchido da ficha FNRH (Legado — não é pergunta C16). */
+export function userMessageLooksLikeFnrhFormSubmission(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  const lines = t.split(/\n/).filter((l) => l.trim()).length;
+  const fieldHits = [
+    /\bmotivo\b/i,
+    /\btransporte\b/i,
+    /\bmeio\s+de\s+transporte\b/i,
+    /\bproced[eê]ncia\b/i,
+    /\bdestino\b/i,
+    /\bnacionalidade\b/i,
+    /\bcpf\b/i,
+  ].filter((r) => r.test(t)).length;
+  const hasQuestion =
+    /\?|como preencho|n[aã]o entendi|o que [eé]|qual [eé]|por que|porque|preciso saber/i.test(t);
+  return fieldHits >= 2 && lines >= 2 && !hasQuestion;
+}
+
+/** Pergunta sobre FNRH / Embratur / ficha de viagem — GATE C16 (KB obrigatória). */
+export function userMessageLooksLikeFnrhEmbraturQuestion(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (userMessageLooksLikeFnrhFormSubmission(t)) return false;
+  if (messageIsStandaloneReservationLocator(t)) return false;
+  if (
+    /\bn[aã]o\s+quero\s+fazer\s+check[- ]?in\b/i.test(t) &&
+    !/\b(?:fnrh|embratur|ficha|motivo\s+da\s+viagem|meio\s+de\s+transporte)\b/i.test(t)
+  ) {
+    return false;
+  }
+  const questionLike =
+    /\?|como|o que|qual|por que|porque|preciso|obrigat|significa|para que|n[aã]o entendi|explic/i.test(
+      t,
+    );
+  return (
+    /\b(?:fnrh|embratur|ficha\s+(?:de\s+)?viagem|ficha\s+nacional|registro\s+de\s+h[oó]spedes)\b/i.test(
+      t,
+    ) ||
+    /\bpor\s+que\s+(?:tantos\s+)?dados\b/i.test(t) ||
+    /\bdados\s+(?:da\s+)?(?:ficha|embratur|fnrh)\b/i.test(t) ||
+    (questionLike &&
+      /\b(?:motivo\s+(?:da\s+)?viagem|meio\s+de\s+transporte|transporte\s+utilizado|proced[eê]ncia|destino|nacionalidade|ficha)\b/i.test(
+        t,
+      )) ||
+    (/\b(?:minist[eé]rio\s+do\s+turismo|lgpd)\b/i.test(t) &&
+      /\b(?:ficha|dados|cadastro|check-in|fnrh|embratur)\b/i.test(t))
+  );
+}
+
+/** Turno C16 — consulta KB FNRH Digital antes de responder. */
+export function shouldRequireFnrhKnowledgeLookupThisTurn(opts: {
+  userMessage?: string | null;
+}): boolean {
+  return userMessageLooksLikeFnrhEmbraturQuestion(opts.userMessage);
+}
