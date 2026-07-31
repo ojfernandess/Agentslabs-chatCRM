@@ -135,10 +135,17 @@ export function assistantIsCompanionMirrorConfirm(lastAssistantMessage?: string 
 export function assistantIsQuoteAvailabilityConfirm(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
+  if (
+    /posso consultar a disponibilidade|posso verificar a disponibilidade|consultar a disponibilidade\s*\?/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   return (
-    /posso consultar a disponibilidade/i.test(t) ||
-    (/est[aá] tudo certo/i.test(t) &&
-      /(?:propriedade|data de chegada|data de partida|quantidade de pessoas|🏢|📅|👤)/i.test(t))
+    /perfeito!\s*ent[aã]o temos/i.test(t) &&
+    /est[aá]\s+tudo certo/i.test(t) &&
+    /(?:propriedade|data de chegada|data de partida|quantidade de pessoas|🏢|📅|👤)/i.test(t)
   );
 }
 

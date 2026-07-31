@@ -16,11 +16,13 @@ import {
   QUOTE_OPTIONS_CATALOG_SLOT,
   replyLooksLikeModeloC6DiscountOffer,
   replyLooksLikeModeloC6Handoff,
+  replyLooksLikeModeloC6Options,
   resolveQuoteHandoffContext,
 } from "../quote/quoteAvailabilityReply.js";
 import {
   assistantIsQuoteDiscountTransferOffer,
   assistantIsQuoteOptionsList,
+  assistantIsQuoteAvailabilityConfirm,
   messageLooksLikeQuoteOptionChoice,
 } from "../core/confirmationTurnGuards.js";
 import {
@@ -297,6 +299,8 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   const quoteConfirmTurn = /^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(
     (input.userMessage ?? "").trim(),
   );
+  const quoteC6ConfirmTurn =
+    quoteConfirmTurn && assistantIsQuoteAvailabilityConfirm(input.lastAssistantMessage);
   const quoteChoiceTurn =
     assistantIsQuoteOptionsList(input.lastAssistantMessage) &&
     messageLooksLikeQuoteOptionChoice(input.userMessage);
@@ -308,6 +312,28 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   const failedCallHuman = input.toolOutcomes.some(
     (t) => t.ok === false && /^call_human$/i.test(t.name),
   );
+
+  const availabilityThisTurn = findAvailabilityLookupOutcome(
+    input.toolOutcomes.filter((t) => t.ok !== false),
+  );
+  const replyLooksLikeInventedQuote =
+    replyLooksLikeModeloC6Options(input.replyText) ||
+    (/consultei a disponibilidade/i.test(input.replyText ?? "") &&
+      /R\$\s*[\d.,]+/i.test(input.replyText ?? ""));
+
+  if (
+    quoteC6ConfirmTurn &&
+    !availabilityThisTurn &&
+    replyLooksLikeInventedQuote
+  ) {
+    return {
+      reply:
+        "Preciso consultar a disponibilidade no sistema antes de informar valores. " +
+        "Não consegui concluir a consulta agora — pode confirmar novamente com *sim* ou informar outras datas?",
+      replaced: true,
+      reason: "quote_availability_failed",
+    };
+  }
 
   if (successful.length === 0) {
     if (

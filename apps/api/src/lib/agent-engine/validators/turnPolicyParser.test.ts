@@ -799,6 +799,20 @@ test("resolveTurnPolicy — sim after Modelo C6 Confirm requires audaar_consulta
   assert.deepEqual(policy.exclusiveAllowedTools, ["audaar_consultar_disponibilidade"]);
 });
 
+test("resolveTurnPolicy — C6c still requires disponibilidade when prior session had availability OK", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: C6_CONFIRM_MSG,
+      availableToolNames: ["audaar_consultar_disponibilidade"],
+      priorToolOutcomes: [{ name: "audaar_consultar_disponibilidade", ok: true }],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["audaar_consultar_disponibilidade"]);
+});
+
 test("buildExecutionTurnPlan — sim after C6 Confirm schedules disponibilidade not embratur", () => {
   const plan = buildExecutionTurnPlan({
     behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: C6_PLAYBOOK } },

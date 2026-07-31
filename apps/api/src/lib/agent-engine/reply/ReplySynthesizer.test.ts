@@ -216,6 +216,32 @@ test("ensureDeliveringReply renders Modelo C6 Opções with Balcão, period, di�
   assert.doesNotMatch(result.reply, /Motor de reserva|REEMBOLSAVEL|Balcão/i);
 });
 
+const C6_CONFIRM_MSG = `Perfeito! Então temos:
+🏢 Propriedade: Vivapp Club Suítes
+📅 Data de chegada: 02/08/2026
+📅 Data de partida: 04/08/2026
+👤 Quantidade de pessoas: 2
+Está tudo certo? Posso consultar a disponibilidade?`;
+
+test("ensureDeliveringReply blocks invented quote after C6 Confirm without availability tool", () => {
+  const invented = `Consultei a disponibilidade para o período informado - 02/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Standard — R$ 450,00 / diária · R$ 900,00 total
+2️⃣ Deluxe — R$ 650,00 / diária · R$ 1.300,00 total
+
+Qual opção você prefere?`;
+  const result = ensureDeliveringReply({
+    replyText: invented,
+    userMessage: "sim",
+    lastAssistantMessage: C6_CONFIRM_MSG,
+    toolOutcomes: [],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_availability_failed");
+  assert.match(result.reply, /Preciso consultar a disponibilidade no sistema/i);
+  assert.doesNotMatch(result.reply, /R\$ 450|Standard|Deluxe/i);
+});
+
 const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
 
 1️⃣ Suíte Executiva — R$ 210,00 / diária · R$ 210,00 total

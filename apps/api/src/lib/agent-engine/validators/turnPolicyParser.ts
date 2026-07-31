@@ -462,7 +462,8 @@ export function resolveTurnPolicy(
     assistantIsQuoteAvailabilityConfirm(options.lastAssistantMessage);
   if (quoteAvailabilityConfirm) {
     const quoteTool = parseQuoteAvailabilityToolFromPlaybook(playbook, available);
-    if (quoteTool && !toolOutcomeSatisfiesRequired(quoteTool, priorOk)) {
+    // C6c exige nova consulta a cada confirmação — ignorar tool satisfeita em cotação anterior.
+    if (quoteTool) {
       exclusiveAllowedTools = [quoteTool];
       forceExclusiveExecution = true;
     }

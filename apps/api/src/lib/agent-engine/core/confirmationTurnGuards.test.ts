@@ -150,6 +150,14 @@ test("assistantIsQuoteAvailabilityConfirm detects Modelo C6 Confirm", () => {
   assert.equal(assistantIsQuoteAvailabilityConfirm(TITULAR_MIRROR), false);
 });
 
+test("assistantIsQuoteAvailabilityConfirm detects Perfeito + Está tudo certo pattern", () => {
+  const msg = `Perfeito! Então temos:
+🏢 Propriedade: Club Suítes
+📅 Data de chegada: 02/08/2026
+Está tudo certo? Posso verificar a disponibilidade?`;
+  assert.equal(assistantIsQuoteAvailabilityConfirm(msg), true);
+});
+
 test("sim after Modelo C6 Confirm does not suppress exclusive gate", () => {
   assert.equal(
     shouldSuppressConfirmationExclusiveTools({

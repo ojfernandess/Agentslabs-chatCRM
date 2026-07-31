@@ -1,6 +1,13 @@
 /**
  * Extracção de slots C6 (cotação) a partir de mensagens — alimenta Tool Scheduler.
  */
+import {
+  readSessionSatisfiedToolNames,
+  SESSION_SATISFIED_TOOLS_KEY,
+} from "../core/sessionToolOutcomes.js";
+import { assistantIsQuoteAvailabilityConfirm } from "../core/confirmationTurnGuards.js";
+import { QUOTE_OPTIONS_CATALOG_SLOT } from "./quoteAvailabilityReply.js";
+
 export type QuoteFlowSlots = Record<string, string | number | boolean>;
 
 const ESTABLISHMENT_ID_BY_NAME: Array<{ pattern: RegExp; id: number; name: string }> = [
@@ -90,13 +97,66 @@ export function extractQuoteFlowSlotsFromText(text: string): QuoteFlowSlots {
   return out;
 }
 
+export const QUOTE_SESSION_FINGERPRINT_SLOT = "__quoteSessionFingerprint";
+
+const NEW_QUOTE_REQUEST_RE =
+  /\b(cota[cç][aã]o|disponibilidade|pre[cç]o|di[aá]ria|reservar|fazer\s+uma\s+reserva)\b/i;
+
+function quoteSessionFingerprint(slots: QuoteFlowSlots): string {
+  return [
+    slots.establishmentId ?? slots.establishmentName ?? "",
+    slots.checkinDate ?? slots.checkInDate ?? "",
+    slots.checkoutDate ?? slots.checkOutDate ?? "",
+    slots.guestsQuantity ?? slots.guests ?? "",
+  ].join("|");
+}
+
+/** Remove consulta de disponibilidade satisfeita — cada cotação exige nova tool. */
+export function stripAvailabilityToolFromSatisfiedNames(
+  flowSlots: QuoteFlowSlots,
+): QuoteFlowSlots {
+  const prev = readSessionSatisfiedToolNames(flowSlots);
+  const filtered = prev.filter(
+    (t) => !/(?:consultar[_-]?)?disponibilidade|availability/i.test(t),
+  );
+  if (filtered.length === prev.length) return flowSlots;
+  const next: QuoteFlowSlots = { ...flowSlots };
+  if (filtered.length > 0) {
+    next[SESSION_SATISFIED_TOOLS_KEY] = filtered.join(",");
+  } else {
+    delete next[SESSION_SATISFIED_TOOLS_KEY];
+  }
+  return next;
+}
+
+export function resetQuoteAvailabilitySessionState(flowSlots: QuoteFlowSlots): QuoteFlowSlots {
+  const next = stripAvailabilityToolFromSatisfiedNames(flowSlots);
+  delete next[QUOTE_OPTIONS_CATALOG_SLOT];
+  delete next[QUOTE_SESSION_FINGERPRINT_SLOT];
+  return next;
+}
+
 export function mergeQuoteFlowSlotsFromConversation(opts: {
   flowSlots: QuoteFlowSlots;
   userMessage: string;
   lastAssistantMessage?: string | null;
   historyUserMessages?: string[];
 }): QuoteFlowSlots {
-  const merged: QuoteFlowSlots = { ...opts.flowSlots };
+  let merged: QuoteFlowSlots = { ...opts.flowSlots };
+  const userMsg = (opts.userMessage ?? "").trim();
+
+  if (NEW_QUOTE_REQUEST_RE.test(userMsg) && !/^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(userMsg)) {
+    merged = resetQuoteAvailabilitySessionState(merged);
+  }
+
+  if (
+    /^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(userMsg) &&
+    assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)
+  ) {
+    merged = stripAvailabilityToolFromSatisfiedNames(merged);
+    delete merged[QUOTE_OPTIONS_CATALOG_SLOT];
+  }
+
   const texts = [
     opts.userMessage,
     opts.lastAssistantMessage ?? "",
@@ -108,5 +168,19 @@ export function mergeQuoteFlowSlotsFromConversation(opts: {
       if (v !== undefined && v !== null && String(v).trim() !== "") merged[k] = v;
     }
   }
+
+  const fingerprint = quoteSessionFingerprint(merged);
+  const prevFingerprint =
+    typeof merged[QUOTE_SESSION_FINGERPRINT_SLOT] === "string"
+      ? merged[QUOTE_SESSION_FINGERPRINT_SLOT]
+      : "";
+  if (prevFingerprint && fingerprint && prevFingerprint !== fingerprint) {
+    merged = stripAvailabilityToolFromSatisfiedNames(merged);
+    delete merged[QUOTE_OPTIONS_CATALOG_SLOT];
+  }
+  if (fingerprint.replace(/\|/g, "")) {
+    merged[QUOTE_SESSION_FINGERPRINT_SLOT] = fingerprint;
+  }
+
   return merged;
 }
