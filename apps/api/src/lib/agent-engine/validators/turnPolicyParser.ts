@@ -41,6 +41,7 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
+import { shouldRequireCallHumanThisTurn } from "../escalation/escalationTurnDetection.js";
 
 export {
   isLikelyMutableOrCompletionTool,
@@ -450,6 +451,17 @@ export function resolveTurnPolicy(
       memory: options.memory,
     });
 
+  // C13 / pedido humano → call_human exclusive (Scheduler runtime_owned).
+  if (
+    shouldRequireCallHumanThisTurn({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+    })
+  ) {
+    exclusiveAllowedTools = ["call_human"];
+    forceExclusiveExecution = true;
+  }
+
   // C6c: `sim` após Modelo C6 Confirm → audaar_consultar_disponibilidade (exclusive).
   const fichaConfirm =
     isConfirmation &&
@@ -459,7 +471,10 @@ export function resolveTurnPolicy(
     isConfirmation &&
     !suppressExclusive &&
     assistantIsQuoteAvailabilityConfirm(options.lastAssistantMessage);
-  if (quoteAvailabilityConfirm) {
+  if (
+    !forceExclusiveExecution &&
+    quoteAvailabilityConfirm
+  ) {
     const quoteTool = parseQuoteAvailabilityToolFromPlaybook(playbook, available);
     // C6c exige nova consulta a cada confirmação — ignorar tool satisfeita em cotação anterior.
     if (quoteTool) {
@@ -467,6 +482,7 @@ export function resolveTurnPolicy(
       forceExclusiveExecution = true;
     }
   } else if (
+    !forceExclusiveExecution &&
     guestAsksQuoteCategoryInfo({
       userMessage,
       lastAssistantMessage: options.lastAssistantMessage,

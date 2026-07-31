@@ -5,6 +5,7 @@
 import type { ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import type { IntentAnalysis, IntentKind } from "../core/types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import { shouldRequireCallHumanThisTurn } from "../escalation/escalationTurnDetection.js";
 import type { StaticPromptIRExtract } from "./extractStaticPromptIR.js";
 
 export type PlaybookIntentSummary = {
@@ -48,6 +49,12 @@ export function analyzeTurnIntent(userMessage: string, turnPlan: ExecutionTurnPl
   ) {
     kind = "operational_action";
     confidence = 0.85;
+  } else if (
+    turnPlan.matchedPatternIds.includes("escalation") ||
+    shouldRequireCallHumanThisTurn({ userMessage: msg })
+  ) {
+    kind = "escalation_request";
+    confidence = 0.85;
   } else if (turnPlan.knowledgeSeeking || userMessageLooksLikeKnowledgeSeekingQuery(msg)) {
     kind = "knowledge_query";
     confidence = 0.85;
@@ -57,9 +64,6 @@ export function analyzeTurnIntent(userMessage: string, turnPlan: ExecutionTurnPl
   } else if (/^\d{11}$/.test(msg) || /^[A-Z0-9]{6,12}$/i.test(msg)) {
     kind = "data_submission";
     confidence = 0.8;
-  } else if (turnPlan.matchedPatternIds.includes("escalation")) {
-    kind = "escalation_request";
-    confidence = 0.75;
   } else if (turnPlan.requiredToolNames.length > 0) {
     kind = "operational_action";
     confidence = 0.7;

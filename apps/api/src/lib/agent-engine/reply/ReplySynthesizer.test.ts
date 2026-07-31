@@ -365,6 +365,17 @@ Qual opção você prefere?`,
   assert.doesNotMatch(result.reply, /Perfeito! Então temos/i);
 });
 
+test("ensureDeliveringReply blocks fake C13 transfer when call_human did not run", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Entendi. Vou transferir você para a equipe de atendimento dar continuidade.",
+    userMessage: "falar com atendimento",
+    toolOutcomes: [],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "escalation_call_human_missing");
+  assert.match(result.reply, /problema ao transferir/i);
+});
+
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
   const mainGuestPayload = {
     found: true,

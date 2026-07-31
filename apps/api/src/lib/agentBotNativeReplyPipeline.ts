@@ -109,9 +109,12 @@ export async function runNativeAgentReplyAndDeliver(input: {
         select: { behaviorConfig: true },
       });
       const transferConfigured = parseEscalationTransferMessage(profileEsc?.behaviorConfig);
+      const callHumanOk = toolOutcomes.some(
+        (t) => t.ok !== false && /^call_human$/i.test(t.name),
+      );
       const deliverQuoteHandoff = replyShouldPreemptEscalationTransferMessage(replyText);
 
-      if (deliverQuoteHandoff && replyText.trim()) {
+      if ((deliverQuoteHandoff || callHumanOk) && replyText.trim()) {
         try {
           await deliverAgentReplyMessage({
             organizationId,
@@ -130,7 +133,9 @@ export async function runNativeAgentReplyAndDeliver(input: {
         }
         exLog.info(
           { id: "outbound", name: "Entrega" },
-          "Modelo C6 Escolha Confirm enviado ao cliente (handoff humano)",
+          callHumanOk
+            ? "Resposta pós call_human enviada ao cliente (handoff humano)"
+            : "Modelo C6 Escolha Confirm enviado ao cliente (handoff humano)",
           { output: { chars: replyText.length, skippedEscalationMessage: Boolean(transferConfigured) } },
         );
         await prisma.automationInteraction

@@ -115,6 +115,10 @@ import {
   messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
 } from "../../knowledgeQueryEnrichment.js";
+import {
+  messageLooksLikeEscalationTurn,
+  shouldRequireCallHumanThisTurn,
+} from "../escalation/escalationTurnDetection.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
@@ -142,6 +146,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     test: (m) => {
       if (messageLooksLikeQuoteStayDetails(m)) return false;
       if (isOperationalQuoteMessage(m)) return false;
+      if (messageLooksLikeEscalationTurn(m)) return false;
       if (
         messageContainsReservationLocator(m) &&
         /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva/i.test(m)
@@ -191,8 +196,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   },
   {
     id: "escalation",
-    test: (m) =>
-      /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(m),
+    test: (m) => messageLooksLikeEscalationTurn(m),
     playbookHints: /\b(C13|reclama[cç][aã]o|call_human|transfer_to_team)\b/i,
   },
   {
@@ -645,6 +649,28 @@ export function resolveRequiredToolNamesForTurn(
         }
       }
     }
+  }
+
+  if (
+    shouldRequireCallHumanThisTurn({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+    })
+  ) {
+    for (const line of playbook.split(/\n+/)) {
+      if (!/\b(C13|reclama[cç][aã]o|call_human)\b/i.test(line)) continue;
+      for (const tool of extractPositiveToolNamesFromLine(line)) {
+        if (/^call_human$/i.test(tool)) required.add(tool);
+      }
+      if ([...required].some((t) => /^call_human$/i.test(t))) break;
+    }
+    return dedupeRequiredToolAliases(
+      filterAgainstAvailable(["call_human"], available),
+    );
+  }
+
+  for (const tool of [...required]) {
+    if (ESCALATION_TOOL_NAMES.has(tool)) required.delete(tool);
   }
 
   // Obrigatórios vêm só do padrão de turno. O conjunto estático global do playbook

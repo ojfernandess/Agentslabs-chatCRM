@@ -1,5 +1,6 @@
 import { extractQuerySegmentTokens, queryTerms } from "./knowledgeSearchRanking.js";
 import { stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
+import { messageLooksLikeEscalationTurn } from "./agent-engine/escalation/escalationTurnDetection.js";
 
 export type KnowledgeConversationTurn = {
   role: "user" | "assistant";
@@ -166,6 +167,9 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   if (isOperationalQuoteMessage(t)) return false;
   // Pedidos operacionais (check-in / verificar reserva + localizador) → API HTTP, não KB.
   if (isOperationalReservationLookupMessage(t)) {
+    return false;
+  }
+  if (messageLooksLikeEscalationTurn(t)) {
     return false;
   }
   if (/\?/.test(t)) return true;

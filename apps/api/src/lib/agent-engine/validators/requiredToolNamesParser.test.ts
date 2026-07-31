@@ -204,6 +204,40 @@ test("resolveRequiredToolNamesForTurn includes escalation only on complaint turn
   assert.ok(onComplaint.includes("call_human"));
 });
 
+test("resolveRequiredToolNamesForTurn requires call_human on falar com atendimento", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C13 | Reclamação/outro | call_human · transfer_to_team |
+`,
+    },
+    availableToolNames: ["call_human", "transfer_to_team"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "falar com atendimento",
+  });
+  assert.deepEqual(names, ["call_human"]);
+});
+
+test("resolveRequiredToolNamesForTurn does not KB-route dirty room complaint", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C13 | Reclamação | Chame \`call_human\` |
+| C5 | Fato | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["call_human", "buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "meu quarto está sujo",
+  });
+  assert.equal(names.includes("buscar_conhecimento"), false);
+  assert.equal(names.includes("call_human"), false);
+});
+
 test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

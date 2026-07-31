@@ -180,6 +180,10 @@ test("FAQ check-in without locator is not operational reservation lookup", () =>
   );
 });
 
+test("dirty room complaint is not a knowledge-seeking query", () => {
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("meu quarto está sujo"), false);
+});
+
 test("check-in with valid locator remains operational reservation lookup", () => {
   assert.equal(messageContainsReservationLocator("fazer check-in na reserva NCMT0VPN"), true);
   assert.equal(isOperationalReservationLookupMessage("fazer check-in na reserva NCMT0VPN"), true);

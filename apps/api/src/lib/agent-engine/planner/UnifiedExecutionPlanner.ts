@@ -18,6 +18,7 @@ import type {
   FactStore,
 } from "../eil/types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import { shouldRequireCallHumanThisTurn } from "../escalation/escalationTurnDetection.js";
 import { isPostCompletionPending } from "../core/sessionToolOutcomes.js";
 import { guestAsksQuoteCategoryInfo } from "../core/confirmationTurnGuards.js";
 import {
@@ -96,11 +97,16 @@ export function executionTurnPlanFromPromptIr(
     flowSlots,
   });
   const knowledgeSeeking =
-    quoteCategoryInfoTurn ||
-    (!quoteFlow &&
-      (userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
-        opts.postCompletionFollowUp === true ||
-        isPostCompletionPending(flowSlots)));
+    !shouldRequireCallHumanThisTurn({
+      userMessage,
+      lastAssistantMessage: opts.lastAssistantMessage,
+    }) &&
+    !matchedPatternIds.includes("escalation") &&
+    (quoteCategoryInfoTurn ||
+      (!quoteFlow &&
+        (userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
+          opts.postCompletionFollowUp === true ||
+          isPostCompletionPending(flowSlots))));
 
   return {
     userMessage,

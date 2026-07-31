@@ -27,6 +27,7 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
+import { replyClaimsHumanTransfer } from "../escalation/escalationTurnDetection.js";
 import {
   extractReservationDisplayFields,
   factsFromReservationPayload,
@@ -69,6 +70,7 @@ export type EnsureDeliveringReplyResult = {
     | "quote_c6_discount_handoff"
     | "quote_call_human_failed"
     | "quote_call_human_missing"
+    | "escalation_call_human_missing"
     | "quote_c6_category_info_return";
 };
 
@@ -323,6 +325,9 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   const failedCallHuman = input.toolOutcomes.some(
     (t) => t.ok === false && /^call_human$/i.test(t.name),
   );
+  const callHumanSucceeded = input.toolOutcomes.some(
+    (t) => t.ok !== false && /^call_human$/i.test(t.name),
+  );
 
   const availabilityThisTurn = findAvailabilityLookupOutcome(
     input.toolOutcomes.filter((t) => t.ok !== false),
@@ -362,7 +367,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     if (
       quoteChoiceTurn &&
       !failedCallHuman &&
-      /transferi|encaminh|equipe de atendimento/i.test(input.replyText ?? "")
+      replyClaimsHumanTransfer(input.replyText)
     ) {
       return {
         reply:
@@ -370,6 +375,21 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
           "Pode repetir a opção preferida ou aguardar um instante?",
         replaced: true,
         reason: "quote_call_human_missing",
+      };
+    }
+    if (
+      !quoteChoiceTurn &&
+      !quoteDiscountAcceptTurn &&
+      !failedCallHuman &&
+      replyClaimsHumanTransfer(input.replyText) &&
+      !callHumanSucceeded
+    ) {
+      return {
+        reply:
+          "Entendi seu pedido. Tive um problema ao transferir para a equipe agora. " +
+          "Pode repetir que deseja falar com o atendimento?",
+        replaced: true,
+        reason: "escalation_call_human_missing",
       };
     }
     if (

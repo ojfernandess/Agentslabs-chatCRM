@@ -936,3 +936,18 @@ test("resolveTurnPolicy — sim after discount offer requires call_human exclusi
   assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
   assert.equal(turnPolicyPreExecBlockReason("call_human", policy), null);
 });
+
+test("resolveTurnPolicy — falar com atendimento requires call_human exclusive", () => {
+  const playbook = `
+| C13 | Reclamação | call_human · transfer_to_team |
+`;
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    {
+      userMessage: "falar com atendimento",
+      availableToolNames: ["call_human", "transfer_to_team"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+});

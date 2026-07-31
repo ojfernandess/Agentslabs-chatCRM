@@ -730,14 +730,22 @@ export function replyLooksLikeModeloC6Handoff(text: string): boolean {
   );
 }
 
-/** Resposta substantiva de handoff C6 — deve ir ao hóspede em vez da msg genérica de escalonamento. */
+/** Resposta substantiva de handoff C6/C13 — deve ir ao hóspede em vez da msg genérica de escalonamento. */
 export function replyShouldPreemptEscalationTransferMessage(text: string): boolean {
   if (replyLooksLikeModeloC6Handoff(text)) return true;
   const t = (text ?? "").trim();
-  return (
+  if (!t) return false;
+  if (
     /perfeito!/i.test(t) &&
     /transferir.*equipe de atendimento/i.test(t) &&
     /desconto|condi[cç][aã]o especial/i.test(t)
+  ) {
+    return true;
+  }
+  return (
+    /sinto muito/i.test(t) &&
+    /(?:equipe de atendimento|transferir|encaminh)/i.test(t) &&
+    t.length >= 60
   );
 }
 
