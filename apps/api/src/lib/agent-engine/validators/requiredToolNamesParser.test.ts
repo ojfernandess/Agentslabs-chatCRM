@@ -312,6 +312,50 @@ Qual delas?`,
   assert.deepEqual(names, ["buscar_conhecimento"]);
 });
 
+test("resolveRequiredToolNamesForTurn sim after NF mirror requires call_human", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C19 | Recibo/NF | Chame \`call_human\` após confirmação |
+`,
+    },
+    availableToolNames: ["call_human"],
+  };
+  const mirror = `Confira os dados para emissão da nota fiscal:
+
+- Nome completo: Max
+- CPF ou CNPJ: 095.124.574-07
+- CEP: 04421-210
+- Telefone: 5584994647139
+
+Está tudo correto?`;
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "sim",
+    lastAssistantMessage: mirror,
+  });
+  assert.deepEqual(names, ["call_human"]);
+});
+
+test("resolveRequiredToolNamesForTurn NF locator requires consultar_reserva and main_guest", () => {
+  const behavior = {
+    promptBuilder: { useFullPrompt: true, userCore: "" },
+    availableToolNames: [
+      "audaar_consultar_reserva",
+      "audaar_consultar_main_guest",
+      "buscar_conhecimento",
+    ],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "DE4KRMDP",
+    lastAssistantMessage:
+      "Para completar hóspede e quarto da nota fiscal, informe o localizador da reserva.",
+  });
+  assert.equal(names.length, 2);
+  assert.ok(names.includes("audaar_consultar_reserva"));
+  assert.ok(names.includes("audaar_consultar_main_guest"));
+});
+
 test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

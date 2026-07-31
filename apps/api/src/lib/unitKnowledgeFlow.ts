@@ -178,27 +178,119 @@ export function messageIsStandaloneReservationLocator(userMessage?: string | nul
   return remainder.length === 0;
 }
 
-/** Agente pediu localizador no turno anterior (NF, senha, reclamação). */
-export function assistantRequestedReservationLocator(lastAssistantMessage?: string | null): boolean {
+/** Agente enviou formulário NF (lista de campos). */
+export function assistantSentNfDataForm(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
-  if (/\blocalizador\b/i.test(t)) {
-    if (/\b(nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)) return true;
-    if (/\b(per[ií]odo|valor|quarto|h[oó]spede|unidade)\b/i.test(t)) return true;
-    if (/\b(senha|acesso|c[oó]digo)\b/i.test(t)) return true;
-    if (/\b(?:me\s+)?(?:informe|envie|mande|passe)\b/i.test(t)) return true;
-    if (/localizador\s+(?:da\s+)?reserva/i.test(t)) return true;
+  if (!/\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)) return false;
+  const fieldHits = [
+    /\bnome\s+completo\b/i,
+    /\bcpf\s+ou\s+cnpj\b/i,
+    /\bcep\b/i,
+    /\btelefone\b/i,
+    /\bper[ií]odo\b/i,
+    /\bvalor\b/i,
+    /\bquarto\b/i,
+  ].filter((r) => r.test(t)).length;
+  return fieldHits >= 3;
+}
+
+/** Turno anterior está no fluxo C19 (formulário, espelho ou pedido NF). */
+export function assistantIsNfFlowTurn(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    assistantSentNfDataForm(t) ||
+    assistantSentNfConfirmationMirror(t) ||
+    /\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)
+  );
+}
+
+/** Agente pediu localizador (opcional ou não) no fluxo NF. */
+export function assistantRequestedOptionalNfLocator(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t || !/\blocalizador\b/i.test(t)) return false;
+  if (!assistantIsNfFlowTurn(t) && !assistantSentNfDataForm(t)) return false;
+  return true;
+}
+
+/** Hóspede enviou bloco com campos do formulário NF. */
+export function userMessageLooksLikeNfFormSubmission(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (messageIsStandaloneReservationLocator(t)) return false;
+  const fieldHits = [
+    /\bnome\s+completo\b/i,
+    /\bcpf\s+ou\s+cnpj\b/i,
+    /\bcep\b/i,
+    /\btelefone\b/i,
+    /\bper[ií]odo\b/i,
+    /\bvalor\b/i,
+    /\be-?mail\b/i,
+    /\bquarto\b/i,
+    /\bh[oó]spede\b/i,
+  ].filter((r) => r.test(t)).length;
+  const lines = t.split(/\n/).filter((l) => l.trim()).length;
+  return fieldHits >= 2 && (lines >= 2 || t.length >= 60);
+}
+
+/** Última msg do agente = espelho de confirmação NF. */
+export function assistantSentNfConfirmationMirror(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (!/\b(?:confirme|confira|est[aá]\s+correto|espelho|correto\?|dados\s+(?:para|da))\b/i.test(t)) {
+    return false;
   }
+  return (
+    /\b(?:nota\s+fiscal|\bnf\b|recibo)\b/i.test(t) &&
+    [/\bnome\s+completo\b/i, /\bcpf\b/i, /\bcep\b/i, /\btelefone\b/i].filter((r) => r.test(t)).length >= 2
+  );
+}
+
+/** `sim`/`ok` após espelho NF → call_human (C19 passo 4). */
+export function shouldRequireCallHumanAfterNfConfirmation(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  const msg = (opts.userMessage ?? "").trim();
+  if (!/^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode|est[aá]\s+correto|correto|isso|tudo\s+certo)$/i.test(msg)) {
+    return false;
+  }
+  return assistantSentNfConfirmationMirror(opts.lastAssistantMessage);
+}
+
+/** Agente pediu localizador (NF, senha, etc.). */
+export function assistantMentionedReservationLocator(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t || !/\blocalizador\b/i.test(t)) return false;
+  if (assistantRequestedOptionalNfLocator(t)) return true;
+  if (/\b(nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)) return true;
+  if (/\b(per[ií]odo|valor|quarto|h[oó]spede|unidade)\b/i.test(t)) return true;
+  if (/\b(senha|acesso|c[oó]digo)\b/i.test(t)) return true;
+  if (/\b(?:me\s+)?(?:informe|envie|mande|passe)\b/i.test(t)) return true;
+  if (/localizador\s+(?:da\s+)?reserva/i.test(t)) return true;
   return false;
 }
 
-/** Localizador isolado após pedido do agente → consultar_reserva (C19/C14/C13). */
+/** Localizador isolado após pedido do agente → consultar_reserva (+ main_guest se NF). */
 export function shouldRequireReservationLookupThisTurn(opts: {
   userMessage?: string | null;
   lastAssistantMessage?: string | null;
 }): boolean {
   return (
     messageIsStandaloneReservationLocator(opts.userMessage) &&
-    assistantRequestedReservationLocator(opts.lastAssistantMessage)
+    assistantMentionedReservationLocator(opts.lastAssistantMessage)
   );
+}
+
+/** @deprecated Use assistantMentionedReservationLocator */
+export const assistantRequestedReservationLocator = assistantMentionedReservationLocator;
+
+/** NF + localizador → consultar_reserva e consultar_main_guest. */
+export function shouldRequireNfGuestLookupWithReservation(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  if (!shouldRequireReservationLookupThisTurn(opts)) return false;
+  return assistantIsNfFlowTurn(opts.lastAssistantMessage);
 }

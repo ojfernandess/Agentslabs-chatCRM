@@ -7,8 +7,14 @@ import {
   unitKbTurnNeedsEstablishmentCollection,
   messageIsStandaloneReservationLocator,
   assistantRequestedReservationLocator,
+  assistantMentionedReservationLocator,
+  assistantSentNfDataForm,
+  userMessageLooksLikeNfFormSubmission,
+  assistantSentNfConfirmationMirror,
   assistantRequestedEstablishmentForUnitKb,
   shouldRequireReservationLookupThisTurn,
+  shouldRequireNfGuestLookupWithReservation,
+  shouldRequireCallHumanAfterNfConfirmation,
   shouldRequireUnitKnowledgeLookupThisTurn,
 } from "./unitKnowledgeFlow.js";
 
@@ -93,4 +99,66 @@ Qual delas?`;
     }),
     true,
   );
+});
+
+test("NF form submission is detected", () => {
+  const msg = `- Nome completo Maxmiliano Luan da Silva
+- CPF ou CNPJ 095.124.574-07
+- Endereço Rua 10
+- CEP 04421210
+- Telefone 5584994647139`;
+  assert.equal(userMessageLooksLikeNfFormSubmission(msg), true);
+});
+
+test("locator after NF form partial completion requires reservation lookup", () => {
+  const lastAssistant =
+    "Obrigado! Para completar Nome do hóspede e Quarto, informe o localizador da reserva.";
+  assert.equal(assistantMentionedReservationLocator(lastAssistant), true);
+  assert.equal(
+    shouldRequireReservationLookupThisTurn({
+      userMessage: "DE4KRMDP",
+      lastAssistantMessage: lastAssistant,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRequireNfGuestLookupWithReservation({
+      userMessage: "DE4KRMDP",
+      lastAssistantMessage:
+        "Para a nota fiscal, informe o localizador para preencher hóspede e quarto.",
+    }),
+    true,
+  );
+});
+
+test("sim after NF confirmation mirror requires call_human path", () => {
+  const mirror = `Confira os dados para emissão da nota fiscal:
+
+- Nome completo: Max
+- CPF ou CNPJ: 095.124.574-07
+- CEP: 04421-210
+- Telefone: 5584994647139
+
+Está tudo correto? Responda sim para encaminhar.`;
+  assert.equal(assistantSentNfConfirmationMirror(mirror), true);
+  assert.equal(
+    shouldRequireCallHumanAfterNfConfirmation({
+      userMessage: "sim",
+      lastAssistantMessage: mirror,
+    }),
+    true,
+  );
+});
+
+test("assistantSentNfDataForm detects C19 form model", () => {
+  const form = `Para emitir sua nota fiscal:
+
+- Nome completo
+- CPF ou CNPJ
+- CEP
+- Telefone
+- Período
+- Valor
+- Quarto`;
+  assert.equal(assistantSentNfDataForm(form), true);
 });

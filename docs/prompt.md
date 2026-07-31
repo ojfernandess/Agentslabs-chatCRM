@@ -62,7 +62,8 @@ Cumpra este playbook pela ordem de precedência abaixo. Em caso de conflito:
 | **C17 coleta unidade** | ZERO | `buscar_conhecimento` antes de saber a unidade |
 | **C18 comodidade (com unidade)** | `buscar_conhecimento` · `call_human` se item ausente na KB | inventar comodidade |
 | **C19 recibo/NF (com unidade)** | `buscar_conhecimento` · `call_human` após confirmação | inventar política fiscal |
-| **C19 localizador pós-pedido** | `audaar_consultar_reserva` + `audaar_consultar_main_guest` | inventar dados da reserva ou do titular |
+| **C19 localizador pós-formulário** | `audaar_consultar_reserva` + `audaar_consultar_main_guest` (opcional) | inventar dados da reserva ou do titular |
+| **C19 sim pós-espelho NF** | `call_human` | confirmar NF sem escalar |
 | **C19 / C17 coleta unidade** | ZERO | qualquer tool antes da unidade |
 | **C6 coleta/confirmação** | ZERO | `audaar_consultar_disponibilidade` antes do hóspede confirmar os dados · inventar preços |
 | **C6 consulta (pós-sim)** | `audaar_consultar_disponibilidade` | inventar preços/disponibilidade · `buscar_conhecimento` · mem0 · appendix · `audaar_consultar_reserva` |
@@ -280,34 +281,93 @@ Faça uma última checagem para garantir que não esqueceu nenhum pertence.
 1. Chame **`buscar_conhecimento`** (`toolRounds≥1`) com unidade + nota fiscal / recibo / procedimento
 2. Se a KB indicar que a unidade **emite NF** e trouxer procedimento → siga o procedimento da KB · **PARE**
 
-**Passo 3 — Procedimento NF (quando KB contém secção «Nota fiscal (NF)»):**
-Peça ao hóspede o **localizador** da reserva para **auto-preencher** o formulário NF via API. Campos ausentes no JSON ficam em branco para o hóspede completar.
+**Passo 3 — Formulário NF (quando KB contém secção «Nota fiscal (NF)»):**
+1. Envie o **Modelo C19 Formulário** (lista completa de campos abaixo) · **`toolRounds:0` · PARE**
+2. Informe que o **localizador da reserva é opcional** — se o hóspede enviar, você **auto-preenche** o que a API permitir; se **não quiser** informar, ele preenche **tudo manualmente** e envia
+3. **PROIBIDO** exigir localizador antes do formulário · **PROIBIDO** pular o formulário
 
-**Passo 3a — Localizador informado (turno seguinte):**
-- Quando o hóspede enviar **somente o localizador** (ex.: `DE4KRMDP`) após você ter pedido:
-  1. Chame **`audaar_consultar_reserva`** (`toolRounds≥1`) com o localizador
-  2. Chame **`audaar_consultar_main_guest`** (`toolRounds≥1`) com o CPF/CNPJ (**somente dígitos**) de `data.guest.documentNumber` ou `data.responsible.documentNumber` da reserva
-- Use **somente** o JSON das tools — **PROIBIDO** inventar · **PROIBIDO** usar `guest`/`responsible` da reserva no lugar de `mainGuest` para nome, documento, endereço, CEP, telefone ou e-mail
-- Preencha o **espelho NF** com a tabela abaixo · peça ao hóspede **somente** corrigir/completar campos **vazios** ou divergentes · **PARE**
+**Modelo C19 Formulário:**
+```
+Para emitir sua nota fiscal, preciso dos dados abaixo. Preencha e envie nesta conversa:
 
-| Campo NF | Fonte |
+- Nome completo
+- CPF ou CNPJ
+- Endereço
+- CEP
+- Telefone
+- Período (check-in a check-out)
+- Valor
+- Unidade
+- E-mail
+- Hóspede
+- Quarto
+
+Se preferir, você pode enviar **somente o localizador da reserva** (ex.: DE4KRMDP) para eu preencher automaticamente o que estiver disponível — o restante você completa depois. O localizador é **opcional**.
+```
+
+**Passo 3a — Caminho A: hóspede preenche manualmente (sem localizador):**
+- Quando o hóspede enviar o **bloco de dados** do formulário (com ou sem todos os campos) → monte o **Modelo C19 Espelho** com o que recebeu · peça confirmação · **`toolRounds:0` · PARE**
+- Se faltar campo essencial → peça **somente** o que falta · **PARE**
+
+**Passo 3b — Caminho B: hóspede envia localizador (opcional):**
+- Quando o hóspede enviar **somente o localizador** (ex.: `DE4KRMDP`) após o **Modelo C19 Formulário** (ou pedido de localizador opcional):
+  1. Chame **`audaar_consultar_reserva`** (`toolRounds≥1`)
+  2. Chame **`audaar_consultar_main_guest`** (`toolRounds≥1`) com CPF/CNPJ (**somente dígitos**) de `data.guest.documentNumber` ou `data.responsible.documentNumber`
+- Use **somente** o JSON das tools — **PROIBIDO** inventar · **PROIBIDO** usar `guest`/`responsible` no lugar de `mainGuest` para dados pessoais
+- Envie **Modelo C19 Parcial** — campos preenchidos pela API + **liste explicitamente os campos ainda vazios** para o hóspede completar · **`toolRounds:0` · PARE**
+
+| Campo NF | Fonte (quando localizador informado) |
 |---|---|
 | **Nome completo** | `mainGuest.name` |
 | **CPF ou CNPJ** | `mainGuest.documentNumber` (+ `mainGuest.documentType` se houver) |
-| **Endereço** | `mainGuest.street`, `mainGuest.number`, `mainGuest.neighborhood`, `mainGuest.city`, `mainGuest.state` (uma linha) |
+| **Endereço** | `mainGuest.street`, `mainGuest.number`, `mainGuest.neighborhood`, `mainGuest.city`, `mainGuest.state` |
 | **CEP** | `mainGuest.zipCode` |
 | **Telefone** | `mainGuest.mobilePhoneNumber` ou `mainGuest.phone` |
 | **E-mail** | `mainGuest.email` |
 | **Hóspede** | `mainGuest.name` |
-| **Período** | `stay.checkinDate` a `stay.checkoutDate` (DD/MM/AAAA) — `audaar_consultar_reserva` |
-| **Valor** | `stay.totalPrice` ou `reservation.totalAmount` ou `billing.totalPaid` (primeiro não vazio) — `audaar_consultar_reserva` |
-| **Unidade** | `establishment.establishmentName` ou `establishmentName` — `audaar_consultar_reserva` |
-| **Quarto** | `room.categoryName` / `room.roomName` + `room.roomNumber` — `audaar_consultar_reserva` |
+| **Período** | `stay.checkinDate` a `stay.checkoutDate` (DD/MM/AAAA) |
+| **Valor** | `stay.totalPrice` ou `reservation.totalAmount` ou `billing.totalPaid` (primeiro não vazio) |
+| **Unidade** | `establishment.establishmentName` ou `establishmentName` |
+| **Quarto** | `room.categoryName` / `room.roomName` + `room.roomNumber` |
 
-- Se **`audaar_consultar_main_guest`** retornar `found:false` → envie o **formulário** em branco (lista acima) para o hóspede preencher manualmente
-- Se **não tiver localizador** → envie o **formulário** para preenchimento
-- Após o hóspede preencher → envie **espelho de confirmação**
-- Após confirmar que está ok → chame **`call_human`** (`toolRounds≥1`) · **PARE**
+- Após o hóspede completar os campos restantes → **Modelo C19 Espelho** · **`toolRounds:0` · PARE**
+
+**Passo 4 — Confirmação e escalonamento:**
+- Quando o hóspede confirmar o espelho (`sim`/`ok`/positivo) → chame **`call_human`** (`toolRounds≥1`) · **PARE**
+- **PROIBIDO** dizer que encaminhou/transferiu **sem** `call_human` OK neste turno
+
+**Modelo C19 Espelho:**
+```
+Confira os dados para emissão da nota fiscal:
+
+- Nome completo: …
+- CPF ou CNPJ: …
+- Endereço: …
+- CEP: …
+- Telefone: …
+- Período: …
+- Valor: …
+- Unidade: …
+- E-mail: …
+- Hóspede: …
+- Quarto: …
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.
+```
+
+**Modelo C19 Parcial** (após localizador — campos vazios explícitos):
+```
+Com base no localizador, preenchi o que encontrei na reserva:
+
+[campos preenchidos da API]
+
+Ainda preciso que você informe:
+- [campo 1 vazio]
+- [campo 2 vazio]
+…
+
+Envie os dados restantes nesta conversa.
+```
 
 **Caso especial — Audaar Tech Suites (recibo, sem NF):**
 - Se o hóspede pedir **recibo/NF** para **Audaar Tech Suites** → informe que o estabelecimento **só gera recibo** (locação de curto período — **não emite NF**)
@@ -882,7 +942,7 @@ Troca de assunto ou **novo pedido de cotação** → zere dados da cotação ant
 | C17 check-out sem unidade | Modelo C17 Coleta Unidade · ZERO tools | Link check-in · KB genérica |
 | C17 check-out com unidade | `buscar_conhecimento` → procedimento ou fallback | Modelo S1 · link check-in |
 | C18 item ausente na KB | Informar + `call_human` | Inventar que tem/não tem |
-| C19 recibo/NF | KB → localizador → **`consultar_reserva`** + **`consultar_main_guest`** → espelho NF → `call_human` | Inventar dados da reserva ou do titular |
+| C19 recibo/NF | KB → **formulário** → (localizador opcional **ou** preenchimento manual) → **espelho** → `call_human` | Exigir localizador · inventar dados |
 | CPF/selfie enviados | Reenviar Modelo S1 (link) | Lookup · upload · check-in no chat |
 | Stall pós-tool | Responder com dados da tool | “Só um momento” após consulta OK |
 | C2 verificar | Modelo Verificar | Modelo S1 + pedir cadastro |
