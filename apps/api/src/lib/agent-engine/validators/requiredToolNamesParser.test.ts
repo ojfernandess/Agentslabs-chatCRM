@@ -297,3 +297,32 @@ test("companion personal data block requires ZERO tools (C9)", () => {
     `companion block must require ZERO tools, got ${JSON.stringify(names)}`,
   );
 });
+
+test("resolveRequiredToolNamesForTurn — quote stay details does not require consultar_reserva", () => {
+  const playbook = `
+| C6 | Cotação | cotação · disponibilidade | GATE C6 coleta | ZERO |
+| C6c | Sim pós Confirm | sim após Modelo C6 Confirm | \`audaar_consultar_disponibilidade\` | consultar_disponibilidade |
+| C3 | Check-in | localizador | Chame \`audaar_consultar_reserva\` | consultar_reserva |
+`;
+  const msg = `na audaar tech
+Data de chegada (check-in): 02/08/2026
+Data de partida (checkout): 03/08/2026
+2 pessoas`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: msg },
+  );
+  assert.equal(names.some((n) => /consultar_reserva/i.test(n)), false, JSON.stringify(names));
+});
+
+test("resolveRequiredToolNamesForTurn — quote request does not trigger KB-only C5", () => {
+  const playbook = `
+| C6 | Cotação | cotação · disponibilidade | Modelo C6 Abertura | ZERO |
+| C5 | Fato | categorias | Chame \`buscar_conhecimento\` |
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "gostaria de fazer uma cotação" },
+  );
+  assert.equal(names.includes("buscar_conhecimento"), false);
+});

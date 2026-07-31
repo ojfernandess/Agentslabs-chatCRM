@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   ensureDeliveringReply,
   buildModeloS1FromReservationPayload,
-  buildModeloS4cCompanionOptIn,
   replyLooksLikeModeloS1,
 } from "./ReplySynthesizer.js";
 
@@ -29,7 +28,9 @@ test("buildModeloS1FromReservationPayload matches prompt Modelo S1", () => {
   assert.match(s1, /03\/08\/2026/);
   assert.match(s1, /👥 Hóspedes: 2/);
   assert.match(s1, /checkin\/vivapp\/access/);
-  assert.match(s1, /brasileiro|estrangeiro/i);
+  assert.match(s1, /realize seu cadastro|1️⃣/i);
+  assert.match(s1, /informe o localizador|NCMT0VPN/i);
+  assert.doesNotMatch(s1, /brasileiro|estrangeiro/i);
   assert.doesNotMatch(s1, /Invocando/i);
   assert.equal(replyLooksLikeModeloS1(s1), true);
 });
@@ -74,7 +75,7 @@ test("ensureDeliveringReply forces S1 when LLM invents non-script check-in reply
   assert.equal(result.reason, "reservation_s1");
   assert.match(result.reply, /^Olá! 😊/);
   assert.match(result.reply, /Encontramos sua reserva com sucesso!/);
-  assert.match(result.reply, /brasileiro\(a\) ou estrangeiro/);
+  assert.match(result.reply, /realize seu cadastro|1️⃣/i);
   assert.doesNotMatch(result.reply, /CPF/);
 });
 
@@ -107,12 +108,12 @@ test("ensureDeliveringReply forces S1 when paraphrase misses prompt script", () 
   assert.equal(result.reason, "reservation_s1");
   assert.match(result.reply, /Encontramos sua reserva com sucesso!/);
   assert.match(result.reply, /checkin\/vivapp\/access/);
-  assert.match(result.reply, /brasileiro\(a\) ou estrangeiro/);
+  assert.match(result.reply, /informe o localizador|realize seu cadastro/i);
 });
 
 test("ensureDeliveringReply keeps reply that already looks like Modelo S1", () => {
   const good =
-    "Olá! 😊\nEncontramos sua reserva com sucesso!\n📍 Hospedagem: Hotel X\n📅 Check-in: 01/08/2026, a partir das 14:00h\n📅 Check-out: 03/08/2026, até as 12:00h\n👥 Hóspedes: 1\nSeu check-in ainda não foi realizado.\n✅ Pelo link: 🔗 https://pms.audaar.com.br/checkin/vivapp/access\n💬 Por este chat: responda abaixo.\nPara começar, informe: você é brasileiro(a) ou estrangeiro(a)?";
+    "Olá! 😊\nEncontramos sua reserva com sucesso!\n📍 Hospedagem: Hotel X\n📅 Check-in: 01/08/2026, a partir das 14:00h\n📅 Check-out: 03/08/2026, até as 12:00h\n👥 Hóspedes: 1\nSeu check-in ainda não foi realizado.\n\nPara concluir, acesse o link abaixo e siga estes passos:\n\n🔗 https://pms.audaar.com.br/checkin/vivapp/access\n\n1️⃣ Acesse o link e **realize seu cadastro** (primeira vez).\n2️⃣ **Entre novamente** no mesmo link e **informe o localizador** da reserva (ABC123) para fazer o check-in.\n3️⃣ Após preencher todas as informações necessárias, o sistema mostrará o **número da sua suíte** e a **senha** ou **forma de acesso**.\n\nSe tiver dúvidas durante o processo, estou por aqui! 😊";
   const result = ensureDeliveringReply({
     replyText: good,
     userMessage: "fazer check-in na reserva NCMT0VPN",
@@ -136,86 +137,6 @@ test("ensureDeliveringReply no-op without successful tools", () => {
   });
   assert.equal(result.replaced, false);
   assert.equal(result.reply, REPLY_1131);
-});
-
-test("ensureDeliveringReply forces S9 template after embratur-reference", () => {
-  const result = ensureDeliveringReply({
-    replyText: "",
-    userMessage: "Sim",
-    toolOutcomes: [
-      {
-        name: "embratur-reference",
-        ok: true,
-        preview: JSON.stringify({
-          motivosViagem: [{ id: 1, nome: "Lazer/Férias" }],
-          meiosTransporte: [{ id: 2, nome: "Automóvel" }],
-          paises: [{ id: "1058", nome: "Brasil" }],
-          cidades: [{ id: 3550308, nome: "São Paulo" }],
-        }),
-      },
-    ],
-  });
-  assert.equal(result.replaced, true);
-  assert.equal(result.reason, "embratur_s9");
-  assert.match(result.reply, /motivo da viagem/i);
-  assert.match(result.reply, /Lazer\/Férias/);
-  assert.match(result.reply, /Automóvel/);
-});
-
-test("ensureDeliveringReply forces S10 ack after audaar_check_in", () => {
-  const result = ensureDeliveringReply({
-    replyText: "",
-    userMessage: "sim",
-    toolOutcomes: [
-      {
-        name: "audaar_check_in",
-        ok: true,
-        preview: '{"ok":true}',
-      },
-    ],
-  });
-  assert.equal(result.replaced, true);
-  assert.equal(result.reason, "check_in_ack");
-  assert.match(result.reply, /check-in foi concluído/i);
-});
-
-test("buildModeloS4cCompanionOptIn uses N and N-1", () => {
-  const s4c = buildModeloS4cCompanionOptIn(2);
-  assert.match(s4c, /2 hóspedes/);
-  assert.match(s4c, /\+ 1 acompanhante/);
-  assert.match(s4c, /Deseja cadastrar/);
-  assert.doesNotMatch(s4c, /\+ 0 acompanhante/);
-});
-
-test("ensureDeliveringReply replaces truncated check-in JSON stall (16:09 bug)", () => {
-  const rawJson =
-    '{"message":"Check-in realizado com sucesso","data":{"checkin":{"reservationId":279321,"mode":"digital","checkin":0,"checkin_mobile":1,"checkinApi":1,"validatedCheckin":1,"hasCheckinApproved":1,"sentToReception":1,"checkinActionDate":null,"localizedDate":"2026-07-30T19:09:48.000Z"';
-  const result = ensureDeliveringReply({
-    replyText: "Um momento",
-    userMessage: "sim",
-    toolOutcomes: [
-      {
-        name: "audaar_check_in",
-        ok: true,
-        preview: rawJson.slice(0, 500),
-      },
-    ],
-  });
-  assert.equal(result.reason, "check_in_ack");
-  assert.match(result.reply, /check-in foi concluído/i);
-  assert.doesNotMatch(result.reply, /reservationId|validatedCheckin/);
-});
-
-test("ensureDeliveringReply replaces echoed check-in JSON even without ok tool name match", () => {
-  const rawJson =
-    '{"message":"Check-in realizado com sucesso","data":{"checkin":{"reservationId":279321,"validatedCheckin":1}}}';
-  const result = ensureDeliveringReply({
-    replyText: rawJson,
-    userMessage: "sim",
-    toolOutcomes: [{ name: "oc_tool_abc", ok: true, preview: rawJson }],
-  });
-  assert.equal(result.reason, "check_in_ack");
-  assert.match(result.reply, /check-in foi concluído/i);
 });
 
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {

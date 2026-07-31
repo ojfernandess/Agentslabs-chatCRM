@@ -25,7 +25,7 @@ export function humanizeToolPreviewForCustomer(preview: string): string {
   if (!raw) return "";
   // Check-in completion em JSON bruto — ack fixo, nunca ecoar payload.
   if (/^\s*[\[{]/.test(raw) && /check-in\s+realizado|validatedCheckin|hasCheckinApproved/i.test(raw)) {
-    return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+    return "Seu check-in foi concluído com sucesso! Consultei a reserva — se precisar de endereço, Wi-Fi ou acesso, é só avisar.";
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -50,7 +50,7 @@ export function humanizeToolPreviewForCustomer(preview: string): string {
         if (typeof v === "string" && v.trim()) {
           // API success strings are not customer-ready ack scripts.
           if (/check-in\s+realizado/i.test(v)) {
-            return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
+            return "Seu check-in foi concluído com sucesso! Consultei a reserva — se precisar de endereço, Wi-Fi ou acesso, é só avisar.";
           }
           return v.trim().slice(0, 600);
         }

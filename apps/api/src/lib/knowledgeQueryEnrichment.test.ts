@@ -7,6 +7,7 @@ import {
   resolveKnowledgeSearchSkip,
   shouldEnrichKnowledgeSearchQuery,
   shouldSkipKnowledgeSearchForTurn,
+  isOperationalQuoteMessage,
   userMessageLooksLikeKnowledgeSeekingQuery,
   isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
@@ -137,6 +138,17 @@ test("check-in with locator is not a knowledge-seeking query", () => {
     false,
   );
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi da suíte?"), true);
+});
+
+test("cotação and quote stay details are not knowledge-seeking queries", () => {
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("gostaria de fazer uma cotação"), false);
+  assert.equal(isOperationalQuoteMessage("gostaria de fazer uma cotação"), true);
+  const stay = `na audaar tech
+Data de chegada (check-in): 02/08/2026
+Data de partida (checkout): 03/08/2026
+2 pessoas`;
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery(stay), false);
+  assert.equal(isOperationalQuoteMessage(stay), true);
 });
 
 test("resolveKnowledgeSearchSkip on check-in even without flow slots", () => {

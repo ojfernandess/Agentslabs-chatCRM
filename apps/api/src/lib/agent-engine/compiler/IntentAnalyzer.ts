@@ -40,6 +40,14 @@ export function analyzeTurnIntent(userMessage: string, turnPlan: ExecutionTurnPl
   if (turnPlan.matchedPatternIds.includes("structured_form_submission")) {
     kind = "data_submission";
     confidence = 0.88;
+  } else if (
+    turnPlan.requiredToolNames.some((n) => /disponibilidade|availability/i.test(n)) ||
+    turnPlan.matchedPatternIds.some((id) =>
+      ["quote_request", "quote_stay_details", "availability_quote"].includes(id),
+    )
+  ) {
+    kind = "operational_action";
+    confidence = 0.85;
   } else if (turnPlan.knowledgeSeeking || userMessageLooksLikeKnowledgeSeekingQuery(msg)) {
     kind = "knowledge_query";
     confidence = 0.85;

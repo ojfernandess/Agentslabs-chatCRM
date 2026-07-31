@@ -86,10 +86,14 @@ export function executionTurnPlanFromPromptIr(
   const flowSlots =
     opts.flowSlots ?? (opts.memory?.flowSlots as Record<string, string | number | boolean> | undefined);
   const matchedPatternIds = inferMatchedPatternIds(userMessage, promptIr, opts.behaviorConfig);
+  const quoteFlow = matchedPatternIds.some((id) =>
+    ["quote_request", "quote_stay_details", "availability_quote"].includes(id),
+  );
   const knowledgeSeeking =
-    userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
-    opts.postCompletionFollowUp === true ||
-    isPostCompletionPending(flowSlots);
+    !quoteFlow &&
+    (userMessageLooksLikeKnowledgeSeekingQuery(userMessage) ||
+      opts.postCompletionFollowUp === true ||
+      isPostCompletionPending(flowSlots));
 
   return {
     userMessage,

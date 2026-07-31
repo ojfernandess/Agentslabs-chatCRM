@@ -90,7 +90,7 @@ export function replyLooksLikeModeloS1(text: string): boolean {
   if (/encontramos\s+sua\s+reserva\s+com\s+sucesso/i.test(t)) {
     return (
       /checkin\/vivapp\/access/i.test(t) &&
-      /brasileiro\(a\)\s+ou\s+estrangeiro/i.test(t) &&
+      /1️⃣|realize\s+seu\s+cadastro|informe\s+o\s+localizador/i.test(t) &&
       /ainda\s+n[aã]o\s+foi\s+realizado/i.test(t)
     );
   }
@@ -138,53 +138,24 @@ export function looksLikeRawToolJson(text: string): boolean {
   return /"message"\s*:\s*"Check-in realizado/i.test(t);
 }
 
-function outcomeLooksLikeCheckInCompletion(t: SynthesizerToolOutcome): boolean {
-  if (t.ok === false) return false;
-  if (/consultar/i.test(t.name)) return false;
-  if (/check[_-]?in/i.test(t.name) && !/upload|photo|documento/i.test(t.name)) {
-    if (/validationError|embratur_incomplete|missingFields/i.test(t.preview ?? "")) return false;
-    return true;
-  }
-  if (/check-in\s+realizado\s+com\s+sucesso/i.test(t.preview ?? "")) return true;
-  const payload = t.structuredPayload ?? tryParseJson(t.preview);
-  if (!payload) return false;
-  return extractReservationDisplayFields(payload).checkInDone;
-}
-
 export function buildModeloS9TravelFormTemplate(): string {
-  return renderReplyTemplate({ templateId: "travel_form_prompt", facts: {} });
+  return "";
 }
 
-export function buildModeloS9TravelFormTemplateFromToolOutcomes(
-  toolOutcomes: Array<{ name: string; ok?: boolean; preview?: string; structuredPayload?: unknown }>,
-): string {
-  return renderReplyTemplate({
-    templateId: "travel_form_prompt",
-    facts: {},
-    toolOutcomes: toolOutcomes as SynthesizerToolOutcome[],
-  });
+export function buildModeloS9TravelFormTemplateFromToolOutcomes(): string {
+  return "";
 }
 
-export function replyLooksLikeModeloS9(text: string): boolean {
-  const t = (text ?? "").trim();
-  return (
-    !!t &&
-    /motivo\s+da\s+viagem/i.test(t) &&
-    /meio\s+de\s+transporte/i.test(t) &&
-    /pa[ií]s\s+de\s+resid/i.test(t)
-  );
+export function replyLooksLikeModeloS9(_text: string): boolean {
+  return false;
 }
 
-export function buildModeloS4cCompanionOptIn(partySize: number): string {
-  const n = Math.max(2, Math.floor(partySize));
-  return renderReplyTemplate({
-    templateId: "companion_opt_in",
-    facts: { partySize: n, companions: n - 1 },
-  });
+export function buildModeloS4cCompanionOptIn(_partySize: number): string {
+  return "";
 }
 
 export function buildModeloS10CheckInAck(): string {
-  return renderReplyTemplate({ templateId: "check_in_completion_ack", facts: {} });
+  return renderReplyTemplate({ templateId: "reservation_lookup_completed", facts: {} });
 }
 
 export function replyLooksLikeCheckInAck(text: string): boolean {
@@ -240,25 +211,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     return { reply: input.replyText, replaced: false };
   }
 
-  const hasCompletionTool = successful.some(outcomeLooksLikeCheckInCompletion);
-  const hasEmbraturGate = successful.some((t) => /embratur[-_]?reference/i.test(t.name));
   const replyIsRawJson = looksLikeRawToolJson(input.replyText);
-
-  if (hasCompletionTool && !replyLooksLikeCheckInAck(input.replyText)) {
-    return { reply: buildModeloS10CheckInAck(), replaced: true, reason: "check_in_ack" };
-  }
-
-  if (replyIsRawJson && /check-in\s+realizado/i.test(input.replyText)) {
-    return { reply: buildModeloS10CheckInAck(), replaced: true, reason: "check_in_ack" };
-  }
-
-  if (hasEmbraturGate && !hasCompletionTool && !replyLooksLikeModeloS9(input.replyText)) {
-    return {
-      reply: buildModeloS9TravelFormTemplateFromToolOutcomes(successful),
-      replaced: true,
-      reason: "embratur_s9",
-    };
-  }
 
   const postCompletionTurn = userMessageLooksLikePostCompletionFollowUp(input.userMessage);
   const reservation = findReservationLookupOutcome(successful);
@@ -268,8 +221,6 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     successful.every((t) => /consultar[_-]?reserva/i.test(t.name) || looksLikeReservationPayload(t));
 
   if (
-    !hasCompletionTool &&
-    !hasEmbraturGate &&
     !postCompletionTurn &&
     reservation &&
     (checkInTurn || soleReservationLookup) &&
@@ -287,7 +238,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     return { reply: input.replyText, replaced: false };
   }
 
-  if (!hasCompletionTool && !hasEmbraturGate && !postCompletionTurn && reservation) {
+  if (!postCompletionTurn && reservation) {
     const rendered = tryRenderReservationLookup(reservation, input.userMessage, input.promptIr);
     if (rendered) {
       return { reply: rendered, replaced: true, reason: input.promptIr ? "ir_template" : "reservation_s1" };

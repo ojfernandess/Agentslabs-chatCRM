@@ -775,3 +775,40 @@ test("post-completion pending OK does not re-require embratur or check_in", () =
     `expected no gate/completion on Passo 8, got ${JSON.stringify(plan.requiredToolNames)}`,
   );
 });
+
+const C6_PLAYBOOK = `
+| C6c | Sim pós Modelo C6 Confirm | sim após disponibilidade | Chame \`audaar_consultar_disponibilidade\` | consultar_disponibilidade |
+| C6 | Cotação | cotação | GATE C6 | ZERO |
+| N=1 → S9 | só \`embratur-reference\` | reference |
+`;
+
+const C6_CONFIRM_MSG = `Perfeito! Então temos:
+🏢 Propriedade: Audaar Tech Suites
+Está tudo certo? Posso consultar a disponibilidade?`;
+
+test("resolveTurnPolicy — sim after Modelo C6 Confirm requires audaar_consultar_disponibilidade", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: C6_CONFIRM_MSG,
+      availableToolNames: ["audaar_consultar_disponibilidade", "embratur-reference"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["audaar_consultar_disponibilidade"]);
+});
+
+test("buildExecutionTurnPlan — sim after C6 Confirm schedules disponibilidade not embratur", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: C6_PLAYBOOK } },
+    userMessage: "sim",
+    lastAssistantMessage: C6_CONFIRM_MSG,
+    availableToolNames: ["audaar_consultar_disponibilidade", "embratur-reference"],
+  });
+  assert.ok(
+    plan.requiredToolNames.some((n) => n.includes("consultar_disponibilidade")),
+    `expected disponibilidade, got ${JSON.stringify(plan.requiredToolNames)}`,
+  );
+  assert.equal(plan.requiredToolNames.includes("embratur-reference"), false);
+});

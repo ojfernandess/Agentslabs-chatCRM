@@ -1,5 +1,6 @@
 import {
   extractToolNamesFromText,
+  extractPositiveToolNamesFromLine,
   isPlausibleToolName,
   normalizeToolToken,
   playbookTextFromBehavior,
@@ -34,6 +35,7 @@ import {
   assistantIsCompanionMirrorConfirm,
   assistantIsFichaMirrorConfirm,
   assistantIsCompanionOptInPrompt,
+  assistantIsQuoteAvailabilityConfirm,
   isCompanionRegistrationDeclined,
 } from "../core/confirmationTurnGuards.js";
 
@@ -208,6 +210,33 @@ export function parseExclusiveToolsForConfirmationTurn(playbookText: string): st
   }
 
   return refineConfirmationExclusiveTools([...exclusive]);
+}
+
+/**
+ * Tool HTTP de cotação/disponibilidade (C6/C6c) — genérico por nome no playbook.
+ */
+export function parseQuoteAvailabilityToolFromPlaybook(
+  playbookText: string,
+  available?: Set<string>,
+): string | null {
+  const candidates: string[] = [];
+  for (const line of playbookText.split(/\n+/)) {
+    if (!/\b(C6c?|GATE C6|consultar_disponibilidade|disponibilidade|cota)/i.test(line)) continue;
+    for (const t of extractPositiveToolNamesFromLine(line)) {
+      if (/(?:disponibilidade|availability)/i.test(t)) candidates.push(t);
+    }
+  }
+  if (candidates.length === 0) {
+    for (const t of extractToolNamesFromText(playbookText)) {
+      if (/(?:disponibilidade|availability)/i.test(t)) candidates.push(t);
+    }
+  }
+  const unique = [...new Set(candidates.map((c) => c.toLowerCase()))];
+  if (available && available.size > 0) {
+    const hit = unique.find((t) => available.has(t));
+    return hit ?? null;
+  }
+  return unique[0] ?? null;
 }
 
 /** Tools de conclusão (mutáveis) — exclui uploads/media e rótulos de passo. */
@@ -418,12 +447,26 @@ export function resolveTurnPolicy(
       memory: options.memory,
     });
 
-  // HJ2XQZXO-FICHA: `sim` no espelho FICHA → S10 exclusive (nunca reabrir embratur-reference).
+  // C6c: `sim` após Modelo C6 Confirm → audaar_consultar_disponibilidade (exclusive).
   const fichaConfirm =
     isConfirmation &&
     !suppressExclusive &&
     assistantIsFichaMirrorConfirm(options.lastAssistantMessage);
-  if (fichaConfirm && completionToolHints.length > 0) {
+  const quoteAvailabilityConfirm =
+    isConfirmation &&
+    !suppressExclusive &&
+    assistantIsQuoteAvailabilityConfirm(options.lastAssistantMessage);
+  if (quoteAvailabilityConfirm) {
+    const quoteTool = parseQuoteAvailabilityToolFromPlaybook(playbook, available);
+    if (quoteTool && !toolOutcomeSatisfiesRequired(quoteTool, priorOk)) {
+      exclusiveAllowedTools = [quoteTool];
+      forceExclusiveExecution = true;
+    }
+  } else if (
+    // HJ2XQZXO-FICHA: `sim` no espelho FICHA → S10 exclusive (nunca reabrir embratur-reference).
+    fichaConfirm &&
+    completionToolHints.length > 0
+  ) {
     const pendingCompletion = completionToolHints.filter(
       (h) => !toolOutcomeSatisfiesRequired(h, priorOk),
     );

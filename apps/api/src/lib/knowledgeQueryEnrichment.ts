@@ -163,6 +163,7 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   if (!t) return false;
   if (isUserDataProvisionMessage(t)) return false;
   if (isShortConfirmationOrFlowReply(t)) return false;
+  if (isOperationalQuoteMessage(t)) return false;
   // Pedidos operacionais (check-in / verificar reserva + localizador) → API HTTP, não KB.
   if (isOperationalReservationLookupMessage(t)) {
     return false;
@@ -202,10 +203,34 @@ export type KnowledgeSearchSkipContext = {
 export function isOperationalReservationLookupMessage(userMessage: string): boolean {
   const t = userMessage.trim();
   if (!t) return false;
+  if (isOperationalQuoteMessage(t)) return false;
+  if (/data de chegada\s*\(check-in\)|data de partida\s*\(checkout\)/i.test(t)) return false;
   return (
     /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(t) &&
     /[A-Za-z0-9]{5,}/.test(t.replace(/\s+/g, ""))
   );
+}
+
+/**
+ * Cotação / disponibilidade (C6) — não é consulta de KB (C5).
+ */
+export function isOperationalQuoteMessage(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (
+    /\b(cota[cç][aã]o|disponibilidade|reservar|fazer\s+uma\s+reserva)\b/i.test(t) &&
+    !/\b(?:localizador|verificar\s+reserva|status\s+(?:da\s+)?reserva)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (
+    /\d{1,2}[\/.\-]\d{1,2}/.test(t) &&
+    /\b(pessoas?|h[oó]spedes?|\d+\s*pessoas?)\b/i.test(t) &&
+    !/\b(?:localizador|fazer\s+check[- ]?in|quero\s+check[- ]?in|verificar\s+reserva)\b/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Motivo para omitir RAG proactivo e `buscar_conhecimento` neste turno, ou null se a KB deve correr. */

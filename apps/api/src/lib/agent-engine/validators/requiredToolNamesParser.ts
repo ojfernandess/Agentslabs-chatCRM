@@ -88,6 +88,23 @@ export type TurnToolPattern = {
  * Cada segmento mapeia tools via tabela do próprio playbook.
  * Hints são deliberadamente estreitos para não marcar todas as categorias do playbook.
  */
+/** Mensagem de datas de estadia para cotação (rótulos C6) — não é pedido de check-in C3. */
+export function messageLooksLikeQuoteStayDetails(userMessage: string): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (/data de chegada\s*\(check-in\)|data de partida\s*\(checkout\)/i.test(t)) return true;
+  if (
+    /\d{1,2}[\/.\-]\d{1,2}/.test(t) &&
+    /\b(pessoas?|h[oó]spedes?|\d+\s*pessoas?)\b/i.test(t) &&
+    !/\b(?:localizador|verificar\s+reserva|fazer\s+check[- ]?in|quero\s+check[- ]?in|status\s+(?:da\s+)?reserva)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
     id: "document_id",
@@ -96,20 +113,39 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   },
   {
     id: "checkin_or_reservation",
-    test: (m) =>
-      /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(da\s+)?reserva/i.test(
-        m,
-      ) && /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")),
-    // C2/C3 / localizador — não qualquer menção genérica a "reserva"
+    test: (m) => {
+      if (messageLooksLikeQuoteStayDetails(m)) return false;
+      return (
+        /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(?:da\s+)?reserva/i.test(
+          m,
+        ) &&
+        /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")) &&
+        !/\b(cota[cç][aã]o|disponibilidade|pre[cç]o|reservar)\b/i.test(m)
+      );
+    },
     playbookHints:
       /\b(C3|C2|check[- ]?in\b.*localizador|localizador.*check[- ]?in|consultar_reserva|verificar\s+reserva)\b/i,
+  },
+  {
+    id: "quote_request",
+    test: (m) =>
+      /\b(cota[cç][aã]o|disponibilidade|pre[cç]o|di[aá]ria|reservar|fazer\s+uma\s+reserva)\b/i.test(m) &&
+      !/\b(?:localizador|verificar\s+reserva|status\s+(?:da\s+)?reserva|fazer\s+check[- ]?in|quero\s+check[- ]?in)\b/i.test(
+        m,
+      ),
+    playbookHints: /\b(C6|cota[cç][aã]o|disponibilidade|consultar_disponibilidade|GATE C6)\b/i,
+  },
+  {
+    id: "quote_stay_details",
+    test: (m) => messageLooksLikeQuoteStayDetails(m),
+    playbookHints: /\b(C6|cota[cç][aã]o|disponibilidade|Modelo C6|GATE C6)\b/i,
   },
   {
     id: "availability_quote",
     test: (m) =>
       /\b(disponibilidade|cota[cç][aã]o|pre[cç]o|di[aá]ria)\b/i.test(m) &&
       /\d{1,2}[\/.\-]\d{1,2}/.test(m),
-    playbookHints: /\b(C5|C6|cota[cç][aã]o|disponibilidade|consultar_disponibilidade)\b/i,
+    playbookHints: /\b(C6|cota[cç][aã]o|disponibilidade|consultar_disponibilidade)\b/i,
   },
   {
     id: "image_upload",
@@ -280,6 +316,16 @@ function scoreTurnLine(
     if (!hasLookupTool && completionOrUploadOnly) score -= 8;
   } else if (pattern.id === "escalation") {
     if (/\bC13\b/i.test(line)) score += 5;
+  } else if (
+    pattern.id === "quote_request" ||
+    pattern.id === "quote_stay_details" ||
+    pattern.id === "availability_quote"
+  ) {
+    if (/\bC6c\b/i.test(category) || /\bC6c\b/i.test(line)) score += 8;
+    if (/\bC6\b/i.test(category) || /\bC6\b/i.test(line)) score += 6;
+    if (/consultar_disponibilidade|disponibilidade|cota/i.test(line)) score += 4;
+    if (/consultar_reserva/i.test(line) && !/C2|C3/i.test(category)) score -= 10;
+    if (/buscar_conhecimento/i.test(line)) score -= 6;
   } else if (pattern.id === "structured_form_submission") {
     if (/\b(S\d+|C\d+|Passo\s*\d+)\b/i.test(category) || /\b(S\d+|C\d+|Passo\s*\d+)\b/i.test(line))
       score += 5;

@@ -3,10 +3,6 @@
  */
 import type { ReplyTemplateSpec } from "../contract/CompletionTypes.js";
 import type { PromptIR } from "../contract/PromptIR.js";
-import {
-  buildModeloS9TemplateFromCatalog,
-  parseEmbraturReferenceCatalog,
-} from "../checkin/embraturReferenceCatalog.js";
 
 export type SynthesizerToolOutcome = {
   name: string;
@@ -30,10 +26,13 @@ export const REPLY_TEMPLATE_BODIES: Record<string, string> = {
     "📅 Check-in: {{facts.checkInLine}}\n" +
     "📅 Check-out: {{facts.checkOutLine}}\n" +
     "👥 Hóspedes: {{facts.guests}}\n" +
-    "Seu check-in ainda não foi realizado.\n" +
-    "✅ Pelo link: 🔗 {{facts.checkinLink}}\n" +
-    "💬 Por este chat: responda abaixo.\n" +
-    "Para começar, informe: você é brasileiro(a) ou estrangeiro(a)?",
+    "Seu check-in ainda não foi realizado.\n\n" +
+    "Para concluir, acesse o link abaixo e siga estes passos:\n\n" +
+    "🔗 {{facts.checkinLink}}\n\n" +
+    "1️⃣ Acesse o link e **realize seu cadastro** (primeira vez).\n" +
+    "2️⃣ **Entre novamente** no mesmo link e **informe o localizador** da reserva ({{facts.locator}}) para fazer o check-in.\n" +
+    "3️⃣ Após preencher todas as informações necessárias, o sistema mostrará o **número da sua suíte** e a **senha** ou **forma de acesso**.\n\n" +
+    "Se tiver dúvidas durante o processo, estou por aqui! 😊",
   reservation_lookup_verify:
     "Encontrei sua reserva{{facts.locatorSuffix}}:\n" +
     "📍 Hospedagem: {{facts.lodging}}\n" +
@@ -41,7 +40,8 @@ export const REPLY_TEMPLATE_BODIES: Record<string, string> = {
     "📅 Check-out: {{facts.checkOutLine}}\n" +
     "👥 Hóspedes: {{facts.guests}}\n" +
     "⏳ Check-in: pendente\n" +
-    "Deseja fazer o check-in agora por este chat? (Sim/Não)",
+    "Para concluir, acesse 🔗 {{facts.checkinLink}} e siga: (1) cadastro, (2) login + localizador, (3) suíte e senha.\n" +
+    "Posso ajudar com mais alguma coisa?",
   reservation_lookup_done:
     "Encontrei sua reserva{{facts.locatorSuffix}}:\n" +
     "📍 Hospedagem: {{facts.lodging}}\n" +
@@ -49,21 +49,21 @@ export const REPLY_TEMPLATE_BODIES: Record<string, string> = {
     "📅 Check-out: {{facts.checkOutLine}}\n" +
     "👥 Hóspedes: {{facts.guests}}\n" +
     "✅ Check-in: já realizado\n" +
+    "🛏️ Quarto: {{facts.roomLabel}}\n" +
+    "🔑 Senha: {{facts.roomPassword}}\n" +
     "Posso ajudar com mais alguma coisa?",
-  check_in_completion_ack:
-    "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.",
-  travel_form_prompt:
-    "Para finalizar, envie de uma vez as informações da viagem:\n" +
-    "1. Qual é o motivo da viagem?\n" +
-    "2. Qual é o meio de transporte da chegada?\n" +
-    "3. Qual é o país de residência permanente?\n" +
-    "4. Qual é o país de destino?\n" +
-    "5. Qual é a cidade de procedência?\n" +
-    "6. Qual é a cidade de destino?\n" +
-    "Pode responder em uma única mensagem.",
-  companion_opt_in:
-    "Sua reserva é para {{facts.partySize}} hóspedes no total (você + {{facts.companions}} acompanhante(s)). " +
-    "Deseja cadastrar o(s) acompanhante(s) agora? (Sim/Não)",
+  reservation_lookup_completed:
+    "Seu check-in foi concluído com sucesso! Veja abaixo os dados da sua reserva:\n\n" +
+    "—\n" +
+    "🏨 Nome da hospedagem: {{facts.lodging}}\n" +
+    "🔢 Número da reserva: {{facts.locator}}\n" +
+    "🛏️ Quarto: {{facts.roomLabel}}\n" +
+    "📅 Período: {{facts.checkIn}} a {{facts.checkOut}}\n" +
+    "⏰ Check-in: a partir das {{facts.checkInTime}}\n" +
+    "⏰ Checkout: até {{facts.checkOutTime}}\n" +
+    "🔑 Senha da porta: {{facts.roomPassword}}\n" +
+    "—\n\n" +
+    "Se precisar de endereço, Wi-Fi ou procedimento de entrada, é só me avisar!",
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -126,11 +126,17 @@ export function extractReservationDisplayFields(payload: unknown): {
   guests: number | null;
   locator: string;
   checkInDone: boolean;
+  roomLabel: string;
+  roomPassword: string;
+  checkInTime: string;
+  checkOutTime: string;
 } {
   const root = asRecord(payload);
   const data = asRecord(root?.data) ?? root;
   const stay = asRecord(data?.stay) ?? asRecord(root?.stay) ?? data;
   const reservation = asRecord(data?.reservation) ?? asRecord(root?.reservation) ?? data;
+  const room = asRecord(data?.room) ?? asRecord(stay?.room) ?? asRecord(reservation?.room) ?? null;
+  const access = asRecord(data?.access) ?? asRecord(stay?.access) ?? null;
   const establishment =
     asRecord(data?.establishment) ??
     asRecord(stay?.establishment) ??
@@ -160,6 +166,27 @@ export function extractReservationDisplayFields(payload: unknown): {
     pickString(data, ["uid", "locator", "localizador", "localizer"]) ||
     pickString(stay, ["uid", "localizer", "localizador"]) ||
     pickString(reservation, ["uid", "localizer"]);
+  const roomName =
+    pickString(room, ["categoryName", "roomName", "name"]) ||
+    pickString(data, ["roomName", "categoryName"]);
+  const roomNumber = pickString(room, ["roomNumber", "number"]);
+  const roomLabel =
+    [roomName, roomNumber].filter(Boolean).join(" — ") ||
+    roomNumber ||
+    roomName ||
+    "…";
+  const rawPassword =
+    pickString(access, ["roomPassword", "password"]) ||
+    pickString(data, ["roomPassword", "access.roomPassword"]);
+  const roomPassword = rawPassword || "será disponibilizada em breve";
+  const checkInTime =
+    pickString(stay, ["checkinTime", "checkInTime"]) ||
+    pickString(data, ["checkinTime", "checkInTime"]) ||
+    "14:00";
+  const checkOutTime =
+    pickString(stay, ["checkoutTime", "checkOutTime"]) ||
+    pickString(data, ["checkoutTime", "checkOutTime"]) ||
+    "12:00";
   return {
     lodging,
     checkIn,
@@ -167,6 +194,10 @@ export function extractReservationDisplayFields(payload: unknown): {
     guests,
     locator,
     checkInDone: isCheckInDone(data) || isCheckInDone(stay) || isCheckInDone(reservation),
+    roomLabel,
+    roomPassword,
+    checkInTime,
+    checkOutTime,
   };
 }
 
@@ -178,14 +209,24 @@ export function factsFromReservationPayload(
   const wantsVerify =
     /\b(verificar|consultar)\b/i.test(userMessage ?? "") &&
     !/\bcheck[- ]?in\b/i.test(userMessage ?? "");
+  const wantsCheckIn = /\bcheck[- ]?in\b/i.test(userMessage ?? "") || /\bfazer\s+check\b/i.test(userMessage ?? "");
   return {
     lodging: f.lodging,
-    checkInLine: f.checkIn !== "…" ? `${f.checkIn}, a partir das 14:00h` : "…",
-    checkOutLine: f.checkOut !== "…" ? `${f.checkOut}, até as 12:00h` : "…",
+    checkIn: f.checkIn,
+    checkOut: f.checkOut,
+    checkInLine: f.checkIn !== "…" ? `${f.checkIn}, a partir das ${f.checkInTime}h` : "…",
+    checkOutLine: f.checkOut !== "…" ? `${f.checkOut}, até as ${f.checkOutTime}h` : "…",
+    checkInTime: f.checkInTime,
+    checkOutTime: f.checkOutTime,
     guests: f.guests != null ? String(f.guests) : "…",
+    locator: f.locator || "…",
     locatorSuffix: f.locator ? ` ${f.locator}` : "",
+    roomLabel: f.roomLabel,
+    roomPassword: f.roomPassword,
     checkInDone: f.checkInDone,
     wantsVerify,
+    wantsCheckIn,
+    checkinLink: "https://pms.audaar.com.br/checkin/vivapp/access",
     partySize: f.guests ?? 2,
     companions: f.guests != null ? Math.max(0, f.guests - 1) : 1,
   };
@@ -203,25 +244,6 @@ export function interpolateTemplateBody(
 }
 
 export function renderReplyTemplate(opts: RenderReplyTemplateOpts): string {
-  if (opts.templateId === "travel_form_prompt" && opts.toolOutcomes?.length) {
-    for (const t of opts.toolOutcomes) {
-      if (t.ok === false || !/embratur[-_]?reference/i.test(t.name)) continue;
-      let catalog = parseEmbraturReferenceCatalog(t.structuredPayload);
-      if (
-        (catalog.motivos.length === 0 || catalog.transportes.length === 0) &&
-        typeof t.preview === "string" &&
-        t.preview.trim().startsWith("{")
-      ) {
-        try {
-          catalog = parseEmbraturReferenceCatalog(JSON.parse(t.preview));
-        } catch {
-          /* ignore */
-        }
-      }
-      const fromCatalog = buildModeloS9TemplateFromCatalog(catalog);
-      if (fromCatalog) return fromCatalog;
-    }
-  }
   const body = opts.bodyOverride ?? REPLY_TEMPLATE_BODIES[opts.templateId] ?? "";
   return interpolateTemplateBody(body, opts.facts);
 }
@@ -229,7 +251,10 @@ export function renderReplyTemplate(opts: RenderReplyTemplateOpts): string {
 export function resolveReservationLookupTemplateId(
   facts: ReturnType<typeof factsFromReservationPayload>,
 ): string {
-  if (facts.checkInDone) return "reservation_lookup_done";
+  if (facts.checkInDone) {
+    if (facts.wantsCheckIn && !facts.wantsVerify) return "reservation_lookup_completed";
+    return "reservation_lookup_done";
+  }
   if (facts.wantsVerify) return "reservation_lookup_verify";
   return "reservation_lookup_checkin";
 }
@@ -239,10 +264,7 @@ export function irTemplateToBodyId(spec: ReplyTemplateSpec): string {
   if (/^s1$/i.test(spec.label) || spec.bindToolPattern === "consultar_reserva") {
     return "reservation_lookup_checkin";
   }
-  if (/^s9$/i.test(label)) return "travel_form_prompt";
-  if (/^s10$/i.test(label)) return "check_in_completion_ack";
-  if (/^s4c$/i.test(label)) return "companion_opt_in";
-  if (spec.trigger === "on_completion") return "check_in_completion_ack";
+  if (spec.trigger === "on_completion") return "reservation_lookup_completed";
   return spec.id;
 }
 

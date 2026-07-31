@@ -4,6 +4,7 @@ import {
   messageLooksLikePostGateFormData,
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
+  assistantIsQuoteAvailabilityConfirm,
 } from "./confirmationTurnGuards.js";
 
 const TITULAR_MIRROR = `
@@ -132,5 +133,29 @@ test("post check-in ack suppresses exclusive gate on OK", () => {
       flowSlots: { guestsQuantity: 1 },
     }),
     true,
+  );
+});
+
+const C6_CONFIRM = `Perfeito! Então temos:
+
+🏢 Propriedade: Audaar Tech Suites
+📅 Data de chegada: 02/08/2026
+📅 Data de partida: 03/08/2026
+👤 Quantidade de pessoas: 2
+
+Está tudo certo? Posso consultar a disponibilidade?`;
+
+test("assistantIsQuoteAvailabilityConfirm detects Modelo C6 Confirm", () => {
+  assert.equal(assistantIsQuoteAvailabilityConfirm(C6_CONFIRM), true);
+  assert.equal(assistantIsQuoteAvailabilityConfirm(TITULAR_MIRROR), false);
+});
+
+test("sim after Modelo C6 Confirm does not suppress exclusive gate", () => {
+  assert.equal(
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage: C6_CONFIRM,
+      userMessage: "Sim",
+    }),
+    false,
   );
 });

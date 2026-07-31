@@ -129,6 +129,23 @@ export function assistantIsCompanionMirrorConfirm(lastAssistantMessage?: string 
   return /confirme\s+os\s+dados\s+do\s+acompanhante|dados\s+do\s+acompanhante/i.test(t);
 }
 
+/** Modelo C6 Confirm — hóspede confirma dados antes de consultar disponibilidade (C6c). */
+export function assistantIsQuoteAvailabilityConfirm(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /posso consultar a disponibilidade/i.test(t) ||
+    (/est[aá] tudo certo/i.test(t) &&
+      /(?:propriedade|data de chegada|data de partida|quantidade de pessoas|🏢|📅|👤)/i.test(t))
+  );
+}
+
+/** Mensagem curta de confirmação (sim/ok) — reutilizado por gates. */
+export function isShortAffirmativeConfirmation(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  return /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode)$/i.test(msg);
+}
+
 /**
  * Turno de confirmação que deve ficar sem tools exclusivas de gate
  * (ex.: titular OK com N≥2 → pergunta acompanhante; ou "sim" fora de contexto C11).
@@ -144,7 +161,12 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
 
   const party = readPartySize(opts.flowSlots, opts.memory);
   const msg = (opts.userMessage ?? "").trim();
-  const isYes = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep)$/i.test(msg);
+  const isYes = isShortAffirmativeConfirmation(msg);
+
+  // C6c: sim pós Modelo C6 Confirm → consulta disponibilidade (não suppress).
+  if (isYes && assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)) {
+    return false;
+  }
 
   // Titular mirror + N≥2 + "sim" → S4c (ZERO tools), não gate de Embratur.
   if (isYes && party != null && party >= 2 && assistantIsTitularMirrorConfirm(opts.lastAssistantMessage)) {

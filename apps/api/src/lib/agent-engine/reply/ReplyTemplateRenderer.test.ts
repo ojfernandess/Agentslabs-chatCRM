@@ -32,9 +32,22 @@ test("renderReplyTemplate reservation lookup check-in", () => {
   assert.match(reply, /Encontramos sua reserva/);
   assert.match(reply, /Hotel Test/);
   assert.match(reply, /01\/08\/2026/);
+  assert.match(reply, /realize seu cadastro|1️⃣/i);
 });
 
-test("renderReplyTemplate check_in_completion_ack", () => {
-  const reply = renderReplyTemplate({ templateId: "check_in_completion_ack", facts: {} });
+test("renderReplyTemplate reservation_lookup_completed", () => {
+  const reply = renderReplyTemplate({
+    templateId: "reservation_lookup_completed",
+    facts: {
+      lodging: "Hotel Test",
+      locator: "ABC123",
+      roomLabel: "101",
+      checkIn: "01/08/2026",
+      checkOut: "03/08/2026",
+      checkInTime: "14:00",
+      checkOutTime: "12:00",
+      roomPassword: "1234",
+    },
+  });
   assert.match(reply, /check-in foi concluído/i);
 });
