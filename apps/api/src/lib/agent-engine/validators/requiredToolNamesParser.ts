@@ -534,6 +534,7 @@ export type ResolveRequiredToolsOptions = {
   userMessage?: string;
   availableToolNames?: string[];
   lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean>;
 };
 
 /**

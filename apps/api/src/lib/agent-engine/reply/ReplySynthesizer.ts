@@ -67,7 +67,9 @@ export type EnsureDeliveringReplyResult = {
     | "quote_c6_handoff"
     | "quote_c6_discount_offer"
     | "quote_c6_discount_handoff"
-    | "quote_call_human_failed";
+    | "quote_call_human_failed"
+    | "quote_call_human_missing"
+    | "quote_c6_category_info_return";
 };
 
 export { extractReservationDisplayFields };
@@ -478,7 +480,8 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       lastAssistantMessage: input.lastAssistantMessage,
       flowSlots: input.flowSlots,
       lastOptionsPayload: unwrapPayload(
-        availability?.structuredPayload ?? tryParseJson(availability?.preview),
+        availability?.structuredPayload ??
+          (availability?.preview ? tryParseJson(availability.preview) : undefined),
       ),
     });
     const answer = (input.replyText ?? "").trim();
