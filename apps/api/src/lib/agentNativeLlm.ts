@@ -74,12 +74,15 @@ import {
   isCompanionRegistrationDeclined,
   assistantIsTitularMirrorConfirm,
   assistantIsQuoteAvailabilityConfirm,
+  assistantIsQuoteOptionsList,
   isShortAffirmativeConfirmation,
+  messageLooksLikeQuoteOptionChoice,
   readPartySize,
 } from "./agent-engine/core/confirmationTurnGuards.js";
 import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
 import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
 import { mergeQuoteFlowSlotsFromConversation } from "./agent-engine/quote/quoteFlowSlots.js";
+import { messageLooksLikeQuoteDiscountObjection } from "./agent-engine/quote/quoteAvailabilityReply.js";
 import {
   ensureDeliveringReply,
   buildModeloS9TravelFormTemplateFromToolOutcomes,
@@ -3191,6 +3194,12 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   // Última linha: forçar Modelo S1 após consultar_reserva (C3) e nunca sair vazio após tools OK.
+  const quoteChoiceTurn =
+    assistantIsQuoteOptionsList(lastAssistantForPolicy) &&
+    messageLooksLikeQuoteOptionChoice(userMessage);
+  const quoteDiscountObjectionTurn =
+    assistantIsQuoteOptionsList(lastAssistantForPolicy) &&
+    messageLooksLikeQuoteDiscountObjection(userMessage);
   const shouldSynthesizeReply =
     toolRoundOutcomes.some((t) => t.ok) ||
     (toolRoundOutcomes.some(
@@ -3198,12 +3207,16 @@ async function generateNativeAgentReplyCore(input: {
         t.ok === false &&
         /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name),
     ) &&
-      isShortAffirmativeConfirmation(userMessage));
+      isShortAffirmativeConfirmation(userMessage)) ||
+    (toolRoundOutcomes.some((t) => t.ok === false && /^call_human$/i.test(t.name)) &&
+      quoteChoiceTurn) ||
+    quoteDiscountObjectionTurn;
   if (shouldSynthesizeReply) {
     const synthesized = ensureDeliveringReply({
       replyText,
       toolOutcomes: toolRoundOutcomes,
       userMessage,
+      lastAssistantMessage: lastAssistantForPolicy,
       configuredStallMessages,
       promptIr: unifiedSpineMode !== "off" ? resolveSpineCtx().promptIr : undefined,
     });

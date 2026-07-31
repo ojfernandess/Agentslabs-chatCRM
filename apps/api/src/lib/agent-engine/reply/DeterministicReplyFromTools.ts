@@ -1,4 +1,9 @@
 /** Outcome mínimo para síntese determinística pós-tool (sem novo LLM). */
+import {
+  buildModeloC6OptionsReply,
+  looksLikeAvailabilityQuotePayload,
+} from "../quote/quoteAvailabilityReply.js";
+
 export type DeterministicToolOutcome = {
   name: string;
   ok?: boolean;
@@ -95,6 +100,17 @@ export function buildDeterministicReplyFromToolOutcomes(
     if (seen.has(t.name)) continue;
     seen.add(t.name);
     if (t.name === "buscar_conhecimento") continue;
+    const payload = t.structuredPayload ?? (() => {
+      try {
+        return JSON.parse(previewSource(t));
+      } catch {
+        return null;
+      }
+    })();
+    if (looksLikeAvailabilityQuotePayload(payload)) {
+      const quote = buildModeloC6OptionsReply(payload);
+      if (quote.trim()) return quote;
+    }
     const human = humanizeToolPreviewForCustomer(previewSource(t));
     if (!human) continue;
     lines.push(human);

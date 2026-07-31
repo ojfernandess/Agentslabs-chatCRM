@@ -48,6 +48,7 @@ function resolveTurnTools(opts: CompilePromptToIROpts, turnPolicy: TurnPolicy): 
   const baseRequired = resolveRequiredToolNamesForTurn(opts.behaviorConfig, {
     userMessage,
     availableToolNames: opts.availableToolNames,
+    lastAssistantMessage: opts.lastAssistantMessage,
   });
   const exclusiveRequired = (turnPolicy.exclusiveAllowedTools ?? []).filter((tool) => {
     if (availableSet.size > 0 && !availableSet.has(tool.trim().toLowerCase())) return false;

@@ -5,6 +5,10 @@
 import type { TurnContext } from "../core/types.js";
 import { findCapabilityNode } from "../eil/CapabilityGraph.js";
 import type { CapabilityGraph, ToolEilConfig } from "../eil/types.js";
+import {
+  parseQuoteOptionCategoriesFromOptionsReply,
+  resolveQuoteOptionChoice,
+} from "../quote/quoteAvailabilityReply.js";
 
 /** Perfil declarativo por capability — merge com config.eil da tool. */
 const CAPABILITY_ARG_PROFILES: Record<string, Partial<ToolEilConfig>> = {
@@ -126,6 +130,7 @@ const REFERENCE_CODE_RE = /\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i;
 
 const TOOL_MESSAGE_ARGS: Record<string, string> = {
   buscar_conhecimento: "query",
+  call_human: "reason",
 };
 
 /** Hints explícitos quando config.eil.capabilities não está preenchido. */
@@ -283,6 +288,35 @@ export function resolveSchemaToolArgs(opts: ResolveSchemaToolArgsOpts): Record<s
   const messageArg =
     eil.messageArg ?? TOOL_MESSAGE_ARGS[toolName.trim().toLowerCase()];
   if (messageArg) {
+    if (toolName.trim().toLowerCase() === "call_human") {
+      const flowSlots = turnContext.facts ?? {};
+      let lastAssistant = "";
+      for (const key of ["__lastAssistantPreview", "lastReplyPreview"]) {
+        const v = flowSlots[key];
+        const scalar =
+          v && typeof v === "object" && "value" in (v as object)
+            ? (v as { value?: unknown }).value
+            : v;
+        if (typeof scalar === "string" && scalar.trim()) {
+          lastAssistant = scalar.trim();
+          break;
+        }
+      }
+      if (/deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(lastAssistant)) {
+        return { reason: "Cotação — hóspede solicitou verificação de desconto" };
+      }
+      const categories = lastAssistant
+        ? parseQuoteOptionCategoriesFromOptionsReply(lastAssistant)
+        : [];
+      const chosen = categories.length > 0 ? resolveQuoteOptionChoice(msg, categories) : null;
+      const flat = flattenFacts(turnContext.facts);
+      const establishment = flat.establishmentName ?? flat.establishmentId;
+      const bits = ["Cotação — continuidade da reserva"];
+      if (chosen) bits.push(`Opção: ${chosen}`);
+      if (establishment) bits.push(`Unidade: ${establishment}`);
+      if (msg && !chosen) bits.push(`Mensagem: ${msg.slice(0, 120)}`);
+      return { reason: bits.join(" · ") };
+    }
     return { [messageArg]: msg };
   }
 

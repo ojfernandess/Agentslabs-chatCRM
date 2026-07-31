@@ -156,6 +156,101 @@ test("ensureDeliveringReply replaces quote availability stall after failed tool"
   assert.match(result.reply, /Não consegui consultar a disponibilidade/i);
 });
 
+const AVAILABILITY_PAYLOAD = {
+  data: {
+    establishmentId: 49,
+    checkin: "2026-08-03",
+    checkout: "2026-08-04",
+    guests: 2,
+    nights: 1,
+    categories: [
+      {
+        categoryName: "Suíte Executiva",
+        available: true,
+        ratePlans: [
+          { channelName: "Balcão", totalPrice: 210, averageNightlyPrice: 210, available: true },
+          {
+            channelName: "Motor de reserva",
+            totalPrice: 257,
+            averageNightlyPrice: 257,
+            available: true,
+          },
+          { channelName: "REEMBOLSAVEL", totalPrice: 346, averageNightlyPrice: 346, available: true },
+        ],
+      },
+      {
+        categoryName: "Suíte Deluxe",
+        available: true,
+        ratePlans: [
+          { channelName: "Balcão", totalPrice: 380, averageNightlyPrice: 380, available: true },
+          {
+            channelName: "Motor de reserva",
+            totalPrice: 704,
+            averageNightlyPrice: 704,
+            available: true,
+          },
+        ],
+      },
+    ],
+  },
+};
+
+test("ensureDeliveringReply renders Modelo C6 Opções with Balcão, period, diária and total", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Consultei! Suíte Executiva por R$ 257.",
+    userMessage: "sim",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_disponibilidade",
+        ok: true,
+        preview: JSON.stringify(AVAILABILITY_PAYLOAD),
+        structuredPayload: AVAILABILITY_PAYLOAD,
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_options");
+  assert.match(result.reply, /03\/08\/2026 a 04\/08\/2026/);
+  assert.match(result.reply, /R\$ 210,00 \/ diária · R\$ 210,00 total/);
+  assert.match(result.reply, /R\$ 380,00 \/ diária · R\$ 380,00 total/);
+  assert.doesNotMatch(result.reply, /Motor de reserva|REEMBOLSAVEL|Balcão/i);
+});
+
+const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Suíte Executiva — R$ 210,00 / diária · R$ 210,00 total
+2️⃣ Suíte Deluxe — R$ 380,00 / diária · R$ 380,00 total
+
+Qual opção você prefere?`;
+
+test("ensureDeliveringReply offers discount transfer when guest says it is expensive", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Claro, posso aplicar 10% de desconto para você!",
+    userMessage: "está muito caro, tem desconto?",
+    lastAssistantMessage: C6_OPTIONS_MSG,
+    toolOutcomes: [],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_discount_offer");
+  assert.match(result.reply, /Não posso conceder descontos/i);
+  assert.doesNotMatch(result.reply, /10%|aplicar desconto|claro/i);
+});
+
+test("ensureDeliveringReply replaces call_human stall with Modelo C6 handoff", () => {
+  const result = ensureDeliveringReply({
+    replyText:
+      "Perfeito! Vou encaminhar sua preferência para nossa equipe, que dará continuidade na reserva. Um momento, por favor.\n\n*call_human*",
+    userMessage: "1",
+    lastAssistantMessage: C6_OPTIONS_MSG,
+    toolOutcomes: [{ name: "call_human", ok: true, preview: '{"ok":true}' }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_handoff");
+  assert.match(result.reply, /Suíte Executiva/i);
+  assert.match(result.reply, /encaminhar sua preferência para nossa equipe/i);
+  assert.doesNotMatch(result.reply, /\*call_human\*|um momento/i);
+});
+
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
   const mainGuestPayload = {
     found: true,

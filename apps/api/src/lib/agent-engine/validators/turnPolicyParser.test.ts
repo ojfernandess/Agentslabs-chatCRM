@@ -812,3 +812,61 @@ test("buildExecutionTurnPlan — sim after C6 Confirm schedules disponibilidade 
   );
   assert.equal(plan.requiredToolNames.includes("embratur-reference"), false);
 });
+
+const C6E_PLAYBOOK = `
+| C6e | Escolha pós-cotação | escolhe opção após lista C6 | \`call_human\` | call_human |
+| C6 | Cotação | cotação | GATE C6 | ZERO |
+`;
+
+const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
+
+1️⃣ Suíte Executiva — R$ 210,00 / diária · R$ 210,00 total
+2️⃣ Suíte Deluxe — R$ 704,00 / diária · R$ 704,00 total
+
+Qual opção você prefere?`;
+
+test("resolveTurnPolicy — quote option choice requires call_human exclusive", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6E_PLAYBOOK } },
+    {
+      userMessage: "1",
+      lastAssistantMessage: C6_OPTIONS_MSG,
+      availableToolNames: ["call_human", "audaar_consultar_disponibilidade"],
+    },
+  );
+  assert.equal(policy.blockEscalation, false);
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+});
+
+test("buildExecutionTurnPlan — quote option choice schedules call_human", () => {
+  const plan = buildExecutionTurnPlan({
+    behaviorConfig: { promptBuilder: { useFullPrompt: true, userCore: C6E_PLAYBOOK } },
+    userMessage: "1",
+    lastAssistantMessage: C6_OPTIONS_MSG,
+    availableToolNames: ["call_human", "audaar_consultar_disponibilidade"],
+  });
+  assert.ok(plan.requiredToolNames.includes("call_human"));
+});
+
+const C6F_PLAYBOOK = `
+| C6f | Desconto pós-cotação | caro · desconto | oferta transferência · sim → call_human | call_human |
+| C6 | Cotação | cotação | GATE C6 | ZERO |
+`;
+
+const C6_DISCOUNT_OFFER_MSG = `Entendo sua preocupação com o valor. Não posso conceder descontos por aqui, mas posso transferir você para nossa equipe de atendimento para verificar se há alguma condição especial disponível.
+
+Deseja que eu faça essa transferência?`;
+
+test("resolveTurnPolicy — sim after discount offer requires call_human exclusive", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6F_PLAYBOOK } },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: C6_DISCOUNT_OFFER_MSG,
+      availableToolNames: ["call_human"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+});

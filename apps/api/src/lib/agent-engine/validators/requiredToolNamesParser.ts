@@ -105,6 +105,11 @@ export function messageLooksLikeQuoteStayDetails(userMessage: string): boolean {
   return false;
 }
 
+import {
+  assistantIsQuoteOptionsList,
+  messageLooksLikeQuoteOptionChoice,
+} from "../core/confirmationTurnGuards.js";
+
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
     id: "document_id",
@@ -167,6 +172,23 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     test: (m) =>
       /reclam|irritad|falar com (humano|atendente|pessoa)|quero (um )?humano|p[eé]ssim/i.test(m),
     playbookHints: /\b(C13|reclama[cç][aã]o|call_human|transfer_to_team)\b/i,
+  },
+  {
+    id: "quote_option_choice",
+    test: (m) => {
+      const msg = (m ?? "").trim();
+      if (!msg) return false;
+      if (/^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode|n[aã]o|nao)$/i.test(msg)) return false;
+      if (/^\d{11}$/.test(msg)) return false;
+      if (/^[1-9]$/.test(msg)) return true;
+      if (/^(?:op[cç][aã]o\s*)?[1-9]\b/i.test(msg)) return true;
+      if (/\b(?:a\s+)?(?:primeir[ao]|segund[ao]|terceir[ao])\b/i.test(msg)) return true;
+      if (/\b(prefiro|quero|escolho|vou\s+(?:de|com)|(?:su[ií]te|quarto|apartamento))\b/i.test(msg)) {
+        return true;
+      }
+      return false;
+    },
+    playbookHints: /\b(C6e|escolha\s+p[oó]s|call_human|GATE C6\s+passo\s+4|C6\s+escolha)\b/i,
   },
 ];
 
@@ -316,6 +338,10 @@ function scoreTurnLine(
     if (!hasLookupTool && completionOrUploadOnly) score -= 8;
   } else if (pattern.id === "escalation") {
     if (/\bC13\b/i.test(line)) score += 5;
+  } else if (pattern.id === "quote_option_choice") {
+    if (/\bC6e\b/i.test(category) || /\bC6e\b/i.test(line)) score += 8;
+    if (/escolha|call_human|passo\s+4/i.test(line)) score += 4;
+    if (/C6\s+escolha/i.test(line)) score += 4;
   } else if (
     pattern.id === "quote_request" ||
     pattern.id === "quote_stay_details" ||
@@ -364,7 +390,10 @@ function findBestTurnMatches(
     if (!categoryMatch) continue;
     const category = categoryMatch[1]!.replace(/\s+/g, " ").trim().toUpperCase();
     const tools = extractPositiveToolNamesFromLine(line).filter(
-      (n) => pattern.id === "escalation" || !ESCALATION_TOOL_NAMES.has(n),
+      (n) =>
+        pattern.id === "escalation" ||
+        pattern.id === "quote_option_choice" ||
+        !ESCALATION_TOOL_NAMES.has(n),
     );
     if (tools.length === 0) continue;
     const score = scoreTurnLine(line, pattern, userMessage, category, completionHints);
@@ -493,6 +522,7 @@ export function resolveRequiredToolNamesFromBehavior(
 export type ResolveRequiredToolsOptions = {
   userMessage?: string;
   availableToolNames?: string[];
+  lastAssistantMessage?: string | null;
 };
 
 /**
@@ -522,6 +552,13 @@ export function resolveRequiredToolNamesForTurn(
   if (userMessage) {
     for (const pattern of GENERIC_TURN_PATTERNS) {
       if (!pattern.test(userMessage)) continue;
+      if (
+        pattern.id === "quote_option_choice" &&
+        (!assistantIsQuoteOptionsList(options.lastAssistantMessage) ||
+          !messageLooksLikeQuoteOptionChoice(userMessage))
+      ) {
+        continue;
+      }
       // C6 coleta/confirmação = ZERO tools; C6c (disponibilidade) só via turnPolicy no «sim» pós Confirm.
       if (
         (pattern.id === "quote_request" ||
@@ -542,7 +579,13 @@ export function resolveRequiredToolNamesForTurn(
         for (const line of playbook.split(/\n+/)) {
           if (!pattern.playbookHints.test(line)) continue;
           for (const tool of extractPositiveToolNamesFromLine(line)) {
-            if (pattern.id !== "escalation" && ESCALATION_TOOL_NAMES.has(tool)) continue;
+            if (
+              pattern.id !== "escalation" &&
+              pattern.id !== "quote_option_choice" &&
+              ESCALATION_TOOL_NAMES.has(tool)
+            ) {
+              continue;
+            }
             if (shouldExcludeCompletionToolFromRequired(pattern.id, tool, completionHints)) continue;
             required.add(tool);
           }

@@ -36,8 +36,12 @@ import {
   assistantIsFichaMirrorConfirm,
   assistantIsCompanionOptInPrompt,
   assistantIsQuoteAvailabilityConfirm,
+  assistantIsQuoteOptionsList,
+  assistantIsQuoteDiscountTransferOffer,
   isCompanionRegistrationDeclined,
+  messageLooksLikeQuoteOptionChoice,
 } from "../core/confirmationTurnGuards.js";
+import { messageLooksLikeQuoteDiscountObjection } from "../quote/quoteAvailabilityReply.js";
 
 export {
   isLikelyMutableOrCompletionTool,
@@ -462,6 +466,24 @@ export function resolveTurnPolicy(
       exclusiveAllowedTools = [quoteTool];
       forceExclusiveExecution = true;
     }
+  } else if (
+    assistantIsQuoteOptionsList(options.lastAssistantMessage) &&
+    messageLooksLikeQuoteOptionChoice(userMessage) &&
+    !messageLooksLikeQuoteDiscountObjection(userMessage) &&
+    !toolOutcomeSatisfiesRequired("call_human", priorOk)
+  ) {
+    // C6e: escolha pós Modelo C6 Opções → call_human (exclusive).
+    exclusiveAllowedTools = ["call_human"];
+    forceExclusiveExecution = true;
+  } else if (
+    isConfirmation &&
+    !suppressExclusive &&
+    assistantIsQuoteDiscountTransferOffer(options.lastAssistantMessage) &&
+    !toolOutcomeSatisfiesRequired("call_human", priorOk)
+  ) {
+    // C6f: sim pós oferta de desconto → call_human (exclusive).
+    exclusiveAllowedTools = ["call_human"];
+    forceExclusiveExecution = true;
   } else if (
     // HJ2XQZXO-FICHA: `sim` no espelho FICHA → S10 exclusive (nunca reabrir embratur-reference).
     fichaConfirm &&

@@ -6,6 +6,24 @@ import { buildDeterministicReplyFromToolOutcomes } from "./DeterministicReplyFro
 import type { PromptIR } from "../contract/PromptIR.js";
 import { templateFactsFromEnrichedIr } from "../compiler/playbookEnrichment.js";
 import {
+  buildModeloC6DiscountHandoffReply,
+  buildModeloC6DiscountTransferOfferReply,
+  buildModeloC6HandoffReply,
+  buildModeloC6OptionsReply,
+  looksLikeAvailabilityQuotePayload,
+  messageLooksLikeQuoteDiscountObjection,
+  parseQuoteOptionCategoriesFromOptionsReply,
+  replyLooksLikeModeloC6DiscountOffer,
+  replyLooksLikeModeloC6Handoff,
+  replyLooksLikeModeloC6Options,
+  resolveQuoteOptionChoice,
+} from "../quote/quoteAvailabilityReply.js";
+import {
+  assistantIsQuoteDiscountTransferOffer,
+  assistantIsQuoteOptionsList,
+  messageLooksLikeQuoteOptionChoice,
+} from "../core/confirmationTurnGuards.js";
+import {
   extractReservationDisplayFields,
   factsFromReservationPayload,
   matchIrReplyTemplate,
@@ -20,6 +38,7 @@ export type EnsureDeliveringReplyInput = {
   replyText: string;
   toolOutcomes: SynthesizerToolOutcome[];
   userMessage?: string;
+  lastAssistantMessage?: string;
   configuredStallMessages?: string[];
   /** Prompt IR — templates de resposta (Fase 6). */
   promptIr?: PromptIR;
@@ -38,7 +57,12 @@ export type EnsureDeliveringReplyResult = {
     | "companion_s4c"
     | "ir_template"
     | "deterministic_fallback"
-    | "quote_availability_failed";
+    | "quote_availability_failed"
+    | "quote_c6_options"
+    | "quote_c6_handoff"
+    | "quote_c6_discount_offer"
+    | "quote_c6_discount_handoff"
+    | "quote_call_human_failed";
 };
 
 export { extractReservationDisplayFields };
@@ -130,6 +154,51 @@ function looksLikeReservationPayload(outcome: SynthesizerToolOutcome): boolean {
   return dig(p, ["checkinDate", "data.checkinDate", "guestsQuantity"]) != null;
 }
 
+function findAvailabilityLookupOutcome(
+  outcomes: SynthesizerToolOutcome[],
+): SynthesizerToolOutcome | null {
+  const ok = outcomes.filter((t) => t.ok !== false);
+  return (
+    ok.find((t) => /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name)) ??
+    ok.find((t) =>
+      looksLikeAvailabilityQuotePayload(t.structuredPayload ?? tryParseJson(t.preview)),
+    ) ??
+    null
+  );
+}
+
+function looksLikeAvailabilityPayload(outcome: SynthesizerToolOutcome): boolean {
+  const p = outcome.structuredPayload ?? tryParseJson(outcome.preview);
+  return looksLikeAvailabilityQuotePayload(p);
+}
+
+function tryRenderAvailabilityQuote(outcome: SynthesizerToolOutcome): string | null {
+  const payload = unwrapPayload(outcome.structuredPayload ?? tryParseJson(outcome.preview));
+  const reply = buildModeloC6OptionsReply(payload);
+  if (reply.trim() && !isNonDeliveringAgentReply(reply)) return reply;
+  return null;
+}
+
+function findCallHumanOutcome(outcomes: SynthesizerToolOutcome[]): SynthesizerToolOutcome | null {
+  const ok = outcomes.filter((t) => t.ok !== false);
+  return ok.find((t) => /^call_human$/i.test(t.name)) ?? null;
+}
+
+function tryRenderQuoteHandoffReply(input: EnsureDeliveringReplyInput): string | null {
+  const lastAssistant = (input.lastAssistantMessage ?? "").trim();
+  const userMessage = (input.userMessage ?? "").trim();
+  const categories = lastAssistant
+    ? parseQuoteOptionCategoriesFromOptionsReply(lastAssistant)
+    : [];
+  const chosen =
+    categories.length > 0
+      ? resolveQuoteOptionChoice(userMessage, categories)
+      : userMessage || null;
+  const reply = buildModeloC6HandoffReply(chosen);
+  if (!reply.trim()) return null;
+  return reply;
+}
+
 export function looksLikeRawToolJson(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
@@ -216,6 +285,17 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   const quoteConfirmTurn = /^(sim|ok|okay|certo|confirmo|yes|pode)$/i.test(
     (input.userMessage ?? "").trim(),
   );
+  const quoteChoiceTurn =
+    assistantIsQuoteOptionsList(input.lastAssistantMessage) &&
+    messageLooksLikeQuoteOptionChoice(input.userMessage);
+  const quoteDiscountObjectionTurn =
+    assistantIsQuoteOptionsList(input.lastAssistantMessage) &&
+    messageLooksLikeQuoteDiscountObjection(input.userMessage);
+  const quoteDiscountAcceptTurn =
+    quoteConfirmTurn && assistantIsQuoteDiscountTransferOffer(input.lastAssistantMessage);
+  const failedCallHuman = input.toolOutcomes.some(
+    (t) => t.ok === false && /^call_human$/i.test(t.name),
+  );
 
   if (successful.length === 0) {
     if (
@@ -230,6 +310,29 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         reason: "quote_availability_failed",
       };
     }
+    if (
+      failedCallHuman &&
+      (quoteChoiceTurn || quoteDiscountAcceptTurn) &&
+      isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages)
+    ) {
+      return {
+        reply: quoteDiscountAcceptTurn
+          ? "Recebi seu pedido! Tive um problema ao transferir para a equipe agora. Pode confirmar novamente se deseja falar com o atendimento?"
+          : "Recebi sua escolha! Tive um problema ao encaminhar para a equipe agora. Pode repetir a opção preferida ou aguardar um instante?",
+        replaced: true,
+        reason: "quote_call_human_failed",
+      };
+    }
+    if (
+      quoteDiscountObjectionTurn &&
+      !replyLooksLikeModeloC6DiscountOffer(input.replyText)
+    ) {
+      return {
+        reply: buildModeloC6DiscountTransferOfferReply(),
+        replaced: true,
+        reason: "quote_c6_discount_offer",
+      };
+    }
     return { reply: input.replyText, replaced: false };
   }
 
@@ -237,10 +340,65 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
 
   const postCompletionTurn = userMessageLooksLikePostCompletionFollowUp(input.userMessage);
   const reservation = findReservationLookupOutcome(successful);
+  const availability = findAvailabilityLookupOutcome(successful);
+  const callHuman = findCallHumanOutcome(successful);
   const checkInTurn = userMessageLooksLikeCheckInTurn(input.userMessage);
   const soleReservationLookup =
     Boolean(reservation) &&
     successful.every((t) => /consultar[_-]?reserva/i.test(t.name) || looksLikeReservationPayload(t));
+  const soleAvailabilityLookup =
+    Boolean(availability) &&
+    successful.every(
+      (t) =>
+        /(?:consultar[_-]?)?disponibilidade|availability/i.test(t.name) ||
+        looksLikeAvailabilityPayload(t),
+    );
+  const soleCallHuman =
+    Boolean(callHuman) &&
+    successful.every((t) => /^call_human$/i.test(t.name) || t.name === "buscar_conhecimento");
+
+  if (
+    !postCompletionTurn &&
+    callHuman &&
+    (quoteChoiceTurn || quoteDiscountAcceptTurn || soleCallHuman) &&
+    !replyLooksLikeModeloC6Handoff(input.replyText)
+  ) {
+    if (quoteDiscountAcceptTurn) {
+      return {
+        reply: buildModeloC6DiscountHandoffReply(),
+        replaced: true,
+        reason: "quote_c6_discount_handoff",
+      };
+    }
+    const rendered = tryRenderQuoteHandoffReply(input);
+    if (rendered) {
+      return { reply: rendered, replaced: true, reason: "quote_c6_handoff" };
+    }
+  }
+
+  if (
+    !postCompletionTurn &&
+    quoteDiscountObjectionTurn &&
+    !replyLooksLikeModeloC6DiscountOffer(input.replyText)
+  ) {
+    return {
+      reply: buildModeloC6DiscountTransferOfferReply(),
+      replaced: true,
+      reason: "quote_c6_discount_offer",
+    };
+  }
+
+  if (
+    !postCompletionTurn &&
+    availability &&
+    (quoteConfirmTurn || soleAvailabilityLookup) &&
+    !replyLooksLikeModeloC6Options(input.replyText)
+  ) {
+    const rendered = tryRenderAvailabilityQuote(availability);
+    if (rendered) {
+      return { reply: rendered, replaced: true, reason: "quote_c6_options" };
+    }
+  }
 
   if (
     !postCompletionTurn &&
@@ -264,6 +422,13 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     const rendered = tryRenderReservationLookup(reservation, input.userMessage, input.promptIr);
     if (rendered) {
       return { reply: rendered, replaced: true, reason: input.promptIr ? "ir_template" : "reservation_s1" };
+    }
+  }
+
+  if (!postCompletionTurn && availability && !replyLooksLikeModeloC6Options(input.replyText)) {
+    const rendered = tryRenderAvailabilityQuote(availability);
+    if (rendered) {
+      return { reply: rendered, replaced: true, reason: "quote_c6_options" };
     }
   }
 

@@ -3,6 +3,8 @@
  * Multi-segmento: usa sinais de playbook/slots/última resposta — sem hardcodar um hotel.
  */
 
+import { messageLooksLikeQuoteDiscountObjection } from "../quote/quoteAvailabilityReply.js";
+
 /** Mensagem do hóspede parece recolha de formulário pós-gate (ficha), não bloco titular/acompanhante. */
 export function messageLooksLikePostGateFormData(userMessage: string): boolean {
   const msg = (userMessage ?? "").trim();
@@ -140,6 +142,44 @@ export function assistantIsQuoteAvailabilityConfirm(lastAssistantMessage?: strin
   );
 }
 
+/** Modelo C6 Opções — lista de opções com preços (C6e). */
+export function assistantIsQuoteOptionsList(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /consultei a disponibilidade/i.test(t) &&
+    /qual opção você prefere/i.test(t)
+  );
+}
+
+/** Oferta de transferência para verificar desconto (C6f). */
+export function assistantIsQuoteDiscountTransferOffer(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /n[aã]o posso conceder descontos/i.test(t) &&
+    /transferir.*equipe de atendimento/i.test(t) &&
+    /deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(t)
+  );
+}
+
+/** Hóspede escolhe opção após Modelo C6 Opções (C6e). */
+export function messageLooksLikeQuoteOptionChoice(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (/^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode|n[aã]o|nao)$/i.test(msg)) return false;
+  if (messageLooksLikeQuoteDiscountObjection(msg)) return false;
+  if (/^\d{11}$/.test(msg)) return false;
+  if (/^[1-9]$/.test(msg)) return true;
+  if (/^(?:op[cç][aã]o\s*)?[1-9]\b/i.test(msg)) return true;
+  if (/\b(?:a\s+)?(?:primeir[ao]|segund[ao]|terceir[ao]|quart[ao])\b/i.test(msg)) return true;
+  if (/\b(prefiro|quero|escolho|vou\s+(?:de|com)|(?:su[ií]te|quarto|apartamento|opcao|opção))\b/i.test(msg)) {
+    return true;
+  }
+  if (msg.length <= 80 && /\b(?:op[cç]|n[úu]mero|item)\b/i.test(msg) && /\d/.test(msg)) return true;
+  return false;
+}
+
 /** Mensagem curta de confirmação (sim/ok) — reutilizado por gates. */
 export function isShortAffirmativeConfirmation(userMessage?: string | null): boolean {
   const msg = (userMessage ?? "").trim();
@@ -165,6 +205,11 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
 
   // C6c: sim pós Modelo C6 Confirm → consulta disponibilidade (não suppress).
   if (isYes && assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)) {
+    return false;
+  }
+
+  // C6f: sim pós oferta de transferência por desconto → call_human (não suppress).
+  if (isYes && assistantIsQuoteDiscountTransferOffer(opts.lastAssistantMessage)) {
     return false;
   }
 
