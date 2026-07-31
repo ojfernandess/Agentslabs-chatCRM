@@ -160,7 +160,9 @@ export function assistantIsQuoteOptionsList(lastAssistantMessage?: string | null
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
   return (
-    /consultei a disponibilidade/i.test(t) &&
+    (/consultei a disponibilidade/i.test(t) ||
+      /combinações de quartos/i.test(t) ||
+      /para \d+ hóspedes/i.test(t)) &&
     /qual opção você prefere/i.test(t)
   );
 }

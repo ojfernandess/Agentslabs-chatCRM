@@ -5,7 +5,10 @@
 
 const BALCAO_RE = /balc[aã]o/i;
 /** channelId do plano Balcão na API Audaar (fallback quando o nome vem vazio). */
-const BALCAO_CHANNEL_IDS = new Set([138]);
+const BALCAO_CHANNEL_IDS = new Set([138, 145]);
+/** A partir deste número de hóspedes, exibir combinações de quartos (capacity). */
+const MULTI_GUEST_COMBO_THRESHOLD = 5;
+const MAX_COMBO_OPTIONS = 8;
 
 /** Hotel Brooklin — establishmentId 51; omitir categorias de garagem/vaga na cotação. */
 export const BROOKLIN_ESTABLISHMENT_ID = 51;
@@ -27,7 +30,31 @@ type RatePlan = {
 type Category = {
   categoryName?: string;
   available?: boolean;
+  capacity?: number;
+  minAvailableUnits?: number;
+  unitsNeeded?: number;
   ratePlans?: RatePlan[];
+};
+
+type BookableRoomType = {
+  categoryName: string;
+  capacity: number;
+  unitPrice: number;
+  maxUnits: number;
+};
+
+type ComboItem = {
+  categoryName: string;
+  units: number;
+  capacity: number;
+  unitPrice: number;
+};
+
+export type RoomCombination = {
+  items: ComboItem[];
+  totalCapacity: number;
+  totalPrice: number;
+  label: string;
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -154,6 +181,151 @@ function shouldIncludeQuoteCategory(data: Record<string, unknown>, cat: Category
   return true;
 }
 
+function readGuestCount(data: Record<string, unknown>): number {
+  const raw = data.guests ?? data.guestsQuantity;
+  const guests =
+    typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+  return Number.isFinite(guests) && guests > 0 ? guests : 0;
+}
+
+function extractBookableRoomTypes(
+  data: Record<string, unknown>,
+  categories: Category[],
+): BookableRoomType[] {
+  const rooms: BookableRoomType[] = [];
+  for (const cat of categories) {
+    if (!shouldIncludeQuoteCategory(data, cat)) continue;
+    const capacityRaw = cat.capacity;
+    const capacity =
+      typeof capacityRaw === "number" && capacityRaw > 0 ? capacityRaw : 1;
+    const plan = selectBalconRatePlan(cat.ratePlans);
+    if (!plan) continue;
+    const unitPrice = totalPrice(plan);
+    if (unitPrice == null) continue;
+    const minAvail =
+      typeof cat.minAvailableUnits === "number" && cat.minAvailableUnits > 0
+        ? cat.minAvailableUnits
+        : 1;
+    rooms.push({
+      categoryName: (cat.categoryName ?? "Opção").trim(),
+      capacity,
+      unitPrice,
+      maxUnits: minAvail,
+    });
+  }
+  return rooms.sort((a, b) => b.capacity - a.capacity || a.unitPrice - b.unitPrice);
+}
+
+function formatComboUnitLabel(categoryName: string, units: number): string {
+  return units === 1 ? `1 ${categoryName}` : `${units} ${categoryName}`;
+}
+
+function formatCombinationLabel(items: ComboItem[]): string {
+  return items.map((i) => formatComboUnitLabel(i.categoryName, i.units)).join(" + ");
+}
+
+function combinationKey(items: ComboItem[]): string {
+  return items
+    .map((i) => `${i.categoryName}\0${i.units}`)
+    .sort()
+    .join("|");
+}
+
+/** Combinações de quartos cuja capacidade total cobre `guests`. */
+export function findRoomCombinations(
+  rooms: BookableRoomType[],
+  guests: number,
+): RoomCombination[] {
+  if (guests < MULTI_GUEST_COMBO_THRESHOLD || rooms.length === 0) return [];
+
+  const results: RoomCombination[] = [];
+  const seen = new Set<string>();
+
+  function dfs(
+    roomIdx: number,
+    items: ComboItem[],
+    totalCapacity: number,
+    totalPrice: number,
+  ): void {
+    if (totalCapacity >= guests) {
+      const key = combinationKey(items);
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push({
+          items: [...items],
+          totalCapacity,
+          totalPrice,
+          label: formatCombinationLabel(items),
+        });
+      }
+      return;
+    }
+    if (roomIdx >= rooms.length) return;
+
+    const room = rooms[roomIdx]!;
+    const maxByCapacity = Math.max(1, Math.ceil(guests / room.capacity) + 1);
+    const maxUnits = Math.min(room.maxUnits, maxByCapacity);
+
+    dfs(roomIdx + 1, items, totalCapacity, totalPrice);
+
+    for (let units = 1; units <= maxUnits; units += 1) {
+      dfs(
+        roomIdx + 1,
+        [
+          ...items,
+          {
+            categoryName: room.categoryName,
+            units,
+            capacity: room.capacity,
+            unitPrice: room.unitPrice,
+          },
+        ],
+        totalCapacity + units * room.capacity,
+        totalPrice + units * room.unitPrice,
+      );
+    }
+  }
+
+  dfs(0, [], 0, 0);
+
+  results.sort((a, b) => {
+    const aExact = a.totalCapacity === guests ? 0 : 1;
+    const bExact = b.totalCapacity === guests ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+    if (a.totalCapacity !== b.totalCapacity) return a.totalCapacity - b.totalCapacity;
+    if (a.totalPrice !== b.totalPrice) return a.totalPrice - b.totalPrice;
+    const aRooms = a.items.reduce((s, i) => s + i.units, 0);
+    const bRooms = b.items.reduce((s, i) => s + i.units, 0);
+    return aRooms - bRooms;
+  });
+
+  return results.slice(0, MAX_COMBO_OPTIONS);
+}
+
+function buildMultiGuestComboOptionsReply(
+  data: Record<string, unknown>,
+  guests: number,
+): string | null {
+  const categories = (data.categories as Category[] | undefined) ?? [];
+  const rooms = extractBookableRoomTypes(data, categories);
+  const combos = findRoomCombinations(rooms, guests);
+  if (combos.length === 0) return null;
+
+  const periodSuffix = formatQuoteStayPeriod(data);
+  const periodInBody = periodSuffix ? ` (${periodSuffix})` : "";
+  const lines: string[] = [];
+
+  combos.forEach((combo, index) => {
+    const emoji = EMOJI_NUMBERS[index] ?? `${index + 1}.`;
+    lines.push(`${emoji} ${combo.label} — ${formatBrl(combo.totalPrice)} total`);
+  });
+
+  return (
+    `Para ${guests} hóspedes, consultei a disponibilidade${periodInBody}. ` +
+    `Estas são as combinações de quartos:\n\n${lines.join("\n")}\n\nQual opção você prefere?`
+  );
+}
+
 function buildOptionsIntro(data: Record<string, unknown>): string {
   const period = formatQuoteStayPeriod(data);
   if (period) {
@@ -166,6 +338,12 @@ export function buildModeloC6OptionsReply(payload: unknown): string {
   const data = parsePayloadRoot(payload);
   if (!data) {
     return "Consultei a disponibilidade, mas não recebi opções válidas. Pode informar outras datas?";
+  }
+
+  const guests = readGuestCount(data);
+  if (guests >= MULTI_GUEST_COMBO_THRESHOLD) {
+    const comboReply = buildMultiGuestComboOptionsReply(data, guests);
+    if (comboReply) return comboReply;
   }
 
   const periodSuffix = formatQuoteStayPeriod(data);
@@ -255,7 +433,9 @@ export function replyLooksLikeModeloC6Options(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
   return (
-    /consultei a disponibilidade/i.test(t) &&
+    (/consultei a disponibilidade/i.test(t) ||
+      /combinações de quartos/i.test(t) ||
+      /para \d+ hóspedes/i.test(t)) &&
     /qual opção você prefere/i.test(t) &&
     (/R\$\s*[\d.,]+/i.test(t) || /1️⃣|2️⃣|3️⃣/.test(t))
   );
@@ -331,7 +511,30 @@ export const QUOTE_OPTIONS_CATALOG_SLOT = "__quoteOptionsCatalog";
 export function buildQuoteOptionsCatalogFromPayload(payload: unknown): QuoteOptionCatalog | null {
   const data = parsePayloadRoot(payload);
   if (!data) return null;
+  const guests = readGuestCount(data);
   const categories = (data.categories as Category[] | undefined) ?? [];
+
+  if (guests >= MULTI_GUEST_COMBO_THRESHOLD) {
+    const rooms = extractBookableRoomTypes(data, categories);
+    const combos = findRoomCombinations(rooms, guests);
+    if (combos.length > 0) {
+      return {
+        establishmentName:
+          typeof data.establishmentName === "string" ? data.establishmentName : undefined,
+        checkin:
+          formatIsoDateToBr(data.checkin ?? data.checkinDate ?? data.checkInDate) ?? undefined,
+        checkout:
+          formatIsoDateToBr(data.checkout ?? data.checkoutDate ?? data.checkOutDate) ?? undefined,
+        guests,
+        options: combos.map((c) => ({
+          categoryName: c.label,
+          nightlyPrice: null,
+          totalPrice: c.totalPrice,
+        })),
+      };
+    }
+  }
+
   const options: QuoteOptionCatalogEntry[] = [];
   for (const cat of categories) {
     if (!shouldIncludeQuoteCategory(data, cat)) continue;
@@ -344,18 +547,13 @@ export function buildQuoteOptionsCatalogFromPayload(payload: unknown): QuoteOpti
     });
   }
   if (options.length === 0) return null;
-  const guestsRaw = data.guests ?? data.guestsQuantity;
-  const guests =
-    typeof guestsRaw === "number"
-      ? guestsRaw
-      : Number.parseInt(String(guestsRaw ?? ""), 10);
   return {
     establishmentName:
       typeof data.establishmentName === "string" ? data.establishmentName : undefined,
     checkin: formatIsoDateToBr(data.checkin ?? data.checkinDate ?? data.checkInDate) ?? undefined,
     checkout:
       formatIsoDateToBr(data.checkout ?? data.checkoutDate ?? data.checkOutDate) ?? undefined,
-    guests: Number.isFinite(guests) && guests > 0 ? guests : undefined,
+    guests: guests > 0 ? guests : undefined,
     options,
   };
 }
@@ -384,7 +582,7 @@ function readQuoteCatalogFromFlowSlots(
 }
 
 const QUOTE_OPTION_PRICE_LINE_RE =
-  /^(?:\d️⃣|\d+\.|1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣|7️⃣|8️⃣|9️⃣|🔟)\s*(.+?)\s*—\s*R\$\s*([\d.,]+)\s*\/\s*di[aá]ria\s*·\s*R\$\s*([\d.,]+)\s*total/i;
+  /^(?:\d️⃣|\d+\.|1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣|7️⃣|8️⃣|9️⃣|🔟)\s*(.+?)\s*—\s*(?:R\$\s*([\d.,]+)\s*\/\s*di[aá]ria\s*·\s*)?R\$\s*([\d.,]+)\s*total/i;
 
 function parseBrlNumber(raw: string): number | null {
   const n = Number.parseFloat(raw.replace(/\./g, "").replace(",", "."));
@@ -399,7 +597,7 @@ export function parseQuoteOptionsFromOptionsReply(text: string): QuoteOptionCata
     if (!m?.[1]) continue;
     options.push({
       categoryName: m[1].trim(),
-      nightlyPrice: parseBrlNumber(m[2] ?? ""),
+      nightlyPrice: m[2] ? parseBrlNumber(m[2]) : null,
       totalPrice: parseBrlNumber(m[3] ?? ""),
     });
   }
@@ -529,6 +727,17 @@ export function replyLooksLikeModeloC6Handoff(text: string): boolean {
     /propriedade:|data de chegada:|quantidade de pessoas:/i.test(t) &&
     !/\*call_human\*|\*transfer_to_team\*/i.test(t) &&
     !/um momento/i.test(t)
+  );
+}
+
+/** Resposta substantiva de handoff C6 — deve ir ao hóspede em vez da msg genérica de escalonamento. */
+export function replyShouldPreemptEscalationTransferMessage(text: string): boolean {
+  if (replyLooksLikeModeloC6Handoff(text)) return true;
+  const t = (text ?? "").trim();
+  return (
+    /perfeito!/i.test(t) &&
+    /transferir.*equipe de atendimento/i.test(t) &&
+    /desconto|condi[cç][aã]o especial/i.test(t)
   );
 }
 

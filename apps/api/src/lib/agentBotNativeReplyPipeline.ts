@@ -15,6 +15,7 @@ import {
   shouldSchedulePostCompletionFollowUp,
   shouldSuppressOutboundCheckInAck,
 } from "./agent-engine/continuation/postCompletionFollowUp.js";
+import { replyShouldPreemptEscalationTransferMessage } from "./agent-engine/quote/quoteAvailabilityReply.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -108,6 +109,46 @@ export async function runNativeAgentReplyAndDeliver(input: {
         select: { behaviorConfig: true },
       });
       const transferConfigured = parseEscalationTransferMessage(profileEsc?.behaviorConfig);
+      const deliverQuoteHandoff = replyShouldPreemptEscalationTransferMessage(replyText);
+
+      if (deliverQuoteHandoff && replyText.trim()) {
+        try {
+          await deliverAgentReplyMessage({
+            organizationId,
+            botId: bot.id,
+            conversation,
+            contact,
+            inboundMessage: message,
+            replyText,
+            behaviorConfig: profileEsc?.behaviorConfig,
+            log,
+          });
+        } catch (err) {
+          log.warn({ err, botId: bot.id }, "Agent bot quote handoff message send failed");
+          await exLog.completeError(err);
+          return;
+        }
+        exLog.info(
+          { id: "outbound", name: "Entrega" },
+          "Modelo C6 Escolha Confirm enviado ao cliente (handoff humano)",
+          { output: { chars: replyText.length, skippedEscalationMessage: Boolean(transferConfigured) } },
+        );
+        await prisma.automationInteraction
+          .create({
+            data: {
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              userMessage,
+              assistantMessage: replyText,
+              responseType: "native_fallback",
+            },
+          })
+          .catch(() => {});
+        await exLog.completeSuccess();
+        return;
+      }
+
       if (transferConfigured) {
         try {
           await deliverOutboundWhatsAppMessage({
