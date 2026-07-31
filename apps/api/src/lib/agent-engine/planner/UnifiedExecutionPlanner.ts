@@ -3,7 +3,7 @@
  * Uma única resolução de turnPolicy/required tools por turno.
  */
 import type { PromptIR } from "../contract/PromptIR.js";
-import { compilePromptToIR, type CompilePromptToIROpts } from "../compiler/PromptCompiler.js";
+import { compilePromptToIR, type CompilePromptToIROpts } from "../compiler/compilePromptToIR.js";
 import { playbookTextFromBehavior } from "../compiler/playbookText.js";
 import { buildCapabilityGraph } from "../eil/CapabilityGraph.js";
 import { factsFromFlowSlots, hasFact, mergeFactStores } from "../eil/FactsEngine.js";
@@ -22,7 +22,7 @@ import { isPostCompletionPending } from "../core/sessionToolOutcomes.js";
 import {
   GENERIC_TURN_PATTERNS,
 } from "../validators/requiredToolNamesParser.js";
-import type { ExecutionTurnPlan, BuildExecutionTurnPlanOpts } from "./ExecutionTurnPlan.js";
+import type { ExecutionTurnPlan } from "./ExecutionTurnPlan.js";
 import { buildPlanGraph, type PlanGraph } from "./PlanGraphBuilder.js";
 
 export type UnifiedExecutionPlan = ExecutionIntelligencePlan & {
@@ -30,7 +30,7 @@ export type UnifiedExecutionPlan = ExecutionIntelligencePlan & {
   promptIrHash: string;
 };
 
-export type BuildUnifiedExecutionPlanOpts = BuildExecutionTurnPlanOpts & {
+export type BuildUnifiedExecutionPlanOpts = CompilePromptToIROpts & {
   /** Quando omitido, compila Prompt IR internamente (legacy callers). */
   promptIr?: PromptIR;
   facts?: FactStore;
@@ -80,7 +80,7 @@ export function inferMatchedPatternIds(
 
 export function executionTurnPlanFromPromptIr(
   promptIr: PromptIR,
-  opts: BuildExecutionTurnPlanOpts,
+  opts: BuildUnifiedExecutionPlanOpts,
 ): ExecutionTurnPlan {
   const userMessage = (opts.userMessage ?? "").trim();
   const flowSlots =
@@ -122,7 +122,7 @@ export function buildUnifiedExecutionPlan(
 
   const facts =
     opts.facts ??
-    mergeFactStores(opts.priorFacts ?? {}, factsFromFlowSlots(memoryFlowSlots ?? null));
+    mergeFactStores(opts.priorFacts ?? {}, factsFromFlowSlots(memoryFlowSlots ?? undefined));
 
   const toolsCalled = opts.toolsCalled ?? [];
 

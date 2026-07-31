@@ -112,7 +112,8 @@ export type ReplyActionId =
   | "escalate_human"
   | "ask_document"
   | "ask_payment"
-  | "complete_flow";
+  | "complete_flow"
+  | "assert_operational_data";
 
 export type ExecutionIntelligencePlan = ExecutionTurnPlan & {
   requiredFacts: string[];

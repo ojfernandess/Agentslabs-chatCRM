@@ -18,6 +18,8 @@ export type AutomationLogExtra = {
   input?: unknown;
   output?: unknown;
   stack?: string;
+  /** Timestamp ISO do evento (timeline engine / spine). */
+  at?: string;
 };
 
 export type AutomationExecutionLogPort = {

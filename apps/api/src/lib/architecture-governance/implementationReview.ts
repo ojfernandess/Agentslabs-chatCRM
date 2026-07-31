@@ -12,7 +12,7 @@ export function runImplementationReview(
     proposal.rootCause,
     proposal.component,
     ...proposal.modifiedFiles.map((f) => f.split("/").pop() ?? f),
-  ].filter(Boolean);
+  ].filter((t): t is string => typeof t === "string" && t.trim().length > 0);
 
   const similarAdrs = new Map<string, ReturnType<typeof searchAdrs>[number]>();
   const similarRcas = new Map<string, ReturnType<typeof searchRcas>[number]>();

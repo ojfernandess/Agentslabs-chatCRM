@@ -142,6 +142,8 @@ export type CreateAdrInput = Omit<
   "id" | "date" | "version" | "status" | "actualImpact"
 > & {
   id?: string;
+  date?: string;
+  version?: string;
   status?: AdrStatus;
   actualImpact?: string;
 };

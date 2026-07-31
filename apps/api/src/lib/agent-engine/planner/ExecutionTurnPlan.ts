@@ -1,8 +1,6 @@
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
-import {
-  buildUnifiedExecutionPlan,
-  type BuildUnifiedExecutionPlanOpts,
-} from "./UnifiedExecutionPlanner.js";
+import { buildUnifiedExecutionPlan } from "./UnifiedExecutionPlanner.js";
+import type { BuildUnifiedExecutionPlanOpts } from "./UnifiedExecutionPlanner.js";
 
 /**
  * Plano de turno — fonte única de verdade para tools obrigatórias e política.

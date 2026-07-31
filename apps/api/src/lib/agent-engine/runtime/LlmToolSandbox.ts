@@ -40,7 +40,7 @@ export function evaluateLlmToolSandbox(
     return { allowed: false, reason: `Tool \`${name}\` já executada neste turno`, layer: "runtime" };
   }
 
-  return { allowed: true };
+  return { allowed: true, layer: "runtime" };
 }
 
 export function llmToolSandboxBlockMessage(decision: LlmToolSandboxDecision): string {

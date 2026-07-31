@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Brain, Cpu, Gauge, History, ShieldCheck } from "lucide-react";
+import { Brain, Cpu, Gauge, History, Layers, ShieldCheck } from "lucide-react";
 import { HitlPendingPanel } from "@/pages/automation/HitlPendingPanel";
 
 export type AgentEngineRuntimeOption =
@@ -11,6 +11,7 @@ export type AgentEngineRuntimeOption =
 
 export type AgentEngineMemoryOption = "openconduit" | "mem0";
 export type AgentEngineObservabilityOption = "basic" | "full";
+export type UnifiedSpineModeOption = "off" | "shadow" | "primary" | "only";
 
 export type MemoryEngineFormValues = {
   provider: AgentEngineMemoryOption;
@@ -43,6 +44,8 @@ export type AgentEngineFormValues = {
   schedulerEnabled: boolean;
   /** Recupera tools em falta e envia fallback em bloqueio strict. */
   resilienceEnabled: boolean;
+  /** Unified Execution Spine — Prompt → IR → ExecutionEngine (Motor Padrão). */
+  unifiedSpineMode: UnifiedSpineModeOption;
   maxMandatoryRecoveries: number;
   blockedFallbackMessage: string;
 };
@@ -74,6 +77,8 @@ const RUNTIMES: Array<{ id: AgentEngineRuntimeOption; future?: boolean }> = [
   { id: "autogen" },
   { id: "mastra" },
 ];
+
+const UNIFIED_SPINE_MODES: UnifiedSpineModeOption[] = ["off", "shadow", "primary", "only"];
 
 export function AgentEnginePanel({
   value,
@@ -312,6 +317,44 @@ export function AgentEnginePanel({
           ))}
         </div>
       </fieldset>
+
+      {value.runtime === "openconduit" ? (
+        <fieldset className="mt-4 rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <legend className="inline-flex items-center gap-1.5 px-1 text-xs font-semibold text-ink-800 dark:text-ink-200">
+            <Layers className="h-3.5 w-3.5 text-emerald-600" />
+            {t("automationPage.agentEngineUnifiedSpineTitle")}
+          </legend>
+          <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentEngineUnifiedSpineHelp")}</p>
+          <div className="mt-2 space-y-1.5">
+            {UNIFIED_SPINE_MODES.map((mode) => (
+              <label
+                key={mode}
+                className={clsx(
+                  "flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-2 text-xs",
+                  value.unifiedSpineMode === mode
+                    ? "border-emerald-400 bg-white dark:border-emerald-600 dark:bg-ink-950"
+                    : "border-transparent hover:bg-white/60 dark:hover:bg-ink-950/40",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="agentEngineUnifiedSpineMode"
+                  className="mt-0.5"
+                  checked={value.unifiedSpineMode === mode}
+                  onChange={() => patch({ unifiedSpineMode: mode })}
+                />
+                <span>
+                  <span className="font-medium">{t(`automationPage.agentEngineUnifiedSpine_${mode}`)}</span>
+                  <span className="mt-0.5 block text-[11px] font-normal text-ink-500">
+                    {t(`automationPage.agentEngineUnifiedSpine_${mode}Help`)}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-ink-400">{t("automationPage.agentEngineUnifiedSpineEnvNote")}</p>
+        </fieldset>
+      ) : null}
 
       {value.runtime === "langgraph" ? (
         <fieldset className="mt-4 rounded-lg border border-violet-200/60 bg-white/60 p-3 dark:border-violet-900/40 dark:bg-ink-950/30">

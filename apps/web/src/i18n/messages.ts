@@ -594,6 +594,23 @@ export const messages = {
       agentEngineOutboundStreamingHelp: "Envia chunks de texto ao contacto durante a geração LLM (opt-in; múltiplas mensagens).",
       agentEngineParallelKbPrefetch: "Prefetch KB paralelo (Send API)",
       agentEngineParallelKbPrefetchHelp: "Pré-carrega artigos pinned em paralelo antes do executor nativo (runtime langgraph).",
+      agentEngineUnifiedSpineTitle: "Unified Execution Spine",
+      agentEngineUnifiedSpineHelp:
+        "Pipeline Prompt → IR → ExecutionEngine no Motor Padrão. Recomendado: começar em «Sombra» para validar sem alterar o comportamento entregue ao cliente.",
+      agentEngineUnifiedSpine_off: "Desligado (legacy)",
+      agentEngineUnifiedSpine_offHelp:
+        "Comportamento anterior — o monolito governa plano e contrato. Default de compatibilidade.",
+      agentEngineUnifiedSpine_shadow: "Sombra",
+      agentEngineUnifiedSpine_shadowHelp:
+        "O spine corre em paralelo e regista divergências; a resposta ao cliente continua pelo caminho legacy.",
+      agentEngineUnifiedSpine_primary: "Primário",
+      agentEngineUnifiedSpine_primaryHelp:
+        "TurnContext e plano vêm do ExecutionEngine; fallback legacy só se houver divergência crítica.",
+      agentEngineUnifiedSpine_only: "Exclusivo",
+      agentEngineUnifiedSpine_onlyHelp:
+        "Só o spine — sem buildTurnContext legacy. Use em staging após validação em sombra/primário.",
+      agentEngineUnifiedSpineEnvNote:
+        "A variável de ambiente AGENT_ENGINE_UNIFIED_SPINE (shadow|primary|only|off) sobrepõe-se a esta opção por agente.",
       agentEngineTurnRuntimeTitle: "TurnContext — Scheduler e Resiliência",
       agentEngineTurnRuntimeHelp:
         "Disponível com LangGraph. O Scheduler invoca tools obrigatórias antes do LLM; a Resiliência evita silêncio quando o modo estrito bloqueia.",
@@ -6083,6 +6100,23 @@ export const messages = {
       agentEngineOutboundStreamingHelp: "Sends text chunks to the contact during LLM generation (opt-in; multiple messages).",
       agentEngineParallelKbPrefetch: "Parallel KB prefetch (Send API)",
       agentEngineParallelKbPrefetchHelp: "Preloads pinned articles in parallel before the native executor (langgraph runtime).",
+      agentEngineUnifiedSpineTitle: "Unified Execution Spine",
+      agentEngineUnifiedSpineHelp:
+        "Prompt → IR → ExecutionEngine pipeline on Standard Engine. Recommended: start with Shadow to validate without changing customer-facing behavior.",
+      agentEngineUnifiedSpine_off: "Off (legacy)",
+      agentEngineUnifiedSpine_offHelp:
+        "Previous behavior — monolith owns plan and contract. Default for backward compatibility.",
+      agentEngineUnifiedSpine_shadow: "Shadow",
+      agentEngineUnifiedSpine_shadowHelp:
+        "Spine runs in parallel and logs diffs; customer replies still use the legacy path.",
+      agentEngineUnifiedSpine_primary: "Primary",
+      agentEngineUnifiedSpine_primaryHelp:
+        "TurnContext and plan from ExecutionEngine; legacy fallback only on critical divergence.",
+      agentEngineUnifiedSpine_only: "Only",
+      agentEngineUnifiedSpine_onlyHelp:
+        "Spine only — no legacy buildTurnContext. Use in staging after shadow/primary validation.",
+      agentEngineUnifiedSpineEnvNote:
+        "Environment variable AGENT_ENGINE_UNIFIED_SPINE (shadow|primary|only|off) overrides this per-agent setting.",
       agentEngineTurnRuntimeTitle: "TurnContext — Scheduler & Resilience",
       agentEngineTurnRuntimeHelp:
         "Available with LangGraph. Scheduler runs required tools before the LLM; Resilience avoids silence when strict mode blocks.",

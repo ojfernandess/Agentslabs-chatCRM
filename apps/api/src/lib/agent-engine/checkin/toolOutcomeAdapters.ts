@@ -31,7 +31,12 @@ export function checkInPreInvokeBlockReason(
   flowSlots: Record<string, unknown> | null | undefined,
 ): string | null {
   if (!isCheckInCompletionToolName(toolName)) return null;
-  const store = mergeFactStores(facts, factsFromFlowSlots(flowSlots ?? null));
+  const store = mergeFactStores(
+    facts,
+    factsFromFlowSlots(
+      flowSlots as Record<string, string | number | boolean> | undefined,
+    ),
+  );
   if (graph) {
     const invoke = canInvokeTool(graph, toolName, store);
     if (!invoke.ok) {

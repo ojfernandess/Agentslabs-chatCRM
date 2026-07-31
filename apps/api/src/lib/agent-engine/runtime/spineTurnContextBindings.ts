@@ -34,7 +34,12 @@ export function buildLegacyTurnContextFromBindings(
     behaviorConfig: opts.behaviorConfig,
     userMessage: opts.userMessage,
     availableToolNames: opts.availableToolNames,
-    toolOutcomes: opts.toolOutcomes,
+    toolOutcomes: opts.toolOutcomes.map((t) => ({
+      name: t.name,
+      ok: t.ok !== false,
+      preview: t.preview,
+      structuredPayload: t.structuredPayload,
+    })),
     toolConfigs: opts.toolConfigs,
     memory: opts.memory,
     sessionPriorOutcomes: opts.sessionPriorOutcomes,

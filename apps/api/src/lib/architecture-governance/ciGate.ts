@@ -62,7 +62,7 @@ function proposalFromFiles(files: string[], repoRoot: string): ProposedChange {
     architectureBefore: "main branch baseline",
     architectureAfter: "Proposed PR changes",
     technicalJustification: "ADR-0011 Architecture CI Gates",
-    rootCause: touchesRuntime ? "Structural runtime evolution" : undefined,
+    rootCause: touchesRuntime ? "Structural runtime evolution" : "Non-runtime documentation or config change",
   };
 }
 

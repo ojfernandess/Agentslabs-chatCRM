@@ -111,13 +111,18 @@ export function buildPlanGraph(opts: BuildPlanGraphOpts): PlanGraph {
 export function resolveActiveFlowStep(
   flows: FlowDefinition[],
   toolsCalled: string[],
-): { flowId: string; stepId: string; label: string } | null {
+): { flowId: string; stepId: string; label: string; toolNames: string[] } | null {
   const called = new Set(toolsCalled.map((t) => t.toLowerCase()));
   for (const flow of flows) {
     for (const step of flow.steps) {
       const pending = step.toolNames.some((t) => !called.has(t.toLowerCase()));
       if (pending && step.toolNames.length > 0) {
-        return { flowId: flow.id, stepId: step.id, label: step.label };
+        return {
+          flowId: flow.id,
+          stepId: step.id,
+          label: step.label,
+          toolNames: step.toolNames,
+        };
       }
     }
   }

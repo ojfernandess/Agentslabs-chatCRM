@@ -215,7 +215,8 @@ export type AgentGraphEventKind =
   | "hitl"
   | "token"
   | "turn_context"
-  | "workflow_engine";
+  | "workflow_engine"
+  | "spine";
 
 export type AgentGraphEvent = {
   kind: AgentGraphEventKind;

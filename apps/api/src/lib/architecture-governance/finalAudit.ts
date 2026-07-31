@@ -112,6 +112,7 @@ function computeReconstructionScore(repoRoot: string) {
     title: "Unified Execution Spine reconstruction F0-F9",
     reason: "Final architecture audit ADR-0003 accepted",
     problem: "Dual runtime and prompt-specific patches eliminated via IR spine",
+    rootCause: "Incremental patches without unified execution spine",
     modifiedFiles: [
       "apps/api/src/lib/agent-engine/compiler/compilePromptToIR.ts",
       "apps/api/src/lib/agent-engine/planner/UnifiedExecutionPlanner.ts",

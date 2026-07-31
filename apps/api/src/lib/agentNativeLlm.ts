@@ -75,7 +75,6 @@ import {
   assistantIsTitularMirrorConfirm,
   readPartySize,
 } from "./agent-engine/core/confirmationTurnGuards.js";
-import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
 import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
 import {
