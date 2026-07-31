@@ -5,6 +5,7 @@ import {
   planScheduledToolInvocations,
   type ScheduledToolInvocation,
 } from "./TurnToolScheduler.js";
+import { maybeSendInterimNotifyBeforeScheduledTools } from "./schedulerInterimNotify.js";
 
 export type ScheduledToolOutcome = {
   name: string;
@@ -25,6 +26,8 @@ export type InvokeScheduledToolsInput = {
   existingOutcomes?: Array<{ name: string; ok?: boolean; preview?: string }>;
   userMessage: string;
   kbPrefetchAppendix?: string;
+  contactId?: string;
+  executionLog?: import("../../automationExecutionLog.js").AutomationExecutionLogPort | null;
 };
 
 export type InvokeScheduledToolsResult = {
@@ -43,6 +46,17 @@ export async function invokeScheduledTools(
   if (invocations.length === 0) {
     return { invocations: [], outcomes: [] };
   }
+
+  await maybeSendInterimNotifyBeforeScheduledTools({
+    organizationId: input.organizationId,
+    botId: input.bot.id,
+    conversationId: input.conversation.id,
+    contactId: input.contactId,
+    toolNames: invocations.map((i) => i.toolName),
+    behaviorConfig: input.behaviorConfig,
+    log: input.log,
+    executionLog: input.executionLog,
+  });
 
   const { invokeSingleNativeAgentTool, parseToolCallOutcomeFromJson } = await import(
     "../../agentNativeLlm.js"

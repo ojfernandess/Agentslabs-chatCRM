@@ -342,3 +342,23 @@ test("resolveRequiredToolNamesForTurn — quote request does not require disponi
     JSON.stringify(names),
   );
 });
+
+test("resolveRequiredToolNamesForTurn — FAQ check-in horario requires buscar_conhecimento not consultar_reserva", () => {
+  const playbook = `
+| C3 | Check-in explícito | fazer check-in + localizador | Chame \`audaar_consultar_reserva\` |
+| C5 | Fato da unidade | horário · Wi-Fi · endereço | Chame \`buscar_conhecimento\` |
+`;
+  const faqNames = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "qual o horario de check-in da club suites?" },
+  );
+  assert.equal(faqNames.includes("buscar_conhecimento"), true, JSON.stringify(faqNames));
+  assert.equal(faqNames.some((n) => /consultar_reserva/i.test(n)), false, JSON.stringify(faqNames));
+
+  const howNames = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "boa tarde, como funciona o check-in?" },
+  );
+  assert.equal(howNames.includes("buscar_conhecimento"), true, JSON.stringify(howNames));
+  assert.equal(howNames.some((n) => /consultar_reserva/i.test(n)), false, JSON.stringify(howNames));
+});

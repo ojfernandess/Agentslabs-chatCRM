@@ -24,3 +24,10 @@ test("sanitizeOutboundAgentReply truncates long replies", () => {
   const out = sanitizeOutboundAgentReply("a".repeat(5000));
   assert.ok(out.length <= 4001);
 });
+
+test("sanitizeOutboundAgentReply deduplicates check-in links", () => {
+  const link = "https://pms.audaar.com.br/checkin/vivapp/access";
+  const raw = `Check-in online:\n${link}\n\n🔗\n${link}`;
+  const out = sanitizeOutboundAgentReply(raw);
+  assert.equal((out.match(/pms\.audaar\.com\.br\/checkin/gi) ?? []).length, 1);
+});

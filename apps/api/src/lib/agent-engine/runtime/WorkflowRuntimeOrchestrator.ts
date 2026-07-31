@@ -112,6 +112,8 @@ async function runSchedulerOnce(
     turnContext: engineState.turnContext,
     existingOutcomes: existing,
     userMessage: input.message.body ?? "",
+    contactId: input.contactId ?? input.conversation.contactId ?? undefined,
+    executionLog: input.executionLog,
   });
   const outcomes = mergeToolOutcomes(
     existing,

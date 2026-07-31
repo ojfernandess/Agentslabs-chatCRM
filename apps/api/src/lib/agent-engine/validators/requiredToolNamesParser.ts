@@ -110,6 +110,11 @@ import {
   guestAsksQuoteCategoryInfo,
   messageLooksLikeQuoteCategoryQuestion,
 } from "../core/confirmationTurnGuards.js";
+import {
+  isOperationalQuoteMessage,
+  messageContainsReservationLocator,
+  userMessageLooksLikeKnowledgeSeekingQuery,
+} from "../../knowledgeQueryEnrichment.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
@@ -121,16 +126,32 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     id: "checkin_or_reservation",
     test: (m) => {
       if (messageLooksLikeQuoteStayDetails(m)) return false;
+      if (!messageContainsReservationLocator(m)) return false;
       return (
         /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(?:da\s+)?reserva/i.test(
           m,
         ) &&
-        /[A-Za-z0-9]{5,}/.test(m.replace(/\s+/g, "")) &&
         !/\b(cota[cç][aã]o|disponibilidade|pre[cç]o|reservar)\b/i.test(m)
       );
     },
     playbookHints:
       /\b(C3|C2|check[- ]?in\b.*localizador|localizador.*check[- ]?in|consultar_reserva|verificar\s+reserva)\b/i,
+  },
+  {
+    id: "knowledge_unit_fact",
+    test: (m) => {
+      if (messageLooksLikeQuoteStayDetails(m)) return false;
+      if (isOperationalQuoteMessage(m)) return false;
+      if (
+        messageContainsReservationLocator(m) &&
+        /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva/i.test(m)
+      ) {
+        return false;
+      }
+      return userMessageLooksLikeKnowledgeSeekingQuery(m);
+    },
+    playbookHints:
+      /\b(C5|Fato da unidade|buscar_conhecimento|FAQ|hor[aá]rio|Wi-Fi|endere[cç]o|categorias|pol[ií]ticas)\b/i,
   },
   {
     id: "quote_request",
@@ -353,6 +374,12 @@ function scoreTurnLine(
   } else if (pattern.id === "quote_category_info") {
     if (/\bC6d\b/i.test(category) || /\bC6d\b/i.test(line)) score += 8;
     if (/buscar_conhecimento|categoria|passo\s+3a/i.test(line)) score += 4;
+  } else if (pattern.id === "knowledge_unit_fact") {
+    if (/\bC5\b/i.test(category) || /\bC5\b/i.test(line)) score += 8;
+    if (/buscar_conhecimento|FAQ|hor[aá]rio|Wi-Fi|endere[cç]o|categorias|pol[ií]ticas/i.test(line)) {
+      score += 4;
+    }
+    if (/consultar_reserva/i.test(line)) score -= 10;
   } else if (
     pattern.id === "quote_request" ||
     pattern.id === "quote_stay_details" ||

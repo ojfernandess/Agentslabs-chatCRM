@@ -655,11 +655,16 @@ export function turnPolicyPreExecBlockReason(
   policy: TurnPolicy,
 ): string | null {
   if (policy.blockEscalation && isEscalationToolName(toolName)) {
-    const hint =
-      policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0
-        ? ` Continue o fluxo — use apenas: ${policy.exclusiveAllowedTools.join(", ")}.`
-        : " Continue o fluxo sem transferir.";
-    return `Ferramenta de escalonamento ${toolName} bloqueada em turno de confirmação (C11).${hint}`;
+    const explicitlyAllowed = policy.exclusiveAllowedTools?.some((a) =>
+      toolOutcomeSatisfiesRequired(a, [{ name: toolName, preview: "" }]),
+    );
+    if (!explicitlyAllowed) {
+      const hint =
+        policy.exclusiveAllowedTools && policy.exclusiveAllowedTools.length > 0
+          ? ` Continue o fluxo — use apenas: ${policy.exclusiveAllowedTools.join(", ")}.`
+          : " Continue o fluxo sem transferir.";
+      return `Ferramenta de escalonamento ${toolName} bloqueada em turno de confirmação (C11).${hint}`;
+    }
   }
   if (!policy.exclusiveAllowedTools || policy.exclusiveAllowedTools.length === 0) {
     return null;

@@ -78,6 +78,28 @@ export function isNonDeliveringAgentReply(text: string, configuredStallMessages?
   return isLikelyStallOnlyReply(t, configuredStallMessages);
 }
 
+const DEFAULT_CHECKIN_LINK = "https://pms.audaar.com.br/checkin/vivapp/access";
+
+/** Remove URLs de check-in duplicadas — playbook exige link 1×. */
+export function deduplicateCheckinLinksInReply(
+  text: string,
+  _checkinLink: string = DEFAULT_CHECKIN_LINK,
+): string {
+  const t = (text ?? "").trim();
+  if (!t) return t;
+
+  const checkinUrlRe = /https?:\/\/[^\s]*pms\.audaar\.com\.br\/checkin[^\s]*/gi;
+  let seen = false;
+  let out = t.replace(checkinUrlRe, (match) => {
+    if (seen) return "";
+    seen = true;
+    return match;
+  });
+  out = out.replace(/^\s*🔗\s*$/gm, "");
+  out = out.replace(/\n{3,}/g, "\n\n");
+  return out.trim();
+}
+
 /** Bloco de sistema para turnos runtime_owned com tools ja executadas. */
 export function buildRuntimeOwnedReplyGuardAppendix(): string {
   return (

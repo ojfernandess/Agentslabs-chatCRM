@@ -196,6 +196,20 @@ export type KnowledgeSearchSkipContext = {
   reservationLookupScheduled?: boolean;
 };
 
+/** Localizador de reserva — exige pelo menos um dígito (evita falso positivo em palavras PT). */
+export const RESERVATION_REFERENCE_CODE_RE = /\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i;
+
+export function extractReservationReferenceFromMessage(userMessage: string): string | null {
+  const t = (userMessage ?? "").trim();
+  if (!t) return null;
+  const m = t.match(RESERVATION_REFERENCE_CODE_RE);
+  return m?.[0]?.toUpperCase() ?? null;
+}
+
+export function messageContainsReservationLocator(userMessage: string): boolean {
+  return extractReservationReferenceFromMessage(userMessage) !== null;
+}
+
 /**
  * Pedido operacional C2/C3 (check-in / verificar reserva + localizador) —
  * dados vêm da API HTTP, nunca da KB.
@@ -205,9 +219,9 @@ export function isOperationalReservationLookupMessage(userMessage: string): bool
   if (!t) return false;
   if (isOperationalQuoteMessage(t)) return false;
   if (/data de chegada\s*\(check-in\)|data de partida\s*\(checkout\)/i.test(t)) return false;
-  return (
-    /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(t) &&
-    /[A-Za-z0-9]{5,}/.test(t.replace(/\s+/g, ""))
+  if (!messageContainsReservationLocator(t)) return false;
+  return /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(
+    t,
   );
 }
 

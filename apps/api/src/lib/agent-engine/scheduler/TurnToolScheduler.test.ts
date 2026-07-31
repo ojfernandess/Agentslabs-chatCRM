@@ -171,3 +171,30 @@ test("formatScheduledToolsSystemAppendix forbids claiming success when tool fail
   assert.match(appendix, /PROIBIDO dizer ao cliente que a operação foi concluída/i);
   assert.match(appendix, /schema_validation_failed/);
 });
+
+const C6_DISCOUNT_OFFER_MSG = `Entendo sua preocupação com o valor. Não posso conceder descontos por aqui, mas posso transferir você para nossa equipe de atendimento para verificar se há alguma condição especial disponível.
+
+Deseja que eu faça essa transferência?`;
+
+test("planScheduledToolInvocations schedules call_human on sim after C6 discount offer", () => {
+  const ctx = buildTurnContext({
+    turnId: "c6f-sim",
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `
+| C6f | Desconto pós-cotação | caro · desconto | sim → call_human | call_human |
+| C6 | Cotação | cotação | GATE C6 | ZERO |
+`,
+      },
+    },
+    userMessage: "sim",
+    lastAssistantMessage: C6_DISCOUNT_OFFER_MSG,
+    availableToolNames: ["call_human"],
+  });
+  const plan = planScheduledToolInvocations(ctx, []);
+  assert.deepEqual(
+    plan.map((p) => p.toolName),
+    ["call_human"],
+  );
+});

@@ -8,6 +8,8 @@ import {
   shouldEnrichKnowledgeSearchQuery,
   shouldSkipKnowledgeSearchForTurn,
   isOperationalQuoteMessage,
+  isOperationalReservationLookupMessage,
+  messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
   isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
@@ -163,6 +165,25 @@ test("resolveKnowledgeSearchSkip on check-in even without flow slots", () => {
     "checkin_reservation_turn",
   );
   assert.equal(resolveKnowledgeSearchSkip("Qual o Wi-Fi?"), null);
+});
+
+test("FAQ check-in without locator is not operational reservation lookup", () => {
+  assert.equal(messageContainsReservationLocator("boa tarde, como funciona o check-in?"), false);
+  assert.equal(isOperationalReservationLookupMessage("boa tarde, como funciona o check-in?"), false);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("boa tarde, como funciona o check-in?"), true);
+  assert.equal(resolveKnowledgeSearchSkip("boa tarde, como funciona o check-in?"), null);
+
+  assert.equal(messageContainsReservationLocator("qual o horario de check-in da club suites?"), false);
+  assert.equal(
+    userMessageLooksLikeKnowledgeSeekingQuery("qual o horario de check-in da club suites?"),
+    true,
+  );
+});
+
+test("check-in with valid locator remains operational reservation lookup", () => {
+  assert.equal(messageContainsReservationLocator("fazer check-in na reserva NCMT0VPN"), true);
+  assert.equal(isOperationalReservationLookupMessage("fazer check-in na reserva NCMT0VPN"), true);
+  assert.equal(resolveKnowledgeSearchSkip("fazer check-in na reserva NCMT0VPN"), "checkin_reservation_turn");
 });
 
 test("shouldSkipKnowledgeSearchForTurn on active flow without KB intent", () => {

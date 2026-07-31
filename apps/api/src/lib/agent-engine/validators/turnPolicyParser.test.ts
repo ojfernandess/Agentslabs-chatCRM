@@ -934,4 +934,5 @@ test("resolveTurnPolicy — sim after discount offer requires call_human exclusi
   );
   assert.equal(policy.forceExclusiveExecution, true);
   assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+  assert.equal(turnPolicyPreExecBlockReason("call_human", policy), null);
 });

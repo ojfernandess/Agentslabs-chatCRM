@@ -92,6 +92,7 @@ import {
   extractReservationDisplayFields,
   quoteOptionsCatalogSlotPatchFromAvailabilityOutcome,
 } from "./agent-engine/reply/ReplySynthesizer.js";
+import { deduplicateCheckinLinksInReply } from "./agent-engine/reply/ReplyQuality.js";
 import { buildDeterministicReplyFromToolOutcomes } from "./agent-engine/reply/DeterministicReplyFromTools.js";
 import {
   readEmbraturReferenceCatalogFromFlowSlots,
@@ -705,6 +706,7 @@ export function sanitizeOutboundAgentReply(text: string): string {
   if (FORCED_KB_REPLY_PREFIX_RE.test(t)) {
     t = t.replace(FORCED_KB_REPLY_PREFIX_RE, "Com base na nossa base de conhecimento:\n\n");
   }
+  t = deduplicateCheckinLinksInReply(t);
   return t.length > OUTBOUND_MAX_CHARS ? `${t.slice(0, OUTBOUND_MAX_CHARS)}…` : t;
 }
 
@@ -2325,6 +2327,8 @@ async function generateNativeAgentReplyCore(input: {
           existingOutcomes: toolRoundOutcomes,
           userMessage,
           kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+          contactId: effectiveContactId,
+          executionLog: ex,
         });
         for (const o of scheduled.outcomes) {
           toolRoundOutcomes.push({

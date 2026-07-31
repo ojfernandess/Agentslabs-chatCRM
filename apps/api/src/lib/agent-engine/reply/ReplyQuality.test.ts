@@ -5,6 +5,7 @@ import {
   isNonDeliveringAgentReply,
   isLikelyStallOnlyReply,
   hasSubstantiveAgentReplyToCustomer,
+  deduplicateCheckinLinksInReply,
 } from "./ReplyQuality.js";
 
 /** Texto exacto da execução 11:31 (`c28f4e93`). */
@@ -42,4 +43,15 @@ test("isToolNarrationReply catches 12:14 italic tool name stall", () => {
     "Vou consultar a disponibilidade agora. Um momento, por favor.\n\n*audaar_consultar_disponibilidade*";
   assert.equal(isToolNarrationReply(reply), true);
   assert.equal(hasSubstantiveAgentReplyToCustomer(reply), false);
+});
+
+test("deduplicateCheckinLinksInReply keeps link once when repeated", () => {
+  const link = "https://pms.audaar.com.br/checkin/vivapp/access";
+  const dup =
+    `O check-in online é feito pelo link:\n${link}\n\n` +
+    `🔗\n${link}\n\n` +
+    `Qualquer dúvida, estou à disposição.`;
+  const out = deduplicateCheckinLinksInReply(dup);
+  assert.equal((out.match(/pms\.audaar\.com\.br\/checkin/gi) ?? []).length, 1);
+  assert.match(out, /check-in online/i);
 });

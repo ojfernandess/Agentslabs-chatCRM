@@ -262,6 +262,24 @@ test("ensureDeliveringReply offers discount transfer when guest says it is expen
   assert.doesNotMatch(result.reply, /10%|aplicar desconto|claro/i);
 });
 
+const C6_DISCOUNT_OFFER_MSG = `Entendo sua preocupação com o valor. Não posso conceder descontos por aqui, mas posso transferir você para nossa equipe de atendimento para verificar se há alguma condição especial disponível.
+
+Deseja que eu faça essa transferência?`;
+
+test("ensureDeliveringReply renders discount handoff after sim and call_human OK", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Perfeito! Vou transferir agora. Um momento.\n\n*call_human*",
+    userMessage: "sim",
+    lastAssistantMessage: C6_DISCOUNT_OFFER_MSG,
+    toolOutcomes: [{ name: "call_human", ok: true, preview: '{"ok":true}' }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_discount_handoff");
+  assert.match(result.reply, /transferir.*equipe de atendimento/i);
+  assert.match(result.reply, /desconto|condi[cç][aã]o especial/i);
+  assert.doesNotMatch(result.reply, /\*call_human\*|um momento/i);
+});
+
 test("ensureDeliveringReply forces C6 options when LLM mimics format with Motor prices", () => {
   const wrongLlmReply = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:
 
