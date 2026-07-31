@@ -61,7 +61,10 @@ export function analyzeTurnIntent(userMessage: string, turnPlan: ExecutionTurnPl
   } else if (/^(sim|ok|confirmo|yes|não|nao|no)$/i.test(msg)) {
     kind = "confirmation";
     confidence = 0.9;
-  } else if (/^\d{11}$/.test(msg) || /^[A-Z0-9]{6,12}$/i.test(msg)) {
+  } else if (
+    /^\d{11}$/.test(msg) ||
+    (/^[A-Z0-9]{6,12}$/i.test(msg) && turnPlan.requiredToolNames.length === 0)
+  ) {
     kind = "data_submission";
     confidence = 0.8;
   } else if (turnPlan.requiredToolNames.length > 0) {

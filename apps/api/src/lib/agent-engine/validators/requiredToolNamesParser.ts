@@ -125,6 +125,7 @@ import {
   userMessageLooksLikeAmenityItemQuestion,
   unitKbTurnNeedsEstablishmentCollection,
   resolveEstablishmentInConversation,
+  shouldRequireReservationLookupThisTurn,
 } from "../../unitKnowledgeFlow.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
@@ -622,6 +623,16 @@ export function resolveRequiredToolNamesForTurn(
 
   if (unitKbTurnNeedsEstablishmentCollection(unitCtx)) {
     return [];
+  }
+
+  if (shouldRequireReservationLookupThisTurn(unitCtx)) {
+    const reservationTool = available.find((t) => /consultar_reserva/i.test(t));
+    return dedupeRequiredToolAliases(
+      filterAgainstAvailable(
+        reservationTool ? [reservationTool] : ["audaar_consultar_reserva"],
+        available,
+      ),
+    );
   }
 
   if (

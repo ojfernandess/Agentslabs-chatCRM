@@ -1,6 +1,10 @@
 /**
- * Fluxos C17 (check-out), C18 (comodidade) e C19 (recibo/NF) — coleta de unidade + KB.
+ * Fluxos C17 (check-out), C18 (comodidade), C19 (recibo/NF) e localizador isolado.
  */
+
+import {
+  extractReservationReferenceFromMessage,
+} from "./knowledgeQueryEnrichment.js";
 
 export const ESTABLISHMENT_MENU: ReadonlyArray<{ digit: string; name: string }> = [
   { digit: "1", name: "Audaar Tech Suites" },
@@ -111,4 +115,39 @@ export function unitKbTurnNeedsEstablishmentCollection(opts: {
     userMessageLooksLikeAmenityItemQuestion(msg);
   if (!needsUnit) return false;
   return !resolveEstablishmentInConversation(opts);
+}
+
+/** Mensagem contém só o localizador (ex.: DE4KRMDP). */
+export function messageIsStandaloneReservationLocator(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  const loc = extractReservationReferenceFromMessage(t);
+  if (!loc) return false;
+  const remainder = t.replace(new RegExp(loc, "i"), "").replace(/[\s.,!?;:–—-]+/g, "");
+  return remainder.length === 0;
+}
+
+/** Agente pediu localizador no turno anterior (NF, senha, reclamação). */
+export function assistantRequestedReservationLocator(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (/\blocalizador\b/i.test(t)) {
+    if (/\b(nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t)) return true;
+    if (/\b(per[ií]odo|valor|quarto|h[oó]spede|unidade)\b/i.test(t)) return true;
+    if (/\b(senha|acesso|c[oó]digo)\b/i.test(t)) return true;
+    if (/\b(?:me\s+)?(?:informe|envie|mande|passe)\b/i.test(t)) return true;
+    if (/localizador\s+(?:da\s+)?reserva/i.test(t)) return true;
+  }
+  return false;
+}
+
+/** Localizador isolado após pedido do agente → consultar_reserva (C19/C14/C13). */
+export function shouldRequireReservationLookupThisTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  return (
+    messageIsStandaloneReservationLocator(opts.userMessage) &&
+    assistantRequestedReservationLocator(opts.lastAssistantMessage)
+  );
 }

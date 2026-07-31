@@ -271,6 +271,25 @@ test("resolveRequiredToolNamesForTurn checkout with unit requires buscar_conheci
   assert.deepEqual(names, ["buscar_conhecimento"]);
 });
 
+test("resolveRequiredToolNamesForTurn standalone locator after NF request requires consultar_reserva", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C19 | Recibo/NF | Chame \`audaar_consultar_reserva\` · \`buscar_conhecimento\` |
+| C3 | Check-in | Chame \`audaar_consultar_reserva\` |
+`,
+    },
+    availableToolNames: ["audaar_consultar_reserva", "buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "DE4KRMDP",
+    lastAssistantMessage:
+      "Para a nota fiscal, informe o localizador da reserva para preencher período, valor, unidade, hóspede e quarto.",
+  });
+  assert.deepEqual(names, ["audaar_consultar_reserva"]);
+});
+
 test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

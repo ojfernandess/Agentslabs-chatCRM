@@ -5,6 +5,9 @@ import {
   userMessageLooksLikeReceiptOrInvoiceRequest,
   resolveEstablishmentInConversation,
   unitKbTurnNeedsEstablishmentCollection,
+  messageIsStandaloneReservationLocator,
+  assistantRequestedReservationLocator,
+  shouldRequireReservationLookupThisTurn,
 } from "./unitKnowledgeFlow.js";
 
 test("checkout procedure question is detected", () => {
@@ -37,4 +40,30 @@ test("checkout with establishment in message skips collection", () => {
 
 test("receipt request is detected", () => {
   assert.equal(userMessageLooksLikeReceiptOrInvoiceRequest("preciso de nota fiscal"), true);
+});
+
+test("standalone locator after NF request requires reservation lookup", () => {
+  assert.equal(messageIsStandaloneReservationLocator("DE4KRMDP"), true);
+  assert.equal(messageIsStandaloneReservationLocator("fazer check-in DE4KRMDP"), false);
+  assert.equal(
+    assistantRequestedReservationLocator(
+      "Para a nota fiscal, informe o localizador da reserva para preencher período e valor.",
+    ),
+    true,
+  );
+  assert.equal(
+    shouldRequireReservationLookupThisTurn({
+      userMessage: "DE4KRMDP",
+      lastAssistantMessage:
+        "Para emitir a NF, preciso do localizador da reserva para preencher período, valor, unidade, hóspede e quarto.",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRequireReservationLookupThisTurn({
+      userMessage: "DE4KRMDP",
+      lastAssistantMessage: "Olá! Como posso ajudar?",
+    }),
+    false,
+  );
 });
