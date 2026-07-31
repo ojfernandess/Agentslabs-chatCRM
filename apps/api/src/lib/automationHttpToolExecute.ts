@@ -7,6 +7,7 @@ import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js";
 import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "./agent-engine/checkin/embraturTravelForm.js";
+import { httpToolBodyIndicatesFailure } from "./agent-engine/checkin/toolOutcomeParsing.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -1418,8 +1419,13 @@ export async function runAutomationHttpLikeTool(input: {
     const res = await secureHttpFetch(url.toString(), { method, headers, body: requestBody, signal: ctrl.signal });
     clearTimeout(t);
     statusCode = res.status;
-    ok = res.ok;
     responseText = truncateBody(await res.text(), 50_000);
+    if (res.ok && httpToolBodyIndicatesFailure(responseText)) {
+      ok = false;
+      errMsg = errMsg ?? "http_business_validation_failed";
+    } else {
+      ok = res.ok;
+    }
   } catch (e) {
     errMsg = e instanceof Error ? e.message : String(e);
   }

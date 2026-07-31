@@ -24,6 +24,10 @@ import {
   isPostCompletionPending,
 } from "../core/sessionToolOutcomes.js";
 import {
+  isCheckInCompletionToolName,
+  shouldBlockCheckInUntilEmbraturResolved,
+} from "../checkin/embraturRuntimeGuards.js";
+import {
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
   assistantIsPostCheckInAck,
@@ -761,6 +765,13 @@ export function toolAliasesToOmitFromCatalog(opts: {
       catalogToolNames: opts.catalogToolNames,
     })) {
       omit.add(alias);
+    }
+  }
+
+  // Global: check-in só após IDs Embratur resolvidos via embratur-reference.
+  if (shouldBlockCheckInUntilEmbraturResolved(opts.flowSlots as Record<string, unknown> | null)) {
+    for (const name of catalog) {
+      if (isCheckInCompletionToolName(name)) omit.add(name);
     }
   }
 

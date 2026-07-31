@@ -316,8 +316,10 @@ export function looksLikeRawToolJson(text: string): boolean {
 }
 
 function outcomeLooksLikeCheckInCompletion(t: SynthesizerToolOutcome): boolean {
+  if (t.ok === false) return false;
   if (/consultar/i.test(t.name)) return false;
   if (/check[_-]?in/i.test(t.name) && !/upload|selfie|documento|document|photo|foto/i.test(t.name)) {
+    if (/validationError|embratur_incomplete|missingFields/i.test(t.preview ?? "")) return false;
     return true;
   }
   const preview = t.preview ?? "";

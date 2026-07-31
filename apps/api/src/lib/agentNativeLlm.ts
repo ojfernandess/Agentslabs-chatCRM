@@ -89,9 +89,19 @@ import {
   hasCompleteEmbraturFields,
   mergeReferenceOutcomeIntoFlowSlots,
   resolveEmbraturSlotsForTravelForm,
+  travelFormTextFromFlowSlots,
 } from "./agent-engine/checkin/embraturReferenceResolver.js";
+import {
+  buildEmbraturIncompleteToolError,
+  EMBRATUR_RESOLUTION_PENDING_SLOT,
+  isCheckInCompletionToolName,
+} from "./agent-engine/checkin/embraturRuntimeGuards.js";
+import { extractHttpToolFailureFromWrapper } from "./agent-engine/checkin/toolOutcomeParsing.js";
 import { messageLooksLikePostGateFormData } from "./agent-engine/core/confirmationTurnGuards.js";
-import { isCompletionReady } from "./agent-engine/core/sessionToolOutcomes.js";
+import {
+  isCompletionReady,
+  SESSION_COMPLETION_READY_KEY,
+} from "./agent-engine/core/sessionToolOutcomes.js";
 import {
   hasSubstantiveAgentReplyToCustomer,
   isLikelyStallOnlyReply,
@@ -214,13 +224,17 @@ async function maybeResolveEmbraturFlowSlots(input: {
   flowSlots: AutomationFlowSlots;
   kbPrefetchAppendix?: string;
 }): Promise<AutomationFlowSlots> {
-  const travelText =
-    (typeof input.flowSlots.__travelFormMessage === "string" &&
-      input.flowSlots.__travelFormMessage.trim()) ||
-    (messageLooksLikePostGateFormData(input.userMessage) ? input.userMessage.trim() : "");
+  const travelText = travelFormTextFromFlowSlots(
+    input.flowSlots as Record<string, unknown>,
+    input.userMessage,
+  );
   if (!travelText) return input.flowSlots;
   if (hasCompleteEmbraturFields(input.flowSlots as Record<string, unknown>)) {
-    return input.flowSlots;
+    return {
+      ...input.flowSlots,
+      [SESSION_COMPLETION_READY_KEY]: true,
+      [EMBRATUR_RESOLUTION_PENDING_SLOT]: false,
+    };
   }
 
   const resolved = await resolveEmbraturSlotsForTravelForm({
@@ -249,7 +263,15 @@ async function maybeResolveEmbraturFlowSlots(input: {
   });
 
   if (Object.keys(resolved).length === 0) return input.flowSlots;
-  return { ...input.flowSlots, ...resolved } as AutomationFlowSlots;
+  const merged = { ...input.flowSlots, ...resolved } as AutomationFlowSlots;
+  if (hasCompleteEmbraturFields(merged as Record<string, unknown>)) {
+    merged[SESSION_COMPLETION_READY_KEY] = true;
+    merged[EMBRATUR_RESOLUTION_PENDING_SLOT] = false;
+  } else {
+    merged[EMBRATUR_RESOLUTION_PENDING_SLOT] = true;
+    merged[SESSION_COMPLETION_READY_KEY] = false;
+  }
+  return merged;
 }
 
 function sessionHasEmbraturReference(
@@ -412,9 +434,10 @@ export function parseToolCallOutcomeFromJson(name: string, out: string): Omit<Na
       (typeof parsed.error === "string" && parsed.error.trim()) ||
       out.slice(0, 400);
     const ok =
-      parsed.ok === true ||
-      parsed.found === true ||
-      (parsed.skipped === true && parsed.ok !== false);
+      !extractHttpToolFailureFromWrapper(parsed) &&
+      (parsed.ok === true ||
+        parsed.found === true ||
+        (parsed.skipped === true && parsed.ok !== false));
     const structuredPayload = extractStructuredPayloadFromToolOut(parsed, out);
     return { name, ok, preview: preview.slice(0, 500), structuredPayload };
   } catch {
@@ -2289,7 +2312,11 @@ async function generateNativeAgentReplyCore(input: {
   if (
     historyOverride == null &&
     (isCompletionReady(sessionFlowSlots) ||
-      messageLooksLikePostGateFormData(userMessage)) &&
+      messageLooksLikePostGateFormData(userMessage) ||
+      sessionFlowSlots[EMBRATUR_RESOLUTION_PENDING_SLOT] === true ||
+      sessionFlowSlots[EMBRATUR_RESOLUTION_PENDING_SLOT] === "true" ||
+      (typeof sessionFlowSlots.__travelFormMessage === "string" &&
+        sessionFlowSlots.__travelFormMessage.trim())) &&
     !hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)
   ) {
     try {
@@ -2791,6 +2818,41 @@ async function generateNativeAgentReplyCore(input: {
                 );
               }
 
+              if (isCheckInCompletionToolName(row.name)) {
+                if (!hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)) {
+                  try {
+                    sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
+                      organizationId,
+                      bot,
+                      conversation,
+                      message,
+                      log,
+                      behaviorConfig: behaviorConfigObj,
+                      userMessage,
+                      flowSlots: sessionFlowSlots,
+                      kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+                    });
+                    if (httpToolRuntimeContext) {
+                      httpToolRuntimeContext = {
+                        ...httpToolRuntimeContext,
+                        flowSlots: sessionFlowSlots,
+                        conversation: {
+                          ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? {
+                            id: conversation.id,
+                          }),
+                          flowSlots: sessionFlowSlots,
+                        },
+                      };
+                    }
+                  } catch (resolveErr) {
+                    log.warn({ err: resolveErr }, "embratur resolve before check-in failed");
+                  }
+                }
+                if (!hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)) {
+                  return finishToolCall(buildEmbraturIncompleteToolError(sessionFlowSlots));
+                }
+              }
+
               const maxCalls =
                 connectedToolMaxCalls.get(row.id) ?? connectedToolMaxCalls.get(name) ?? null;
               const countKey = row.id;
@@ -3265,8 +3327,11 @@ async function generateNativeAgentReplyCore(input: {
         lastAssistantPreview: replyText,
       }) as AutomationFlowSlots;
       if (
-        messageLooksLikePostGateFormData(userMessage) &&
-        !hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)
+        messageLooksLikePostGateFormData(userMessage) ||
+        sessionFlowSlots[EMBRATUR_RESOLUTION_PENDING_SLOT] === true ||
+        sessionFlowSlots[EMBRATUR_RESOLUTION_PENDING_SLOT] === "true" ||
+        (isCompletionReady(sessionFlowSlots) &&
+          !hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>))
       ) {
         sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
           organizationId,

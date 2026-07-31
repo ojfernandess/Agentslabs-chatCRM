@@ -5,6 +5,8 @@ import {
 } from "./confirmationTurnGuards.js";
 import { extractEmbraturSlotsFromTravelForm } from "../checkin/embraturTravelForm.js";
 import { readEmbraturReferenceCatalogFromFlowSlots } from "../checkin/embraturReferenceCatalog.js";
+import { hasCompleteEmbraturFields } from "../checkin/embraturReferenceResolver.js";
+import { EMBRATUR_RESOLUTION_PENDING_SLOT } from "../checkin/embraturRuntimeGuards.js";
 
 /** Chave genérica em flowSlots para tools satisfeitas na conversa (CSV). */
 export const SESSION_SATISFIED_TOOLS_KEY = "__satisfiedToolNames";
@@ -123,10 +125,17 @@ export function applyConfirmationPhaseTransitions(opts: {
     (slotFlagTrue(slots, SESSION_AWAITING_POST_GATE_DATA_KEY) || assistantAskedEmbraturSix)
   ) {
     slots[SESSION_AWAITING_POST_GATE_DATA_KEY] = false;
-    slots[SESSION_COMPLETION_READY_KEY] = true;
-    // Persistir IDs Embratur via catálogo da reference (S9) — nunca tabelas fixas.
+    slots[SESSION_COMPLETION_READY_KEY] = false;
+    // Persistir ficha; IDs só após match na embratur-reference (runtime resolve depois).
     const catalog = readEmbraturReferenceCatalogFromFlowSlots(slots);
     Object.assign(slots, extractEmbraturSlotsFromTravelForm(userMessage, catalog));
+    slots.__travelFormMessage = userMessage.trim().slice(0, 1500);
+    if (hasCompleteEmbraturFields(slots as Record<string, unknown>)) {
+      slots[SESSION_COMPLETION_READY_KEY] = true;
+      slots[EMBRATUR_RESOLUTION_PENDING_SLOT] = false;
+    } else {
+      slots[EMBRATUR_RESOLUTION_PENDING_SLOT] = true;
+    }
   }
 
   const completionJustOk = okOutcomes.some((o) =>

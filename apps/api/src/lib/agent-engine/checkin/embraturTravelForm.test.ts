@@ -86,7 +86,8 @@ test("applyConfirmationPhaseTransitions without catalog stores only raw form", (
     lastAssistantPreview: "Para finalizar, envie o motivo da viagem",
     confirmationPrerequisiteTools: ["embratur-reference"],
   });
-  assert.equal(slots.__completionReady, true);
+  assert.equal(slots.__completionReady, false);
+  assert.equal(slots.__embraturResolutionPending, true);
   assert.equal(slots.snmotvia, undefined);
   assert.ok(slots.__travelFormMessage);
 });

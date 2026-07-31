@@ -27,7 +27,7 @@ test("hasCompleteEmbraturFields accepts flat slots", () => {
   );
 });
 
-test("resolveEmbraturSlotsForTravelForm uses invokeReference for missing pais", async () => {
+test("resolveEmbraturSlotsForTravelForm uses invokeReference for missing pais (embratur_cb_country)", async () => {
   const catalog = parseEmbraturReferenceCatalog({
     motivosViagem: [{ id: 7, nome: "Saúde" }],
     meiosTransporte: [{ id: 2, nome: "Automóvel" }],
@@ -41,11 +41,24 @@ test("resolveEmbraturSlotsForTravelForm uses invokeReference for missing pais", 
     flowSlots: { __embraturReferenceCatalog: JSON.stringify(catalog) },
     invokeReference: async (args) => {
       calls.push(args);
-      if (typeof args.pais === "string" || args.dominio === "paises") {
+      if (args.dominio === "embratur_cb_country" && !args.nome) {
         return {
           ok: true,
           structuredPayload: {
-            paises: [{ id: "6289", nome: "Inglaterra" }],
+            dominio: "embratur_cb_country",
+            dados: [
+              { id: "1058", label: "Brasil" },
+              { id: "6289", label: "Inglaterra" },
+            ],
+          },
+        };
+      }
+      if (args.nome === "Inglaterra" || args.query === "Inglaterra") {
+        return {
+          ok: true,
+          structuredPayload: {
+            dominio: "embratur_cb_country",
+            dados: [{ id: "6289", label: "Inglaterra" }],
           },
         };
       }
@@ -55,6 +68,6 @@ test("resolveEmbraturSlotsForTravelForm uses invokeReference for missing pais", 
 
   assert.equal(slots.snmotvia, "7");
   assert.equal(slots.bgstdscpaisdest, "6289");
-  assert.ok(calls.length > 0);
+  assert.ok(calls.some((c) => c.dominio === "embratur_cb_country"));
   assert.equal(hasCompleteEmbraturFields(slots as Record<string, unknown>), true);
 });

@@ -31,8 +31,9 @@ const MOTIVO_KEY_RE =
   /motivos?(?:_viagem|viagem)?|travelmotives?|snmotvia|motivo_viagem/i;
 const TRANSPORTE_KEY_RE =
   /meios?(?:_transporte|transporte)?|transportes?|sntiptran|meio_transporte/i;
-const PAIS_KEY_RE = /pa[ií]s(?:es)?|countries|bgstdscpais|fnrh.*pais/i;
-const CIDADE_KEY_RE = /cidades?|cities|ibge|snidcidade/i;
+const PAIS_KEY_RE =
+  /pa[ií]s(?:es)?|countries|bgstdscpais|fnrh.*pais|embratur_cb_country|cb_country/i;
+const CIDADE_KEY_RE = /cidades?|cities|ibge|snidcidade|embratur_cb_city|cb_city|municipio/i;
 
 function normalizeLabel(raw: string): string {
   return raw
@@ -96,10 +97,10 @@ function mergeUnique(
 
 function inferCatalogBucketFromHint(hint: string): keyof EmbraturReferenceCatalog | null {
   const h = hint.toLowerCase();
-  if (/motivo|viagem|snmotvia/i.test(h)) return "motivos";
-  if (/transporte|sntiptran|meio/i.test(h)) return "transportes";
-  if (/pa[ií]s|country|bgstdscpais/i.test(h)) return "paises";
-  if (/cidade|city|ibge|snidcidade/i.test(h)) return "cidades";
+  if (/motivo|viagem|snmotvia|cb_travel_motive|travel_motive/i.test(h)) return "motivos";
+  if (/transporte|sntiptran|meio|cb_transport/i.test(h)) return "transportes";
+  if (/pa[ií]s|country|bgstdscpais|cb_country|embratur_cb_country/i.test(h)) return "paises";
+  if (/cidade|city|ibge|snidcidade|cb_city|municipio/i.test(h)) return "cidades";
   return null;
 }
 

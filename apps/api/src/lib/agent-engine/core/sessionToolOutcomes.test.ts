@@ -69,7 +69,8 @@ test("applyConfirmationPhaseTransitions gates completion until post-gate data", 
     userMessage: "Motivo: lazer\nTransporte: carro",
   });
   assert.equal(slots.__awaitingPostGateData, false);
-  assert.equal(slots.__completionReady, true);
+  assert.equal(slots.__completionReady, false);
+  assert.equal(slots.__embraturResolutionPending, true);
 
   slots = applyConfirmationPhaseTransitions({
     baseFlowSlots: slots,
