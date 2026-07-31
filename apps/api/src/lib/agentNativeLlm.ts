@@ -84,6 +84,7 @@ import {
   replyLooksLikeModeloS9,
   extractReservationDisplayFields,
 } from "./agent-engine/reply/ReplySynthesizer.js";
+import { buildDeterministicReplyFromToolOutcomes } from "./agent-engine/reply/DeterministicReplyFromTools.js";
 import {
   readEmbraturReferenceCatalogFromFlowSlots,
   buildModeloS9TemplateFromCatalog,
@@ -496,97 +497,7 @@ export function shouldForceDeliveryAfterTools(input: {
   return !hasSubstantiveAgentReplyToCustomer(input.replyText);
 }
 
-function humanizeToolPreviewForCustomer(preview: string): string {
-  const raw = preview.trim();
-  if (!raw) return "";
-  // Truncated / raw API JSON — never ship to WhatsApp.
-  if (/^\s*[\[{]/.test(raw) && /"(?:message|data|checkin|statusCode|bodyPreview)"\s*:/i.test(raw)) {
-    if (/check-in\s+realizado|validatedCheckin|hasCheckinApproved/i.test(raw)) {
-      return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
-    }
-    return "";
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const o = parsed as Record<string, unknown>;
-      if (Array.isArray(o.articles)) {
-        return "";
-      }
-      for (const key of [
-        "message",
-        "mensagem",
-        "summary",
-        "resumo",
-        "status",
-        "result",
-        "resultado",
-        "guestName",
-        "reservationCode",
-        "confirmationCode",
-      ]) {
-        const v = o[key];
-        if (typeof v === "string" && v.trim()) {
-          // API success strings are not customer-ready ack scripts.
-          if (/check-in\s+realizado/i.test(v)) {
-            return "Seu check-in foi concluído com sucesso! Em seguida envio Wi-Fi, endereço e acessos da estadia.";
-          }
-          return v.trim().slice(0, 600);
-        }
-      }
-      if (typeof o.found === "boolean") {
-        const bits: string[] = [];
-        bits.push(o.found ? "Consulta concluída com registo encontrado." : "Consulta concluída — não encontramos o registo pedido.");
-        for (const key of ["guestName", "name", "reservationCode", "code", "checkIn", "checkOut"]) {
-          const v = o[key];
-          if (typeof v === "string" && v.trim()) bits.push(`${key}: ${v.trim()}`);
-        }
-        return bits.join(" ").slice(0, 600);
-      }
-    }
-  } catch {
-    /* plain text */
-  }
-  if (/^\s*[\[{]/.test(raw)) return "";
-  return raw.replace(/\s+/g, " ").slice(0, 500);
-}
-
-/**
- * Resposta de última linha sem novo LLM — usa previews das tools já executadas.
- * Evita «texto vazio — sem envio» após rate limit / falha na síntese final.
- */
-export function buildDeterministicReplyFromToolOutcomes(
-  toolOutcomes: NativeToolRoundOutcome[],
-): string {
-  const preferred = [
-    ...toolOutcomes.filter((t) => t.monitored && t.ok),
-    ...toolOutcomes.filter((t) => t.ok && t.name !== "buscar_conhecimento"),
-    ...toolOutcomes.filter((t) => t.ok),
-    ...toolOutcomes,
-  ];
-  const seen = new Set<string>();
-  const lines: string[] = [];
-  for (const t of preferred) {
-    if (seen.has(t.name)) continue;
-    seen.add(t.name);
-    if (t.name === "buscar_conhecimento") continue;
-    const human = humanizeToolPreviewForCustomer(t.preview);
-    if (!human) continue;
-    lines.push(human);
-    if (lines.length >= 2) break;
-  }
-  if (lines.length > 0) {
-    return (
-      "Segue o resultado da consulta:\n\n" +
-      lines.join("\n\n") +
-      "\n\nSe precisar de mais algum detalhe, é só dizer."
-    ).slice(0, 3500);
-  }
-  if (toolOutcomes.some((t) => t.ok)) {
-    return "Já consultei o sistema com base no seu pedido. Pode confirmar o próximo passo ou partilhar mais algum detalhe para eu avançar?";
-  }
-  return "Tentei consultar o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido ou partilhar mais um detalhe (por exemplo código ou nome)?";
-}
+export { buildDeterministicReplyFromToolOutcomes } from "./agent-engine/reply/DeterministicReplyFromTools.js";
 
 const OPENAI_FUNCTION_TO_NOTIFY_KEY: Record<string, string> = {
   buscar_conhecimento: "native:knowledge_search",
@@ -3259,13 +3170,17 @@ async function generateNativeAgentReplyCore(input: {
         { id: "reply_synthesizer", name: "Reply Synthesizer" },
         JSON.stringify({ reason: synthesized.reason, afterChars: replyText.length }),
       );
-    } else if (isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
+    }
+    if (isNonDeliveringAgentReply(replyText, configuredStallMessages)) {
       const deterministic = buildDeterministicReplyFromToolOutcomes(toolRoundOutcomes);
-      if (deterministic.trim()) {
+      if (
+        deterministic.trim() &&
+        !isNonDeliveringAgentReply(deterministic, configuredStallMessages)
+      ) {
         replyText = deterministic.trim();
         ex?.warn(
           { id: "reply_synthesizer", name: "Reply Synthesizer" },
-          "fallback deterministic after empty tool round",
+          JSON.stringify({ reason: "deterministic_fallback", afterChars: replyText.length }),
         );
       }
     }

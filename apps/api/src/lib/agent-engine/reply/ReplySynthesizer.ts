@@ -2,6 +2,7 @@ import {
   hasSubstantiveAgentReplyToCustomer,
   isNonDeliveringAgentReply,
 } from "./ReplyQuality.js";
+import { buildDeterministicReplyFromToolOutcomes } from "./DeterministicReplyFromTools.js";
 import type { PromptIR } from "../contract/PromptIR.js";
 import { templateFactsFromEnrichedIr } from "../compiler/playbookEnrichment.js";
 import {
@@ -293,11 +294,21 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     }
   }
 
-  return {
-    reply: input.replyText.trim()
-      ? input.replyText
-      : "Consultei o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido?",
-    replaced: true,
-    reason: input.replyText.trim() ? "stall" : "empty",
-  };
+  const deterministic = buildDeterministicReplyFromToolOutcomes(successful);
+  if (
+    deterministic.trim() &&
+    !isNonDeliveringAgentReply(deterministic, input.configuredStallMessages)
+  ) {
+    return { reply: deterministic.trim(), replaced: true, reason: "deterministic_fallback" };
+  }
+
+  if (!input.replyText.trim()) {
+    return {
+      reply: "Consultei o sistema, mas não obtive um resultado útil ainda. Pode repetir o pedido?",
+      replaced: true,
+      reason: "empty",
+    };
+  }
+
+  return { reply: input.replyText, replaced: true, reason: "stall" };
 }

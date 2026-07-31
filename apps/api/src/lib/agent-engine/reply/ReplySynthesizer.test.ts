@@ -218,6 +218,31 @@ test("ensureDeliveringReply replaces echoed check-in JSON even without ok tool n
   assert.match(result.reply, /check-in foi concluído/i);
 });
 
+test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
+  const mainGuestPayload = {
+    found: true,
+    guestName: "João Silva",
+    reservationCode: "EGAI6QKW",
+  };
+  const result = ensureDeliveringReply({
+    replyText: "Um momento, por favor.",
+    userMessage: "41026299802",
+    toolOutcomes: [
+      {
+        name: "audaar_consultar_main_guest",
+        ok: true,
+        preview: JSON.stringify(mainGuestPayload),
+        structuredPayload: mainGuestPayload,
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "deterministic_fallback");
+  assert.match(result.reply, /João Silva/);
+  assert.match(result.reply, /Segue o resultado da consulta/);
+  assert.doesNotMatch(result.reply, /^um momento/i);
+});
+
 test("ensureDeliveringReply does not force Modelo S1 on post-completion follow-up", () => {
   const result = ensureDeliveringReply({
     replyText: "Wi-Fi: rede X senha Y",
