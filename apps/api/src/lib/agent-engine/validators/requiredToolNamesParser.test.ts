@@ -238,6 +238,39 @@ test("resolveRequiredToolNamesForTurn does not KB-route dirty room complaint", (
   assert.equal(names.includes("call_human"), false);
 });
 
+test("resolveRequiredToolNamesForTurn checkout without unit requires zero tools", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C17 | Check-out | Chame \`buscar_conhecimento\` |
+| C5 | Fato | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "gostaria de realizar o check-out",
+  });
+  assert.deepEqual(names, []);
+});
+
+test("resolveRequiredToolNamesForTurn checkout with unit requires buscar_conhecimento", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C17 | Check-out | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "como funciona o checkout no Hotel Brooklin?",
+  });
+  assert.deepEqual(names, ["buscar_conhecimento"]);
+});
+
 test("toolOutcomeSatisfiesRequired matches partial and preview alias", () => {
   assert.equal(
     toolOutcomeSatisfiesRequired("audaar_consultar_main_guest", [

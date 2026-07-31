@@ -119,6 +119,13 @@ import {
   messageLooksLikeEscalationTurn,
   shouldRequireCallHumanThisTurn,
 } from "../escalation/escalationTurnDetection.js";
+import {
+  userMessageLooksLikeCheckoutProcedureQuestion,
+  userMessageLooksLikeReceiptOrInvoiceRequest,
+  userMessageLooksLikeAmenityItemQuestion,
+  unitKbTurnNeedsEstablishmentCollection,
+  resolveEstablishmentInConversation,
+} from "../../unitKnowledgeFlow.js";
 
 export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
   {
@@ -147,6 +154,9 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       if (messageLooksLikeQuoteStayDetails(m)) return false;
       if (isOperationalQuoteMessage(m)) return false;
       if (messageLooksLikeEscalationTurn(m)) return false;
+      if (userMessageLooksLikeCheckoutProcedureQuestion(m)) return false;
+      if (userMessageLooksLikeReceiptOrInvoiceRequest(m)) return false;
+      if (userMessageLooksLikeAmenityItemQuestion(m)) return false;
       if (
         messageContainsReservationLocator(m) &&
         /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva/i.test(m)
@@ -193,6 +203,21 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       (/\*\s*\w+\s*:/i.test(m) && m.split(/\n/).filter((l) => l.trim()).length >= 4),
     playbookHints:
       /\b(S\d+|C\d+|Passo\s*\d+|ficha|formul[aá]rio|form\b|dados|bloco\s+de\s+dados|espelho|multi.?campo)\b/i,
+  },
+  {
+    id: "checkout_procedure",
+    test: (m) => userMessageLooksLikeCheckoutProcedureQuestion(m),
+    playbookHints: /\b(C17|check-out|checkout|procedimento de checkout|procedimento de sa[ií]da)\b/i,
+  },
+  {
+    id: "receipt_invoice",
+    test: (m) => userMessageLooksLikeReceiptOrInvoiceRequest(m),
+    playbookHints: /\b(C19|nota fiscal|\bnf\b|recibo|comprovante)\b/i,
+  },
+  {
+    id: "amenity_item",
+    test: (m) => userMessageLooksLikeAmenityItemQuestion(m),
+    playbookHints: /\b(C18|ferro de passar|comodidade|item)\b/i,
   },
   {
     id: "escalation",
@@ -589,6 +614,28 @@ export function resolveRequiredToolNamesForTurn(
   const required = new Set<string>();
 
   const userMessage = (options.userMessage ?? "").trim();
+  const unitCtx = {
+    userMessage,
+    lastAssistantMessage: options.lastAssistantMessage,
+    flowSlots: options.flowSlots,
+  };
+
+  if (unitKbTurnNeedsEstablishmentCollection(unitCtx)) {
+    return [];
+  }
+
+  if (
+    userMessageLooksLikeCheckoutProcedureQuestion(userMessage) ||
+    userMessageLooksLikeReceiptOrInvoiceRequest(userMessage) ||
+    userMessageLooksLikeAmenityItemQuestion(userMessage)
+  ) {
+    if (resolveEstablishmentInConversation(unitCtx)) {
+      return dedupeRequiredToolAliases(
+        filterAgainstAvailable(["buscar_conhecimento"], available),
+      );
+    }
+  }
+
   const quoteConfirmationTurn = /^(sim|ok|okay|certo|confirmo|confirma|yes|yep|pode)$/i.test(
     userMessage,
   );

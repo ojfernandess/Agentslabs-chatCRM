@@ -1,6 +1,11 @@
 import { extractQuerySegmentTokens, queryTerms } from "./knowledgeSearchRanking.js";
 import { stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
 import { messageLooksLikeEscalationTurn } from "./agent-engine/escalation/escalationTurnDetection.js";
+import {
+  userMessageLooksLikeCheckoutProcedureQuestion,
+  userMessageLooksLikeReceiptOrInvoiceRequest,
+  userMessageLooksLikeAmenityItemQuestion,
+} from "./unitKnowledgeFlow.js";
 
 export type KnowledgeConversationTurn = {
   role: "user" | "assistant";
@@ -12,7 +17,8 @@ const TOPIC_SYNONYMS: Record<string, string[]> = {
   wifi: ["wifi", "wi-fi", "wi fi", "ssid", "rede wi", "internet", "wireless", "senha da rede", "nome da rede"],
   estacionamento: ["estacionamento", "parking", "vaga", "garagem", "estacionar"],
   cancelamento: ["cancelamento", "cancelar", "reembolso", "reembolsável"],
-  checkin: ["check-in", "check in", "checkin", "checkout", "check-out", "check out", "entrada", "saída"],
+  checkin: ["check-in", "check in", "checkin", "entrada"],
+  checkout: ["checkout", "check-out", "check out", "saída", "partida", "procedimento de checkout"],
   quartos: ["quarto", "quartos", "categorias", "suite", "suíte", "suites", "acomodação", "acomodacao", "capacidade", "camas"],
   localizacao: ["localização", "localizacao", "endereço", "endereco", "onde fica", "como chegar", "proximidades"],
   preco: ["preço", "preco", "valor", "diária", "diaria", "tarifa", "custo"],
@@ -170,6 +176,13 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
     return false;
   }
   if (messageLooksLikeEscalationTurn(t)) {
+    return false;
+  }
+  if (
+    userMessageLooksLikeCheckoutProcedureQuestion(t) ||
+    userMessageLooksLikeReceiptOrInvoiceRequest(t) ||
+    userMessageLooksLikeAmenityItemQuestion(t)
+  ) {
     return false;
   }
   if (/\?/.test(t)) return true;
