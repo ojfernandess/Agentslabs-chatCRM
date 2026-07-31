@@ -109,7 +109,10 @@ export async function simulateAgentTurn(input: SimulateTurnInput): Promise<Simul
     warnings.push("scheduler_would_run_but_plan_empty");
   }
   if (!turnContext.executionContract.valid) {
-    warnings.push(...turnContext.executionContract.violations.map((v) => `contract:${v}`));
+    const hardViolations = turnContext.executionContract.violations.filter(
+      (v) => !v.startsWith("required_tool_missing:") && !v.startsWith("fact_missing:"),
+    );
+    for (const v of hardViolations) warnings.push(`contract:${v}`);
   }
 
   let workflow: WorkflowRunState | null | undefined;

@@ -43,11 +43,6 @@ export type AgentEngineFormValues = {
   schedulerEnabled: boolean;
   /** Recupera tools em falta e envia fallback em bloqueio strict. */
   resilienceEnabled: boolean;
-  /**
-   * Após tool de conclusão OK + ack curto, agenda 2.º turno (Passo 8 / KB)
-   * sem esperar resposta do contacto.
-   */
-  postCompletionFollowUpEnabled: boolean;
   maxMandatoryRecoveries: number;
   blockedFallbackMessage: string;
 };
@@ -465,22 +460,6 @@ export function AgentEnginePanel({
                   <span className="font-medium">{t("automationPage.agentEngineResilience")}</span>
                   <span className="mt-0.5 block text-[11px] text-ink-500">
                     {t("automationPage.agentEngineResilienceHelp")}
-                  </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs sm:col-span-2">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={value.postCompletionFollowUpEnabled}
-                  onChange={(e) => patch({ postCompletionFollowUpEnabled: e.target.checked })}
-                />
-                <span>
-                  <span className="font-medium">
-                    {t("automationPage.agentEnginePostCompletionFollowUp")}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] text-ink-500">
-                    {t("automationPage.agentEnginePostCompletionFollowUpHelp")}
                   </span>
                 </span>
               </label>

@@ -1,0 +1,34 @@
+{
+  "id": "ADR-0004",
+  "title": "Prompt IR Schema v1.0",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Prompt Compiler / Prompt IR",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/contract/",
+    "apps/api/src/lib/agent-engine/compiler/compilePromptToIR.ts",
+    "apps/api/src/lib/agent-engine/compiler/extractStaticPromptIR.ts",
+    "apps/api/src/lib/agent-engine/compiler/IntentAnalyzer.ts",
+    "apps/api/src/lib/agent-engine/compiler/PromptIRCache.ts",
+    "apps/api/src/lib/agent-engine/compiler/PromptCompiler.ts",
+    "apps/api/src/lib/agent-engine/core/buildTurnContext.ts",
+    "apps/api/src/lib/agent-engine/core/types.ts"
+  ],
+  "reason": "Representação intermédia única do Prompt antes da execução — elimina re-parsing e duplicação Compiler/Planner.",
+  "categories": ["Architecture", "Prompt Compiler", "Runtime"],
+  "problem": "Playbook interpretado repetidamente; GENERIC_TURN_PATTERNS e políticas espalhadas em parsers; sem IR formal.",
+  "rootCause": "Evolução incremental sem camada IR; contract/ vazio.",
+  "technicalJustification": "PromptIR v1.0 com static extract cacheado + turn resolution; adapter PromptContract; TurnContext.promptIr.",
+  "architectureBefore": "compilePromptContract inline com parsers duplicados.",
+  "architectureAfter": "compilePromptToIR → PromptIR → promptIrToContract; IntentAnalyzer dedicado.",
+  "expectedImpact": "Base para Planner unificado (F3); −re-parsing; observabilidade IR na timeline.",
+  "status": "accepted",
+  "references": [
+    "docs/architecture/ROADMAP.md",
+    "docs/architecture/adr/ADR-0003.md",
+    "opennexo://architecture/adr/ADR-0004"
+  ]
+}

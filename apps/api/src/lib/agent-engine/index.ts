@@ -4,9 +4,40 @@ export type { AgentRuntime } from "./runtime/AgentRuntime.js";
 export { AgentRuntimeFactory } from "./runtime/AgentRuntimeFactory.js";
 export { OpenNexoRuntime, type NativeAgentExecutor } from "./runtime/OpenNexoRuntime.js";
 export {
-  runWorkflowRuntimeTurn,
-  resolveEffectiveToolExecutionMode,
-} from "./runtime/WorkflowRuntimeOrchestrator.js";
+  UnifiedSpineSession,
+  resolveUnifiedSpineMode,
+  shouldUseEngineTurnContext,
+  isSpineOnlyMode,
+  requiresLegacyTurnContextBuilder,
+  compareTurnContextShadow,
+  compareTurnContextCritical,
+  resolveSpineTurnContext,
+  emitEngineTimelineToLog,
+  type UnifiedSpineMode,
+  type SpineShadowReport,
+  type SpineCompareOpts,
+  type SpineTurnContextResolution,
+  type UnifiedSpineSessionOpts,
+} from "./runtime/UnifiedSpineBridge.js";
+export {
+  invokeLlmTextGeneration,
+  clampLlmMaxTokens,
+  type LlmTextGenerationInput,
+} from "./runtime/LlmTurnAdapter.js";
+export { packTurnContextForLlm, type PackedLlmTurnContext } from "./runtime/TurnContextPacker.js";
+export { filterToolsForCurrentStep } from "./runtime/FilteredToolCatalog.js";
+export {
+  evaluateLlmToolSandbox,
+  llmToolSandboxBlockMessage,
+  type LlmToolSandboxDecision,
+} from "./runtime/LlmToolSandbox.js";
+export {
+  buildLegacyTurnContextFromBindings,
+  resolveSpineBoundTurnContext,
+  type SpineTurnContextBindingsOpts,
+} from "./runtime/spineTurnContextBindings.js";
+/** @deprecated Fase 2d — produção usa UnifiedSpineBridge. Import direct de WorkflowRuntimeOrchestrator.js para testes. */
+export { resolveEffectiveToolExecutionMode } from "./runtime/WorkflowRuntimeOrchestrator.js";
 export { LangGraphRuntime } from "./runtime/LangGraphRuntime.js";
 export { CrewAIRuntime } from "./runtime/CrewAIRuntime.js";
 export { AutoGenRuntime } from "./runtime/AutoGenRuntime.js";
@@ -32,6 +63,19 @@ export {
   buildExecutionTurnPlan,
   type ExecutionTurnPlan,
 } from "./planner/ExecutionTurnPlan.js";
+export {
+  buildUnifiedExecutionPlan,
+  executionTurnPlanFromPromptIr,
+  inferMatchedPatternIds,
+  type UnifiedExecutionPlan,
+  type BuildUnifiedExecutionPlanOpts,
+} from "./planner/UnifiedExecutionPlanner.js";
+export {
+  buildPlanGraph,
+  resolveActiveFlowStep,
+  type PlanGraph,
+  type PlanGraphNode,
+} from "./planner/PlanGraphBuilder.js";
 export * from "./eil/index.js";
 export {
   parseRequiredToolNamesFromText,
@@ -94,6 +138,13 @@ export {
   shouldRetryAfterSupervisor,
   shouldBlockReplyAfterSupervisor,
 } from "./supervisor/AgentSupervisorService.js";
+export {
+  routeStructuralViolations,
+  routeSupervisorCheckFailure,
+  routeViolationsFromContract,
+  type RoutedViolation,
+  type ViolationLayer,
+} from "./supervisor/ViolationRouter.js";
 export {
   createAgentGraphCheckpointer,
   getAgentGraphCheckpointer,
@@ -162,7 +213,20 @@ export { clearKnowledgeCache, getKnowledgeCacheStats } from "./knowledge/knowled
 export { runKnowledgeInspector } from "./knowledge/knowledgeInspectorService.js";
 export { invalidateKnowledgeEngineCache } from "./knowledge/knowledgeArticleHooks.js";
 export { buildTurnContext, analyzeIntent, buildExecutionContract } from "./core/buildTurnContext.js";
-export { compilePromptContract } from "./compiler/PromptCompiler.js";
+export {
+  compilePromptContract,
+  compilePromptToIR,
+  compileStaticPromptIR,
+} from "./compiler/PromptCompiler.js";
+export type { CompilePromptToIROpts } from "./compiler/compilePromptToIR.js";
+export {
+  PROMPT_IR_VERSION,
+  promptIrToContract,
+  promptContractMatchesIr,
+  type PromptIR,
+  type FlowDefinition,
+  type PolicyRule,
+} from "./contract/index.js";
 export {
   shouldBlockOutboundFromTurnContract,
   blockReasonFromTurnContract,
@@ -185,7 +249,12 @@ export {
   shouldRunToolScheduler,
   formatScheduledToolsSystemAppendix,
   compactStructuredPayloadForPrompt,
+  schedulerPreExecBlockReason,
 } from "./scheduler/TurnToolScheduler.js";
+export {
+  resolveSchemaToolArgs,
+  outcomeHasLookupCapability,
+} from "./scheduler/SchemaArgResolver.js";
 export { invokeScheduledTools } from "./scheduler/invokeScheduledTools.js";
 export type {
   ScheduledToolInvocation,
@@ -247,6 +316,12 @@ export {
   buildModeloS10CheckInAck,
   extractReservationDisplayFields,
 } from "./reply/ReplySynthesizer.js";
+export {
+  renderReplyTemplate,
+  interpolateTemplateBody,
+  factsFromReservationPayload,
+  REPLY_TEMPLATE_BODIES,
+} from "./reply/ReplyTemplateRenderer.js";
 export {
   resolveActProgressMessage,
   logActProgress,

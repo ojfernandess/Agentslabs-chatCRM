@@ -25,7 +25,8 @@ export type McpResourceDomain =
   | "eil"
   | "turn"
   | "contract"
-  | "config";
+  | "config"
+  | "architecture";
 
 /** Permissões granulares por recurso. */
 export type McpPermission =
@@ -55,6 +56,7 @@ export type McpPermission =
   | "turn:read"
   | "contract:read"
   | "config:read"
+  | "architecture:read"
   | "audit:read";
 
 /** Contexto autenticado de um pedido MCP. */

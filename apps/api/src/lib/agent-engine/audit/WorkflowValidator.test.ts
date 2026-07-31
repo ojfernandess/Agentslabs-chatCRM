@@ -126,7 +126,7 @@ test("validateAgentWorkflow rejects operational assertion without tools (anti-ha
   assert.equal(shouldBlockOutboundFromWorkflow(report), false);
 });
 
-test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook", () => {
+test("validateAgentWorkflow rejects forbidden same-turn tool pair from turnPolicy", () => {
   const report = validateAgentWorkflow({
     userMessage: "sim",
     replyText: "Seu check-in foi concluído com sucesso!",
@@ -137,12 +137,13 @@ test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook"
     kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
     strictMode: true,
     supervisorEnabled: true,
-    behaviorConfig: {
-      promptBuilder: {
-        useFullPrompt: true,
-        userCore:
-          "**Proibido** `embratur-reference` + `audaar_check_in` no mesmo turno\nN=1 → S9 só `embratur-reference`",
-      },
+    turnPolicy: {
+      forbiddenSameTurnPairs: [{ a: "embratur-reference", b: "audaar_check_in" }],
+      exclusiveAllowedTools: null,
+      completionToolHints: ["audaar_check_in"],
+      confirmationPrerequisiteTools: [],
+      omitToolsWhenSlotsPresent: [],
+      blockEscalation: false,
     },
   });
   assert.equal(report.approved, false);
@@ -151,6 +152,7 @@ test("validateAgentWorkflow rejects forbidden same-turn tool pair from playbook"
       (f) => !f.passed && /proibid|fora da categoria|conclusão/i.test(f.description),
     ),
   );
+  assert.ok(report.routedViolations && report.routedViolations.length > 0);
 });
 
 test("validateAgentWorkflow F15 quality signals are advisory only", () => {

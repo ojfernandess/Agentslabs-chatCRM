@@ -1,0 +1,34 @@
+{
+  "id": "ADR-0005",
+  "title": "Unified Execution Spine Rollout",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Execution Engine / Motor Padrão",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/runtime/UnifiedSpineBridge.ts",
+    "apps/api/src/lib/agent-engine/runtime/UnifiedSpineBridge.test.ts",
+    "apps/api/src/lib/agent-engine/runtime/OpenNexoRuntime.ts",
+    "apps/api/src/lib/agent-engine/config/parseAgentEngineConfig.ts",
+    "apps/api/src/lib/agent-engine/types.ts",
+    "apps/api/src/lib/agent-engine/engine/ExecutionEngine.ts",
+    "apps/api/src/lib/agentNativeLlm.ts"
+  ],
+  "reason": "Motor Padrão contornava ExecutionEngine; rollout gradual com shadow compare e timeline engine_* para MCP.",
+  "categories": ["Architecture", "Runtime", "Rollout"],
+  "problem": "Dual runtime — monolito autoritativo; ExecutionEngine ignorado em openconduit.",
+  "rootCause": "Evolução incremental; openconduit nunca migrado para spine.",
+  "technicalJustification": "UnifiedSpineSession bridge com modos off/shadow/primary/only; primary usa engine com fallback legacy em divergência crítica; env AGENT_ENGINE_UNIFIED_SPINE.",
+  "architectureBefore": "agentNativeLlm → buildTurnContext inline; ExecutionEngine bypass.",
+  "architectureAfter": "UnifiedSpineSession → beginTurn/refresh/finalize; shadow compare; engine_* timeline.",
+  "expectedImpact": "Observabilidade MCP; base para primary/only; redução gradual do monolito.",
+  "status": "accepted",
+  "references": [
+    "docs/architecture/ROADMAP.md",
+    "docs/architecture/adr/ADR-0003.md",
+    "docs/architecture/adr/ADR-0004.md",
+    "opennexo://architecture/adr/ADR-0005"
+  ]
+}

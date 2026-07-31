@@ -521,7 +521,6 @@ function emptyAgentForm(): AgentFormFields {
       parallelKbPrefetchEnabled: false,
       schedulerEnabled: false,
       resilienceEnabled: false,
-      postCompletionFollowUpEnabled: false,
       maxMandatoryRecoveries: 1,
       blockedFallbackMessage: "",
     },
@@ -706,7 +705,6 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     parallelKbPrefetchEnabled: engineRaw.parallelKbPrefetchEnabled === true,
     schedulerEnabled: engineRaw.schedulerEnabled === true,
     resilienceEnabled: engineRaw.resilienceEnabled === true,
-    postCompletionFollowUpEnabled: engineRaw.postCompletionFollowUpEnabled === true,
     maxMandatoryRecoveries:
       typeof engineRaw.maxMandatoryRecoveries === "number" &&
       Number.isFinite(engineRaw.maxMandatoryRecoveries)
@@ -1026,7 +1024,6 @@ function formToPayload(
       parallelKbPrefetchEnabled: form.agentEngine.parallelKbPrefetchEnabled,
       schedulerEnabled: form.agentEngine.schedulerEnabled,
       resilienceEnabled: form.agentEngine.resilienceEnabled,
-      postCompletionFollowUpEnabled: form.agentEngine.postCompletionFollowUpEnabled,
       maxMandatoryRecoveries: form.agentEngine.maxMandatoryRecoveries,
       ...(form.agentEngine.blockedFallbackMessage.trim()
         ? { blockedFallbackMessage: form.agentEngine.blockedFallbackMessage.trim().slice(0, 500) }

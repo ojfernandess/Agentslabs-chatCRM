@@ -61,6 +61,17 @@ export function parseToolEilConfig(config: unknown): ToolEilConfig {
       : undefined;
   const provider = typeof e.provider === "string" && e.provider.trim() ? e.provider.trim() : undefined;
   const version = typeof e.version === "string" && e.version.trim() ? e.version.trim() : undefined;
+  const stableName =
+    typeof e.stableName === "string" && e.stableName.trim() ? e.stableName.trim() : undefined;
+  const argDefaults =
+    e.argDefaults && typeof e.argDefaults === "object" && !Array.isArray(e.argDefaults)
+      ? (e.argDefaults as Record<string, unknown>)
+      : undefined;
+  const argAliases = parseStringArrayMap(e.argAliases);
+  const nestedGroups = parseNestedGroups(e.nestedGroups);
+  const entityArgMap = parseStringArrayMap(e.entityArgMap);
+  const messageArg =
+    typeof e.messageArg === "string" && e.messageArg.trim() ? e.messageArg.trim() : undefined;
   return {
     produces,
     requiresFacts,
@@ -71,5 +82,38 @@ export function parseToolEilConfig(config: unknown): ToolEilConfig {
     retryMax,
     provider,
     version,
+    stableName,
+    argDefaults,
+    argAliases,
+    nestedGroups,
+    entityArgMap,
+    messageArg,
   };
+}
+
+function parseStringArrayMap(raw: unknown): Record<string, string[]> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(v)) continue;
+    const arr = v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+    if (arr.length > 0) out[k] = arr;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseNestedGroups(
+  raw: unknown,
+): Array<{ target: string; fieldMap: Record<string, string[]> }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const groups: Array<{ target: string; fieldMap: Record<string, string[]> }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const target = typeof o.target === "string" ? o.target.trim() : "";
+    if (!target) continue;
+    const fieldMap = parseStringArrayMap(o.fieldMap) ?? {};
+    groups.push({ target, fieldMap });
+  }
+  return groups.length > 0 ? groups : undefined;
 }

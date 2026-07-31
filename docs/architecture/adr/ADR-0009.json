@@ -1,0 +1,17 @@
+{
+  "id": "ADR-0009",
+  "title": "LLM Sandbox & Context Packer",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "component": "Runtime / Reply",
+  "status": "accepted",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/runtime/TurnContextPacker.ts",
+    "apps/api/src/lib/agent-engine/runtime/FilteredToolCatalog.ts",
+    "apps/api/src/lib/agent-engine/runtime/LlmToolSandbox.ts",
+    "apps/api/src/lib/agent-engine/reply/ReplyTemplateRenderer.ts",
+    "apps/api/src/lib/agent-engine/reply/ReplySynthesizer.ts"
+  ],
+  "references": ["docs/architecture/ROADMAP.md", "docs/architecture/adr/ADR-0008.md"]
+}

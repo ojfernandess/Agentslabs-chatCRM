@@ -27,7 +27,8 @@
     "db:migrate:resolve:evolution-rolled-back": "npm run db:migrate:resolve:evolution-rolled-back -w apps/api",
     "db:migrate:resolve:inbox-ingest-rolled-back": "npm run db:migrate:resolve:inbox-ingest-rolled-back -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
-    "db:generate": "npm run db:generate -w apps/api"
+    "db:generate": "npm run db:generate -w apps/api",
+    "test:architecture": "npm run test:architecture -w apps/api"
   },
   "engines": {
     "node": ">=20.0.0"

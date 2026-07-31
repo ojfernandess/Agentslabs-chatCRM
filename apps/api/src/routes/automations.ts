@@ -8,6 +8,12 @@ import {
   assignConversationTeamForOrg,
 } from "../lib/conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "../lib/assignContactTags.js";
+import {
+  callHumanBodySchema,
+  callHumanForConversationForOrg,
+  transferConversationToTeamForOrg,
+  transferToTeamBodySchema,
+} from "../lib/conversationNativeToolActions.js";
 
 const assignConversationTagsSchema = z.object({
   tagIds: z.array(z.string().uuid()).min(1),
@@ -118,5 +124,64 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     return result.payload;
+  });
+
+  app.post<{ Params: { id: string } }>("/conversations/:id/transfer-team", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required for automation team transfer",
+        statusCode: 403,
+      });
+    }
+
+    const parsed = transferToTeamBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const result = await transferConversationToTeamForOrg(prisma, {
+      organizationId,
+      conversationId: request.params.id,
+      teamId: parsed.data.teamId,
+      reason: parsed.data.reason,
+      log: request.log,
+    });
+    if (!result.ok) {
+      return reply.status(result.status).send({
+        error: result.status === 404 ? "Not Found" : "Bad Request",
+        message: result.message,
+        statusCode: result.status,
+      });
+    }
+    return { ok: true, ...result.payload };
+  });
+
+  app.post<{ Params: { id: string } }>("/conversations/:id/call-human", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!isTenantAdminLike(request.user)) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required for automation human handoff",
+        statusCode: 403,
+      });
+    }
+
+    const parsed = callHumanBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const result = await callHumanForConversationForOrg(prisma, {
+      organizationId,
+      conversationId: request.params.id,
+      teamId: parsed.data.teamId,
+      reason: parsed.data.reason,
+      log: request.log,
+    });
+    return { ok: true, ...result.payload };
   });
 }

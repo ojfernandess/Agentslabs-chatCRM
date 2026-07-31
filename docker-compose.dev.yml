@@ -1,0 +1,11 @@
+# Desenvolvimento local: expõe Postgres/Redis no host para psql, DBeaver, etc.
+# NÃO usar em produção / Easypanel.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  db:
+    ports:
+      - "5432:5432"
+  redis:
+    ports:
+      - "6379:6379"

@@ -1,11 +1,17 @@
 import type { AgentSupervisorCheck, AgentSupervisorTrace } from "../types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
-import type { ConstraintViolation, ExecutionIntelligencePlan } from "../eil/types.js";
+import type { ConstraintViolation, ExecutionIntelligencePlan, FactStore } from "../eil/types.js";
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
-import { formatTurnPolicyForSupervisor, isLikelyMutableOrCompletionTool } from "../validators/turnPolicyParser.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import type { ExecutionContract } from "../core/types.js";
 import { formatExecutionContractForSupervisor } from "../core/executionContractFormat.js";
+import {
+  completionReplySubstantive,
+  completionToolRan,
+  factsSatisfyPreconditions,
+  noCompletionClaimWithoutTool,
+} from "./structuralValidation.js";
+import { routeStructuralViolations } from "./ViolationRouter.js";
 
 export type SupervisorValidationInput = {
   userMessage: string;
@@ -34,6 +40,8 @@ export type SupervisorValidationInput = {
   turnPolicy?: TurnPolicy | null;
   /** Contrato de execução compilado (Fase 3 — fonte preferida). */
   executionContract?: ExecutionContract | null;
+  /** Facts do turno — pre-conditions estruturais. */
+  facts?: FactStore;
 };
 
 export type BuildSupervisorValidationInputOpts = {
@@ -55,6 +63,7 @@ export type BuildSupervisorValidationInputOpts = {
   eilRequiredFactsMissing?: string[];
   turnPolicy?: TurnPolicy | null;
   executionContract?: ExecutionContract | null;
+  facts?: FactStore;
 };
 
 function memoryHasSubstantive(snapshot?: Record<string, unknown>): boolean {
@@ -92,6 +101,19 @@ export function buildSupervisorValidationInput(
     toolOutcomes: opts.toolOutcomes,
     turnPolicy: opts.turnPolicy ?? null,
     executionContract: opts.executionContract ?? null,
+    facts: opts.facts,
+  };
+}
+
+function structuralInput(input: SupervisorValidationInput) {
+  return {
+    replyText: input.replyText,
+    toolOutcomes: input.toolOutcomes ?? [],
+    executionContract: input.executionContract,
+    eilPlan: input.eilPlan,
+    turnPolicy: input.turnPolicy,
+    facts: input.facts,
+    strictMode: input.strictMode,
   };
 }
 
@@ -119,16 +141,9 @@ const CHECK_DEFS: Array<{
     run: (i) => {
       const t = i.replyText.trim();
       if (!t) return false;
-      const hints = i.turnPolicy?.completionToolHints ?? [];
-      const completionRan = (i.toolOutcomes ?? []).some(
-        (o) => o.ok && isLikelyMutableOrCompletionTool(o.name, hints),
-      );
-      if (completionRan && i.strictMode) {
-        if (t.length >= 120) return true;
-        if (/\b(conclu[ií]d|confirmad|realizad|sucesso|finalizad|check[\s-]?in)\b/i.test(t)) {
-          return true;
-        }
-        return false;
+      const si = structuralInput(i);
+      if (completionToolRan(si.toolOutcomes, si.turnPolicy) && i.strictMode) {
+        return completionReplySubstantive(si);
       }
       if (i.strictMode && /^(só um momento|aguarde|vou verificar)/i.test(t)) {
         return i.successfulToolCount === 0;
@@ -139,38 +154,17 @@ const CHECK_DEFS: Array<{
   {
     id: "completion_reply",
     label: "Resposta após tool de conclusão",
-    run: (i) => {
-      const hints = i.turnPolicy?.completionToolHints ?? [];
-      const completionRan = (i.toolOutcomes ?? []).some(
-        (o) => o.ok && isLikelyMutableOrCompletionTool(o.name, hints),
-      );
-      if (!completionRan) return true;
-      const t = i.replyText.trim();
-      if (t.length >= 120) return true;
-      if (/\b(conclu[ií]d|confirmad|realizad|sucesso|finalizad|check[\s-]?in)\b/i.test(t)) {
-        return true;
-      }
-      return !i.strictMode;
-    },
+    run: (i) => completionReplySubstantive(structuralInput(i)),
   },
   {
     id: "completion_claim_without_tool",
-    label: "Sem afirmar conclusão sem tool de check-in",
-    run: (i) => {
-      const claimsCompletion =
-        /check-in (foi )?conclu[ií]d|pedido (foi )?confirmado|reserva (foi )?confirmada|check[\s-]?in (realizad|efetuad|feito)/i.test(
-          i.replyText,
-        );
-      if (!claimsCompletion) return true;
-      const hints = i.turnPolicy?.completionToolHints ?? [];
-      const hasCompletionTool = (i.toolOutcomes ?? []).some(
-        (t) =>
-          t.ok &&
-          (hints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
-            /check[_-]?in|submit|confirm|concluir|finalize/i.test(t.name)),
-      );
-      return hasCompletionTool;
-    },
+    label: "Sem afirmar conclusão sem tool de conclusão",
+    run: (i) => noCompletionClaimWithoutTool(structuralInput(i)),
+  },
+  {
+    id: "facts_preconditions",
+    label: "Facts satisfazem pre-conditions",
+    run: (i) => factsSatisfyPreconditions(structuralInput(i)),
   },
   {
     id: "context_used",
@@ -316,33 +310,26 @@ export function buildSupervisorTrace(input: SupervisorValidationInput): AgentSup
   }
 
   const allPassed = checks.every((c) => c.passed);
+  const failedChecks = checks.filter((c) => !c.passed);
+  const routedViolations = routeStructuralViolations({
+    executionContract: input.executionContract,
+    eilViolations: input.eilViolations,
+    failedCheckIds: failedChecks.map((c) => ({ id: c.id, detail: c.detail ?? c.label })),
+  });
   const contractNote =
     input.executionContract && !allPassed
       ? formatExecutionContractForSupervisor(input.executionContract).slice(0, 220)
       : null;
-  const turnPolicyNote =
-    !contractNote &&
-    input.turnPolicy &&
-    !allPassed &&
-    input.validationBlockSend
-      ? formatTurnPolicyForSupervisor(input.turnPolicy)
-      : null;
   const structuralSummary = allPassed
     ? "Validação estrutural aprovada"
-    : checks
-        .filter((c) => !c.passed)
-        .map((c) => c.detail ?? c.label)
-        .join("; ") ||
-      (contractNote
-        ? `Contrato: ${contractNote.slice(0, 180)}`
-        : turnPolicyNote
-          ? `Política de turno: ${turnPolicyNote.slice(0, 180)}`
-          : "Falhas na validação");
+    : failedChecks.map((c) => c.detail ?? c.label).join("; ") ||
+      (contractNote ? `Contrato: ${contractNote.slice(0, 180)}` : "Falhas na validação");
   return {
     approved: allPassed && (input.llmApproved !== false),
     summary: input.llmSummary ?? structuralSummary,
     checks,
     retryCount: input.retryCount ?? 0,
+    routedViolations,
   };
 }
 
@@ -357,6 +344,7 @@ const RETRYABLE_CHECK_IDS = new Set([
   "prompt_coherent",
   "completion_reply",
   "completion_claim_without_tool",
+  "facts_preconditions",
   "no_execution_loop",
   "eil_plan_followed",
   "eil_required_facts",

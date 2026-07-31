@@ -1,0 +1,23 @@
+{
+  "id": "RCA-0001",
+  "title": "Check-in Embratur incompleto com bypass LLM e falso sucesso HTTP",
+  "date": "2026-07-30",
+  "problem": "Check-in não concluiu após ficha Embratur com país estrangeiro (EUA/Nova Iorque); utilizador recebeu resposta ambígua apesar de validação Embratur falhar.",
+  "firstResponsibleComponent": "sessionToolOutcomes",
+  "lastImpactedComponent": "ReplySynthesizer",
+  "rootCause": "Catálogo estático IBGE para países estrangeiros; sessionToolOutcomes marcava completion sem validar Embratur completo; toolOutcomeParsing não detectava validationError em body HTTP 200; bypass hybrid LLM→tool sem guardas runtime.",
+  "fixApplied": "embraturReferenceResolver via domínios FNRH; embraturRuntimeGuards; __completionReady condicionado a 6 campos; validationError → ok:false; gate agentNativeLlm + turnPolicyParser.",
+  "relatedAdrIds": [
+    "ADR-0002"
+  ],
+  "relatedCommits": [
+    "92dda4d"
+  ],
+  "recurrenceCount": 1,
+  "categories": [
+    "Bug",
+    "Scheduler",
+    "Tool Runtime",
+    "Runtime"
+  ]
+}

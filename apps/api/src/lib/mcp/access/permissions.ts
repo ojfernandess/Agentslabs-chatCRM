@@ -29,6 +29,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "turn:read",
     "contract:read",
     "config:read",
+    "architecture:read",
     "audit:read",
   ],
   developer: [
@@ -58,6 +59,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "turn:read",
     "contract:read",
     "config:read",
+    "architecture:read",
   ],
   support: [
     "agents:read",

@@ -2,6 +2,8 @@ export {
   buildToolRegistry,
   capabilityGraphFromRegistry,
   getRegistryEntry,
+  resolveStableToolName,
+  toolRegistryAliases,
   type ToolRegistry,
   type ToolRegistryEntry,
 } from "./ToolRegistry.js";

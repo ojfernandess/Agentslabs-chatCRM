@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/husky.sh" 2>/dev/null || true
+cd apps/api && node --import tsx scripts/architecture-pre-commit.mjs

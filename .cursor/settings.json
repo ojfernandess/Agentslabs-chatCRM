@@ -3,6 +3,9 @@
   "plugins": {
     "postman": {
       "enabled": false
+    },
+    "langfuse": {
+      "enabled": true
     }
   }
 }

@@ -1,0 +1,28 @@
+{
+  "id": "ADR-0006",
+  "title": "Unified Execution Planner",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Planner / Policy Engine",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/planner/UnifiedExecutionPlanner.ts",
+    "apps/api/src/lib/agent-engine/planner/PlanGraphBuilder.ts",
+    "apps/api/src/lib/agent-engine/planner/ExecutionTurnPlan.ts",
+    "apps/api/src/lib/agent-engine/eil/ExecutionPlanner.ts",
+    "apps/api/src/lib/agent-engine/eil/PolicyEngine.ts",
+    "apps/api/src/lib/agent-engine/core/buildTurnContext.ts",
+    "apps/api/src/lib/agent-engine/engine/ExecutionEngine.ts"
+  ],
+  "reason": "Duplicação resolveTurnPolicy + buildExecutionTurnPlan; planner unificado a partir do Prompt IR.",
+  "categories": ["Architecture", "Planner", "Policy"],
+  "status": "accepted",
+  "references": [
+    "docs/architecture/ROADMAP.md",
+    "docs/architecture/adr/ADR-0004.md",
+    "docs/architecture/adr/ADR-0005.md",
+    "opennexo://architecture/adr/ADR-0006"
+  ]
+}

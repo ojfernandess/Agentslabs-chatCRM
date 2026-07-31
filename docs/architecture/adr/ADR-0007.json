@@ -1,0 +1,25 @@
+{
+  "id": "ADR-0007",
+  "title": "Schema-Driven Tool Scheduler",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Scheduler / Tool Registry",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/scheduler/TurnToolScheduler.ts",
+    "apps/api/src/lib/agent-engine/scheduler/SchemaArgResolver.ts",
+    "apps/api/src/lib/agent-engine/engine/ToolRegistry.ts",
+    "apps/api/src/lib/agent-engine/eil/types.ts",
+    "apps/api/src/lib/agent-engine/eil/parseEilConfig.ts"
+  ],
+  "reason": "Desacoplar scheduler de checkin/; args e gates via schema EIL + CapabilityGraph.",
+  "categories": ["Architecture", "Scheduler"],
+  "status": "accepted",
+  "references": [
+    "docs/architecture/ROADMAP.md",
+    "docs/architecture/adr/ADR-0006.md",
+    "opennexo://architecture/adr/ADR-0007"
+  ]
+}

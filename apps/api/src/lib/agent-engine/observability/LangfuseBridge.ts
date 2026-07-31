@@ -18,7 +18,8 @@ export type RuntimeLayerId =
   | "supervisor"
   | "resilience"
   | "outbound"
-  | "observability";
+  | "observability"
+  | "architecture_governance";
 
 const NODE_LAYER: Record<string, RuntimeLayerId> = {
   classify_intent: "intent",
@@ -45,6 +46,9 @@ const EVENT_LAYER: Partial<Record<string, RuntimeLayerId>> = {
   tool: "runtime",
   error: "observability",
   checkpoint: "observability",
+  architecture_review: "architecture_governance",
+  quality_gate: "architecture_governance",
+  ci_gate: "architecture_governance",
 };
 
 export function resolveRuntimeLayer(nodeIdOrEventKind: string): RuntimeLayerId {
@@ -161,6 +165,38 @@ export function buildLayerSpans(
     );
   }
   return spans;
+}
+
+export type ArchitectureGovernanceTraceInput = {
+  traceId: string;
+  gateResults: Array<{ id: string; passed: boolean; message?: string }>;
+  architectureScore?: number;
+  adrId?: string;
+  modifiedFiles?: string[];
+};
+
+/** Span Langfuse para decisões AGS / CI gates (Fase 8). */
+export function buildArchitectureGovernanceSpan(input: ArchitectureGovernanceTraceInput): IngestionEvent {
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    type: "span-create",
+    timestamp: now,
+    body: {
+      traceId: input.traceId,
+      id: `${input.traceId}:architecture_governance`,
+      name: "architecture_governance",
+      startTime: now,
+      metadata: {
+        layer: "architecture_governance",
+        gates: input.gateResults,
+        architectureScore: input.architectureScore,
+        adrId: input.adrId,
+        modifiedFiles: input.modifiedFiles?.slice(0, 20),
+        passed: input.gateResults.every((g) => g.passed),
+      },
+    },
+  };
 }
 
 function buildLangfuseBatch(input: {

@@ -63,6 +63,15 @@ export type AgentEngineConfig = {
    */
   legacyOpenconduitBypass?: boolean;
   /**
+   * Unified Execution Spine (Fase 2):
+   * - off: sem ExecutionEngine no path openconduit (default)
+   * - shadow: beginTurn + compare com legacy (legacy entrega)
+   * - primary: TurnContext do ExecutionEngine
+   * - only: engine exclusivo; sem buildTurnContext legacy (Fase 2c)
+   * Override: env AGENT_ENGINE_UNIFIED_SPINE=shadow|primary|only|off
+   */
+  unifiedSpineMode?: "off" | "shadow" | "primary" | "only";
+  /**
    * Workflow/Step Engine durável (branch/loop/suspend/compensate).
    * Requer `behaviorConfig.agentEngine.workflow` definition.
    */
@@ -111,6 +120,7 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   toolExecutionMode: "hybrid",
   resilienceEnabled: false,
   legacyOpenconduitBypass: false,
+  unifiedSpineMode: "off",
   workflowEngineEnabled: false,
   workflowRuntimeShared: false,
   memoryBudgetEnabled: false,
@@ -277,6 +287,14 @@ export type AgentSupervisorTrace = {
   summary: string;
   checks: AgentSupervisorCheck[];
   retryCount: number;
+  /** Fase 5 — violações com camada upstream para RCA (MCP). */
+  routedViolations?: Array<{
+    id: string;
+    message: string;
+    layer: string;
+    component: string;
+    rcaHint: string;
+  }>;
 };
 
 export type AgentSupervisorCheck = {

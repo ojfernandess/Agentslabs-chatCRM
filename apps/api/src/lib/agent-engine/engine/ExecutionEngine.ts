@@ -133,6 +133,8 @@ export class ExecutionEngine {
       intent: turnContext.intent.kind,
       exclusive: plan.turnPolicy.exclusiveAllowedTools,
       promptHash: turnContext.promptContract.promptHash,
+      promptIrHash: turnContext.promptIr.metadata.hash,
+      playbookHash: turnContext.promptIr.metadata.playbookHash,
     });
     let metrics = createExecutionMetrics();
     metrics = recordPhaseMs(metrics, "plan", Date.now() - t0);
@@ -215,9 +217,30 @@ export class ExecutionEngine {
       priorFacts?: FactStore;
     } = {},
   ): EngineTurnState {
+    return this.replan(state, behaviorConfig, {
+      ...opts,
+      detail: "workflow_merge",
+      workflowPlannedToolNames: state.workflowRun?.plannedToolNames,
+    });
+  }
+
+  /**
+   * Fase 3 — replan explícito após Facts/tools; emite evento timeline `plan`.
+   */
+  replan(
+    state: EngineTurnState,
+    behaviorConfig: Record<string, unknown> | null | undefined,
+    opts: {
+      toolOutcomes?: ToolOutcomeForEil[];
+      memory?: Record<string, unknown>;
+      priorFacts?: FactStore;
+      detail?: string;
+      workflowPlannedToolNames?: string[];
+    } = {},
+  ): EngineTurnState {
     const t0 = Date.now();
     const memory = opts.memory ?? state.memory;
-    const planned = state.workflowRun?.plannedToolNames ?? [];
+    const planned = opts.workflowPlannedToolNames ?? state.workflowRun?.plannedToolNames ?? [];
     const turnContext = buildTurnContext({
       turnId: state.context.turnId,
       behaviorConfig,
@@ -238,8 +261,12 @@ export class ExecutionEngine {
       timeline: appendTimelineEvent(
         next.timeline,
         "plan",
-        `workflow_merge planned=${planned.join(",") || "none"} required=${next.plan.requiredToolNames.join(",") || "none"}`,
-        { plannedToolNames: planned },
+        opts.detail ?? `replan pending=${next.contract.pendingToolNames.join(",") || "none"}`,
+        {
+          ...summarizeContractMeta(next.contract),
+          promptIrHash: turnContext.promptIr.metadata.hash,
+          planGraphTools: turnContext.eilPlan?.pendingTools?.slice(0, 8),
+        },
         Date.now() - t0,
       ),
       metrics: recordPhaseMs(next.metrics, "plan", Date.now() - t0),

@@ -8,6 +8,18 @@ export type PublicApiDocChangelogEntry = {
 
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
+    date: "2026-07-31",
+    schemaVersion: 11,
+    titlePt: "Ferramentas nativas do agente — equivalentes HTTP",
+    changesPt: [
+      "Nova secção «Ferramentas nativas do agente»: buscar_conhecimento → POST /api/v1/automation/knowledge-articles/search",
+      "transfer_to_team → POST /api/v1/automations/conversations/:id/transfer-team",
+      "call_human → POST /api/v1/automations/conversations/:id/call-human",
+      "GET /api/v1/automations/teams documentado como auxiliar de roteamento (UUID de equipa)",
+    ],
+    breaking: false,
+  },
+  {
     date: "2026-07-10",
     schemaVersion: 10,
     titlePt: "Documentação v10 — respostas, convenções e modelos",

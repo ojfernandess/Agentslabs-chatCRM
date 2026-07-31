@@ -6,6 +6,7 @@
 import type { ExecutionIntelligencePlan, EilSnapshot, FactStore, CapabilityGraph } from "../eil/types.js";
 import type { ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import type { TurnPolicy } from "../validators/turnPolicyParser.js";
+import type { PromptIR } from "../contract/PromptIR.js";
 
 /** Intenção inferida — nunca escolhe tools nem políticas. */
 export type IntentKind =
@@ -63,6 +64,8 @@ export type TurnContext = {
   version: 1;
   userMessage: string;
   intent: IntentAnalysis;
+  /** Prompt IR — representação intermédia compilada (Fase 1). */
+  promptIr: PromptIR;
   promptContract: PromptContract;
   turnPlan: ExecutionTurnPlan;
   executionContract: ExecutionContract;

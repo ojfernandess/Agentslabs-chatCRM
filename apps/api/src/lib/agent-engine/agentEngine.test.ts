@@ -58,6 +58,18 @@ test("parseAgentEngineConfig langgraph can still set workflowRuntimeShared true 
   assert.equal(cfg.workflowRuntimeShared, true);
 });
 
+test("parseAgentEngineConfig reads unifiedSpineMode", () => {
+  assert.equal(
+    parseAgentEngineConfig({ agentEngine: { unifiedSpineMode: "shadow" } }).unifiedSpineMode,
+    "shadow",
+  );
+  assert.equal(
+    parseAgentEngineConfig({ agentEngine: { unifiedSpineMode: "primary" } }).unifiedSpineMode,
+    "primary",
+  );
+  assert.equal(parseAgentEngineConfig({}).unifiedSpineMode, "off");
+});
+
 test("parseAgentEngineConfig reads agentEngine block", () => {
   const cfg = parseAgentEngineConfig({
     agentEngine: {

@@ -59,5 +59,12 @@ export function detectReplyActions(replyText: string): ReplyActionId[] {
     actions.push("complete_flow");
   }
 
+  if (
+    /\b(encontrei|localiz(ei|amos)|identifiquei|confirm(ei|amos))\b/i.test(t) &&
+    /\b(cadastro|reserva|saldo|titular|dados do|pedido|check-in|conta)\b/i.test(t)
+  ) {
+    actions.push("assert_operational_data");
+  }
+
   return [...new Set(actions)];
 }

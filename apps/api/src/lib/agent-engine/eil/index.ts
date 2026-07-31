@@ -37,7 +37,7 @@ export {
   hasFact,
 } from "./FactsEngine.js";
 export { detectReplyActions } from "./detectReplyActions.js";
-export { evaluatePredicate, evaluatePolicies, resolveForbiddenActions } from "./PolicyEngine.js";
+export { evaluatePredicate, evaluatePolicies, resolveForbiddenActions, evaluatePromptIrPolicyRules } from "./PolicyEngine.js";
 export {
   buildExecutionIntelligencePlan,
   buildEilSnapshot,

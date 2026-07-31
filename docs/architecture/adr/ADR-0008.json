@@ -1,0 +1,25 @@
+{
+  "id": "ADR-0008",
+  "title": "Structural Validation Only",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Supervisor / Workflow Validator",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/supervisor/AgentSupervisorService.ts",
+    "apps/api/src/lib/agent-engine/supervisor/ViolationRouter.ts",
+    "apps/api/src/lib/agent-engine/supervisor/structuralValidation.ts",
+    "apps/api/src/lib/agent-engine/audit/WorkflowValidator.ts",
+    "apps/api/src/lib/agent-engine/eil/detectReplyActions.ts"
+  ],
+  "reason": "Supervisor/WV despromptizados — validação estrutural Contract+Plan+Facts+Policies.",
+  "categories": ["Architecture", "Supervisor"],
+  "status": "accepted",
+  "references": [
+    "docs/architecture/ROADMAP.md",
+    "docs/architecture/adr/ADR-0007.md",
+    "opennexo://architecture/adr/ADR-0008"
+  ]
+}

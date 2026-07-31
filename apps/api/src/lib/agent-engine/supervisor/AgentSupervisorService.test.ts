@@ -148,6 +148,28 @@ test("EIL constraints fail supervisor when violations present", () => {
   assert.equal(shouldRetryAfterSupervisor(trace, true, 0), true);
 });
 
+test("buildSupervisorTrace includes routedViolations on failure", () => {
+  const input = buildSupervisorValidationInput({
+    userMessage: "check-in ABC12345",
+    replyText: "Check-in concluído com sucesso!",
+    toolOutcomes: [],
+    kbMeta: { hasUsefulExcerpts: false, coversQuery: false },
+    strictMode: true,
+    turnPolicy: {
+      forbiddenSameTurnPairs: [],
+      exclusiveAllowedTools: null,
+      completionToolHints: ["audaar_check_in"],
+      confirmationPrerequisiteTools: [],
+      omitToolsWhenSlotsPresent: [],
+      blockEscalation: false,
+    },
+  });
+  const trace = buildSupervisorTrace(input);
+  assert.equal(trace.approved, false);
+  assert.ok(trace.routedViolations && trace.routedViolations.length > 0);
+  assert.ok(trace.routedViolations.some((v) => v.layer === "llm" || v.layer === "scheduler"));
+});
+
 test("EIL checks are no-op when eilEnabled is false", () => {
   const input = buildSupervisorValidationInput({
     userMessage: "Sim",

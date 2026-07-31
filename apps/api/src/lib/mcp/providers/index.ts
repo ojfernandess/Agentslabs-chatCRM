@@ -18,6 +18,7 @@ import { logsProvider } from "./logsProvider.js";
 import { memoryProvider } from "./memoryProvider.js";
 import { eilProvider } from "./eilProvider.js";
 import { turnProvider, contractProvider } from "./turnContractProvider.js";
+import { architectureGovernanceProvider } from "./architectureGovernanceProvider.js";
 
 let initialized = false;
 
@@ -41,5 +42,6 @@ export function initMcpProviders(): void {
   registerMcpProvider(turnProvider);
   registerMcpProvider(contractProvider);
   registerMcpProvider(configProvider);
+  registerMcpProvider(architectureGovernanceProvider);
   initialized = true;
 }

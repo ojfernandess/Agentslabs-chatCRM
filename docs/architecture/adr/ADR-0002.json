@@ -1,0 +1,77 @@
+{
+  "id": "ADR-0002",
+  "title": "Embratur FNRH reference domains — resolução global de check-in",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "92dda4d",
+  "component": "Check-in Embratur",
+  "modifiedFiles": [
+    "apps/api/src/lib/agent-engine/checkin/embraturReferenceDomains.ts",
+    "apps/api/src/lib/agent-engine/checkin/embraturRuntimeGuards.ts",
+    "apps/api/src/lib/agent-engine/checkin/embraturReferenceResolver.ts",
+    "apps/api/src/lib/agent-engine/checkin/toolOutcomeParsing.ts",
+    "apps/api/src/lib/agent-engine/core/sessionToolOutcomes.ts",
+    "apps/api/src/lib/agent-engine/validators/turnPolicyParser.ts",
+    "apps/api/src/lib/agentNativeLlm.ts",
+    "apps/api/src/lib/automationHttpToolExecute.ts",
+    "apps/api/src/lib/agent-engine/reply/ReplySynthesizer.ts"
+  ],
+  "reason": "Check-in Embratur falhava silenciosamente quando campos de país/cidade não vinham de domínios FNRH válidos; o runtime activava conclusão prematura e o LLM contornava o Scheduler.",
+  "categories": [
+    "Bug",
+    "Scheduler",
+    "Tool Runtime",
+    "Runtime"
+  ],
+  "problem": "Após ficha Embratur com EUA/Nova Iorque, __completionReady activava sem 6 campos completos; Scheduler bloqueava check-in mas LLM invocava audaar_check_in directamente; HTTP 200 com validationError era tratado como sucesso.",
+  "rootCause": "Catálogo estático IBGE para países estrangeiros; sessionToolOutcomes marcava completion sem validar Embratur completo; toolOutcomeParsing não detectava validationError em body HTTP 200; bypass hybrid LLM→tool sem guardas runtime.",
+  "alternativesAnalyzed": [
+    "Prompt específico por bot para forçar campos Embratur",
+    "Hardcode de IDs EUA/Nova Iorque no catálogo estático",
+    "Bloqueio apenas no ReplySynthesizer"
+  ],
+  "alternativesDiscarded": [
+    "Prompt por bot — não escala, viola princípio playbook genérico",
+    "Hardcode de IDs — dívida técnica e incompleto para todos os países",
+    "Só ReplySynthesizer — bypass já ocorria antes da síntese"
+  ],
+  "technicalJustification": "Resolver bgstdscpais/bgstdscpaisdest via tool embratur-reference (domínios FNRH); guardas runtime globais; __completionReady só com 6 campos; turnPolicyParser omite check-in do catálogo LLM se incompleto; validationError → ok:false; gate em agentNativeLlm antes de check-in.",
+  "architectureBefore": "Mapeamento Embratur dependia de catálogo estático; completionReady independente de ficha completa; HTTP 200 sempre ok; LLM podia invocar check-in fora do Scheduler.",
+  "architectureAfter": "embraturReferenceResolver consulta API FNRH por domínio; embraturRuntimeGuards bloqueiam check-in globalmente; sessionToolOutcomes exige 6 campos; toolOutcomeParsing detecta falha de negócio; agentNativeLlm resolve slots antes do check-in.",
+  "expectedImpact": "Check-in só conclui com ficha Embratur válida via referência FNRH; regressões de bypass LLM eliminadas; qualquer playbook beneficia do runtime genérico.",
+  "actualImpact": "",
+  "risks": [
+    "Latência adicional em lookups FNRH por turno",
+    "Dependência da disponibilidade da API embratur-reference"
+  ],
+  "rollback": "Revert commit 92dda4d; desactivar embraturRuntimeGuards e restaurar sessionToolOutcomes anterior.",
+  "testsExecuted": [
+    "embraturReferenceDomains.test.ts",
+    "embraturReferenceResolver.test.ts",
+    "toolOutcomeParsing.test.ts",
+    "sessionToolOutcomes.test.ts",
+    "TurnToolScheduler.test.ts",
+    "ReplySynthesizer.test.ts"
+  ],
+  "testResult": "passed",
+  "status": "accepted",
+  "references": [
+    "RCA-0001",
+    "opennexo://architecture/adr/ADR-0002"
+  ],
+  "architectureScore": {
+    "cohesion": 8,
+    "lowCoupling": 7,
+    "reuse": 9,
+    "explainability": 8,
+    "auditability": 8,
+    "performance": 7,
+    "reliability": 9,
+    "testability": 9,
+    "scalability": 8,
+    "observability": 7,
+    "total": 8.0
+  }
+}

@@ -1,0 +1,50 @@
+name: Architecture Gates
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/src/lib/agent-engine/**"
+      - "apps/api/src/lib/agentNativeLlm.ts"
+      - "apps/api/src/lib/architecture-governance/**"
+      - "apps/api/scripts/**"
+      - "docs/architecture/**"
+  push:
+    branches: [main, master]
+    paths:
+      - "apps/api/src/lib/agent-engine/**"
+      - "apps/api/src/lib/agentNativeLlm.ts"
+
+jobs:
+  architecture-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Agent engine regression + generalization
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://openconduit:openconduit@localhost:5432/openconduit
+          JWT_SECRET: test-secret
+        run: |
+          node --import tsx --test \
+            src/lib/agent-engine/regression/baselineGoldenTurns.test.ts \
+            src/lib/agent-engine/regression/generalizationAgent.test.ts \
+            src/lib/architecture-governance/governanceService.test.ts \
+            src/lib/architecture-governance/simulator.test.ts \
+            src/lib/architecture-governance/ciGate.test.ts
+
+      - name: Patch scan (--fail-on-new)
+        working-directory: apps/api
+        run: node scripts/scan-runtime-patches.mjs --fail-on-new
+
+      - name: Architecture CI gates
+        working-directory: apps/api
+        run: node --import tsx scripts/architecture-ci-gate.mjs

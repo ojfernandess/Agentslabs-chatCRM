@@ -5,6 +5,7 @@
 
 import { PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentationTenantEndpoints.js";
 import { PUBLIC_EMAIL_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentationEmailEndpoints.js";
+import { PUBLIC_AGENT_NATIVE_TOOLS_API_DOCUMENTATION_ENDPOINTS } from "./publicApiDocumentationAgentNativeToolsEndpoints.js";
 
 export type PublicApiDocAuth =
   | "none"
@@ -286,6 +287,12 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
     titleEn: "Tenant API (authenticated agents/admins)",
     titlePt: "API do tenant (agentes/admins autenticados)",
     endpoints: PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS,
+  },
+  {
+    id: "agent_native_tools",
+    titleEn: "Agent native tools (HTTP equivalents)",
+    titlePt: "Ferramentas nativas do agente (equivalentes HTTP)",
+    endpoints: PUBLIC_AGENT_NATIVE_TOOLS_API_DOCUMENTATION_ENDPOINTS,
   },
   {
     id: "email_workspace",

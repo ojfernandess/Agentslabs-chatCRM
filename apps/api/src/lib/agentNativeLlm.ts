@@ -3,8 +3,6 @@ import type { Bot, Conversation, Message } from "@prisma/client";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import {
-  callGeminiGenerateContent,
-  callOpenAiCompatibleChat,
   callOpenAiCompatibleChatWithTools,
   type OpenAiToolDefinition,
   type PreviewChatTurn,
@@ -42,7 +40,6 @@ import {
   confirmationGateSatisfiedThisTurn,
   findForbiddenPairViolation,
   formatTurnPolicyForSupervisor,
-  resolveTurnPolicy,
   toolAliasesToOmitFromCatalog,
   toolNameMatchesOmitAlias,
   toolsMatchAlias,
@@ -57,7 +54,14 @@ import {
   formatExecutionContractForSupervisor,
   executionContractViolationAlerts,
 } from "./agent-engine/core/executionContractFormat.js";
-import { buildTurnContext } from "./agent-engine/core/buildTurnContext.js";
+import { UnifiedSpineSession, resolveUnifiedSpineMode } from "./agent-engine/runtime/UnifiedSpineBridge.js";
+import { appendPackedLlmContext, gateLlmToolCall } from "./agent-engine/runtime/LlmRuntimeBridge.js";
+import {
+  resolveSpineBoundTurnContext,
+  type SpineTurnContextBindingsOpts,
+} from "./agent-engine/runtime/spineTurnContextBindings.js";
+import { invokeLlmTextGeneration } from "./agent-engine/runtime/LlmTurnAdapter.js";
+import type { AgentRuntimeExecuteInput } from "./agent-engine/types.js";
 import {
   appendSessionSatisfiedToolName,
   applyConfirmationPhaseTransitions,
@@ -150,9 +154,11 @@ import {
   replaceFlowSlotsAutomationContext,
   type AutomationFlowSlots,
 } from "./automationConversationContextLib.js";
-import { recordNativeAgentTransferHandoff } from "./agentConversationHandoff.js";
-import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import { assignTagsToConversationContact } from "./assignContactTags.js";
+import {
+  callHumanForConversationForOrg,
+  transferConversationToTeamForOrg,
+} from "./conversationNativeToolActions.js";
 import type { AutomationExecutionLogPort } from "./automationExecutionLog.js";
 import { applyAgentPlaybookToSystemInstructions } from "./agentPlaybook.js";
 import {
@@ -1202,37 +1208,25 @@ async function executeNativeTool(input: {
       const teamIdRaw = args.team_id ?? args.teamId;
       const teamId = typeof teamIdRaw === "string" ? teamIdRaw.trim() : "";
       if (!teamId) return JSON.stringify({ ok: false, error: "missing_team_id_uuid" });
-      const r = await assignConversationTeamForOrg(prisma, {
-        organizationId,
-        conversationId,
-        body: { teamId, assignedToId: null },
-      });
-      if (!r.ok) {
-        return JSON.stringify({ ok: false, error: r.error.message });
-      }
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { status: "OPEN", updatedAt: new Date() },
-      });
       const reason = typeof args.reason === "string" ? args.reason : null;
       const snippet = (userMessage ?? "").trim();
-      try {
-        await recordNativeAgentTransferHandoff({
-          organizationId,
-          conversationId,
-          toolName: name === "assign_team_to_conversation" ? "assign_team_to_conversation" : "transfer_to_team",
-          reason,
-          userMessageSnippet: snippet,
-          teamName: r.payload.team?.name ?? null,
-        });
-      } catch (err) {
-        log.warn({ err, conversationId }, "recordNativeAgentTransferHandoff failed after transfer_to_team");
+      const r = await transferConversationToTeamForOrg(prisma, {
+        organizationId,
+        conversationId,
+        teamId,
+        reason,
+        userMessageSnippet: snippet,
+        toolName: name === "assign_team_to_conversation" ? "assign_team_to_conversation" : "transfer_to_team",
+        log,
+      });
+      if (!r.ok) {
+        return JSON.stringify({ ok: false, error: r.message });
       }
       return JSON.stringify({
         ok: true,
         teamId: r.payload.teamId,
-        teamName: r.payload.team?.name ?? null,
-        message: "Conversa atribuída à equipa e aberta para atendentes humanos.",
+        teamName: r.payload.teamName,
+        message: r.payload.message,
       });
     }
 
@@ -1282,38 +1276,17 @@ async function executeNativeTool(input: {
       const teamIdRaw = args.team_id ?? args.teamId;
       const teamId =
         typeof teamIdRaw === "string" && teamIdRaw.trim().length >= 32 ? teamIdRaw.trim() : null;
-      let teamName: string | null = null;
-      if (teamId) {
-        const r = await assignConversationTeamForOrg(prisma, {
-          organizationId,
-          conversationId,
-          body: { teamId, assignedToId: null },
-        });
-        if (!r.ok) {
-          log.warn({ err: r.error }, "call_human team assign failed");
-        } else {
-          teamName = r.payload.team?.name ?? null;
-        }
-      }
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { status: "OPEN", assignedToId: null, updatedAt: new Date() },
-      });
       const reason = typeof args.reason === "string" ? args.reason : null;
       const snippet = (userMessage ?? "").trim();
-      try {
-        await recordNativeAgentTransferHandoff({
-          organizationId,
-          conversationId,
-          toolName: "call_human",
-          reason,
-          userMessageSnippet: snippet,
-          teamName,
-        });
-      } catch (err) {
-        log.warn({ err, conversationId }, "recordNativeAgentTransferHandoff failed after call_human");
-      }
-      return JSON.stringify({ ok: true, message: "Conversa aberta para atendimento humano." });
+      const r = await callHumanForConversationForOrg(prisma, {
+        organizationId,
+        conversationId,
+        teamId,
+        reason,
+        userMessageSnippet: snippet,
+        log,
+      });
+      return JSON.stringify({ ok: true, message: r.payload.message });
     }
 
     if (name === "set_conversation_status" && flags.set_conversation_status) {
@@ -1559,30 +1532,33 @@ async function augmentReplyWithToolOutcomes(params: {
     toolBlock;
   try {
     if (params.provider === "google_gemini") {
-      const r = await callGeminiGenerateContent({
+      const r = await invokeLlmTextGeneration({
+        provider: params.provider,
         apiKey: params.apiKey,
         model: params.model,
+        apiBaseUrl: params.apiBaseUrl,
         temperature: params.temperature,
-        maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
+        maxTokens: params.maxTokens,
         system: params.systemInstructions + extra,
         history: params.history,
         userMessage: params.userMessage,
         signal: params.signal,
       });
-      return r.text.trim();
+      return r.text;
     }
-    const r = await callOpenAiCompatibleChat({
-      baseUrl: params.apiBaseUrl.replace(/\/+$/, ""),
+    const r = await invokeLlmTextGeneration({
+      provider: params.provider,
       apiKey: params.apiKey,
       model: params.model,
+      apiBaseUrl: params.apiBaseUrl,
       temperature: params.temperature,
-      maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
+      maxTokens: params.maxTokens,
       system: params.systemInstructions + extra,
       history: params.history,
       userMessage: params.userMessage,
       signal: params.signal,
     });
-    return r.text.trim();
+    return r.text;
   } catch (err) {
     params.log.warn({ err }, "native tool outcome augment failed");
     return params.draftReply.trim();
@@ -1667,32 +1643,19 @@ async function augmentStallWithKnowledge(params: {
     // Histórico curto: evita o modelo repetir o stall dos turnos anteriores.
     const shortHistory = params.history.slice(-4);
     let text = "";
-    if (params.provider === "google_gemini") {
-      const r = await callGeminiGenerateContent({
-        apiKey: params.apiKey,
-        model: params.model,
-        temperature: Math.min(params.temperature, 0.4),
-        maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
-        system,
-        history: shortHistory,
-        userMessage: params.userMessage,
-        signal: params.signal,
-      });
-      text = r.text.trim();
-    } else {
-      const r = await callOpenAiCompatibleChat({
-        baseUrl: params.apiBaseUrl.replace(/\/+$/, ""),
-        apiKey: params.apiKey,
-        model: params.model,
-        temperature: Math.min(params.temperature, 0.4),
-        maxTokens: Math.max(16, Math.min(8192, params.maxTokens)),
-        system,
-        history: shortHistory,
-        userMessage: params.userMessage,
-        signal: params.signal,
-      });
-      text = r.text.trim();
-    }
+    const r = await invokeLlmTextGeneration({
+      provider: params.provider,
+      apiKey: params.apiKey,
+      model: params.model,
+      apiBaseUrl: params.apiBaseUrl,
+      temperature: Math.min(params.temperature, 0.4),
+      maxTokens: params.maxTokens,
+      system,
+      history: shortHistory,
+      userMessage: params.userMessage,
+      signal: params.signal,
+    });
+    text = r.text;
     if (!text || isNonDeliveringAgentReply(text)) return "";
     return text;
   } catch (err) {
@@ -1825,7 +1788,7 @@ async function generateNativeAgentReplyCore(input: {
         }
       : undefined;
 
-  // Motor Padrão (openconduit) = loop linear sandbox — nunca via Agent Engine / orchestrator.
+  // Motor Padrão (openconduit): loop sandbox + Unified Spine opcional (Fase 2).
   // Outros runtimes (langgraph, crewai, autogen, mastra) passam pela Factory.
   if (!input.skipEngineRoute && engineConfig.runtime !== "openconduit") {
     ensureAgentEngineExecutorRegistered();
@@ -2239,14 +2202,41 @@ async function generateNativeAgentReplyCore(input: {
   ];
   const lastAssistantForPolicy =
     readLastAssistantPreview(sessionFlowSlots) || lastAssistantMessage;
-  const turnPolicy = resolveTurnPolicy(behaviorConfigObj, {
-    userMessage,
-    priorToolOutcomes: sessionPriorAtBegin,
-    availableToolNames: catalogToolNames,
-    flowSlots: sessionFlowSlots,
-    lastAssistantMessage: lastAssistantForPolicy,
+  const unifiedSpineRuntimeInput: AgentRuntimeExecuteInput = {
+    organizationId,
+    bot,
+    conversation,
+    message,
+    log,
+    engineConfig,
+    llmConfig: llm,
+    behaviorConfig: behaviorConfigObj,
+    executionLog: ex ?? undefined,
+  };
+  const unifiedSpine = UnifiedSpineSession.begin({
+    input: unifiedSpineRuntimeInput,
     memory: { flowSlots: sessionFlowSlots },
+    availableToolNames: catalogToolNames,
+    executionLog: ex,
   });
+  const spineBindings = (): SpineTurnContextBindingsOpts => ({
+    turnId: `${conversation.id}:${message.id}`,
+    behaviorConfig: behaviorConfigObj,
+    userMessage,
+    availableToolNames: catalogToolNames,
+    toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
+      name,
+      ok,
+      preview,
+      structuredPayload,
+    })),
+    toolConfigs: customHttpTools.map((t) => ({ name: t.name, config: t.config })),
+    memory: { flowSlots: sessionFlowSlots },
+    sessionPriorOutcomes: sessionPriorAtBegin,
+    lastAssistantMessage: lastAssistantForPolicy,
+  });
+  const resolveSpineCtx = () => resolveSpineBoundTurnContext(unifiedSpine, spineBindings(), ex);
+  const turnPolicy = resolveSpineCtx().promptContract.turnPolicy;
   const turnPolicyAppendix = formatTurnPolicyForSupervisor(turnPolicy);
   const capabilityGraph = buildCapabilityGraph({
     tools: customHttpTools.map((t) => ({
@@ -2350,22 +2340,19 @@ async function generateNativeAgentReplyCore(input: {
     historyOverride == null
   ) {
     try {
-      const scheduleCtx = buildTurnContext({
-        turnId: `${conversation.id}:${message.id}`,
+      unifiedSpine.refresh({
         behaviorConfig: behaviorConfigObj,
-        userMessage,
-        availableToolNames: catalogToolNames,
         toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
           name,
           ok,
           preview,
           structuredPayload,
         })),
-        toolConfigs: customHttpTools.map((t) => ({ name: t.name, config: t.config })),
         memory: { flowSlots: sessionFlowSlots },
-        sessionPriorOutcomes: sessionPriorAtBegin,
-        lastAssistantMessage: lastAssistantForPolicy,
+        phase: "schedule",
+        executionLog: ex,
       });
+      const scheduleCtx = resolveSpineCtx();
       if (scheduleCtx.executionContract.pendingToolNames.length > 0) {
         const scheduled = await invokeScheduledTools({
           organizationId,
@@ -2503,6 +2490,16 @@ async function generateNativeAgentReplyCore(input: {
       ? `\n\n[OpenConduit — política de turno]\n${turnPolicyAppendix}`
       : "");
 
+  const unifiedSpineMode = resolveUnifiedSpineMode(engineConfig);
+  let systemForLlm = systemBase;
+  if (unifiedSpineMode !== "off") {
+    try {
+      systemForLlm = appendPackedLlmContext(systemBase, resolveSpineCtx());
+    } catch (packErr) {
+      log.warn({ err: packErr }, "packTurnContextForLlm failed — using systemBase");
+    }
+  }
+
   const lastClearedAt = automationCtx.lastClearedAt;
 
   let loadedHistory: PreviewChatTurn[] = [];
@@ -2592,6 +2589,7 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const signal = nativeAgentLlmAbortSignal();
+  unifiedSpine.recordPhase("execute_llm", resolveUnifiedSpineMode(engineConfig), ex);
 
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
@@ -2635,7 +2633,7 @@ async function generateNativeAgentReplyCore(input: {
           model,
           temperature,
           maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-          system: systemBase,
+          system: systemForLlm,
           history,
           userMessage,
           tools,
@@ -2819,35 +2817,48 @@ async function generateNativeAgentReplyCore(input: {
               }
 
               if (isCheckInCompletionToolName(row.name)) {
-                if (!hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)) {
-                  try {
-                    sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
-                      organizationId,
-                      bot,
-                      conversation,
-                      message,
-                      log,
-                      behaviorConfig: behaviorConfigObj,
-                      userMessage,
+                try {
+                  sessionFlowSlots = await maybeResolveEmbraturFlowSlots({
+                    organizationId,
+                    bot,
+                    conversation,
+                    message,
+                    log,
+                    behaviorConfig: behaviorConfigObj,
+                    userMessage,
+                    flowSlots: sessionFlowSlots,
+                    kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
+                  });
+                  if (httpToolRuntimeContext) {
+                    httpToolRuntimeContext = {
+                      ...httpToolRuntimeContext,
                       flowSlots: sessionFlowSlots,
-                      kbPrefetchAppendix: kbProactiveAppendix || input.kbPrefetchAppendix,
-                    });
-                    if (httpToolRuntimeContext) {
-                      httpToolRuntimeContext = {
-                        ...httpToolRuntimeContext,
+                      conversation: {
+                        ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? {
+                          id: conversation.id,
+                        }),
                         flowSlots: sessionFlowSlots,
-                        conversation: {
-                          ...((httpToolRuntimeContext.conversation as Record<string, unknown>) ?? {
-                            id: conversation.id,
-                          }),
-                          flowSlots: sessionFlowSlots,
-                        },
-                      };
-                    }
-                  } catch (resolveErr) {
-                    log.warn({ err: resolveErr }, "embratur resolve before check-in failed");
+                      },
+                    };
                   }
+                } catch (resolveErr) {
+                  log.warn({ err: resolveErr }, "embratur resolve before check-in failed");
                 }
+              }
+
+              if (unifiedSpineMode !== "off") {
+                const sandboxGate = gateLlmToolCall({
+                  toolName: row.name,
+                  turnContext: resolveSpineCtx(),
+                  alreadyCalledThisTurn: existingNames,
+                  capabilityGraph,
+                  sessionFacts,
+                  flowSlots: sessionFlowSlots,
+                });
+                if (!sandboxGate.allowed && sandboxGate.blockJson) {
+                  return finishToolCall(sandboxGate.blockJson);
+                }
+              } else if (isCheckInCompletionToolName(row.name)) {
                 if (!hasCompleteEmbraturFields(sessionFlowSlots as Record<string, unknown>)) {
                   return finishToolCall(buildEmbraturIncompleteToolError(sessionFlowSlots));
                 }
@@ -3046,18 +3057,19 @@ async function generateNativeAgentReplyCore(input: {
           },
         });
         try {
-          const r = await callOpenAiCompatibleChat({
-            baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+          const r = await invokeLlmTextGeneration({
+            provider,
             apiKey,
             model,
+            apiBaseUrl,
             temperature,
-            maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-            system: systemBase,
+            maxTokens,
+            system: systemForLlm,
             history,
             userMessage,
             signal: nativeAgentLlmAbortSignal(),
           });
-          replyText = r.text.trim();
+          replyText = r.text;
           ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
             output: { replyChars: replyText.length },
           });
@@ -3079,33 +3091,36 @@ async function generateNativeAgentReplyCore(input: {
       }
     } else if (provider === "google_gemini") {
       ex?.info({ id: "llm", name: "Gemini" }, "Geração sem tools (Gemini)");
-      const r = await callGeminiGenerateContent({
+      const r = await invokeLlmTextGeneration({
+        provider,
         apiKey,
         model,
+        apiBaseUrl,
         temperature,
-        maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemBase,
+        maxTokens,
+        system: systemForLlm,
         history,
         userMessage,
         signal,
       });
-      replyText = r.text.trim();
+      replyText = r.text;
       ex?.info({ id: "llm", name: "Gemini" }, "Resposta Gemini", { output: { replyChars: replyText.length } });
     } else {
       ex?.info({ id: "llm", name: "OpenAI chat" }, "Geração sem tools (OpenAI)");
-      const r = await callOpenAiCompatibleChat({
-        baseUrl: apiBaseUrl.replace(/\/+$/, ""),
+      const r = await invokeLlmTextGeneration({
+        provider,
         apiKey,
         model,
+        apiBaseUrl,
         temperature,
-        maxTokens: Math.max(16, Math.min(8192, maxTokens)),
-        system: systemBase,
+        maxTokens,
+        system: systemForLlm,
         history,
         userMessage,
         signal,
         onTokenDelta,
       });
-      replyText = r.text.trim();
+      replyText = r.text;
       ex?.info({ id: "llm", name: "OpenAI chat" }, "Resposta OpenAI", { output: { replyChars: replyText.length } });
     }
   } catch (err) {
@@ -3196,7 +3211,7 @@ async function generateNativeAgentReplyCore(input: {
       userMessage,
       draftReply: replyText,
       toolOutcomes: toolRoundOutcomes,
-      systemInstructions: systemBase,
+      systemInstructions: systemForLlm,
       history,
       provider,
       apiKey,
@@ -3219,6 +3234,7 @@ async function generateNativeAgentReplyCore(input: {
       toolOutcomes: toolRoundOutcomes,
       userMessage,
       configuredStallMessages,
+      promptIr: unifiedSpineMode !== "off" ? resolveSpineCtx().promptIr : undefined,
     });
     if (synthesized.replaced && synthesized.reply.trim()) {
       replyText = synthesized.reply.trim();
@@ -3489,18 +3505,19 @@ async function generateNativeAgentReplyCore(input: {
     } catch {
       /* EIL opcional — não bloqueia supervisor LLM */
     }
-    const turnContext = buildTurnContext({
-      turnId: `${conversation.id}:${message.id}`,
+    unifiedSpine.refresh({
       behaviorConfig: profile.behaviorConfig as Record<string, unknown>,
-      userMessage,
-      memory: { flowSlots: sessionFlowSlots },
       toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
         name,
         ok,
         preview,
         structuredPayload,
       })),
+      memory: { flowSlots: sessionFlowSlots },
+      phase: "validate",
+      executionLog: ex,
     });
+    const turnContext = resolveSpineCtx();
     const contractSummary = formatExecutionContractForSupervisor(turnContext.executionContract);
     const contractAlerts = executionContractViolationAlerts(turnContext.executionContract);
     const supervisorPrompt =
@@ -3531,32 +3548,19 @@ async function generateNativeAgentReplyCore(input: {
       `Resposta proposta:\n${replyText.slice(0, 2500)}`;
     try {
       let supervisorText = "";
-      if (provider === "google_gemini") {
-        const r = await callGeminiGenerateContent({
-          apiKey,
-          model,
-          temperature: 0.2,
-          maxTokens: 256,
-          system: supervisorPrompt,
-          history: [],
-          userMessage: supervisorUser,
-          signal,
-        });
-        supervisorText = r.text.trim();
-      } else {
-        const r = await callOpenAiCompatibleChat({
-          baseUrl: apiBaseUrl.replace(/\/+$/, ""),
-          apiKey,
-          model,
-          temperature: 0.2,
-          maxTokens: 256,
-          system: supervisorPrompt,
-          history: [],
-          userMessage: supervisorUser,
-          signal,
-        });
-        supervisorText = r.text.trim();
-      }
+      const r = await invokeLlmTextGeneration({
+        provider,
+        apiKey,
+        model,
+        apiBaseUrl,
+        temperature: 0.2,
+        maxTokens: 256,
+        system: supervisorPrompt,
+        history: [],
+        userMessage: supervisorUser,
+        signal,
+      });
+      supervisorText = r.text;
       let approved = true;
       let summary = supervisorText.slice(0, 500);
       try {
@@ -3754,6 +3758,7 @@ async function generateNativeAgentReplyCore(input: {
       } else {
         // Preservar toolOutcomes/kbMeta para o runtime (reply-only retry + validação correcta).
         // Só limpa a reply para não enviar texto reprovado ao contacto.
+        unifiedSpine.finalize(ex, "turn_complete_strict_block");
         return {
           reply: "",
           toolOutcomes: toolRoundOutcomes.map(({ name, ok, preview, structuredPayload }) => ({
@@ -3774,6 +3779,8 @@ async function generateNativeAgentReplyCore(input: {
       }
     }
   }
+
+  unifiedSpine.finalize(ex, "turn_complete");
 
   const kbCoversForMeta =
     proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery);

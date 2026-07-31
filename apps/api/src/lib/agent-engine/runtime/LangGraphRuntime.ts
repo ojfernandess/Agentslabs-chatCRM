@@ -27,6 +27,7 @@ import type {
   AgentRuntimeState,
 } from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
+import { resolveUnifiedSpineMode } from "./UnifiedSpineBridge.js";
 import {
   getAgentGraphCheckpointer,
   persistGraphCheckpointSnapshot,
@@ -150,6 +151,13 @@ export class LangGraphRuntime implements AgentRuntime {
       observability: input.engineConfig.observability,
     });
     traceBuilder.emitEvent("start", "LangGraph.js StateGraph agent↔tools");
+    const spineMode = resolveUnifiedSpineMode(input.engineConfig);
+    if (spineMode !== "off") {
+      traceBuilder.emitEvent(
+        "spine",
+        `Unified spine (${spineMode}) — plan/contract via executor nativo`,
+      );
+    }
 
     const checkpointer = getAgentGraphCheckpointer(
       input.engineConfig.checkpointStore ?? "memory",

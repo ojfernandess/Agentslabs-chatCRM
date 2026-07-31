@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "./AgentRuntime.js";
 import type { AgentRuntimeExecuteInput, AgentRuntimeExecuteResult } from "../types.js";
 import { ExecutionTraceBuilder } from "../observability/ExecutionTrace.js";
+import { resolveUnifiedSpineMode } from "./UnifiedSpineBridge.js";
 import { executeRuntimeStream, type StreamRuntimeEvent } from "./StreamingRuntime.js";
 
 export type NativeAgentKbMeta = {
@@ -21,8 +22,8 @@ export type NativeAgentExecutor = (
 ) => Promise<NativeAgentExecutorResult>;
 
 /**
- * Motor Padrão (openconduit) — loop linear sandbox.
- * Delega ao executor nativo (`generateNativeAgentReplyCore`) sem WorkflowRuntimeOrchestrator.
+ * Motor Padrão (openconduit) — delega ao executor nativo.
+ * Com `unifiedSpineMode` ≠ off, ExecutionEngine governa plan/contract (Fase 2).
  */
 export class OpenNexoRuntime implements AgentRuntime {
   readonly kind = "openconduit" as const;
@@ -34,13 +35,21 @@ export class OpenNexoRuntime implements AgentRuntime {
   }
 
   async execute(input: AgentRuntimeExecuteInput): Promise<AgentRuntimeExecuteResult> {
+    const spineMode = resolveUnifiedSpineMode(input.engineConfig);
     const traceBuilder = new ExecutionTraceBuilder({
       runtime: "openconduit",
       memory: input.engineConfig.memory,
       strictMode: input.engineConfig.strictMode,
       observability: input.engineConfig.observability,
     });
-    traceBuilder.emitEvent("start", "Motor Padrão — loop linear sandbox");
+    traceBuilder.emitEvent(
+      "start",
+      spineMode === "off"
+        ? "Motor Padrão — sandbox linear"
+        : spineMode === "only"
+          ? "Motor Padrão — unified spine only (LLM adapter)"
+          : `Motor Padrão — unified spine (${spineMode})`,
+    );
     traceBuilder.startNode("respond", "Native linear reply");
     const result = await this.executor(input);
     traceBuilder.endNode(

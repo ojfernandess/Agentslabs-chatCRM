@@ -1,0 +1,66 @@
+{
+  "id": "ADR-0001",
+  "title": "Architecture Governance System (AGS)",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "pending",
+  "component": "Architecture Governance",
+  "modifiedFiles": [
+    "apps/api/src/lib/architecture-governance/",
+    "apps/api/src/lib/mcp/providers/architectureGovernanceProvider.ts",
+    "apps/api/src/lib/mcp/server/createMcpServer.ts",
+    "docs/architecture/"
+  ],
+  "reason": "Toda evolução estrutural do OpenNexo AI Runtime deve ser rastreável, auditável, explicável e reversível sem depender de conhecimento implícito da equipa.",
+  "categories": [
+    "Architecture",
+    "Observabilidade",
+    "Runtime"
+  ],
+  "problem": "Decisões arquiteturais dispersas em commits, conversas e memória dos developers; impossível auditar causa raiz, impacto e rollback de forma centralizada.",
+  "rootCause": "Ausência de módulo formal de governança integrado ao runtime e à MCP OpenNexo.",
+  "alternativesAnalyzed": [
+    "Documentação manual em wiki externa",
+    "ADR estático apenas em markdown sem API",
+    "Processo de review humano sem gates automáticos"
+  ],
+  "alternativesDiscarded": [
+    "Wiki externa — fora do repositório e da MCP",
+    "ADR estático — sem classificação, impact analysis nem RCA",
+    "Review só humano — não escala e não bloqueia regressões arquiteturais"
+  ],
+  "technicalJustification": "Módulo TypeScript em apps/api/src/lib/architecture-governance com stores ADR/RCA em docs/architecture, classificador automático, impact analysis por component registry, quality gates, architecture score e integração MCP (search_adr, search_rca, architecture_review, architecture_timeline, architecture_dependency_graph).",
+  "architectureBefore": "Alterações estruturais aplicadas directamente no runtime sem ADR obrigatório, sem RCA deduplicado e sem consulta MCP de histórico arquitetural.",
+  "architectureAfter": "Pipeline evaluateProposedChange → quality gates + architecture reviewer + impact analysis; recordArchitectureDecision gera ADR/RCA versionados; MCP expõe knowledge base arquitetural.",
+  "expectedImpact": "Toda alteração estrutural futura passa por governança; novos developers consultam MCP para compreender evolução da plataforma.",
+  "actualImpact": "",
+  "risks": [
+    "Overhead inicial em PRs até equipa adoptar workflow",
+    "Simulador e git hooks (fase 2) ainda não activos"
+  ],
+  "rollback": "Remover módulo architecture-governance e tools MCP associadas; ADRs/RCAs permanecem em docs/architecture como histórico.",
+  "testsExecuted": [
+    "apps/api/src/lib/architecture-governance/governanceService.test.ts"
+  ],
+  "testResult": "passed",
+  "status": "accepted",
+  "references": [
+    "docs/architecture/AGS.md",
+    "opennexo://architecture/adr/ADR-0001"
+  ],
+  "architectureScore": {
+    "cohesion": 8,
+    "lowCoupling": 7,
+    "reuse": 8,
+    "explainability": 9,
+    "auditability": 10,
+    "performance": 8,
+    "reliability": 8,
+    "testability": 8,
+    "scalability": 8,
+    "observability": 9,
+    "total": 8.3
+  }
+}

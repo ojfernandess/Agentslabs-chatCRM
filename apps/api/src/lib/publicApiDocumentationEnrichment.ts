@@ -333,6 +333,72 @@ POST — HTTP 201: pasta criada`,
     successStatus: 200,
     exampleResponsePt: `HTTP 200 — resumo do painel (contadores, conversas activas; e-mails ocultos excluídos quando configurado).`,
   },
+  "/api/v1/automation/knowledge-articles/search": {
+    successStatus: 200,
+    exampleResponsePt: `HTTP 200 application/json:
+{
+  "cached": false,
+  "searchMode": "semantic",
+  "data": [
+    {
+      "id": "<uuid>",
+      "title": "Horário de funcionamento",
+      "content": "...",
+      "organizationId": "<uuid>",
+      "createdAt": "2026-01-10T10:00:00.000Z",
+      "updatedAt": "2026-06-01T08:00:00.000Z"
+    }
+  ],
+  "ranking": [
+    {
+      "id": "<uuid>",
+      "score": 0.892,
+      "excerpt": "A loja abre de segunda a sexta das 9h às 18h..."
+    }
+  ]
+}`,
+    extraErrors: [{ status: 403, descriptionPt: "Requer ADMIN no tenant." }],
+  },
+  "/api/v1/automations/teams": {
+    successStatus: 200,
+    exampleResponsePt: `HTTP 200 application/json:
+{
+  "data": [
+    {
+      "id": "<uuid>",
+      "name": "Suporte",
+      "description": null,
+      "_count": { "members": 4 }
+    }
+  ]
+}`,
+    extraErrors: [{ status: 403, descriptionPt: "Requer ADMIN no tenant (ou AGENT vê só equipas onde é membro)." }],
+  },
+  "/api/v1/automations/conversations/:id/transfer-team": {
+    successStatus: 200,
+    exampleResponsePt: `HTTP 200 application/json:
+{
+  "ok": true,
+  "teamId": "<uuid>",
+  "teamName": "Suporte",
+  "message": "Conversa atribuída à equipa e aberta para atendentes humanos."
+}`,
+    extraErrors: [
+      { status: 403, descriptionPt: "Requer ADMIN no tenant." },
+      { status: 404, descriptionPt: "Conversa ou equipa não encontrada." },
+    ],
+  },
+  "/api/v1/automations/conversations/:id/call-human": {
+    successStatus: 200,
+    exampleResponsePt: `HTTP 200 application/json:
+{
+  "ok": true,
+  "teamId": "<uuid-opcional>",
+  "teamName": "Suporte",
+  "message": "Conversa aberta para atendimento humano."
+}`,
+    extraErrors: [{ status: 403, descriptionPt: "Requer ADMIN no tenant." }],
+  },
 };
 
 const PAGINATED_PATHS = new Set([

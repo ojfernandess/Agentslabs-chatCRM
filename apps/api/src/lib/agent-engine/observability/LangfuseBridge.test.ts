@@ -25,6 +25,25 @@ test("resolveRuntimeLayer maps graph nodes to layers", () => {
   assert.equal(resolveRuntimeLayer("retry"), "resilience");
 });
 
+test("resolveRuntimeLayer maps architecture governance events", () => {
+  assert.equal(resolveRuntimeLayer("architecture_review"), "architecture_governance");
+  assert.equal(resolveRuntimeLayer("ci_gate"), "architecture_governance");
+});
+
+test("buildArchitectureGovernanceSpan includes gate results", async () => {
+  const { buildArchitectureGovernanceSpan } = await import("./LangfuseBridge.js");
+  const span = buildArchitectureGovernanceSpan({
+    traceId: "trace-ags",
+    gateResults: [
+      { id: "scan_runtime_patches", passed: true },
+      { id: "architecture_simulator", passed: true },
+    ],
+    architectureScore: 7.5,
+  });
+  assert.equal(span.body.metadata.layer, "architecture_governance");
+  assert.equal(span.body.metadata.passed, true);
+});
+
 test("buildLayerSpans creates one span per layer", () => {
   const spans = buildLayerSpans(
     "trace-1",

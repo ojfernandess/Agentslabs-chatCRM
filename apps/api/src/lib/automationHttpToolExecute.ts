@@ -6,7 +6,8 @@ import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecut
 import { readMessageMediaFile } from "./mediaStorage.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js";
-import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "./agent-engine/checkin/embraturTravelForm.js";
+import { assembleEmbraturFromSources } from "./agent-engine/checkin/embraturTravelForm.js";
+import { adaptHttpCheckInPayload } from "./agent-engine/checkin/toolOutcomeAdapters.js";
 import { httpToolBodyIndicatesFailure } from "./agent-engine/checkin/toolOutcomeParsing.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
@@ -1208,7 +1209,7 @@ export async function runAutomationHttpLikeTool(input: {
 
   // audaar_check_in: mode enum + dependents sem slots vazios (rg≠mode).
   if (/check[_-]?in|checkin/i.test(tool.name)) {
-    llmArgs = normalizeAudaarCheckInPayload(llmArgs);
+    llmArgs = adaptHttpCheckInPayload(llmArgs);
   }
 
   const flat = buildHttpToolFlatContext(llmArgs, {

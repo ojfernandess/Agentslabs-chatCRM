@@ -8,6 +8,8 @@ import { buildCapabilityGraph, findCapabilityNode } from "../eil/CapabilityGraph
  */
 export type ToolRegistryEntry = {
   name: string;
+  /** Nome OpenAI oc_tool_* quando diferente do name estável. */
+  openAiName?: string;
   capabilities: string[];
   produces: string[];
   consumesFacts: string[];
@@ -21,20 +23,36 @@ export type ToolRegistryEntry = {
 
 export type ToolRegistry = {
   byName: Map<string, ToolRegistryEntry>;
+  /** oc_tool_<hex> ou openAiName → entry estável */
+  byAlias: Map<string, ToolRegistryEntry>;
   entries: ToolRegistryEntry[];
 };
 
+function isOcToolName(name: string): boolean {
+  return /^oc_tool_[a-f0-9]{32}$/i.test(name.trim());
+}
+
 export function buildToolRegistry(
-  tools: Array<{ name: string; config?: unknown }>,
+  tools: Array<{ name: string; config?: unknown; openAiName?: string }>,
 ): ToolRegistry {
   const entries: ToolRegistryEntry[] = [];
   const byName = new Map<string, ToolRegistryEntry>();
+  const byAlias = new Map<string, ToolRegistryEntry>();
   for (const tool of tools) {
     const name = (tool.name ?? "").trim();
     if (!name) continue;
     const eil = parseToolEilConfig(tool.config);
+    const registryName =
+      isOcToolName(name) && eil.stableName?.trim() ? eil.stableName.trim() : name;
+    const openAiCandidate =
+      (typeof tool.openAiName === "string" && tool.openAiName.trim()) ||
+      (isOcToolName(name) ? name : undefined);
     const entry: ToolRegistryEntry = {
-      name,
+      name: registryName,
+      openAiName:
+        openAiCandidate && openAiCandidate.toLowerCase() !== registryName.toLowerCase()
+          ? openAiCandidate
+          : undefined,
       capabilities: eil.capabilities ?? [],
       produces: eil.produces ?? [],
       consumesFacts: eil.requiresFacts ?? [],
@@ -46,9 +64,15 @@ export function buildToolRegistry(
       eil,
     };
     entries.push(entry);
-    byName.set(name.toLowerCase(), entry);
+    byName.set(registryName.toLowerCase(), entry);
+    if (entry.openAiName) {
+      byAlias.set(entry.openAiName.toLowerCase(), entry);
+    }
+    if (name.toLowerCase() !== registryName.toLowerCase()) {
+      byAlias.set(name.toLowerCase(), entry);
+    }
   }
-  return { byName, entries };
+  return { byName, byAlias, entries };
 }
 
 export function registryEntryToCapabilityNode(entry: ToolRegistryEntry): CapabilityNode {
@@ -80,7 +104,34 @@ export function getRegistryEntry(
   registry: ToolRegistry,
   toolName: string,
 ): ToolRegistryEntry | undefined {
-  return registry.byName.get(toolName.trim().toLowerCase());
+  const key = toolName.trim().toLowerCase();
+  return registry.byName.get(key) ?? registry.byAlias.get(key);
+}
+
+/** Resolve oc_tool_* → nome estável (audaar_*). Fallback: input original. */
+export function resolveStableToolName(
+  registry: ToolRegistry | null | undefined,
+  toolName: string,
+): string {
+  const trimmed = toolName.trim();
+  if (!registry) return trimmed;
+  const entry = getRegistryEntry(registry, trimmed);
+  return entry?.name ?? trimmed;
+}
+
+/** Lista de aliases conhecidos para uma tool (inclui oc_tool_*). */
+export function toolRegistryAliases(
+  registry: ToolRegistry,
+  stableName: string,
+): string[] {
+  const entry = getRegistryEntry(registry, stableName);
+  if (!entry) return [stableName];
+  const aliases = new Set<string>([entry.name]);
+  if (entry.openAiName) aliases.add(entry.openAiName);
+  for (const [alias, e] of registry.byAlias) {
+    if (e.name === entry.name) aliases.add(alias);
+  }
+  return [...aliases];
 }
 
 export function findRegistryNode(

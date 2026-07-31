@@ -1,58 +1,27 @@
 import { priorToolOutcomesFromSession } from "./sessionToolOutcomes.js";
 import { readLastAssistantPreview } from "./confirmationTurnGuards.js";
-import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
-import { compilePromptContract } from "../compiler/PromptCompiler.js";
+import { compilePromptToIR } from "../compiler/PromptCompiler.js";
+import { promptIrToContract } from "../contract/promptIrAdapter.js";
+import { analyzeTurnIntent } from "../compiler/IntentAnalyzer.js";
+import type { ResolveEilTurnResult } from "../eil/runtimeBridge.js";
 import type { ToolOutcomeForEil } from "../eil/types.js";
-import { resolveEilTurn, type ResolveEilTurnResult } from "../eil/runtimeBridge.js";
+import { buildUnifiedExecutionPlan } from "../planner/UnifiedExecutionPlanner.js";
 import type { FactStore } from "../eil/types.js";
-import { buildExecutionTurnPlan, type ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
+import { buildCapabilityGraph } from "../eil/CapabilityGraph.js";
+import { factsFromFlowSlots, ingestToolOutcomes, mergeFactStores } from "../eil/FactsEngine.js";
+import { buildEilSnapshot } from "../eil/ExecutionPlanner.js";
+import { factsToFlowSlots } from "../eil/FactsEngine.js";
+import type { ExecutionTurnPlan } from "../planner/ExecutionTurnPlan.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import type {
   ExecutionContract,
   IntentAnalysis,
-  IntentKind,
   PromptContract,
   TurnContext,
 } from "./types.js";
 
 export function analyzeIntent(userMessage: string, turnPlan: ExecutionTurnPlan): IntentAnalysis {
-  const msg = (userMessage ?? "").trim();
-  let kind: IntentKind = "general";
-  let confidence = 0.55;
-
-  if (turnPlan.matchedPatternIds.includes("structured_form_submission")) {
-    kind = "data_submission";
-    confidence = 0.88;
-  } else if (turnPlan.knowledgeSeeking || userMessageLooksLikeKnowledgeSeekingQuery(msg)) {
-    kind = "knowledge_query";
-    confidence = 0.85;
-  } else if (/^(sim|ok|confirmo|yes|não|nao|no)$/i.test(msg)) {
-    kind = "confirmation";
-    confidence = 0.9;
-  } else if (/^\d{11}$/.test(msg) || /^[A-Z0-9]{6,12}$/i.test(msg)) {
-    kind = "data_submission";
-    confidence = 0.8;
-  } else if (turnPlan.matchedPatternIds.includes("escalation")) {
-    kind = "escalation_request";
-    confidence = 0.75;
-  } else if (turnPlan.requiredToolNames.length > 0) {
-    kind = "operational_action";
-    confidence = 0.7;
-  }
-
-  const entities: Record<string, string> = {};
-  const doc = msg.match(/\b\d{11}\b/);
-  if (doc) entities.documentNumber = doc[0];
-  // Localizador: 6–12 alfanuméricos com pelo menos 1 dígito (evita apanhar palavras como "reserva").
-  const loc = msg.match(/\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i);
-  if (loc) entities.referenceCode = loc[0].toUpperCase();
-
-  return {
-    kind,
-    confidence,
-    entities,
-    expectedGoal: kind === "knowledge_query" ? "answer_from_knowledge" : "complete_operational_flow",
-  };
+  return analyzeTurnIntent(userMessage, turnPlan);
 }
 
 export function buildExecutionContract(opts: {
@@ -158,7 +127,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     opts.lastAssistantMessage !== undefined && opts.lastAssistantMessage !== null
       ? opts.lastAssistantMessage
       : readLastAssistantPreview(opts.memory ?? memoryFlowSlots ?? null);
-  const promptContract = compilePromptContract({
+  const compileOpts = {
     behaviorConfig: opts.behaviorConfig,
     userMessage,
     availableToolNames: opts.availableToolNames,
@@ -170,37 +139,57 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     memory: opts.memory,
     postCompletionFollowUp: opts.postCompletionFollowUp,
     workflowPlannedToolNames: opts.workflowPlannedToolNames,
+  };
+  const promptIr = compilePromptToIR(compileOpts);
+  const promptContract = promptIrToContract(promptIr);
+
+  const tools =
+    opts.toolConfigs ??
+    [
+      ...(opts.availableToolNames ?? []).map((name) => ({ name })),
+      ...(opts.toolOutcomes ?? []).map((o) => ({ name: o.name })),
+    ].filter((t, i, arr) => arr.findIndex((x) => x.name === t.name) === i);
+  const graph = buildCapabilityGraph({ tools });
+  const prior = mergeFactStores(
+    opts.priorFacts ?? {},
+    factsFromFlowSlots(memoryFlowSlots),
+  );
+  const facts = ingestToolOutcomes({
+    outcomes: opts.toolOutcomes ?? [],
+    prior,
+    graph,
   });
-  const turnPlan = buildExecutionTurnPlan({
+  const toolsCalled = (opts.toolOutcomes ?? []).filter((t) => t.ok).map((t) => t.name);
+
+  const unifiedPlan = buildUnifiedExecutionPlan({
+    ...compileOpts,
     behaviorConfig: opts.behaviorConfig,
-    userMessage,
-    availableToolNames: opts.availableToolNames,
-    priorToolOutcomes,
-    sessionPriorOutcomes,
-    flowSlots: memoryFlowSlots,
-    freezeCompletionPromotion: opts.freezeCompletionPromotion,
-    lastAssistantMessage,
-    memory: opts.memory,
-    postCompletionFollowUp: opts.postCompletionFollowUp,
-    workflowPlannedToolNames: opts.workflowPlannedToolNames,
+    promptIr,
+    facts,
+    graph,
+    toolsCalled,
+    priorFacts: opts.priorFacts,
   });
+
+  const turnPlan: ExecutionTurnPlan = unifiedPlan;
   const intent = analyzeIntent(userMessage, turnPlan);
 
-  const eil =
-    opts.eilResolve ??
-    resolveEilTurn({
-      behaviorConfig: opts.behaviorConfig,
-      userMessage,
-      memory: opts.memory,
-      toolOutcomes: opts.toolOutcomes,
-      toolConfigs: opts.toolConfigs,
-      availableToolNames: opts.availableToolNames,
-      priorFacts: opts.priorFacts,
-      freezeCompletionPromotion: opts.freezeCompletionPromotion,
-      postCompletionFollowUp: opts.postCompletionFollowUp,
-      workflowPlannedToolNames: opts.workflowPlannedToolNames,
-      lastAssistantMessage,
-    });
+  const eil: ResolveEilTurnResult =
+    opts.eilResolve ?? {
+      enabled: unifiedPlan.eilEnabled,
+      graph,
+      facts,
+      plan: unifiedPlan,
+      snapshot: buildEilSnapshot({
+        behaviorConfig: opts.behaviorConfig,
+        plan: unifiedPlan,
+        facts,
+        graph,
+        toolsCalled,
+        outcomes: opts.toolOutcomes,
+      }),
+      flowSlotsPatch: factsToFlowSlots(facts),
+    };
 
   const executionContract = buildExecutionContract({
     turnId: opts.turnId,
@@ -214,6 +203,7 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     version: 1,
     userMessage,
     intent,
+    promptIr,
     promptContract,
     turnPlan,
     executionContract,

@@ -7,7 +7,6 @@ import {
 import { validateToolExecution, type ToolRoundOutcome } from "../validators/ToolValidator.js";
 import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesParser.js";
 import {
-  resolveTurnPolicy,
   validateToolOutcomesAgainstTurnPolicy,
   type TurnPolicy,
 } from "../validators/turnPolicyParser.js";
@@ -15,6 +14,11 @@ import type { PromptValidationInput } from "../validators/PromptValidator.js";
 import { auditPromptAssembly } from "./promptAssemblyAudit.js";
 import type { ExecutionContract } from "../core/types.js";
 import { executionContractViolationAlerts } from "../core/executionContractFormat.js";
+import {
+  noCompletionClaimWithoutTool,
+  replyClaimsOperationalData,
+} from "../supervisor/structuralValidation.js";
+import { routeStructuralViolations } from "../supervisor/ViolationRouter.js";
 import {
   analyzeExecutionQualityFromLogs,
   type ExecutionLogEntryLike,
@@ -48,7 +52,7 @@ export type WorkflowAuditInput = {
   requiredToolNames?: string[];
   /** Contrato compilado — Fase 3: evita re-parse do playbook em F3/F7. */
   executionContract?: ExecutionContract;
-  /** Política de turno do playbook (pares proibidos, exclusividade). Fallback sem contrato. */
+  /** Política de turno — fonte estrutural (IR/contrato). Sem re-parse de playbook. */
   turnPolicy?: TurnPolicy;
   behaviorConfig?: Record<string, unknown>;
   promptValidation?: PromptValidationInput;
@@ -79,6 +83,8 @@ export type WorkflowAuditReport = {
   findings: WorkflowAuditFinding[];
   metrics: WorkflowAuditMetrics;
   supervisorTrace?: AgentSupervisorTrace;
+  /** Fase 5 — roteamento upstream para RCA. */
+  routedViolations?: ReturnType<typeof routeStructuralViolations>;
 };
 
 const LANGGRAPH_EXPECTED_DEFAULT = [
@@ -114,20 +120,17 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     promptValidation: input.promptValidation,
   });
   if (hasPromptData) {
-    findings.push(
-      finding("F1", "prompt_loaded", "critical", promptAudit.loadedCompletely, "Prompt carregado completamente"),
-      finding("F1", "prompt_not_truncated", "critical", !promptAudit.truncated, "Prompt sem truncagem", {
-        file: "apps/api/src/lib/agentNativeLlm.ts",
-        suggestedFix: "Verificar limites de tokens e agregação de appendix KB/memória",
-      }),
-      finding("F1", "prompt_not_duplicated", "high", !promptAudit.duplicated, "Playbook não duplicado", {
-        file: "apps/api/src/lib/agentPlaybook.ts",
-      }),
-      finding("F1", "prompt_variables_resolved", "high", promptAudit.variablesSubstituted, "Variáveis substituídas"),
-      finding("F1", "prompt_restrictions_present", "medium", promptAudit.restrictionsPresent, "Restrições obrigatórias presentes"),
-    );
+    for (const item of [
+      finding("F1", "prompt_loaded", "info", promptAudit.loadedCompletely, "Prompt carregado completamente"),
+      finding("F1", "prompt_not_truncated", "info", !promptAudit.truncated, "Prompt sem truncagem"),
+      finding("F1", "prompt_not_duplicated", "info", !promptAudit.duplicated, "Playbook não duplicado"),
+      finding("F1", "prompt_variables_resolved", "info", promptAudit.variablesSubstituted, "Variáveis substituídas"),
+      finding("F1", "prompt_restrictions_present", "info", promptAudit.restrictionsPresent, "Restrições presentes"),
+    ]) {
+      findings.push(item);
+    }
     for (const issue of promptAudit.issues) {
-      findings.push(finding("F1", `prompt_issue_${issue.slice(0, 24)}`, "high", false, issue));
+      findings.push(finding("F1", `prompt_issue_${issue.slice(0, 24)}`, "info", false, `[observability] ${issue}`));
     }
   } else {
     findings.push(finding("F1", "prompt_audit_skipped", "info", true, "Auditoria de prompt omitida — sem preview/validation"));
@@ -160,20 +163,14 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     contract?.requiredToolNames ??
     input.requiredToolNames ??
     [];
-  const turnPolicy =
-    contract != null
-      ? undefined
-      : input.turnPolicy ??
-        (input.behaviorConfig
-          ? resolveTurnPolicy(input.behaviorConfig, { userMessage: input.userMessage })
-          : undefined);
+  const turnPolicy = input.turnPolicy;
   const toolValidation = validateToolExecution({
     toolOutcomes: input.toolOutcomes,
     replyText: input.replyText,
     strictMode: input.strictMode,
     requiredToolNames,
     turnPolicy,
-    behaviorConfig: contract != null ? undefined : input.behaviorConfig,
+    behaviorConfig: contract != null || turnPolicy != null ? undefined : input.behaviorConfig,
     userMessage: input.userMessage,
   });
 
@@ -225,15 +222,10 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   }
 
   /**
-   * Gate anti-alucinação operacional (genérico, multi-segmento):
-   * resposta afirma factos de sistema/cadastro/reserva/saldo sem qualquer tool neste turno.
+   * Gate anti-alucinação operacional (estrutural — detectReplyActions).
    */
   const operationalAssertionWithoutTools =
-    input.toolOutcomes.length === 0 &&
-    input.replyText.trim().length > 0 &&
-    /encontrei (seu|o|a|um)|cadastro anterior|confirme os dados|seu saldo [ée]|reserva (encontrada|confirmada|localizada)|check-in (conclu[ií]do|realizado)|pedido (confirmado|enviado)|dados do titular/i.test(
-      input.replyText,
-    );
+    input.toolOutcomes.length === 0 && replyClaimsOperationalData(input.replyText);
   findings.push(
     finding(
       "F3",
@@ -244,23 +236,19 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
         ? "Resposta afirma factos operacionais sem invocar ferramenta neste turno"
         : "Sem afirmação operacional órfã de ferramenta",
       {
-        file: "apps/api/src/lib/agent-engine/audit/WorkflowValidator.ts",
-        suggestedFix: "Invocar a tool HTTP/API da categoria activa antes de espelhar/confirmar dados",
+        file: "apps/api/src/lib/agent-engine/supervisor/structuralValidation.ts",
+        suggestedFix: "Invocar a tool da categoria activa antes de espelhar/confirmar dados",
       },
     ),
   );
 
-  /** Passo 8 / conclusão sem tool de conclusão neste turno. */
-  const claimsCompletion = /check-in (foi )?conclu[ií]d|pedido (foi )?confirmado|reserva (foi )?confirmada/i.test(
-    input.replyText,
-  );
-  const hasCompletionTool = input.toolOutcomes.some(
-    (t) =>
-      t.ok &&
-      (turnPolicy?.completionToolHints.some((h) => toolOutcomeSatisfiesRequired(h, [t])) ||
-        /check[_-]?in|submit|confirm|concluir|finalize/i.test(t.name)),
-  );
-  if (claimsCompletion && !hasCompletionTool) {
+  const claimsCompletionWithoutTool = !noCompletionClaimWithoutTool({
+    replyText: input.replyText,
+    toolOutcomes: input.toolOutcomes,
+    turnPolicy,
+    strictMode: input.strictMode,
+  });
+  if (claimsCompletionWithoutTool) {
     findings.push(
       finding(
         "F3",
@@ -279,7 +267,7 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   if (
     toolValidation.alerts.length === 0 &&
     !operationalAssertionWithoutTools &&
-    !(claimsCompletion && !hasCompletionTool)
+    !claimsCompletionWithoutTool
   ) {
     findings.push(finding("F3", "tool_coherence", "info", true, "Coerência ferramentas ↔ resposta OK"));
   }
@@ -335,6 +323,10 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     validationBlockSend: input.validationBlockSend ?? toolValidation.blockSend,
     turnPolicy,
     executionContract: contract ?? null,
+    eilEnabled: input.eilSnapshot?.enabled,
+    eilPlan: input.eilSnapshot?.plan,
+    eilViolations: input.eilSnapshot?.violations,
+    facts: input.eilSnapshot?.factDetails,
   });
   const supervisorTrace = input.supervisorEnabled
     ? (input.supervisorTrace ?? buildSupervisorTrace(supInput))
@@ -425,6 +417,19 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
   if (eil?.enabled) {
     const pendingTools = eil.toolsPending ?? eil.plan?.pendingTools ?? [];
     const missingFacts = eil.plan?.pendingFacts ?? [];
+    const planGraph = (eil.plan as { planGraph?: { orderedToolNames?: string[] } })?.planGraph;
+    if (planGraph?.orderedToolNames?.length) {
+      findings.push(
+        finding(
+          "F-EIL",
+          "eil_plan_graph",
+          "info",
+          true,
+          `Plan graph: ${planGraph.orderedToolNames.join(" → ")}`,
+          { file: "apps/api/src/lib/agent-engine/planner/PlanGraphBuilder.ts" },
+        ),
+      );
+    }
     findings.push(
       finding(
         "F-EIL",
@@ -479,10 +484,19 @@ export function validateAgentWorkflow(input: WorkflowAuditInput): WorkflowAuditR
     (n) => !toolOutcomeSatisfiesRequired(n, input.toolOutcomes),
   ).length;
 
+  const routedViolations = routeStructuralViolations({
+    executionContract: contract,
+    eilViolations: input.eilSnapshot?.violations,
+    failedCheckIds: findings
+      .filter((f) => !f.passed && f.severity !== "info")
+      .map((f) => ({ id: f.id, detail: f.description })),
+  });
+
   return {
     approved,
     findings,
     supervisorTrace,
+    routedViolations,
     metrics: {
       successRate: findings.length ? (findings.filter((f) => f.passed).length / findings.length) * 100 : 100,
       criticalFailures,

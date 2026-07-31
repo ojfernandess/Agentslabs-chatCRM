@@ -1,0 +1,102 @@
+{
+  "id": "ADR-0003",
+  "title": "Unified Execution Spine — Prompt → IR → Runtime",
+  "date": "2026-07-30",
+  "author": "OpenNexo Platform — Arquitetura Principal",
+  "version": "1.0.0",
+  "branch": "main",
+  "commit": "phase-9-audit",
+  "component": "Runtime / Execution Engine",
+  "modifiedFiles": [
+    "docs/architecture/PATCH-REGISTRY.md",
+    "docs/architecture/baseline/BASELINE-AUDIT-2026-07-30.md",
+    "docs/architecture/audit/FINAL-AUDIT-2026-07-31.md",
+    "docs/architecture/adr/ADR-0003.md",
+    "apps/api/src/lib/agent-engine/regression/baselineGoldenTurns.test.ts",
+    "apps/api/src/lib/agent-engine/regression/generalizationAgent.test.ts",
+    "apps/api/src/lib/architecture-governance/finalAudit.ts",
+    "apps/api/scripts/scan-runtime-patches.mjs",
+    "apps/api/scripts/run-final-audit.mjs"
+  ],
+  "reason": "Eliminar acoplamento runtime↔prompt e permitir criação de agentes apenas via Prompt, sem alterar código do Runtime.",
+  "categories": [
+    "Architecture",
+    "Runtime",
+    "Planner",
+    "Prompt Compiler",
+    "Scheduler"
+  ],
+  "problem": "Dual runtime (agentNativeLlm bypass ExecutionEngine); 47 patches catalogados (28 específicos); Prompt re-interpretado a cada turno; LLM decide tools/workflow compensado por Synthesizer.",
+  "rootCause": "Evolução incremental por patches pontuais sem spine arquitectural único apesar de componentes genéricos já existirem.",
+  "alternativesAnalyzed": [
+    "Continuar patches em agentNativeLlm",
+    "Reescrever runtime do zero",
+    "Unificar spine existente + Prompt IR",
+    "Mover lógica para LangGraph only"
+  ],
+  "alternativesDiscarded": [
+    "Patches contínuos — escala impossível",
+    "Rewrite total — risco compatibilidade",
+    "LangGraph only — não resolve acoplamento prompt"
+  ],
+  "technicalJustification": "Prompt IR formal consolida parsers; ExecutionEngine como spine único; EIL como fonte de verdade; agentNativeLlm reduzido a LLM adapter; compatibilidade via compilação equivalente de playbooks existentes.",
+  "architectureBefore": "Prompt texto → agentNativeLlm monolito com patches Embratur/hotel; ExecutionEngine deprecated e não usado em openconduit.",
+  "architectureAfter": "Prompt → Compiler → Prompt IR → Planner → Contract → Capability/Facts/Policy → Scheduler → Workflow → ExecutionEngine → LLM (raciocínio only) → Supervisor → Workflow Validator → Audit.",
+  "expectedImpact": "Zero patches específicos; novo agente via Prompt only; −60% tokens; Architecture Score 5.1→8.0; agentNativeLlm 3861→<800 linhas.",
+  "actualImpact": "Fases 0–9 concluídas. Golden G-001–G-010 + generalization vet verdes. CI gates + patch scan baseline. Spine wired (shadow). Patches específicos 28→5 legacy. Score 7.1. Ver FINAL-AUDIT-2026-07-31.md.",
+  "risks": [
+    "Regressão fluxo hotel S1-S10",
+    "Playbook legacy não compila para IR",
+    "Scope creep com novos patches durante refactor"
+  ],
+  "rollback": "Feature flag AGENT_ENGINE_UNIFIED_SPINE=false; adapter PromptContract bypass; rollback por fase.",
+  "testsExecuted": [
+    "apps/api/src/lib/agent-engine/regression/baselineGoldenTurns.test.ts",
+    "apps/api/src/lib/agent-engine/regression/generalizationAgent.test.ts",
+    "npm run test:architecture",
+    "npm run audit:final"
+  ],
+  "testResult": "passed",
+  "status": "accepted",
+  "references": [
+    "docs/architecture/PATCH-REGISTRY.md",
+    "docs/architecture/baseline/BASELINE-AUDIT-2026-07-30.md",
+    "docs/architecture/audit/FINAL-AUDIT-2026-07-31.md",
+    "docs/architecture/adr/ADR-0001.md",
+    "docs/architecture/adr/ADR-0002.md",
+    "docs/architecture/adr/ADR-0011.md",
+    "docs/architecture/rca/RCA-0001.json",
+    "opennexo://architecture/adr/ADR-0003"
+  ],
+  "architectureScore": {
+    "cohesion": 8,
+    "lowCoupling": 7,
+    "reuse": 8,
+    "explainability": 8,
+    "auditability": 9,
+    "performance": 7,
+    "reliability": 8,
+    "testability": 9,
+    "scalability": 7,
+    "observability": 8,
+    "total": 7.9
+  },
+  "baselineMetrics": {
+    "agentNativeLlmLines": 3861,
+    "patchesCatalogued": 47,
+    "patchesSpecific": 28,
+    "runtimePaths": 2,
+    "unitTestsPass": 126,
+    "mcpExecutionsSampled": 10,
+    "mcpExecutionsSuccess": 10
+  },
+  "finalMetrics": {
+    "agentNativeLlmLines": 3887,
+    "patchesSpecificRemaining": 5,
+    "runtimePaths": 1,
+    "regressionTestsPass": 30,
+    "architectureScore": 7.1,
+    "patchScanHits": 428,
+    "patchScanReductionVsF0Pct": 2.1
+  }
+}

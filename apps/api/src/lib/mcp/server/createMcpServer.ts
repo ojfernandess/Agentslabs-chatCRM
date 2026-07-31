@@ -9,6 +9,12 @@ import { listMcpAuditLogs } from "../audit/McpAuditLogger.js";
 import { applyEilConfigToAgent } from "../eil/applyEilConfig.js";
 import { assertBotAccess } from "../auth/resolveMcpAuth.js";
 import { requirePermission } from "../access/permissions.js";
+import {
+  architectureDependencyGraphMcp,
+  architectureImpactAnalysisMcp,
+  architectureReviewMcp,
+  architectureTimelineMcp,
+} from "../providers/architectureGovernanceProvider.js";
 
 function textResult(data: unknown, isError = false): McpToolResult {
   return {
@@ -59,7 +65,7 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
     },
     {
       instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
-Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL e contratos de turno (opennexo://turn|contract).
+Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL, contratos de turno (opennexo://turn|contract) e governança arquitetural (opennexo://architecture/adr/* — ADR, RCA, impact analysis).
 Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
@@ -111,6 +117,18 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
     { description: "ExecutionContract (pending/satisfied tools, violations)", mimeType: "application/json" },
     async (uri) => {
       const data = await withAudit(ctx, "resource:read", () => readMcpResourceByUri(ctx, uri.href), "contract", uri.href);
+      return {
+        contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  server.registerResource(
+    "architecture_adr",
+    "opennexo://architecture/adr/{adrId}",
+    { description: "Architecture Decision Record (AGS)", mimeType: "application/json" },
+    async (uri) => {
+      const data = await withAudit(ctx, "resource:read", () => readMcpResourceByUri(ctx, uri.href), "architecture", uri.href);
       return {
         contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
       };
@@ -380,6 +398,109 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
     },
     async (args) =>
       textResult(await withAudit(ctx, "tool:list_resources", () => listAllMcpResources(ctx, args))),
+  );
+
+  server.registerTool(
+    "search_adr",
+    {
+      description: "Search Architecture Decision Records (AGS)",
+      inputSchema: { query: z.string().optional(), limit: z.number().int().optional() },
+    },
+    async (args) => {
+      requirePermission(ctx, "architecture:read");
+      return textResult(
+        await withAudit(ctx, "tool:search_adr", () => getMcpProvider("architecture")!.search!(ctx, args)),
+      );
+    },
+  );
+
+  server.registerTool(
+    "search_rca",
+    {
+      description: "Search Root Cause Registry (AGS)",
+      inputSchema: { query: z.string().optional() },
+    },
+    async (args) => {
+      requirePermission(ctx, "architecture:read");
+      const { searchRcas, listRcas } = await import("../../architecture-governance/rcaStore.js");
+      const q = args.query ?? "";
+      return textResult(
+        await withAudit(ctx, "tool:search_rca", async () =>
+          q.trim() ? searchRcas(q) : listRcas(),
+        ),
+      );
+    },
+  );
+
+  server.registerTool(
+    "architecture_impact_analysis",
+    {
+      description: "Analyze architecture impact for a set of changed files",
+      inputSchema: {
+        changedFiles: z.array(z.string()).min(1).describe("Paths of modified files"),
+      },
+    },
+    async ({ changedFiles }) => {
+      requirePermission(ctx, "architecture:read");
+      return textResult(
+        await withAudit(ctx, "tool:architecture_impact_analysis", () =>
+          architectureImpactAnalysisMcp(changedFiles),
+        ),
+      );
+    },
+  );
+
+  server.registerTool(
+    "architecture_review",
+    {
+      description:
+        "Pre-implementation architecture review (quality gates, impact, ADR/RCA similarity)",
+      inputSchema: {
+        title: z.string(),
+        reason: z.string(),
+        problem: z.string(),
+        rootCause: z.string(),
+        modifiedFiles: z.array(z.string()),
+        component: z.string().optional(),
+        architectureBefore: z.string().optional(),
+        architectureAfter: z.string().optional(),
+        technicalJustification: z.string().optional(),
+      },
+    },
+    async (proposal) => {
+      requirePermission(ctx, "architecture:read");
+      return textResult(
+        await withAudit(ctx, "tool:architecture_review", () => architectureReviewMcp(proposal)),
+      );
+    },
+  );
+
+  server.registerTool(
+    "architecture_timeline",
+    {
+      description: "Timeline of ADRs and RCAs (Architecture Governance)",
+      inputSchema: {},
+    },
+    async () => {
+      requirePermission(ctx, "architecture:read");
+      return textResult(await withAudit(ctx, "tool:architecture_timeline", () => architectureTimelineMcp()));
+    },
+  );
+
+  server.registerTool(
+    "architecture_dependency_graph",
+    {
+      description: "OpenNexo Runtime component dependency graph",
+      inputSchema: {},
+    },
+    async () => {
+      requirePermission(ctx, "architecture:read");
+      return textResult(
+        await withAudit(ctx, "tool:architecture_dependency_graph", () =>
+          architectureDependencyGraphMcp(),
+        ),
+      );
+    },
   );
 
   if (ctx.permissions.has("audit:read")) {

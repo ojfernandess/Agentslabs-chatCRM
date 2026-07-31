@@ -7,6 +7,8 @@ import type {
   FactValue,
   ReplyActionId,
 } from "./types.js";
+import type { PolicyRule } from "../contract/PolicyTypes.js";
+import type { TurnPolicy } from "../validators/turnPolicyParser.js";
 
 function toNumber(v: FactValue | undefined): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -139,4 +141,50 @@ export function resolveForbiddenActions(
     }
   }
   return [...new Set(forbidden)];
+}
+
+export type PromptIrPolicyEvaluation = {
+  violations: string[];
+  blockedSameTurnPairs: Array<{ a: string; b: string }>;
+};
+
+/**
+ * Policy Engine v2 — avalia PolicyRule[] do Prompt IR (Fase 3).
+ * Sem IFs de domínio; só kinds declarativos do IR.
+ */
+export function evaluatePromptIrPolicyRules(opts: {
+  rules: PolicyRule[];
+  facts: FactStore;
+  toolsCalledThisTurn: string[];
+  turnPolicy: TurnPolicy;
+}): PromptIrPolicyEvaluation {
+  const violations: string[] = [];
+  const blockedSameTurnPairs: Array<{ a: string; b: string }> = [];
+  const called = opts.toolsCalledThisTurn.map((t) => t.toLowerCase());
+
+  for (const rule of opts.rules) {
+    if (rule.kind === "forbidden_same_turn_pair" && rule.pair) {
+      const a = rule.pair.a.toLowerCase();
+      const b = rule.pair.b.toLowerCase();
+      if (called.includes(a) && called.includes(b)) {
+        violations.push(`forbidden_same_turn:${a}+${b}`);
+        blockedSameTurnPairs.push({ a: rule.pair.a, b: rule.pair.b });
+      }
+    }
+    if (rule.kind === "block_escalation_on_confirmation" && opts.turnPolicy.blockEscalation) {
+      for (const t of ["transfer_to_team", "call_human", "set_conversation_status"]) {
+        if (called.includes(t)) {
+          violations.push(`escalation_blocked_on_confirmation:${t}`);
+        }
+      }
+    }
+    if (rule.kind === "omit_tool_when_slots_present" && rule.slotKeys?.length) {
+      const allPresent = rule.slotKeys.every((k) => hasFact(opts.facts, k));
+      if (!allPresent && rule.tools?.length) {
+        /* informativo — scheduler usa turnPolicy.omitToolsWhenSlotsPresent */
+      }
+    }
+  }
+
+  return { violations, blockedSameTurnPairs };
 }

@@ -603,9 +603,6 @@ export const messages = {
       agentEngineResilience: "Resiliência de turno",
       agentEngineResilienceHelp:
         "Se tools obrigatórias faltarem, tenta recuperá-las; se o envio for bloqueado, envia a mensagem de fallback em vez de silêncio.",
-      agentEnginePostCompletionFollowUp: "Follow-up pós-conclusão (automático)",
-      agentEnginePostCompletionFollowUpHelp:
-        "Após tool de conclusão OK (ex. check-in) e ack curto, agenda automaticamente o turno Passo 8 / acessos sem esperar resposta do contacto. Opcional — active só se o playbook tiver S11/Passo 8 separado.",
       agentEngineMaxMandatoryRecoveries: "Recuperações de tool",
       agentEngineMaxMandatoryRecoveriesHelp: "0–3 tentativas determinísticas (recomendado: 1).",
       agentEngineBlockedFallback: "Mensagem de fallback (bloqueio)",
@@ -6095,9 +6092,6 @@ export const messages = {
       agentEngineResilience: "Turn resilience",
       agentEngineResilienceHelp:
         "If required tools are missing, recovers them; if send is blocked, delivers the fallback message instead of silence.",
-      agentEnginePostCompletionFollowUp: "Post-completion follow-up (automatic)",
-      agentEnginePostCompletionFollowUpHelp:
-        "After a successful completion tool (e.g. check-in) and a short ack, automatically schedules the Passo 8 / access turn without waiting for the contact. Optional — enable only if the playbook splits S10 and S11/Passo 8.",
       agentEngineMaxMandatoryRecoveries: "Tool recoveries",
       agentEngineMaxMandatoryRecoveriesHelp: "0–3 deterministic attempts (recommended: 1).",
       agentEngineBlockedFallback: "Fallback message (blocked send)",

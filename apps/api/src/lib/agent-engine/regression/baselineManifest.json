@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "phase": 9,
+  "createdAt": "2026-07-30",
+  "description": "Golden turns baseline — reconstrução Unified Spine concluída (Fase 9)",
+  "metrics": {
+    "agentNativeLlmLines": 3887,
+    "patchesCatalogued": 47,
+    "patchesSpecific": 5,
+    "patchesSpecificBaseline": 28,
+    "unitTestsInSuite": 10,
+    "unitTestsExtended": 30,
+    "architectureScore": 7.1,
+    "architectureScoreBaseline": 5.1,
+    "mcpExecutionsSampled": 10,
+    "patchScanHits": 428,
+    "patchScanHitsBaseline": 421
+  },
+  "goldenTurns": [
+    { "id": "G-001", "description": "C2/C3 localizador → consultar_reserva", "phase": "planner" },
+    { "id": "G-002", "description": "Confirmação sim → exclusive embratur-reference", "phase": "turn-policy" },
+    { "id": "G-003", "description": "buildTurnContext → contract + compiler hash", "phase": "compiler" },
+    { "id": "G-004", "description": "Scheduler plans from contract", "phase": "scheduler" },
+    { "id": "G-005", "description": "Reply Synthesizer S1 após consultar_reserva", "phase": "reply" },
+    { "id": "G-006", "description": "GENERIC_TURN_PATTERNS checkin_or_reservation", "phase": "compiler-ir-target" },
+    { "id": "G-007", "description": "Compiler extrai objective", "phase": "compiler" },
+    { "id": "G-008", "description": "FICHA confirm → check_in exclusive", "phase": "turn-policy" },
+    { "id": "G-009", "description": "ExecutionEngine beginTurn spine parity", "phase": "spine" },
+    { "id": "G-010", "description": "Unified planner parity with legacy turn plan", "phase": "planner" }
+  ],
+  "mcpBaselineExecutions": [
+    "748be9ec-be86-4cd6-891d-da67a02548f1",
+    "694676c4-a4df-4794-8bdf-dd6775bbcaa7"
+  ],
+  "relatedDocs": [
+    "docs/architecture/PATCH-REGISTRY.md",
+    "docs/architecture/baseline/BASELINE-AUDIT-2026-07-30.md",
+    "docs/architecture/adr/ADR-0003.md"
+  ]
+}

@@ -5,12 +5,15 @@ import { toolOutcomeSatisfiesRequired } from "../validators/requiredToolNamesPar
 import { turnPolicyPreExecBlockReason } from "../validators/turnPolicyParser.js";
 import {
   canInvokeTool,
+  capabilityPreExecBlockReason,
   findCapabilityNode,
   orderToolsByFactDeps,
 } from "../eil/CapabilityGraph.js";
 import { hasFact } from "../eil/FactsEngine.js";
-import { assembleEmbraturFromSources, normalizeAudaarCheckInPayload } from "../checkin/embraturTravelForm.js";
-import { hasCompleteEmbraturFields } from "../checkin/embraturReferenceResolver.js";
+import {
+  outcomeHasLookupCapability,
+  resolveSchemaToolArgs,
+} from "./SchemaArgResolver.js";
 
 export type ScheduledToolInvocation = {
   toolName: string;
@@ -18,142 +21,46 @@ export type ScheduledToolInvocation = {
   reason: "execution_contract_required";
 };
 
-/** Inferência genérica de argumentos a partir de entidades do turno — sem regras de segmento. */
+/** @deprecated Use resolveSchemaToolArgs — mantido para compat de imports. */
 export function buildScheduledToolArgs(toolName: string, turnContext: TurnContext): Record<string, unknown> {
-  const normalized = toolName.trim().toLowerCase();
-  const msg = turnContext.userMessage.trim();
-  const entities = turnContext.intent.entities;
+  return resolveSchemaToolArgs({ toolName, turnContext });
+}
 
-  if (normalized === "buscar_conhecimento") {
-    return { query: msg };
-  }
+function alreadyCalledThisTurn(
+  toolName: string,
+  existingOutcomes: Array<{ name: string; ok?: boolean }>,
+): string[] {
+  return existingOutcomes
+    .filter((o) => o.ok !== false)
+    .map((o) => o.name.trim())
+    .filter(Boolean);
+}
 
-  const args: Record<string, unknown> = {};
-  const refFromMsg =
-    (typeof entities.referenceCode === "string" && entities.referenceCode.trim()) ||
-    msg.match(/\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,12}\b/i)?.[0]?.toUpperCase() ||
-    "";
+/** Gate único pré-execução: TurnPolicy + CapabilityGraph (Fase 4). */
+export function schedulerPreExecBlockReason(
+  toolName: string,
+  turnContext: TurnContext,
+  existingOutcomes: Array<{ name: string; ok?: boolean }>,
+): string | null {
+  const policy = turnContext.promptContract.turnPolicy;
+  const policyBlock = turnPolicyPreExecBlockReason(toolName, policy);
+  if (policyBlock) return policyBlock;
 
-  const applyLocatorAliases = (ref: string) => {
-    const v = ref.trim();
-    if (!v) return;
-    // Schema audaar_check_in usa reservationIdOrLocalizer; consultar_reserva usa localizadorOuReservationId.
-    args.reservationIdOrLocalizer = args.reservationIdOrLocalizer ?? v;
-    args.localizadorOuReservationId = args.localizadorOuReservationId ?? v;
-    args.reference = args.reference ?? v;
-    args.localizador = args.localizador ?? v;
-    args.localizer = args.localizer ?? v;
-    args.booking_reference = args.booking_reference ?? v;
-    args.reservation_code = args.reservation_code ?? v;
-    args.reservationId = args.reservationId ?? v;
-    args.codigo = args.codigo ?? v;
-  };
+  const graph = turnContext.capabilityGraph;
+  const facts = turnContext.facts ?? {};
+  const called = alreadyCalledThisTurn(toolName, existingOutcomes);
 
-  if (refFromMsg) applyLocatorAliases(refFromMsg);
+  const capBlock = capabilityPreExecBlockReason(toolName, graph, facts, called);
+  if (capBlock) return capBlock;
 
-  if (entities.documentNumber) {
-    args.cpf = entities.documentNumber;
-    args.document = entities.documentNumber;
-    args.documentNumber = entities.documentNumber;
-  }
-
-  // Factos de sessão (flowSlots → FactStore) — preenche required HTTP sem depender do LLM.
-  const facts = turnContext.facts;
-  if (facts && typeof facts === "object") {
-    for (const [k, v] of Object.entries(facts)) {
-      if (k.startsWith("__") && k !== "__travelFormMessage" && k !== "__embraturReferenceCatalog") continue;
-      if (v === undefined || v === null) continue;
-      // FactStore: { key, value, source } · stubs de teste: escalar directo.
-      let scalar: unknown = v;
-      if (typeof v === "object" && !Array.isArray(v) && "value" in (v as object)) {
-        scalar = (v as { value?: unknown }).value;
-      }
-      if (typeof scalar === "string" || typeof scalar === "number" || typeof scalar === "boolean") {
-        if (!(k in args)) args[k] = scalar;
-      }
+  if (graph) {
+    const invoke = canInvokeTool(graph, toolName, facts);
+    if (!invoke.ok) {
+      return `Capability Graph: factos em falta para \`${toolName}\`: ${invoke.unmetFacts.join(", ")}.`;
     }
   }
 
-  // Localizador da sessão (C3) — no S10 a msg é só «sim», sem código na mensagem.
-  let locatorFromFacts: string | undefined;
-  for (const x of [
-    args.reservationIdOrLocalizer,
-    args.localizadorOuReservationId,
-    args.localizador,
-    args.localizer,
-    args.uid,
-    args.reference,
-    args.reservationId,
-  ]) {
-    if (typeof x === "string" && x.trim().length >= 4) {
-      locatorFromFacts = x.trim();
-      break;
-    }
-    if (typeof x === "number" && Number.isFinite(x) && String(x).length >= 4) {
-      locatorFromFacts = String(x);
-      break;
-    }
-  }
-  if (locatorFromFacts) applyLocatorAliases(locatorFromFacts);
-
-  // check_in / schemas nested: monta mainGuest a partir de factos flat.
-  if (/check[_-]?in|checkin/i.test(normalized)) {
-    // Nunca herdar RG/IDs numéricos em `mode` (typo alias rg↔mode).
-    args.mode = "digital";
-    args.approveCheckin = args.approveCheckin ?? true;
-    args.sentToReception = args.sentToReception ?? true;
-    args.validatedCheckin = args.validatedCheckin ?? true;
-
-    const guest: Record<string, unknown> = {};
-    const map: Array<[string, string[]]> = [
-      ["name", ["name", "guestName", "mainGuestName", "fullName"]],
-      ["email", ["email", "guestEmail"]],
-      ["documentNumber", ["documentNumber", "cpf", "document"]],
-      ["documentType", ["documentType", "docType"]],
-      ["rg", ["rg", "rgNumber"]],
-      ["expeditor", ["expeditor", "rgExpeditor", "orgaoEmissor"]],
-      ["mobilePhoneNumber", ["mobilePhoneNumber", "phone"]],
-      ["birthDate", ["birthDate"]],
-      ["gender", ["gender"]],
-      ["profession", ["profession"]],
-      ["citizenship", ["citizenship", "nationality"]],
-      ["zipCode", ["zipCode", "postalCode"]],
-      ["country", ["country"]],
-      ["state", ["state"]],
-      ["city", ["city"]],
-      ["street", ["street", "address"]],
-      ["number", ["number", "addressNumber"]],
-      ["neighborhood", ["neighborhood"]],
-      ["profilePhotoUrl", ["profilePhotoUrl"]],
-      ["documentPhotoUrl", ["documentPhotoUrl"]],
-    ];
-    for (const [field, keys] of map) {
-      for (const k of keys) {
-        const v = args[k];
-        if (v !== undefined && v !== null && String(v).trim() !== "") {
-          guest[field] = v;
-          break;
-        }
-      }
-    }
-    if (Object.keys(guest).length > 0) {
-      args.mainGuest = guest;
-    }
-
-    // Embratur (ficha S9b → snmotvia / sntiptran / IBGE) a partir de flowSlots/facts.
-    const embratur = assembleEmbraturFromSources(args);
-    if (embratur && Object.keys(embratur).length > 0) {
-      args.embratur = embratur;
-    }
-
-    return normalizeAudaarCheckInPayload(args);
-  }
-
-  // HTTP tools: runtime context + auto-fill preenchem o resto quando args vazios.
-  if (Object.keys(args).length === 0 && msg) {
-    args.user_message = msg;
-  }
-  return args;
+  return null;
 }
 
 /** Planeia invocações determinísticas para tools obrigatórias ainda pendentes. */
@@ -161,7 +68,6 @@ export function planScheduledToolInvocations(
   turnContext: TurnContext,
   existingOutcomes: Array<{ name: string; ok?: boolean }> = [],
 ): ScheduledToolInvocation[] {
-  const policy = turnContext.promptContract.turnPolicy;
   const available = new Set(
     (turnContext.availableToolNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean),
   );
@@ -172,7 +78,6 @@ export function planScheduledToolInvocations(
   const graph = turnContext.capabilityGraph;
   const facts = turnContext.facts ?? {};
 
-  // Expandir com producers de factos em falta (Tool Call Accuracy — ordem correcta).
   if (graph) {
     const expanded: string[] = [];
     const seen = new Set<string>();
@@ -198,16 +103,11 @@ export function planScheduledToolInvocations(
   return pending
     .filter((toolName) => {
       if (available.size > 0 && !available.has(toolName.trim().toLowerCase())) return false;
-      if (/check[_-]?in|checkin/i.test(toolName) && !hasCompleteEmbraturFields(facts as Record<string, unknown>)) {
-        return false;
-      }
-      if (turnPolicyPreExecBlockReason(toolName, policy)) return false;
-      if (graph && !canInvokeTool(graph, toolName, facts).ok) return false;
-      return true;
+      return schedulerPreExecBlockReason(toolName, turnContext, existingOutcomes) === null;
     })
     .map((toolName) => ({
       toolName,
-      args: buildScheduledToolArgs(toolName, turnContext),
+      args: resolveSchemaToolArgs({ toolName, turnContext, graph }),
       reason: "execution_contract_required" as const,
     }));
 }
@@ -235,6 +135,7 @@ export function compactStructuredPayloadForPrompt(payload: unknown, maxChars = 3
 
 export function formatScheduledToolsSystemAppendix(
   outcomes: Array<{ name: string; ok: boolean; preview: string; structuredPayload?: unknown }>,
+  capabilityGraph?: TurnContext["capabilityGraph"],
 ): string {
   if (!outcomes.length) return "";
   const anyFailed = outcomes.some((o) => !o.ok);
@@ -256,7 +157,7 @@ export function formatScheduledToolsSystemAppendix(
       "Se o erro for de schema (ex.: rg+órgão juntos), separe os campos já conhecidos e retente — não peça de novo ao hóspede.\n"
     : "";
   const reservationLookupOk = outcomes.some(
-    (o) => o.ok && /consultar[_-]?reserva/i.test(o.name),
+    (o) => o.ok && outcomeHasLookupCapability(o.name, capabilityGraph, o.structuredPayload),
   );
   const checkInScriptBlock = reservationLookupOk
     ? "\n**SCRIPT FIXO (check-in / verificar reserva):** a resposta DEVE seguir o template do playbook " +

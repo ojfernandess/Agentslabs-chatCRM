@@ -36,6 +36,21 @@ export type ToolEilConfig = {
   provider?: string;
   /** Versão semântica da tool. */
   version?: string;
+  /** Nome estável para resolver oc_tool_<uuid> → audaar_* (P-011). */
+  stableName?: string;
+  /** Valores por defeito injectados nos args do scheduler. */
+  argDefaults?: Record<string, unknown>;
+  /** target arg → lista de chaves de facts/args a copiar (primeiro não-vazio ganha). */
+  argAliases?: Record<string, string[]>;
+  /** Agrupa facts flat num objecto nested (ex. mainGuest). */
+  nestedGroups?: Array<{
+    target: string;
+    fieldMap: Record<string, string[]>;
+  }>;
+  /** entity do IntentAnalyzer → nomes de args a preencher. */
+  entityArgMap?: Record<string, string[]>;
+  /** Arg que recebe a user message inteira (ex. query em buscar_conhecimento). */
+  messageArg?: string;
 };
 
 export type CapabilityNode = {

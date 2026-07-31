@@ -8,7 +8,7 @@ import {
   orderToolsByFactDeps,
   toolRequiresUnmetFacts,
 } from "../eil/CapabilityGraph.js";
-import { buildToolRegistry } from "./ToolRegistry.js";
+import { buildToolRegistry, getRegistryEntry, resolveStableToolName } from "./ToolRegistry.js";
 import { validateToolExecution } from "../validators/ToolValidator.js";
 import { planScheduledToolInvocations } from "../scheduler/TurnToolScheduler.js";
 import { buildTurnContext } from "../core/buildTurnContext.js";
@@ -46,6 +46,26 @@ const LOOKUP_CHECKIN_TOOLS = [
     },
   },
 ];
+
+test("ToolRegistry resolves oc_tool alias to stableName", () => {
+  const reg = buildToolRegistry([
+    {
+      name: "oc_tool_a1b2c3d4e5f6789012345678901234ab",
+      config: {
+        eil: {
+          stableName: "audaar_consultar_reserva",
+          capabilities: ["lookup"],
+          produces: ["reservationId"],
+        },
+      },
+    },
+  ]);
+  assert.equal(
+    resolveStableToolName(reg, "oc_tool_a1b2c3d4e5f6789012345678901234ab"),
+    "audaar_consultar_reserva",
+  );
+  assert.ok(getRegistryEntry(reg, "oc_tool_a1b2c3d4e5f6789012345678901234ab"));
+});
 
 test("ToolRegistry parses timeout retry provider version", () => {
   const reg = buildToolRegistry([

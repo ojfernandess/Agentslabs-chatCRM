@@ -114,6 +114,13 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     toolExecutionMode,
     resilienceEnabled,
     legacyOpenconduitBypass: o.legacyOpenconduitBypass === true,
+    unifiedSpineMode:
+      o.unifiedSpineMode === "shadow" ||
+      o.unifiedSpineMode === "primary" ||
+      o.unifiedSpineMode === "only" ||
+      o.unifiedSpineMode === "off"
+        ? o.unifiedSpineMode
+        : DEFAULT_AGENT_ENGINE_CONFIG.unifiedSpineMode ?? "off",
     workflowEngineEnabled: o.workflowEngineEnabled === true,
     // Deprecated: shared orchestrator spine removido do path de produção LangGraph/Motor Padrão.
     workflowRuntimeShared: o.workflowRuntimeShared === true,
@@ -162,6 +169,7 @@ export function mergeAgentEngineIntoBehavior(
       toolExecutionMode: engine.toolExecutionMode ?? "hybrid",
       resilienceEnabled: engine.resilienceEnabled ?? false,
       legacyOpenconduitBypass: engine.legacyOpenconduitBypass ?? false,
+      unifiedSpineMode: engine.unifiedSpineMode ?? "off",
       workflowEngineEnabled: engine.workflowEngineEnabled ?? false,
       workflowRuntimeShared: engine.workflowRuntimeShared ?? false,
       memoryBudgetEnabled: engine.memoryBudgetEnabled ?? false,
