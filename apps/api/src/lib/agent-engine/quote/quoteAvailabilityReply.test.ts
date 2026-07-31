@@ -300,3 +300,9 @@ test("replyShouldPreemptEscalationTransferMessage detects Modelo C6 Escolha Conf
   });
   assert.equal(replyShouldPreemptEscalationTransferMessage(handoff), true);
 });
+
+test("replyShouldPreemptEscalationTransferMessage rejects generic call_human API ack", () => {
+  const generic =
+    "Segue o resultado da consulta:\n\nConversa aberta para atendimento humano.\n\nSe precisar de mais algum detalhe, é só dizer.";
+  assert.equal(replyShouldPreemptEscalationTransferMessage(generic), false);
+});

@@ -18,6 +18,7 @@ import {
   replyLooksLikeModeloC6DiscountOffer,
   replyLooksLikeModeloC6Handoff,
   replyLooksLikeModeloC6Options,
+  replyShouldPreemptEscalationTransferMessage,
   resolveQuoteHandoffContext,
 } from "../quote/quoteAvailabilityReply.js";
 import {
@@ -27,7 +28,9 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
-import { replyClaimsHumanTransfer } from "../escalation/escalationTurnDetection.js";
+import {
+  replyClaimsHumanTransfer,
+} from "../escalation/escalationTurnDetection.js";
 import {
   extractReservationDisplayFields,
   factsFromReservationPayload,
@@ -76,7 +79,8 @@ export type EnsureDeliveringReplyResult = {
     | "quote_c6_category_info_return"
     | "nf_receipt_only"
     | "nf_form_no_locator"
-    | "receipt_confirmation_mirror";
+    | "receipt_confirmation_mirror"
+    | "escalation_use_transfer_message";
 };
 
 export { extractReservationDisplayFields };
@@ -527,6 +531,13 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     if (rendered) {
       return { reply: rendered, replaced: true, reason: "quote_c6_handoff" };
     }
+  }
+
+  if (
+    soleCallHuman &&
+    !replyShouldPreemptEscalationTransferMessage(input.replyText ?? "")
+  ) {
+    return { reply: "", replaced: true, reason: "escalation_use_transfer_message" };
   }
 
   if (

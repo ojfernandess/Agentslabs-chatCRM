@@ -492,3 +492,18 @@ test("ensureDeliveringReply delivers receipt confirmation mirror after PF form s
   assert.match(result.reply, /Confira os dados para emissão do recibo/i);
   assert.match(result.reply, /Audaar Tech Suites/);
 });
+
+test("ensureDeliveringReply yields empty reply after C13 call_human for escalation transfer message", () => {
+  const lastAssistant = `Sinto muito pelo ocorrido. Vou fazer o melhor para te ajudar.
+
+Para agilizar, pode me informar o nome da hospedagem e o número do quarto?`;
+  const result = ensureDeliveringReply({
+    replyText: "Segue o resultado da consulta:\n\nConversa aberta para atendimento humano.",
+    userMessage: "estou na Audaar tech, quarto 71",
+    lastAssistantMessage: lastAssistant,
+    toolOutcomes: [{ name: "call_human", ok: true, preview: '{"message":"Conversa aberta para atendimento humano."}' }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "escalation_use_transfer_message");
+  assert.equal(result.reply, "");
+});

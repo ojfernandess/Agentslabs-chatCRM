@@ -114,7 +114,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       );
       const deliverQuoteHandoff = replyShouldPreemptEscalationTransferMessage(replyText);
 
-      if ((deliverQuoteHandoff || callHumanOk) && replyText.trim()) {
+      if (deliverQuoteHandoff && replyText.trim()) {
         try {
           await deliverAgentReplyMessage({
             organizationId,

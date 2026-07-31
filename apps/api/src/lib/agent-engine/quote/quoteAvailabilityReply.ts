@@ -730,8 +730,19 @@ export function replyLooksLikeModeloC6Handoff(text: string): boolean {
   );
 }
 
+/** Resposta genérica pós-tool (API interna) — não substitui mensagem de escalonamento. */
+export function replyLooksLikeGenericToolDeliveryAck(text?: string | null): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return (
+    /^segue o resultado da consulta:/i.test(t) ||
+    /\bconversa aberta para atendimento humano\b/i.test(t)
+  );
+}
+
 /** Resposta substantiva de handoff C6/C13 — deve ir ao hóspede em vez da msg genérica de escalonamento. */
 export function replyShouldPreemptEscalationTransferMessage(text: string): boolean {
+  if (replyLooksLikeGenericToolDeliveryAck(text)) return false;
   if (replyLooksLikeModeloC6Handoff(text)) return true;
   const t = (text ?? "").trim();
   if (!t) return false;

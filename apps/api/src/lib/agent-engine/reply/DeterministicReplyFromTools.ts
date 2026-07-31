@@ -100,6 +100,7 @@ export function buildDeterministicReplyFromToolOutcomes(
     if (seen.has(t.name)) continue;
     seen.add(t.name);
     if (t.name === "buscar_conhecimento") continue;
+    if (/^call_human$/i.test(t.name) || /^transfer_to_team$/i.test(t.name)) continue;
     const payload = t.structuredPayload ?? (() => {
       try {
         return JSON.parse(previewSource(t));
