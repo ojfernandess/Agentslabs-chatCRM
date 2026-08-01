@@ -173,7 +173,11 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   if (isUserDataProvisionMessage(t)) return false;
   if (isShortConfirmationOrFlowReply(t)) return false;
   if (isOperationalQuoteMessage(t)) return false;
-  // Pedidos operacionais (check-in / verificar reserva + localizador) → API HTTP, não KB.
+  // C2/C3 — verificar/consultar/confirmar reserva ou check-in → API HTTP, nunca KB.
+  if (userMessageLooksLikeReservationVerificationIntent(t)) {
+    return false;
+  }
+  // Pedidos operacionais com localizador na mesma mensagem.
   if (isOperationalReservationLookupMessage(t)) {
     return false;
   }
@@ -230,6 +234,40 @@ export function messageContainsReservationLocator(userMessage: string): boolean 
 }
 
 /**
+ * C2/C3 — intenção de verificar/consultar/confirmar reserva ou fazer check-in
+ * (com ou sem localizador na mensagem).
+ */
+export function userMessageLooksLikeReservationVerificationIntent(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (isOperationalQuoteMessage(t)) return false;
+  if (/\b(?:fazer|quero|preciso|gostaria\s+de)\s+(?:de\s+)?check[- ]?in\b/i.test(t)) return true;
+  if (/\bstatus\s+(?:da\s+)?(?:minha\s+)?reserva\b/i.test(t)) return true;
+  if (
+    /\b(?:verificar|consultar|confirmar|checar|validar)\b/i.test(t) &&
+    /\b(?:minha\s+)?reserva\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\breserva\b.*\b(?:confirmad[ao]|est[aá]\s+(?:cert[oa]|ok|confirmad[ao]))\b/i.test(t)) {
+    return true;
+  }
+  if (
+    /\b(?:est[aá]|tudo)\s+(?:cert[oa]|ok|confirmad[ao])\b.*\b(?:com\s+)?(?:a\s+|minha\s+)?reserva\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:minha\s+)?reserva\b.*\b(?:est[aá]|tudo)\s+(?:cert[oa]|ok|confirmad[ao])\b/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Pedido operacional C2/C3 (check-in / verificar reserva + localizador) —
  * dados vêm da API HTTP, nunca da KB.
  */
@@ -239,9 +277,7 @@ export function isOperationalReservationLookupMessage(userMessage: string): bool
   if (isOperationalQuoteMessage(t)) return false;
   if (/data de chegada\s*\(check-in\)|data de partida\s*\(checkout\)/i.test(t)) return false;
   if (!messageContainsReservationLocator(t)) return false;
-  return /(?:check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva)/i.test(
-    t,
-  );
+  return userMessageLooksLikeReservationVerificationIntent(t);
 }
 
 /**
@@ -284,7 +320,11 @@ export function resolveKnowledgeSearchSkip(
 
   if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";
   if (isUserDataProvisionMessage(userMessage)) return "data_provision";
-  if (isOperationalReservationLookupMessage(userMessage) || ctx.reservationLookupScheduled) {
+  if (
+    userMessageLooksLikeReservationVerificationIntent(userMessage) ||
+    isOperationalReservationLookupMessage(userMessage) ||
+    ctx.reservationLookupScheduled
+  ) {
     return "checkin_reservation_turn";
   }
 

@@ -158,6 +158,32 @@ Sempre use buscar_conhecimento. Chame \`embratur-reference\`. Chame \`audaar_che
   assert.equal(names.includes("buscar_conhecimento"), false);
 });
 
+test("resolveRequiredToolNamesForTurn — verify reservation without locator requires ZERO tools", () => {
+  const playbook = `
+| C2 | Verificar reserva | verificar/consultar + reserva | Chame \`audaar_consultar_reserva\` · PROIBIDO \`buscar_conhecimento\` | consultar_reserva |
+| C5 | Fato da unidade | FAQ | Chame \`buscar_conhecimento\` | buscar_conhecimento |
+Sempre use buscar_conhecimento.
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "gostaria de verificar se minha reserva está confirmada" },
+  );
+  assert.deepEqual(names, []);
+});
+
+test("resolveRequiredToolNamesForTurn — verify reservation with locator requires consultar_reserva", () => {
+  const playbook = `
+| C2 | Verificar reserva | verificar/consultar + localizador | Chame \`audaar_consultar_reserva\` | consultar_reserva |
+| C5 | Fato da unidade | FAQ | Chame \`buscar_conhecimento\` | buscar_conhecimento |
+`;
+  const names = resolveRequiredToolNamesForTurn(
+    { promptBuilder: { useFullPrompt: true, userCore: playbook } },
+    { userMessage: "verificar se minha reserva WIAHY1HC está confirmada" },
+  );
+  assert.ok(names.some((n) => /consultar_reserva/i.test(n)), `got ${JSON.stringify(names)}`);
+  assert.equal(names.includes("buscar_conhecimento"), false);
+});
+
 test("resolveRequiredToolNamesForTurn does not fall back to all static tools on nationality", () => {
   const playbook = `
 | C7 | Nacionalidade | brasileiro | ZERO |

@@ -11,6 +11,7 @@ import {
   isOperationalReservationLookupMessage,
   messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
+  userMessageLooksLikeReservationVerificationIntent,
   isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
 } from "./knowledgeQueryEnrichment.js";
@@ -172,6 +173,21 @@ test("check-in with locator is not a knowledge-seeking query", () => {
     false,
   );
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Qual o Wi-Fi da suíte?"), true);
+});
+
+test("verify reservation intent without locator is not knowledge-seeking", () => {
+  const msg = "gostaria de verificar se minha reserva está confirmada";
+  assert.equal(userMessageLooksLikeReservationVerificationIntent(msg), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery(msg), false);
+  assert.equal(isOperationalReservationLookupMessage(msg), false);
+  assert.equal(resolveKnowledgeSearchSkip(msg), "checkin_reservation_turn");
+});
+
+test("verify reservation with locator is operational lookup", () => {
+  const msg = "gostaria de verificar se minha reserva WIAHY1HC está confirmada";
+  assert.equal(userMessageLooksLikeReservationVerificationIntent(msg), true);
+  assert.equal(isOperationalReservationLookupMessage(msg), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery(msg), false);
 });
 
 test("cotação and quote stay details are not knowledge-seeking queries", () => {

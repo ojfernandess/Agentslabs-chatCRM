@@ -114,6 +114,7 @@ import {
   isOperationalQuoteMessage,
   messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
+  userMessageLooksLikeReservationVerificationIntent,
 } from "../../knowledgeQueryEnrichment.js";
 import {
   messageLooksLikeEscalationTurn,
@@ -146,9 +147,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       if (messageLooksLikeQuoteStayDetails(m)) return false;
       if (!messageContainsReservationLocator(m)) return false;
       return (
-        /check[- ]?in|verificar\s+(?:essa\s+|a\s+)?reserva|consultar\s+(?:essa\s+|a\s+)?reserva|pode\s+consultar|status\s+(?:da\s+)?reserva/i.test(
-          m,
-        ) &&
+        userMessageLooksLikeReservationVerificationIntent(m) &&
         !/\b(cota[cç][aã]o|disponibilidade|pre[cç]o|reservar)\b/i.test(m)
       );
     },
@@ -164,9 +163,14 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       if (userMessageLooksLikeCheckoutProcedureQuestion(m)) return false;
       if (userMessageLooksLikeReceiptOrInvoiceRequest(m)) return false;
       if (userMessageLooksLikeAmenityItemQuestion(m)) return false;
+      if (userMessageLooksLikeReservationVerificationIntent(m)) {
+        return false;
+      }
       if (
         messageContainsReservationLocator(m) &&
-        /check[- ]?in|verificar\s+reserva|consultar\s+reserva|status\s+(?:da\s+)?reserva/i.test(m)
+        /check[- ]?in|verificar.*reserva|consultar.*reserva|status\s+(?:da\s+)?(?:minha\s+)?reserva/i.test(
+          m,
+        )
       ) {
         return false;
       }
@@ -633,6 +637,13 @@ export function resolveRequiredToolNamesForTurn(
   };
 
   if (unitKbTurnNeedsEstablishmentCollection(unitCtx)) {
+    return [];
+  }
+
+  if (
+    userMessageLooksLikeReservationVerificationIntent(userMessage) &&
+    !messageContainsReservationLocator(userMessage)
+  ) {
     return [];
   }
 
