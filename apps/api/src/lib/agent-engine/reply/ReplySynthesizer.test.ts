@@ -526,6 +526,73 @@ test("ensureDeliveringReply delivers NF form when guest asks NF and establishmen
   assert.doesNotMatch(result.reply, /transferir para a equipe/i);
 });
 
+test("ensureDeliveringReply delivers NF mirror after form submission not transfer error", () => {
+  const form = `Para emitir sua nota fiscal, preciso dos dados abaixo. Preencha e envie nesta conversa:
+
+- Nome completo
+- CPF ou CNPJ
+- Endereço
+- CEP
+- Telefone
+- Período (check-in a check-out)
+- Valor
+- Unidade
+- E-mail
+- Hóspede
+- Quarto`;
+  const submission = `- Nome completo FERNANDO DA CUNHA FREITAS
+- CPF ou CNPJ 083.083.866-01
+- Endereço rua teste, 10
+- CEP 04421210
+- Telefone +55 34 99195-2596
+- Período (check-in a check-out) - 01/08/2026 a 04/08/2026
+- Valor 458,00
+- Unidade: Audaar tech
+- E-mail
+- Hóspede
+- Quarto`;
+  const result = ensureDeliveringReply({
+    replyText: "Vou encaminhar para a equipe de atendimento.",
+    userMessage: submission,
+    lastAssistantMessage: form,
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "KB irrelevante" }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "nf_confirmation_mirror");
+  assert.match(result.reply, /Confira os dados para emissão da nota fiscal/i);
+  assert.match(result.reply, /FERNANDO DA CUNHA FREITAS/);
+  assert.doesNotMatch(result.reply, /problema ao transferir/i);
+});
+
+test("ensureDeliveringReply merges partial NF fields into mirror after prior espelho", () => {
+  const mirror = `Confira os dados para emissão da nota fiscal:
+
+- Nome completo: FERNANDO DA CUNHA FREITAS
+- CPF ou CNPJ: 083.083.866-01
+- Endereço: rua teste, 10
+- CEP: 04421210
+- Telefone: +55 34 99195-2596
+- Período: 01/08/2026 a 04/08/2026
+- Valor: 458,00
+- Unidade: Audaar tech
+- E-mail: …
+- Hóspede: …
+- Quarto: …
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
+  const result = ensureDeliveringReply({
+    replyText: "Vou transferir você para o atendimento humano.",
+    userMessage: "Email: fernandofreitasudi@gmail.com\nHóspede: FERNANDO DA CUNHA FREITAS\nQuarto: 71",
+    lastAssistantMessage: mirror,
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "KB" }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "nf_confirmation_mirror");
+  assert.match(result.reply, /fernandofreitasudi@gmail.com/i);
+  assert.match(result.reply, /Quarto: 71/);
+  assert.doesNotMatch(result.reply, /problema ao transferir/i);
+});
+
 test("ensureDeliveringReply blocks check-in tools when sim after receipt mirror without call_human", () => {
   const mirror = `Confira os dados para emissão do recibo (pessoa física):
 

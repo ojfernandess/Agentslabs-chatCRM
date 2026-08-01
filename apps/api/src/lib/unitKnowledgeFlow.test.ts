@@ -16,6 +16,8 @@ import {
   shouldRequireUnitKnowledgeLookupThisTurn,
   isNfEstablishmentSelectionTurn,
   isNfUnitKnowledgeReplyTurn,
+  isNfFormSubmissionTurn,
+  isNfDataCollectionTurn,
   userMessageLooksLikeReceiptFormSubmission,
   assistantSentReceiptDataForm,
   isReceiptFormSubmissionTurn,
@@ -108,6 +110,48 @@ test("NF form submission is detected", () => {
 - CEP 04421210
 - Telefone 5584994647139`;
   assert.equal(userMessageLooksLikeNfFormSubmission(msg), true);
+});
+
+test("isNfFormSubmissionTurn after C19 form requires zero-tool mirror path", () => {
+  const form = `Para emitir sua nota fiscal, preciso dos dados abaixo:
+
+- Nome completo
+- CPF ou CNPJ
+- CEP
+- Telefone
+- Período
+- Valor
+- Quarto`;
+  const submission = `- Nome completo FERNANDO DA CUNHA FREITAS
+- CPF ou CNPJ 083.083.866-01
+- Endereço rua teste, 10
+- CEP 04421210
+- Telefone +55 34 99195-2596
+- Período (check-in a check-out) - 01/08/2026 a 04/08/2026
+- Valor 458,00
+- Unidade: Audaar tech`;
+  assert.equal(isNfFormSubmissionTurn({ userMessage: submission, lastAssistantMessage: form }), true);
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({ userMessage: submission, lastAssistantMessage: form }),
+    false,
+  );
+});
+
+test("isNfDataCollectionTurn on partial email guest room after NF mirror", () => {
+  const mirror = `Confira os dados para emissão da nota fiscal:
+
+- Nome completo: FERNANDO DA CUNHA FREITAS
+- CPF ou CNPJ: 083.083.866-01
+- E-mail: …
+- Hóspede: …
+- Quarto: …
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
+  const partial = "Email: fernandofreitasudi@gmail.com\nHóspede: FERNANDO DA CUNHA FREITAS\nQuarto: 71";
+  assert.equal(
+    isNfDataCollectionTurn({ userMessage: partial, lastAssistantMessage: mirror }),
+    true,
+  );
 });
 
 test("locator after non-NF flow still requires reservation lookup", () => {

@@ -39,8 +39,8 @@ import {
   resolveReservationLookupTemplateId,
   type SynthesizerToolOutcome,
 } from "./ReplyTemplateRenderer.js";
-import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply } from "../../nfFlowReply.js";
-import { isNfUnitKnowledgeReplyTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
+import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply, tryNfFormSubmissionReply } from "../../nfFlowReply.js";
+import { isNfUnitKnowledgeReplyTurn, isNfDataCollectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
 
 export type { SynthesizerToolOutcome };
 
@@ -80,6 +80,7 @@ export type EnsureDeliveringReplyResult = {
     | "nf_receipt_only"
     | "nf_form_no_locator"
     | "receipt_confirmation_mirror"
+    | "nf_confirmation_mirror"
     | "escalation_use_transfer_message";
 };
 
@@ -377,6 +378,10 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     lastAssistantMessage: input.lastAssistantMessage,
     flowSlots: input.flowSlots,
   });
+  const nfDataCollectionTurn = isNfDataCollectionTurn({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+  });
   const kbOnlyOutcome = input.toolOutcomes.find(
     (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
   );
@@ -452,10 +457,25 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       const nfKbReply = tryNfKbSynthesizerReply(input, kbOnlyOutcome);
       if (nfKbReply) return nfKbReply;
     }
+    if (nfDataCollectionTurn) {
+      const nfMirror = tryNfFormSubmissionReply({
+        userMessage: input.userMessage,
+        lastAssistantMessage: input.lastAssistantMessage,
+        replyText: input.replyText,
+      });
+      if (nfMirror) {
+        return {
+          reply: nfMirror,
+          replaced: true,
+          reason: "nf_confirmation_mirror",
+        };
+      }
+    }
     if (
       !quoteChoiceTurn &&
       !quoteDiscountAcceptTurn &&
       !nfUnitKbTurn &&
+      !nfDataCollectionTurn &&
       !failedCallHuman &&
       replyClaimsHumanTransfer(input.replyText) &&
       !callHumanSucceeded
@@ -505,6 +525,20 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
           reply: mirror,
           replaced: true,
           reason: "receipt_confirmation_mirror",
+        };
+      }
+    }
+    if (nfDataCollectionTurn) {
+      const nfMirror = tryNfFormSubmissionReply({
+        userMessage: input.userMessage,
+        lastAssistantMessage: input.lastAssistantMessage,
+        replyText: input.replyText,
+      });
+      if (nfMirror) {
+        return {
+          reply: nfMirror,
+          replaced: true,
+          reason: "nf_confirmation_mirror",
         };
       }
     }

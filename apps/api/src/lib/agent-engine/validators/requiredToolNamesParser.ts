@@ -129,6 +129,7 @@ import {
   shouldRequireReservationLookupThisTurn,
   shouldRequireCallHumanAfterNfConfirmation,
   isReceiptFormSubmissionTurn,
+  isNfDataCollectionTurn,
   shouldRequireFnrhKnowledgeLookupThisTurn,
   userMessageLooksLikeFnrhEmbraturQuestion,
 } from "../../unitKnowledgeFlow.js";
@@ -648,6 +649,10 @@ export function resolveRequiredToolNamesForTurn(
     return [];
   }
 
+  if (isNfDataCollectionTurn(unitCtx)) {
+    return [];
+  }
+
   if (shouldRequireFnrhKnowledgeLookupThisTurn(unitCtx)) {
     return dedupeRequiredToolAliases(
       filterAgainstAvailable(["buscar_conhecimento"], available),
@@ -690,6 +695,9 @@ export function resolveRequiredToolNamesForTurn(
           flowSlots: options.flowSlots,
         })
       ) {
+        continue;
+      }
+      if (pattern.id === "structured_form_submission" && isNfDataCollectionTurn(unitCtx)) {
         continue;
       }
       // C6 coleta/confirmação = ZERO tools; C6c (disponibilidade) só via turnPolicy no «sim» pós Confirm.

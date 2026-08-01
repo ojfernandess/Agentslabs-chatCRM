@@ -3,7 +3,7 @@
  */
 
 import type { SynthesizerToolOutcome } from "./agent-engine/reply/ReplyTemplateRenderer.js";
-import { resolveEstablishmentInConversation, assistantSentReceiptDataForm } from "./unitKnowledgeFlow.js";
+import { resolveEstablishmentInConversation, assistantSentReceiptDataForm, assistantSentNfConfirmationMirror, assistantSentNfDataForm } from "./unitKnowledgeFlow.js";
 
 function unwrapKbText(raw: string): string {
   return raw.replace(/\r\n/g, "\n").trim();
@@ -172,6 +172,106 @@ export function tryReceiptFormSubmissionReply(input: {
   if (!assistantSentReceiptDataForm(input.lastAssistantMessage)) return null;
   if (replyLooksLikeReceiptConfirmationMirror(input.replyText)) return null;
   return buildReceiptMirrorFromUserSubmission(input.userMessage ?? "", input.lastAssistantMessage);
+}
+
+const NF_FIELD_PATTERNS: ReadonlyArray<{ key: string; re: RegExp }> = [
+  { key: "nome completo", re: /^nome\s+completo\s*:?\s*(.*)$/i },
+  { key: "cpf ou cnpj", re: /^cpf\s+ou\s+cnpj\s*:?\s*(.*)$/i },
+  { key: "endereço", re: /^endere[cç]o\s*:?\s*(.*)$/i },
+  { key: "cep", re: /^cep\s*:?\s*(.*)$/i },
+  { key: "telefone", re: /^telefone\s*:?\s*(.*)$/i },
+  {
+    key: "período",
+    re: /^per[ií]odo(?:\s*\([^)]*\))?\s*(?:[-:]\s*)?(.*)$/i,
+  },
+  { key: "valor", re: /^valor\s*:?\s*(.*)$/i },
+  { key: "unidade", re: /^unidade\s*:?\s*(.*)$/i },
+  { key: "e-mail", re: /^e-?mail\s*:?\s*(.*)$/i },
+  { key: "hóspede", re: /^h[oó]spede\s*:?\s*(.*)$/i },
+  { key: "quarto", re: /^quarto\s*:?\s*(.*)$/i },
+];
+
+/** Extrai campos NF de bloco de formulário ou espelho anterior. */
+export function parseNfFieldsFromText(text: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const rawLine of text.split(/\n/)) {
+    let line = rawLine.trim().replace(/^[-*•]\s+/, "");
+    if (!line) continue;
+    for (const { key, re } of NF_FIELD_PATTERNS) {
+      const m = line.match(re);
+      if (!m) continue;
+      const value = (m[1] ?? "").trim();
+      if (value) fields[key] = value;
+      break;
+    }
+  }
+  return fields;
+}
+
+function nfField(fields: Record<string, string>, ...keys: string[]): string {
+  for (const key of keys) {
+    const v = fields[key];
+    if (v && v.trim()) return v.trim();
+  }
+  return "…";
+}
+
+/** Monta espelho C19 NF a partir do bloco do hóspede (mescla espelho anterior se houver). */
+export function buildNfMirrorFromUserSubmission(
+  userMessage: string,
+  lastAssistantMessage?: string | null,
+): string {
+  const prior = parseNfFieldsFromText(lastAssistantMessage ?? "");
+  const current = parseNfFieldsFromText(userMessage);
+  const fields = { ...prior, ...current };
+
+  return `Confira os dados para emissão da nota fiscal:
+
+- Nome completo: ${nfField(fields, "nome completo")}
+- CPF ou CNPJ: ${nfField(fields, "cpf ou cnpj")}
+- Endereço: ${nfField(fields, "endereço")}
+- CEP: ${nfField(fields, "cep")}
+- Telefone: ${nfField(fields, "telefone")}
+- Período: ${nfField(fields, "período")}
+- Valor: ${nfField(fields, "valor")}
+- Unidade: ${nfField(fields, "unidade")}
+- E-mail: ${nfField(fields, "e-mail")}
+- Hóspede: ${nfField(fields, "hóspede")}
+- Quarto: ${nfField(fields, "quarto")}
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável. Se precisar corrigir algum dado, envie a alteração nesta conversa.`;
+}
+
+export function replyLooksLikeNfConfirmationMirror(reply?: string | null): boolean {
+  const t = (reply ?? "").trim();
+  if (!t) return false;
+  return (
+    /\bconfira os dados\b/i.test(t) &&
+    /\b(?:nota\s+fiscal|\bnf\b)\b/i.test(t) &&
+    /\bnome\s+completo\s*:/i.test(t)
+  );
+}
+
+export function tryNfFormSubmissionReply(input: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  replyText?: string | null;
+}): string | null {
+  const last = input.lastAssistantMessage ?? "";
+  const inNfFormTurn = assistantSentNfDataForm(last);
+  const inNfMirrorTurn =
+    assistantSentNfConfirmationMirror(last) ||
+    replyLooksLikeNfConfirmationMirror(last);
+  const inNfFieldCollectionTurn =
+    inNfFormTurn ||
+    inNfMirrorTurn ||
+    (/\b(?:nota\s+fiscal|\bnf\b)\b/i.test(last) &&
+      /\b(?:preciso|informe|falt|envie|ainda)\b/i.test(last));
+  if (!inNfFieldCollectionTurn) return null;
+  if (replyLooksLikeNfConfirmationMirror(input.replyText)) return null;
+  const msg = (input.userMessage ?? "").trim();
+  if (!msg) return null;
+  return buildNfMirrorFromUserSubmission(msg, last);
 }
 
 export function replyLooksLikeNfDataFormWithLocator(reply?: string | null): boolean {

@@ -188,6 +188,9 @@ export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
   const msg = (opts.userMessage ?? "").trim();
   if (userMessageLooksLikeReceiptFormSubmission(msg)) return false;
   if (assistantSentReceiptDataForm(opts.lastAssistantMessage) && msg) return false;
+  if (userMessageLooksLikeNfFormSubmission(msg)) return false;
+  if (assistantSentNfDataForm(opts.lastAssistantMessage) && msg) return false;
+  if (isNfPartialDataTurn(opts)) return false;
 
   if (
     userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
@@ -326,6 +329,67 @@ export function isReceiptFormSubmissionTurn(opts: {
     assistantSentReceiptDataForm(opts.lastAssistantMessage) &&
     userMessageLooksLikeReceiptFormSubmission(opts.userMessage)
   );
+}
+
+/** Campos avulsos ou complementares no fluxo C19 NF (ex.: «Email: …» após espelho). */
+export function userMessageLooksLikeNfPartialFieldUpdate(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (userMessageLooksLikeNfFormSubmission(t)) return true;
+  return (
+    [
+      /\be-?mail\s*:/i,
+      /\bh[oó]spede\s*:/i,
+      /\bquarto\s*:/i,
+      /\bnome\s+completo\s*:/i,
+      /\bcpf\s+ou\s+cnpj\s*:/i,
+      /\bcep\s*:/i,
+      /\btelefone\s*:/i,
+      /\bper[ií]odo\s*:/i,
+      /\bvalor\s*:/i,
+      /\bunidade\s*:/i,
+      /\bendere[cç]o\s*:/i,
+    ].filter((r) => r.test(t)).length >= 1
+  );
+}
+
+/** Turno de envio do bloco C19 Formulário NF → espelho (ZERO tools). */
+export function isNfFormSubmissionTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  return (
+    assistantSentNfDataForm(opts.lastAssistantMessage) &&
+    userMessageLooksLikeNfFormSubmission(opts.userMessage)
+  );
+}
+
+/** Complemento/correção de dados NF após formulário ou espelho (ZERO tools). */
+export function isNfPartialDataTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  const last = (opts.lastAssistantMessage ?? "").trim();
+  if (!userMessageLooksLikeNfPartialFieldUpdate(opts.userMessage)) return false;
+  if (assistantIsNfFlowTurn(last)) return true;
+  if (assistantSentNfDataForm(last)) return true;
+  if (
+    /\b(?:e-?mail|h[oó]spede|quarto|nome\s+completo|cpf|cnpj|cep|telefone|per[ií]odo|valor|unidade)\b/i.test(
+      last,
+    ) &&
+    /\b(?:preciso|informe|falt|envie|ainda|complet)\b/i.test(last)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Qualquer turno de coleta/espelho NF sem KB (formulário, parcial ou correção). */
+export function isNfDataCollectionTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  return isNfFormSubmissionTurn(opts) || isNfPartialDataTurn(opts);
 }
 
 /** Última msg do agente = espelho de confirmação NF. */
