@@ -40,7 +40,7 @@ import {
   type SynthesizerToolOutcome,
 } from "./ReplyTemplateRenderer.js";
 import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply } from "../../nfFlowReply.js";
-import { isNfEstablishmentSelectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn } from "../../unitKnowledgeFlow.js";
+import { isNfEstablishmentSelectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
 
 export type { SynthesizerToolOutcome };
 
@@ -331,6 +331,10 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     messageLooksLikeQuoteDiscountObjection(input.userMessage);
   const quoteDiscountAcceptTurn =
     quoteConfirmTurn && assistantIsQuoteDiscountTransferOffer(input.lastAssistantMessage);
+  const nfReceiptConfirmTurn = shouldRequireCallHumanAfterNfConfirmation({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+  });
   const failedCallHuman = input.toolOutcomes.some(
     (t) => t.ok === false && /^call_human$/i.test(t.name),
   );
@@ -371,6 +375,19 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
           "Não consegui consultar a disponibilidade agora. Pode repetir as datas e a propriedade, ou prefere que eu encaminhe para a equipe?",
         replaced: true,
         reason: "quote_availability_failed",
+      };
+    }
+    if (
+      nfReceiptConfirmTurn &&
+      !callHumanSucceeded &&
+      isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages)
+    ) {
+      return {
+        reply:
+          "Recebi sua confirmação dos dados do recibo. Tive um problema ao encaminhar para a equipe agora. " +
+          "Pode confirmar novamente com *sim*?",
+        replaced: true,
+        reason: "quote_call_human_missing",
       };
     }
     if (
@@ -491,6 +508,17 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       }
     }
     return { reply: input.replyText, replaced: false };
+  }
+
+  // C19: sim pós espelho recibo — bloqueia fluxo legado (main_guest/upload) sem call_human.
+  if (nfReceiptConfirmTurn && !callHumanSucceeded) {
+    return {
+      reply:
+        "Recebi sua confirmação dos dados do recibo. Tive um problema ao encaminhar para a equipe agora. " +
+        "Pode confirmar novamente com *sim*?",
+      replaced: true,
+      reason: failedCallHuman ? "quote_call_human_failed" : "quote_call_human_missing",
+    };
   }
 
   const replyIsRawJson = looksLikeRawToolJson(input.replyText);

@@ -507,3 +507,23 @@ Para agilizar, pode me informar o nome da hospedagem e o número do quarto?`;
   assert.equal(result.reason, "escalation_use_transfer_message");
   assert.equal(result.reply, "");
 });
+
+test("ensureDeliveringReply blocks check-in tools when sim after receipt mirror without call_human", () => {
+  const mirror = `Confira os dados para emissão do recibo (pessoa física):
+
+🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 71
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
+  const result = ensureDeliveringReply({
+    replyText: "Um momento, vou verificar.",
+    userMessage: "sim",
+    lastAssistantMessage: mirror,
+    toolOutcomes: [
+      { name: "audaar_consultar_main_guest", ok: true, preview: '{"found":true}' },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_call_human_missing");
+  assert.match(result.reply, /encaminhar para a equipe/i);
+});

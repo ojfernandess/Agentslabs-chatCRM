@@ -41,6 +41,7 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
+import { shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
 import { shouldRequireCallHumanThisTurn } from "../escalation/escalationTurnDetection.js";
 
 export {
@@ -454,6 +455,19 @@ export function resolveTurnPolicy(
   // C13 / pedido humano → call_human exclusive (Scheduler runtime_owned).
   if (
     shouldRequireCallHumanThisTurn({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+    })
+  ) {
+    exclusiveAllowedTools = ["call_human"];
+    forceExclusiveExecution = true;
+  }
+
+  // C19: sim pós espelho NF/recibo → call_human exclusive (não fluxo legado check-in).
+  if (
+    !forceExclusiveExecution &&
+    isConfirmation &&
+    shouldRequireCallHumanAfterNfConfirmation({
       userMessage,
       lastAssistantMessage: options.lastAssistantMessage,
     })

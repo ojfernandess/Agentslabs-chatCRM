@@ -269,3 +269,19 @@ Destino: Rio de Janeiro`;
 test("check-in refusal without FNRH context is not C16", () => {
   assert.equal(userMessageLooksLikeFnrhEmbraturQuestion("não quero fazer check-in"), false);
 });
+
+test("receipt mirror with esta tudo correto is detected", () => {
+  const mirror = `Confira os dados para emissão do recibo (pessoa física):
+
+🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 71
+⏰ Check-in: 10/06/2026
+⏰ Checkout: 11/06/2026
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
+  assert.equal(assistantSentReceiptConfirmationMirror(mirror), true);
+  assert.equal(
+    shouldRequireCallHumanAfterNfConfirmation({ userMessage: "sim", lastAssistantMessage: mirror }),
+    true,
+  );
+});

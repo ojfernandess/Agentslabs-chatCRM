@@ -937,6 +937,34 @@ test("resolveTurnPolicy — sim after discount offer requires call_human exclusi
   assert.equal(turnPolicyPreExecBlockReason("call_human", policy), null);
 });
 
+test("resolveTurnPolicy — sim after receipt mirror requires call_human exclusive", () => {
+  const mirror = `Confira os dados para emissão do recibo (pessoa física):
+
+🏨 Nome da hospedagem: Audaar Tech Suites
+🛏️ Quarto: 71
+
+Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
+  const policy = resolveTurnPolicy(
+    {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `| C19 | Recibo/NF | sim pós espelho → call_human |`,
+      },
+    },
+    {
+      userMessage: "sim",
+      lastAssistantMessage: mirror,
+      availableToolNames: ["call_human", "audaar_consultar_main_guest", "checkin_upload_documento"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
+  assert.match(
+    turnPolicyPreExecBlockReason("audaar_consultar_main_guest", policy) ?? "",
+    /fora da categoria deste turno.*call_human/i,
+  );
+});
+
 test("resolveTurnPolicy — falar com atendimento requires call_human exclusive", () => {
   const playbook = `
 | C13 | Reclamação | call_human · transfer_to_team |

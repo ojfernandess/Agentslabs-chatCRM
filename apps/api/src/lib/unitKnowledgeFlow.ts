@@ -301,10 +301,15 @@ export function userMessageLooksLikeReceiptFormSubmission(userMessage?: string |
 export function assistantSentReceiptConfirmationMirror(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
-  if (!/\b(?:confirme|confira|est[aá]\s+correto|correto\?|dados\s+(?:para|da))\b/i.test(t)) {
+  if (/\bconfira os dados\b/i.test(t) && /\brecibo\b/i.test(t) && /🏨/.test(t)) return true;
+  if (!/\brecibo\b/i.test(t)) return false;
+  if (
+    !/\b(?:confirme|confira|est[aá](?:\s+tudo)?\s+correto|correto\?|dados\s+(?:para|da|emiss[aã]o))\b/i.test(
+      t,
+    )
+  ) {
     return false;
   }
-  if (!/\brecibo\b/i.test(t)) return false;
   return (
     /🏨|\bnome da hospedagem\b/i.test(t) &&
     (/🛏️|\bquarto\b/i.test(t) || /\braz[aã]o social\b/i.test(t))
@@ -326,7 +331,7 @@ export function isReceiptFormSubmissionTurn(opts: {
 export function assistantSentNfConfirmationMirror(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
-  if (!/\b(?:confirme|confira|est[aá]\s+correto|espelho|correto\?|dados\s+(?:para|da))\b/i.test(t)) {
+  if (!/\b(?:confirme|confira|est[aá](?:\s+tudo)?\s+correto|espelho|correto\?|dados\s+(?:para|da|emiss[aã]o))\b/i.test(t)) {
     return false;
   }
   return (

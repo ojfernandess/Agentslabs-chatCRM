@@ -10,6 +10,10 @@ import {
   QUOTE_OPTIONS_CATALOG_SLOT,
 } from "../quote/quoteAvailabilityReply.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
+import {
+  assistantSentNfConfirmationMirror,
+  assistantSentReceiptConfirmationMirror,
+} from "../../unitKnowledgeFlow.js";
 
 /** Mensagem do hóspede parece recolha de formulário pós-gate (ficha), não bloco titular/acompanhante. */
 export function messageLooksLikePostGateFormData(userMessage: string): boolean {
@@ -320,6 +324,15 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
     return false;
   }
 
+  // C19: sim pós espelho NF/recibo → call_human (não suppress; não check-in legado).
+  if (
+    isYes &&
+    (assistantSentReceiptConfirmationMirror(opts.lastAssistantMessage) ||
+      assistantSentNfConfirmationMirror(opts.lastAssistantMessage))
+  ) {
+    return false;
+  }
+
   // Titular mirror + N≥2 + "sim" → S4c (ZERO tools), não gate de Embratur.
   if (isYes && party != null && party >= 2 && assistantIsTitularMirrorConfirm(opts.lastAssistantMessage)) {
     return true;
@@ -374,6 +387,8 @@ export function shouldAllowCompletionToolPromotion(opts: {
   if (assistantIsCompanionOptInPrompt(opts.lastAssistantMessage)) return false;
   if (assistantIsCompanionMirrorConfirm(opts.lastAssistantMessage)) return false;
   if (assistantAsksPreConfirmationData(opts.lastAssistantMessage)) return false;
+  if (assistantSentReceiptConfirmationMirror(opts.lastAssistantMessage)) return false;
+  if (assistantSentNfConfirmationMirror(opts.lastAssistantMessage)) return false;
 
   return true;
 }
