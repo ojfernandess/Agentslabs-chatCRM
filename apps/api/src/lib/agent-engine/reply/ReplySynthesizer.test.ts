@@ -508,6 +508,24 @@ Para agilizar, pode me informar o nome da hospedagem e o número do quarto?`;
   assert.equal(result.reply, "");
 });
 
+test("ensureDeliveringReply delivers NF form when guest asks NF and establishment together", () => {
+  const kb = `## Nota fiscal (NF)
+
+- Nome completo
+- CPF ou CNPJ
+- CEP
+- Telefone`;
+  const result = ensureDeliveringReply({
+    replyText: "Vou encaminhar sua solicitação para a equipe de atendimento.",
+    userMessage: "bom dia, gostaria de solicita minha nf, fiquei hospedada no hotel brooklin",
+    toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: kb }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "nf_form_no_locator");
+  assert.match(result.reply, /Nome completo/i);
+  assert.doesNotMatch(result.reply, /transferir para a equipe/i);
+});
+
 test("ensureDeliveringReply blocks check-in tools when sim after receipt mirror without call_human", () => {
   const mirror = `Confira os dados para emissão do recibo (pessoa física):
 

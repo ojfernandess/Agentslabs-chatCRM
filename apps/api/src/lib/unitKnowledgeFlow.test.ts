@@ -15,6 +15,7 @@ import {
   shouldRequireCallHumanAfterNfConfirmation,
   shouldRequireUnitKnowledgeLookupThisTurn,
   isNfEstablishmentSelectionTurn,
+  isNfUnitKnowledgeReplyTurn,
   userMessageLooksLikeReceiptFormSubmission,
   assistantSentReceiptDataForm,
   isReceiptFormSubmissionTurn,
@@ -158,6 +159,27 @@ test("isNfEstablishmentSelectionTurn detects post-unit NF step", () => {
       lastAssistantMessage: lastAssistant,
     }),
     true,
+  );
+});
+
+test("isNfUnitKnowledgeReplyTurn detects NF and establishment in same message", () => {
+  const msg = "bom dia, gostaria de solicita minha nf, fiquei hospedada no hotel brooklin";
+  assert.equal(
+    isNfUnitKnowledgeReplyTurn({ userMessage: msg }),
+    true,
+  );
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({ userMessage: msg }),
+    true,
+  );
+});
+
+test("isNfUnitKnowledgeReplyTurn rejects explicit human handoff with NF wording", () => {
+  assert.equal(
+    isNfUnitKnowledgeReplyTurn({
+      userMessage: "preciso da nf, falar com atendimento no hotel brooklin",
+    }),
+    false,
   );
 });
 

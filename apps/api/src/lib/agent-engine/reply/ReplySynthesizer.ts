@@ -40,7 +40,7 @@ import {
   type SynthesizerToolOutcome,
 } from "./ReplyTemplateRenderer.js";
 import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply } from "../../nfFlowReply.js";
-import { isNfEstablishmentSelectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
+import { isNfUnitKnowledgeReplyTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
 
 export type { SynthesizerToolOutcome };
 
@@ -301,6 +301,43 @@ function tryRenderReservationLookup(
   return null;
 }
 
+function tryNfKbSynthesizerReply(
+  input: EnsureDeliveringReplyInput,
+  kbTool: SynthesizerToolOutcome,
+): EnsureDeliveringReplyResult | null {
+  if (
+    !isNfUnitKnowledgeReplyTurn({
+      userMessage: input.userMessage,
+      lastAssistantMessage: input.lastAssistantMessage,
+      flowSlots: input.flowSlots,
+    })
+  ) {
+    return null;
+  }
+  const nfReply = tryNfEstablishmentKbReply({
+    replyText: input.replyText,
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+    flowSlots: input.flowSlots,
+    kbTool,
+  });
+  if (!nfReply) return null;
+  const establishment =
+    resolveEstablishmentInConversation({
+      userMessage: input.userMessage,
+      lastAssistantMessage: input.lastAssistantMessage,
+      flowSlots: input.flowSlots,
+    }) ?? "";
+  const kbText = extractKbTextFromToolOutcome(kbTool);
+  const receiptOnly =
+    /audaar\s*tech/i.test(establishment) || kbTextIndicatesReceiptOnlyNoNf(kbText);
+  return {
+    reply: nfReply,
+    replaced: true,
+    reason: receiptOnly ? "nf_receipt_only" : "nf_form_no_locator",
+  };
+}
+
 /**
  * Garante reply substantiva após tools OK — templates do IR via ReplyTemplateRenderer.
  */
@@ -335,6 +372,14 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     userMessage: input.userMessage,
     lastAssistantMessage: input.lastAssistantMessage,
   });
+  const nfUnitKbTurn = isNfUnitKnowledgeReplyTurn({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+    flowSlots: input.flowSlots,
+  });
+  const kbOnlyOutcome = input.toolOutcomes.find(
+    (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
+  );
   const failedCallHuman = input.toolOutcomes.some(
     (t) => t.ok === false && /^call_human$/i.test(t.name),
   );
@@ -403,9 +448,14 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         reason: "quote_call_human_missing",
       };
     }
+    if (kbOnlyOutcome && nfUnitKbTurn) {
+      const nfKbReply = tryNfKbSynthesizerReply(input, kbOnlyOutcome);
+      if (nfKbReply) return nfKbReply;
+    }
     if (
       !quoteChoiceTurn &&
       !quoteDiscountAcceptTurn &&
+      !nfUnitKbTurn &&
       !failedCallHuman &&
       replyClaimsHumanTransfer(input.replyText) &&
       !callHumanSucceeded
@@ -458,41 +508,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
         };
       }
     }
-    const kbOnly = input.toolOutcomes.find(
-      (t) => t.ok !== false && /^buscar_conhecimento$/i.test(t.name),
-    );
-    if (
-      kbOnly &&
-      isNfEstablishmentSelectionTurn({
-        userMessage: input.userMessage,
-        lastAssistantMessage: input.lastAssistantMessage,
-        flowSlots: input.flowSlots,
-      })
-    ) {
-      const nfReply = tryNfEstablishmentKbReply({
-        replyText: input.replyText,
-        userMessage: input.userMessage,
-        lastAssistantMessage: input.lastAssistantMessage,
-        flowSlots: input.flowSlots,
-        kbTool: kbOnly,
-      });
-      if (nfReply) {
-        const establishment =
-          resolveEstablishmentInConversation({
-            userMessage: input.userMessage,
-            lastAssistantMessage: input.lastAssistantMessage,
-            flowSlots: input.flowSlots,
-          }) ?? "";
-        const kbText = extractKbTextFromToolOutcome(kbOnly);
-        const receiptOnly =
-          /audaar\s*tech/i.test(establishment) || kbTextIndicatesReceiptOnlyNoNf(kbText);
-        return {
-          reply: nfReply,
-          replaced: true,
-          reason: receiptOnly ? "nf_receipt_only" : "nf_form_no_locator",
-        };
-      }
-    }
+    const kbOnly = kbOnlyOutcome;
     if (quoteCategoryInfoTurn && kbOnly) {
       const recap = buildQuoteOptionsReturnPrompt({
         lastAssistantMessage: input.lastAssistantMessage,

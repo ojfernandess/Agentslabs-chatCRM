@@ -5,6 +5,7 @@
 import {
   extractReservationReferenceFromMessage,
 } from "./knowledgeQueryEnrichment.js";
+import { messageLooksLikeHumanHandoffRequest } from "./agent-engine/escalation/escalationTurnDetection.js";
 
 export const ESTABLISHMENT_MENU: ReadonlyArray<{ digit: string; name: string }> = [
   { digit: "1", name: "Audaar Tech Suites" },
@@ -364,6 +365,22 @@ export function isNfEstablishmentSelectionTurn(opts: {
   const last = (opts.lastAssistantMessage ?? "").trim();
   if (!last || !/\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(last)) return false;
   if (!assistantRequestedEstablishmentForUnitKb(last)) return false;
+  return Boolean(resolveEstablishmentInConversation(opts));
+}
+
+/**
+ * Turno C19 com unidade resolvida — resposta determinística pós-KB.
+ * Inclui NF+unidade na mesma mensagem (ex.: «solicitar NF no Hotel Brooklin»).
+ */
+export function isNfUnitKnowledgeReplyTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+  flowSlots?: Record<string, string | number | boolean> | null;
+}): boolean {
+  if (isNfEstablishmentSelectionTurn(opts)) return true;
+  const msg = (opts.userMessage ?? "").trim();
+  if (!userMessageLooksLikeReceiptOrInvoiceRequest(msg)) return false;
+  if (messageLooksLikeHumanHandoffRequest(msg)) return false;
   return Boolean(resolveEstablishmentInConversation(opts));
 }
 
