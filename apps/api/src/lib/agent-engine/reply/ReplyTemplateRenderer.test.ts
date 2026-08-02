@@ -51,3 +51,17 @@ test("renderReplyTemplate reservation_lookup_completed", () => {
   });
   assert.match(reply, /check-in foi concluído/i);
 });
+
+test("factsFromReservationPayload prefers localizer over uid and userMessage locator", () => {
+  const facts = factsFromReservationPayload(
+    {
+      data: {
+        uid: "991827364",
+        stay: { localizer: "WIAHY1HC", guestsQuantity: 2 },
+      },
+    },
+    "WIAHY1HC",
+  );
+  assert.equal(facts.locator, "WIAHY1HC");
+  assert.equal(facts.locatorSuffix, " WIAHY1HC");
+});

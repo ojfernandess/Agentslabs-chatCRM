@@ -1,6 +1,7 @@
 /**
  * Fase 6 — Interpolação genérica de templates de resposta a partir de facts/tool outcomes.
  */
+import { extractReservationReferenceFromMessage } from "../../knowledgeQueryEnrichment.js";
 import type { ReplyTemplateSpec } from "../contract/CompletionTypes.js";
 import type { PromptIR } from "../contract/PromptIR.js";
 
@@ -163,9 +164,17 @@ export function extractReservationDisplayFields(payload: unknown): {
     pickNumber(data, ["guestsQuantity", "stay.guestsQuantity", "N"]) ??
     pickNumber(reservation, ["guestsQuantity"]);
   const locator =
-    pickString(data, ["uid", "locator", "localizador", "localizer"]) ||
-    pickString(stay, ["uid", "localizer", "localizador"]) ||
-    pickString(reservation, ["uid", "localizer"]);
+    pickString(data, [
+      "localizer",
+      "localizador",
+      "locator",
+      "referenceCode",
+      "confirmationCode",
+      "reservationCode",
+    ]) ||
+    pickString(stay, ["localizer", "localizador", "locator", "referenceCode"]) ||
+    pickString(reservation, ["localizer", "localizador", "referenceCode", "confirmationCode"]) ||
+    pickString(data, ["uid"]);
   const roomName =
     pickString(room, ["categoryName", "roomName", "name"]) ||
     pickString(data, ["roomName", "categoryName"]);
@@ -206,9 +215,13 @@ export function factsFromReservationPayload(
   userMessage?: string,
 ): Record<string, string | number | boolean | null | undefined> {
   const f = extractReservationDisplayFields(payload);
+  const locatorFromUser = extractReservationReferenceFromMessage(userMessage ?? "");
+  const displayLocator = locatorFromUser || f.locator || "…";
   const wantsVerify =
-    /\b(verificar|consultar)\b/i.test(userMessage ?? "") &&
-    !/\bcheck[- ]?in\b/i.test(userMessage ?? "");
+    /\b(verificar|consultar|confirmar|tudo\s+cert[oa]|status)\b/i.test(userMessage ?? "") ||
+    (/\breserva\b/i.test(userMessage ?? "") &&
+      /\b(confirmad[ao]|cert[oa])\b/i.test(userMessage ?? "") &&
+      !/\bcheck[- ]?in\b/i.test(userMessage ?? ""));
   const wantsCheckIn = /\bcheck[- ]?in\b/i.test(userMessage ?? "") || /\bfazer\s+check\b/i.test(userMessage ?? "");
   return {
     lodging: f.lodging,
@@ -219,8 +232,8 @@ export function factsFromReservationPayload(
     checkInTime: f.checkInTime,
     checkOutTime: f.checkOutTime,
     guests: f.guests != null ? String(f.guests) : "…",
-    locator: f.locator || "…",
-    locatorSuffix: f.locator ? ` ${f.locator}` : "",
+    locator: displayLocator,
+    locatorSuffix: displayLocator !== "…" ? ` ${displayLocator}` : "",
     roomLabel: f.roomLabel,
     roomPassword: f.roomPassword,
     checkInDone: f.checkInDone,
