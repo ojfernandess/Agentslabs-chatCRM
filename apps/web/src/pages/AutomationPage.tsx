@@ -4653,6 +4653,7 @@ function GoogleCalendarToolEditor({
         canStartOAuth: boolean;
         authorizeUrl: string | null;
         adminAccount?: { email?: string; displayName?: string } | null;
+        connectedCalendars?: Array<{ id: string; name: string; memberId?: string; email?: string }>;
         teamMembers?: Array<{
           memberId: string;
           email: string;
