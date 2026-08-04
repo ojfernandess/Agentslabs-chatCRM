@@ -29,6 +29,7 @@ import { BroadcastCampaignsPage } from "@/pages/BroadcastCampaignsPage";
 import { InboxesPage } from "@/pages/InboxesPage";
 import { EmailInboxLayout, EmailInboxThreadPlaceholder } from "@/pages/EmailInboxLayout";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
+import { GoogleCalendarConnectedPage } from "@/pages/GoogleCalendarConnectedPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
 
@@ -114,6 +115,7 @@ export function App() {
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />
       <Route path="/login/invite" element={<AcceptInvitePage />} />
+      <Route path="/calendar-connected" element={<GoogleCalendarConnectedPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"

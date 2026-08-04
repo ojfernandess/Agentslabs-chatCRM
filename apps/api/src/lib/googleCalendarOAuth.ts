@@ -7,6 +7,8 @@ export type GoogleOAuthState = {
   organizationId: string;
   toolId: string;
   exp: number;
+  mode?: "admin" | "team_invite";
+  inviteId?: string;
 };
 
 const STATE_TTL_MS = 15 * 60 * 1000;
@@ -18,11 +20,18 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ba, bb);
 }
 
-export function createGoogleOAuthState(input: { organizationId: string; toolId: string }): string {
+export function createGoogleOAuthState(input: {
+  organizationId: string;
+  toolId: string;
+  mode?: "admin" | "team_invite";
+  inviteId?: string;
+}): string {
   const payload: GoogleOAuthState = {
     organizationId: input.organizationId,
     toolId: input.toolId,
     exp: Date.now() + STATE_TTL_MS,
+    mode: input.mode,
+    inviteId: input.inviteId,
   };
   return signGoogleOAuthState(payload);
 }
@@ -49,16 +58,37 @@ export function verifyGoogleOAuthState(state: string): GoogleOAuthState | null {
   }
 }
 
-export function buildGoogleOAuthAuthorizeUrl(input: { clientId: string; state: string }): string {
+export function buildGoogleOAuthAuthorizeUrl(input: {
+  clientId: string;
+  state: string;
+  /** Força o seletor de contas Google (útil quando já há sessão activa no browser). */
+  selectAccount?: boolean;
+  loginHint?: string;
+}): string {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", input.clientId.trim());
   url.searchParams.set("redirect_uri", googleCalendarOAuthCallbackUrl());
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", GOOGLE_CALENDAR_SCOPE);
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", input.selectAccount === false ? "consent" : "select_account consent");
+  url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", input.state);
+  if (input.loginHint?.trim()) url.searchParams.set("login_hint", input.loginHint.trim());
   return url.toString();
+}
+
+export type GoogleUserInfo = { email: string; name?: string; picture?: string };
+
+export async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUserInfo> {
+  const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const json = (await res.json()) as { email?: string; name?: string; picture?: string; error?: { message?: string } };
+  if (!res.ok || !json.email?.trim()) {
+    throw new Error(json.error?.message ?? "userinfo_failed");
+  }
+  return { email: json.email.trim(), name: json.name?.trim(), picture: json.picture?.trim() };
 }
 
 type GoogleTokenResponse = {

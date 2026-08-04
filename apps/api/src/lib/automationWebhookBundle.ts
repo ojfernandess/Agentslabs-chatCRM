@@ -28,6 +28,12 @@ export function redactAutomationToolConfig(cfg: unknown): Record<string, unknown
   for (const k of TOOL_SECRET_KEYS) {
     if (k in out && out[k]) (out as Record<string, unknown>)[k] = "***";
   }
+  if (Array.isArray(out.teamMembers)) {
+    out.teamMembers = (out.teamMembers as Array<Record<string, unknown>>).map((member) => ({
+      ...member,
+      refresh_token: member.refresh_token ? "***" : member.refresh_token,
+    }));
+  }
   return out;
 }
 

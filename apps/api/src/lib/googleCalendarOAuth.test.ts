@@ -25,7 +25,7 @@ describe("googleCalendarOAuth", () => {
     );
     assert.equal(url.searchParams.get("redirect_uri"), googleCalendarOAuthCallbackUrl());
     assert.equal(url.searchParams.get("access_type"), "offline");
-    assert.equal(url.searchParams.get("prompt"), "consent");
+    assert.equal(url.searchParams.get("prompt"), "select_account consent");
     assert.match(url.searchParams.get("scope") ?? "", /calendar/);
   });
 

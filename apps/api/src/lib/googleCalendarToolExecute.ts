@@ -1,6 +1,11 @@
 import { prisma } from "../db.js";
 import type { AutomationHttpToolRow } from "./automationHttpToolExecute.js";
 import { refreshGoogleAccessToken } from "./googleCalendarOAuth.js";
+import {
+  readTeamMembers,
+  resolveCalendarBookingTarget,
+  type GoogleCalendarConnectedEntry,
+} from "./googleCalendarTeam.js";
 
 export type GoogleCalendarAvailability = {
   days: number[];
@@ -8,7 +13,7 @@ export type GoogleCalendarAvailability = {
   end: string;
 };
 
-export type ConnectedCalendar = { id: string; name: string };
+export type ConnectedCalendar = GoogleCalendarConnectedEntry;
 
 function asJson(v: unknown): object {
   return v as object;
@@ -21,6 +26,7 @@ function readGoogleCalendarConfig(cfg: unknown): {
   calendarId: string;
   availability: GoogleCalendarAvailability;
   connectedCalendars: ConnectedCalendar[];
+  teamMembers: ReturnType<typeof readTeamMembers>;
 } {
   const c = cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
   const avRaw = c.availability && typeof c.availability === "object" ? (c.availability as Record<string, unknown>) : {};
@@ -32,8 +38,11 @@ function readGoogleCalendarConfig(cfg: unknown): {
     .map((x) => ({
       id: String(x.id ?? "").trim(),
       name: String(x.name ?? x.id ?? "Agenda").trim(),
+      memberId: typeof x.memberId === "string" ? x.memberId : undefined,
+      email: typeof x.email === "string" ? x.email : undefined,
     }))
     .filter((x) => x.id);
+  const teamMembers = readTeamMembers(cfg);
   return {
     clientId: String(c.client_id ?? "").trim(),
     clientSecret: String(c.client_secret ?? "").trim(),
@@ -45,7 +54,8 @@ function readGoogleCalendarConfig(cfg: unknown): {
       end: String(avRaw.end ?? "18:00").trim() || "18:00",
     },
     connectedCalendars:
-      connectedCalendars.length > 0 ? connectedCalendars : [{ id: "primary", name: "Principal" }],
+      connectedCalendars.length > 0 ? connectedCalendars : [{ id: "primary", name: "Principal", memberId: "admin" }],
+    teamMembers,
   };
 }
 
@@ -209,7 +219,7 @@ export async function runGoogleCalendarTool(input: {
     };
   }
 
-  if (!cfg.clientId || !cfg.clientSecret || !cfg.refreshToken) {
+  if (!cfg.clientId || !cfg.clientSecret) {
     const responseText = JSON.stringify({
       ok: false,
       error: "google_calendar_not_connected",
@@ -263,13 +273,50 @@ export async function runGoogleCalendarTool(input: {
     };
   }
 
-  const calendarId = resolveGoogleCalendarId(calendarName, cfg.connectedCalendars, cfg.calendarId);
+  const bookingTarget = resolveCalendarBookingTarget({
+    calendarName,
+    defaultCalendarId: cfg.calendarId,
+    connectedCalendars: cfg.connectedCalendars,
+    adminRefreshToken: cfg.refreshToken,
+    clientId: cfg.clientId,
+    clientSecret: cfg.clientSecret,
+    teamMembers: cfg.teamMembers,
+  });
+
+  if (!bookingTarget) {
+    const responseText = JSON.stringify({
+      ok: false,
+      error: "google_calendar_not_connected",
+      message:
+        "Nenhuma conta Google disponível para esta agenda. Ligue a conta principal ou convide um membro da equipa.",
+    });
+    await logGoogleCalendarExecution({
+      organizationId,
+      toolId: tool.id,
+      botId,
+      source: executionSource,
+      ok: false,
+      durationMs: Date.now() - started,
+      requestSummary: { llmArgs: input.llmArgs },
+      responseSummary: { preview: responseText },
+      errorMessage: "google_calendar_not_connected",
+    });
+    return {
+      ok: false,
+      statusCode: null,
+      responseText,
+      error: "google_calendar_not_connected",
+      durationMs: Date.now() - started,
+    };
+  }
+
+  const calendarId = bookingTarget.calendarId;
 
   try {
     const accessToken = await refreshGoogleAccessToken({
-      clientId: cfg.clientId,
-      clientSecret: cfg.clientSecret,
-      refreshToken: cfg.refreshToken,
+      clientId: bookingTarget.clientId,
+      clientSecret: bookingTarget.clientSecret,
+      refreshToken: bookingTarget.refreshToken,
     });
     const created = await createGoogleCalendarEvent({
       accessToken,
@@ -283,6 +330,7 @@ export async function runGoogleCalendarTool(input: {
       ok: true,
       eventId: created.eventId,
       calendarId,
+      memberEmail: bookingTarget.memberEmail ?? null,
       htmlLink: created.htmlLink ?? null,
       title,
       start,

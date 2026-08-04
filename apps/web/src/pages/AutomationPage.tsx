@@ -4621,8 +4621,19 @@ function GoogleCalendarToolEditor({
     hasClientCredentials: boolean;
     canStartOAuth: boolean;
     authorizeUrl: string | null;
+    adminAccount?: { email?: string; displayName?: string } | null;
+    teamMembers?: Array<{
+      memberId: string;
+      email: string;
+      displayName?: string;
+      calendars: Array<{ id: string; name: string }>;
+      connectedAt: string;
+      hasRefreshToken: boolean;
+    }>;
   } | null>(null);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [inviteLabel, setInviteLabel] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
 
   const loadOAuthInfo = useCallback(async () => {
     try {
@@ -4632,6 +4643,15 @@ function GoogleCalendarToolEditor({
         hasClientCredentials: boolean;
         canStartOAuth: boolean;
         authorizeUrl: string | null;
+        adminAccount?: { email?: string; displayName?: string } | null;
+        teamMembers?: Array<{
+          memberId: string;
+          email: string;
+          displayName?: string;
+          calendars: Array<{ id: string; name: string }>;
+          connectedAt: string;
+          hasRefreshToken: boolean;
+        }>;
       }>(`/automation/custom-tools/${tool.id}/google-oauth/info`);
       setOauthInfo(info);
     } catch {
@@ -4716,12 +4736,53 @@ function GoogleCalendarToolEditor({
       );
       if (!info.authorizeUrl) {
         window.alert(t("automationPage.toolGoogleCalendarConnectNeedsSecret"));
+        setOauthBusy(false);
         return;
       }
       window.location.href = info.authorizeUrl;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : String(err);
       window.alert(msg || t("automationPage.toolGoogleCalendarConnectFailed"));
+      setOauthBusy(false);
+    }
+  };
+
+  const generateTeamInviteLink = async () => {
+    setOauthBusy(true);
+    try {
+      const res = await api.post<{ inviteUrl: string }>(
+        `/automation/custom-tools/${tool.id}/google-oauth/invite-link`,
+        { label: inviteLabel.trim() || undefined, expiresInDays: 30 },
+      );
+      setInviteUrl(res.inviteUrl);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      window.alert(msg || t("automationPage.toolGoogleCalendarInviteFailed"));
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      window.alert(t("automationPage.toolGoogleCalendarInviteCopied"));
+    } catch {
+      window.prompt(t("automationPage.toolGoogleCalendarInviteCopyManual"), inviteUrl);
+    }
+  };
+
+  const removeTeamMember = async (memberId: string) => {
+    if (!window.confirm(t("automationPage.toolGoogleCalendarRemoveMemberConfirm"))) return;
+    setOauthBusy(true);
+    try {
+      await api.delete(`/automation/custom-tools/${tool.id}/google-oauth/team-members/${memberId}`);
+      await loadOAuthInfo();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      window.alert(msg || t("automationPage.toolGoogleCalendarRemoveMemberFailed"));
+    } finally {
       setOauthBusy(false);
     }
   };
@@ -4800,16 +4861,87 @@ function GoogleCalendarToolEditor({
             className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
           >
             {oauthInfo?.hasRefreshToken
-              ? t("automationPage.toolGoogleCalendarReconnect")
+              ? t("automationPage.toolGoogleCalendarChooseAccount")
               : t("automationPage.toolGoogleCalendarConnect")}
           </button>
           {oauthInfo?.hasRefreshToken ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
               <ShieldCheck className="h-3.5 w-3.5" />
-              {t("automationPage.toolGoogleCalendarConnected")}
+              {oauthInfo.adminAccount?.email
+                ? `${t("automationPage.toolGoogleCalendarConnected")}: ${oauthInfo.adminAccount.email}`
+                : t("automationPage.toolGoogleCalendarConnected")}
             </span>
           ) : null}
         </div>
+      </div>
+
+      <div className="rounded-lg border border-ink-100 bg-white p-3 dark:border-ink-700 dark:bg-ink-950/40">
+        <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarTeamTitle")}</p>
+        <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarTeamHint")}</p>
+        <label className="mt-3 block text-xs font-medium">
+          {t("automationPage.toolGoogleCalendarInviteLabel")}
+          <input
+            value={inviteLabel}
+            onChange={(e) => setInviteLabel(e.target.value)}
+            placeholder={t("automationPage.toolGoogleCalendarInviteLabelPlaceholder")}
+            className={fieldCls}
+          />
+        </label>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={oauthBusy}
+            onClick={() => void generateTeamInviteLink()}
+            className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-300"
+          >
+            {t("automationPage.toolGoogleCalendarGenerateInvite")}
+          </button>
+          {inviteUrl ? (
+            <button
+              type="button"
+              onClick={() => void copyInviteLink()}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
+            >
+              <ClipboardCopy className="h-3 w-3" />
+              {t("automationPage.toolGoogleCalendarCopyInvite")}
+            </button>
+          ) : null}
+        </div>
+        {inviteUrl ? (
+          <code className="mt-2 block overflow-x-auto rounded bg-ink-50 px-2 py-1 text-[11px] text-ink-700 dark:bg-ink-900 dark:text-ink-200">
+            {inviteUrl}
+          </code>
+        ) : null}
+        {(oauthInfo?.teamMembers?.length ?? 0) > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {oauthInfo!.teamMembers!.map((member) => (
+              <li
+                key={member.memberId}
+                className="flex items-start justify-between gap-2 rounded border border-ink-100 px-2 py-2 text-xs dark:border-ink-700"
+              >
+                <div>
+                  <p className="font-medium text-ink-800 dark:text-ink-100">
+                    {member.displayName || member.email}
+                  </p>
+                  <p className="text-[11px] text-ink-500">{member.email}</p>
+                  <p className="mt-1 text-[10px] text-ink-400">
+                    {member.calendars.length} {t("automationPage.toolGoogleCalendarTeamCalendars")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={oauthBusy}
+                  onClick={() => void removeTeamMember(member.memberId)}
+                  className="text-[11px] font-medium text-red-600 hover:underline disabled:opacity-60"
+                >
+                  {t("automationPage.toolGoogleCalendarRemoveMember")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarTeamEmpty")}</p>
+        )}
       </div>
 
       <label className="block text-xs font-medium">
