@@ -4605,15 +4605,23 @@ function GoogleCalendarToolEditor({
   const [days, setDays] = useState<number[]>(av0.days);
   const [startTime, setStartTime] = useState(av0.start);
   const [endTime, setEndTime] = useState(av0.end);
-  const [calendarsJson, setCalendarsJson] = useState(() =>
-    JSON.stringify(
-      Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }],
-      null,
-      2,
-    ),
-  );
-  const [calPreview, setCalPreview] = useState<unknown>(() =>
-    Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }],
+  const [adminDisplayName, setAdminDisplayName] = useState(() => {
+    const admin = (c.adminAccount ?? {}) as Record<string, unknown>;
+    return String(admin.displayName ?? "");
+  });
+  const [calendarRows, setCalendarRows] = useState<Array<{ id: string; name: string; memberId?: string; email?: string }>>(
+    () =>
+      (Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }]).map(
+        (row) => {
+          const r = row as Record<string, unknown>;
+          return {
+            id: String(r.id ?? ""),
+            name: String(r.name ?? r.id ?? "Agenda"),
+            memberId: typeof r.memberId === "string" ? r.memberId : undefined,
+            email: typeof r.email === "string" ? r.email : undefined,
+          };
+        },
+      ),
   );
   const [oauthInfo, setOauthInfo] = useState<{
     callbackUrl: string;
@@ -4622,6 +4630,7 @@ function GoogleCalendarToolEditor({
     canStartOAuth: boolean;
     authorizeUrl: string | null;
     adminAccount?: { email?: string; displayName?: string } | null;
+    connectedCalendars?: Array<{ id: string; name: string; memberId?: string; email?: string }>;
     teamMembers?: Array<{
       memberId: string;
       email: string;
@@ -4654,6 +4663,8 @@ function GoogleCalendarToolEditor({
         }>;
       }>(`/automation/custom-tools/${tool.id}/google-oauth/info`);
       setOauthInfo(info);
+      if (info.connectedCalendars?.length) setCalendarRows(info.connectedCalendars);
+      if (info.adminAccount?.displayName != null) setAdminDisplayName(String(info.adminAccount.displayName));
     } catch {
       setOauthInfo(null);
     }
@@ -4673,37 +4684,34 @@ function GoogleCalendarToolEditor({
     setDays(av.days);
     setStartTime(av.start);
     setEndTime(av.end);
+    const admin = (cfg.adminAccount ?? {}) as Record<string, unknown>;
+    setAdminDisplayName(String(admin.displayName ?? ""));
     const cal = Array.isArray(cfg.connectedCalendars) ? cfg.connectedCalendars : [{ id: "primary", name: "Principal" }];
-    setCalendarsJson(JSON.stringify(cal, null, 2));
-    setCalPreview(cal);
+    setCalendarRows(
+      cal.map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          id: String(r.id ?? ""),
+          name: String(r.name ?? r.id ?? "Agenda"),
+          memberId: typeof r.memberId === "string" ? r.memberId : undefined,
+          email: typeof r.email === "string" ? r.email : undefined,
+        };
+      }),
+    );
   }, [tool.id]);
 
   const toggleDay = (d: number) => {
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b)));
   };
 
-  const refreshCalPreview = () => {
-    try {
-      const parsed = JSON.parse(calendarsJson);
-      if (!Array.isArray(parsed)) {
-        window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
-        return;
-      }
-      setCalPreview(parsed);
-    } catch {
-      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
-    }
-  };
-
   const syncCalendarsFromGoogle = async () => {
     setOauthBusy(true);
     try {
-      const res = await api.post<{ ok: boolean; connectedCalendars: Array<{ id: string; name: string }> }>(
+      const res = await api.post<{ ok: boolean; connectedCalendars: Array<{ id: string; name: string; memberId?: string; email?: string }> }>(
         `/automation/custom-tools/${tool.id}/google-oauth/sync-calendars`,
       );
       const cal = res.connectedCalendars ?? [];
-      setCalendarsJson(JSON.stringify(cal, null, 2));
-      setCalPreview(cal);
+      setCalendarRows(cal);
       if (cal[0]?.id) setCalendarId(String(cal[0].id));
       await loadOAuthInfo();
     } catch (err) {
@@ -4712,6 +4720,37 @@ function GoogleCalendarToolEditor({
     } finally {
       setOauthBusy(false);
     }
+  };
+
+  const saveDisplayNames = async () => {
+    setOauthBusy(true);
+    try {
+      const res = await api.patch<{
+        ok: boolean;
+        connectedCalendars: Array<{ id: string; name: string; memberId?: string; email?: string }>;
+      }>(`/automation/custom-tools/${tool.id}/google-oauth/display-names`, {
+        adminDisplayName: adminDisplayName.trim() || undefined,
+        calendarNames: calendarRows
+          .filter((row) => row.id.trim() && row.name.trim())
+          .map((row) => ({
+            memberId: row.memberId ?? "admin",
+            calendarId: row.id.trim(),
+            name: row.name.trim(),
+          })),
+      });
+      if (res.connectedCalendars?.length) setCalendarRows(res.connectedCalendars);
+      await loadOAuthInfo();
+      window.alert(t("automationPage.toolGoogleCalendarSaveNamesOk"));
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      window.alert(msg || t("automationPage.toolGoogleCalendarSaveNamesFailed"));
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
+  const updateCalendarRowName = (index: number, name: string) => {
+    setCalendarRows((prev) => prev.map((row, i) => (i === index ? { ...row, name } : row)));
   };
 
   const connectGoogleAccount = async () => {
@@ -4802,23 +4841,11 @@ function GoogleCalendarToolEditor({
     "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
 
   const handleSave = () => {
-    let connectedCalendars: unknown;
-    try {
-      connectedCalendars = JSON.parse(calendarsJson);
-    } catch {
-      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
-      return;
-    }
-    if (!Array.isArray(connectedCalendars)) {
-      window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
-      return;
-    }
     const patch: Record<string, unknown> = {
       auth_mode: "oauth",
       client_id: clientId.trim(),
       calendar_id: calendarId.trim() || "primary",
       availability: { days, start: startTime.trim() || "09:00", end: endTime.trim() || "18:00" },
-      connectedCalendars,
     };
     if (clientSecret.trim()) patch.client_secret = clientSecret.trim();
     if (refreshToken.trim()) patch.refresh_token = refreshToken.trim();
@@ -4829,9 +4856,23 @@ function GoogleCalendarToolEditor({
     onSave(patch);
   };
 
-  const listItems = Array.isArray(calPreview)
-    ? (calPreview as Array<Record<string, unknown>>).filter((x) => x && typeof x === "object")
-    : [];
+  const groupedCalendarRows = calendarRows.reduce<
+    Array<{ key: string; email?: string; label: string; rows: Array<{ index: number; id: string; name: string }> }>
+  >((acc, row, index) => {
+    const memberId = row.memberId ?? "admin";
+    const key = `${memberId}:${row.email ?? ""}`;
+    const existing = acc.find((g) => g.key === key);
+    const label =
+      memberId === "admin"
+        ? t("automationPage.toolGoogleCalendarAdminAccount")
+        : oauthInfo?.teamMembers?.find((m) => m.memberId === memberId)?.displayName ||
+          row.email ||
+          memberId;
+    const entry = { index, id: row.id, name: row.name };
+    if (existing) existing.rows.push(entry);
+    else acc.push({ key, email: row.email, label, rows: [entry] });
+    return acc;
+  }, []);
 
   return (
     <div className="mt-3 space-y-3 border-t border-ink-200 pt-3 dark:border-ink-700">
@@ -5003,9 +5044,14 @@ function GoogleCalendarToolEditor({
         </div>
       </div>
 
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarConnectedTitle")}</p>
+      <div className="rounded-lg border border-ink-100 bg-white p-3 dark:border-ink-700 dark:bg-ink-950/40">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-medium text-ink-800 dark:text-ink-200">
+              {t("automationPage.toolGoogleCalendarConnectedTitle")}
+            </p>
+            <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarConnectedHint")}</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             {oauthInfo?.hasRefreshToken ? (
               <button
@@ -5018,38 +5064,66 @@ function GoogleCalendarToolEditor({
                 {t("automationPage.toolGoogleCalendarSyncFromGoogle")}
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={refreshCalPreview}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
-            >
-              <RefreshCw className="h-3 w-3" />
-              {t("automationPage.toolGoogleCalendarRefreshList")}
-            </button>
           </div>
         </div>
-        <textarea
-          value={calendarsJson}
-          onChange={(e) => setCalendarsJson(e.target.value)}
-          rows={5}
-          className={clsx(fieldCls, "mt-1 font-mono text-[11px]")}
-        />
-        <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarConsultHint")}</p>
-        {listItems.length > 0 ? (
-          <ul className="mt-2 space-y-1.5 rounded-lg border border-ink-100 bg-white p-2 dark:border-ink-700 dark:bg-ink-950/40">
-            {listItems.map((row, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-ink-700 dark:text-ink-300">
-                <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" />
-                <span>
-                  <span className="font-medium">{String(row.name ?? row.id ?? "—")}</span>
-                  {row.id != null ? (
-                    <span className="mt-0.5 block text-[10px] text-ink-500">ID: {String(row.id)}</span>
-                  ) : null}
-                </span>
-              </li>
+
+        {groupedCalendarRows.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {groupedCalendarRows.map((group) => (
+              <div key={group.key} className="rounded-lg border border-ink-100 p-3 dark:border-ink-700">
+                <div className="mb-2">
+                  <p className="text-xs font-semibold text-ink-800 dark:text-ink-100">{group.label}</p>
+                  {group.email ? <p className="text-[11px] text-ink-500">{group.email}</p> : null}
+                </div>
+                {group.key.startsWith("admin:") ? (
+                  <label className="block text-xs font-medium">
+                    {t("automationPage.toolGoogleCalendarAgentNameLabel")}
+                    <input
+                      value={adminDisplayName}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setAdminDisplayName(value);
+                        if (group.rows.length === 1) {
+                          const rowIndex = group.rows[0]?.index;
+                          if (rowIndex != null) updateCalendarRowName(rowIndex, value);
+                        }
+                      }}
+                      placeholder={group.email ?? t("automationPage.toolGoogleCalendarAdminAccount")}
+                      className={fieldCls}
+                    />
+                  </label>
+                ) : null}
+                <div className="mt-2 space-y-2">
+                  {group.rows.map((row) =>
+                    group.key.startsWith("admin:") && group.rows.length === 1 ? null : (
+                      <label key={`${group.key}-${row.id}`} className="block text-xs font-medium">
+                        {group.rows.length > 1
+                          ? `${t("automationPage.toolGoogleCalendarAgentNameLabel")} · ${row.id}`
+                          : t("automationPage.toolGoogleCalendarAgentNameLabel")}
+                        <input
+                          value={calendarRows[row.index]?.name ?? row.name}
+                          onChange={(e) => updateCalendarRowName(row.index, e.target.value)}
+                          className={fieldCls}
+                        />
+                      </label>
+                    ),
+                  )}
+                </div>
+              </div>
             ))}
-          </ul>
-        ) : null}
+            <button
+              type="button"
+              disabled={oauthBusy}
+              onClick={() => void saveDisplayNames()}
+              className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 disabled:opacity-60 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-300"
+            >
+              {t("automationPage.toolGoogleCalendarSaveNames")}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarTeamEmpty")}</p>
+        )}
+        <p className="mt-3 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarConsultHint")}</p>
       </div>
 
       <p className="text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarOAuthNote")}</p>

@@ -16,14 +16,17 @@ import {
   verifyGoogleOAuthState,
 } from "../lib/googleCalendarOAuth.js";
 import {
+  calendarEntryKey,
   createTeamInviteToken,
   googleCalendarTeamInvitePublicUrl,
   googleCalendarTeamInviteStartUrl,
+  indexConnectedCalendarNames,
   readTeamInvites,
   readTeamMembers,
   rebuildConnectedCalendars,
   redactTeamMembersForClient,
   verifyTeamInviteToken,
+  type GoogleCalendarConnectedEntry,
   type GoogleCalendarTeamMember,
 } from "../lib/googleCalendarTeam.js";
 
@@ -45,14 +48,46 @@ function readGoogleOAuthCredentials(cfg: unknown): { clientId: string; clientSec
   };
 }
 
-function readAdminCalendars(cfg: unknown): Array<{ id: string; name: string }> {
+function readConnectedCalendars(cfg: unknown): GoogleCalendarConnectedEntry[] {
   const c = cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
   const raw = Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [];
   return raw
     .filter((x): x is Record<string, unknown> => x && typeof x === "object")
-    .map((x) => ({ id: String(x.id ?? "").trim(), name: String(x.name ?? x.id ?? "Agenda").trim() }))
+    .map((x) => ({
+      id: String(x.id ?? "").trim(),
+      name: String(x.name ?? x.id ?? "Agenda").trim(),
+      memberId: typeof x.memberId === "string" ? x.memberId : undefined,
+      email: typeof x.email === "string" ? x.email : undefined,
+    }))
     .filter((x) => x.id);
 }
+
+function readAdminAccount(cfg: unknown): { email?: string; displayName?: string } | null {
+  const c = cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
+  const adminAccount =
+    c.adminAccount && typeof c.adminAccount === "object"
+      ? (c.adminAccount as Record<string, unknown>)
+      : null;
+  if (!adminAccount) return null;
+  return {
+    email: typeof adminAccount.email === "string" ? adminAccount.email : undefined,
+    displayName: typeof adminAccount.displayName === "string" ? adminAccount.displayName : undefined,
+  };
+}
+
+function readAdminGoogleCalendars(cfg: unknown): Array<{ id: string; name: string }> {
+  const c = cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
+  const raw = Array.isArray(c.adminCalendars) ? c.adminCalendars : [];
+  const fromField = raw
+    .filter((x): x is Record<string, unknown> => x && typeof x === "object")
+    .map((x) => ({ id: String(x.id ?? "").trim(), name: String(x.name ?? x.id ?? "Agenda").trim() }))
+    .filter((x) => x.id);
+  if (fromField.length > 0) return fromField;
+  return readConnectedCalendars(cfg)
+    .filter((entry) => (entry.memberId ?? "admin") === "admin")
+    .map((entry) => ({ id: entry.id, name: entry.name }));
+}
+
 
 function oauthRedirectHtml(input: { ok: boolean; toolId: string; message?: string; team?: boolean }): string {
   const origin = getWebAppPublicOrigin();
@@ -74,15 +109,144 @@ function oauthRedirectHtml(input: { ok: boolean; toolId: string; message?: strin
   return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>${title}</title><meta http-equiv="refresh" content="0;url=${target}"></head><body><p>${body}</p><p><a href="${target}">Continuar</a></p></body></html>`;
 }
 
-function inviteLandingHtml(input: { label?: string; startUrl: string; expired?: boolean }): string {
+function inviteLandingHtml(input: {
+  label?: string;
+  startUrl: string;
+  expired?: boolean;
+  organizationName?: string;
+  organizationLogoUrl?: string | null;
+}): string {
+  const orgName = input.organizationName?.trim() || "OpenNexo";
   const title = input.expired ? "Convite expirado" : "Ligar Google Calendar";
-  const body = input.expired
-    ? "Este link de convite expirou ou foi revogado. Peça um novo link ao administrador."
-    : `Foi convidado(a) a ligar a sua agenda Google${input.label ? ` (${input.label})` : ""}. O agente poderá marcar eventos nas suas agendas autorizadas.`;
+  const subtitle = input.expired
+    ? "Este link de convite expirou ou foi revogado."
+    : `Foi convidado(a) a ligar a sua agenda Google${input.label ? ` · ${input.label}` : ""}.`;
+  const detail = input.expired
+    ? "Peça um novo link ao administrador da sua organização."
+    : "Após autorizar, o agente poderá marcar eventos nas agendas que escolher — de forma segura e controlada.";
+  const logoBlock = input.organizationLogoUrl
+    ? `<img src="${escapeHtmlAttr(input.organizationLogoUrl)}" alt="${escapeHtmlAttr(orgName)}" class="logo" />`
+    : `<div class="logo-fallback" aria-hidden="true">${escapeHtmlText(orgName.slice(0, 1).toUpperCase())}</div>`;
   const button = input.expired
     ? ""
-    : `<p><a href="${input.startUrl}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Escolher conta Google</a></p>`;
-  return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 16px;color:#111"><h1 style="font-size:1.25rem">${title}</h1><p>${body}</p>${button}</body></html>`;
+    : `<a class="cta" href="${escapeHtmlAttr(input.startUrl)}">Escolher conta Google</a>`;
+  return `<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtmlText(title)} · ${escapeHtmlText(orgName)}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --brand: #2563eb;
+      --brand-hover: #1d4ed8;
+      --shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1220;
+        --card: #111827;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --border: #1f2937;
+        --shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, rgba(37, 99, 235, 0.08), transparent 42%), var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+    }
+    .card {
+      width: min(100%, 440px);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 32px 28px 28px;
+      text-align: center;
+    }
+    .logo {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+      border-radius: 16px;
+      margin: 0 auto 16px;
+      display: block;
+      background: #fff;
+      padding: 8px;
+    }
+    .logo-fallback {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      margin: 0 auto 16px;
+      display: grid;
+      place-items: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+    }
+    .org { margin: 0; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    h1 { margin: 8px 0 0; font-size: 1.5rem; line-height: 1.25; font-weight: 700; }
+    .subtitle { margin: 12px 0 0; font-size: 1rem; line-height: 1.5; color: var(--text); }
+    .detail { margin: 10px 0 0; font-size: 0.9375rem; line-height: 1.55; color: var(--muted); }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 28px;
+      min-height: 48px;
+      padding: 0 22px;
+      border-radius: 12px;
+      background: var(--brand);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      transition: background 0.15s ease;
+    }
+    .cta:hover { background: var(--brand-hover); }
+    .footer { margin-top: 24px; font-size: 0.75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    ${logoBlock}
+    <p class="org">${escapeHtmlText(orgName)}</p>
+    <h1>${escapeHtmlText(title)}</h1>
+    <p class="subtitle">${escapeHtmlText(subtitle)}</p>
+    <p class="detail">${escapeHtmlText(detail)}</p>
+    ${button}
+    <p class="footer">Integração Google Calendar · OAuth seguro</p>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeHtmlAttr(value: string): string {
+  return escapeHtmlText(value).replace(/'/g, "&#39;");
 }
 
 async function loadGoogleCalendarTool(organizationId: string, toolId: string) {
@@ -96,24 +260,29 @@ async function persistAdminOAuthResult(input: {
   tokens: { accessToken: string; refreshToken?: string };
 }): Promise<Record<string, unknown>> {
   const user = await fetchGoogleUserInfo(input.tokens.accessToken);
-  let adminCalendars = readAdminCalendars(input.toolConfig);
+  let adminCalendars = readAdminGoogleCalendars(input.toolConfig);
   try {
     adminCalendars = await fetchGoogleCalendarList(input.tokens.accessToken);
   } catch {
     /* keep existing */
   }
   const teamMembers = readTeamMembers(input.toolConfig);
+  const adminAccount = readAdminAccount(input.toolConfig);
+  const preserveNames = indexConnectedCalendarNames(readConnectedCalendars(input.toolConfig));
   const patch: Record<string, unknown> = {
     oauth_connected_at: new Date().toISOString(),
     adminAccount: {
       email: user.email,
-      displayName: user.name,
+      displayName: adminAccount?.displayName?.trim() || user.name,
       connectedAt: new Date().toISOString(),
     },
+    adminCalendars: adminCalendars.map((c) => ({ id: c.id, name: c.name })),
     connectedCalendars: rebuildConnectedCalendars({
       adminEmail: user.email,
+      adminDisplayName: adminAccount?.displayName?.trim() || user.name,
       adminCalendars,
       teamMembers,
+      preserveNames,
     }),
   };
   if (input.tokens.refreshToken) patch.refresh_token = input.tokens.refreshToken;
@@ -148,19 +317,19 @@ async function persistTeamInviteOAuthResult(input: {
       : [...teamMembers, member];
 
   const creds = readGoogleOAuthCredentials(input.toolConfig);
-  const adminCalendars = readAdminCalendars(input.toolConfig);
-  const adminAccount =
-    input.toolConfig && typeof input.toolConfig === "object"
-      ? ((input.toolConfig as Record<string, unknown>).adminAccount as Record<string, unknown> | undefined)
-      : undefined;
-  const adminEmail = typeof adminAccount?.email === "string" ? adminAccount.email : undefined;
+  const adminAccount = readAdminAccount(input.toolConfig);
+  const adminEmail = adminAccount?.email;
+  const adminCalendars = creds.refreshToken ? readAdminGoogleCalendars(input.toolConfig) : [];
+  const preserveNames = indexConnectedCalendarNames(readConnectedCalendars(input.toolConfig));
 
   return {
     teamMembers: nextMembers,
     connectedCalendars: rebuildConnectedCalendars({
       adminEmail,
-      adminCalendars: creds.refreshToken ? adminCalendars : [],
+      adminDisplayName: adminAccount?.displayName,
+      adminCalendars,
       teamMembers: nextMembers,
+      preserveNames,
     }),
   };
 }
@@ -189,21 +358,50 @@ async function renderInviteLanding(token: string, reply: FastifyReply) {
   if (!invite) {
     return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
   }
-  const tool = await prisma.automationCustomTool.findFirst({
-    where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
-  });
+  const [tool, organization, settings] = await Promise.all([
+    prisma.automationCustomTool.findFirst({
+      where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
+    }),
+    prisma.organization.findUnique({
+      where: { id: invite.organizationId },
+      select: { name: true },
+    }),
+    prisma.settings.findUnique({
+      where: { organizationId: invite.organizationId },
+      select: { organizationLogoUrl: true },
+    }),
+  ]);
   if (!tool) {
-    return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
+    return reply.type("text/html; charset=utf-8").send(
+      inviteLandingHtml({
+        startUrl: "",
+        expired: true,
+        organizationName: organization?.name,
+        organizationLogoUrl: settings?.organizationLogoUrl ?? null,
+      }),
+    );
   }
   const invites = readTeamInvites(tool.config);
   const record = invites.find((x) => x.inviteId === invite.inviteId);
   if (!record || record.revoked) {
-    return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
+    return reply.type("text/html; charset=utf-8").send(
+      inviteLandingHtml({
+        startUrl: "",
+        expired: true,
+        organizationName: organization?.name,
+        organizationLogoUrl: settings?.organizationLogoUrl ?? null,
+      }),
+    );
   }
   const startUrl = googleCalendarTeamInviteStartUrl(token);
-  return reply
-    .type("text/html; charset=utf-8")
-    .send(inviteLandingHtml({ label: invite.label ?? record.label, startUrl }));
+  return reply.type("text/html; charset=utf-8").send(
+    inviteLandingHtml({
+      label: invite.label ?? record.label,
+      startUrl,
+      organizationName: organization?.name,
+      organizationLogoUrl: settings?.organizationLogoUrl ?? null,
+    }),
+  );
 }
 
 async function startInviteOAuth(token: string, reply: FastifyReply) {
@@ -378,8 +576,8 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
         });
       }
 
-      const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
-      const adminAccount = cfg.adminAccount && typeof cfg.adminAccount === "object" ? cfg.adminAccount : null;
+      const adminAccount = readAdminAccount(tool.config);
+      const connectedCalendars = readConnectedCalendars(tool.config);
 
       return {
         callbackUrl: googleCalendarOAuthCallbackUrl(),
@@ -389,6 +587,7 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
         canStartOAuth,
         authorizeUrl,
         adminAccount,
+        connectedCalendars,
         teamMembers,
         teamInvites: teamInvites.map((x) => ({ inviteId: x.inviteId, label: x.label, createdAt: x.createdAt, expiresAt: x.expiresAt })),
       };
@@ -485,12 +684,9 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
 
       const teamMembers = readTeamMembers(tool.config).filter((m) => m.memberId !== request.params.memberId);
       const creds = readGoogleOAuthCredentials(tool.config);
-      const adminAccount =
-        tool.config && typeof tool.config === "object"
-          ? ((tool.config as Record<string, unknown>).adminAccount as Record<string, unknown> | undefined)
-          : undefined;
-      const adminEmail = typeof adminAccount?.email === "string" ? adminAccount.email : undefined;
-      const adminCalendars = creds.refreshToken ? readAdminCalendars(tool.config) : [];
+      const adminAccount = readAdminAccount(tool.config);
+      const adminCalendars = creds.refreshToken ? readAdminGoogleCalendars(tool.config) : [];
+      const preserveNames = indexConnectedCalendarNames(readConnectedCalendars(tool.config));
 
       await prisma.automationCustomTool.update({
         where: { id: tool.id },
@@ -498,12 +694,87 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
           config: asJson(
             mergeToolConfig(tool.config, {
               teamMembers,
-              connectedCalendars: rebuildConnectedCalendars({ adminEmail, adminCalendars, teamMembers }),
+              connectedCalendars: rebuildConnectedCalendars({
+                adminEmail: adminAccount?.email,
+                adminDisplayName: adminAccount?.displayName,
+                adminCalendars,
+                teamMembers,
+                preserveNames,
+              }),
             }),
           ),
         },
       });
       return { ok: true };
+    },
+  );
+
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      adminDisplayName?: string;
+      memberDisplayNames?: Array<{ memberId: string; displayName: string }>;
+      calendarNames?: Array<{ memberId: string; calendarId: string; name: string }>;
+    };
+  }>(
+    "/custom-tools/:id/google-oauth/display-names",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const tool = await requireGoogleCalendarTool(request, reply, organizationId);
+      if (!tool) return;
+
+      const cfg = tool.config && typeof tool.config === "object" ? { ...(tool.config as Record<string, unknown>) } : {};
+      const adminAccount = readAdminAccount(tool.config);
+      const teamMembers = readTeamMembers(tool.config);
+      const preserveNames = indexConnectedCalendarNames(readConnectedCalendars(tool.config));
+
+      if (typeof request.body?.adminDisplayName === "string") {
+        const displayName = request.body.adminDisplayName.trim();
+        cfg.adminAccount = {
+          ...(adminAccount ?? {}),
+          displayName: displayName || undefined,
+        };
+      }
+
+      const memberNameUpdates = Array.isArray(request.body?.memberDisplayNames)
+        ? request.body.memberDisplayNames
+        : [];
+      const nextMembers = teamMembers.map((member) => {
+        const update = memberNameUpdates.find((row) => row.memberId === member.memberId);
+        if (!update || typeof update.displayName !== "string") return member;
+        const displayName = update.displayName.trim();
+        return { ...member, displayName: displayName || undefined };
+      });
+      cfg.teamMembers = nextMembers;
+
+      const calendarNameUpdates = Array.isArray(request.body?.calendarNames) ? request.body.calendarNames : [];
+      for (const row of calendarNameUpdates) {
+        const memberId = String(row.memberId ?? "").trim();
+        const calendarId = String(row.calendarId ?? "").trim();
+        const name = String(row.name ?? "").trim();
+        if (!memberId || !calendarId || !name) continue;
+        preserveNames.set(calendarEntryKey(memberId, calendarId), name);
+      }
+
+      const creds = readGoogleOAuthCredentials(tool.config);
+      const nextAdminAccount = readAdminAccount(cfg);
+      const connectedCalendars = rebuildConnectedCalendars({
+        adminEmail: nextAdminAccount?.email,
+        adminDisplayName: nextAdminAccount?.displayName,
+        adminCalendars: creds.refreshToken ? readAdminGoogleCalendars(tool.config) : [],
+        teamMembers: nextMembers,
+        preserveNames,
+      });
+
+      cfg.connectedCalendars = connectedCalendars;
+      await prisma.automationCustomTool.update({
+        where: { id: tool.id },
+        data: { config: asJson(cfg) },
+      });
+
+      return { ok: true, connectedCalendars, adminAccount: nextAdminAccount, teamMembers: redactTeamMembersForClient(nextMembers) };
     },
   );
 
@@ -533,12 +804,15 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
         });
         const adminCalendars = await fetchGoogleCalendarList(accessToken);
         const teamMembers = readTeamMembers(tool.config);
-        const adminAccount =
-          tool.config && typeof tool.config === "object"
-            ? ((tool.config as Record<string, unknown>).adminAccount as Record<string, unknown> | undefined)
-            : undefined;
-        const adminEmail = typeof adminAccount?.email === "string" ? adminAccount.email : undefined;
-        const connectedCalendars = rebuildConnectedCalendars({ adminEmail, adminCalendars, teamMembers });
+        const adminAccount = readAdminAccount(tool.config);
+        const preserveNames = indexConnectedCalendarNames(readConnectedCalendars(tool.config));
+        const connectedCalendars = rebuildConnectedCalendars({
+          adminEmail: adminAccount?.email,
+          adminDisplayName: adminAccount?.displayName,
+          adminCalendars,
+          teamMembers,
+          preserveNames,
+        });
         const primary = adminCalendars.find((c) => c.primary) ?? adminCalendars[0];
 
         await prisma.automationCustomTool.update({
@@ -546,6 +820,7 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
           data: {
             config: asJson(
               mergeToolConfig(tool.config, {
+                adminCalendars: adminCalendars.map((c) => ({ id: c.id, name: c.name })),
                 connectedCalendars,
                 ...(primary ? { calendar_id: primary.id } : {}),
               }),

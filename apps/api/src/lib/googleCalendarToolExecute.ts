@@ -144,6 +144,16 @@ async function createGoogleCalendarEvent(input: {
   return { eventId: json.id, htmlLink: json.htmlLink };
 }
 
+export function buildGoogleCalendarAgentToolDescription(config: unknown): string {
+  const cfg = readGoogleCalendarConfig(config);
+  const names = cfg.connectedCalendars.map((c) => c.name.trim()).filter(Boolean);
+  const unique = [...new Set(names)];
+  if (unique.length === 0) {
+    return "Agenda Google Calendar. Use calendar_name para escolher a agenda quando houver várias contas ligadas.";
+  }
+  return `Agenda Google Calendar. Agendas disponíveis (calendar_name): ${unique.map((n) => `«${n}»`).join(", ")}. Omita calendar_name para usar a agenda principal.`;
+}
+
 /**
  * Executa ferramenta GOOGLE_CALENDAR (agendar_google) com OAuth refresh_token guardado na config.
  */

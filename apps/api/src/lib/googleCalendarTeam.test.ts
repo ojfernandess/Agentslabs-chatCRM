@@ -1,17 +1,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  calendarEntryKey,
+  indexConnectedCalendarNames,
   rebuildConnectedCalendars,
   resolveCalendarBookingTarget,
   type GoogleCalendarTeamMember,
 } from "./googleCalendarTeam.js";
 
 describe("googleCalendarTeam", () => {
-  it("aggregates admin and team calendars with identifiable names", () => {
+  it("aggregates admin and team calendars with clean agent names", () => {
     const teamMembers: GoogleCalendarTeamMember[] = [
       {
         memberId: "m1",
         email: "maria@gmail.com",
+        displayName: "Maria",
         refresh_token: "rt-maria",
         calendar_id: "cal-maria",
         calendars: [{ id: "cal-maria", name: "Agenda Maria" }],
@@ -20,18 +23,37 @@ describe("googleCalendarTeam", () => {
     ];
     const connected = rebuildConnectedCalendars({
       adminEmail: "admin@gmail.com",
+      adminDisplayName: "Receção",
       adminCalendars: [{ id: "primary", name: "Principal" }],
       teamMembers,
     });
     assert.equal(connected.length, 2);
-    assert.match(connected[1]?.name ?? "", /maria@gmail.com/i);
+    assert.equal(connected[0]?.name, "Receção");
+    assert.equal(connected[1]?.name, "Maria");
+    assert.doesNotMatch(connected[0]?.name ?? "", /@/);
   });
 
-  it("uses team member refresh token when calendar_name matches member email", () => {
+  it("preserves custom calendar names across rebuild", () => {
+    const preserveNames = indexConnectedCalendarNames([
+      { id: "primary", name: "Agenda VIP", memberId: "admin", email: "admin@gmail.com" },
+    ]);
+    const connected = rebuildConnectedCalendars({
+      adminEmail: "admin@gmail.com",
+      adminDisplayName: "Admin",
+      adminCalendars: [{ id: "primary", name: "Principal" }],
+      teamMembers: [],
+      preserveNames,
+    });
+    assert.equal(connected[0]?.name, "Agenda VIP");
+    assert.equal(calendarEntryKey("admin", "primary"), "admin:primary");
+  });
+
+  it("uses team member refresh token when calendar_name matches display name", () => {
     const teamMembers: GoogleCalendarTeamMember[] = [
       {
         memberId: "m1",
         email: "maria@gmail.com",
+        displayName: "Maria",
         refresh_token: "rt-maria",
         calendar_id: "cal-maria",
         calendars: [{ id: "cal-maria", name: "Agenda Maria" }],
@@ -40,11 +62,12 @@ describe("googleCalendarTeam", () => {
     ];
     const connectedCalendars = rebuildConnectedCalendars({
       adminEmail: "admin@gmail.com",
-      adminCalendars: [{ id: "primary", name: "Principal (admin@gmail.com)" }],
+      adminDisplayName: "Receção",
+      adminCalendars: [{ id: "primary", name: "Principal" }],
       teamMembers,
     });
     const target = resolveCalendarBookingTarget({
-      calendarName: "maria@gmail.com",
+      calendarName: "Maria",
       defaultCalendarId: "primary",
       connectedCalendars,
       adminRefreshToken: "rt-admin",

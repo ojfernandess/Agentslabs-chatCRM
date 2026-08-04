@@ -136,27 +136,77 @@ export function readTeamInvites(cfg: unknown): GoogleCalendarInviteRecord[] {
     .filter((x) => x.inviteId);
 }
 
+export function calendarEntryKey(memberId: string, calendarId: string): string {
+  return `${memberId}:${calendarId}`;
+}
+
+export function indexConnectedCalendarNames(
+  entries: GoogleCalendarConnectedEntry[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const entry of entries) {
+    const memberId = entry.memberId ?? "admin";
+    const calendarId = entry.id?.trim();
+    const name = entry.name?.trim();
+    if (calendarId && name) map.set(calendarEntryKey(memberId, calendarId), name);
+  }
+  return map;
+}
+
+function defaultAgentCalendarName(input: {
+  accountLabel: string | undefined;
+  calendarLabel: string;
+  multiCalendar: boolean;
+}): string {
+  const account = input.accountLabel?.trim();
+  const calendar = input.calendarLabel.trim() || "Agenda";
+  if (!account) return calendar;
+  if (!input.multiCalendar) return account;
+  return `${account} — ${calendar}`;
+}
+
 export function rebuildConnectedCalendars(input: {
   adminEmail?: string;
+  adminDisplayName?: string;
   adminCalendars: Array<{ id: string; name: string }>;
   teamMembers: GoogleCalendarTeamMember[];
+  preserveNames?: Map<string, string>;
 }): GoogleCalendarConnectedEntry[] {
   const out: GoogleCalendarConnectedEntry[] = [];
   const adminEmail = input.adminEmail?.trim();
+  const adminDisplayName = input.adminDisplayName?.trim();
+  const adminMulti = input.adminCalendars.length > 1;
   for (const cal of input.adminCalendars) {
+    const key = calendarEntryKey("admin", cal.id);
+    const preserved = input.preserveNames?.get(key);
     out.push({
       id: cal.id,
-      name: adminEmail ? `${cal.name} (${adminEmail})` : cal.name,
+      name:
+        preserved ??
+        defaultAgentCalendarName({
+          accountLabel: adminDisplayName,
+          calendarLabel: cal.name,
+          multiCalendar: adminMulti,
+        }),
       memberId: "admin",
       email: adminEmail,
     });
   }
   for (const member of input.teamMembers) {
-    const label = member.displayName?.trim() || member.email;
+    const memberLabel = member.displayName?.trim();
+    const memberMulti = member.calendars.length > 1;
     for (const cal of member.calendars) {
+      const key = calendarEntryKey(member.memberId, cal.id);
+      const preserved = input.preserveNames?.get(key);
       out.push({
         id: cal.id,
-        name: `${cal.name} (${label})`,
+        name:
+          preserved ??
+          defaultAgentCalendarName({
+            accountLabel: memberLabel,
+            calendarLabel: cal.name,
+            multiCalendar: memberMulti,
+          }),
         memberId: member.memberId,
         email: member.email,
       });
@@ -196,6 +246,15 @@ export function resolveCalendarBookingTarget(input: {
         c.id.trim().toLowerCase() === name ||
         (c.email && c.email.toLowerCase() === name),
     );
+    if (!entry) {
+      const member = input.teamMembers.find(
+        (m) =>
+          m.displayName?.trim().toLowerCase() === name || m.email.trim().toLowerCase() === name,
+      );
+      if (member) {
+        entry = input.connectedCalendars.find((c) => c.memberId === member.memberId);
+      }
+    }
   }
   if (!entry && input.defaultCalendarId) {
     entry = input.connectedCalendars.find((c) => c.id === input.defaultCalendarId);

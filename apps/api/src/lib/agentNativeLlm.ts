@@ -1869,7 +1869,8 @@ async function generateNativeAgentReplyCore(input: {
   }
   const customToolPreamble =
     customHttpTools.length > 0
-      ? "\n- **Ferramentas HTTP da organização:** existem funções com nome `oc_tool_` + identificador. Use-as para consultar APIs externas (ex.: reservas, PMS) **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n" +
+      ? "\n- **Ferramentas da organização:** existem funções com nome `oc_tool_` + identificador (APIs HTTP, Google Calendar, etc.). Use-as **antes** de `call_human` ou transferências, quando o pedido do cliente for compatível com o contrato de cada função.\n" +
+        "- **Google Calendar (`agendar_google`):** para marcar eventos use a função ligada ao perfil; o parâmetro `calendar_name` deve coincidir com um dos nomes configurados na ferramenta.\n" +
         "- **Várias ferramentas na mesma ronda:** só invoque em paralelo ferramentas independentes. Respeite dependências do fluxo (ex.: concluir um passo antes de outro que precise do resultado).\n" +
         "- **Após ferramentas:** responda sempre ao cliente com o resultado concreto (sucesso, erro ou dados em falta) — não termine só com frases de espera.\n"
       : "";

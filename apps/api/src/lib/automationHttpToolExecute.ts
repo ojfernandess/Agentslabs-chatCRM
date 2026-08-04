@@ -9,6 +9,7 @@ import { buildNativeAgentInboundMediaWhere } from "./agentConversationHistory.js
 import { assembleEmbraturFromSources } from "./agent-engine/checkin/embraturTravelForm.js";
 import { adaptHttpCheckInPayload } from "./agent-engine/checkin/toolOutcomeAdapters.js";
 import { httpToolBodyIndicatesFailure } from "./agent-engine/checkin/toolOutcomeParsing.js";
+import { buildGoogleCalendarAgentToolDescription } from "./googleCalendarToolExecute.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -1488,13 +1489,22 @@ export function openAiToolDefinitionForAutomationTool(
   function: { name: string; description: string; parameters: Record<string, unknown> };
 } {
   const name = openAiFunctionNameForAutomationTool(tool.id);
+  const toolType = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_");
+  const calendarHint =
+    toolType === "GOOGLE_CALENDAR" ? buildGoogleCalendarAgentToolDescription(tool.config) : "";
   const baseDesc =
     (tool.description ?? "").trim() ||
-    `Ferramenta HTTP da organização «${tool.name}». Invoque quando o cliente precisar dos dados que esta API fornece.`;
+    (toolType === "GOOGLE_CALENDAR"
+      ? calendarHint || `Agendamento Google Calendar «${tool.name}».`
+      : `Ferramenta HTTP da organização «${tool.name}». Invoque quando o cliente precisar dos dados que esta API fornece.`);
+  const withCalendarHint =
+    calendarHint && !(tool.description ?? "").includes("calendar_name")
+      ? `${baseDesc}\n\n${calendarHint}`.trim()
+      : baseDesc;
   const extra = (opts?.agentInstruction ?? "").trim();
   const combined = extra
-    ? `${baseDesc}\n\n[Instruções do configurador do agente]\n${extra}`.trim()
-    : baseDesc;
+    ? `${withCalendarHint}\n\n[Instruções do configurador do agente]\n${extra}`.trim()
+    : withCalendarHint;
   const description = combined.slice(0, 4000);
   return {
     type: "function",

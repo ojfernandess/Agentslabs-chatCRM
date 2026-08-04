@@ -1358,7 +1358,14 @@ export const messages = {
       toolCalDay_6: "Sáb",
       toolGoogleCalendarFrom: "Das",
       toolGoogleCalendarTo: "às",
-      toolGoogleCalendarConnectedTitle: "Agendas ligadas (JSON)",
+      toolGoogleCalendarConnectedTitle: "Nomes para o agente",
+      toolGoogleCalendarConnectedHint:
+        "Estes nomes aparecem no parâmetro calendar_name quando o agente marca eventos. Não incluem o email — edite livremente.",
+      toolGoogleCalendarAgentNameLabel: "Nome no agente",
+      toolGoogleCalendarAdminAccount: "Conta principal",
+      toolGoogleCalendarSaveNames: "Guardar nomes",
+      toolGoogleCalendarSaveNamesOk: "Nomes guardados.",
+      toolGoogleCalendarSaveNamesFailed: "Não foi possível guardar os nomes.",
       toolGoogleCalendarRefreshList: "Atualizar lista",
       toolGoogleCalendarConsultHint:
         "O agente pode usar consultar_agendas e calendar_name com o nome indicado abaixo (instale o preset MCP consultar_agendas).",
@@ -6889,7 +6896,14 @@ export const messages = {
       toolCalDay_6: "Sat",
       toolGoogleCalendarFrom: "From",
       toolGoogleCalendarTo: "to",
-      toolGoogleCalendarConnectedTitle: "Connected calendars (JSON)",
+      toolGoogleCalendarConnectedTitle: "Agent-facing names",
+      toolGoogleCalendarConnectedHint:
+        "These names are used in calendar_name when the agent books events. They do not include email — edit freely.",
+      toolGoogleCalendarAgentNameLabel: "Agent name",
+      toolGoogleCalendarAdminAccount: "Primary account",
+      toolGoogleCalendarSaveNames: "Save names",
+      toolGoogleCalendarSaveNamesOk: "Names saved.",
+      toolGoogleCalendarSaveNamesFailed: "Could not save names.",
       toolGoogleCalendarRefreshList: "Refresh list",
       toolGoogleCalendarConsultHint:
         "The agent can call list_calendars and use calendar_name matching the names below (install the consultar_agendas MCP preset).",
