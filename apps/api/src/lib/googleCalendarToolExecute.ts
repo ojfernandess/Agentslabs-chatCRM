@@ -150,6 +150,7 @@ export async function runGoogleCalendarTool(input: {
   responseText: string;
   error: string | null;
   durationMs: number;
+  autoFilledFields?: string[];
 }> {
   const started = Date.now();
   const { tool, organizationId, botId, conversationId, executionSource } = input;
