@@ -10,6 +10,8 @@ import {
   exchangeGoogleOAuthCode,
   fetchGoogleCalendarList,
   fetchGoogleUserInfo,
+  GOOGLE_OAUTH_SCOPES,
+  humanizeGoogleOAuthError,
   refreshGoogleAccessToken,
   verifyGoogleOAuthState,
 } from "../lib/googleCalendarOAuth.js";
@@ -163,58 +165,106 @@ async function persistTeamInviteOAuthResult(input: {
   };
 }
 
+function readInviteTokenFromRequest(request: {
+  params: unknown;
+  query: unknown;
+}): string {
+  const q = request.query as { token?: string };
+  if (typeof q.token === "string" && q.token.trim()) {
+    try {
+      return decodeURIComponent(q.token.trim());
+    } catch {
+      return q.token.trim();
+    }
+  }
+  const params = request.params as { token?: string };
+  if (typeof params.token === "string" && params.token.trim()) {
+    return params.token.trim();
+  }
+  return "";
+}
+
+async function renderInviteLanding(token: string, reply: FastifyReply) {
+  const invite = verifyTeamInviteToken(token);
+  if (!invite) {
+    return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
+  }
+  const tool = await prisma.automationCustomTool.findFirst({
+    where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
+  });
+  if (!tool) {
+    return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
+  }
+  const invites = readTeamInvites(tool.config);
+  const record = invites.find((x) => x.inviteId === invite.inviteId);
+  if (!record || record.revoked) {
+    return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
+  }
+  const startUrl = googleCalendarTeamInviteStartUrl(token);
+  return reply
+    .type("text/html; charset=utf-8")
+    .send(inviteLandingHtml({ label: invite.label ?? record.label, startUrl }));
+}
+
+async function startInviteOAuth(token: string, reply: FastifyReply) {
+  const invite = verifyTeamInviteToken(token);
+  if (!invite) {
+    return reply.status(400).send({ error: "invalid_invite" });
+  }
+  const tool = await prisma.automationCustomTool.findFirst({
+    where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
+  });
+  if (!tool) return reply.status(404).send({ error: "tool_not_found" });
+  const invites = readTeamInvites(tool.config);
+  const record = invites.find((x) => x.inviteId === invite.inviteId);
+  if (!record || record.revoked) return reply.status(410).send({ error: "invite_revoked" });
+
+  const creds = readGoogleOAuthCredentials(tool.config);
+  if (!creds.clientId || !creds.clientSecret) {
+    return reply.status(503).send({ error: "tool_not_configured" });
+  }
+
+  const state = createGoogleOAuthState({
+    organizationId: invite.organizationId,
+    toolId: invite.toolId,
+    mode: "team_invite",
+    inviteId: invite.inviteId,
+  });
+  const url = buildGoogleOAuthAuthorizeUrl({
+    clientId: creds.clientId,
+    state,
+    selectAccount: true,
+    forceConsent: true,
+  });
+  return reply.redirect(url);
+}
+
 /** Callback público OAuth (registar no Google Cloud Console). */
 export async function googleCalendarPublicRoutes(app: FastifyInstance): Promise<void> {
+  // Preferido: ?token=… (evita problemas de proxy/path com caracteres especiais)
+  app.get("/api/v1/integrations/google-calendar/invite", async (request, reply) => {
+    const token = readInviteTokenFromRequest(request);
+    if (!token) return reply.status(400).send({ error: "missing_token" });
+    return renderInviteLanding(token, reply);
+  });
+
+  app.get("/api/v1/integrations/google-calendar/invite/start", async (request, reply) => {
+    const token = readInviteTokenFromRequest(request);
+    if (!token) return reply.status(400).send({ error: "missing_token" });
+    return startInviteOAuth(token, reply);
+  });
+
+  // Compatibilidade: links antigos /invite/:token
   app.get("/api/v1/integrations/google-calendar/invite/:token", async (request, reply) => {
-    const token = String((request.params as { token: string }).token ?? "").trim();
-    const invite = verifyTeamInviteToken(token);
-    if (!invite) {
-      return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
-    }
-    const tool = await prisma.automationCustomTool.findFirst({
-      where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
-    });
-    if (!tool) {
-      return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
-    }
-    const invites = readTeamInvites(tool.config);
-    const record = invites.find((x) => x.inviteId === invite.inviteId);
-    if (!record || record.revoked) {
-      return reply.type("text/html; charset=utf-8").send(inviteLandingHtml({ startUrl: "", expired: true }));
-    }
-    const startUrl = googleCalendarTeamInviteStartUrl(token);
-    return reply
-      .type("text/html; charset=utf-8")
-      .send(inviteLandingHtml({ label: invite.label ?? record.label, startUrl }));
+    const token = readInviteTokenFromRequest(request);
+    if (!token) return reply.status(400).send({ error: "missing_token" });
+    return renderInviteLanding(token, reply);
   });
 
   app.get("/api/v1/integrations/google-calendar/invite/:token/start", async (request, reply) => {
-    const token = String((request.params as { token: string }).token ?? "").trim();
-    const invite = verifyTeamInviteToken(token);
-    if (!invite) {
-      return reply.status(400).send({ error: "invalid_invite" });
-    }
-    const tool = await prisma.automationCustomTool.findFirst({
-      where: { id: invite.toolId, organizationId: invite.organizationId, toolType: "GOOGLE_CALENDAR" },
-    });
-    if (!tool) return reply.status(404).send({ error: "tool_not_found" });
-    const invites = readTeamInvites(tool.config);
-    const record = invites.find((x) => x.inviteId === invite.inviteId);
-    if (!record || record.revoked) return reply.status(410).send({ error: "invite_revoked" });
-
-    const creds = readGoogleOAuthCredentials(tool.config);
-    if (!creds.clientId || !creds.clientSecret) {
-      return reply.status(503).send({ error: "tool_not_configured" });
-    }
-
-    const state = createGoogleOAuthState({
-      organizationId: invite.organizationId,
-      toolId: invite.toolId,
-      mode: "team_invite",
-      inviteId: invite.inviteId,
-    });
-    const url = buildGoogleOAuthAuthorizeUrl({ clientId: creds.clientId, state, selectAccount: true });
-    return reply.redirect(url);
+    const token = readInviteTokenFromRequest(request);
+    if (!token) return reply.status(400).send({ error: "missing_token" });
+    return startInviteOAuth(token, reply);
   });
 
   app.get("/api/v1/integrations/google-calendar/oauth/callback", async (request, reply) => {
@@ -226,7 +276,7 @@ export async function googleCalendarPublicRoutes(app: FastifyInstance): Promise<
       const html = oauthRedirectHtml({
         ok: false,
         toolId: state?.toolId ?? "",
-        message: q.error,
+        message: humanizeGoogleOAuthError(String(q.error)),
         team: teamFlow,
       });
       return reply.type("text/html; charset=utf-8").send(html);
@@ -251,7 +301,7 @@ export async function googleCalendarPublicRoutes(app: FastifyInstance): Promise<
       const html = oauthRedirectHtml({
         ok: false,
         toolId: tool.id,
-        message: "missing_client_credentials",
+        message: humanizeGoogleOAuthError("missing_client_credentials"),
         team: teamFlow,
       });
       return reply.type("text/html; charset=utf-8").send(html);
@@ -277,7 +327,7 @@ export async function googleCalendarPublicRoutes(app: FastifyInstance): Promise<
       const html = oauthRedirectHtml({ ok: true, toolId: tool.id, team: teamFlow });
       return reply.type("text/html; charset=utf-8").send(html);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = humanizeGoogleOAuthError(err instanceof Error ? err.message : String(err));
       const html = oauthRedirectHtml({ ok: false, toolId: tool.id, message: msg, team: teamFlow });
       return reply.type("text/html; charset=utf-8").send(html);
     }
@@ -320,7 +370,12 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
       let authorizeUrl: string | null = null;
       if (canStartOAuth) {
         const state = createGoogleOAuthState({ organizationId, toolId: tool.id, mode: "admin" });
-        authorizeUrl = buildGoogleOAuthAuthorizeUrl({ clientId: creds.clientId, state, selectAccount: true });
+        authorizeUrl = buildGoogleOAuthAuthorizeUrl({
+          clientId: creds.clientId,
+          state,
+          selectAccount: true,
+          forceConsent: !hasRefreshToken,
+        });
       }
 
       const cfg = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
@@ -328,7 +383,7 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
 
       return {
         callbackUrl: googleCalendarOAuthCallbackUrl(),
-        scope: "https://www.googleapis.com/auth/calendar",
+        scope: GOOGLE_OAUTH_SCOPES,
         hasClientCredentials,
         hasRefreshToken,
         canStartOAuth,
@@ -359,7 +414,12 @@ export async function googleCalendarAutomationRoutes(app: FastifyInstance): Prom
       }
 
       const state = createGoogleOAuthState({ organizationId, toolId: tool.id, mode: "admin" });
-      const url = buildGoogleOAuthAuthorizeUrl({ clientId: creds.clientId, state, selectAccount: true });
+      const url = buildGoogleOAuthAuthorizeUrl({
+        clientId: creds.clientId,
+        state,
+        selectAccount: true,
+        forceConsent: !creds.refreshToken,
+      });
       return reply.redirect(url);
     },
   );

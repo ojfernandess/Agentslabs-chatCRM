@@ -2,6 +2,9 @@ import crypto from "node:crypto";
 import { config, googleCalendarOAuthCallbackUrl } from "../config.js";
 
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+/** Necessário para obter e-mail/nome no callback (userinfo). */
+export const GOOGLE_OAUTH_USER_SCOPES = "openid email profile";
+export const GOOGLE_OAUTH_SCOPES = `${GOOGLE_OAUTH_USER_SCOPES} ${GOOGLE_CALENDAR_SCOPE}`;
 
 export type GoogleOAuthState = {
   organizationId: string;
@@ -64,18 +67,52 @@ export function buildGoogleOAuthAuthorizeUrl(input: {
   /** Força o seletor de contas Google (útil quando já há sessão activa no browser). */
   selectAccount?: boolean;
   loginHint?: string;
+  /** Primeira ligação — garante refresh_token (consent). */
+  forceConsent?: boolean;
 }): string {
+  const clientId = input.clientId.trim();
+  if (!clientId) {
+    throw new Error("missing_client_id");
+  }
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", input.clientId.trim());
+  url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", googleCalendarOAuthCallbackUrl());
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_CALENDAR_SCOPE);
+  url.searchParams.set("scope", GOOGLE_OAUTH_SCOPES);
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", input.selectAccount === false ? "consent" : "select_account consent");
+  const prompt =
+    input.forceConsent === true
+      ? "consent"
+      : input.selectAccount === false
+        ? "consent"
+        : "select_account consent";
+  url.searchParams.set("prompt", prompt);
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", input.state);
   if (input.loginHint?.trim()) url.searchParams.set("login_hint", input.loginHint.trim());
   return url.toString();
+}
+
+/** Mensagens legíveis para erros comuns do Google OAuth. */
+export function humanizeGoogleOAuthError(raw: string): string {
+  const msg = raw.trim();
+  const lower = msg.toLowerCase();
+  if (lower.includes("client_secret") || lower.includes("invalid_client")) {
+    return "OAuth client inválido: verifique client_id e client_secret no Google Cloud Console e guarde-os na ferramenta antes de ligar.";
+  }
+  if (lower.includes("redirect_uri") || lower.includes("redirect uri")) {
+    return `redirect_uri não autorizado. Registe exactamente esta URL no Google Console: ${googleCalendarOAuthCallbackUrl()}`;
+  }
+  if (lower.includes("missing_refresh_token") || lower.includes("refresh_token")) {
+    return "Google não devolveu refresh_token. Revogue o acesso em https://myaccount.google.com/permissions e ligue novamente escolhendo a conta.";
+  }
+  if (lower.includes("access_denied")) {
+    return "Acesso negado. Confirme que a app OAuth está em modo Testing com o seu e-mail como test user, ou publique a app.";
+  }
+  if (lower.includes("required") && lower.includes("oauth")) {
+    return "Configuração OAuth 2.0 incompleta no Google Cloud Console (client Web, redirect URI e Calendar API activa).";
+  }
+  return msg;
 }
 
 export type GoogleUserInfo = { email: string; name?: string; picture?: string };
@@ -119,10 +156,14 @@ export async function exchangeGoogleOAuthCode(input: {
   clientId: string;
   clientSecret: string;
 }): Promise<{ accessToken: string; refreshToken?: string }> {
+  const clientId = input.clientId.trim();
+  const clientSecret = input.clientSecret.trim();
+  if (!clientId) throw new Error("missing_client_id");
+  if (!clientSecret) throw new Error("missing_client_secret");
   const body = new URLSearchParams({
     code: input.code.trim(),
-    client_id: input.clientId.trim(),
-    client_secret: input.clientSecret.trim(),
+    client_id: clientId,
+    client_secret: clientSecret,
     redirect_uri: googleCalendarOAuthCallbackUrl(),
     grant_type: "authorization_code",
   });

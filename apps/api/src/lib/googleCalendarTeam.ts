@@ -87,11 +87,13 @@ export function verifyTeamInviteToken(token: string): GoogleCalendarInviteToken 
 }
 
 export function googleCalendarTeamInvitePublicUrl(signedToken: string): string {
-  return `${getPublicOrigin()}/api/v1/integrations/google-calendar/invite/${encodeURIComponent(signedToken)}`;
+  const token = encodeURIComponent(signedToken);
+  return `${getPublicOrigin()}/api/v1/integrations/google-calendar/invite?token=${token}`;
 }
 
 export function googleCalendarTeamInviteStartUrl(signedToken: string): string {
-  return `${googleCalendarTeamInvitePublicUrl(signedToken)}/start`;
+  const token = encodeURIComponent(signedToken);
+  return `${getPublicOrigin()}/api/v1/integrations/google-calendar/invite/start?token=${token}`;
 }
 
 export function readTeamMembers(cfg: unknown): GoogleCalendarTeamMember[] {

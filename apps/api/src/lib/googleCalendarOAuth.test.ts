@@ -27,6 +27,7 @@ describe("googleCalendarOAuth", () => {
     assert.equal(url.searchParams.get("access_type"), "offline");
     assert.equal(url.searchParams.get("prompt"), "select_account consent");
     assert.match(url.searchParams.get("scope") ?? "", /calendar/);
+    assert.match(url.searchParams.get("scope") ?? "", /email/);
   });
 
   it("signs and verifies oauth state", () => {
