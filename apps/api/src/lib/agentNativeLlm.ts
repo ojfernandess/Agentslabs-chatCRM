@@ -178,6 +178,7 @@ import {
   runAutomationHttpLikeTool,
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
+import { isAgentExecutableAutomationToolType, runGoogleCalendarTool } from "./googleCalendarToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 import { IMAGE_TRANSCRIPTION_PREFIX } from "./imageTranscription.js";
 import {
@@ -1275,7 +1276,7 @@ export async function invokeSingleNativeAgentTool(input: {
     });
     const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
     customHttpTools = rows
-      .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
+      .filter((r) => isAgentExecutableAutomationToolType(r.toolType))
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
 
@@ -1314,15 +1315,25 @@ export async function invokeSingleNativeAgentTool(input: {
         },
       };
     }
-    const exec = await runAutomationHttpLikeTool({
-      tool: httpRow,
-      llmArgs: args,
-      organizationId,
-      botId: bot.id,
-      conversationId: conversation.id,
-      executionSource: "native_agent",
-      runtimeSampleContext: httpToolRuntimeContext,
-    });
+    const exec =
+      httpRow.toolType === "GOOGLE_CALENDAR"
+        ? await runGoogleCalendarTool({
+            tool: httpRow,
+            llmArgs: args,
+            organizationId,
+            botId: bot.id,
+            conversationId: conversation.id,
+            executionSource: "native_agent",
+          })
+        : await runAutomationHttpLikeTool({
+            tool: httpRow,
+            llmArgs: args,
+            organizationId,
+            botId: bot.id,
+            conversationId: conversation.id,
+            executionSource: "native_agent",
+            runtimeSampleContext: httpToolRuntimeContext,
+          });
     return {
       rawJson: JSON.stringify({
         ok: exec.ok,
@@ -1834,7 +1845,7 @@ async function generateNativeAgentReplyCore(input: {
     });
     const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
     customHttpTools = rows
-      .filter((r) => r.toolType === "HTTP_API" || r.toolType === "WEBHOOK")
+      .filter((r) => isAgentExecutableAutomationToolType(r.toolType))
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
@@ -2858,15 +2869,25 @@ async function generateNativeAgentReplyCore(input: {
               } catch {
                 return finishToolCall(JSON.stringify({ ok: false, error: "invalid_json_arguments" }));
               }
-              const exec = await runAutomationHttpLikeTool({
-                tool: row,
-                llmArgs: args,
-                organizationId,
-                botId: bot.id,
-                conversationId: conversation.id,
-                executionSource: "native_agent",
-                runtimeSampleContext: httpToolRuntimeContext,
-              });
+              const exec =
+                row.toolType === "GOOGLE_CALENDAR"
+                  ? await runGoogleCalendarTool({
+                      tool: row,
+                      llmArgs: args,
+                      organizationId,
+                      botId: bot.id,
+                      conversationId: conversation.id,
+                      executionSource: "native_agent",
+                    })
+                  : await runAutomationHttpLikeTool({
+                      tool: row,
+                      llmArgs: args,
+                      organizationId,
+                      botId: bot.id,
+                      conversationId: conversation.id,
+                      executionSource: "native_agent",
+                      runtimeSampleContext: httpToolRuntimeContext,
+                    });
               const extracted = extractFlowSlotsFromToolExchange({
                 llmArgs: args,
                 responseText: exec.responseText,

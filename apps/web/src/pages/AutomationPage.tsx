@@ -12,6 +12,7 @@ import {
   X,
   Volume2,
   Clock,
+  ClipboardCopy,
   Blocks,
   Cable,
   Tags,
@@ -4614,6 +4615,33 @@ function GoogleCalendarToolEditor({
   const [calPreview, setCalPreview] = useState<unknown>(() =>
     Array.isArray(c.connectedCalendars) ? c.connectedCalendars : [{ id: "primary", name: "Principal" }],
   );
+  const [oauthInfo, setOauthInfo] = useState<{
+    callbackUrl: string;
+    hasRefreshToken: boolean;
+    hasClientCredentials: boolean;
+    canStartOAuth: boolean;
+    authorizeUrl: string | null;
+  } | null>(null);
+  const [oauthBusy, setOauthBusy] = useState(false);
+
+  const loadOAuthInfo = useCallback(async () => {
+    try {
+      const info = await api.get<{
+        callbackUrl: string;
+        hasRefreshToken: boolean;
+        hasClientCredentials: boolean;
+        canStartOAuth: boolean;
+        authorizeUrl: string | null;
+      }>(`/automation/custom-tools/${tool.id}/google-oauth/info`);
+      setOauthInfo(info);
+    } catch {
+      setOauthInfo(null);
+    }
+  }, [tool.id]);
+
+  useEffect(() => {
+    void loadOAuthInfo();
+  }, [loadOAuthInfo, tool.id]);
 
   useEffect(() => {
     const cfg = (tool.config ?? {}) as Record<string, unknown>;
@@ -4644,6 +4672,68 @@ function GoogleCalendarToolEditor({
       setCalPreview(parsed);
     } catch {
       window.alert(t("automationPage.toolGoogleCalendarCalendarsJsonInvalid"));
+    }
+  };
+
+  const syncCalendarsFromGoogle = async () => {
+    setOauthBusy(true);
+    try {
+      const res = await api.post<{ ok: boolean; connectedCalendars: Array<{ id: string; name: string }> }>(
+        `/automation/custom-tools/${tool.id}/google-oauth/sync-calendars`,
+      );
+      const cal = res.connectedCalendars ?? [];
+      setCalendarsJson(JSON.stringify(cal, null, 2));
+      setCalPreview(cal);
+      if (cal[0]?.id) setCalendarId(String(cal[0].id));
+      await loadOAuthInfo();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      window.alert(msg || t("automationPage.toolGoogleCalendarSyncFailed"));
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
+  const connectGoogleAccount = async () => {
+    if (!clientId.trim()) {
+      window.alert(t("automationPage.toolGoogleCalendarConnectNeedsClientId"));
+      return;
+    }
+    if (!oauthInfo?.hasClientCredentials && !clientSecret.trim()) {
+      window.alert(t("automationPage.toolGoogleCalendarConnectNeedsSecret"));
+      return;
+    }
+    setOauthBusy(true);
+    try {
+      if (!oauthInfo?.hasClientCredentials || clientSecret.trim()) {
+        const patch: Record<string, unknown> = { auth_mode: "oauth", client_id: clientId.trim() };
+        if (clientSecret.trim()) patch.client_secret = clientSecret.trim();
+        await api.patch(`/automation/custom-tools/${tool.id}`, { config: patch });
+        await loadOAuthInfo();
+      }
+      const info = await api.get<{ authorizeUrl: string | null }>(
+        `/automation/custom-tools/${tool.id}/google-oauth/info`,
+      );
+      if (!info.authorizeUrl) {
+        window.alert(t("automationPage.toolGoogleCalendarConnectNeedsSecret"));
+        return;
+      }
+      window.location.href = info.authorizeUrl;
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err);
+      window.alert(msg || t("automationPage.toolGoogleCalendarConnectFailed"));
+      setOauthBusy(false);
+    }
+  };
+
+  const copyCallbackUrl = async () => {
+    const url = oauthInfo?.callbackUrl;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      window.alert(t("automationPage.toolGoogleCalendarCallbackCopied"));
+    } catch {
+      window.prompt(t("automationPage.toolGoogleCalendarCallbackCopyManual"), url);
     }
   };
 
@@ -4685,6 +4775,43 @@ function GoogleCalendarToolEditor({
   return (
     <div className="mt-3 space-y-3 border-t border-ink-200 pt-3 dark:border-ink-700">
       <p className="text-xs text-ink-500">{t("automationPage.toolGoogleCalendarHelp")}</p>
+
+      <div className="rounded-lg border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-950/40">
+        <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarCallbackTitle")}</p>
+        <p className="mt-0.5 text-[11px] text-ink-500">{t("automationPage.toolGoogleCalendarCallbackHint")}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <code className="max-w-full flex-1 overflow-x-auto rounded bg-white px-2 py-1 text-[11px] text-ink-700 dark:bg-ink-900 dark:text-ink-200">
+            {oauthInfo?.callbackUrl ?? "…"}
+          </code>
+          <button
+            type="button"
+            onClick={() => void copyCallbackUrl()}
+            className="inline-flex items-center gap-1 rounded border border-ink-200 px-2 py-1 text-[11px] font-medium text-ink-700 hover:bg-white dark:border-ink-600 dark:text-ink-200"
+          >
+            <ClipboardCopy className="h-3 w-3" />
+            {t("automationPage.toolGoogleCalendarCallbackCopy")}
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={oauthBusy}
+            onClick={() => void connectGoogleAccount()}
+            className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+          >
+            {oauthInfo?.hasRefreshToken
+              ? t("automationPage.toolGoogleCalendarReconnect")
+              : t("automationPage.toolGoogleCalendarConnect")}
+          </button>
+          {oauthInfo?.hasRefreshToken ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {t("automationPage.toolGoogleCalendarConnected")}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
       <label className="block text-xs font-medium">
         OAuth client ID
         <input value={clientId} onChange={(e) => setClientId(e.target.value)} className={fieldCls} />
@@ -4747,14 +4874,27 @@ function GoogleCalendarToolEditor({
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-medium text-ink-800 dark:text-ink-200">{t("automationPage.toolGoogleCalendarConnectedTitle")}</p>
-          <button
-            type="button"
-            onClick={refreshCalPreview}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
-          >
-            <RefreshCw className="h-3 w-3" />
-            {t("automationPage.toolGoogleCalendarRefreshList")}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {oauthInfo?.hasRefreshToken ? (
+              <button
+                type="button"
+                disabled={oauthBusy}
+                onClick={() => void syncCalendarsFromGoogle()}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline disabled:opacity-60"
+              >
+                <RefreshCw className={clsx("h-3 w-3", oauthBusy && "animate-spin")} />
+                {t("automationPage.toolGoogleCalendarSyncFromGoogle")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={refreshCalPreview}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:underline"
+            >
+              <RefreshCw className="h-3 w-3" />
+              {t("automationPage.toolGoogleCalendarRefreshList")}
+            </button>
+          </div>
         </div>
         <textarea
           value={calendarsJson}

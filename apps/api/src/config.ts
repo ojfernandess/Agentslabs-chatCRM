@@ -72,6 +72,11 @@ export function metaEmbeddedWebhookUrl(): string {
   return `${getPublicOrigin()}/webhooks/meta/whatsapp`;
 }
 
+/** Redirect URI OAuth Google Calendar (registar no Google Cloud Console). */
+export function googleCalendarOAuthCallbackUrl(): string {
+  return `${getPublicOrigin()}/api/v1/integrations/google-calendar/oauth/callback`;
+}
+
 /** URL pública para ingerir mensagens numa caixa (token no path). */
 export function channelInboxInboundUrl(ingestToken: string): string {
   const t = ingestToken.trim();

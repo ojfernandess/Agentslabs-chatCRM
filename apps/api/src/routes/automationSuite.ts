@@ -406,6 +406,8 @@ const TOOL_CONFIG_SECRET_KEYS = new Set([
   "api_key",
   "accessToken",
   "refreshToken",
+  "refresh_token",
+  "client_secret",
   "password",
   "smtpPassword",
   "token",

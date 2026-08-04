@@ -1314,7 +1314,21 @@ export const messages = {
       toolElevenHelp:
         "API key (header xi-api-key). Síntese: POST {apiBaseUrl}/text-to-speech/{voice_id} — veja documentação ElevenLabs. Voice ID e model id vêm do painel.",
       toolGoogleCalendarHelp:
-        "OAuth 2.0 recomendado: client_id, client_secret, refresh_token (acesso offline). Escopos típicos: calendar.events. O integrador troca o refresh por access_token e chama a Calendar API (ex.: events.insert).",
+        "OAuth 2.0: registe a URL de callback no Google Cloud Console, guarde client_id e client_secret, depois use «Ligar conta Google» para obter o refresh_token automaticamente.",
+      toolGoogleCalendarCallbackTitle: "URL de callback (Google Cloud Console)",
+      toolGoogleCalendarCallbackHint:
+        "Em APIs & Services → Credentials → OAuth client → Authorized redirect URIs, adicione exatamente esta URL. Deve coincidir com PUBLIC_URL da API em produção.",
+      toolGoogleCalendarCallbackCopy: "Copiar URL",
+      toolGoogleCalendarCallbackCopied: "URL de callback copiada.",
+      toolGoogleCalendarCallbackCopyManual: "Copie a URL de callback:",
+      toolGoogleCalendarConnect: "Ligar conta Google",
+      toolGoogleCalendarReconnect: "Religar conta Google",
+      toolGoogleCalendarConnected: "Conta Google ligada",
+      toolGoogleCalendarConnectNeedsClientId: "Indique o OAuth client ID antes de ligar a conta Google.",
+      toolGoogleCalendarConnectNeedsSecret: "Guarde o client_secret antes de ligar a conta Google.",
+      toolGoogleCalendarConnectFailed: "Não foi possível iniciar o OAuth do Google Calendar.",
+      toolGoogleCalendarSyncFromGoogle: "Sincronizar agendas do Google",
+      toolGoogleCalendarSyncFailed: "Falha ao sincronizar agendas do Google.",
       toolGoogleCalendarSecretPlaceholder: "Deixe vazio para manter o valor guardado",
       toolGoogleCalendarRefreshPlaceholder: "Deixe vazio para manter o refresh token guardado",
       toolGoogleCalendarAvailabilityTitle: "Horários disponíveis para agendamento",
@@ -1333,7 +1347,7 @@ export const messages = {
       toolGoogleCalendarConsultHint:
         "O agente pode usar consultar_agendas e calendar_name com o nome indicado abaixo (instale o preset MCP consultar_agendas).",
       toolGoogleCalendarOAuthNote:
-        "Fluxo OAuth (consent screen, authorization code → refresh_token) deve correr no integrador ou app própria; guarde aqui as credenciais resultantes.",
+        "Após ligar a conta, o agente pode usar agendar_google quando a ferramenta estiver activa no perfil. O refresh_token fica guardado de forma segura na configuração da ferramenta.",
       toolGoogleCalendarCalendarsJsonInvalid: "JSON de agendas inválido. Use um array de objetos { id, name }.",
       toolGenericEditorHint: "Edite via API ou contacte o administrador para tipos HTTP personalizados.",
       toolsHubBadge: "Tool registry · MCP-ready",
@@ -6815,7 +6829,21 @@ export const messages = {
       toolElevenHelp:
         "API key (xi-api-key header). Speech: POST {apiBaseUrl}/text-to-speech/{voice_id} per ElevenLabs docs. Voice and model IDs come from their dashboard.",
       toolGoogleCalendarHelp:
-        "OAuth 2.0: client_id, client_secret, offline refresh_token. Typical scope: https://www.googleapis.com/auth/calendar.events. Exchange refresh for access_token and call Calendar API (e.g. events.insert).",
+        "OAuth 2.0: register the callback URL in Google Cloud Console, save client_id and client_secret, then use «Connect Google account» to obtain the refresh_token automatically.",
+      toolGoogleCalendarCallbackTitle: "Callback URL (Google Cloud Console)",
+      toolGoogleCalendarCallbackHint:
+        "In APIs & Services → Credentials → OAuth client → Authorized redirect URIs, add this exact URL. It must match the API PUBLIC_URL in production.",
+      toolGoogleCalendarCallbackCopy: "Copy URL",
+      toolGoogleCalendarCallbackCopied: "Callback URL copied.",
+      toolGoogleCalendarCallbackCopyManual: "Copy the callback URL:",
+      toolGoogleCalendarConnect: "Connect Google account",
+      toolGoogleCalendarReconnect: "Reconnect Google account",
+      toolGoogleCalendarConnected: "Google account connected",
+      toolGoogleCalendarConnectNeedsClientId: "Enter the OAuth client ID before connecting Google.",
+      toolGoogleCalendarConnectNeedsSecret: "Save the client_secret before connecting Google.",
+      toolGoogleCalendarConnectFailed: "Could not start Google Calendar OAuth.",
+      toolGoogleCalendarSyncFromGoogle: "Sync calendars from Google",
+      toolGoogleCalendarSyncFailed: "Failed to sync calendars from Google.",
       toolGoogleCalendarSecretPlaceholder: "Leave blank to keep saved secret",
       toolGoogleCalendarRefreshPlaceholder: "Leave blank to keep saved refresh token",
       toolGoogleCalendarAvailabilityTitle: "Availability for scheduling",
@@ -6834,7 +6862,7 @@ export const messages = {
       toolGoogleCalendarConsultHint:
         "The agent can call list_calendars and use calendar_name matching the names below (install the consultar_agendas MCP preset).",
       toolGoogleCalendarOAuthNote:
-        "OAuth consent and authorization-code → refresh_token flow runs in your integrator or app; store the resulting credentials here.",
+        "After connecting, the agent can use agendar_google when the tool is enabled on the profile. The refresh_token is stored securely in the tool configuration.",
       toolGoogleCalendarCalendarsJsonInvalid: "Invalid calendars JSON. Use an array of { id, name } objects.",
       toolGenericEditorHint: "Use the API or contact an admin for custom HTTP tool types.",
       toolsHubBadge: "Tool registry · MCP-ready",
