@@ -59,6 +59,46 @@ docker compose up -d api web
 
 Se o domínio abrir mas o login falhar, confere logs da **api** e se `PUBLIC_URL` coincide com o que usas no browser (`https` vs `http`, subdomínio certo).
 
+## 8. Postgres / Redis (ataques na porta 5432)
+
+No EasyPanel o projeto é **Compose** — `db`, `redis`, `api`, `web` e `caddy` vêm do mesmo `docker-compose.yml`. **Não há ecrã separado** para fechar a porta do Postgres; a correção é no ficheiro YAML + redeploy.
+
+### O que fazer
+
+1. **Garantir compose actualizado** (Postgres/Redis **sem** `ports:` no `docker-compose.yml` principal).
+2. No EasyPanel → **Implantar** (pull + rebuild). **Não** uses `down -v` — o volume `pgdata` guarda os dados.
+3. Se o aviso amarelo “problemas na configuração Docker Compose” mencionar portas do `db`, abre **Visualizar** e confirma que o `docker-compose.override.yml` do painel **não** adiciona `5432:5432` ou `6379:6379`. Se adicionar, remove essas linhas no override do painel ou inclui **`docker-compose.easypanel.yml` por último** no comando compose (ver comentário no ficheiro).
+4. (Opcional) Rodar password: ver secção abaixo.
+
+### Verificar no servidor (SSH)
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Ports}}" | grep -E "db|redis"
+```
+
+**Correcto:** `db` e `redis` **sem** `0.0.0.0:5432` nem `0.0.0.0:6379`.  
+**Errado:** `0.0.0.0:5432->5432/tcp` — ainda exposto à Internet.
+
+### Acesso remoto ao banco (admin)
+
+Nunca abras 5432 na Internet. Usa túnel SSH:
+
+```bash
+ssh -L 5432:127.0.0.1:5432 root@SEU_SERVIDOR
+# ou, se o painel publicar só em localhost:
+ssh -L 5432:db:5432 root@SEU_SERVIDOR -t "docker exec -it NOME_CONTAINER_DB psql -U openconduit"
+```
+
+Liga o DBeaver em `localhost:5432`.
+
+### Rodar password (sem perder dados)
+
+```bash
+docker exec -it NOME_CONTAINER_DB psql -U openconduit -d openconduit -c "ALTER USER openconduit WITH PASSWORD 'nova-password-forte';"
+```
+
+Actualiza `DB_PASSWORD` no Environment do EasyPanel e reinicia só **api**.
+
 ## 7. Vários agentes na mesma organização
 
 - Cada utilizador deve usar **browser/perfil separado** (o token fica em `localStorage` por origem — duas contas no mesmo Chrome partilham a mesma sessão).
