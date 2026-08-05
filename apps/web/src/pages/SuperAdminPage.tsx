@@ -292,7 +292,7 @@ interface SuperMediaStoragePayload {
 
 export function SuperAdminPage() {
   const { t } = useI18n();
-  const { user, logout, enterOrganization, applySessionToken } = useAuth();
+  const { user, logout, enterOrganization, applySessionToken, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [section, setSection] = useState<SuperSection>("overview");
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
@@ -364,6 +364,9 @@ export function SuperAdminPage() {
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserRole, setEditUserRole] = useState<"SUPER_ADMIN" | "ADMIN" | "AGENT">("AGENT");
   const [editUserOrgId, setEditUserOrgId] = useState("");
+  const [editUserCurrentPassword, setEditUserCurrentPassword] = useState("");
+  const [editUserNewPassword, setEditUserNewPassword] = useState("");
+  const [editUserConfirmPassword, setEditUserConfirmPassword] = useState("");
   const [editUserSaving, setEditUserSaving] = useState(false);
   const [editUserDeleting, setEditUserDeleting] = useState(false);
   const [deleteConfirmUser, setDeleteConfirmUser] = useState<PlatformUserRow | null>(null);
@@ -1223,17 +1226,36 @@ export function SuperAdminPage() {
     setEditUserEmail(u.email);
     setEditUserRole(u.role as "SUPER_ADMIN" | "ADMIN" | "AGENT");
     setEditUserOrgId(u.organizationId ?? "");
+    setEditUserCurrentPassword("");
+    setEditUserNewPassword("");
+    setEditUserConfirmPassword("");
     setPlatformUsersSuccess("");
   };
 
   const savePlatformUser = async (e: FormEvent) => {
     e.preventDefault();
     if (!editPlatformUser) return;
+    const isEditingSelf = editPlatformUser.id === user?.id;
     const name = editUserName.trim();
     const email = editUserEmail.trim();
     if (!name || !email) {
       setError("Nome e e-mail são obrigatórios.");
       return;
+    }
+    const newPassword = editUserNewPassword.trim();
+    if (newPassword) {
+      if (newPassword.length < 8) {
+        setError(t("superAdmin.platformUsersPasswordTooShort"));
+        return;
+      }
+      if (newPassword !== editUserConfirmPassword.trim()) {
+        setError(t("superAdmin.platformUsersPasswordMismatch"));
+        return;
+      }
+      if (isEditingSelf && !editUserCurrentPassword.trim()) {
+        setError(t("superAdmin.platformUsersCurrentPasswordRequired"));
+        return;
+      }
     }
     setEditUserSaving(true);
     setError("");
@@ -1244,6 +1266,8 @@ export function SuperAdminPage() {
         email: string;
         role: "SUPER_ADMIN" | "ADMIN" | "AGENT";
         organizationId?: string | null;
+        password?: string;
+        currentPassword?: string;
       } = {
         name,
         email,
@@ -1258,13 +1282,23 @@ export function SuperAdminPage() {
         }
         body.organizationId = editUserOrgId.trim();
       }
+      if (newPassword) {
+        body.password = newPassword;
+        if (isEditingSelf) body.currentPassword = editUserCurrentPassword.trim();
+      }
       await api.patch(`/super/users/${editPlatformUser.id}`, body);
       setEditPlatformUser(null);
       setPlatformUsersSuccess(t("superAdmin.platformUsersSaved"));
+      if (isEditingSelf) await refreshUser();
       await fetchPlatformUsers();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível atualizar o utilizador.");
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Não foi possível atualizar o utilizador.";
+      if (msg.toLowerCase().includes("current password")) {
+        setError(t("profilePage.passwordWrong"));
+      } else {
+        setError(msg || "Não foi possível atualizar o utilizador.");
+      }
     } finally {
       setEditUserSaving(false);
     }
@@ -1724,7 +1758,14 @@ export function SuperAdminPage() {
                       {platformUsersData.data.map((u) => (
                         <tr key={u.id}>
                           <td className="px-4 py-3">
-                            <p className="font-medium text-ink-900">{u.name}</p>
+                            <p className="font-medium text-ink-900">
+                              {u.name}
+                              {u.id === user?.id ? (
+                                <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                                  {t("superAdmin.platformUsersYouBadge")}
+                                </span>
+                              ) : null}
+                            </p>
                             <p className="text-xs text-ink-500">{u.email}</p>
                           </td>
                           <td className="px-4 py-3">
@@ -3119,7 +3160,11 @@ export function SuperAdminPage() {
               className="card-surface w-full max-w-md overflow-auto p-6 shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.platformUsersEditTitle")}</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {editPlatformUser.id === user?.id
+                  ? t("superAdmin.platformUsersEditSelfTitle")
+                  : t("superAdmin.platformUsersEditTitle")}
+              </h3>
               <form onSubmit={(e) => void savePlatformUser(e)} className="mt-5 space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600">{t("superAdmin.platformUsersName")}</label>
@@ -3140,6 +3185,52 @@ export function SuperAdminPage() {
                     className="input-field mt-1 w-full"
                     required
                   />
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    {t("superAdmin.platformUsersPasswordSection")}
+                  </p>
+                  {editPlatformUser.id === user?.id ? (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600">
+                        {t("superAdmin.platformUsersCurrentPassword")}
+                      </label>
+                      <input
+                        type="password"
+                        value={editUserCurrentPassword}
+                        onChange={(e) => setEditUserCurrentPassword(e.target.value)}
+                        className="input-field mt-1 w-full"
+                        autoComplete="current-password"
+                        placeholder={t("superAdmin.platformUsersCurrentPasswordPlaceholder")}
+                      />
+                    </div>
+                  ) : null}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">
+                      {t("superAdmin.platformUsersNewPassword")}
+                    </label>
+                    <input
+                      type="password"
+                      value={editUserNewPassword}
+                      onChange={(e) => setEditUserNewPassword(e.target.value)}
+                      className="input-field mt-1 w-full"
+                      autoComplete="new-password"
+                      placeholder={t("superAdmin.platformUsersNewPasswordPlaceholder")}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">
+                      {t("superAdmin.platformUsersConfirmPassword")}
+                    </label>
+                    <input
+                      type="password"
+                      value={editUserConfirmPassword}
+                      onChange={(e) => setEditUserConfirmPassword(e.target.value)}
+                      className="input-field mt-1 w-full"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">{t("superAdmin.platformUsersPasswordHint")}</p>
                 </div>
                 <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4">
                   <label className="flex cursor-pointer items-start gap-3">

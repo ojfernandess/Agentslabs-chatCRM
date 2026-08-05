@@ -109,6 +109,8 @@ const superPlatformUserPatchSchema = z.object({
   email: z.string().email().max(255).optional(),
   role: z.enum(["SUPER_ADMIN", "ADMIN", "AGENT"]).optional(),
   organizationId: z.union([z.string().uuid(), z.null()]).optional(),
+  password: z.string().min(8).max(128).optional(),
+  currentPassword: z.string().min(1).max(128).optional(),
 });
 
 const platformSettingUpsertSchema = z.object({
@@ -867,17 +869,42 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const isSelf = target.id === request.user.id;
+    if (parsed.data.password) {
+      if (isSelf) {
+        if (!parsed.data.currentPassword) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Current password is required to change your password",
+            statusCode: 400,
+          });
+        }
+        const currentOk = await bcrypt.compare(parsed.data.currentPassword, target.passwordHash);
+        if (!currentOk) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Current password is incorrect",
+            statusCode: 400,
+          });
+        }
+      }
+    }
+
     const data: {
       name?: string;
       email?: string;
       role?: "SUPER_ADMIN" | "ADMIN" | "AGENT";
       organizationId?: string | null;
+      passwordHash?: string;
     } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.email !== undefined) data.email = parsed.data.email.trim().toLowerCase();
     if (parsed.data.role !== undefined) data.role = parsed.data.role;
     if (parsed.data.role !== undefined || parsed.data.organizationId !== undefined || nextRole === "SUPER_ADMIN") {
       data.organizationId = nextOrgId;
+    }
+    if (parsed.data.password) {
+      data.passwordHash = await bcrypt.hash(parsed.data.password, config.bcryptCostFactor);
     }
     if (Object.keys(data).length === 0) {
       return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
@@ -909,7 +936,14 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       action: "super.platform_user.update",
       resourceType: "user",
       resourceId: updated.id,
-      metadata: { patch: parsed.data, email: updated.email },
+      metadata: {
+        patch: {
+          ...parsed.data,
+          password: parsed.data.password ? "[redacted]" : undefined,
+          currentPassword: parsed.data.currentPassword ? "[redacted]" : undefined,
+        },
+        email: updated.email,
+      },
       ip: clientIp(request),
     });
 
