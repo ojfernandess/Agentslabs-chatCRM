@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Bot, Headset } from "lucide-react";
+import { Bot, Headset, UserCircle } from "lucide-react";
 import clsx from "clsx";
 import { format, isToday, isYesterday } from "date-fns";
 import type { Locale } from "date-fns";
 import { useI18n } from "@/i18n/I18nProvider";
 import { ConversationListAvatar } from "@/components/ConversationListAvatar";
+import { ConversationPriorityBadge } from "@/components/ConversationPriorityBadge";
 import { ConversationVoiceCallListBadge } from "@/components/ConversationVoiceCallListBadge";
 import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
@@ -37,17 +38,31 @@ export type ConversationListRow = {
   activeVoiceCall?: ActiveVoiceCall | null;
 };
 
-const statusDotClass: Record<string, string> = {
-  OPEN: "bg-emerald-500",
-  PENDING: "bg-amber-500",
-  RESOLVED: "bg-ink-300 dark:bg-ink-600",
+const statusColors: Record<string, string> = {
+  OPEN: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-200",
+  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-950/45 dark:text-amber-200",
+  RESOLVED: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
 };
+
+const awaitingHumanBadgeClass =
+  "inline-flex shrink-0 items-center gap-0.5 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:text-white dark:ring-red-500/40";
 
 function formatListTimestamp(iso: string, dateLocale: Locale): string {
   const date = new Date(iso);
   if (isToday(date)) return format(date, "HH:mm", { locale: dateLocale });
   if (isYesterday(date)) return format(date, "dd/MM", { locale: dateLocale });
-  return format(date, "dd/MM HH:mm", { locale: dateLocale });
+  return format(date, "dd/MM", { locale: dateLocale });
+}
+
+function channelBadgeLabel(
+  inbox: ConversationListRow["inbox"],
+  t: (key: string) => string,
+): string | null {
+  if (!inbox) return null;
+  if (inbox.channelType === "WHATSAPP") return t("conversationDetail.channelLabelWhatsapp");
+  if (inbox.channelType === "EMAIL") return "E-mail";
+  const name = inbox.name.trim();
+  return name.length > 18 ? `${name.slice(0, 16)}…` : name;
 }
 
 type Props = {
@@ -81,6 +96,7 @@ export function ConversationListItem({
     formatMessageBodyForPreview(lastMessage?.body, {
       messageType: lastMessage?.type,
     }) || t("conversations.noMessages");
+  const channelLabel = channelBadgeLabel(conv.inbox, t);
   const displayTags = showContactTags ? filterTagsForDisplay(conv.contact.tags ?? []) : [];
   const hasHumanAssignee =
     typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0;
@@ -88,12 +104,12 @@ export function ConversationListItem({
     conv.agentBotTriageActive &&
     !conv.awaitingHumanHandoff &&
     (conv.status === "OPEN" || conv.status === "PENDING");
-  const showAwaitingHuman = conv.awaitingHumanHandoff && !hasHumanAssignee;
-  const primaryTag = displayTags[0]?.tag ?? (conv.status === "RESOLVED" && conv.leadType ? conv.leadType : null);
+  const showAwaitingHuman =
+    conv.awaitingHumanHandoff && !hasHumanAssignee;
 
   return (
-    <div onContextMenu={onContextMenu} className="group px-2 py-0.5">
-      <div className="flex items-stretch gap-0.5">
+    <div onContextMenu={onContextMenu} className="group">
+      <div className="flex items-stretch">
         <NavLink
           to={linkTo}
           preventScrollReset
@@ -102,13 +118,12 @@ export function ConversationListItem({
           onFocus={onPrefetch}
           className={({ isActive }) =>
             clsx(
-              "flex min-w-0 flex-1 gap-2.5 rounded-xl border px-2.5 py-2.5 transition-all",
+              "flex min-w-0 flex-1 gap-2.5 border-b border-ink-100 px-3 py-2.5 transition dark:border-ink-800",
               priorityListCardClass(conv.priority),
+              conv.isUnread && "bg-brand-50/40 dark:bg-brand-950/20",
               isActive || isSelected
-                ? "border-brand-300/60 bg-white shadow-sm ring-1 ring-brand-500/15 dark:border-brand-700/40 dark:bg-ink-900/60 dark:ring-brand-500/20"
-                : conv.isUnread
-                  ? "border-brand-200/40 bg-white shadow-sm dark:border-brand-800/30 dark:bg-ink-900/40"
-                  : "border-transparent bg-transparent hover:border-ink-200/60 hover:bg-white/90 hover:shadow-sm dark:hover:border-ink-700/50 dark:hover:bg-ink-900/35",
+                ? "border-l-[3px] border-l-brand-500 bg-brand-50/70 dark:bg-brand-950/35"
+                : "border-l-[3px] border-l-transparent hover:bg-ink-50/80 dark:hover:bg-ink-900/40",
             )
           }
         >
@@ -124,27 +139,66 @@ export function ConversationListItem({
           />
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className={clsx(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    statusDotClass[conv.status] ?? statusDotClass.OPEN,
-                  )}
-                  title={statusLabel(conv.status)}
-                  aria-hidden
-                />
-                <span
-                  className={clsx(
-                    "truncate text-[13px] leading-tight text-ink-900 dark:text-ink-50",
-                    conv.isUnread ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {conv.contact.name}
-                </span>
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-1">
+                  {conv.isUnread ? (
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"
+                      title={t("conversations.unreadBadge")}
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span
+                    className={clsx(
+                      "break-words text-sm leading-snug text-ink-900 dark:text-ink-50",
+                      conv.isUnread ? "font-bold" : "font-semibold",
+                    )}
+                  >
+                    {conv.contact.name}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                  <span
+                    className={clsx(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                      statusColors[conv.status] ?? statusColors.OPEN,
+                    )}
+                  >
+                    {statusLabel(conv.status)}
+                  </span>
+                  {channelLabel ? (
+                    <span
+                      className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                      title={conv.inbox?.name}
+                    >
+                      {channelLabel}
+                    </span>
+                  ) : null}
+                  {showBotBadge ? (
+                    <span
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                      title={t("conversationDetail.botTriageBanner")}
+                    >
+                      <Bot className="h-3 w-3" aria-hidden />
+                      {hasHumanAssignee
+                        ? t("conversationDetail.transferToBot")
+                        : t("conversationDetail.botInAttendance")}
+                    </span>
+                  ) : null}
+                  {showAwaitingHuman ? (
+                    <span
+                      className={awaitingHumanBadgeClass}
+                      title={t("conversationDetail.awaitingHumanBanner")}
+                    >
+                      <Headset className="h-3 w-3" aria-hidden />
+                      {t("conversationDetail.awaitingHumanBadge")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <span
-                className="shrink-0 text-[10px] tabular-nums text-ink-400 dark:text-ink-500"
+                className="shrink-0 text-[10px] font-medium tabular-nums text-ink-500 dark:text-ink-400"
                 title={format(new Date(conv.updatedAt), "PPp", { locale: dateLocale })}
               >
                 {formatListTimestamp(conv.updatedAt, dateLocale)}
@@ -153,7 +207,7 @@ export function ConversationListItem({
 
             <p
               className={clsx(
-                "mt-0.5 line-clamp-1 text-[12px] leading-snug",
+                "mt-0.5 line-clamp-1 text-xs leading-snug",
                 conv.isUnread
                   ? "font-medium text-ink-700 dark:text-ink-200"
                   : "text-ink-500 dark:text-ink-400",
@@ -163,67 +217,101 @@ export function ConversationListItem({
               {preview}
             </p>
 
-            <div className="mt-1.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
-              <span className="shrink-0 text-[10px] font-medium text-ink-500 dark:text-ink-400">
-                {statusLabel(conv.status)}
-              </span>
-              {primaryTag ? (
+            <div
+              className={clsx(
+                "mt-1 flex min-w-0 gap-2 text-[10px] text-ink-500 dark:text-ink-400",
+                splitView ? "flex-wrap items-center" : "items-center overflow-hidden",
+              )}
+            >
+              {hasHumanAssignee &&
+              (conv.status === "OPEN" || conv.status === "PENDING") ? (
+                splitView ? (
+                  <span
+                    className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 dark:border-emerald-800/45 dark:bg-emerald-950/40"
+                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                  >
+                    <UserCircle className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+                    <span className="break-words text-[11px] font-semibold leading-snug text-emerald-900 dark:text-emerald-100">
+                      {conv.assignedTo!.name}
+                    </span>
+                  </span>
+                ) : (
+                  <span
+                    className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
+                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                  >
+                    {t("conversations.inAttendance")}
+                  </span>
+                )
+              ) : null}
+              {hasHumanAssignee && !splitView ? (
                 <span
-                  className="max-w-[5.5rem] shrink-0 truncate rounded-md px-1.5 py-px text-[10px] font-medium text-white/95"
-                  style={{ backgroundColor: primaryTag.color }}
-                  title={primaryTag.name}
+                  className="inline-flex min-w-0 max-w-[45%] items-center gap-1 truncate"
+                  title={
+                    conv.status === "OPEN" || conv.status === "PENDING"
+                      ? `${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`
+                      : `${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`
+                  }
                 >
-                  {primaryTag.name}
+                  <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                  <span className="truncate">{conv.assignedTo!.name}</span>
+                </span>
+              ) : hasHumanAssignee &&
+                splitView &&
+                conv.status !== "OPEN" &&
+                conv.status !== "PENDING" ? (
+                <span
+                  className="inline-flex max-w-full flex-wrap items-center gap-1"
+                  title={`${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`}
+                >
+                  <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                  <span className="break-words text-[10px] font-medium leading-snug text-ink-600 dark:text-ink-300">
+                    {conv.assignedTo!.name}
+                  </span>
                 </span>
               ) : null}
-              {showBotBadge ? (
-                <span
-                  className="inline-flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-300"
-                  title={t("conversationDetail.botInAttendance")}
-                >
-                  <Bot className="h-3 w-3" aria-hidden />
-                  IA
-                </span>
+              {isConversationPriority(conv.priority) ? (
+                <ConversationPriorityBadge priority={conv.priority} variant="compact" />
               ) : null}
-              {showAwaitingHuman ? (
+              {conv.status === "RESOLVED" && conv.leadType ? (
                 <span
-                  className="inline-flex shrink-0 items-center gap-0.5 text-[10px] font-medium text-red-600 dark:text-red-400"
-                  title={t("conversationDetail.awaitingHumanBanner")}
+                  className="shrink-0 truncate rounded px-1.5 py-0.5 font-semibold text-white"
+                  style={{ backgroundColor: conv.leadType.color }}
+                  title={conv.leadType.name}
                 >
-                  <Headset className="h-3 w-3" aria-hidden />
-                </span>
-              ) : null}
-              {hasHumanAssignee && (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                <span
-                  className="min-w-0 truncate text-[10px] text-ink-400 dark:text-ink-500"
-                  title={conv.assignedTo!.name}
-                >
-                  · {conv.assignedTo!.name}
+                  {conv.leadType.name}
                 </span>
               ) : null}
               {conv.status === "RESOLVED" && conv.closureValue != null && conv.closureValue > 0 ? (
-                <span className="shrink-0 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                <span
+                  className="shrink-0 font-semibold text-emerald-700 dark:text-emerald-300"
+                  title={fmtMoney(conv.closureValue)}
+                >
                   {fmtMoney(conv.closureValue)}
                 </span>
               ) : null}
+              {displayTags.slice(0, 2).map(({ tag }) => (
+                <span
+                  key={tag.id}
+                  className="shrink-0 truncate rounded px-1.5 py-0.5 font-semibold text-white"
+                  style={{ backgroundColor: tag.color }}
+                  title={tag.name}
+                >
+                  {tag.name}
+                </span>
+              ))}
+              {displayTags.length > 2 ? (
+                <span className="shrink-0 text-ink-400">+{displayTags.length - 2}</span>
+              ) : null}
               <ConversationVoiceCallListBadge
                 activeVoiceCall={conv.activeVoiceCall}
-                className="!max-w-[6rem] !px-1 !py-0 !text-[10px]"
+                className="!max-w-[8rem] !px-1.5 !py-0 !text-[10px]"
               />
             </div>
           </div>
-
-          {conv.isUnread ? (
-            <span
-              className="mt-1 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-500 px-1 text-[10px] font-bold text-white"
-              title={t("conversations.unreadBadge")}
-            >
-              •
-            </span>
-          ) : null}
         </NavLink>
 
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center border-b border-ink-100 pr-2 dark:border-ink-800">
           <TelephonyCallButton
             phone={conv.contact.phone}
             inboxId={conv.inbox?.id}

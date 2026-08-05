@@ -289,11 +289,6 @@ function messageGroupedWithPrevious(messages: Message[], index: number): boolean
   const prev = messages[index - 1];
   const cur = messages[index];
   if (prev.direction !== cur.direction || !!prev.isPrivate !== !!cur.isPrivate) return false;
-  if (prev.direction === "OUTBOUND") {
-    const prevKey = prev.actorUser?.id ?? "__bot__";
-    const curKey = cur.actorUser?.id ?? "__bot__";
-    if (prevKey !== curKey) return false;
-  }
   return differenceInMinutes(new Date(cur.createdAt), new Date(prev.createdAt)) <= MSG_GROUP_MINUTES;
 }
 
@@ -339,7 +334,6 @@ export function ConversationDetailPage() {
   const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
   const [flowError, setFlowError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -2705,7 +2699,7 @@ export function ConversationDetailPage() {
         "relative flex h-full min-h-0",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
-          : "flex-col bg-[#f8fafc] dark:bg-[#0a0f16] lg:flex-row",
+          : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
       )}
     >
       {!emailWorkspaceMode ? (
@@ -2781,7 +2775,7 @@ export function ConversationDetailPage() {
         ) : null}
         {!emailWorkspaceMode ? (
         <motion.div
-          className="shrink-0 border-b border-ink-200/40 bg-white/95 px-3 py-2 backdrop-blur-md dark:border-ink-800/50 dark:bg-[#0c1219]/95 lg:px-4"
+          className="shrink-0 border-b border-ink-200/70 bg-white/85 px-3 py-3 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55 lg:px-5"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
@@ -2820,29 +2814,23 @@ export function ConversationDetailPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="break-words text-sm font-semibold leading-snug tracking-tight text-ink-900 dark:text-ink-50">
+                      <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-ink-900 dark:text-ink-50">
                         {conversation.contact.name}
                       </h2>
-                      {!isSplitLayout ? (
-                        <>
-                          <span
-                            className={clsx(
-                              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                              conversation.status === "OPEN" &&
-                                "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
-                              conversation.status === "PENDING" &&
-                                "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
-                              conversation.status === "RESOLVED" &&
-                                "bg-ink-200 text-ink-700 dark:bg-white/10 dark:text-ink-200",
-                            )}
-                          >
-                            {statusLabel(conversation.status)}
-                          </span>
-                          <ConversationPriorityBadge priority={conversation.priority} />
-                        </>
-                      ) : (
-                        <ConversationPriorityBadge priority={conversation.priority} variant="compact" />
-                      )}
+                      <span
+                        className={clsx(
+                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          conversation.status === "OPEN" &&
+                            "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
+                          conversation.status === "PENDING" &&
+                            "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
+                          conversation.status === "RESOLVED" &&
+                            "bg-ink-200 text-ink-700 dark:bg-white/10 dark:text-ink-200",
+                        )}
+                      >
+                        {statusLabel(conversation.status)}
+                      </span>
+                      <ConversationPriorityBadge priority={conversation.priority} />
                       <WavoipConversationOnCallBadge conversationId={conversation.id} />
                       {conversation.activeVoiceCall?.provider === "wavoip" ? (
                         <WavoipForceEndCallButton
@@ -2860,8 +2848,7 @@ export function ConversationDetailPage() {
                         <ConversationVoiceCallListBadge activeVoiceCall={conversation.activeVoiceCall} />
                       ) : null}
                       {hasHumanAssignee &&
-                      (conversation.status === "OPEN" || conversation.status === "PENDING") &&
-                      !isSplitLayout ? (
+                      (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
                         <span
                           className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
                           title={`${conversation.assignedTo?.name ?? ""} · ${t("conversations.inAttendance")}`}
@@ -2875,7 +2862,7 @@ export function ConversationDetailPage() {
                             t("conversations.inAttendance")
                           )}
                         </span>
-                      ) : conversation.awaitingHumanHandoff && !isSplitLayout ? (
+                      ) : conversation.awaitingHumanHandoff ? (
                         <span
                           className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:ring-red-500/40"
                           title={t("conversationDetail.awaitingHumanBanner")}
@@ -2886,53 +2873,67 @@ export function ConversationDetailPage() {
                       ) : null}
                     </div>
 
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-ink-500 dark:text-ink-400">
-                      <span className="truncate">{conversation.contact.phone}</span>
-                      <span className="text-ink-300 dark:text-ink-600">·</span>
-                      <span>{statusLabel(conversation.status)}</span>
-                      {hasHumanAssignee ? (
-                        <>
-                          <span className="text-ink-300 dark:text-ink-600">·</span>
-                          <span className="truncate">{conversation.assignedTo?.name}</span>
-                        </>
-                      ) : null}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500 dark:text-ink-300">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="truncate">{conversation.contact.phone}</span>
+                        {isWhatsappInbox ? (
+                          <span
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5"
+                            title="WhatsApp"
+                            aria-hidden
+                          >
+                            <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className={clsx(
+                            "h-1.5 w-1.5 rounded-full",
+                            presenceRecent ? "bg-emerald-500" : "bg-ink-400 dark:bg-ink-600",
+                          )}
+                          aria-hidden
+                        />
+                        <span>{presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-ink-400 dark:text-ink-500">•</span>
+                        <span>
+                          {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
+                        </span>
+                      </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {isSplitLayout ? null : (
-                      <>
-                        <TelephonyCallButton
-                          phone={conversation.contact.phone}
-                          inboxId={conversation.inbox?.id}
-                          conversationId={conversation.id}
-                          contactId={conversation.contact.id}
-                          activeVoiceCall={conversation.activeVoiceCall}
-                          compact
-                        />
-                        {copilotEnabled ? (
-                          <Link
-                            to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200/70 bg-white px-2 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-100"
-                          >
-                            <Brain className="h-3.5 w-3.5" />
-                            {t("conversationDetail.linkAiInsights")}
-                          </Link>
-                        ) : null}
-                      </>
-                    )}
+                    <TelephonyCallButton
+                      phone={conversation.contact.phone}
+                      inboxId={conversation.inbox?.id}
+                      conversationId={conversation.id}
+                      contactId={conversation.contact.id}
+                      activeVoiceCall={conversation.activeVoiceCall}
+                      compact
+                    />
+                    {copilotEnabled ? (
+                      <Link
+                        to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
+                      >
+                        <Brain className="h-4 w-4" />
+                        {t("conversationDetail.linkAiInsights")}
+                      </Link>
+                    ) : null}
                     <button
                       type="button"
-                      className="rounded-lg border border-ink-200/70 bg-white p-1.5 text-ink-700 hover:bg-ink-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-100 xl:hidden"
+                      className="rounded-xl border border-ink-200 bg-white p-2 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10 xl:hidden"
                       onClick={() => setCrmMobileOpen(true)}
                       aria-label={t("conversationDetail.crmDrawerToggle")}
                     >
-                      <LayoutGrid className="h-4 w-4" />
+                      <LayoutGrid className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
 
-                {!isSplitLayout ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {conversation.contact.tags?.map((ct) => (
                     <span
@@ -2952,9 +2953,7 @@ export function ConversationDetailPage() {
                     </span>
                   ) : null}
                 </div>
-                ) : null}
 
-                {!isSplitLayout ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p
                     className={clsx(
@@ -2985,13 +2984,12 @@ export function ConversationDetailPage() {
                     </p>
                   ) : null}
                 </div>
-                ) : null}
               </div>
             </div>
           </div>
 
-          <div className={clsx("flex flex-wrap items-center gap-1.5", isSplitLayout ? "mt-1.5" : "mt-2")}>
-            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff && !isSplitLayout ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0">
+            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
                 title={t("conversationDetail.botTriageBanner")}
@@ -3021,6 +3019,20 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.contactBlocked")}
               </div>
             ) : null}
+            {canStartAttendance ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
+                }}
+                title={t("conversationDetail.startAttendanceHint")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40"
+              >
+                <Headset className="h-3.5 w-3.5" />
+                {t("conversationDetail.startAttendance")}
+              </button>
+            ) : null}
             {canTransfer ? (
               <button
                 type="button"
@@ -3031,10 +3043,41 @@ export function ConversationDetailPage() {
                   setTransferAssigneeId(conversation.assignedTo?.id ?? "");
                   setTransferOpen(true);
                 }}
-                className="inline-flex items-center gap-1 rounded-md border border-ink-200/70 bg-white px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-100"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
               >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 {t("conversationDetail.transferOpen")}
+              </button>
+            ) : null}
+            {funnelEnabled ? (
+              <Link
+                to="/crm"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
+              >
+                <Kanban className="h-3.5 w-3.5" />
+                {t("conversationDetail.actionMoveFunnel")}
+              </Link>
+            ) : null}
+            {showTransferToBot ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING", { assignedToId: null })}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("conversationDetail.transferToBot")}
+              </button>
+            ) : null}
+            {conversation.status === "OPEN" && !agentBotTriageActive ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40"
+              >
+                <PauseCircle className="h-3.5 w-3.5" />
+                {t("conversationDetail.setPending")}
               </button>
             ) : null}
             {canResolve ? (
@@ -3042,129 +3085,30 @@ export function ConversationDetailPage() {
                 type="button"
                 disabled={actionLoading}
                 onClick={() => openResolveModal(null)}
-                className="inline-flex items-center gap-1 rounded-md bg-brand-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600"
               >
                 <CheckCircle className="h-3.5 w-3.5" />
                 {t("conversationDetail.finalize")}
               </button>
             ) : null}
+            {conversation.status === "RESOLVED" ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("OPEN")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t("conversationDetail.reopen")}
+              </button>
+            ) : null}
             <Link
               to={`/contacts/${conversation.contact.id}`}
-              className="inline-flex items-center gap-1 rounded-md border border-ink-200/70 bg-white px-2.5 py-1 text-[11px] font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
             >
               <User className="h-3.5 w-3.5" />
               {t("conversationDetail.viewContact")}
             </Link>
-            {copilotEnabled && isSplitLayout ? (
-              <Link
-                to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
-                className="inline-flex items-center gap-1 rounded-md border border-violet-200/70 bg-violet-50/80 px-2.5 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-100/80 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                IA
-              </Link>
-            ) : null}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setHeaderMenuOpen((v) => !v)}
-                className="inline-flex items-center justify-center rounded-md border border-ink-200/70 bg-white p-1.5 text-ink-600 hover:bg-ink-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-300"
-                aria-label="Menu"
-                aria-expanded={headerMenuOpen}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </button>
-              {headerMenuOpen ? (
-                <>
-                  <button
-                    type="button"
-                    className="fixed inset-0 z-40 cursor-default"
-                    aria-label={t("common.close")}
-                    onClick={() => setHeaderMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 top-full z-50 mt-1 min-w-[11rem] rounded-lg border border-ink-200/80 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900">
-                    {canStartAttendance ? (
-                      <button
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={() => {
-                          setHeaderMenuOpen(false);
-                          if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <Headset className="h-3.5 w-3.5" />
-                        {t("conversationDetail.startAttendance")}
-                      </button>
-                    ) : null}
-                    {showTransferToBot ? (
-                      <button
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={() => {
-                          setHeaderMenuOpen(false);
-                          void applyStatus("PENDING", { assignedToId: null });
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <Bot className="h-3.5 w-3.5" />
-                        {t("conversationDetail.transferToBot")}
-                      </button>
-                    ) : null}
-                    {conversation.status === "OPEN" && !agentBotTriageActive ? (
-                      <button
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={() => {
-                          setHeaderMenuOpen(false);
-                          void applyStatus("PENDING");
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <PauseCircle className="h-3.5 w-3.5" />
-                        {t("conversationDetail.setPending")}
-                      </button>
-                    ) : null}
-                    {conversation.status === "RESOLVED" ? (
-                      <button
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={() => {
-                          setHeaderMenuOpen(false);
-                          void applyStatus("OPEN");
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        {t("conversationDetail.reopen")}
-                      </button>
-                    ) : null}
-                    {funnelEnabled ? (
-                      <Link
-                        to="/crm"
-                        onClick={() => setHeaderMenuOpen(false)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <Kanban className="h-3.5 w-3.5" />
-                        {t("conversationDetail.actionMoveFunnel")}
-                      </Link>
-                    ) : null}
-                    {isSplitLayout ? (
-                      <div className="border-t border-ink-100 px-3 py-1.5 dark:border-ink-800">
-                        <TelephonyCallButton
-                          phone={conversation.contact.phone}
-                          inboxId={conversation.inbox?.id}
-                          conversationId={conversation.id}
-                          contactId={conversation.contact.id}
-                          activeVoiceCall={conversation.activeVoiceCall}
-                          compact
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                </>
-              ) : null}
-            </div>
           </div>
         </motion.div>
         ) : null}
@@ -3279,7 +3223,7 @@ export function ConversationDetailPage() {
           onScroll={onMessagesViewportScroll}
           className={clsx(
             "relative min-h-0 flex-1 overflow-auto",
-            emailWorkspaceMode ? "bg-[#f8fafc] px-2 py-3 dark:bg-[#0a0f16] sm:px-4" : "px-2 py-3 sm:px-4",
+            emailWorkspaceMode ? "bg-ink-50 px-3 py-4 dark:bg-[#0E1624] sm:px-5" : "px-3 py-4 sm:px-5",
           )}
         >
           {!emailWorkspaceMode ? (
@@ -3287,7 +3231,7 @@ export function ConversationDetailPage() {
           ) : (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
-          <div className={clsx("relative mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-1")}>
+          <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
             {(conversation.messages ?? []).map((msg, i) => {
               const list = conversation.messages ?? [];
               const groupedPrev = messageGroupedWithPrevious(list, i);
@@ -3295,7 +3239,6 @@ export function ConversationDetailPage() {
               if (isNew) seenMessageIds.current.add(msg.id);
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
-              const isBotMessage = !inbound && !msg.isPrivate && !msg.actorUser;
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
               const displayBody =
                 isEmailInbox && msg.type === "TEXT" ? emailMessageContent(msg.body) : msg.body?.trim() || "";
@@ -3325,15 +3268,10 @@ export function ConversationDetailPage() {
                       />
                     ) : (
                       <div
-                        className={clsx(
-                          "flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm",
-                          isBotMessage
-                            ? "bg-violet-400/90"
-                            : "bg-brand-500",
-                        )}
-                        title={isBotMessage ? t("conversationDetail.botInAttendance") : (user?.name ?? "")}
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"
+                        title={user?.name ?? ""}
                       >
-                        {isBotMessage ? <Bot className="h-4 w-4" /> : (user?.name ?? "A").charAt(0).toUpperCase()}
+                        {(user?.name ?? "A").charAt(0).toUpperCase()}
                       </div>
                     )
                   ) : (
@@ -3345,28 +3283,24 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative min-w-0",
-                    groupedPrev ? "px-3 py-2" : "px-3.5 py-2.5",
-                    groupedPrev && "crm-bubble-grouped",
+                    "crm-bubble relative min-w-0 p-4",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && "email-workspace-msg",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && inbound && "email-workspace-msg-in",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && !inbound && "email-workspace-msg-out",
                     emailWorkspaceMode
                       ? isEmailInbox && msg.type === "TEXT"
                         ? "w-full min-w-0 flex-1 max-w-none"
-                        : "max-w-[min(calc(100%-2rem),36rem)]"
-                      : "max-w-[min(calc(100%-2rem),36rem)]",
+                        : "max-w-[min(calc(100%-2.5rem),48rem)]"
+                      : "max-w-[min(calc(100%-2.5rem),28rem)]",
                     isNew && "crm-bubble-unread",
                     msg.isPrivate
-                      ? "crm-bubble-private crm-bubble-system"
+                      ? "crm-bubble-private border border-amber-300/45 dark:border-amber-500/35"
                       : inbound
-                        ? "crm-bubble-in border border-ink-200/50 dark:border-white/8"
-                        : isBotMessage
-                          ? "crm-bubble-ai"
-                          : "crm-bubble-out",
+                        ? "crm-bubble-in border border-ink-200/60 dark:border-white/10"
+                        : "crm-bubble-out border border-brand-500/25 dark:border-brand-400/30",
                   )}
                 >
-                  {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat && !groupedPrev ? (
+                  {msg.direction === "OUTBOUND" && msg.actorUser?.showAgentNameInChat ? (
                     <p
                       className={clsx(
                         msg.isPrivate
@@ -3460,7 +3394,7 @@ export function ConversationDetailPage() {
                       playsInline
                     />
                   )}
-                  <div className="crm-bubble-meta mt-1 flex items-center justify-end gap-0.5 text-[10px] tabular-nums opacity-80">
+                  <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
@@ -3483,10 +3417,10 @@ export function ConversationDetailPage() {
                 <motion.div
                   key={msg.id}
                   className={clsx(
-                    "flex w-full min-w-0 gap-2",
+                    "flex w-full min-w-0 gap-3",
                     emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
                     inbound ? "justify-start" : "justify-end",
-                    groupedPrev ? "mt-0.5" : blockSpacing,
+                    blockSpacing,
                   )}
                   initial={isNew ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
@@ -3537,7 +3471,7 @@ export function ConversationDetailPage() {
             "w-full min-w-0 shrink-0 border-t",
             emailWorkspaceMode
               ? "border-ink-200 bg-[#f8fafc] px-4 py-4 dark:border-ink-800 dark:bg-[#0B1220]"
-              : "border-ink-200/50 bg-white/95 px-3 py-2.5 shadow-[0_-4px_16px_-10px_rgba(0,0,0,0.1)] backdrop-blur-sm dark:border-ink-800/50 dark:bg-[#0c1219]/90 sm:px-4",
+              : "border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/65 sm:px-5",
           )}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
