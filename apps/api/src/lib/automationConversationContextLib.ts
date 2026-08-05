@@ -446,7 +446,7 @@ async function resolveBotIdForContextSeed(
   if (existing?.botId) return existing.botId;
   const exec = await prisma.automationExecution.findFirst({
     where: { organizationId, conversationId },
-    orderBy: { createdAt: "desc" },
+    orderBy: { startedAt: "desc" },
     select: { botId: true },
   });
   if (exec?.botId) return exec.botId;

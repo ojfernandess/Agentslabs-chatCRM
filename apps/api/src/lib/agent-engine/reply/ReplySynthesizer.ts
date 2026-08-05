@@ -74,6 +74,7 @@ export type EnsureDeliveringReplyResult = {
     | "quote_c6_options"
     | "quote_c6_handoff"
     | "quote_c6_discount_offer"
+    | "quote_c6_discount_decline"
     | "quote_c6_discount_handoff"
     | "quote_call_human_failed"
     | "quote_call_human_missing"
