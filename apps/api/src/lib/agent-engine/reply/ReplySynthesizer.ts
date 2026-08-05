@@ -7,6 +7,7 @@ import type { PromptIR } from "../contract/PromptIR.js";
 import { templateFactsFromEnrichedIr } from "../compiler/playbookEnrichment.js";
 import {
   buildModeloC6DiscountHandoffReply,
+  buildModeloC6DiscountTransferDeclineReply,
   buildModeloC6DiscountTransferOfferReply,
   buildModeloC6HandoffReply,
   buildModeloC6OptionsReply,
@@ -27,6 +28,7 @@ import {
   assistantIsQuoteAvailabilityConfirm,
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
+  isQuoteDiscountTransferDeclined,
 } from "../core/confirmationTurnGuards.js";
 import {
   replyClaimsHumanTransfer,
@@ -369,6 +371,9 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     messageLooksLikeQuoteDiscountObjection(input.userMessage);
   const quoteDiscountAcceptTurn =
     quoteConfirmTurn && assistantIsQuoteDiscountTransferOffer(input.lastAssistantMessage);
+  const quoteDiscountDeclineTurn =
+    isQuoteDiscountTransferDeclined(input.userMessage) &&
+    assistantIsQuoteDiscountTransferOffer(input.lastAssistantMessage);
   const nfReceiptConfirmTurn = shouldRequireCallHumanAfterNfConfirmation({
     userMessage: input.userMessage,
     lastAssistantMessage: input.lastAssistantMessage,
@@ -616,6 +621,18 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     !replyShouldPreemptEscalationTransferMessage(input.replyText ?? "")
   ) {
     return { reply: "", replaced: true, reason: "escalation_use_transfer_message" };
+  }
+
+  if (
+    !postCompletionTurn &&
+    quoteDiscountDeclineTurn &&
+    !callHumanSucceeded
+  ) {
+    return {
+      reply: buildModeloC6DiscountTransferDeclineReply(),
+      replaced: true,
+      reason: "quote_c6_discount_decline",
+    };
   }
 
   if (

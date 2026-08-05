@@ -354,6 +354,19 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
   return false;
 }
 
+/** Hóspede recusa transferência pós oferta de desconto (C6f). */
+export function isQuoteDiscountTransferDeclined(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (/^(n[aã]o|nao|no|nop|nunca)$/i.test(msg)) return true;
+  return (
+    /\b(n[aã]o|nao)\s+(quero|desejo|preciso|vou)\b/i.test(msg) ||
+    /\bn[aã]o\s+preciso\b/i.test(msg) ||
+    /\bdeixa\s+(?:pra\s+l[aá]|para\s+l[aá])\b/i.test(msg) ||
+    /\bsem\s+transfer(?:ir|ência)?\b/i.test(msg)
+  );
+}
+
 /** Hóspede recusa cadastrar acompanhante (S4c). */
 export function isCompanionRegistrationDeclined(userMessage?: string | null): boolean {
   const msg = (userMessage ?? "").trim();

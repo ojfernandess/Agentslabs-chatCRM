@@ -716,6 +716,13 @@ export function buildModeloC6DiscountHandoffReply(): string {
   );
 }
 
+export function buildModeloC6DiscountTransferDeclineReply(): string {
+  return (
+    "Sem problemas! Se quiser retomar a cotação ou escolher outra opção, " +
+    "é só me avisar. Posso ajudar em mais alguma coisa?"
+  );
+}
+
 export function replyLooksLikeModeloC6Handoff(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;

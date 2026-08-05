@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Brain, Clock, Download, Loader2, Pin, Save, Search, Tag, Trash2, Upload, User } from "lucide-react";
+import { Brain, Clock, Download, Loader2, Pin, Save, Search, Tag, Trash2, Upload, User, X } from "lucide-react";
 import { api } from "@/lib/api";
 
 export type MemoryCenterData = {
@@ -123,6 +123,7 @@ export function MemoryCenterPanel({
   const [importing, setImporting] = useState(false);
   const [score, setScore] = useState<number | "">("");
   const [clearMemoryWithContext, setClearMemoryWithContext] = useState(false);
+  const [clearContextModalTarget, setClearContextModalTarget] = useState<string | null>(null);
 
   const loadByConversation = useCallback(async (id: string) => {
     const trimmed = id.trim();
@@ -331,10 +332,6 @@ export function MemoryCenterPanel({
   const handleClearContext = async (targetConversationId: string) => {
     const trimmed = targetConversationId.trim();
     if (!trimmed) return;
-    const confirmKey = clearMemoryWithContext
-      ? "automationPage.contextClearConfirmWithMemory"
-      : "automationPage.contextClearConfirm";
-    if (!window.confirm(t(confirmKey))) return;
     await onClearContext(trimmed, { clearMemory: clearMemoryWithContext });
     if (data?.conversationId === trimmed || conversationId.trim() === trimmed) {
       await loadByConversation(trimmed);
@@ -344,6 +341,13 @@ export function MemoryCenterPanel({
         setScore("");
       }
     }
+  };
+
+  const confirmClearContext = async () => {
+    if (!clearContextModalTarget) return;
+    const target = clearContextModalTarget;
+    setClearContextModalTarget(null);
+    await handleClearContext(target);
   };
 
   const busy = parentLoading || loadingDetail || saving;
@@ -421,7 +425,7 @@ export function MemoryCenterPanel({
         <button
           type="button"
           disabled={busy || !conversationId.trim()}
-          onClick={() => void handleClearContext(conversationId)}
+          onClick={() => setClearContextModalTarget(conversationId.trim())}
           className="rounded-lg bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
         >
           {t("automationPage.contextClear")}
@@ -459,7 +463,7 @@ export function MemoryCenterPanel({
                   <button
                     type="button"
                     className="font-medium text-red-600"
-                    onClick={() => void handleClearContext(r.conversationId)}
+                    onClick={() => setClearContextModalTarget(r.conversationId)}
                   >
                     {t("automationPage.contextClear")}
                   </button>
@@ -780,6 +784,59 @@ export function MemoryCenterPanel({
             >
               {t("automationPage.refresh")}
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {clearContextModalTarget ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink-900/45 backdrop-blur-sm"
+            onClick={() => setClearContextModalTarget(null)}
+            aria-label={t("common.close")}
+          />
+          <div
+            role="alertdialog"
+            aria-labelledby="clear-context-title"
+            aria-describedby="clear-context-desc"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-700 dark:bg-ink-950"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 id="clear-context-title" className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("automationPage.contextClearModalTitle")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setClearContextModalTarget(null)}
+                className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p id="clear-context-desc" className="mt-3 text-sm text-ink-700 dark:text-ink-200">
+              {clearMemoryWithContext
+                ? t("automationPage.contextClearConfirmWithMemory")
+                : t("automationPage.contextClearConfirm")}
+            </p>
+            <code className="mt-2 block break-all text-xs text-ink-500">{clearContextModalTarget}</code>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setClearContextModalTarget(null)}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-semibold dark:border-ink-600"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmClearContext()}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {t("automationPage.contextClearModalConfirm")}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

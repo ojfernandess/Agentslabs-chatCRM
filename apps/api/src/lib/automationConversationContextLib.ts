@@ -432,6 +432,32 @@ export function buildContextOnlyClearedState(raw: unknown): Record<string, unkno
   return next;
 }
 
+/** Bot para criar linha de contexto quando ainda não existe (ex.: após encerrar atendimento). */
+async function resolveBotIdForContextSeed(
+  organizationId: string,
+  conversationId: string,
+  fallbackBotId: string | null,
+): Promise<string | null> {
+  if (fallbackBotId) return fallbackBotId;
+  const existing = await prisma.automationConversationContext.findUnique({
+    where: { conversationId },
+    select: { botId: true },
+  });
+  if (existing?.botId) return existing.botId;
+  const exec = await prisma.automationExecution.findFirst({
+    where: { organizationId, conversationId },
+    orderBy: { createdAt: "desc" },
+    select: { botId: true },
+  });
+  if (exec?.botId) return exec.botId;
+  const profile = await prisma.automationAgentProfile.findFirst({
+    where: { organizationId },
+    orderBy: { updatedAt: "desc" },
+    select: { botId: true },
+  });
+  return profile?.botId ?? null;
+}
+
 /** Limpa contexto de automação (corte de histórico nativo). Opcionalmente apaga memórias IA. */
 export async function clearAutomationConversationContext(
   organizationId: string,
@@ -477,17 +503,21 @@ export async function clearAutomationConversationContext(
     where: { organizationId },
     select: { agentBotId: true },
   });
-  const fallbackBotId = settings?.agentBotId ?? null;
+  const seedBotId = await resolveBotIdForContextSeed(
+    organizationId,
+    conv.id,
+    settings?.agentBotId ?? null,
+  );
 
   const existingIds = new Set(existingRows.map((row) => row.conversationId));
   const missingIds = conversationIds.filter((id) => !existingIds.has(id));
 
-  if (missingIds.length > 0 && fallbackBotId) {
+  if (missingIds.length > 0 && seedBotId) {
     await prisma.automationConversationContext.createMany({
       data: missingIds.map((id) => ({
         organizationId,
         conversationId: id,
-        botId: fallbackBotId,
+        botId: seedBotId,
         state: asJson({}),
         lastClearedAt: clearedAt,
       })),

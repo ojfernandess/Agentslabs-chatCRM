@@ -38,6 +38,7 @@ import {
   assistantIsQuoteAvailabilityConfirm,
   assistantIsQuoteDiscountTransferOffer,
   isCompanionRegistrationDeclined,
+  isShortAffirmativeConfirmation,
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
 } from "../core/confirmationTurnGuards.js";
@@ -517,7 +518,7 @@ export function resolveTurnPolicy(
     exclusiveAllowedTools = ["call_human"];
     forceExclusiveExecution = true;
   } else if (
-    isConfirmation &&
+    isShortAffirmativeConfirmation(userMessage) &&
     !suppressExclusive &&
     assistantIsQuoteDiscountTransferOffer(options.lastAssistantMessage)
   ) {

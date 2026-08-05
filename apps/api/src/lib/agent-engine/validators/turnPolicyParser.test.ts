@@ -937,6 +937,31 @@ test("resolveTurnPolicy — sim after discount offer requires call_human exclusi
   assert.equal(turnPolicyPreExecBlockReason("call_human", policy), null);
 });
 
+test("resolveTurnPolicy — não after discount offer does not require call_human", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6F_PLAYBOOK } },
+    {
+      userMessage: "não",
+      lastAssistantMessage: C6_DISCOUNT_OFFER_MSG,
+      availableToolNames: ["call_human"],
+    },
+  );
+  assert.notEqual(policy.exclusiveAllowedTools?.[0], "call_human");
+  assert.equal(policy.forceExclusiveExecution, false);
+});
+
+test("resolveTurnPolicy — não quero after discount offer does not require call_human", () => {
+  const policy = resolveTurnPolicy(
+    { promptBuilder: { useFullPrompt: true, userCore: C6F_PLAYBOOK } },
+    {
+      userMessage: "não quero",
+      lastAssistantMessage: C6_DISCOUNT_OFFER_MSG,
+      availableToolNames: ["call_human"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, false);
+});
+
 test("resolveTurnPolicy — sim after receipt mirror requires call_human exclusive", () => {
   const mirror = `Confira os dados para emissão do recibo (pessoa física):
 

@@ -1518,11 +1518,14 @@ export function AutomationPage() {
     }
   };
 
-  const deleteAgentProfile = async (botId: string) => {
-    if (!window.confirm(t("automationPage.agentDeleteProfileConfirm"))) return;
+  const deleteAgentProfile = async (botId: string, options?: { alsoDeleteBot?: boolean }) => {
     setLoading(true);
     try {
       await api.delete(`/automation/agent-profiles/${botId}`);
+      if (options?.alsoDeleteBot) {
+        await api.delete(`/bots/${botId}`);
+        await loadBots();
+      }
       await loadAgentProfiles();
       await loadDashboard();
     } catch {
@@ -1972,7 +1975,7 @@ function AgentsTab({
   onEdit: (row: AgentProfileRow) => void;
   onConfigureOrphan: (botId: string) => void;
   onSaveModal: () => void;
-  onDeleteProfile: (botId: string) => void;
+  onDeleteProfile: (botId: string, options?: { alsoDeleteBot?: boolean }) => void;
   onOpenToolsTab: () => void;
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
   onOpenKnowledgeTab: () => void;
@@ -2005,6 +2008,8 @@ function AgentsTab({
     toolsUpdated: number;
     policyIds: string[];
   } | null>(null);
+  const [deleteAgentTarget, setDeleteAgentTarget] = useState<AgentProfileRow | null>(null);
+  const [deleteAgentAlsoDeleteBot, setDeleteAgentAlsoDeleteBot] = useState(false);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   const openAgentConnections = (row: AgentProfileRow) => {
@@ -2442,7 +2447,10 @@ function AgentsTab({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDeleteProfile(row.botId)}
+                    onClick={() => {
+                      setDeleteAgentAlsoDeleteBot(false);
+                      setDeleteAgentTarget(row);
+                    }}
                     className="rounded p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
                     title={t("automationPage.agentRemoveProfile")}
                   >
@@ -4228,6 +4236,70 @@ function AgentsTab({
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
               >
                 {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteAgentTarget ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink-900/45 backdrop-blur-sm"
+            onClick={() => setDeleteAgentTarget(null)}
+            aria-label={t("common.close")}
+          />
+          <div
+            role="alertdialog"
+            aria-labelledby="delete-agent-title"
+            aria-describedby="delete-agent-desc"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-700 dark:bg-ink-950"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 id="delete-agent-title" className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("automationPage.agentDeleteProfileTitle")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteAgentTarget(null)}
+                className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p id="delete-agent-desc" className="mt-3 text-sm text-ink-700 dark:text-ink-200">
+              {t("automationPage.agentDeleteProfileBody")}
+            </p>
+            <p className="mt-2 text-xs font-medium text-ink-600 dark:text-ink-400">{deleteAgentTarget.bot.name}</p>
+            <label className="mt-4 flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-ink-300"
+                checked={deleteAgentAlsoDeleteBot}
+                onChange={(e) => setDeleteAgentAlsoDeleteBot(e.target.checked)}
+              />
+              {t("automationPage.agentDeleteProfileAlsoDeleteBot")}
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteAgentTarget(null)}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-semibold dark:border-ink-600"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  const target = deleteAgentTarget;
+                  setDeleteAgentTarget(null);
+                  void onDeleteProfile(target.botId, { alsoDeleteBot: deleteAgentAlsoDeleteBot });
+                }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {t("automationPage.agentDeleteProfileConfirmAction")}
               </button>
             </div>
           </div>

@@ -811,6 +811,11 @@ export const messages = {
       agentEdit: "Editar",
       agentRemoveProfile: "Remover perfil de automação",
       agentDeleteProfileConfirm: "Remover o perfil de automação deste bot? O bot não é eliminado.",
+      agentDeleteProfileTitle: "Remover perfil de automação",
+      agentDeleteProfileBody:
+        "O perfil de automação deste bot será removido. O bot continuará listado na página de Bots, a menos que também o elimine abaixo.",
+      agentDeleteProfileAlsoDeleteBot: "Também eliminar o bot",
+      agentDeleteProfileConfirmAction: "Remover",
       agentsOrphanTitle: "Bots sem perfil de automação",
       agentConfigureAutomation: "Configurar automação",
       agentTool_knowledge_search: "buscar_conhecimento",
@@ -1514,6 +1519,8 @@ export const messages = {
       contextLoad: "Carregar estado",
       contextClear: "Limpar contexto",
       contextClearAlsoMemory: "Também limpar memórias IA",
+      contextClearModalTitle: "Limpar contexto de automação",
+      contextClearModalConfirm: "Limpar contexto",
       contextClearConfirm:
         "Limpar o contexto de automação deste contacto? O histórico visível ao agente nativo em todas as conversas será reiniciado (as mensagens no chat mantêm-se, mas só contam turnos após esta limpeza). Preferências e memórias IA são preservadas.",
       contextClearConfirmWithMemory:
@@ -6367,6 +6374,11 @@ export const messages = {
       agentEdit: "Edit",
       agentRemoveProfile: "Remove automation profile",
       agentDeleteProfileConfirm: "Remove this bot’s automation profile? The bot itself is not deleted.",
+      agentDeleteProfileTitle: "Remove automation profile",
+      agentDeleteProfileBody:
+        "This bot’s automation profile will be removed. The bot will remain on the Bots page unless you also delete it below.",
+      agentDeleteProfileAlsoDeleteBot: "Also delete the bot",
+      agentDeleteProfileConfirmAction: "Remove",
       agentsOrphanTitle: "Bots without an automation profile",
       agentConfigureAutomation: "Configure automation",
       agentTool_knowledge_search: "knowledge_search",
@@ -7064,6 +7076,8 @@ export const messages = {
       contextLoad: "Load state",
       contextClear: "Clear context",
       contextClearAlsoMemory: "Also clear AI memories",
+      contextClearModalTitle: "Clear automation context",
+      contextClearModalConfirm: "Clear context",
       contextClearConfirm:
         "Clear automation context for this contact? The native agent history across all conversations will reset (chat messages stay in the inbox, but only turns after this clear count for the model). Preferences and AI memories are kept.",
       contextClearConfirmWithMemory:
