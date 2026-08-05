@@ -46,12 +46,19 @@ test("isToolNarrationReply catches 12:14 italic tool name stall", () => {
 });
 
 test("deduplicateCheckinLinksInReply keeps link once when repeated", () => {
-  const link = "https://pms.audaar.com.br/checkin/vivapp/access";
+  const link = "https://checkin.audaar.com.br/HHTIDAS";
   const dup =
     `O check-in online é feito pelo link:\n${link}\n\n` +
     `🔗\n${link}\n\n` +
     `Qualquer dúvida, estou à disposição.`;
   const out = deduplicateCheckinLinksInReply(dup);
-  assert.equal((out.match(/pms\.audaar\.com\.br\/checkin/gi) ?? []).length, 1);
+  assert.equal((out.match(/checkin\.audaar\.com\.br/gi) ?? []).length, 1);
   assert.match(out, /check-in online/i);
+});
+
+test("deduplicateCheckinLinksInReply dedupes legacy pms URLs", () => {
+  const link = "https://pms.audaar.com.br/checkin/vivapp/access";
+  const dup = `Link: ${link}\n\n🔗 ${link}`;
+  const out = deduplicateCheckinLinksInReply(dup);
+  assert.equal((out.match(/pms\.audaar\.com\.br\/checkin/gi) ?? []).length, 1);
 });

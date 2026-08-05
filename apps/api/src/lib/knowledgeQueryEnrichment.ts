@@ -234,6 +234,39 @@ export function messageContainsReservationLocator(userMessage: string): boolean 
 }
 
 /**
+ * C3 operacional — hóspede quer *fazer* check-in (não FAQ «como funciona»).
+ */
+export function userMessageLooksLikeOperationalCheckinIntent(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (/\bcomo\s+funciona\b/i.test(t)) return false;
+  if (
+    /\bhor[aá]rio\b/i.test(t) &&
+    /\bcheck[- ]?in\b/i.test(t) &&
+    !/\b(?:fazer|fa[cç]o|realizar|quero)\b/i.test(t)
+  ) {
+    return false;
+  }
+  if (/\b(?:fazer|quero|preciso|gostaria\s+de|realizar)\s+(?:o\s+|de\s+)?check[- ]?in\b/i.test(t)) {
+    return true;
+  }
+  if (/\bcomo\s+(?:eu\s+)?fa[cç]o\b/i.test(t) && /\bcheck[- ]?in\b/i.test(t)) return true;
+  return false;
+}
+
+/** «Qual o link?» após turno de check-in — continua fluxo C3, não KB. */
+export function userMessageLooksLikeCheckinLinkFollowUp(
+  userMessage: string,
+  lastAssistantMessage?: string | null,
+): boolean {
+  const t = userMessage.trim();
+  if (!/^\s*(?:qual|cad[eê])\s+(?:o\s+)?link\b/i.test(t)) return false;
+  const last = (lastAssistantMessage ?? "").trim();
+  if (!last) return false;
+  return /\bcheck[- ]?in\b|localizador|checkin\.audaar|pms\.audaar\.com\.br\/checkin/i.test(last);
+}
+
+/**
  * C2/C3 — intenção de verificar/consultar/confirmar reserva ou fazer check-in
  * (com ou sem localizador na mensagem).
  */
@@ -241,6 +274,7 @@ export function userMessageLooksLikeReservationVerificationIntent(userMessage: s
   const t = userMessage.trim();
   if (!t) return false;
   if (isOperationalQuoteMessage(t)) return false;
+  if (userMessageLooksLikeOperationalCheckinIntent(t)) return true;
   if (/\b(?:fazer|quero|preciso|gostaria\s+de)\s+(?:de\s+)?check[- ]?in\b/i.test(t)) return true;
   if (/\bstatus\s+(?:da\s+)?(?:minha\s+)?reserva\b/i.test(t)) return true;
   if (
@@ -321,6 +355,7 @@ export function resolveKnowledgeSearchSkip(
   if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";
   if (isUserDataProvisionMessage(userMessage)) return "data_provision";
   if (
+    userMessageLooksLikeCheckinLinkFollowUp(userMessage, lastAssistant) ||
     userMessageLooksLikeReservationVerificationIntent(userMessage) ||
     isOperationalReservationLookupMessage(userMessage) ||
     ctx.reservationLookupScheduled

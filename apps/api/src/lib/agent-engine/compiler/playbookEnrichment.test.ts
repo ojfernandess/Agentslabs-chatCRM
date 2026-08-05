@@ -19,6 +19,29 @@ test("parsePlaybookEnrichment reads structured metadata", () => {
   assert.equal(e.defaultTemplateFacts?.brand, "VetClinic");
 });
 
+test("enrichPromptIr injects checkinLink from playbook when not configured", () => {
+  const staticIr = compileStaticPromptIR({
+    promptBuilder: {
+      userCore:
+        "## Objetivo\nCheck-in: https://checkin.audaar.com.br/{LOCALIZADOR}\n",
+    },
+  });
+  const base = {
+    promptIrVersion: PROMPT_IR_VERSION,
+    ...staticIr,
+    tools: { catalog: [], required: [], optional: [], forbidden: [] },
+    turnPolicy: {},
+    metadata: { hash: "abc", playbookHash: "pb", compiledAt: "", playbookCharCount: 10 },
+  };
+  const enriched = enrichPromptIr(base, {
+    promptBuilder: {
+      userCore: "## Objetivo\nCheck-in: https://checkin.audaar.com.br/{LOCALIZADOR}\n",
+    },
+  });
+  const facts = templateFactsFromEnrichedIr(enriched);
+  assert.equal(facts.checkinLink, "https://checkin.audaar.com.br/");
+});
+
 test("enrichPromptIr injects checkinLink template facts", () => {
   const staticIr = compileStaticPromptIR({
     promptBuilder: { userCore: "## Objetivo\nCheck-in hotel.\n" },

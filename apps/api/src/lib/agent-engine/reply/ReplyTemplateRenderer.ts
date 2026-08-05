@@ -2,6 +2,7 @@
  * Fase 6 — Interpolação genérica de templates de resposta a partir de facts/tool outcomes.
  */
 import { extractReservationReferenceFromMessage } from "../../knowledgeQueryEnrichment.js";
+import { resolveCheckinLink } from "./checkinLink.js";
 import type { ReplyTemplateSpec } from "../contract/CompletionTypes.js";
 import type { PromptIR } from "../contract/PromptIR.js";
 
@@ -28,11 +29,11 @@ export const REPLY_TEMPLATE_BODIES: Record<string, string> = {
     "📅 Check-out: {{facts.checkOutLine}}\n" +
     "👥 Hóspedes: {{facts.guests}}\n" +
     "Seu check-in ainda não foi realizado.\n\n" +
-    "Para concluir, acesse o link abaixo e siga estes passos:\n\n" +
+    "É simples e rápido — acesse o link abaixo, confirme o localizador e preencha as etapas na tela:\n\n" +
     "🔗 {{facts.checkinLink}}\n\n" +
-    "1️⃣ Acesse o link e **realize seu cadastro** (primeira vez).\n" +
-    "2️⃣ **Entre novamente** no mesmo link e **informe o localizador** da reserva ({{facts.locator}}) para fazer o check-in.\n" +
-    "3️⃣ Após preencher todas as informações necessárias, o sistema mostrará o **número da sua suíte** e a **senha** ou **forma de acesso**.\n\n" +
+    "1️⃣ Abra o link no celular ou computador.\n" +
+    "2️⃣ Confirme ou digite o localizador da reserva (**{{facts.locator}}**).\n" +
+    "3️⃣ Preencha as etapas que aparecerem — ao final, você verá o **número da suíte** e a **senha** ou **forma de acesso**.\n\n" +
     "Se tiver dúvidas durante o processo, estou por aqui! 😊",
   reservation_lookup_verify:
     "Encontrei sua reserva{{facts.locatorSuffix}}:\n" +
@@ -40,8 +41,9 @@ export const REPLY_TEMPLATE_BODIES: Record<string, string> = {
     "📅 Check-in: {{facts.checkInLine}}\n" +
     "📅 Check-out: {{facts.checkOutLine}}\n" +
     "👥 Hóspedes: {{facts.guests}}\n" +
-    "⏳ Check-in: pendente\n" +
-    "Para concluir, acesse 🔗 {{facts.checkinLink}} e siga: (1) cadastro, (2) login + localizador, (3) suíte e senha.\n" +
+    "⏳ Check-in: pendente\n\n" +
+    "Para fazer o check-in agora, acesse: 🔗 {{facts.checkinLink}}\n" +
+    "Abra o link, confirme o localizador e preencha as etapas na tela — é simples e rápido.\n" +
     "Posso ajudar com mais alguma coisa?",
   reservation_lookup_done:
     "Encontrei sua reserva{{facts.locatorSuffix}}:\n" +
@@ -239,7 +241,9 @@ export function factsFromReservationPayload(
     checkInDone: f.checkInDone,
     wantsVerify,
     wantsCheckIn,
-    checkinLink: "https://pms.audaar.com.br/checkin/vivapp/access",
+    checkinLink: resolveCheckinLink({
+      locator: displayLocator !== "…" ? String(displayLocator) : null,
+    }),
     partySize: f.guests ?? 2,
     companions: f.guests != null ? Math.max(0, f.guests - 1) : 1,
   };

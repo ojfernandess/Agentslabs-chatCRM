@@ -27,9 +27,9 @@ test("buildModeloS1FromReservationPayload matches prompt Modelo S1", () => {
   assert.match(s1, /01\/08\/2026/);
   assert.match(s1, /03\/08\/2026/);
   assert.match(s1, /👥 Hóspedes: 2/);
-  assert.match(s1, /checkin\/vivapp\/access/);
-  assert.match(s1, /realize seu cadastro|1️⃣/i);
-  assert.match(s1, /informe o localizador|NCMT0VPN/i);
+  assert.match(s1, /checkin\.audaar\.com\.br\/NCMT0VPN/);
+  assert.match(s1, /Abra o link|1️⃣/i);
+  assert.match(s1, /confirme ou digite o localizador|NCMT0VPN/i);
   assert.doesNotMatch(s1, /brasileiro|estrangeiro/i);
   assert.doesNotMatch(s1, /Invocando/i);
   assert.equal(replyLooksLikeModeloS1(s1), true);
@@ -107,13 +107,13 @@ test("ensureDeliveringReply forces S1 when paraphrase misses prompt script", () 
   assert.equal(result.replaced, true);
   assert.equal(result.reason, "reservation_s1");
   assert.match(result.reply, /Encontramos sua reserva com sucesso!/);
-  assert.match(result.reply, /checkin\/vivapp\/access/);
-  assert.match(result.reply, /informe o localizador|realize seu cadastro/i);
+  assert.match(result.reply, /checkin\.audaar\.com\.br\/NCMT0VPN/);
+  assert.match(result.reply, /confirme ou digite o localizador|Abra o link/i);
 });
 
 test("ensureDeliveringReply keeps reply that already looks like Modelo S1", () => {
   const good =
-    "Olá! 😊\nEncontramos sua reserva com sucesso!\n📍 Hospedagem: Hotel X\n📅 Check-in: 01/08/2026, a partir das 14:00h\n📅 Check-out: 03/08/2026, até as 12:00h\n👥 Hóspedes: 1\nSeu check-in ainda não foi realizado.\n\nPara concluir, acesse o link abaixo e siga estes passos:\n\n🔗 https://pms.audaar.com.br/checkin/vivapp/access\n\n1️⃣ Acesse o link e **realize seu cadastro** (primeira vez).\n2️⃣ **Entre novamente** no mesmo link e **informe o localizador** da reserva (ABC123) para fazer o check-in.\n3️⃣ Após preencher todas as informações necessárias, o sistema mostrará o **número da sua suíte** e a **senha** ou **forma de acesso**.\n\nSe tiver dúvidas durante o processo, estou por aqui! 😊";
+    "Olá! 😊\nEncontramos sua reserva com sucesso!\n📍 Hospedagem: Hotel X\n📅 Check-in: 01/08/2026, a partir das 14:00h\n📅 Check-out: 03/08/2026, até as 12:00h\n👥 Hóspedes: 1\nSeu check-in ainda não foi realizado.\n\nÉ simples e rápido — acesse o link abaixo, confirme o localizador e preencha as etapas na tela:\n\n🔗 https://checkin.audaar.com.br/ABC123\n\n1️⃣ Abra o link no celular ou computador.\n2️⃣ Confirme ou digite o localizador da reserva (**ABC123**).\n3️⃣ Preencha as etapas que aparecerem — ao final, você verá o **número da suíte** e a **senha** ou **forma de acesso**.\n\nSe tiver dúvidas durante o processo, estou por aqui! 😊";
   const result = ensureDeliveringReply({
     replyText: good,
     userMessage: "fazer check-in na reserva NCMT0VPN",

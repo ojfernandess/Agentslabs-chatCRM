@@ -11,6 +11,7 @@ import {
   isOperationalReservationLookupMessage,
   messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
+  userMessageLooksLikeOperationalCheckinIntent,
   userMessageLooksLikeReservationVerificationIntent,
   isKnowledgeOverviewChunk,
   knowledgeContentCoversQuery,
@@ -225,6 +226,22 @@ test("FAQ check-in without locator is not operational reservation lookup", () =>
   assert.equal(
     userMessageLooksLikeKnowledgeSeekingQuery("qual o horario de check-in da club suites?"),
     true,
+  );
+});
+
+test("operational check-in how-to skips KB (C3)", () => {
+  assert.equal(userMessageLooksLikeOperationalCheckinIntent("Como faço o check-in?"), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Como faço o check-in?"), false);
+  assert.equal(resolveKnowledgeSearchSkip("Como faço o check-in?"), "checkin_reservation_turn");
+  assert.equal(userMessageLooksLikeOperationalCheckinIntent("como funciona o check-in?"), false);
+});
+
+test("qual o link after check-in context skips KB", () => {
+  assert.equal(
+    resolveKnowledgeSearchSkip("Qual o link?", {
+      lastAssistantMessage: "Para fazer o check-in, acesse https://checkin.audaar.com.br/",
+    }),
+    "checkin_reservation_turn",
   );
 });
 

@@ -4,6 +4,7 @@
  */
 import type { PromptIR } from "../contract/PromptIR.js";
 import { REPLY_TEMPLATE_BODIES } from "../reply/ReplyTemplateRenderer.js";
+import { resolveCheckinLink } from "../reply/checkinLink.js";
 import { playbookTextFromBehavior } from "./playbookText.js";
 
 export type PlaybookEnrichment = {
@@ -35,7 +36,7 @@ export function parsePlaybookEnrichment(
   return { checkinLink, replyTemplateBodies, defaultTemplateFacts };
 }
 
-const DEFAULT_CHECKIN_LINK = "https://pms.audaar.com.br/checkin/vivapp/access";
+const DEFAULT_CHECKIN_LINK = resolveCheckinLink();
 
 /** Merge enrichment no IR — idempotente por hash. */
 export function enrichPromptIr(
@@ -58,7 +59,10 @@ export function enrichPromptIr(
     };
   }
 
-  const checkinLink = enrichment.checkinLink ?? DEFAULT_CHECKIN_LINK;
+  const checkinLink = resolveCheckinLink({
+    configuredLink: enrichment.checkinLink,
+    playbookText: playbook,
+  });
 
   const templateFacts = {
     checkinLink,
@@ -68,9 +72,9 @@ export function enrichPromptIr(
   let reservationBody = REPLY_TEMPLATE_BODIES.reservation_lookup_checkin;
   if (enrichment.replyTemplateBodies?.reservation_lookup_checkin) {
     reservationBody = enrichment.replyTemplateBodies.reservation_lookup_checkin;
-  } else if (reservationBody.includes("pms.audaar.com.br")) {
+  } else {
     reservationBody = reservationBody.replace(
-      /https:\/\/pms\.audaar\.com\.br\/checkin\/vivapp\/access/g,
+      /https?:\/\/[^\s]*(?:pms\.audaar\.com\.br\/checkin|checkin\.audaar\.com\.br)[^\s]*/g,
       "{{facts.checkinLink}}",
     );
   }

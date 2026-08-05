@@ -41,6 +41,7 @@ import {
   resolveReservationLookupTemplateId,
   type SynthesizerToolOutcome,
 } from "./ReplyTemplateRenderer.js";
+import { isLikelyCheckinUrl, resolveCheckinLink } from "./checkinLink.js";
 import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply, tryNfFormSubmissionReply } from "../../nfFlowReply.js";
 import { isNfUnitKnowledgeReplyTurn, isNfDataCollectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
 
@@ -118,9 +119,12 @@ export function buildModeloS1FromReservationPayload(
   payload: unknown,
   opts?: { userMessage?: string },
 ): string {
+  const baseFacts = factsFromReservationPayload(payload, opts?.userMessage);
   const facts = {
-    ...factsFromReservationPayload(payload, opts?.userMessage),
-    checkinLink: "https://pms.audaar.com.br/checkin/vivapp/access",
+    ...baseFacts,
+    checkinLink: resolveCheckinLink({
+      locator: baseFacts.locator !== "…" ? String(baseFacts.locator) : null,
+    }),
   };
   const templateId = resolveReservationLookupTemplateId(facts);
   return renderReplyTemplate({ templateId, facts, userMessage: opts?.userMessage });
@@ -135,16 +139,19 @@ export function replyLooksLikeModeloS1(text: string): boolean {
     /👥\s*Hóspedes|Hóspedes\s*:/i.test(t);
   if (!hasFacts) return false;
   if (/encontramos\s+sua\s+reserva\s+com\s+sucesso/i.test(t)) {
+    const hasCheckinLink = [...t.matchAll(/https?:\/\/[^\s)\]>]+/gi)].some((m) =>
+      isLikelyCheckinUrl(m[0]),
+    );
     return (
-      /checkin\/vivapp\/access/i.test(t) &&
-      /1️⃣|realize\s+seu\s+cadastro|informe\s+o\s+localizador/i.test(t) &&
+      hasCheckinLink &&
+      /1️⃣|Abra o link|confirme o localizador|realize seu cadastro|informe o localizador/i.test(t) &&
       /ainda\s+n[aã]o\s+foi\s+realizado/i.test(t)
     );
   }
   return (
     /encontrei\s+sua\s+reserva/i.test(t) &&
     (/deseja\s+fazer\s+o\s+check-in\s+agora|check-in:\s*já\s+realizado|check-in:\s*pendente/i.test(t) ||
-      /pelo\s+link:.*checkin/i.test(t))
+      /pelo\s+link:|Para fazer o check-in agora/i.test(t))
   );
 }
 
@@ -287,9 +294,14 @@ function tryRenderReservationLookup(
 ): string | null {
   let payload = unwrapPayload(reservation.structuredPayload ?? tryParseJson(reservation.preview));
   if (!payload) return null;
+  const baseFacts = factsFromReservationPayload(payload, userMessage);
+  const enrichedFacts = promptIr ? templateFactsFromEnrichedIr(promptIr) : {};
   const facts = {
-    ...factsFromReservationPayload(payload, userMessage),
-    ...(promptIr ? templateFactsFromEnrichedIr(promptIr) : { checkinLink: "https://pms.audaar.com.br/checkin/vivapp/access" }),
+    ...baseFacts,
+    checkinLink: resolveCheckinLink({
+      locator: baseFacts.locator !== "…" ? String(baseFacts.locator) : null,
+      configuredLink: enrichedFacts.checkinLink,
+    }),
   };
   const irSpec = matchIrReplyTemplate(promptIr, "after_tool_success", reservation.name);
   const templateId = irSpec
