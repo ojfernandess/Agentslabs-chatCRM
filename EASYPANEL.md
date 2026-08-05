@@ -20,12 +20,13 @@ Opcional: `RUN_DB_SEED=true` só no primeiro deploy; depois `false`.
 
 1. No projeto → aba **Domains** (ou equivalente).
 2. Adiciona o domínio (próprio ou `*.easypanel.host`).
-3. **Destino interno**: o serviço que publica a app é o **caddy**.
-4. **Porta**: a porta **do host** que mapeias para o caddy — por defeito **`8080`** (valor de `CADDY_HTTP_PORT`).
-
-Se o painel pedir “container port”, o caddy escuta **80** *dentro* da rede Docker; o que importa para o proxy do EasyPanel é a porta que aparece no `ports:` do compose no host (ex.: `8080:80` → usa **8080** como upstream HTTP, salvo o painel documentar o contrário).
-
+3. **Destino interno**: serviço **`caddy`**, porta **`80`** (porta *dentro* do contentor — rede Docker).
+4. **Não** uses porta `8080` do host se o deploy incluir `docker-compose.easypanel.yml` (sem `ports` no caddy).
 5. Garante **SSL** no EasyPanel para o domínio (Let’s Encrypt do painel), não no Caddy do compose.
+
+Se aparecer o aviso *"ports is used in caddy"*, inclui **`docker-compose.easypanel.yml` por último** no comando compose do painel (Settings → Compose) e confirma o domínio aponta para **caddy:80**.
+
+Para VPS **sem** EasyPanel a fazer proxy (só compose), usa o `docker-compose.yml` base com `CADDY_HTTP_PORT=8080` — **não** merges o ficheiro easypanel.
 
 ## 3. `PUBLIC_URL` alinhado com o domínio
 
@@ -62,6 +63,21 @@ Se o domínio abrir mas o login falhar, confere logs da **api** e se `PUBLIC_URL
 ## 8. Postgres / Redis (ataques na porta 5432)
 
 No EasyPanel o projeto é **Compose** — `db`, `redis`, `api`, `web` e `caddy` vêm do mesmo `docker-compose.yml`. **Não há ecrã separado** para fechar a porta do Postgres; a correção é no ficheiro YAML + redeploy.
+
+### Logs do db: "listening on 0.0.0.0, port 5432"
+
+**Normal e seguro** quando não há `ports:` no compose. Dentro do contentor o Postgres sempre escuta em `0.0.0.0`; o que importa é se o **host** publica `0.0.0.0:5432`. Sem mapeamento Docker, a Internet **não** alcança a porta.
+
+Confirma com:
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Ports}}" | grep db
+```
+
+Seguro: `5432/tcp` (sem `0.0.0.0:5432->`).  
+Inseguro: `0.0.0.0:5432->5432/tcp`.
+
+Mensagens como *"Database directory appears to contain a database; Skipping initialization"* significam que o volume **`pgdata`** foi preservado.
 
 ### O que fazer
 
