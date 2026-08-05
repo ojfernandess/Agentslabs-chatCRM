@@ -18,10 +18,10 @@ export function ConversationsLayout() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
         <aside
           className={clsx(
-            "flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
+            "flex min-h-0 flex-col border-b border-ink-200/50 bg-[#fafbfc] dark:border-ink-800/60 dark:bg-[#0c1219] lg:border-b-0 lg:border-r",
             activeThreadId && "hidden lg:flex",
           )}
         >
@@ -48,7 +48,7 @@ export function ConversationsLayout() {
 export function ConversationsThreadPlaceholder() {
   const { t } = useI18n();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-ink-50 p-8 text-center dark:bg-[#0E1624]">
+    <div className="flex flex-1 flex-col items-center justify-center bg-[#f8fafc] p-8 text-center dark:bg-[#0a0f16]">
       <MessageSquare className="mb-3 h-12 w-12 text-brand-500/70" />
       <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
         {t("conversations.selectThread")}
