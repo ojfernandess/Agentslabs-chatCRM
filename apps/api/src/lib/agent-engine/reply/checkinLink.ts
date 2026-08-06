@@ -3,6 +3,8 @@
  * Evita hardcode por prompt: lê enrichment, playbook ou fallback padrão.
  */
 
+import { deduplicateUrlsInReply } from "./replyLinks.js";
+
 export const DEFAULT_CHECKIN_BASE_URL = "https://checkin.audaar.com.br/";
 
 export const CHECKIN_LOCATOR_PLACEHOLDER = "{LOCALIZADOR}";
@@ -122,36 +124,7 @@ export function pickPreferredCheckinUrl(urls: string[]): string {
   return urls[0]!;
 }
 
-/** Remove URLs de check-in duplicadas — mantém a preferida (com localizador quando existir). */
+/** @deprecated Use deduplicateUrlsInReply — mantido para compat. */
 export function deduplicateCheckinLinksInReply(text: string): string {
-  const t = (text ?? "").trim();
-  if (!t) return t;
-
-  const hits: { index: number; length: number; url: string }[] = [];
-  const urlRe = /https?:\/\/[^\s)\]>]+/gi;
-  let m: RegExpExecArray | null;
-  while ((m = urlRe.exec(t)) !== null) {
-    const raw = m[0].replace(/[.,;:!?)]+$/, "");
-    if (isLikelyCheckinUrl(raw)) {
-      hits.push({ index: m.index, length: m[0].length, url: raw });
-    }
-  }
-  if (hits.length <= 1) return t;
-
-  const preferred = pickPreferredCheckinUrl(hits.map((h) => h.url));
-  let kept = false;
-  let out = "";
-  let lastEnd = 0;
-  for (const hit of hits) {
-    out += t.slice(lastEnd, hit.index);
-    if (!kept) {
-      out += preferred;
-      kept = true;
-    }
-    lastEnd = hit.index + hit.length;
-  }
-  out += t.slice(lastEnd);
-  out = out.replace(/^\s*🔗\s*$/gm, "");
-  out = out.replace(/\n{3,}/g, "\n\n");
-  return out.trim();
+  return deduplicateUrlsInReply(text);
 }

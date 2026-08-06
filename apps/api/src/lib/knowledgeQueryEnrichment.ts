@@ -251,6 +251,7 @@ export function userMessageLooksLikeOperationalCheckinIntent(userMessage: string
     return true;
   }
   if (/\bcomo\s+(?:eu\s+)?fa[cç]o\b/i.test(t) && /\bcheck[- ]?in\b/i.test(t)) return true;
+  if (/\b(?:qual|cad[eê])\s+(?:o\s+)?link\b/i.test(t) && /\bcheck[- ]?in\b/i.test(t)) return true;
   return false;
 }
 

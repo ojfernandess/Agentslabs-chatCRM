@@ -79,6 +79,7 @@ export function isNonDeliveringAgentReply(text: string, configuredStallMessages?
 }
 
 export { deduplicateCheckinLinksInReply } from "./checkinLink.js";
+export { deduplicateUrlsInReply, normalizeMarkdownLinksInReply, sanitizeOutboundLinksInReply } from "./replyLinks.js";
 
 /** Bloco de sistema para turnos runtime_owned com tools ja executadas. */
 export function buildRuntimeOwnedReplyGuardAppendix(): string {

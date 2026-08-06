@@ -236,6 +236,15 @@ test("operational check-in how-to skips KB (C3)", () => {
   assert.equal(userMessageLooksLikeOperationalCheckinIntent("como funciona o check-in?"), false);
 });
 
+test("qual o link para check-in skips KB (C3)", () => {
+  assert.equal(userMessageLooksLikeOperationalCheckinIntent("Bom dia, qual o link para check-in?"), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Bom dia, qual o link para check-in?"), false);
+  assert.equal(
+    resolveKnowledgeSearchSkip("Bom dia, qual o link para check-in?"),
+    "checkin_reservation_turn",
+  );
+});
+
 test("qual o link after check-in context skips KB", () => {
   assert.equal(
     resolveKnowledgeSearchSkip("Qual o link?", {

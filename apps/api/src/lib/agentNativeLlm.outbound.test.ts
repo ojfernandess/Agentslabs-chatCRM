@@ -31,3 +31,13 @@ test("sanitizeOutboundAgentReply deduplicates check-in links", () => {
   const out = sanitizeOutboundAgentReply(raw);
   assert.equal((out.match(/checkin\.audaar\.com\.br/gi) ?? []).length, 1);
 });
+
+test("sanitizeOutboundAgentReply normalizes broken markdown links to plain URL", () => {
+  const raw =
+    "Bom dia! 😊 O link oficial para realizar o check-in é [https://checkin.audaar.com.br/]().\n\n" +
+    "Se você já tiver o localizador da sua reserva, pode inseri-lo diretamente na página.";
+  const out = sanitizeOutboundAgentReply(raw);
+  assert.match(out, /https:\/\/checkin\.audaar\.com\.br\//);
+  assert.doesNotMatch(out, /\[https?:\/\//);
+  assert.doesNotMatch(out, /\]\(\)/);
+});
